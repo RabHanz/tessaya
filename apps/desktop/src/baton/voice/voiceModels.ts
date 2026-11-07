@@ -39,11 +39,40 @@ export const wakeModelFor = (
   languages: ReadonlyArray<string>,
   speechModel: "v3" | "fast",
 ): DownloadableModel | null =>
-  speechModel !== "fast" &&
-  languages.length > 0 &&
-  languages.every((code) => code.toLowerCase().split("-")[0] === "en")
-    ? PARAKEET_FAST_MODEL
-    : null;
+  speechModel !== "fast" && englishOnly(languages) ? PARAKEET_FAST_MODEL : null;
+
+const englishOnly = (languages: ReadonlyArray<string>) =>
+  languages.length > 0 && languages.every((code) => code.toLowerCase().split("-")[0] === "en");
+
+/**
+ * Why this machine is too weak for the 0.6B model, or null. His laptop (8 threads, 16 GB) starts it in 1-14 s, so a
+ * start over 30 s is a slow machine, not a cold disk.
+ */
+export const weakMachine = (machine: {
+  readonly cpus: number;
+  readonly memoryBytes: number;
+  readonly warmMs?: number | undefined;
+}): string | null => {
+  if (machine.cpus <= 4) return `${machine.cpus} cores`;
+  if (machine.memoryBytes < 10 * 2 ** 30)
+    return `${Math.round(machine.memoryBytes / 2 ** 30)} GB of memory`;
+  const warmMs = machine.warmMs ?? 0;
+  return warmMs > 30_000 ? `a ${Math.round(warmMs / 1000)} s start` : null;
+};
+
+/** A weak machine moves him to the fast model, unless he picked a model himself or speaks more than English. */
+export const machinePicksFast = (
+  settings: {
+    readonly speechModel: "v3" | "fast";
+    readonly speechModelPicked?: "you" | "machine" | undefined;
+    readonly languages: ReadonlyArray<string>;
+  },
+  weak: string | null,
+) =>
+  weak !== null &&
+  settings.speechModelPicked === undefined &&
+  settings.speechModel === "v3" &&
+  englishOnly(settings.languages);
 
 export interface DownloadableModel {
   readonly file: string;

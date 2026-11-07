@@ -375,7 +375,9 @@ import {
   modelPresent,
   PARAKEET_FAST_MODEL,
   PARAKEET_MODEL,
+  machinePicksFast,
   wakeModelFor,
+  weakMachine,
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
@@ -584,6 +586,8 @@ interface VoiceSettings {
   readonly dictation: "baton" | "wispr";
   /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
   readonly speechModel: "v3" | "fast";
+  /** Who set speechModel: unset is the default, which a weak machine may change (machinePicksFast); his pick never. */
+  readonly speechModelPicked?: "you" | "machine";
   readonly holdKey: string;
   readonly toggleKey: string;
   /** The first-run guide was finished or skipped. */
@@ -1067,6 +1071,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     writeJsonFile(settingsPath, settings);
     pushHome();
   };
+  const pickForMachine = (warmMs?: number) => {
+    const weak = weakMachine({
+      cpus: NodeOS.availableParallelism(),
+      memoryBytes: NodeOS.totalmem(),
+      warmMs,
+    });
+    if (!machinePicksFast(settings, weak)) return false;
+    save({ speechModel: "fast", speechModelPicked: "machine" });
+    input.onNote?.("speech_model_auto", { model: "fast", reason: weak });
+    return true;
+  };
+  pickForMachine();
 
   const tray = new Electron.Tray(
     trayIcon({
@@ -3027,6 +3043,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ),
       );
     } else if (event.ev === "text") {
+      // The sidecar drops an idle model after 10 minutes; this is what having it back cost.
+      if ((event.loadMs ?? 0) > 0)
+        input.onNote?.("speech_model_reload", { model: event.model ?? null, loadMs: event.loadMs });
       note = event.error ?? event.pasteError ?? note;
       const text = event.text ?? "";
       const outside = outsideLanguages(text, settings.languages);
@@ -3568,6 +3587,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           modelRead = true;
           const loadMs = await warmSidecar.preload();
           step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
+          if (pickForMachine(loadMs)) requestDictation();
           speechLoadMs = 0;
         }
         return wakeStt(warmSidecar).transcribe(pcm);
@@ -5166,6 +5186,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.speechModel",
         section: "Dictation",
         label: "Speech model",
+        ...(settings.speechModelPicked === "machine"
+          ? { hint: "Picked for this computer, which is slow for the larger model." }
+          : {}),
         kind: "choice",
         value: settings.speechModel,
         options: [
@@ -6515,7 +6538,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const setSpeechModel = (speechModel: VoiceSettings["speechModel"]) => {
-    save({ speechModel, ...(speechModel === "fast" ? { languages: ["en"] } : {}) });
+    save({
+      speechModel,
+      speechModelPicked: "you",
+      ...(speechModel === "fast" ? { languages: ["en"] } : {}),
+    });
     if (parakeetPath !== null || settings.enabled) requestDictation();
     else render();
   };

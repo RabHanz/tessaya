@@ -6,7 +6,14 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, wakeModelFor } from "./voiceModels.ts";
+import {
+  ensureModel,
+  machinePicksFast,
+  modelPresent,
+  PARAKEET_FAST_MODEL,
+  wakeModelFor,
+  weakMachine,
+} from "./voiceModels.ts";
 
 const bytes = Buffer.from("parakeet");
 const model = (sha256: string) => ({
@@ -131,5 +138,35 @@ describe("the wake path's model", () => {
     [["de"], "fast", null],
   ] as const)("%j with %s dictation asks for %o", (languages, speechModel, model) => {
     expect(wakeModelFor(languages, speechModel)).toBe(model);
+  });
+});
+
+describe("a weak machine", () => {
+  const GB = 2 ** 30;
+  it.each([
+    // [logical cores, memory, warm-up ms, the reason it is weak (null: it is not)]
+    // His laptop (i7-8550U, 16 GB): starts measured 1-14 s.
+    [8, 15.8 * GB, 13_602, null],
+    [8, 15.8 * GB, undefined, null],
+    [4, 15.8 * GB, undefined, "4 cores"],
+    [2, 7.8 * GB, undefined, "2 cores"],
+    [8, 7.8 * GB, undefined, "8 GB of memory"],
+    [8, 15.8 * GB, 45_000, "a 45 s start"],
+  ] as const)("%i cores, %d bytes, %o ms: %o", (cpus, memoryBytes, warmMs, reason) => {
+    expect(weakMachine({ cpus, memoryBytes, warmMs })).toBe(reason);
+  });
+
+  it.each([
+    // [his settings, picks the fast model]
+    [{ speechModel: "v3", languages: ["en"] }, true],
+    [{ speechModel: "v3", languages: ["en-GB"] }, true],
+    // He chose v3 himself: his choice wins.
+    [{ speechModel: "v3", speechModelPicked: "you", languages: ["en"] }, false],
+    // The fast model hears only English.
+    [{ speechModel: "v3", languages: ["en", "de"] }, false],
+    [{ speechModel: "fast", languages: ["en"] }, false],
+  ] as const)("%j: %s", (settings, picks) => {
+    expect(machinePicksFast(settings, "4 cores")).toBe(picks);
+    expect(machinePicksFast(settings, null)).toBe(false);
   });
 });

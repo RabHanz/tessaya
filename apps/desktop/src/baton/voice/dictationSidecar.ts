@@ -147,6 +147,9 @@ export type DictationEvent =
       /** Cloud recognition: the recording for the desktop to recognise, deleted once it has; the text is then empty. */
       readonly wav?: string | null;
       readonly audioMs?: number;
+      /** Above 0 when the model had to be read first (after an idle unload). */
+      readonly loadMs?: number;
+      readonly model?: string | null;
       readonly text?: string;
       readonly error?: string;
       readonly pasteError?: string | null;
