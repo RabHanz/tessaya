@@ -3,6 +3,7 @@
  * Her voice (Pocket TTS) says each line as today and through `pronounce`, the sidecar's Parakeet hears it back, and the
  * word error per line goes to report.md. Pocket TTS is a Windows build: on the laptop (Node 22: add the flag):
  *   node --experimental-strip-types pronounce-roundtrip.ts --pocket <voice\pocket> --sidecar tessaya-voice.exe --model <parakeet .gguf> --out <dir>
+ * Add --word Tessaya --candidates "Tessaya,Tessayah,Tess-AY-ya,Tessaiya" to score spellings of one word instead.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -126,14 +127,33 @@ const flag = (name: string): string | undefined => {
   return at < 0 ? undefined : process.argv[at + 1];
 };
 
+/** Sentences that say `word`, for comparing spellings of it: his lines first, then two of the usual shapes. */
+const sentencesWith = (word: string): string[] => [
+  ...LINES.filter((line) => new RegExp(`\\b${word}\\b`, "i").test(line.text)).map(
+    (line) => line.text,
+  ),
+  `${word}, what time is it?`,
+  `Ask ${word} to read it back.`,
+];
+
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+
 const main = async () => {
   const pocketRoot = flag("--pocket");
   const sidecar = flag("--sidecar");
   const model = flag("--model");
   const out = flag("--out");
   const voice = (flag("--voice") ?? "anna") as PocketVoice;
+  // Candidate mode: --word Tessaya --candidates "Tessaya,Tessayah,Tess-AY-ya,Tessaiya" scores each spelling.
+  const word = flag("--word");
+  const candidates = flag("--candidates")
+    ?.split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
   if (pocketRoot === undefined || sidecar === undefined || model === undefined || out === undefined)
     throw new Error("Needs --pocket, --sidecar, --model and --out.");
+  if ((word === undefined) !== (candidates === undefined))
+    throw new Error("Candidate mode needs both --word and --candidates.");
   NodeFS.mkdirSync(out, { recursive: true });
   const engine = createPocketEngine({
     root: pocketRoot,
@@ -147,36 +167,79 @@ const main = async () => {
     if (!(await engine.ensure(voice))) throw new Error(`Pocket TTS has no ${voice} voice here.`);
     const synth = engine.synthesise(voice);
     if (synth === null) throw new Error("Pocket TTS did not start.");
+    /** Her voice says `text` into `name`.wav (16 kHz mono, as the sidecar takes it). */
+    const say = async (text: string, name: string): Promise<string> => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of synth(text).stream) chunks.push(chunk);
+      const wav = parseWav(Buffer.concat(chunks));
+      const file = NodePath.join(out, `${name}.wav`);
+      NodeFS.writeFileSync(file, encodeWav(toVoicePcm(wav.samples, wav.channels, wav.sampleRate)));
+      return file;
+    };
+    /** What Parakeet hears in each file. */
+    const hear = (files: ReadonlyArray<string>): Map<string, string> => {
+      const list = NodePath.join(out, "clips.txt");
+      NodeFS.writeFileSync(list, `${files.join("\n")}\n`);
+      const run = NodeChildProcess.spawnSync(
+        sidecar,
+        ["transcribe", "--model", model, "--language", "en", "--list", list],
+        { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+      );
+      if (run.status !== 0) throw new Error(`The sidecar failed: ${run.stderr}`);
+      const heard = new Map<string, string>();
+      for (const row of run.stdout.split("\n")) {
+        if (!row.startsWith("{")) continue;
+        const parsed = JSON.parse(row) as { readonly file?: string; readonly text?: string };
+        if (parsed.file !== undefined) heard.set(parsed.file, parsed.text ?? "");
+      }
+      return heard;
+    };
+
+    if (word !== undefined && candidates !== undefined) {
+      // Each spelling said in the same sentences; the one heard back as the word, written as he writes it, wins.
+      const sentences = sentencesWith(word);
+      const files = new Map<string, string>();
+      for (const [c, candidate] of candidates.entries())
+        for (const [i, sentence] of sentences.entries())
+          files.set(
+            `${c}:${i}`,
+            await say(speakableText(pronounce(sentence, { [word]: candidate })), `cand-${c}-${i}`),
+          );
+      const heard = hear([...files.values()]);
+      const rows = candidates.map((candidate, c) => {
+        const back = sentences.map((_, i) => heard.get(files.get(`${c}:${i}`) ?? "") ?? "");
+        const wer = sentences.reduce(
+          (sum, sentence, i) => sum + wordError(sentence, back[i] ?? ""),
+          0,
+        );
+        return { candidate, back, wer: wer / sentences.length };
+      });
+      rows.sort((x, y) => x.wer - y.wer);
+      const report = [
+        `Spellings of "${word}", voice ${voice}: each said in ${sentences.length} sentences, heard back by Parakeet (${NodePath.basename(model)}).`,
+        "",
+        `| Spelling | Mean WER | ${sentences.map((_, i) => `Heard ${i + 1}`).join(" | ")} |`,
+        `| --- | --- | ${sentences.map(() => "---").join(" | ")} |`,
+        ...rows.map((r) => `| ${r.candidate} | ${pct(r.wer)} | ${r.back.join(" | ")} |`),
+        "",
+        ...sentences.map((sentence, i) => `${i + 1}. ${sentence}`),
+        "",
+      ].join("\n");
+      NodeFS.writeFileSync(NodePath.join(out, "candidates.json"), JSON.stringify(rows, null, 2));
+      NodeFS.writeFileSync(NodePath.join(out, "candidates.md"), report);
+      console.log(report);
+      return;
+    }
+
     const files: string[] = [];
     for (const [index, line] of LINES.entries()) {
       for (const pass of ["before", "after"] as const) {
         const text =
           pass === "before" ? speakableText(line.text) : speakableText(pronounce(line.text));
-        const chunks: Buffer[] = [];
-        for await (const chunk of synth(text).stream) chunks.push(chunk);
-        const wav = parseWav(Buffer.concat(chunks));
-        const file = NodePath.join(out, `${String(index).padStart(2, "0")}-${pass}.wav`);
-        NodeFS.writeFileSync(
-          file,
-          encodeWav(toVoicePcm(wav.samples, wav.channels, wav.sampleRate)),
-        );
-        files.push(file);
+        files.push(await say(text, `${String(index).padStart(2, "0")}-${pass}`));
       }
     }
-    const list = NodePath.join(out, "clips.txt");
-    NodeFS.writeFileSync(list, `${files.join("\n")}\n`);
-    const run = NodeChildProcess.spawnSync(
-      sidecar,
-      ["transcribe", "--model", model, "--language", "en", "--list", list],
-      { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-    );
-    if (run.status !== 0) throw new Error(`The sidecar failed: ${run.stderr}`);
-    const heard = new Map<string, string>();
-    for (const row of run.stdout.split("\n")) {
-      if (!row.startsWith("{")) continue;
-      const parsed = JSON.parse(row) as { readonly file?: string; readonly text?: string };
-      if (parsed.file !== undefined) heard.set(parsed.file, parsed.text ?? "");
-    }
+    const heard = hear(files);
     const results = LINES.map((line, index) => {
       const of = (pass: "before" | "after") =>
         heard.get(NodePath.join(out, `${String(index).padStart(2, "0")}-${pass}.wav`)) ?? "";
@@ -198,7 +261,6 @@ const main = async () => {
     const scored = results.filter((_, index) => LINES[index]?.ownForm !== true);
     const mean = (pass: "before" | "after") =>
       scored.reduce((sum, r) => sum + r[pass].wer, 0) / Math.max(scored.length, 1);
-    const pct = (n: number) => `${Math.round(n * 100)}%`;
     const report = [
       `Round trip, voice ${voice}: Pocket TTS, then Parakeet (${NodePath.basename(model)}).`,
       "",

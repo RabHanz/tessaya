@@ -6,21 +6,13 @@
 
 /** Built in. Acronyms match only in capitals ("PR", never "pr" in "print"); names match in any case. */
 const RESPELLINGS: Readonly<Record<string, string>> = {
-  // How he says them (British): tess-AY-uh, FRAY-uh.
-  Tessaya: "Tess-ay-uh",
+  // How he says it (British): FRAY-uh. Tessaya is said as written until the round trip picks a spelling.
   Freya: "Fray-uh",
   Baton: "Batton",
   T3: "T three",
-  VPN: "V P N",
-  VPNs: "V P Ns",
-  CI: "C I",
+  // Pocket TTS already says VPN, CI, API, URL and SQL as letters (0.1.73 round trip); "C I" was heard as "See I".
   PR: "P R",
   PRs: "P Rs",
-  URL: "U R L",
-  URLs: "U R Ls",
-  API: "A P I",
-  APIs: "A P Is",
-  SQL: "S Q L",
   GMT: "G M T",
   UTC: "U T C",
 };
