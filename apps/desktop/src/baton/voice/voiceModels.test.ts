@@ -11,6 +11,7 @@ import {
   machinePicksFast,
   modelPresent,
   PARAKEET_FAST_MODEL,
+  slowStartsAfter,
   wakeModelFor,
   weakMachine,
 } from "./voiceModels.ts";
@@ -144,16 +145,35 @@ describe("the wake path's model", () => {
 describe("a weak machine", () => {
   const GB = 2 ** 30;
   it.each([
-    // [logical cores, memory, warm-up ms, the reason it is weak (null: it is not)]
-    // His laptop (i7-8550U, 16 GB): starts measured 1-14 s.
-    [8, 15.8 * GB, 13_602, null],
-    [8, 15.8 * GB, undefined, null],
-    [4, 15.8 * GB, undefined, "4 cores"],
-    [2, 7.8 * GB, undefined, "2 cores"],
-    [8, 7.8 * GB, undefined, "8 GB of memory"],
-    [8, 15.8 * GB, 45_000, "a 45 s start"],
-  ] as const)("%i cores, %d bytes, %o ms: %o", (cpus, memoryBytes, warmMs, reason) => {
-    expect(weakMachine({ cpus, memoryBytes, warmMs })).toBe(reason);
+    // [fresh install, logical cores, memory, slow starts in a row, the reason it is weak (null: it is not)]
+    [true, 8, 15.8 * GB, 0, null],
+    [true, 4, 15.8 * GB, 0, "4 logical cores"],
+    [true, 2, 7.8 * GB, 0, "2 logical cores"],
+    [true, 8, 7.8 * GB, 0, "8 GB of memory"],
+    [true, 8, 10 * GB, 0, null],
+    // An existing install may have chosen v3 before the choice was recorded: only slow starts move it.
+    [false, 2, 7.8 * GB, 0, null],
+    [false, 8, 15.8 * GB, 1, null],
+    [false, 8, 15.8 * GB, 2, "2 slow starts in a row"],
+  ] as const)(
+    "fresh %s, %i cores, %d bytes, %i slow: %o",
+    (freshInstall, cpus, memoryBytes, slowStarts, reason) => {
+      expect(weakMachine({ freshInstall, cpus, memoryBytes, slowStarts })).toBe(reason);
+    },
+  );
+
+  it.each([
+    // [slow starts so far, this start's load ms, it downloaded the model first, slow starts after]
+    [0, 45_000, false, 1],
+    [1, 45_000, false, 2],
+    [0, 30_000, false, 0],
+    // His laptop's worst start.
+    [1, 13_602, false, 0],
+    // The first start after the download reads a cold disk past the virus scanner.
+    [0, 90_000, true, 0],
+    [1, 90_000, true, 1],
+  ] as const)("%i, then %i ms (downloaded %s): %i", (previous, loadMs, downloaded, after) => {
+    expect(slowStartsAfter(previous, loadMs, downloaded)).toBe(after);
   });
 
   it.each([
@@ -165,8 +185,10 @@ describe("a weak machine", () => {
     // The fast model hears only English.
     [{ speechModel: "v3", languages: ["en", "de"] }, false],
     [{ speechModel: "fast", languages: ["en"] }, false],
+    // Already moved: never picked again.
+    [{ speechModel: "fast", speechModelPicked: "machine", languages: ["en"] }, false],
   ] as const)("%j: %s", (settings, picks) => {
-    expect(machinePicksFast(settings, "4 cores")).toBe(picks);
+    expect(machinePicksFast(settings, "4 logical cores")).toBe(picks);
     expect(machinePicksFast(settings, null)).toBe(false);
   });
 });

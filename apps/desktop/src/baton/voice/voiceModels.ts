@@ -44,23 +44,32 @@ export const wakeModelFor = (
 const englishOnly = (languages: ReadonlyArray<string>) =>
   languages.length > 0 && languages.every((code) => code.toLowerCase().split("-")[0] === "en");
 
+/** His laptop (8 threads, 16 GB) logged model loads of 1-14 s, so a load over this is a slow machine. */
+const SLOW_START_MS = 30_000;
+
 /**
- * Why this machine is too weak for the 0.6B model, or null. His laptop (8 threads, 16 GB) starts it in 1-14 s, so a
- * start over 30 s is a slow machine, not a cold disk.
+ * Slow starts in a row, after one that took `loadMs`. A start that downloaded the model first (cold disk, the virus
+ * scanner) counts neither way.
+ */
+export const slowStartsAfter = (previous: number, loadMs: number, downloaded: boolean) =>
+  downloaded ? previous : loadMs > SLOW_START_MS ? previous + 1 : 0;
+
+/**
+ * Why this machine is too weak for the 0.6B model, or null. Cores and memory count only on a fresh install, where no
+ * earlier pick of his can be lost; one slow start can be a busy login, so it takes two in a row.
  */
 export const weakMachine = (machine: {
+  readonly freshInstall: boolean;
   readonly cpus: number;
   readonly memoryBytes: number;
-  readonly warmMs?: number | undefined;
+  readonly slowStarts: number;
 }): string | null => {
-  if (machine.cpus <= 4) return `${machine.cpus} cores`;
-  if (machine.memoryBytes < 10 * 2 ** 30)
+  if (machine.freshInstall && machine.cpus <= 4) return `${machine.cpus} logical cores`;
+  if (machine.freshInstall && machine.memoryBytes < 10 * 2 ** 30)
     return `${Math.round(machine.memoryBytes / 2 ** 30)} GB of memory`;
-  const warmMs = machine.warmMs ?? 0;
-  return warmMs > 30_000 ? `a ${Math.round(warmMs / 1000)} s start` : null;
+  return machine.slowStarts >= 2 ? `${machine.slowStarts} slow starts in a row` : null;
 };
 
-/** A weak machine moves him to the fast model, unless he picked a model himself or speaks more than English. */
 export const machinePicksFast = (
   settings: {
     readonly speechModel: "v3" | "fast";
