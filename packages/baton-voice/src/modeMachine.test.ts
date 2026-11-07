@@ -336,6 +336,17 @@ describe("the name a sentence starts with", () => {
     expect(namedWake("the seat, what time is it", names)).toBe(null);
   });
 
+  it("ends a dictation on 'Tessa, stop.': spoken to, so it is the name", () => {
+    const timings = { ...DEFAULT_TIMINGS, wakeWords: ["Freya", "Tessaya"] };
+    let state = initialVoiceState();
+    for (const event of [
+      { type: "set_dictation", on: true, at: 0 },
+      { type: "utterance", text: "Tessa, stop.", at: 1_000 },
+    ] as const)
+      state = reduceVoice(state, event, timings).state;
+    expect(state.mode).not.toBe("dictation");
+  });
+
   it.each([
     // 0.1.72: David's "Tessaya" came back as these, fired Freya's model and ran as Freya.
     ["Tessiot, what time is it?", "Tessaya"],
@@ -347,6 +358,9 @@ describe("the name a sentence starts with", () => {
     ["Tessa", "Tessaya"],
     ["Tessa said she would call me later", null],
     ["Tessa is coming at eight", null],
+    ["Tessa's car is outside", null],
+    ["Tess, can you send it", null],
+    ["Tessie what time is it", null],
   ] as const)("reads %j as %s", (text, name) => {
     expect(namedWake(text, ["Freya", "Tessaya", "Alfred"])).toBe(name);
   });

@@ -3,6 +3,9 @@
  * scripts/tessaya/voice-lab/sound-score.ts can put the same waves through the wake models and Silero.
  * Warm, short and low on purpose. D112 has the numbers and what they replaced.
  */
+
+import type { TurnPhase } from "@t3tools/baton-shared/voiceTurn";
+
 export interface PillNote {
   readonly hz: number;
   /** Seconds after the sound starts. */
@@ -54,13 +57,12 @@ export const PILL_SOUNDS: Record<PillSound, ReadonlyArray<PillNote>> = {
   thinking: [{ hz: 329.63, at: 0, len: 0.14, gain: 0.03 }],
 };
 
-/** How long a cue sounds, with its tail, in milliseconds. */
 /**
  * Whether the end cue sounds as the pill goes from `before` to `now` (null: it lowers). Once, when listening ends:
  * as the window closes ("ended"), or as it lowers from anything that had not ended already. Never seconds later as
  * an ended pill lowers: then it would blank the microphone over a name he may be saying.
  */
-export const endCueOn = (before: string, now: string | null): boolean =>
+export const endCueOn = (before: TurnPhase, now: TurnPhase | null): boolean =>
   now === "ended"
     ? before !== "ended"
     : now === null &&
@@ -69,6 +71,7 @@ export const endCueOn = (before: string, now: string | null): boolean =>
       before !== "error" &&
       before !== "done";
 
+/** How long a cue sounds, with its tail, in milliseconds. */
 export const soundMs = (sound: PillSound): number =>
   Math.ceil((Math.max(...PILL_SOUNDS[sound].map((n) => n.at + n.len)) + 0.02) * 1000);
 

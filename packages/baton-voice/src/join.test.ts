@@ -273,8 +273,8 @@ describe("thinking ahead in the pause", () => {
 /** Headphones, where his voice over hers cuts in with no name; she speaks a reply four seconds long. */
 const overHer = (
   lines: ReadonlyArray<string>,
-  /** Speakers: only the stop listener hears him over her, and it hears these lines. */
-  speakers?: { readonly stopLines: ReadonlyArray<string> },
+  /** Speakers: only the stop listener hears him over her, and it hears these lines (after `stopWaits`). */
+  speakers?: { readonly stopLines: ReadonlyArray<string>; readonly stopWaits?: Promise<void> },
 ) => {
   let speech = false;
   let wakeNow = false;
@@ -292,7 +292,14 @@ const overHer = (
       ? {}
       : {
           timings: { ...DEFAULT_TIMINGS, wakeWords: ["Freya", "Tessaya"] },
-          stopStt: { name: "stop", transcribe: async () => speakers.stopLines[nextStop++] ?? "" },
+          stopStt: {
+            name: "stop",
+            transcribe: async () => {
+              const line = speakers.stopLines[nextStop++] ?? "";
+              await speakers.stopWaits;
+              return line;
+            },
+          },
         }),
     wake: {
       name: "fake",
@@ -366,6 +373,8 @@ const overHer = (
     commands,
     outcomes,
     cancelled: () => cancelled,
+    /** Her reply plays to its end. */
+    finish: () => stopVoice(),
     wake: () => (wakeNow = true),
   };
 };
@@ -392,16 +401,49 @@ describe("cutting in over her", () => {
     expect(r.cutIns.at(-1)).toMatchObject({ said: "I'll open the…" });
   });
 
-  it("lets her own voice saying the name pass as her voice, not a cut-in", async () => {
+  it.each([
+    // [what she says, what the stop listener heard of it]
+    ["Freya here, opening it.", "Freya."],
+    // The words as heard, not only the name they stand for: "Tessa, can you" is her own sentence.
+    ["Tessa, can you send the deck?", "Tessa, can you"],
+  ])("lets her own %j, heard as %j, pass as her voice", async (hers, heard) => {
     using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    const r = overHer(["Open the invoice."], { stopLines: ["Freya."] });
+    const r = overHer(["Open the invoice."], { stopLines: [heard] });
     await r.askFirst();
-    r.core.noteSpoken("Freya here, opening it.");
+    r.core.noteSpoken(hers);
+    // Noted when it was queued, three sentences before the one playing now.
+    r.core.noteSpoken("First, the tunnel.");
+    r.core.noteSpoken("Then the keys.");
+    r.core.noteSpoken("Then the routes.");
     r.push(1.5, true);
     r.push(1.2, false);
     await r.settle();
     expect(r.cancelled()).toBe(0);
     expect(r.commands).toEqual(["Open the invoice."]);
+  });
+
+  it("takes the name as a plain wake when her voice ended while it was being recognised", async () => {
+    let heard: () => void = () => {};
+    const late = new Promise<void>((resolve) => (heard = resolve));
+    const r = overHer(["Open the invoice.", "Freya. What time is it?"], {
+      stopLines: ["Freya."],
+      stopWaits: late,
+    });
+    await r.askFirst();
+    r.push(1.5, true);
+    r.push(1.2, false);
+    await r.settle();
+    // She finishes, and her echo tail passes, before the name comes back.
+    r.finish();
+    await r.settle();
+    r.push(1, false);
+    heard();
+    await r.settle();
+    r.push(1, false);
+    await r.settle();
+    r.push(1, false);
+    await r.core.idle();
+    expect(r.commands.at(-1)).toBe("What time is it?");
   });
 
   it("carries on from the word she had reached, and leaves what already ran alone", async () => {

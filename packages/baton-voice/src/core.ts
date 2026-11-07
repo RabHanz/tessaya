@@ -766,7 +766,8 @@ export const createVoiceCore = (input: {
   const finishStop = () => {
     const parts = stopFrames;
     const spoken = stopSpeech;
-    const startedAt = samples - stopSamples;
+    // Where his speech began: the clip starts with the pre-roll, which the cut-in adds back itself (`openAt`).
+    const startedAt = samples - stopSamples + stopPreRoll;
     clearStop();
     if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
     // Busy: the newest clip waits its turn, so his latest words are heard; only an older waiting one goes.
@@ -778,6 +779,8 @@ export const createVoiceCore = (input: {
     recogniseStop(parts, startedAt);
   };
   let stopWaiting: { readonly parts: Int16Array[]; readonly startedAt: number } | null = null;
+  /** How much of the clip being heard over her voice is pre-roll, from before his speech began. */
+  let stopPreRoll = 0;
   /** A clip heard over her voice, which began at the sample `startedAt`. */
   const recogniseStop = (parts: Int16Array[], startedAt: number) => {
     stopBusy = true;
@@ -791,9 +794,18 @@ export const createVoiceCore = (input: {
           .find(isStopPhrase);
         const hers = spokenLately.slice(-2);
         // His wake word over her voice, which the wake model did not catch in the mix: a cut-in, from where this
-        // clip began, so the words after the name are his steer. Her own voice says the name only if her sentence did.
+        // clip began, so the words after the name are his steer (a plain wake if she has stopped by now). It is her
+        // own voice when any sentence she queued says the name or the words it was heard as ("Tessa, can you…").
         const name = said === undefined ? namedWake(text, timings.wakeWords ?? []) : null;
-        if (name !== null && !echoesSpeech(name, hers) && hearingItself() && !disposed) {
+        const restWords = stripWake(text, timings.wakeWords).split(/\s+/).filter(Boolean).length;
+        const asHeard = words.slice(0, words.length - restWords).join(" ");
+        if (
+          name !== null &&
+          !echoesSpeech(name, spokenLately) &&
+          !echoesSpeech(asHeard, spokenLately) &&
+          machine.mode !== "dictation" &&
+          !disposed
+        ) {
           stopWaiting = null;
           acceptWake(1, startedAt, name, true);
           enqueue(woke(name));
@@ -838,6 +850,7 @@ export const createVoiceCore = (input: {
       if (!speech) return;
       stopFrames = [...preRoll];
       stopSamples = preRollSamples;
+      stopPreRoll = preRollSamples;
     }
     stopFrames.push(frame);
     stopSamples += frame.length;
