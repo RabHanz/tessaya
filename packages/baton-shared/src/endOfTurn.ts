@@ -77,3 +77,35 @@ export const commitMs = (base: number, text: string): number => {
  */
 export const thinkAheadMs = (base: number, text: string): number =>
   isUnfinished(text) ? clampWait(base) : 0;
+
+/** A sentence of hers as it plays: when its audio started and how far the audio sent so far reaches. */
+export interface Playing {
+  readonly text: string;
+  readonly from: number | null;
+  readonly until: number;
+}
+
+/**
+ * What she had said when he cut in at `at`: the sentences played, and the one playing cut at the word its audio
+ * had reached. Without audio times (the system voice), the whole of it.
+ * shortcut: assumes even speech through a sentence; upgrade to word timings if the voice ever reports them.
+ */
+export const heardUntil = (
+  played: ReadonlyArray<string>,
+  playing: Playing | null,
+  at: number,
+): string => {
+  if (playing === null) return played.join(" ");
+  const all = playing.text.trim().split(/\s+/).filter(Boolean);
+  const share =
+    playing.from === null || playing.until <= playing.from
+      ? 1
+      : Math.min(1, Math.max(0, (at - playing.from) / (playing.until - playing.from)));
+  const n = Math.ceil(share * all.length);
+  const part = n >= all.length ? all.join(" ") : n === 0 ? "" : `${all.slice(0, n).join(" ")}…`;
+  return [...played, part].filter((s) => s !== "").join(" ");
+};
+
+/** His words after he cut her off, with what she had said, so the turn carries on from where she was. */
+export const cutInSaid = (cut: string, said: string): string =>
+  `(He cut in while you were saying: "${cut}") ${said}`;

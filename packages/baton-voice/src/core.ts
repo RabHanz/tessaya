@@ -18,7 +18,9 @@ import {
   JOIN_WITHIN_MS,
   WAIT_DEFAULT_MS,
   commitMs,
+  heardUntil,
   thinkAheadMs,
+  type Playing,
 } from "@t3tools/baton-shared/endOfTurn";
 import { isAddressedFollowUp } from "@t3tools/baton-shared/followUp";
 import { isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
@@ -157,6 +159,8 @@ export interface BatonVoiceCore extends VoiceCore {
   readonly setSpeaking: (active: boolean) => void;
   /** What the player is about to play (16 kHz mono) and when it will sound, so his voice can be told from it. */
   readonly reference: (pcm: Int16Array, soundsAtMs: number) => void;
+  /** A sentence of hers starts to play: the `reference` audio after this is its, for where he cuts in. */
+  readonly playing: (text: string) => void;
   /**
    * A cue (a short sound of Baton's own) will play for this long: for that long the wake detector and
    * the segmenter are given silence instead of the microphone, so the cue can neither wake it nor
@@ -345,6 +349,7 @@ export const createVoiceCore = (input: {
     readonly bus: ContextBusState;
     readonly target: string | null;
     readonly wake: string | null;
+    readonly cutIn: string | null;
     readonly go: Promise<() => Promise<RouteOutcome>>;
   } | null = null;
   const wakeOf = (text: string) => namedWake(text, timings.wakeWords ?? []) ?? addressee;
@@ -356,11 +361,11 @@ export const createVoiceCore = (input: {
     const [effect] = effects;
     if (effects.length !== 1 || effect?.kind !== "command") return;
     const wake = wakeOf(text);
-    const context = { bus, now: now(), mostRecentWorkSessionId: lastTarget, wake };
+    const context = { bus, now: now(), mostRecentWorkSessionId: lastTarget, wake, cutIn };
     const go = prepare(effect, context);
     // A discarded one fails quietly; a kept one fails where it is awaited.
     go.catch(() => undefined);
-    ahead = { effect, bus, target: lastTarget, wake, go };
+    ahead = { effect, bus, target: lastTarget, wake, cutIn, go };
   };
   let transcribing = 0;
   /** Where each segment still being recognised began, so held words wait for speech that may join them. */
@@ -411,6 +416,9 @@ export const createVoiceCore = (input: {
       if (turn) flight = mine;
       // "Tessaya, …" said in Freya's open window is for Tessaya, and so is what he says next without a name.
       if (turn) addressee = wakeOf(current.text);
+      // The turn after a cut-in carries on from her words.
+      const steer = turn ? cutIn : null;
+      if (turn) cutIn = null;
       const early = effect.kind === "command" ? ahead : null;
       if (effect.kind === "command") ahead = null;
       const thought =
@@ -418,7 +426,8 @@ export const createVoiceCore = (input: {
         JSON.stringify(early.effect) === JSON.stringify(effect) &&
         early.bus === bus &&
         early.target === lastTarget &&
-        early.wake === addressee;
+        early.wake === addressee &&
+        early.cutIn === steer;
       const outcome = await Promise.race([
         thought
           ? // He may carry on while it is still being thought out: then it never acts.
@@ -428,6 +437,7 @@ export const createVoiceCore = (input: {
               now: now(),
               mostRecentWorkSessionId: lastTarget,
               wake: addressee,
+              cutIn: steer,
             }),
         ...(turn ? [dropped] : []),
       ]);
@@ -787,6 +797,10 @@ export const createVoiceCore = (input: {
   let creditFrom = 0;
   /** A wake word cut in, and what he says next is being heard. Nothing may drop it. */
   let barged = false;
+  /** Her reply as it plays (`playing`), and what she had said when he last cut in, for his next turn. */
+  let played: string[] = [];
+  let sounding: Playing | null = null;
+  let cutIn: string | null = null;
   /** What the speaker did while his words were being heard, applied when they end. */
   let speakingLater: boolean | null = null;
   const setSpeaking = (active: boolean) => {
@@ -794,7 +808,11 @@ export const createVoiceCore = (input: {
       speakingLater = active;
       return;
     }
-    if (active && !speaking) spokeFrom = samples;
+    if (active && !speaking) {
+      spokeFrom = samples;
+      played = [];
+      sounding = null;
+    }
     speaking = active;
     if (active) {
       // What was being heard is now mixed with Baton's own voice.
@@ -859,12 +877,14 @@ export const createVoiceCore = (input: {
     open = true,
   ) => {
     if (speaking || hearingItself()) {
+      cutIn = heardUntil(played, sounding, Date.now()) || null;
       speaking = false;
       echoUntil = 0;
       barged = true;
       clearStop();
+      input.tts?.cancel?.();
       emit({ type: "barge_in" });
-    }
+    } else cutIn = null;
     emit({
       type: "wake",
       score,
@@ -1092,7 +1112,17 @@ export const createVoiceCore = (input: {
       currentTarget: machine.conversationTarget ?? lastTarget,
     }),
     setSpeaking,
-    reference: (pcm, soundsAtMs) => input.echo?.reference(pcm, soundsAtMs),
+    reference: (pcm, soundsAtMs) => {
+      input.echo?.reference(pcm, soundsAtMs);
+      if (sounding === null) return;
+      const from = sounding.from ?? soundsAtMs;
+      const until = Math.max(sounding.until, soundsAtMs + (pcm.length * 1000) / VOICE_SAMPLE_RATE);
+      sounding = { ...sounding, from, until };
+    },
+    playing: (text) => {
+      if (sounding !== null) played.push(sounding.text);
+      sounding = { text, from: null, until: 0 };
+    },
     playingCue: (ms) => {
       cueUntil = Math.max(cueUntil, samples + msToSamples(ms));
     },

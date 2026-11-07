@@ -43,6 +43,7 @@ import {
   tierBrains,
   type ManualBrain,
 } from "@t3tools/baton-shared/turnTier";
+import { cutInSaid } from "@t3tools/baton-shared/endOfTurn";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
@@ -490,6 +491,8 @@ export interface ScreenCompanion {
       readonly wake?: string | null;
       /** A device's or agent's words, not his: always the assistant, whose gate asks. */
       readonly outside?: boolean;
+      /** He cut her off: what she had said by then. */
+      readonly cutIn?: string | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
   readonly setActions: (actions: AssistantActions) => void;
@@ -2822,6 +2825,7 @@ export const startScreenCompanion = (input: {
     turn: {
       readonly onEnd?: () => void;
       readonly onCancel?: (stop: () => void) => void;
+      readonly cutIn?: string | null;
     } = {},
   ) => {
     answering += 1;
@@ -2877,8 +2881,9 @@ export const startScreenCompanion = (input: {
       input.onNote?.("agent_turn_start", { said: text, ...who });
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       input.onActivity?.("Thinking");
+      const words = direct ? `(to the focused session) ${text}` : text;
       const reply = await sayFor(outside, turn.onCancel)(
-        direct ? `(to the focused session) ${text}` : text,
+        turn.cutIn ? cutInSaid(turn.cutIn, words) : words,
         {
           outside,
           window: windowLabel,
@@ -2962,6 +2967,7 @@ export const startScreenCompanion = (input: {
       session = null,
       wake = null,
       outside = false,
+      cutIn = null,
     }: Parameters<ScreenCompanion["said"]>[1],
     turn: {
       readonly onEnd?: () => void;
@@ -3020,7 +3026,7 @@ export const startScreenCompanion = (input: {
       if (outside) await agentTurn(text, started, direct, session, true, turn);
       else {
         if (turn.handed !== undefined) turn.handed.done = true;
-        void agentTurn(text, started, direct, session, false, turn);
+        void agentTurn(text, started, direct, session, false, { ...turn, cutIn });
       }
       return { kind: "handled" };
     }

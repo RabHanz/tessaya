@@ -7,6 +7,7 @@ import { describeJobs } from "../../apps/desktop/src/baton/agent/jobText.ts";
 import type { BatonJob } from "../../packages/baton-contracts/src/jobs.ts";
 import type { BatonRecordEntry } from "../../packages/baton-contracts/src/record.ts";
 import { buildAuditTrail, describeAuditTrail } from "../../packages/baton-shared/src/audit.ts";
+import { cutInSaid } from "../../packages/baton-shared/src/endOfTurn.ts";
 
 export interface AssistantCase {
   readonly id: string;
@@ -100,6 +101,32 @@ const overnight = describeAuditTrail(
 );
 
 export const assistantCases: ReadonlyArray<AssistantCase> = [
+  // He talked over her reply: his words alone ("no, the web-shop one") mean nothing without where she was.
+  {
+    id: "cut-in-steers",
+    source: "L-10 steering: a cut-in carries on from her words",
+    said: cutInSaid(
+      "Right, I'll tell the build session to rerun the tests…",
+      "no, the web-shop one",
+    ),
+    first: ["sessions_list", "sessions_find", "session_send"],
+    not: ["none"],
+    // The ask is hers to carry on: rerun the tests, in the web-shop session instead.
+    goal: "session_send",
+    maxCalls: 3,
+    goalArgs: ["test"],
+    answers: {
+      sessions_list: "- web-shop [id: s-web] idle\n- build [id: s-build] idle",
+      sessions_find: "- web-shop [id: s-web] idle",
+      session_send: "Sent to web-shop.",
+    },
+  },
+  {
+    id: "cut-in-new-ask",
+    source: "L-10 steering control: a cut-in that changes the subject is a new ask",
+    said: cutInSaid("The billing-api session died overnight and…", "skip that, what needs me?"),
+    first: ["needs_me"],
+  },
   {
     id: "needs-me",
     model: "haiku",

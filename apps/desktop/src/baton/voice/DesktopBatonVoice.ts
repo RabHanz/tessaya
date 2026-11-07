@@ -973,6 +973,8 @@ export interface DesktopBatonVoice {
   readonly onSpeaking: (active: boolean) => void;
   /** A sentence going to the speakers. */
   readonly onSpoken: (text: string) => void;
+  /** A sentence starting to play, for where he cut in. */
+  readonly onPlaying: (text: string) => void;
   /** The assistant finished a turn. */
   readonly onTurnEnd: () => void;
   /** The assistant is looking, planning or driving; null when it stops. */
@@ -6514,6 +6516,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.on({ type: "speaking", active });
     },
     onSpoken: (text) => core?.noteSpoken(text),
+    onPlaying: (text) => core?.playing(text),
     onTurnEnd: () => pill.on({ type: "finished" }),
     cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>

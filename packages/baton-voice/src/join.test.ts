@@ -1,8 +1,8 @@
 /* oxlint-disable t3code/no-real-time-wait-in-tests -- Baton file predating the rule (D82) */
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
-import type { RouteOutcome } from "./router.ts";
+import type { RouteContext, RouteOutcome } from "./router.ts";
 
 const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
@@ -266,5 +266,76 @@ describe("thinking ahead in the pause", () => {
     expect(r.routed).toEqual(["Open my notes please."]);
     expect(r.routeCalls()).toBe(0);
     expect(r.spoken).toEqual(["ok"]);
+  });
+});
+
+describe("cutting in over her", () => {
+  it("carries on from the word she had reached, and leaves what already ran alone", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    let speech = false;
+    let next = 0;
+    const lines = ["Open the invoice.", "No, the other one."];
+    const cutIns: Array<RouteContext["cutIn"]> = [];
+    let cancelled = 0;
+    let stopVoice = () => {};
+    const core: ReturnType<typeof createVoiceCore> = createVoiceCore({
+      waitMs: () => 1_500,
+      // Headphones: his voice over hers cuts in with no name.
+      speakerMode: () => "headphones",
+      wake: { name: "fake", reset: () => {}, process: () => null },
+      vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+      stt: { name: "fake", transcribe: async () => lines[next++] ?? "" },
+      tts: {
+        name: "fake",
+        speak: (text) => {
+          // Four seconds of her sentence, two of them already heard.
+          core.playing(text);
+          core.reference(new Int16Array(16 * 4_000), 1_000_000 - 2_000);
+          return new Promise<void>((resolve) => (stopVoice = resolve));
+        },
+        cancel: () => {
+          cancelled += 1;
+          stopVoice();
+        },
+      },
+      router: {
+        route: async (effect, context): Promise<RouteOutcome> => {
+          if (effect.kind !== "command") return { kind: "none" };
+          cutIns.push(context.cutIn ?? null);
+          return {
+            kind: "ran",
+            reply: context.cutIn == null ? "I'll open the March invoice now." : "",
+            workSessionId: null,
+            source: "test",
+          };
+        },
+      },
+    });
+    const outcomes: VoiceCoreEvent[] = [];
+    core.subscribe((event) => event.type === "outcome" && outcomes.push(event));
+    const push = (seconds: number, loud: boolean) => {
+      speech = loud;
+      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    };
+    const settle = async () => {
+      for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    };
+    core.activate("wake");
+    await core.idle();
+    push(1, true);
+    push(1.2, false);
+    await settle();
+    push(0.2, false);
+    await settle();
+    // She is speaking the reply to a turn that ran; he talks over her.
+    push(1, true);
+    push(1.2, false);
+    await settle();
+    push(1, false);
+    await settle();
+    await core.idle();
+    expect(cancelled).toBeGreaterThan(0);
+    expect(cutIns).toEqual([null, "I'll open the…"]);
+    expect(outcomes).toHaveLength(2);
   });
 });

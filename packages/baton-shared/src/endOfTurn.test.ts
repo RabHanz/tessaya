@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { commitMs, isUnfinished, JOIN_WITHIN_MS, thinkAheadMs } from "./endOfTurn.ts";
+import { commitMs, heardUntil, isUnfinished, JOIN_WITHIN_MS, thinkAheadMs } from "./endOfTurn.ts";
 
 /** Splits in his log of 2026-11-01: pauses are speech_end gaps minus the later part's estimated length. */
 const FIRST_PAUSE_MS = 560;
@@ -86,5 +86,22 @@ describe("end of turn", () => {
     }
     expect(before).toBe(3);
     expect(after).toBe(0);
+  });
+
+  it.each([
+    // [audio heard of the playing sentence (from 0 to 4 s), what he hears she had said]
+    [0, "It's raining."],
+    [2_000, "It's raining. I'll open the…"],
+    [3_100, "It's raining. I'll open the March invoice…"],
+    [4_000, "It's raining. I'll open the March invoice now."],
+    [9_000, "It's raining. I'll open the March invoice now."],
+  ] as const)("cut in %i ms into a sentence: %s", (at, said) => {
+    const playing = { text: "I'll open the March invoice now.", from: 0, until: 4_000 };
+    expect(heardUntil(["It's raining."], playing, at)).toBe(said);
+  });
+
+  it("keeps the whole sentence when the voice gives no audio times", () => {
+    const playing = { text: "Opening it.", from: null, until: 0 };
+    expect(heardUntil([], playing, 5)).toBe("Opening it.");
   });
 });

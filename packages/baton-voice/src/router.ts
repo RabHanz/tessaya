@@ -55,6 +55,8 @@ export interface RouteContext {
   readonly mostRecentWorkSessionId?: string | null;
   /** The wake word this sentence answers to (the last one said before it); null for a hotkey or none. */
   readonly wake?: string | null;
+  /** He cut her off: what she had said by then. His words carry on from it. */
+  readonly cutIn?: string | null;
 }
 
 export type RouteOutcome =
