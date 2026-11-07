@@ -1,22 +1,13 @@
 /**
- * Recall by meaning (MEM-13): sentence vectors from a small local model (all-MiniLM-L6-v2), compared by cosine, and the
+ * Recall by meaning (MEM-13): sentence vectors from a small local model (bge-small-en-v1.5), compared by cosine, and the
  * result blended with the keyword (bm25) ranking by reciprocal rank fusion. Pure: the model runs elsewhere.
  */
 
-/** The model's token vectors (tokens x dim, row-major), averaged and scaled to length 1, as sentence-transformers does. */
-export const meanPool = (hidden: Float32Array, tokens: number, dim: number): Float32Array => {
-  const out = new Float32Array(dim);
-  for (let t = 0; t < tokens; t += 1) {
-    for (let d = 0; d < dim; d += 1) out[d]! += hidden[t * dim + d]!;
-  }
-  let norm = 0;
-  for (let d = 0; d < dim; d += 1) {
-    out[d]! /= tokens;
-    norm += out[d]! * out[d]!;
-  }
-  norm = Math.sqrt(norm) || 1;
-  for (let d = 0; d < dim; d += 1) out[d]! /= norm;
-  return out;
+/** The first ([CLS]) token's vector of the model's output, scaled to length 1, as bge pools a sentence. */
+export const clsPool = (hidden: Float32Array, dim: number): Float32Array => {
+  const out = hidden.slice(0, dim);
+  const norm = Math.hypot(...out) || 1;
+  return out.map((x) => x / norm);
 };
 
 /** Both are unit length, so the dot product is the cosine. */

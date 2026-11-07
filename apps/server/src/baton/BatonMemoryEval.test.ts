@@ -27,7 +27,7 @@ interface Corpus {
     readonly recall?: boolean;
     /**
      * Known to fail until this finding lands; the run fails once it passes, so the mark is dropped.
-     * "MEM-13" rows wait only for the local model: with it present they must pass.
+     * "MEM-13" rows wait only for the local model: with it present they must pass. A "fused: " mark fails only with the model.
      */
     readonly pending?: string;
     /** Which family the case measures (paraphrase, superseded, ...), for the per-family scores. */
@@ -98,8 +98,8 @@ const strictModel = Layer.effect(
     if (real.model === null) return yield* Effect.die("the memory model did not load");
     return BatonMemoryEmbedder.of({
       model: real.model,
-      embed: (text) =>
-        real.embed(text).pipe(
+      embed: (text, query) =>
+        real.embed(text, query).pipe(
           Effect.filterOrElse(
             (vector) => vector !== null,
             () => Effect.die(`the memory model did not embed "${text}"`),
@@ -170,8 +170,15 @@ const retrieval = (arm: "keyword" | "fused", model: Layer.Layer<BatonMemoryEmbed
             return false;
           }
         })();
-        // MEM-13 is the only mark the fused arm expects to pass; every other mark fails in both arms.
-        const pending = c.pending !== undefined && !(c.pending === "MEM-13" && arm === "fused");
+        // MEM-13 fails on keywords only, "fused: " with the model only; any other mark fails in both arms.
+        const pending =
+          c.pending === undefined
+            ? false
+            : c.pending === "MEM-13"
+              ? arm === "keyword"
+              : c.pending.startsWith("fused: ")
+                ? arm === "fused"
+                : true;
         if (passed === pending) wrong.push(pending ? `${say}: passes now, drop "pending"` : say);
       }
       const groups = [...new Set(runs.map((r) => r.group))];

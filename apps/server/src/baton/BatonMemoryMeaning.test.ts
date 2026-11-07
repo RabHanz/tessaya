@@ -127,6 +127,20 @@ it.effect("never ranks by a vector made from older wording", () =>
   }).pipe(Effect.provide(withModel(fakeModel))),
 );
 
+it.effect("re-embeds what another model embedded before it is ranked by meaning again", () =>
+  Effect.gen(function* () {
+    const memory = yield* BatonMemoryService;
+    const sql = yield* SqlClient.SqlClient;
+    yield* memory.add({ kind: "fact", text: PRICE, source: "user" });
+    yield* TestClock.adjust("2 minutes");
+    // As after an upgrade from the previous model: its vectors are not this model's meaning.
+    yield* sql`UPDATE fabric_memory_vectors SET model = ${"all-MiniLM-L6-v2-int8-old"}`;
+    assert.notInclude((yield* memory.recall({ text: ASK })).block, "subscription");
+    yield* TestClock.adjust("11 minutes");
+    assert.include((yield* memory.recall({ text: ASK })).block, "subscription");
+  }).pipe(Effect.provide(withModel(fakeModel))),
+);
+
 it.effect(
   "keeps another project's items out of the nearest 20, so they take no place from this one's",
   () =>
