@@ -1,0 +1,2927 @@
+{
+  "about": "His scale (MEM-14): about three hundred synthetic items in his style, never copied from a live store, and recall cases for direct words, paraphrase, superseded facts, two-item answers and questions nothing should answer. Every case asks for the per-sentence block, the path that fuses keywords and meaning. A case marked pending names the work it waits for; MEM-13 rows pass once the local model is present.",
+  "items": [
+    {
+      "key": "p-spelling",
+      "kind": "preference",
+      "text": "Use British spelling in everything you write for me",
+      "source": "user"
+    },
+    {
+      "key": "p-no-emoji",
+      "kind": "preference",
+      "text": "No emoji in messages, commits or documents",
+      "source": "user"
+    },
+    {
+      "key": "p-short-replies",
+      "kind": "preference",
+      "text": "Keep spoken replies to two sentences unless I ask for more",
+      "source": "user"
+    },
+    {
+      "key": "p-mornings",
+      "kind": "preference",
+      "text": "Nothing in the calendar before ten in the morning",
+      "source": "user"
+    },
+    {
+      "key": "p-fridays",
+      "kind": "preference",
+      "text": "Fridays after three are kept free for deep work",
+      "source": "user"
+    },
+    {
+      "key": "p-ask-before-send",
+      "kind": "preference",
+      "text": "Draft emails but ask me before anything is sent",
+      "source": "user"
+    },
+    {
+      "key": "p-dark-mode",
+      "kind": "preference",
+      "text": "Dark mode in every app and editor",
+      "source": "user"
+    },
+    {
+      "key": "p-keyboard",
+      "kind": "preference",
+      "text": "Drive apps with keyboard shortcuts rather than the mouse",
+      "source": "user"
+    },
+    {
+      "key": "p-currency",
+      "kind": "preference",
+      "text": "Quote prices in pounds sterling, not dollars",
+      "source": "user"
+    },
+    {
+      "key": "p-dates",
+      "kind": "preference",
+      "text": "Write dates as day month year, like 7 November 2026",
+      "source": "user"
+    },
+    {
+      "key": "p-24h",
+      "kind": "preference",
+      "text": "Use the twenty four hour clock",
+      "source": "user"
+    },
+    {
+      "key": "p-tea",
+      "kind": "preference",
+      "text": "I drink tea, not coffee; builder's, milk, no sugar",
+      "source": "user"
+    },
+    {
+      "key": "p-window-seat",
+      "kind": "preference",
+      "text": "On trains and planes book a window seat facing forwards",
+      "source": "user"
+    },
+    {
+      "key": "p-no-calls-lunch",
+      "kind": "preference",
+      "text": "No calls between one and two, that is lunch",
+      "source": "user"
+    },
+    {
+      "key": "p-summaries",
+      "kind": "preference",
+      "text": "Give me the decision first, then the reasons",
+      "source": "user"
+    },
+    {
+      "key": "p-pr-titles",
+      "kind": "preference",
+      "text": "Pull request titles in plain English with a conventional prefix",
+      "source": "user"
+    },
+    {
+      "key": "p-plain-words",
+      "kind": "preference",
+      "text": "Plain words over jargon in anything a customer reads",
+      "source": "user"
+    },
+    {
+      "key": "p-voice-name",
+      "kind": "preference",
+      "text": "Call me Director when you speak to me",
+      "source": "user"
+    },
+    {
+      "key": "p-music-focus",
+      "kind": "preference",
+      "text": "Ambient music with no lyrics while I am focusing",
+      "source": "user"
+    },
+    {
+      "key": "p-invoice-terms",
+      "kind": "preference",
+      "text": "Invoices go out with fourteen day payment terms",
+      "source": "user"
+    },
+    {
+      "key": "p-meeting-length",
+      "kind": "preference",
+      "text": "Meetings default to twenty five minutes, not thirty",
+      "source": "user"
+    },
+    {
+      "key": "p-video-off",
+      "kind": "preference",
+      "text": "Join video calls with the camera off unless it is a client",
+      "source": "user"
+    },
+    {
+      "key": "p-weekends",
+      "kind": "preference",
+      "text": "Do not message clients at weekends",
+      "source": "user"
+    },
+    {
+      "key": "p-hotel",
+      "kind": "preference",
+      "text": "Quiet hotel rooms away from the lift",
+      "source": "user"
+    },
+    {
+      "key": "p-vegetarian",
+      "kind": "preference",
+      "text": "Book vegetarian options when ordering food for me",
+      "source": "user"
+    },
+    {
+      "key": "p-screenshots",
+      "kind": "preference",
+      "text": "Send screenshots rather than long descriptions of a bug",
+      "source": "user"
+    },
+    {
+      "key": "p-backups",
+      "kind": "preference",
+      "text": "Back up before any change that deletes data",
+      "source": "user"
+    },
+    {
+      "key": "p-fonts",
+      "kind": "preference",
+      "text": "Serif fonts for long documents, sans for slides",
+      "source": "user"
+    },
+    {
+      "key": "p-notifications",
+      "kind": "preference",
+      "text": "Silence notifications during calls",
+      "source": "user"
+    },
+    {
+      "key": "p-alarm",
+      "kind": "preference",
+      "text": "Wake me at seven on weekdays, eight at weekends",
+      "source": "user"
+    },
+    {
+      "key": "pp-accountant",
+      "kind": "fact",
+      "text": "Sara Khan is my accountant at Ledgerline",
+      "source": "user"
+    },
+    {
+      "key": "pp-ledgerline-email",
+      "kind": "fact",
+      "text": "Ledgerline's shared inbox is the place to send receipts",
+      "source": "user"
+    },
+    {
+      "key": "pp-lawyer",
+      "kind": "fact",
+      "text": "Tom Fairley at Fairley and Co handles contracts and legal review",
+      "source": "user"
+    },
+    {
+      "key": "pp-designer",
+      "kind": "fact",
+      "text": "Mina Patel designs the logos and brand work",
+      "source": "user"
+    },
+    {
+      "key": "pp-mina-rate",
+      "kind": "fact",
+      "text": "Mina charges a day rate of four hundred and fifty pounds",
+      "source": "user"
+    },
+    {
+      "key": "pp-mum-birthday",
+      "kind": "fact",
+      "text": "Mum's birthday is the twelfth of March",
+      "source": "user"
+    },
+    {
+      "key": "pp-mum-flowers",
+      "kind": "preference",
+      "text": "Mum likes white tulips, never lilies",
+      "source": "user"
+    },
+    {
+      "key": "pp-brother",
+      "kind": "fact",
+      "text": "My brother Dan lives in Leeds",
+      "source": "user"
+    },
+    {
+      "key": "pp-dan-kids",
+      "kind": "fact",
+      "text": "Dan has two children, Ella and Max",
+      "source": "user"
+    },
+    {
+      "key": "pp-ella-age",
+      "kind": "fact",
+      "text": "Ella turns nine in June",
+      "source": "user"
+    },
+    {
+      "key": "pp-dentist",
+      "kind": "fact",
+      "text": "The dentist is Dr Okafor on Mill Lane",
+      "source": "user"
+    },
+    {
+      "key": "pp-gp",
+      "kind": "fact",
+      "text": "My GP surgery is Riverside Health Centre",
+      "source": "user"
+    },
+    {
+      "key": "pp-mechanic",
+      "kind": "fact",
+      "text": "Gary at Northgate Motors services the car",
+      "source": "user"
+    },
+    {
+      "key": "pp-landlord",
+      "kind": "fact",
+      "text": "The office landlord is Helen Price",
+      "source": "user"
+    },
+    {
+      "key": "pp-helen-phone",
+      "kind": "note",
+      "text": "Helen prefers a text message to a phone call",
+      "source": "user"
+    },
+    {
+      "key": "pp-banker",
+      "kind": "fact",
+      "text": "Our business banking manager is Raj Mehta",
+      "source": "user"
+    },
+    {
+      "key": "pp-cofounder",
+      "kind": "fact",
+      "text": "Priya Shah is my cofounder on Harbor",
+      "source": "user"
+    },
+    {
+      "key": "pp-priya-tz",
+      "kind": "fact",
+      "text": "Priya works from Singapore, eight hours ahead",
+      "source": "user"
+    },
+    {
+      "key": "pp-contractor",
+      "kind": "fact",
+      "text": "Leo Novak is the contract developer on the acme site",
+      "source": "user"
+    },
+    {
+      "key": "pp-leo-days",
+      "kind": "fact",
+      "text": "Leo works Tuesdays to Thursdays only",
+      "source": "user"
+    },
+    {
+      "key": "pp-va",
+      "kind": "fact",
+      "text": "Asha is my virtual assistant and books travel",
+      "source": "user"
+    },
+    {
+      "key": "pp-asha-hours",
+      "kind": "fact",
+      "text": "Asha is online from nine until two UK time",
+      "source": "user"
+    },
+    {
+      "key": "pp-mentor",
+      "kind": "fact",
+      "text": "Martin Gray is my mentor; we talk on the first Monday of each month",
+      "source": "user"
+    },
+    {
+      "key": "pp-plumber",
+      "kind": "fact",
+      "text": "Kev the plumber fixed the boiler last winter",
+      "source": "user"
+    },
+    {
+      "key": "pp-vet",
+      "kind": "fact",
+      "text": "The cat goes to Oakfield Vets",
+      "source": "user"
+    },
+    {
+      "key": "pp-cat",
+      "kind": "fact",
+      "text": "The cat is called Biscuit",
+      "source": "user"
+    },
+    {
+      "key": "pp-biscuit-food",
+      "kind": "note",
+      "text": "Biscuit only eats the salmon pouches",
+      "source": "user"
+    },
+    {
+      "key": "pp-neighbour",
+      "kind": "fact",
+      "text": "Our neighbour Jean keeps a spare key",
+      "source": "user"
+    },
+    {
+      "key": "pp-printer-supplier",
+      "kind": "fact",
+      "text": "Inkwell Print does our business cards",
+      "source": "user"
+    },
+    {
+      "key": "pp-recruiter",
+      "kind": "note",
+      "text": "Ignore recruiters from Talentsphere, they spam",
+      "source": "user"
+    },
+    {
+      "key": "pp-sam",
+      "kind": "correction",
+      "text": "He is called Sam, not Samuel",
+      "source": "user"
+    },
+    {
+      "key": "pp-sam-role",
+      "kind": "fact",
+      "text": "Sam runs support for Harbor",
+      "source": "user"
+    },
+    {
+      "key": "pp-insurer",
+      "kind": "fact",
+      "text": "The business insurance is with Castle Mutual",
+      "source": "user"
+    },
+    {
+      "key": "pp-castle-renewal",
+      "kind": "fact",
+      "text": "Castle Mutual renews every September",
+      "source": "user"
+    },
+    {
+      "key": "pp-coach",
+      "kind": "fact",
+      "text": "Nadia is my running coach",
+      "source": "user"
+    },
+    {
+      "key": "tz-wake",
+      "kind": "decision",
+      "text": "The wake word is Freya and it runs on the laptop",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-voice",
+      "kind": "decision",
+      "text": "Tessaya speaks with a British female voice",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-stack",
+      "kind": "fact",
+      "text": "Tessaya is a fork of T3 Code",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-latency",
+      "kind": "decision",
+      "text": "Spoken replies must start within eight hundred milliseconds",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-memory-model",
+      "kind": "fact",
+      "text": "Recall by meaning uses a small local embedding model in a child process",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-evals",
+      "kind": "decision",
+      "text": "Every change to model-facing text runs the evals first",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-release",
+      "kind": "fact",
+      "text": "Desktop builds are signed and published from the release workflow",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-laptop",
+      "kind": "fact",
+      "text": "The Director's laptop runs Windows and Chrome",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-box",
+      "kind": "fact",
+      "text": "The coding lanes run on the Hetzner box",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-heavy-lock",
+      "kind": "learning",
+      "text": "Heavy checks take the shared lock or the box runs out of memory",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-quiet-hours",
+      "kind": "decision",
+      "text": "Tessaya stays quiet between eleven at night and seven in the morning",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-budget",
+      "kind": "decision",
+      "text": "At most three unprompted suggestions an hour",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-mic",
+      "kind": "learning",
+      "text": "The USB microphone drops out when the laptop sleeps",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-tunnel",
+      "kind": "fact",
+      "text": "Remote access goes through Tailscale",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "tz-skills",
+      "kind": "decision",
+      "text": "A new skill is kept only after he accepts a replay of it",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "tessaya"
+    },
+    {
+      "key": "vo-purpose",
+      "kind": "fact",
+      "text": "VentureOS runs the back office for all the ventures",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-db",
+      "kind": "fact",
+      "text": "VentureOS keeps its data in Postgres on the main server",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-daily",
+      "kind": "fact",
+      "text": "The daily job builds the session history index at four in the morning",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-storage",
+      "kind": "learning",
+      "text": "Raw transcripts filled the disk to ninety nine percent twice",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-retention",
+      "kind": "decision",
+      "text": "Raw transcripts are kept fourteen days",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-kaggle",
+      "kind": "fact",
+      "text": "Batch and GPU jobs go to the shared Kaggle account through the slots broker",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-ci",
+      "kind": "fact",
+      "text": "VentureOS CI can run on Kaggle when the box is busy",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-dokploy",
+      "kind": "fact",
+      "text": "Sites deploy through Dokploy on Server one",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-dns",
+      "kind": "fact",
+      "text": "DNS for every domain is on Cloudflare",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-cost",
+      "kind": "decision",
+      "text": "Spend on cloud compute stays under three hundred pounds a month",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-reports",
+      "kind": "decision",
+      "text": "The weekly numbers report goes out on Monday at nine",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "vo-invoices",
+      "kind": "fact",
+      "text": "Invoices are generated from the billing table on the first of the month",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "ventureos"
+    },
+    {
+      "key": "hb-deploy",
+      "kind": "fact",
+      "text": "Harbor deploys from main after one review",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-stack",
+      "kind": "fact",
+      "text": "Harbor is a React Native app with a Node API",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-users",
+      "kind": "fact",
+      "text": "Harbor has about four thousand active users",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-pricing",
+      "kind": "decision",
+      "text": "Harbor Pro costs six pounds a month",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-stores",
+      "kind": "fact",
+      "text": "Harbor is on the App Store and Google Play",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-review-time",
+      "kind": "learning",
+      "text": "Apple review takes about two days for a Harbor update",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-crash",
+      "kind": "learning",
+      "text": "Harbor crashed on Android 12 when the camera permission was denied",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-analytics",
+      "kind": "decision",
+      "text": "Harbor uses PostHog for analytics, self hosted",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-support",
+      "kind": "fact",
+      "text": "Harbor support tickets come in through the help desk inbox",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-roadmap",
+      "kind": "decision",
+      "text": "Offline mode is the next big Harbor feature",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-sentry",
+      "kind": "fact",
+      "text": "Harbor errors are reported to Sentry",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "hb-push",
+      "kind": "learning",
+      "text": "Push notifications fail silently when the APNs key expires",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    },
+    {
+      "key": "ac-deploy",
+      "kind": "fact",
+      "text": "The acme site deploys from the release branch",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-cms",
+      "kind": "fact",
+      "text": "The acme site uses a headless CMS for blog posts",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-client",
+      "kind": "fact",
+      "text": "Acme Industrial is the client for the acme site",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-name",
+      "kind": "correction",
+      "text": "Do not call the client Acme, the name is Acme Industrial",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-contact",
+      "kind": "fact",
+      "text": "Our contact at Acme Industrial is Linda Brooks",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-deadline",
+      "kind": "decision",
+      "text": "The new acme homepage launches on the first of December",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-fonts",
+      "kind": "decision",
+      "text": "The acme site uses Inter for headings and body",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-forms",
+      "kind": "learning",
+      "text": "The contact form drops messages when the spam filter times out",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-hosting",
+      "kind": "fact",
+      "text": "The acme site is hosted on Vercel",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-budget",
+      "kind": "fact",
+      "text": "Acme Industrial pays a monthly retainer of two thousand pounds",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "ac-seo",
+      "kind": "decision",
+      "text": "No more SEO work on acme until the homepage ships",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "kn-what",
+      "kind": "fact",
+      "text": "Kiln is the online pottery shop",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-platform",
+      "kind": "fact",
+      "text": "Kiln runs on Shopify",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-shipping",
+      "kind": "learning",
+      "text": "Royal Mail tracked is cheaper than couriers for Kiln parcels under two kilos",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-supplier",
+      "kind": "fact",
+      "text": "Clay comes from Valentine Clays in Stoke",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-photos",
+      "kind": "decision",
+      "text": "Product photos are shot on a white background in daylight",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-margin",
+      "kind": "decision",
+      "text": "Every Kiln product keeps at least a sixty percent margin",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-returns",
+      "kind": "decision",
+      "text": "Kiln accepts returns within thirty days",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-breakage",
+      "kind": "learning",
+      "text": "Mugs break in transit unless double boxed",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-instagram",
+      "kind": "fact",
+      "text": "Kiln's Instagram posts go out on Tuesdays and Saturdays",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "kn-vat",
+      "kind": "fact",
+      "text": "Kiln is not VAT registered yet",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "kiln"
+    },
+    {
+      "key": "nw-what",
+      "kind": "fact",
+      "text": "Northwind Books is the bookkeeping side business",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "nw-software",
+      "kind": "fact",
+      "text": "Northwind clients use Xero",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "nw-clients",
+      "kind": "fact",
+      "text": "Northwind has eleven clients",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "nw-fee",
+      "kind": "decision",
+      "text": "Northwind charges a fixed monthly fee per client",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "nw-deadline",
+      "kind": "fact",
+      "text": "Self assessment returns are due by the thirty first of January",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "nw-mtd",
+      "kind": "learning",
+      "text": "Making Tax Digital submissions fail if the Xero connection is older than eighteen months",
+      "source": "job",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "nw-onboarding",
+      "kind": "decision",
+      "text": "New Northwind clients sign the engagement letter before any work starts",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "nw-backup",
+      "kind": "fact",
+      "text": "Northwind client files are kept in the encrypted drive",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "northwind-books"
+    },
+    {
+      "key": "op-staging-disk",
+      "kind": "learning",
+      "text": "Deploys to the staging box fail when its disk is over ninety percent full",
+      "source": "job"
+    },
+    {
+      "key": "op-node-version",
+      "kind": "learning",
+      "text": "The build breaks on Node twenty, it needs Node twenty two",
+      "source": "job"
+    },
+    {
+      "key": "op-earlyoom",
+      "kind": "learning",
+      "text": "earlyoom kills the terminal multiplexer when several lanes run checks at once",
+      "source": "job"
+    },
+    {
+      "key": "op-cert",
+      "kind": "learning",
+      "text": "The wildcard certificate renews automatically but Traefik needs a restart to pick it up",
+      "source": "job"
+    },
+    {
+      "key": "op-dns-ttl",
+      "kind": "learning",
+      "text": "DNS changes on Cloudflare take about five minutes with the proxy on",
+      "source": "job"
+    },
+    {
+      "key": "op-ssh-key",
+      "kind": "learning",
+      "text": "SSH to the box fails from the laptop until the agent has the key loaded",
+      "source": "job"
+    },
+    {
+      "key": "op-chrome-bridge",
+      "kind": "learning",
+      "text": "The Chrome bridge to the laptop drops when Windows updates overnight",
+      "source": "job"
+    },
+    {
+      "key": "op-pnpm-store",
+      "kind": "learning",
+      "text": "Hardlinking node modules from another worktree saves gigabytes of disk",
+      "source": "job"
+    },
+    {
+      "key": "op-sqlite-lock",
+      "kind": "learning",
+      "text": "SQLite says database is locked when two servers open the same file",
+      "source": "job"
+    },
+    {
+      "key": "op-docker-prune",
+      "kind": "learning",
+      "text": "Old Docker images pile up and need a weekly prune",
+      "source": "job"
+    },
+    {
+      "key": "op-github-token",
+      "kind": "learning",
+      "text": "The GitHub token for CI expires every ninety days",
+      "source": "job"
+    },
+    {
+      "key": "op-backup-restore",
+      "kind": "learning",
+      "text": "Restoring the Postgres backup takes about forty minutes",
+      "source": "job"
+    },
+    {
+      "key": "op-vpn",
+      "kind": "learning",
+      "text": "Tailscale needs re-authenticating on the laptop every six months",
+      "source": "job"
+    },
+    {
+      "key": "op-email-spf",
+      "kind": "learning",
+      "text": "Emails from the new domain went to spam until SPF and DKIM were set",
+      "source": "job"
+    },
+    {
+      "key": "op-cron-utc",
+      "kind": "learning",
+      "text": "Cron on the server runs in UTC, an hour off from London in summer",
+      "source": "job"
+    },
+    {
+      "key": "op-swap",
+      "kind": "learning",
+      "text": "Adding swap on the box stopped the nightly build from crashing",
+      "source": "job"
+    },
+    {
+      "key": "op-transcribe",
+      "kind": "learning",
+      "text": "Transcription is ten times faster on the Kaggle GPU than on the box",
+      "source": "job"
+    },
+    {
+      "key": "op-printer",
+      "kind": "learning",
+      "text": "The office printer jams on thick card",
+      "source": "job"
+    },
+    {
+      "key": "op-wifi",
+      "kind": "learning",
+      "text": "The office wifi drops when the microwave is on",
+      "source": "job"
+    },
+    {
+      "key": "op-zoom",
+      "kind": "learning",
+      "text": "Zoom needs screen sharing permission again after every macOS update",
+      "source": "job"
+    },
+    {
+      "key": "d-bank",
+      "kind": "decision",
+      "text": "Business banking stays with Starling",
+      "source": "user"
+    },
+    {
+      "key": "d-accounting",
+      "kind": "decision",
+      "text": "We use FreeAgent for the company books",
+      "source": "user"
+    },
+    {
+      "key": "d-year-end",
+      "kind": "fact",
+      "text": "The company year end is the thirty first of March",
+      "source": "user"
+    },
+    {
+      "key": "d-vat-quarter",
+      "kind": "fact",
+      "text": "VAT returns are filed quarterly",
+      "source": "user"
+    },
+    {
+      "key": "d-pension",
+      "kind": "decision",
+      "text": "Pay twelve hundred pounds a month into the pension",
+      "source": "user"
+    },
+    {
+      "key": "d-salary",
+      "kind": "decision",
+      "text": "Director's salary stays at the tax free threshold, the rest as dividends",
+      "source": "user"
+    },
+    {
+      "key": "d-laptop",
+      "kind": "decision",
+      "text": "Replace the laptop every three years",
+      "source": "user"
+    },
+    {
+      "key": "d-phone",
+      "kind": "fact",
+      "text": "My phone is a Pixel on the Three network",
+      "source": "user"
+    },
+    {
+      "key": "d-car",
+      "kind": "fact",
+      "text": "The car is a blue Skoda Octavia estate",
+      "source": "user"
+    },
+    {
+      "key": "d-mot",
+      "kind": "fact",
+      "text": "The car's MOT is due every April",
+      "source": "user"
+    },
+    {
+      "key": "d-gym",
+      "kind": "fact",
+      "text": "Gym membership at Pure Gym, cancelled in the summer",
+      "source": "user"
+    },
+    {
+      "key": "d-running",
+      "kind": "note",
+      "text": "Training for the Leeds half marathon in May",
+      "source": "user"
+    },
+    {
+      "key": "d-reading",
+      "kind": "note",
+      "text": "Reading list lives in the notes app under Books",
+      "source": "user"
+    },
+    {
+      "key": "d-passwords",
+      "kind": "decision",
+      "text": "Passwords live in 1Password, never in notes",
+      "source": "user"
+    },
+    {
+      "key": "d-domains",
+      "kind": "decision",
+      "text": "Domains are registered at Cloudflare Registrar",
+      "source": "user"
+    },
+    {
+      "key": "d-email-host",
+      "kind": "fact",
+      "text": "Company email is on Google Workspace",
+      "source": "user"
+    },
+    {
+      "key": "d-meeting-notes",
+      "kind": "note",
+      "text": "Meeting notes go in the shared notes folder",
+      "source": "user"
+    },
+    {
+      "key": "d-office-days",
+      "kind": "decision",
+      "text": "In the office Tuesdays and Wednesdays, home the rest",
+      "source": "user"
+    },
+    {
+      "key": "d-charity",
+      "kind": "decision",
+      "text": "Give one percent of profit to the local food bank",
+      "source": "user"
+    },
+    {
+      "key": "d-holiday",
+      "kind": "note",
+      "text": "Booked two weeks in Portugal from the third of August",
+      "source": "user"
+    },
+    {
+      "key": "d-passport",
+      "kind": "fact",
+      "text": "My passport expires in October 2029",
+      "source": "user"
+    },
+    {
+      "key": "d-council-tax",
+      "kind": "fact",
+      "text": "Council tax is paid by direct debit on the first",
+      "source": "user"
+    },
+    {
+      "key": "d-energy",
+      "kind": "fact",
+      "text": "Energy supplier is Octopus on the Agile tariff",
+      "source": "user"
+    },
+    {
+      "key": "d-broadband",
+      "kind": "fact",
+      "text": "Home broadband is with Zen, contract ends next May",
+      "source": "user"
+    },
+    {
+      "key": "d-standing-desk",
+      "kind": "note",
+      "text": "The standing desk is set to a hundred and eight centimetres",
+      "source": "user"
+    },
+    {
+      "key": "d-ai-models",
+      "kind": "decision",
+      "text": "Coding lanes run on Opus",
+      "source": "user"
+    },
+    {
+      "key": "d-no-storage-ask",
+      "kind": "decision",
+      "text": "Do not suggest buying more disk or memory for the box",
+      "source": "user"
+    },
+    {
+      "key": "d-brand-colour",
+      "kind": "decision",
+      "text": "The house colour is deep teal",
+      "source": "user"
+    },
+    {
+      "key": "d-logo",
+      "kind": "decision",
+      "text": "The logo is a lowercase wordmark",
+      "source": "user"
+    },
+    {
+      "key": "d-newsletter",
+      "kind": "decision",
+      "text": "The newsletter goes out on the last Thursday of the month",
+      "source": "user"
+    },
+    {
+      "key": "s-standup-old",
+      "kind": "preference",
+      "text": "Standup is at nine every weekday",
+      "source": "user"
+    },
+    {
+      "key": "s-standup",
+      "kind": "preference",
+      "text": "We moved the daily check in to half past ten",
+      "source": "user",
+      "supersedes": "s-standup-old"
+    },
+    {
+      "key": "s-dentist-old",
+      "kind": "fact",
+      "text": "The dentist appointment is on the fourth",
+      "source": "user"
+    },
+    {
+      "key": "s-dentist",
+      "kind": "fact",
+      "text": "The dental check up moved to the eleventh",
+      "source": "user",
+      "supersedes": "s-dentist-old"
+    },
+    {
+      "key": "s-gym-old",
+      "kind": "fact",
+      "text": "I go to the gym on Monday evenings",
+      "source": "user"
+    },
+    {
+      "key": "s-gym",
+      "kind": "fact",
+      "text": "Workouts are now Thursday mornings before work",
+      "source": "user",
+      "supersedes": "s-gym-old"
+    },
+    {
+      "key": "s-harbor-price-old",
+      "kind": "decision",
+      "text": "Harbor Plus is four pounds a month",
+      "source": "user"
+    },
+    {
+      "key": "s-harbor-price",
+      "kind": "decision",
+      "text": "We raised the Harbor Plus subscription to five pounds",
+      "source": "user",
+      "supersedes": "s-harbor-price-old"
+    },
+    {
+      "key": "s-office-old",
+      "kind": "fact",
+      "text": "The office is on Granary Street",
+      "source": "user"
+    },
+    {
+      "key": "s-office",
+      "kind": "fact",
+      "text": "We moved office to the Corn Exchange building",
+      "source": "user",
+      "supersedes": "s-office-old"
+    },
+    {
+      "key": "s-car-insurer-old",
+      "kind": "fact",
+      "text": "Car insurance is with Admiral",
+      "source": "user"
+    },
+    {
+      "key": "s-car-insurer",
+      "kind": "fact",
+      "text": "The car is now insured through Direct Line",
+      "source": "user",
+      "supersedes": "s-car-insurer-old"
+    },
+    {
+      "key": "s-phone-old",
+      "kind": "fact",
+      "text": "My work mobile number ends in 4471",
+      "source": "user"
+    },
+    {
+      "key": "s-phone",
+      "kind": "fact",
+      "text": "The work phone number changed, it now ends 9902",
+      "source": "user",
+      "supersedes": "s-phone-old"
+    },
+    {
+      "key": "s-deploy-day-old",
+      "kind": "decision",
+      "text": "Releases ship on Thursdays",
+      "source": "user"
+    },
+    {
+      "key": "s-deploy-day",
+      "kind": "decision",
+      "text": "We ship releases on Tuesdays from now on",
+      "source": "user",
+      "supersedes": "s-deploy-day-old"
+    },
+    {
+      "key": "s-editor-old",
+      "kind": "preference",
+      "text": "I write code in VS Code",
+      "source": "user"
+    },
+    {
+      "key": "s-editor",
+      "kind": "preference",
+      "text": "My editor is Zed these days",
+      "source": "user",
+      "supersedes": "s-editor-old"
+    },
+    {
+      "key": "s-train-old",
+      "kind": "fact",
+      "text": "I commute on the seven forty train",
+      "source": "user"
+    },
+    {
+      "key": "s-train",
+      "kind": "fact",
+      "text": "The commute is the eight fifteen service now",
+      "source": "user",
+      "supersedes": "s-train-old"
+    },
+    {
+      "key": "s-coach-old",
+      "kind": "fact",
+      "text": "My running coach is Ben",
+      "source": "user"
+    },
+    {
+      "key": "s-coach",
+      "kind": "fact",
+      "text": "Ben stopped coaching; Nadia trains me now",
+      "source": "user",
+      "supersedes": "s-coach-old"
+    },
+    {
+      "key": "s-retainer-old",
+      "kind": "fact",
+      "text": "The acme retainer is fifteen hundred a month",
+      "source": "user"
+    },
+    {
+      "key": "s-retainer",
+      "kind": "fact",
+      "text": "Acme Industrial's monthly fee went up to two thousand",
+      "source": "user",
+      "supersedes": "s-retainer-old"
+    },
+    {
+      "key": "s-backup-old",
+      "kind": "decision",
+      "text": "Backups run every night at midnight",
+      "source": "user"
+    },
+    {
+      "key": "s-backup",
+      "kind": "decision",
+      "text": "The nightly backup now runs at three in the morning",
+      "source": "user",
+      "supersedes": "s-backup-old"
+    },
+    {
+      "key": "s-lunch-old",
+      "kind": "preference",
+      "text": "Order a sandwich for lunch",
+      "source": "user"
+    },
+    {
+      "key": "s-lunch",
+      "kind": "preference",
+      "text": "For lunch I want soup and bread now",
+      "source": "user",
+      "supersedes": "s-lunch-old"
+    },
+    {
+      "key": "s-vat-old",
+      "kind": "fact",
+      "text": "VAT is filed by Sara",
+      "source": "user"
+    },
+    {
+      "key": "s-vat",
+      "kind": "fact",
+      "text": "Raj's team files the VAT return now, not Sara",
+      "source": "user",
+      "supersedes": "s-vat-old"
+    },
+    {
+      "key": "s-model-old",
+      "kind": "decision",
+      "text": "Coding lanes run on Sonnet",
+      "source": "user"
+    },
+    {
+      "key": "s-model",
+      "kind": "decision",
+      "text": "All lanes switched to the larger model",
+      "source": "user",
+      "supersedes": "s-model-old"
+    },
+    {
+      "key": "s-hosting-old",
+      "kind": "fact",
+      "text": "The marketing site is on Netlify",
+      "source": "user"
+    },
+    {
+      "key": "s-hosting",
+      "kind": "fact",
+      "text": "We migrated the marketing pages to Cloudflare Pages",
+      "source": "user",
+      "supersedes": "s-hosting-old"
+    },
+    {
+      "key": "s-password-old",
+      "kind": "decision",
+      "text": "Shared logins are kept in Bitwarden",
+      "source": "user"
+    },
+    {
+      "key": "s-password",
+      "kind": "decision",
+      "text": "Team credentials moved into 1Password vaults",
+      "source": "user",
+      "supersedes": "s-password-old"
+    },
+    {
+      "key": "s-meeting-day-old",
+      "kind": "decision",
+      "text": "The mentor call is the first Friday",
+      "source": "user"
+    },
+    {
+      "key": "s-meeting-day",
+      "kind": "decision",
+      "text": "Martin and I now meet on the first Monday",
+      "source": "user",
+      "supersedes": "s-meeting-day-old"
+    },
+    {
+      "key": "s-alarm-old",
+      "kind": "preference",
+      "text": "Wake me at half six",
+      "source": "user"
+    },
+    {
+      "key": "s-alarm",
+      "kind": "preference",
+      "text": "Set the morning alarm for seven instead",
+      "source": "user",
+      "supersedes": "s-alarm-old"
+    },
+    {
+      "key": "e-boiler",
+      "kind": "note",
+      "text": "The boiler was serviced in October",
+      "source": "user"
+    },
+    {
+      "key": "e-roof",
+      "kind": "note",
+      "text": "A roofer looked at the leak above the spare room",
+      "source": "user"
+    },
+    {
+      "key": "e-conference",
+      "kind": "note",
+      "text": "Spoke at the Leeds tech meetup about voice assistants",
+      "source": "user"
+    },
+    {
+      "key": "e-podcast",
+      "kind": "note",
+      "text": "Recorded a podcast episode with the Indie Hackers UK show",
+      "source": "user"
+    },
+    {
+      "key": "e-laptop-repair",
+      "kind": "note",
+      "text": "The laptop keyboard was replaced under warranty",
+      "source": "user"
+    },
+    {
+      "key": "e-dinner",
+      "kind": "note",
+      "text": "Had dinner with Priya and Sam at the Thai place on Briggate",
+      "source": "user"
+    },
+    {
+      "key": "e-flight",
+      "kind": "note",
+      "text": "The Lisbon flight was delayed three hours",
+      "source": "user"
+    },
+    {
+      "key": "e-parking",
+      "kind": "note",
+      "text": "Got a parking fine outside the station, paid it",
+      "source": "user"
+    },
+    {
+      "key": "e-tax-call",
+      "kind": "note",
+      "text": "Called HMRC about the payment on account",
+      "source": "user"
+    },
+    {
+      "key": "e-domain-renew",
+      "kind": "note",
+      "text": "Renewed the harbor dot app domain for two years",
+      "source": "user"
+    },
+    {
+      "key": "e-power-cut",
+      "kind": "note",
+      "text": "Power cut on the street knocked the router offline",
+      "source": "user"
+    },
+    {
+      "key": "e-package",
+      "kind": "note",
+      "text": "The new monitor arrived damaged and went back",
+      "source": "user"
+    },
+    {
+      "key": "e-webinar",
+      "kind": "note",
+      "text": "Watched a webinar on pricing for subscription apps",
+      "source": "user"
+    },
+    {
+      "key": "e-blood-test",
+      "kind": "note",
+      "text": "Had a blood test at the surgery, results normal",
+      "source": "user"
+    },
+    {
+      "key": "e-bike",
+      "kind": "note",
+      "text": "Bike chain snapped on the canal path",
+      "source": "user"
+    },
+    {
+      "key": "n-wine",
+      "kind": "note",
+      "text": "Note the red wine from the Italian deli was good",
+      "source": "user"
+    },
+    {
+      "key": "n-book",
+      "kind": "note",
+      "text": "Finished reading Working in Public",
+      "source": "user"
+    },
+    {
+      "key": "n-film",
+      "kind": "note",
+      "text": "Want to watch the new Villeneuve film",
+      "source": "user"
+    },
+    {
+      "key": "n-recipe",
+      "kind": "note",
+      "text": "The dal recipe is in the cookbook with the green spine",
+      "source": "user"
+    },
+    {
+      "key": "n-garden",
+      "kind": "note",
+      "text": "Plant the bulbs before the first frost",
+      "source": "user"
+    },
+    {
+      "key": "n-gift",
+      "kind": "note",
+      "text": "Idea for Dan's birthday: a good chef's knife",
+      "source": "user"
+    },
+    {
+      "key": "n-quote",
+      "kind": "note",
+      "text": "Quote I liked: make it work, make it right, make it fast",
+      "source": "user"
+    },
+    {
+      "key": "n-idea-1",
+      "kind": "note",
+      "text": "Idea: a weekly digest of what the agents shipped",
+      "source": "user"
+    },
+    {
+      "key": "n-idea-2",
+      "kind": "note",
+      "text": "Idea: a pottery class for Kiln customers",
+      "source": "user"
+    },
+    {
+      "key": "n-idea-3",
+      "kind": "note",
+      "text": "Idea: let Harbor users export trips as PDF",
+      "source": "user"
+    },
+    {
+      "key": "n-coffee-shop",
+      "kind": "note",
+      "text": "The coffee shop by the office has good oat flat whites for visitors",
+      "source": "user"
+    },
+    {
+      "key": "n-train-tickets",
+      "kind": "note",
+      "text": "Split tickets save money on the London trains",
+      "source": "user"
+    },
+    {
+      "key": "n-umbrella",
+      "kind": "note",
+      "text": "Left the umbrella in the meeting room",
+      "source": "user"
+    },
+    {
+      "key": "n-library",
+      "kind": "note",
+      "text": "Library books are due back on the twentieth",
+      "source": "user"
+    },
+    {
+      "key": "n-paint",
+      "kind": "note",
+      "text": "The hallway paint colour is Farrow and Ball Elephant's Breath",
+      "source": "user"
+    },
+    {
+      "key": "f-00",
+      "kind": "fact",
+      "text": "The bins go out on Tuesday night",
+      "source": "user"
+    },
+    {
+      "key": "f-01",
+      "kind": "fact",
+      "text": "Recycling is collected every other week",
+      "source": "user"
+    },
+    {
+      "key": "f-02",
+      "kind": "fact",
+      "text": "The window cleaner comes on the last Friday",
+      "source": "user"
+    },
+    {
+      "key": "f-03",
+      "kind": "fact",
+      "text": "The spare charger is in the top drawer",
+      "source": "user"
+    },
+    {
+      "key": "f-04",
+      "kind": "fact",
+      "text": "The router password is on the sticker underneath",
+      "source": "user"
+    },
+    {
+      "key": "f-05",
+      "kind": "fact",
+      "text": "The office alarm code is kept by Helen",
+      "source": "user"
+    },
+    {
+      "key": "f-06",
+      "kind": "fact",
+      "text": "Parking at the office is free after six",
+      "source": "user"
+    },
+    {
+      "key": "f-07",
+      "kind": "fact",
+      "text": "The nearest post office closes at half five",
+      "source": "user"
+    },
+    {
+      "key": "f-08",
+      "kind": "fact",
+      "text": "The local pharmacy delivers on Wednesdays",
+      "source": "user"
+    },
+    {
+      "key": "f-09",
+      "kind": "fact",
+      "text": "The car takes diesel",
+      "source": "user"
+    },
+    {
+      "key": "f-10",
+      "kind": "fact",
+      "text": "Tyre pressure is thirty six front and back",
+      "source": "user"
+    },
+    {
+      "key": "f-11",
+      "kind": "fact",
+      "text": "The boiler pressure should sit at one and a half bar",
+      "source": "user"
+    },
+    {
+      "key": "f-12",
+      "kind": "fact",
+      "text": "The fuse box is under the stairs",
+      "source": "user"
+    },
+    {
+      "key": "f-13",
+      "kind": "fact",
+      "text": "The stopcock is under the kitchen sink",
+      "source": "user"
+    },
+    {
+      "key": "f-14",
+      "kind": "fact",
+      "text": "Our shoe sizes: mine is ten",
+      "source": "user"
+    },
+    {
+      "key": "f-15",
+      "kind": "fact",
+      "text": "Shirt size is medium, slim fit",
+      "source": "user"
+    },
+    {
+      "key": "f-16",
+      "kind": "fact",
+      "text": "The office plants need water on Mondays",
+      "source": "user"
+    },
+    {
+      "key": "f-17",
+      "kind": "fact",
+      "text": "The whiteboard markers are in the cupboard by the door",
+      "source": "user"
+    },
+    {
+      "key": "f-18",
+      "kind": "fact",
+      "text": "The meeting room books through the shared calendar",
+      "source": "user"
+    },
+    {
+      "key": "f-19",
+      "kind": "fact",
+      "text": "Visitors sign in at reception",
+      "source": "user"
+    },
+    {
+      "key": "f-20",
+      "kind": "fact",
+      "text": "The office lease runs until 2028",
+      "source": "user"
+    },
+    {
+      "key": "f-21",
+      "kind": "fact",
+      "text": "The company number is on the letterhead template",
+      "source": "user"
+    },
+    {
+      "key": "f-22",
+      "kind": "fact",
+      "text": "Letterhead template is in the brand folder",
+      "source": "user"
+    },
+    {
+      "key": "f-23",
+      "kind": "fact",
+      "text": "Slide template is the teal one in the brand folder",
+      "source": "user"
+    },
+    {
+      "key": "f-24",
+      "kind": "fact",
+      "text": "The podcast microphone is a Shure MV7",
+      "source": "user"
+    },
+    {
+      "key": "f-25",
+      "kind": "fact",
+      "text": "The webcam is a Logitech Brio",
+      "source": "user"
+    },
+    {
+      "key": "f-26",
+      "kind": "fact",
+      "text": "The headphones are Sony noise cancelling ones",
+      "source": "user"
+    },
+    {
+      "key": "f-27",
+      "kind": "fact",
+      "text": "Spare batteries are in the hall cupboard",
+      "source": "user"
+    },
+    {
+      "key": "f-28",
+      "kind": "fact",
+      "text": "The second monitor is on the left",
+      "source": "user"
+    },
+    {
+      "key": "f-29",
+      "kind": "fact",
+      "text": "The desk lamp needs a new bulb",
+      "source": "user"
+    },
+    {
+      "key": "f-30",
+      "kind": "fact",
+      "text": "The cleaner comes on Thursday mornings",
+      "source": "user"
+    },
+    {
+      "key": "f-31",
+      "kind": "fact",
+      "text": "The gardener cuts the hedge twice a year",
+      "source": "user"
+    },
+    {
+      "key": "f-32",
+      "kind": "fact",
+      "text": "The street market is on Saturdays",
+      "source": "user"
+    },
+    {
+      "key": "f-33",
+      "kind": "fact",
+      "text": "The swimming pool has lane swims at seven",
+      "source": "user"
+    },
+    {
+      "key": "f-34",
+      "kind": "fact",
+      "text": "The barber is Joe on Kirkgate",
+      "source": "user"
+    },
+    {
+      "key": "f-35",
+      "kind": "fact",
+      "text": "Haircut every five weeks",
+      "source": "user"
+    },
+    {
+      "key": "f-36",
+      "kind": "fact",
+      "text": "The optician check up is every two years",
+      "source": "user"
+    },
+    {
+      "key": "f-37",
+      "kind": "fact",
+      "text": "Glasses prescription is in the health folder",
+      "source": "user"
+    },
+    {
+      "key": "f-38",
+      "kind": "fact",
+      "text": "The health folder is in the filing cabinet",
+      "source": "user"
+    },
+    {
+      "key": "f-39",
+      "kind": "fact",
+      "text": "The filing cabinet key is on the hook by the door",
+      "source": "user"
+    },
+    {
+      "key": "f-40",
+      "kind": "fact",
+      "text": "Christmas cards go out in the first week of December",
+      "source": "user"
+    },
+    {
+      "key": "f-41",
+      "kind": "fact",
+      "text": "Client gifts are hampers from the farm shop",
+      "source": "user"
+    },
+    {
+      "key": "f-42",
+      "kind": "fact",
+      "text": "The farm shop is on the Harrogate road",
+      "source": "user"
+    },
+    {
+      "key": "f-43",
+      "kind": "fact",
+      "text": "The team lunch is the last Friday of the quarter",
+      "source": "user"
+    },
+    {
+      "key": "f-44",
+      "kind": "fact",
+      "text": "The quarterly review is the first week of the quarter",
+      "source": "user"
+    },
+    {
+      "key": "f-45",
+      "kind": "fact",
+      "text": "The annual plan is written in January",
+      "source": "user"
+    },
+    {
+      "key": "f-46",
+      "kind": "fact",
+      "text": "The strategy doc lives in the shared drive",
+      "source": "user"
+    },
+    {
+      "key": "f-47",
+      "kind": "fact",
+      "text": "The shared drive is Google Drive",
+      "source": "user"
+    },
+    {
+      "key": "f-48",
+      "kind": "fact",
+      "text": "The board meeting is twice a year",
+      "source": "user"
+    },
+    {
+      "key": "f-49",
+      "kind": "fact",
+      "text": "The company has two shareholders",
+      "source": "user"
+    },
+    {
+      "key": "f-50",
+      "kind": "fact",
+      "text": "Priya owns forty percent of Harbor",
+      "source": "user"
+    },
+    {
+      "key": "f-51",
+      "kind": "fact",
+      "text": "Harbor's logo was designed by Mina",
+      "source": "user"
+    },
+    {
+      "key": "f-52",
+      "kind": "fact",
+      "text": "Kiln's logo is a hand drawn pot",
+      "source": "user"
+    },
+    {
+      "key": "f-53",
+      "kind": "fact",
+      "text": "The Kiln packing table is in the garage",
+      "source": "user"
+    },
+    {
+      "key": "f-54",
+      "kind": "fact",
+      "text": "The garage door sticks in cold weather",
+      "source": "user"
+    },
+    {
+      "key": "f-55",
+      "kind": "fact",
+      "text": "Northwind's letter template is in Word",
+      "source": "user"
+    },
+    {
+      "key": "f-56",
+      "kind": "fact",
+      "text": "The Northwind website is a single page",
+      "source": "user"
+    },
+    {
+      "key": "f-57",
+      "kind": "fact",
+      "text": "The acme staging site is password protected",
+      "source": "user"
+    },
+    {
+      "key": "f-58",
+      "kind": "fact",
+      "text": "Only Linda has the login for the acme staging site",
+      "source": "user"
+    },
+    {
+      "key": "f-59",
+      "kind": "fact",
+      "text": "Leo pushes acme changes to a preview branch first",
+      "source": "user"
+    },
+    {
+      "key": "f-60",
+      "kind": "fact",
+      "text": "Linda signs off acme changes by email",
+      "source": "user"
+    },
+    {
+      "key": "f-61",
+      "kind": "fact",
+      "text": "Harbor's API runs on two small servers",
+      "source": "user"
+    },
+    {
+      "key": "f-62",
+      "kind": "fact",
+      "text": "Harbor's database is backed up hourly",
+      "source": "user"
+    },
+    {
+      "key": "f-63",
+      "kind": "fact",
+      "text": "Harbor's status page is public",
+      "source": "user"
+    },
+    {
+      "key": "f-64",
+      "kind": "fact",
+      "text": "Tessaya's logo is a soft circle",
+      "source": "user"
+    },
+    {
+      "key": "f-65",
+      "kind": "fact",
+      "text": "Tessaya's settings live in the desktop app",
+      "source": "user"
+    },
+    {
+      "key": "f-66",
+      "kind": "fact",
+      "text": "The Tessaya ops notes are in the tessaya ops folder",
+      "source": "user"
+    },
+    {
+      "key": "f-67",
+      "kind": "fact",
+      "text": "VentureOS has a dashboard for every venture",
+      "source": "user"
+    },
+    {
+      "key": "f-68",
+      "kind": "fact",
+      "text": "VentureOS sends a morning briefing",
+      "source": "user"
+    },
+    {
+      "key": "f-69",
+      "kind": "fact",
+      "text": "The morning briefing arrives at half seven",
+      "source": "user"
+    },
+    {
+      "key": "f-70",
+      "kind": "fact",
+      "text": "The evening wrap up arrives at six",
+      "source": "user"
+    },
+    {
+      "key": "f-71",
+      "kind": "fact",
+      "text": "Expense receipts are photographed the same day",
+      "source": "user"
+    },
+    {
+      "key": "f-72",
+      "kind": "fact",
+      "text": "Mileage is logged in the FreeAgent app",
+      "source": "user"
+    },
+    {
+      "key": "f-73",
+      "kind": "fact",
+      "text": "Train fares are claimed as business travel",
+      "source": "user"
+    },
+    {
+      "key": "f-74",
+      "kind": "fact",
+      "text": "Hotel bills go to Sara with the receipts",
+      "source": "user"
+    },
+    {
+      "key": "f-75",
+      "kind": "fact",
+      "text": "The company credit card is a Starling card",
+      "source": "user"
+    },
+    {
+      "key": "f-76",
+      "kind": "fact",
+      "text": "Subscriptions are reviewed every January",
+      "source": "user"
+    },
+    {
+      "key": "f-77",
+      "kind": "fact",
+      "text": "Unused subscriptions get cancelled at the review",
+      "source": "user"
+    },
+    {
+      "key": "f-78",
+      "kind": "fact",
+      "text": "Domain renewals are set to auto renew",
+      "source": "user"
+    },
+    {
+      "key": "f-79",
+      "kind": "fact",
+      "text": "The company phone line forwards to my mobile",
+      "source": "user"
+    }
+  ],
+  "cases": [
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what spelling do I use",
+      "present": ["p-spelling"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "who is my accountant",
+      "present": ["pp-accountant"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "when is mum's birthday",
+      "present": ["pp-mum-birthday"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what is the cat called",
+      "present": ["pp-cat"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "where does clay come from for kiln",
+      "present": ["kn-supplier"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what does harbor pro cost",
+      "present": ["hb-pricing"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "when does the acme homepage launch",
+      "present": ["ac-deadline"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what node version does the build need",
+      "present": ["op-node-version"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "how long are raw transcripts kept",
+      "present": ["vo-retention"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what is the wake word",
+      "present": ["tz-wake"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "who is the contract developer on the acme site",
+      "present": ["pp-contractor"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "which days does leo work",
+      "present": ["pp-leo-days"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "when is the car's MOT due",
+      "present": ["d-mot"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "which energy tariff are we on",
+      "present": ["d-energy"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what payment terms do invoices have",
+      "present": ["p-invoice-terms"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "how long should meetings be",
+      "present": ["p-meeting-length"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "where do passwords live",
+      "present": ["d-passwords"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "when is the self assessment deadline",
+      "present": ["nw-deadline"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "who does the business cards",
+      "present": ["pp-printer-supplier"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what is the house colour",
+      "present": ["d-brand-colour"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "when does the newsletter go out",
+      "present": ["d-newsletter"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "who keeps a spare key",
+      "present": ["pp-neighbour"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "what does biscuit eat",
+      "present": ["pp-biscuit-food"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "when does castle mutual renew",
+      "present": ["pp-castle-renewal"]
+    },
+    {
+      "recall": true,
+      "group": "direct",
+      "query": "where is the stopcock",
+      "present": ["f-13"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "who does my bookkeeping",
+      "present": ["pp-accountant"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "what colour scheme do I like on screen",
+      "present": ["p-dark-mode"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "is the test server running out of space",
+      "present": ["op-staging-disk"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "what hot drink should you make me",
+      "present": ["p-tea"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "can I book an early morning slot",
+      "present": ["p-mornings"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "should I send that email to the client right away",
+      "present": ["p-ask-before-send"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "which seat do I like when travelling",
+      "present": ["p-window-seat"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "what food should I order for him, he doesn't eat meat",
+      "present": ["p-vegetarian"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "who sorts out our legal paperwork",
+      "present": ["pp-lawyer"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "who makes our branding",
+      "present": ["pp-designer"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "who repairs my vehicle",
+      "present": ["pp-mechanic"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "where does my nephew's sister live",
+      "present": ["pp-brother"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "which pet clinic do we use",
+      "present": ["pp-vet"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "who arranges my trips",
+      "present": ["pp-va"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "what time zone is my business partner in",
+      "present": ["pp-priya-tz"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "how much is the monthly subscription for the paid tier",
+      "scopeRef": "harbor-app",
+      "present": ["hb-pricing"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "why did the app fall over on older phones",
+      "scopeRef": "harbor-app",
+      "present": ["hb-crash"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "why do customers' enquiries go missing",
+      "scopeRef": "acme-site",
+      "present": ["ac-forms"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "how should parcels be sent cheaply",
+      "scopeRef": "kiln",
+      "present": ["kn-shipping"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "why are cups arriving smashed",
+      "scopeRef": "kiln",
+      "present": ["kn-breakage"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "what is our profit floor on products",
+      "scopeRef": "kiln",
+      "present": ["kn-margin"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "can customers send things back",
+      "scopeRef": "kiln",
+      "present": ["kn-returns"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "which accounting software do the bookkeeping clients use",
+      "scopeRef": "northwind-books",
+      "present": ["nw-software"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "how fast must she start talking",
+      "scopeRef": "tessaya",
+      "present": ["tz-latency"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "when must the assistant not interrupt me",
+      "scopeRef": "tessaya",
+      "present": ["tz-quiet-hours"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "why did the box run out of RAM",
+      "scopeRef": "tessaya",
+      "present": ["tz-heavy-lock"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "what limits our monthly hosting bill",
+      "scopeRef": "ventureos",
+      "present": ["vo-cost"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "why did the machine fill its drive",
+      "scopeRef": "ventureos",
+      "present": ["vo-storage"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "why do my messages land in junk",
+      "present": ["op-email-spf"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "why is the scheduled task an hour out",
+      "present": ["op-cron-utc"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "which bank holds the company account",
+      "present": ["d-bank"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "what do I pay myself",
+      "present": ["d-salary"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "query": "when is the end of our financial year",
+      "present": ["d-year-end"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "which mobile do I carry",
+      "present": ["d-phone"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "what race am I preparing for",
+      "present": ["d-running"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "where am I going on summer holiday",
+      "present": ["d-holiday"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-16",
+      "query": "when do I need a new travel document",
+      "present": ["d-passport"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "which days do I commute in",
+      "present": ["d-office-days"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "why does the wireless internet cut out in the office",
+      "present": ["op-wifi"]
+    },
+    {
+      "recall": true,
+      "group": "paraphrase",
+      "pending": "MEM-13",
+      "query": "how do I know the heating system is at the right level",
+      "present": ["f-11"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "pending": "MEM-16",
+      "query": "what time is standup",
+      "present": ["s-standup"],
+      "absent": ["s-standup-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "pending": "MEM-13",
+      "query": "when is my dentist appointment",
+      "present": ["s-dentist"],
+      "absent": ["s-dentist-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "pending": "MEM-13",
+      "query": "when do I go to the gym",
+      "present": ["s-gym"],
+      "absent": ["s-gym-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "how much is harbor plus",
+      "present": ["s-harbor-price"],
+      "absent": ["s-harbor-price-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "where is the office",
+      "present": ["s-office"],
+      "absent": ["s-office-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "who insures the car",
+      "present": ["s-car-insurer"],
+      "absent": ["s-car-insurer-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "what is my work mobile number",
+      "present": ["s-phone"],
+      "absent": ["s-phone-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "which day do releases ship",
+      "present": ["s-deploy-day"],
+      "absent": ["s-deploy-day-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "which code editor do I use",
+      "present": ["s-editor"],
+      "absent": ["s-editor-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "which train do I commute on",
+      "present": ["s-train"],
+      "absent": ["s-train-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "who is my running coach",
+      "present": ["s-coach"],
+      "absent": ["s-coach-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "how much is the acme retainer",
+      "present": ["s-retainer"],
+      "absent": ["s-retainer-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "when do backups run",
+      "present": ["s-backup"],
+      "absent": ["s-backup-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "what should I have for lunch",
+      "present": ["s-lunch"],
+      "absent": ["s-lunch-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "who files the VAT",
+      "present": ["s-vat"],
+      "absent": ["s-vat-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "which model do the coding lanes run on",
+      "present": ["s-model"],
+      "absent": ["s-model-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "where is the marketing site hosted",
+      "present": ["s-hosting"],
+      "absent": ["s-hosting-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "pending": "MEM-16",
+      "query": "where are shared logins kept",
+      "present": ["s-password"],
+      "absent": ["s-password-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "pending": "MEM-16",
+      "query": "when is the mentor call",
+      "present": ["s-meeting-day"],
+      "absent": ["s-meeting-day-old"]
+    },
+    {
+      "recall": true,
+      "group": "superseded",
+      "query": "what time is my alarm",
+      "present": ["s-alarm"],
+      "absent": ["s-alarm-old"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "pending": "MEM-13",
+      "query": "what flowers should I get for mum's birthday",
+      "present": ["pp-mum-birthday", "pp-mum-flowers"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "pending": "MEM-13",
+      "query": "how old will Dan's daughter be this summer",
+      "present": ["pp-dan-kids", "pp-ella-age"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "pending": "MEM-20",
+      "query": "how should I contact the office landlord",
+      "present": ["pp-landlord", "pp-helen-phone"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "pending": "MEM-20",
+      "query": "when can I reach my cofounder during her day",
+      "present": ["pp-cofounder", "pp-priya-tz"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "what does the brand designer charge",
+      "present": ["pp-designer", "pp-mina-rate"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "when is the travel booker online",
+      "present": ["pp-va", "pp-asha-hours"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "what does the cat eat",
+      "present": ["pp-cat", "pp-biscuit-food"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "pending": "MEM-20",
+      "query": "who runs support for the app my cofounder and I built",
+      "present": ["pp-sam-role", "pp-cofounder"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "when does the business insurance renew",
+      "present": ["pp-insurer", "pp-castle-renewal"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "how do I reach the client contact for the acme homepage launch",
+      "scopeRef": "acme-site",
+      "present": ["ac-contact", "ac-deadline"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "what pricing and stores does harbor have",
+      "scopeRef": "harbor-app",
+      "present": ["hb-pricing", "hb-stores"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "what does the contractor on the acme site work on and when",
+      "present": ["pp-contractor", "pp-leo-days"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "where should receipts for the accountant go",
+      "present": ["pp-accountant", "pp-ledgerline-email"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "what is the client's correct name and who is our contact there",
+      "scopeRef": "acme-site",
+      "present": ["ac-name", "ac-contact"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "which runs first, the daily history job or the morning briefing",
+      "present": ["vo-daily", "f-69"]
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "what is my blood type",
+      "absent": ["e-blood-test", "pp-gp"],
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "what is my sister's name",
+      "absent": ["pp-brother", "pp-dan-kids"],
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "what is the wifi password at my parents' house",
+      "absent": ["f-04"],
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "how many shares does Leo own",
+      "absent": ["f-49", "f-50"],
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "what did the plumber charge",
+      "absent": ["pp-plumber"],
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "what is the dog called",
+      "absent": ["pp-cat"],
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "which football team do I support",
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "what is my national insurance number",
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "when is Priya's birthday",
+      "absent": ["pp-mum-birthday"],
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "negative",
+      "pending": "MEM-17",
+      "query": "what is my shoe size in European sizes",
+      "count": 0
+    },
+    {
+      "recall": true,
+      "group": "scope",
+      "query": "how does the site deploy",
+      "scopeRef": "acme-site",
+      "present": ["ac-deploy"],
+      "absent": ["hb-deploy"]
+    },
+    {
+      "recall": true,
+      "group": "scope",
+      "query": "how does the app deploy",
+      "scopeRef": "harbor-app",
+      "present": ["hb-deploy"],
+      "absent": ["ac-deploy"]
+    }
+  ]
+}

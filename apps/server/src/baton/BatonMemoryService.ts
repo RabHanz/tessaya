@@ -106,7 +106,7 @@ const EMBED_PACE = "250 millis";
 const EMBED_IDLE = "10 minutes";
 
 /** Which text a vector was made from: a changed item is embedded again. FNV-1a, enough to notice an edit. */
-const textHash = (text: string): string => {
+export const textHash = (text: string): string => {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i += 1) {
     h ^= text.charCodeAt(i);
