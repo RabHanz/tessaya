@@ -52,10 +52,11 @@ import {
 } from "@t3tools/baton-shared/voiceTurn";
 
 const WIDTH = 420;
-const HEIGHT = 52;
+// Room above the capsule for the Move pill check mark; the margins take it back, so the capsule sits where it did.
+const HEIGHT = 80;
 /** Clear of a dictation bar in Wispr's place at the bottom edge, so both can show. */
-const ABOVE_WORK_AREA = 44;
-const TOP_MARGIN = 10;
+const ABOVE_WORK_AREA = 30;
+const TOP_MARGIN = -4;
 const DRAG_MS = 16;
 // The hit test runs fast only while the cursor is near the capsule; the resting bar can stay up all day.
 const HIT_MS = 40;
@@ -68,8 +69,6 @@ const LEVEL_MS = 80;
 const DEAD_LEVEL = 0.03;
 /** The closing sound plays out before the window hides. */
 const CLOSE_MS = 280;
-/** How long the "Move the pill" handle stays up. */
-const MOVE_MS = 10_000;
 
 /** The phases that show a waveform and no word: his voice or Baton's, live. */
 const WAVE_PHASES = ["listening", "speaking", "dictating"];
@@ -84,9 +83,13 @@ export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
 body{display:flex;align-items:center;justify-content:center}
-#p{box-sizing:border-box;display:flex;align-items:center;gap:7px;height:24px;max-width:${WIDTH - 16}px;padding:0 11px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 55%),var(--ink);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.5);color:var(--text);position:relative;touch-action:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s;cursor:grab}
+#p{box-sizing:border-box;display:flex;align-items:center;gap:7px;height:24px;max-width:${WIDTH - 16}px;padding:0 11px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 55%),var(--ink);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.5);color:var(--text);position:relative;touch-action:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s}
 #p.on{opacity:1;transform:none}
-#p.drag{cursor:grabbing}
+body.moving #p{cursor:grab;border:1px dashed var(--blue)}
+body.moving #p.drag{cursor:grabbing}
+#ok{display:none;position:absolute;left:50%;top:2px;transform:translateX(-50%);box-sizing:border-box;width:24px;height:24px;padding:0;margin:0;border-radius:50%;border:1px solid var(--line);background:var(--ink);color:var(--green);cursor:pointer;align-items:center;justify-content:center}
+body.moving #ok{display:flex}
+#ok:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p.drag::before{content:"";position:absolute;inset:-10px}
 #p.rest{height:6px;width:36px;padding:0;gap:0;border-color:rgba(255,255,255,.4);background:rgba(13,13,17,.78)}
 #p.rest[data-rest=muted]{border-color:var(--red)}
@@ -125,7 +128,7 @@ html.motion-reduced #mk,html.motion-off #mk{animation:none!important}
 @media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
 html.motion-reduced #p,html.motion-reduced #w i,html.motion-off #p,html.motion-off #w i{transition:none}html.motion-reduced #d b,html.motion-off #d b{animation:none;opacity:.7}
 html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
-</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
+</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
 <script>
 const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
@@ -143,23 +146,26 @@ const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){
 const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
 const isClick=${isPillClick.toString()};
 let drag=false,beat=0,down=null;
-const grab=$('p');
+const grab=$('p'),moving=()=>document.body.classList.contains('moving');
 // Only the capsule takes the mouse; everything around it in this window stays click-through.
 grab.addEventListener('mouseenter',()=>ipcRenderer.send('baton-pill:hover',true));
 grab.addEventListener('mouseleave',()=>{if(!drag)ipcRenderer.send('baton-pill:hover',false);});
 // A drag is a captured pointer: it ends when the pointer is released, cancelled or lost, never because the cursor left the capsule.
 const endDrag=why=>{if(!drag)return;drag=false;clearInterval(beat);grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false,why);};
-// A press only becomes a drag after 4 px of movement; released sooner it is a click, which dismisses.
-grab.addEventListener('pointerdown',e=>{if(e.button!==0||drag)return;down={x:e.screenX,y:e.screenY,t:performance.now()};try{grab.setPointerCapture(e.pointerId);}catch(_){}});
-grab.addEventListener('pointermove',e=>{if(down===null||drag)return;if(isClick(e.screenX-down.x,e.screenY-down.y,0))return;drag=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);beat=setInterval(()=>ipcRenderer.send('baton-pill:beat'),120);});
-grab.addEventListener('pointerup',e=>{const d=down;down=null;if(drag)return endDrag('up');if(d===null||grab.classList.contains('rest'))return;
- const dx=e.screenX-d.x,dy=e.screenY-d.y,ms=performance.now()-d.t;if(isClick(dx,dy,ms))ipcRenderer.send('baton-pill:click',dx,dy,ms);});
+// Locked, a press and release on the capsule is always a click, which dismisses. Moving, it only drags.
+grab.addEventListener('pointerdown',e=>{if(e.button!==0||drag)return;down={x:e.screenX,y:e.screenY,t:performance.now()};if(moving())try{grab.setPointerCapture(e.pointerId);}catch(_){}});
+grab.addEventListener('pointermove',e=>{if(down===null||drag||!moving())return;if(isClick(e.screenX-down.x,e.screenY-down.y,0))return;drag=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);beat=setInterval(()=>ipcRenderer.send('baton-pill:beat'),120);});
+grab.addEventListener('pointerup',e=>{const d=down;down=null;if(drag)return endDrag('up');if(d===null||moving()||grab.classList.contains('rest'))return;
+ ipcRenderer.send('baton-pill:click',e.screenX-d.x,e.screenY-d.y,performance.now()-d.t);});
+$('ok').addEventListener('click',()=>ipcRenderer.send('baton-pill:moving',false));
+addEventListener('keydown',e=>{if(e.key==='Escape'&&moving())ipcRenderer.send('baton-pill:moving',false);});
 grab.addEventListener('pointercancel',()=>{down=null;endDrag('cancel');});
 grab.addEventListener('lostpointercapture',()=>{down=null;endDrag('lost');});
 grab.addEventListener('dblclick',()=>{if(grab.classList.contains('rest'))ipcRenderer.send('baton-pill:reset');});
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
 // The capsule's box goes to the main process, which decides by the cursor position when the window takes the mouse, so a missed forwarded mousemove cannot leave the pill dead.
-const sendRect=()=>{const r=grab.getBoundingClientRect();ipcRenderer.send('baton-pill:rect',r.left,r.top,r.width,r.height);};
+const sendRect=()=>{const r=grab.getBoundingClientRect(),o=$('ok').getBoundingClientRect(),k=moving()&&o.width>0;
+ const x=k?Math.min(r.left,o.left):r.left,y=k?Math.min(r.top,o.top):r.top;ipcRenderer.send('baton-pill:rect',x,y,(k?Math.max(r.right,o.right):r.right)-x,(k?Math.max(r.bottom,o.bottom):r.bottom)-y);};
 new ResizeObserver(sendRect).observe(grab);addEventListener('load',sendRect);
 for(const t of['pointerdown','pointerup','pointermove','pointercancel'])addEventListener(t,e=>ipcRenderer.send('baton-pill:pointer',t,e.clientX,e.clientY,e.target&&e.target.id||e.target.tagName,e.buttons),true);
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
@@ -175,6 +181,7 @@ window.pill={
  hide(){$('p').className='';$('p').dataset.mark='off';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},
  sting(){if(isCalm())return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
  move(){const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
+ moving(on){document.body.classList.toggle('moving',on);if(on)$('ok').focus();sendRect();},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);return ctx.state+':'+SOUNDS[name].length;},
 };
@@ -211,8 +218,9 @@ export interface VoicePill {
   readonly setEdge: (edge: "bottom" | "top") => void;
   /** Puts it on a named place of the display it is on and keeps it there. */
   readonly moveTo: (place: PlaceId) => void;
-  /** Shows a draggable handle for ten seconds, so moving the pill never depends on a wake. */
-  readonly showMove: () => void;
+  /** Move pill: unlocked, the whole pill drags and its clicks do nothing; locked again by Esc or its check mark. */
+  readonly setMoving: (on: boolean) => void;
+  readonly moving: () => boolean;
   /** The named place it is nearest to, for the settings control. */
   readonly place: () => PlaceId;
   /** Whether he (or Settings) has put it somewhere on this display. */
@@ -255,6 +263,8 @@ export const createVoicePill = (input: {
   readonly stateDir: string;
   readonly holdEscape: (onPress: () => void) => () => void;
   readonly onChange?: (state: TurnState) => void;
+  /** Move pill went on or off, from wherever, so the tray's tick follows. */
+  readonly onMoving?: (on: boolean) => void;
   /** Esc while it is up. */
   readonly onDismiss: () => void;
   /** Each wake, from the event to the window on screen. */
@@ -287,11 +297,12 @@ export const createVoicePill = (input: {
   let shots = 0;
   let markers: Electron.BrowserWindow | null = null;
   let markerPlace: PlaceId | null = null;
-  let capsule = { x: 302, y: 26, width: 132, height: 41 };
+  let capsule = { x: 302, y: 40, width: 132, height: 41 };
   let takingMouse = false;
   let overTicks = 0;
   let hitTimer: ReturnType<typeof setTimeout> | null = null;
-  let moveTimer: ReturnType<typeof setTimeout> | null = null;
+  let moving = false;
+  let releaseMoveEscape: (() => void) | null = null;
   const trace = (record: Record<string, unknown>) => {
     if (input.captureDir === undefined) return;
     try {
@@ -407,7 +418,6 @@ export const createVoicePill = (input: {
   };
   const stopDrag = (save: boolean, reason = "up") => {
     if (dragTimer === null) return;
-    if (moveTimer !== null) armMove();
     // A new grab starts from a clean mouse state: the next hit test switches it on again.
     takingMouse = false;
     clearInterval(dragTimer);
@@ -430,16 +440,28 @@ export const createVoicePill = (input: {
     saveSpots();
   };
 
-  /** "Move the pill": a handle that stays up for 10 s after the last touch, whatever Tessaya is doing. */
-  const armMove = () => {
-    if (moveTimer !== null) clearTimeout(moveTimer);
-    moveTimer = setTimeout(() => {
-      moveTimer = null;
-      if (state.phase !== "idle") return;
-      if (input.rest()) call(`window.pill.rest(${JSON.stringify(why)})`);
-      else lower();
-    }, MOVE_MS);
-    moveTimer.unref();
+  const setMoving = (on: boolean) => {
+    if (on === moving) return;
+    moving = on;
+    if (on) {
+      releaseMoveEscape = input.holdEscape(() => setMoving(false));
+      raise();
+      if (state.phase === "idle") call("window.pill.move()");
+    } else {
+      releaseMoveEscape?.();
+      releaseMoveEscape = null;
+      stopDrag(true);
+    }
+    const target = window;
+    void ready.then(() => {
+      if (target === null || target.isDestroyed()) return;
+      // Focusable only while moving, so Tab reaches the check mark; locked it never takes focus.
+      target.setFocusable(on);
+      if (on) target.focus();
+    });
+    call(`window.pill.moving(${on})`);
+    if (!on && state.phase === "idle") lower();
+    input.onMoving?.(on);
   };
 
   const this_anchor = () => {
@@ -524,6 +546,7 @@ export const createVoicePill = (input: {
 
   const lower = () => {
     if (window === null || window.isDestroyed()) return;
+    if (moving) return call("window.pill.move()");
     if (input.rest()) {
       raise();
       call(`window.pill.rest(${JSON.stringify(why)})`);
@@ -683,6 +706,7 @@ export const createVoicePill = (input: {
   Electron.ipcMain.on("baton-pill:drag", (event, on: unknown, why: unknown) => {
     trace({ kind: "pill_drag", on, why, mine: mine(event), bounds: window?.getBounds() });
     if (!mine(event) || window === null || window.isDestroyed()) return;
+    if (on === true && !moving) return;
     if (on !== true) return stopDrag(why !== "cancel", typeof why === "string" ? why : "up");
     stopDrag(false);
     const start = Electron.screen.getCursorScreenPoint();
@@ -719,8 +743,11 @@ export const createVoicePill = (input: {
     }, DRAG_MS);
     dragTimer.unref();
   });
+  Electron.ipcMain.on("baton-pill:moving", (event, on: unknown) => {
+    if (mine(event) && on === false) setMoving(false);
+  });
   Electron.ipcMain.on("baton-pill:click", (event, dx: unknown, dy: unknown, ms: unknown) => {
-    if (!mine(event)) return;
+    if (!mine(event) || moving) return;
     input.onDrag?.({
       reason: "click",
       dx: Number(dx) || 0,
@@ -799,12 +826,8 @@ export const createVoicePill = (input: {
       }
     },
     moveTo,
-    showMove: () => {
-      if (state.phase !== "idle") return;
-      raise();
-      call("window.pill.move()");
-      armMove();
-    },
+    setMoving,
+    moving: () => moving,
     placed: () => {
       const b = this_anchor();
       return spots[displayKey(Electron.screen.getDisplayMatching(b))] !== undefined;
@@ -841,7 +864,7 @@ export const createVoicePill = (input: {
       if (silentTimer !== null) clearTimeout(silentTimer);
       closeMarkers();
       if (hitTimer !== null) clearInterval(hitTimer);
-      if (moveTimer !== null) clearTimeout(moveTimer);
+      releaseMoveEscape?.();
       Electron.app.removeListener("browser-window-created", follow);
       setEscape(false);
       stopDrag(false);
