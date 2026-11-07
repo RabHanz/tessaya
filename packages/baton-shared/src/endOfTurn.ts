@@ -85,9 +85,19 @@ export interface Playing {
   readonly until: number;
 }
 
+/** What she had said when he talked over her, and the wake word of the persona who was saying it. */
+export interface CutIn {
+  readonly said: string;
+  readonly by: string | null;
+}
+
+/** A slow speaking pace: a sentence lasts at least this long a word, however little of its audio has arrived. */
+const MS_PER_WORD = 380;
+
 /**
  * What she had said when he cut in at `at`: the sentences played, and the one playing cut at the word its audio
- * had reached. Without audio times (the system voice), the whole of it.
+ * had reached. Its length is the audio sent so far or its words at a slow pace, whichever is longer, since the
+ * audio streams in while it plays. Without audio times (the system voice), the whole of it.
  * shortcut: assumes even speech through a sentence; upgrade to word timings if the voice ever reports them.
  */
 export const heardUntil = (
@@ -97,15 +107,16 @@ export const heardUntil = (
 ): string => {
   if (playing === null) return played.join(" ");
   const all = playing.text.trim().split(/\s+/).filter(Boolean);
-  const share =
-    playing.from === null || playing.until <= playing.from
-      ? 1
-      : Math.min(1, Math.max(0, (at - playing.from) / (playing.until - playing.from)));
+  const length = Math.max(playing.until - (playing.from ?? 0), all.length * MS_PER_WORD);
+  const share = playing.from === null ? 1 : Math.min(1, Math.max(0, (at - playing.from) / length));
   const n = Math.ceil(share * all.length);
   const part = n >= all.length ? all.join(" ") : n === 0 ? "" : `${all.slice(0, n).join(" ")}…`;
   return [...played, part].filter((s) => s !== "").join(" ");
 };
 
-/** His words after he cut her off, with what she had said, so the turn carries on from where she was. */
-export const cutInSaid = (cut: string, said: string): string =>
-  `(He cut in while you were saying: "${cut}") ${said}`;
+/**
+ * The line before his words when he cut her off, so the turn carries on from where she was. Her words are
+ * quoted as data: they may hold text read out from an email or a page. `by` names another persona who was speaking.
+ */
+export const cutInLine = (said: string, by: string | null): string =>
+  `he cut in while ${by === null ? "you were" : `${by} was`} saying: ${JSON.stringify(said)}`;

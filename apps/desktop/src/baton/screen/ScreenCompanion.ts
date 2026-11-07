@@ -43,7 +43,7 @@ import {
   tierBrains,
   type ManualBrain,
 } from "@t3tools/baton-shared/turnTier";
-import { cutInSaid } from "@t3tools/baton-shared/endOfTurn";
+import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
@@ -111,7 +111,7 @@ import { detectBrains } from "./brainDetect.ts";
 import { textIsFromConversation, type ConversationRoute } from "@t3tools/baton-shared/conversation";
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
-import { createAgentGate, createTaint, type Gate } from "../agent/agentGate.ts";
+import { createAgentGate, createTaint, stopsOnCutIn, type Gate } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
 import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import type { DesktopStateInput } from "../phone/desktopState.ts";
@@ -492,7 +492,7 @@ export interface ScreenCompanion {
       /** A device's or agent's words, not his: always the assistant, whose gate asks. */
       readonly outside?: boolean;
       /** He cut her off: what she had said by then. */
-      readonly cutIn?: string | null;
+      readonly cutIn?: CutIn | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
   readonly setActions: (actions: AssistantActions) => void;
@@ -2523,12 +2523,15 @@ export const startScreenCompanion = (input: {
     if (response !== 0) return "He said no. Nothing was saved; say so in a few words.";
     return save(false);
   };
+  /** How many cut-ins there had been when the assistant's running turn began (its turns run one at a time). */
+  let hushesAtTurn = 0;
+  const cutSinceTurn = () => hushes !== hushesAtTurn;
   const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
     sessionWithOwnMcp(
       () =>
         startBatonMcp({
           tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
-          gate: agentGate,
+          gate: stopsOnCutIn(agentGate, cutSinceTurn),
           scrub: (text) => vaultHost?.scrub(text) ?? text,
           onResult: ({ text, ...r }) => {
             const record = turns.current();
@@ -2548,8 +2551,11 @@ export const startScreenCompanion = (input: {
           env: claudeEnv(),
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
-          gate: async (call) =>
-            call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call),
+          gate: stopsOnCutIn(
+            async (call) =>
+              call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call),
+            cutSinceTurn,
+          ),
           mcp: { url: mcp.url, token: mcp.token },
           chrome: settings.browserChrome,
           onTool: (call) => turns.current().tools.push(call.tool),
@@ -2608,6 +2614,7 @@ export const startScreenCompanion = (input: {
     lastTree = undefined;
   };
   const beginTurn = (said: string) => {
+    hushesAtTurn = hushes;
     memory.beginTurn();
     agentTaint.reset(said);
     freshTurn();
@@ -2825,7 +2832,7 @@ export const startScreenCompanion = (input: {
     turn: {
       readonly onEnd?: () => void;
       readonly onCancel?: (stop: () => void) => void;
-      readonly cutIn?: string | null;
+      readonly cutIn?: CutIn | null;
     } = {},
   ) => {
     answering += 1;
@@ -2881,11 +2888,14 @@ export const startScreenCompanion = (input: {
       input.onNote?.("agent_turn_start", { said: text, ...who });
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       input.onActivity?.("Thinking");
-      const words = direct ? `(to the focused session) ${text}` : text;
       const reply = await sayFor(outside, turn.onCancel)(
-        turn.cutIn ? cutInSaid(turn.cutIn, words) : words,
+        direct ? `(to the focused session) ${text}` : text,
         {
           outside,
+          // The persona who was speaking is named only when he woke another one to cut in.
+          ...(turn.cutIn == null
+            ? {}
+            : { cutIn: { ...turn.cutIn, by: turn.cutIn.by === woke ? null : turn.cutIn.by } }),
           window: windowLabel,
           session: focusedSession,
           project,

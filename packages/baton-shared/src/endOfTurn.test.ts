@@ -100,6 +100,12 @@ describe("end of turn", () => {
     expect(heardUntil(["It's raining."], playing, at)).toBe(said);
   });
 
+  it("cuts by the words' pace while the audio is still arriving in pieces", () => {
+    // Only the first half second of a six-word sentence has arrived; a second in, about half has been said.
+    const playing = { text: "I'll open the March invoice now.", from: 0, until: 500 };
+    expect(heardUntil([], playing, 1_000)).toBe("I'll open the…");
+  });
+
   it("keeps the whole sentence when the voice gives no audio times", () => {
     const playing = { text: "Opening it.", from: null, until: 0 };
     expect(heardUntil([], playing, 5)).toBe("Opening it.");

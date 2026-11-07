@@ -17,6 +17,7 @@
  *
  * @module baton-voice/router
  */
+import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
 import type { BatonIntentResolution } from "@t3tools/baton-contracts";
 import {
   resolveContextWorkSession,
@@ -56,7 +57,7 @@ export interface RouteContext {
   /** The wake word this sentence answers to (the last one said before it); null for a hotkey or none. */
   readonly wake?: string | null;
   /** He cut her off: what she had said by then. His words carry on from it. */
-  readonly cutIn?: string | null;
+  readonly cutIn?: CutIn | null;
 }
 
 export type RouteOutcome =

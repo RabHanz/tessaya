@@ -269,57 +269,63 @@ describe("thinking ahead in the pause", () => {
   });
 });
 
-describe("cutting in over her", () => {
-  it("carries on from the word she had reached, and leaves what already ran alone", async () => {
-    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    let speech = false;
-    let next = 0;
-    const lines = ["Open the invoice.", "No, the other one."];
-    const cutIns: Array<RouteContext["cutIn"]> = [];
-    let cancelled = 0;
-    let stopVoice = () => {};
-    const core: ReturnType<typeof createVoiceCore> = createVoiceCore({
-      waitMs: () => 1_500,
-      // Headphones: his voice over hers cuts in with no name.
-      speakerMode: () => "headphones",
-      wake: { name: "fake", reset: () => {}, process: () => null },
-      vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
-      stt: { name: "fake", transcribe: async () => lines[next++] ?? "" },
-      tts: {
-        name: "fake",
-        speak: (text) => {
-          // Four seconds of her sentence, two of them already heard.
-          core.playing(text);
-          core.reference(new Int16Array(16 * 4_000), 1_000_000 - 2_000);
-          return new Promise<void>((resolve) => (stopVoice = resolve));
-        },
-        cancel: () => {
-          cancelled += 1;
-          stopVoice();
-        },
+/** Headphones, where his voice over hers cuts in with no name; she speaks a reply four seconds long. */
+const overHer = (lines: ReadonlyArray<string>) => {
+  let speech = false;
+  let wakeNow = false;
+  let next = 0;
+  const cutIns: Array<RouteContext["cutIn"]> = [];
+  let cancelled = 0;
+  let stopVoice = () => {};
+  const outcomes: VoiceCoreEvent[] = [];
+  const core: ReturnType<typeof createVoiceCore> = createVoiceCore({
+    waitMs: () => 1_500,
+    speakerMode: () => "headphones",
+    wake: {
+      name: "fake",
+      reset: () => {},
+      process: () => (wakeNow ? ((wakeNow = false), 0.9) : null),
+      lastWord: () => "Freya",
+    },
+    vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+    stt: { name: "fake", transcribe: async () => lines[next++] ?? "" },
+    tts: {
+      name: "fake",
+      speak: (text) => {
+        // Two seconds of her four-second sentence have been heard.
+        core.playing(text);
+        core.reference(new Int16Array(16 * 4_000), 1_000_000 - 2_000);
+        return new Promise<void>((resolve) => (stopVoice = resolve));
       },
-      router: {
-        route: async (effect, context): Promise<RouteOutcome> => {
-          if (effect.kind !== "command") return { kind: "none" };
-          cutIns.push(context.cutIn ?? null);
-          return {
-            kind: "ran",
-            reply: context.cutIn == null ? "I'll open the March invoice now." : "",
-            workSessionId: null,
-            source: "test",
-          };
-        },
+      cancel: () => {
+        cancelled += 1;
+        stopVoice();
       },
-    });
-    const outcomes: VoiceCoreEvent[] = [];
-    core.subscribe((event) => event.type === "outcome" && outcomes.push(event));
-    const push = (seconds: number, loud: boolean) => {
-      speech = loud;
-      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
-    };
-    const settle = async () => {
-      for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
-    };
+    },
+    router: {
+      route: async (effect, context): Promise<RouteOutcome> => {
+        if (effect.kind !== "command") return { kind: "none" };
+        cutIns.push(context.cutIn ?? null);
+        return {
+          kind: "ran",
+          // Only the first turn has a reply to talk over.
+          reply: cutIns.length === 1 ? "I'll open the March invoice now." : "",
+          workSessionId: null,
+          source: "test",
+        };
+      },
+    },
+  });
+  core.subscribe((event) => event.type === "outcome" && outcomes.push(event));
+  const push = (seconds: number, loud: boolean) => {
+    speech = loud;
+    for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+  };
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+  };
+  /** The first turn, answered aloud: she is speaking when this returns. */
+  const askFirst = async () => {
     core.activate("wake");
     await core.idle();
     push(1, true);
@@ -327,15 +333,62 @@ describe("cutting in over her", () => {
     await settle();
     push(0.2, false);
     await settle();
-    // She is speaking the reply to a turn that ran; he talks over her.
-    push(1, true);
+  };
+  const sayAndWait = async (seconds = 1) => {
+    push(seconds, true);
     push(1.2, false);
     await settle();
     push(1, false);
     await settle();
     await core.idle();
-    expect(cancelled).toBeGreaterThan(0);
-    expect(cutIns).toEqual([null, "I'll open the…"]);
-    expect(outcomes).toHaveLength(2);
+  };
+  return {
+    core,
+    push,
+    settle,
+    askFirst,
+    sayAndWait,
+    cutIns,
+    outcomes,
+    cancelled: () => cancelled,
+    wake: () => (wakeNow = true),
+  };
+};
+
+describe("cutting in over her", () => {
+  it("carries on from the word she had reached, and leaves what already ran alone", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice.", "No, the other one."]);
+    await r.askFirst();
+    await r.sayAndWait();
+    expect(r.cancelled()).toBeGreaterThan(0);
+    expect(r.cutIns).toEqual([null, { said: "I'll open the…", by: null }]);
+    expect(r.outcomes).toHaveLength(2);
+  });
+
+  it("keeps the note when he says her name as he cuts in", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice.", "Freya, no, the other one."]);
+    await r.askFirst();
+    r.push(0.3, true);
+    r.wake();
+    await r.sayAndWait(0.7);
+    expect(r.cutIns).toEqual([null, { said: "I'll open the…", by: null }]);
+  });
+
+  it("gives a later turn no note when what he said over her came to nothing", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice.", "What time is it?"]);
+    await r.askFirst();
+    // A cough over her: it cuts in, and is too short to be words.
+    r.push(0.15, true);
+    r.push(1.5, false);
+    await r.settle();
+    await r.core.idle();
+    r.core.activate("wake");
+    await r.core.idle();
+    await r.sayAndWait();
+    expect(r.cancelled()).toBeGreaterThan(0);
+    expect(r.cutIns).toEqual([null, null]);
   });
 });

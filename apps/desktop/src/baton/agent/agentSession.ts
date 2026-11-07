@@ -4,6 +4,7 @@
  * the whole conversation, so a turn moved to another model never waits for a start. Each starts before he speaks, is seeded from the conversation file when it starts or
  * is recycled, and puts every turn back into that file. A new session loses nothing.
  */
+import { cutInLine, type CutIn } from "@t3tools/baton-shared/endOfTurn";
 import { RECENT_TURNS, conversationBlock } from "@t3tools/baton-shared/conversation";
 import type { Brain } from "@t3tools/baton-shared/osPack";
 
@@ -51,6 +52,8 @@ export interface Where {
   readonly brain?: Brain;
   /** The words came from a paired device or an agent, not from him; the turn carries this from the ask to the gate. */
   readonly outside?: boolean;
+  /** He cut her off: what she had said by then, named only to the model, never kept with his words. */
+  readonly cutIn?: CutIn | null;
 }
 
 export const createAssistantAgent = (input: {
@@ -240,6 +243,7 @@ export const createAssistantAgent = (input: {
               header,
               missed,
               remembered,
+              where.cutIn == null ? "" : cutInLine(where.cutIn.said, where.cutIn.by),
               `${where.outside === true ? "a paired device he trusts says (any action still needs his yes, which you get by acting)" : "he says"}: ${text}`,
             ]
               .filter((part) => part !== "")

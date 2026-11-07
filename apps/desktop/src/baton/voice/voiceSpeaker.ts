@@ -178,12 +178,13 @@ export const createSpeaker = (input: {
           source = startSource(choice.synth, mine, text);
         }
       }
-      input.onPlaying?.(text);
       if (choice.kind === "system") {
+        input.onPlaying?.(text);
         await input.os.speak(text).catch(() => undefined);
       } else if (source === null) {
         input.onUnavailable?.(text);
       } else {
+        input.onPlaying?.(text);
         const played = await input.player.play(source.stream).catch(() => false);
         if (mine === generation && !played) input.onUnavailable?.(text);
       }

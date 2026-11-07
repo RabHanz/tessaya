@@ -7,7 +7,7 @@ import { describeJobs } from "../../apps/desktop/src/baton/agent/jobText.ts";
 import type { BatonJob } from "../../packages/baton-contracts/src/jobs.ts";
 import type { BatonRecordEntry } from "../../packages/baton-contracts/src/record.ts";
 import { buildAuditTrail, describeAuditTrail } from "../../packages/baton-shared/src/audit.ts";
-import { cutInSaid } from "../../packages/baton-shared/src/endOfTurn.ts";
+import type { CutIn } from "../../packages/baton-shared/src/endOfTurn.ts";
 
 export interface AssistantCase {
   readonly id: string;
@@ -28,6 +28,8 @@ export interface AssistantCase {
   readonly maxCalls?: number;
   /** Words the goal tool's arguments must contain, such as the persona a part goes to. */
   readonly goalArgs?: ReadonlyArray<string>;
+  /** He talked over her reply: what she had said by then. */
+  readonly cutIn?: CutIn;
   /** A paired device's or agent's words, not his: the turn says a paired device said it. */
   readonly outside?: boolean;
   /** The model a run without `--model` must put this turn on: simple turns fast, planning strong. */
@@ -105,16 +107,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   {
     id: "cut-in-steers",
     source: "L-10 steering: a cut-in carries on from her words",
-    said: cutInSaid(
-      "Right, I'll tell the build session to rerun the tests…",
-      "no, the web-shop one",
-    ),
+    said: "no, the web-shop one",
+    cutIn: { said: "Right, I'll tell the build session to rerun the tests…", by: null },
     first: ["sessions_list", "sessions_find", "session_send"],
     not: ["none"],
-    // The ask is hers to carry on: rerun the tests, in the web-shop session instead.
+    // The ask is hers to carry on: rerun the tests, in the web-shop session and not the build one.
     goal: "session_send",
     maxCalls: 3,
-    goalArgs: ["test"],
+    goalArgs: ["test", "s-web"],
     answers: {
       sessions_list: "- web-shop [id: s-web] idle\n- build [id: s-build] idle",
       sessions_find: "- web-shop [id: s-web] idle",
@@ -124,7 +124,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   {
     id: "cut-in-new-ask",
     source: "L-10 steering control: a cut-in that changes the subject is a new ask",
-    said: cutInSaid("The billing-api session died overnight and…", "skip that, what needs me?"),
+    said: "skip that, what needs me?",
+    cutIn: { said: "The billing-api session died overnight and…", by: null },
     first: ["needs_me"],
   },
   {
