@@ -178,6 +178,35 @@ export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => vo
   });
 };
 
+/** Runs each job after the one before has finished or failed: start, stop and relisten never overlap. */
+export const serialQueue = () => {
+  let last: Promise<unknown> = Promise.resolve();
+  return <T>(job: () => Promise<T>): Promise<T> => {
+    const next = last.then(job, job);
+    last = next.catch(() => undefined);
+    return next;
+  };
+};
+
+/** Rejects if `work` has not settled within `ms`, so a call that never answers cannot hold the queue. */
+export const within = <T>(work: Promise<T>, ms: number, what: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${what} did not answer in ${Math.round(ms / 1000)} s.`)),
+      ms,
+    );
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+
 /** After start-up has settled: the window, T3 and the server are up, so the sidecar spawn does not stall them. */
 export const DICTATION_SETTLE_MS = 15_000;
 

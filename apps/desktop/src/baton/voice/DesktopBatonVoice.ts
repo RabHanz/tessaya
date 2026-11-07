@@ -430,7 +430,14 @@ import {
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { createLoginItemState, setLoginItem } from "./loginItem.ts";
-import { DICTATION_SETTLE_MS, dictationAtLaunch, holdFramesUntil, startWarmUp } from "./warmUp.ts";
+import {
+  DICTATION_SETTLE_MS,
+  dictationAtLaunch,
+  holdFramesUntil,
+  serialQueue,
+  startWarmUp,
+  within,
+} from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import { createUserJobStore } from "../presence/userJobStore.ts";
@@ -995,6 +1002,8 @@ const wordName = (word: string | null): string | null =>
 
 /** Recognition slower than this, and slower than the clip itself, logs the machine's load. */
 /** After the voice has started, so the sessions' start does not compete with it. */
+/** A microphone list or open that has not answered in this long has hung. */
+const DEVICE_ANSWER_MS = 20_000;
 const LAUNCH_WARM_MS = 5_000;
 const SLOW_RECOGNITION_MS = 2_000;
 const CPU_SAMPLE_MS = 3_000;
@@ -3341,7 +3350,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Each step of the voice start, in the turn log, so a start that stops says where. */
   const step = (name: string, fields: Readonly<Record<string, unknown>> = {}) =>
     input.onNote?.("voice_start", { step: name, ...fields });
-  const start = async () => {
+  // The engine is set only when the warm-up ends: start, stop and relisten queue, so none acts on a half-built one.
+  const lifecycle = serialQueue();
+  const startNow = async () => {
     step("begin", {
       binary: binary !== null,
       enabled: settings.enabled,
@@ -3355,6 +3366,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (loop !== null || input.makeCore === null || !settings.enabled) return render();
     // The models first: if they are missing, no microphone is opened.
     await loadSpeechModel();
+    // Turned off while loading or warming: stop before the mic opens.
+    if (!settings.enabled) return render();
     step("speech-model-loaded", { sidecar: sidecar !== null });
     if (sidecar === null) throw new Error("Speech recognition is not installed.");
     markPhase("voice-core:begin");
@@ -3484,6 +3497,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     }
     step(warmed ? "warm-done" : "warm-timeout");
+    // Turned off while loading or warming: stop before the mic opens.
+    if (!settings.enabled) return render();
     // What Baton costs while nobody speaks, from the first minute (startup still settling) to five minutes in.
     for (const afterMs of [0, 4 * 60_000]) {
       setTimeout(() => {
@@ -3525,11 +3540,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           });
     step("audio-created", { test: testSource !== undefined && testSource !== "" });
     pill.warm();
-    devices = await audio.listDevices();
+    devices = await within(audio.listDevices(), DEVICE_ANSWER_MS, "The microphone list");
     step("devices-listed", { devices: devices.length });
     reselect();
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
-    loop = await startVoiceLoop({
+    const opening = startVoiceLoop({
       audio,
       // Hold, toggle, the setup's test and the tray all record through the sidecar: no wake or turn while they do.
       core: silenceWhile(
@@ -3551,6 +3566,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The core's router has already sent the words on; this is the HUD's line.
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
     });
+    loop = await within(opening, DEVICE_ANSWER_MS, "The microphone").catch((error: unknown) => {
+      // Given up on: if it opens after all, it is closed rather than left listening unseen.
+      void opening.then(
+        (late) => late.stop(),
+        () => undefined,
+      );
+      throw error;
+    });
     step("loop-started");
     // Not at his first wake: a cold start then cost the first turn 27 s (0.1.68).
     if (launchWarm === null)
@@ -3559,9 +3582,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (loop !== null) input.warmAssistant?.();
       }, LAUNCH_WARM_MS);
   };
+  /** A start that failed part-way leaves nothing behind: what it built is taken down. */
+  const startOrClean = () =>
+    startNow().catch(async (error: unknown) => {
+      if (loop === null) await stopNow();
+      throw error;
+    });
+  const start = () => lifecycle(startOrClean);
   let launchWarm: ReturnType<typeof setTimeout> | null = null;
 
-  const stop = async () => {
+  const stop = () => lifecycle(stopNow);
+  const stopNow = async () => {
     if (launchWarm !== null) clearTimeout(launchWarm);
     launchWarm = null;
     // Off mid-dictation: Esc is his again and the old window is forgotten, so no later wake acts there.
@@ -6369,10 +6400,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   /** Wake words are fixed when the core is built, so a change rebuilds it. */
-  const relisten = async () => {
-    if (loop !== null) await stop();
-    await start().catch(failed);
-  };
+  const relisten = () =>
+    lifecycle(async () => {
+      if (loop !== null) await stopNow();
+      await startOrClean().catch(failed);
+    });
 
   const toggleMute = () => {
     loop?.activate("toggle_mute");
