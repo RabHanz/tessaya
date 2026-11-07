@@ -59,7 +59,7 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index d06efd4d9d7bbf43d8076d1f61e31b1857231a75..800be59e6cdc4ab8c3ade0c6fc0bbdb84f9db983 100644
+index d06efd4d9d7bbf43d8076d1f61e31b1857231a75..1c3a917f4fdf47b84e016920a50d00ba56644912 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
 @@ -78,6 +78,7 @@ export default defineConfig({
@@ -70,6 +70,22 @@ index d06efd4d9d7bbf43d8076d1f61e31b1857231a75..800be59e6cdc4ab8c3ade0c6fc0bbdb8
        ],
        clean: false,
        deps: {
+@@ -143,6 +144,15 @@ export default defineConfig({
+       outExtensions: () => ({ js: ".cjs" }),
+       entry: ["src/mac-permission-preload.ts"],
+     },
++    {
++      // The Tessaya pill's isolated page: a sandboxed preload, so self-contained too.
++      format: "cjs",
++      outDir: "dist-electron",
++      dts: false,
++      sourcemap: true,
++      outExtensions: () => ({ js: ".cjs" }),
++      entry: ["src/baton/voice/pillPreload.ts"],
++    },
+   ],
+   test: {
+     include: [...defaultInclude, "../../native/kde-snap-shot/src/*.test.ts"],
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
 index e93c0733fa09a82d359454200b420d18c0a0a1b5..be7e3863a5e15337aefa4f475be6cc21e9500890 100644
 --- a/apps/mobile/package.json
@@ -158,7 +174,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..6f45c7aecce09ceaeb55a27731aee067
      "test": "vp test run --config ../vite.config.ts --dir ."
    },
 diff --git a/knip.jsonc b/knip.jsonc
-index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..7415a21730965f83de4dac56503bf8f9a9d9e28b 100644
+index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..fb659d03d1591cc0cedde7f4a56f07ec6ce7bc89 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -36,6 +36,9 @@
@@ -204,7 +220,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..7415a21730965f83de4dac56503bf8f9
          "@t3tools/web",
          "@napi-rs/keyring",
          "ffi-rs",
-@@ -72,13 +86,19 @@
+@@ -72,13 +86,20 @@
        ],
      },
      "apps/desktop": {
@@ -221,10 +237,11 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..7415a21730965f83de4dac56503bf8f9
          "src/snapShot/RegionSnapShotWorker.ts!",
          "src/snapShot/SnapShotAccessibilityWorker.ts!",
 +        "src/baton/voice/onnxWorker.ts!",
++        "src/baton/voice/pillPreload.ts!",
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
-@@ -91,7 +111,8 @@
+@@ -91,7 +112,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -234,7 +251,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..7415a21730965f83de4dac56503bf8f9
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -100,13 +121,20 @@
+@@ -100,13 +122,20 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -256,7 +273,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..7415a21730965f83de4dac56503bf8f9
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -152,6 +180,9 @@
+@@ -152,6 +181,9 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },

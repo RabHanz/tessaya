@@ -26,8 +26,10 @@ vi.mock("electron", async () => {
         return Promise.resolve(undefined);
       },
     };
-    constructor(options: { width?: number; height?: number }) {
+    preferences: unknown;
+    constructor(options: { width?: number; height?: number; webPreferences?: unknown }) {
       super();
+      this.preferences = options.webPreferences;
       this.bounds = { ...this.bounds, width: options.width ?? 0, height: options.height ?? 0 };
       fake.windows.push(this);
     }
@@ -128,6 +130,14 @@ describe("the pill is locked until Move pill is on", () => {
     const pill = make();
     pill.warm();
     await vi.advanceTimersByTimeAsync(0);
+    // An isolated, sandboxed page: its preload is its only way out, and it has no Node.
+    const preferences = (page() as unknown as { preferences: Record<string, unknown> }).preferences;
+    expect(preferences).toMatchObject({
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    });
+    expect(String(preferences["preload"])).toMatch(/pillPreload\.cjs$/);
     const before = page().getBounds();
     send("baton-pill:drag", true);
     fake.cursor = { x: 300, y: 200 };
@@ -150,7 +160,7 @@ describe("the pill is locked until Move pill is on", () => {
     send("baton-pill:click", 0, 0, 50);
     expect(dismissed).not.toHaveBeenCalled();
     // A new place in Settings while moving: it goes there and stays movable.
-    pill.setEdge("top");
+    pill.reposition();
     expect(pill.moving()).toBe(true);
     expect(page().isVisible()).toBe(true);
     escapes.at(-1)!();

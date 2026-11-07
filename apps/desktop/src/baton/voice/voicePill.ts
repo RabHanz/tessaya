@@ -145,7 +145,7 @@ const shape=bars.map((_,i)=>{const h=Math.abs((BARS-1)/2-i);return Math.max(.25,
 let ctx=null,live=false,tick=0;
 const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=isCalm()?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.transform='scaleY('+((2+10*shape[i]*n*wobble)/12).toFixed(3)+')';});};
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
-const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
+const ipcRenderer=window.pillIpc||{send(){}};
 const isClick=${isPillClick.toString()};
 let drag=false,beat=0,down=null;
 const grab=$('p'),moving=()=>document.body.classList.contains('moving');
@@ -220,7 +220,8 @@ export interface VoicePill {
   readonly setRest: (on: boolean) => void;
   /** Why it is not hearing him, so the rest bar can say so: asleep, muted, or off. */
   readonly setReason: (reason: "sleeping" | "muted" | "off") => void;
-  readonly setEdge: (edge: "bottom" | "top") => void;
+  /** The edge setting changed (it is read live): put the pill where it now says. */
+  readonly reposition: () => void;
   /** Puts it on a named place of the display it is on and keeps it there. */
   readonly moveTo: (place: PlaceId) => void;
   /** Move pill: unlocked, the whole pill drags and its clicks do nothing; locked again by Esc or its check mark. */
@@ -529,12 +530,14 @@ export const createVoicePill = (input: {
       alwaysOnTop: true,
       hasShadow: false,
       show: false,
-      // Local page of ours only; node is for the drag messages below.
+      // Local page of ours only, isolated: its preload gives it the drag and click messages and nothing else.
       webPreferences: {
         autoplayPolicy: "no-user-gesture-required",
         backgroundThrottling: false,
-        nodeIntegration: true,
-        contextIsolation: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        preload: NodePath.join(__dirname, "pillPreload.cjs"),
       },
     });
     created.setAlwaysOnTop(true, "screen-saver");
@@ -861,7 +864,7 @@ export const createVoicePill = (input: {
       why = next;
       if (state.phase === "idle" && input.rest()) call(`window.pill.why(${JSON.stringify(next)})`);
     },
-    setEdge: () => {
+    reposition: () => {
       if (moving && window !== null && !window.isDestroyed()) {
         // Hiding would take the focus and end the move: it goes to its new place still movable.
         const display = Electron.screen.getDisplayMatching(window.getBounds());
