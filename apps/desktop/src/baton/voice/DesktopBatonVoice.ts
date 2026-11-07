@@ -138,6 +138,7 @@ import {
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createVolumeDuck } from "./volumeDuck.ts";
+import { pronounceFrom } from "./pronounce.ts";
 import {
   createOutputWatch,
   outputDeviceFrom,
@@ -532,6 +533,8 @@ interface VoiceSettings {
    * Automatic reads the playback device; the other two are his override.
    */
   readonly outputDevice: OutputDevice;
+  /** His own pronunciations, word → how to say it ("pronounce" in fabric-voice.json); see pronounce.ts. */
+  readonly pronounce: Readonly<Record<string, string>>;
   /** Over speakers: hear him through her voice (the echo guard). Measured, not yet reliable enough to be the default. */
   readonly voiceBargeIn: boolean;
   /** Two quick taps of the dictation key keep the microphone open until the next press. */
@@ -640,6 +643,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   learnWords: true,
   quietSpeech: false,
   outputDevice: "auto",
+  pronounce: {},
   voiceBargeIn: false,
   doubleTap: true,
   keepVoice: false,
@@ -733,6 +737,7 @@ export const readSettings = (path: string): VoiceSettings => {
       learnWords: saved["learnWords"] !== false,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
+      pronounce: pronounceFrom(saved["pronounce"]),
       voiceBargeIn: saved["voiceBargeIn"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
@@ -1003,6 +1008,8 @@ export interface DesktopBatonVoice {
   readonly onSpeaking: (active: boolean) => void;
   /** A sentence going to the speakers. */
   readonly onSpoken: (text: string) => void;
+  /** His own pronunciations, for the voice. */
+  readonly respellings: () => Readonly<Record<string, string>>;
   /** A sentence starting to play, for where he cut in. */
   readonly onPlaying: (text: string) => void;
   /** The assistant finished a turn. */
@@ -6678,6 +6685,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.on({ type: "speaking", active });
     },
     onSpoken: (text) => core?.noteSpoken(text),
+    respellings: () => settings.pronounce,
     onPlaying: (text) => core?.playing(text),
     onTurnEnd: () => pill.on({ type: "finished" }),
     cue: (name) => pill.cue(name),

@@ -95,6 +95,60 @@ describe("createSpeaker on the OS voice", () => {
     expect(order).toEqual(["start one.", "end one.", "start two.", "end two."]);
   });
 
+  it("gives the voice the respelled line, and keeps the written one for the screen and her echo", async () => {
+    const synthesised: string[] = [];
+    const noted: string[] = [];
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async () => {} },
+      voice: () => ({
+        kind: "synth",
+        synth: (text) => ({
+          stream: (async function* () {
+            synthesised.push(text);
+            yield Buffer.alloc(2);
+          })(),
+          cancel: () => {},
+        }),
+      }),
+      player: {
+        ...player,
+        play: async (wav) => {
+          await drain(wav);
+          return true;
+        },
+      },
+      onText: (text) => void noted.push(text),
+      respellings: () => ({ Kiro: "Keer-oh" }),
+    });
+    await speaker.speak("Freya asked Kiro about the VPN.");
+    expect(synthesised).toEqual(["Fray-uh asked Keer-oh about the V P N."]);
+    // Both, so her own voice is known whether the recogniser writes "VPN" or "V P N".
+    expect(noted).toEqual([
+      "Freya asked Kiro about the VPN.",
+      "Fray-uh asked Keer-oh about the V P N.",
+    ]);
+  });
+
+  it("shows a line of only emoji, and says nothing without calling it unsaid", async () => {
+    const noted: string[] = [];
+    let unsaid = 0;
+    let played = 0;
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async () => {} },
+      voice: () => ({
+        kind: "synth",
+        synth: () => ({ stream: (async function* () {})(), cancel: () => {} }),
+      }),
+      player: { ...player, play: async () => ((played += 1), true) },
+      onText: (text) => void noted.push(text),
+      onUnavailable: () => void (unsaid += 1),
+    });
+    await speaker.speak("🎉");
+    expect(noted).toEqual(["🎉"]);
+    expect(unsaid).toBe(0);
+    expect(played).toBe(0);
+  });
+
   it("says nothing at all in Written only", async () => {
     const said: string[] = [];
     const active: boolean[] = [];
