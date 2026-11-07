@@ -122,6 +122,36 @@ export const outcomesFromRecord = (
     ];
   });
 
+/** A finding the server's own watch noticed, as a Record row (D1): kept with no desktop up, read by the morning brief. */
+export const findingRecord = (f: WatchFinding) => ({
+  kind: "watch",
+  actor: "watch",
+  ref: f.workSessionId,
+  subject: f.title,
+  outcome: f.kind,
+  detail: f.lastDid ?? "",
+});
+
+const KEPT_KINDS: ReadonlySet<string> = new Set(["failed", "stalled"]);
+
+/** The failures and stalls the watch recorded, as findings again, though they have since cleared; any other row is ignored. */
+export const findingsFromRecord = (
+  rows: ReadonlyArray<BatonRecordEntry>,
+): ReadonlyArray<WatchFinding> =>
+  rows.flatMap((r): ReadonlyArray<WatchFinding> =>
+    r.kind !== "watch" || r.ref === null || !KEPT_KINDS.has(r.outcome)
+      ? []
+      : [
+          {
+            workSessionId: WorkSessionId.make(r.ref),
+            title: r.subject,
+            kind: r.outcome as WatchFinding["kind"],
+            minutes: 0,
+            ...(r.detail === "" ? {} : { lastDid: r.detail }),
+          },
+        ],
+  );
+
 /**
  * His terminal sessions, which are not work sessions: one waiting on him too long, and what the watchdog did
  * about one that died (resumed, or why not). The session id stands where a work session's id would.

@@ -55,11 +55,12 @@ describe("the morning brief", () => {
         job("Audit", "running", 30),
         job("Tax", "needs_you", 2),
       ],
-      findings: [f("9", "failed")],
+      // The same finding standing now and kept in the Record overnight is named once.
+      findings: [f("9", "failed"), f("9", "failed"), f("4", "stalled"), f("4", "stalled")],
       now: NOW,
     });
     expect(text).toBe(
-      "Good morning. Finished: Site. Failed: Work 9. Waiting for you: Tax. Still running: Audit.",
+      "Good morning. Finished: Site. Failed: Work 9. Waiting for you: Tax. Still running: Audit. Looks stalled: Work 4.",
     );
     expect(morningBrief({ jobs: [], findings: [], now: NOW })).toContain("Nothing happened");
   });

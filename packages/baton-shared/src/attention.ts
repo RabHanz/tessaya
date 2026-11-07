@@ -120,7 +120,7 @@ export const morningBrief = (input: {
   const running = names("running", input.jobs);
   if (running.length > 0) parts.push(`Still running: ${list(running)}.`);
   const stuck = input.findings.filter((f) => f.kind === "stalled").map((f) => f.title);
-  if (stuck.length > 0) parts.push(`Looks stalled: ${list(stuck)}.`);
+  if (stuck.length > 0) parts.push(`Looks stalled: ${list([...new Set(stuck)])}.`);
   const guide = (input.guide ?? [])
     .filter((e) => e.kind === "background_turns" && input.now - Date.parse(e.at) <= day)
     .map((e) =>

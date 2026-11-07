@@ -83,6 +83,8 @@ export const BatonCatalogSession = Schema.Struct({
   pane: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The provider instance answering this session's live thread; not `baton-live` means a handoff session. */
   answeredBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** Stopped because it died mid-turn and was not brought back; `detail` says why not. */
+  crashed: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonCatalogSession = typeof BatonCatalogSession.Type;
 

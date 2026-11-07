@@ -53,6 +53,7 @@ export const rowsFromAnswer = (json: string): ReadonlyArray<CatalogRow> => {
       pane: asString(raw["pane"]),
       answeredBy: asString(raw["answeredBy"]),
       ...(typeof raw["waiting"] === "number" ? { waiting: raw["waiting"] } : {}),
+      ...(raw["crashed"] === true ? { crashed: true } : {}),
       ...(asString(raw["threadId"]) === null ? {} : { threadId: asString(raw["threadId"])! }),
     });
   }

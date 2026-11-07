@@ -1,9 +1,11 @@
-import type { BatonFleetEntry } from "@t3tools/baton-contracts";
+import { WorkSessionId, type BatonFleetEntry } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   describeWatch,
+  findingRecord,
+  findingsFromRecord,
   outcomeRecord,
   outcomesFromRecord,
   watchFleet,
@@ -129,5 +131,25 @@ describe("watching his terminal sessions", () => {
         lastDid: "died mid-turn, not resumed: stopped on purpose",
       },
     ]);
+  });
+  it("keeps the server watch's failures and stalls in the Record for the brief, though they cleared", () => {
+    const row = (kind: "failed" | "stalled" | "unanswered", id: number) => ({
+      ...findingRecord({
+        workSessionId: WorkSessionId.make(`w${id}`),
+        title: `T${id}`,
+        kind,
+        minutes: 40,
+        lastDid: "ran the tests",
+      }),
+      id,
+      at: ago(id),
+      project: null,
+    });
+    expect(findingsFromRecord([row("failed", 1), row("unanswered", 2), row("stalled", 3)])).toEqual(
+      [
+        { workSessionId: "w1", title: "T1", kind: "failed", minutes: 0, lastDid: "ran the tests" },
+        { workSessionId: "w3", title: "T3", kind: "stalled", minutes: 0, lastDid: "ran the tests" },
+      ],
+    );
   });
 });

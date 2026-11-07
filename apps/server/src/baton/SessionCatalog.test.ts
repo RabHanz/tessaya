@@ -315,6 +315,7 @@ describe("browsing", () => {
           account: "bob",
         }),
       ],
+      crashed: (id) => (id === ID ? "auto-resume is off here" : null),
     });
     const { sessions, machine: name } = await catalog.list({});
     expect(name).toBe("box");
@@ -325,6 +326,12 @@ describe("browsing", () => {
     ]);
     expect(sessions[2]!.detail).toContain("not on this machine");
     expect(sessions[1]!.title).toBe("Fix the checkout");
+    // One that died mid-turn and was not brought back says so, and why, instead of a plain "stopped".
+    expect(sessions[1]).toMatchObject({
+      crashed: true,
+      detail: "Died mid-turn and was not resumed: auto-resume is off here",
+    });
+    expect(sessions[2]!.crashed).toBeUndefined();
     // A live thread checks its own session by id; the history index may not have it.
     const byId = (await catalog.list({ query: "run-1" })).sessions;
     expect(byId.map((s) => [s.id, s.state])).toEqual([["run-1", "running"]]);

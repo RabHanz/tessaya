@@ -420,7 +420,7 @@ import { readCaretContext } from "./caretContext.ts";
 import { describeJobs } from "../agent/jobText.ts";
 import { deskCall, serverOnly } from "./deskCall.ts";
 import { buildAuditTrail, describeAuditTrail } from "@t3tools/baton-shared/audit";
-import { describeWatch } from "@t3tools/baton-shared/watch";
+import { describeWatch, findingsFromRecord } from "@t3tools/baton-shared/watch";
 import {
   freshFindings,
   isSilenced,
@@ -2037,16 +2037,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     return lines.filter((l): l is string => l !== null);
   };
   /** The Record's notes that a persona passed the day's turn guide; none when the server cannot be read. */
-  const guideNotes = async (): Promise<ReadonlyArray<BatonRecordEntry>> => {
+  const recordNotes = async (
+    kind: string,
+    limit: number,
+  ): Promise<ReadonlyArray<BatonRecordEntry>> => {
     const value = (await input
       .direct?.("baton.record.list", {
-        kind: "background_turns",
+        kind,
         since: new Date(Date.now() - 24 * 3_600_000).toISOString(),
-        limit: 20,
+        limit,
       })
       .catch(() => null)) as { entries?: ReadonlyArray<BatonRecordEntry> } | null | undefined;
     return value?.entries ?? [];
   };
+  const guideNotes = () => recordNotes("background_turns", 20);
   const awareness = createAwareness({
     switches: () => ({
       window: settings.awarenessWindow,
@@ -4230,7 +4234,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         brief: async (signal) => {
           const text = morningBrief({
             jobs,
-            findings,
+            // What the server's watch saw overnight with no desktop up, though it has since cleared (D1).
+            findings: [...findings, ...findingsFromRecord(await recordNotes("watch", 100))],
             now,
             guide: await guideNotes(),
             extra: briefExtra(),

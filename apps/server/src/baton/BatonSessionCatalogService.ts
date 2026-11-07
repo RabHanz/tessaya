@@ -391,6 +391,8 @@ export const layer = Layer.effect(
         sendOutcome,
       ),
     );
+    // What the watchdog did about each session that died mid-turn, for the watch; one per session, kept from its first sighting.
+    const outcomes = new Map<string, WatchdogOutcome>();
     const ports: CatalogPorts = {
       ...real,
       ...(thread === undefined ? {} : { thread }),
@@ -408,6 +410,10 @@ export const layer = Layer.effect(
               ),
           }),
       autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
+      crashed: (id) => {
+        const o = outcomes.get(id);
+        return o === undefined || o.resumed ? null : (o.why ?? "unknown");
+      },
       kept: {
         read: () => keptAtStart,
         // Each write is the whole set, so they are saved in order, one after another.
@@ -450,8 +456,6 @@ export const layer = Layer.effect(
       }
     };
     const FRESH_MS = 6 * HOUR_MS;
-    // What the watchdog did about each session that died mid-turn, for the watch; one per session, kept from its first sighting.
-    const outcomes = new Map<string, WatchdogOutcome>();
     // Read back from the Record, so a death the watchdog saw before a restart is still reported after it.
     if (Option.isSome(record)) {
       const since = new Date(Date.now() - OUTCOME_MEMORY_MS).toISOString();

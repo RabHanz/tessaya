@@ -39,6 +39,8 @@ export interface CatalogRow {
   readonly answeredBy?: string | null;
   /** Messages it keeps until it can take them. */
   readonly waiting?: number;
+  /** Stopped because it died mid-turn and was not brought back. */
+  readonly crashed?: boolean;
 }
 
 export interface KeptMessages {
@@ -274,7 +276,7 @@ export const catalogControls = (input: {
     machine: r.machine,
     when: agoWords(r.lastActivityAt, input.now),
     state: r.state,
-    stateLabel: STATE_WORDS[r.state],
+    stateLabel: r.state === "stopped" && r.crashed === true ? "Crashed" : STATE_WORDS[r.state],
     resumeLabel:
       r.state === "stopped" || r.state === "failed" ? (r.canResume ? "Resume" : null) : null,
     note: (r.state === "stopped" || r.state === "failed") && r.canResume ? WORDS.resumeHint : "",
