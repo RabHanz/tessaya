@@ -10,6 +10,8 @@
  */
 import type { TtsProvider } from "@t3tools/baton-voice";
 
+import { pronounce } from "./pronounce.ts";
+
 /** Plays a WAV as its bytes arrive; resolves false if there was nothing to play. */
 export interface VoicePlayer {
   readonly play: (wav: AsyncIterable<Buffer>) => Promise<boolean>;
@@ -125,6 +127,8 @@ export const createSpeaker = (input: {
   readonly onWaiting?: (waiting: boolean) => void;
   /** The voice could not speak this line. Nothing was said aloud; the text is all he gets. */
   readonly onUnavailable?: (text: string) => void;
+  /** His own pronunciations (word → how to say it), read for each sentence. */
+  readonly respellings?: () => Readonly<Record<string, string>>;
 }): Speaker => {
   const running = new Set<() => void>();
   let generation = 0;
@@ -156,12 +160,14 @@ export const createSpeaker = (input: {
     if (!force && input.silent?.() === true) return Promise.resolve();
     const text = speakableText(raw);
     if (text.length === 0) return Promise.resolve();
+    // What is shown and checked against her echo stays as written; only the voice is given it respelled.
+    const spoken = speakableText(pronounce(raw, input.respellings?.() ?? {}));
     input.onText?.(text);
     const mine = generation;
     const first = pick();
     let source: ReturnType<typeof readAhead> | null = null;
     if (first.kind === "synth") {
-      source = startSource(first.synth, mine, text);
+      source = startSource(first.synth, mine, spoken);
     }
     if (queued === 0) input.onActive?.(true);
     queued += 1;
@@ -175,12 +181,12 @@ export const createSpeaker = (input: {
         if (mine !== generation) return;
         choice = ok ? pick() : first;
         if (choice.kind === "synth") {
-          source = startSource(choice.synth, mine, text);
+          source = startSource(choice.synth, mine, spoken);
         }
       }
       if (choice.kind === "system") {
         input.onPlaying?.(text);
-        await input.os.speak(text).catch(() => undefined);
+        await input.os.speak(spoken).catch(() => undefined);
       } else if (source === null) {
         input.onUnavailable?.(text);
       } else {

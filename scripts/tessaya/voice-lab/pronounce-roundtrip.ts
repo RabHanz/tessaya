@@ -1,0 +1,205 @@
+// @effect-diagnostics nodeBuiltinImport:off
+/**
+ * Her voice (Pocket TTS) says each line as today and through `pronounce`, the sidecar's Parakeet hears it back, and the
+ * word error per line goes to report.md. Pocket TTS is a Windows build: run it on the laptop, Node 23.6 or later:
+ *   node pronounce-roundtrip.ts --pocket <voice\pocket> --sidecar tessaya-voice.exe --model <parakeet .gguf> --out <dir>
+ */
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import { encodeWav } from "../../../packages/baton-voice/src/providers/speech.ts";
+import { parseWav, toVoicePcm } from "../../../apps/desktop/src/baton/voice/pcm.ts";
+import {
+  createPocketEngine,
+  type PocketVoice,
+} from "../../../apps/desktop/src/baton/voice/pocketVoice.ts";
+import { pronounce } from "../../../apps/desktop/src/baton/voice/pronounce.ts";
+import { speakableText } from "../../../apps/desktop/src/baton/voice/voiceSpeaker.ts";
+
+/** A line she might say, and how a person hearing it would write it down. */
+const LINES: ReadonlyArray<{ readonly text: string; readonly heard: string }> = [
+  { text: "Tessaya here, what do you need?", heard: "Tessaya here what do you need" },
+  { text: "Ask Freya to read it back.", heard: "Ask Freya to read it back" },
+  { text: "Baton restarted and T3 is up.", heard: "Baton restarted and T3 is up" },
+  { text: "The VPN is down again.", heard: "The VPN is down again" },
+  { text: "CI failed on the PR.", heard: "CI failed on the PR" },
+  { text: "The API key is in the URL.", heard: "The API key is in the URL" },
+  { text: "Run the SQL query first.", heard: "Run the SQL query first" },
+  { text: "The call is at 9:30 GMT+5.", heard: "The call is at nine thirty GMT plus five" },
+  { text: "It starts at 14:00 UTC.", heard: "It starts at fourteen hundred UTC" },
+  {
+    text: "The deadline is 2026-11-07.",
+    heard: "The deadline is seven November twenty twenty six",
+  },
+  {
+    text: "Version 0.1.73 is installed.",
+    heard: "Version zero point one point seventy three is installed",
+  },
+  { text: "I changed apps/desktop/src/core.ts for you.", heard: "I changed core dot ts for you" },
+  {
+    text: "It is at https://github.com/acme/app/pull/12 now.",
+    heard: "It is at github dot com now",
+  },
+  { text: "Done ✅ and shipped 🚀.", heard: "Done and shipped" },
+  {
+    text: "**Two things:** the build, and the deploy.",
+    heard: "Two things the build and the deploy",
+  },
+];
+
+const ONES =
+  "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(
+    " ",
+  );
+const TENS = "  twenty thirty forty fifty sixty seventy eighty ninety".split(" ");
+
+/** 0–9999 as words, the way Parakeet may write a number either way. */
+const spellNumber = (n: number): string => {
+  if (n < 20) return ONES[n]!;
+  if (n < 100) return `${TENS[Math.floor(n / 10)]}${n % 10 === 0 ? "" : ` ${ONES[n % 10]}`}`;
+  if (n < 1000)
+    return `${ONES[Math.floor(n / 100)]} hundred${n % 100 === 0 ? "" : ` ${spellNumber(n % 100)}`}`;
+  // Years the way they are said: 2026 is "twenty twenty six".
+  if (n >= 1100 && n < 10_000 && n % 100 !== 0)
+    return `${spellNumber(Math.floor(n / 100))} ${spellNumber(n % 100)}`;
+  return `${spellNumber(Math.floor(n / 1000))} thousand${n % 1000 === 0 ? "" : ` ${spellNumber(n % 1000)}`}`;
+};
+
+/** Words to compare: lower case, numbers spelt out, and spelt-out letters ("v p n") joined back into one word. */
+const wordsOf = (text: string): string[] => {
+  const words = text
+    .toLowerCase()
+    .replace(/(\d+)/g, (digits) => ` ${spellNumber(Number(digits))} `)
+    .replace(/[^a-z' ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const out: string[] = [];
+  let letters = false;
+  for (const [i, word] of words.entries()) {
+    if (word.length === 1 && letters) {
+      out[out.length - 1] += word;
+      continue;
+    }
+    out.push(word);
+    // "a" and "I" are words; they start a run of letters only when another letter follows ("a p i").
+    letters = word.length === 1 && (!/^[ai]$/.test(word) || words[i + 1]?.length === 1);
+  }
+  return out;
+};
+
+/** Word error rate of what was heard against the reference. */
+const wordError = (reference: string, hypothesis: string): number => {
+  const r = wordsOf(reference);
+  const h = wordsOf(hypothesis);
+  const row = Array.from({ length: h.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= r.length; i += 1) {
+    let diagonal = row[0]!;
+    row[0] = i;
+    for (let j = 1; j <= h.length; j += 1) {
+      const above = row[j]!;
+      row[j] = Math.min(above + 1, row[j - 1]! + 1, diagonal + (r[i - 1] === h[j - 1] ? 0 : 1));
+      diagonal = above;
+    }
+  }
+  return r.length === 0 ? 0 : row[h.length]! / r.length;
+};
+
+const flag = (name: string): string | undefined => {
+  const at = process.argv.indexOf(name);
+  return at < 0 ? undefined : process.argv[at + 1];
+};
+
+const main = async () => {
+  const pocketRoot = flag("--pocket");
+  const sidecar = flag("--sidecar");
+  const model = flag("--model");
+  const out = flag("--out");
+  const voice = (flag("--voice") ?? "anna") as PocketVoice;
+  if (pocketRoot === undefined || sidecar === undefined || model === undefined || out === undefined)
+    throw new Error("Needs --pocket, --sidecar, --model and --out.");
+  NodeFS.mkdirSync(out, { recursive: true });
+  const engine = createPocketEngine({
+    root: pocketRoot,
+    // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
+    platform: process.platform,
+    // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
+    arch: process.arch,
+    onProgress: (message) => message !== null && console.error(message),
+  });
+  try {
+    if (!(await engine.ensure(voice))) throw new Error(`Pocket TTS has no ${voice} voice here.`);
+    const synth = engine.synthesise(voice);
+    if (synth === null) throw new Error("Pocket TTS did not start.");
+    const files: string[] = [];
+    for (const [index, line] of LINES.entries()) {
+      for (const pass of ["before", "after"] as const) {
+        const text =
+          pass === "before" ? speakableText(line.text) : speakableText(pronounce(line.text));
+        const chunks: Buffer[] = [];
+        for await (const chunk of synth(text).stream) chunks.push(chunk);
+        const wav = parseWav(Buffer.concat(chunks));
+        const file = NodePath.join(out, `${String(index).padStart(2, "0")}-${pass}.wav`);
+        NodeFS.writeFileSync(
+          file,
+          encodeWav(toVoicePcm(wav.samples, wav.channels, wav.sampleRate)),
+        );
+        files.push(file);
+      }
+    }
+    const list = NodePath.join(out, "clips.txt");
+    NodeFS.writeFileSync(list, `${files.join("\n")}\n`);
+    const run = NodeChildProcess.spawnSync(
+      sidecar,
+      ["transcribe", "--model", model, "--language", "en", "--list", list],
+      { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+    );
+    if (run.status !== 0) throw new Error(`The sidecar failed: ${run.stderr}`);
+    const heard = new Map<string, string>();
+    for (const row of run.stdout.split("\n")) {
+      if (!row.startsWith("{")) continue;
+      const parsed = JSON.parse(row) as { readonly file?: string; readonly text?: string };
+      if (parsed.file !== undefined) heard.set(parsed.file, parsed.text ?? "");
+    }
+    const results = LINES.map((line, index) => {
+      const of = (pass: "before" | "after") =>
+        heard.get(NodePath.join(out, `${String(index).padStart(2, "0")}-${pass}.wav`)) ?? "";
+      return {
+        text: line.text,
+        heard: line.heard,
+        before: {
+          said: speakableText(line.text),
+          back: of("before"),
+          wer: wordError(line.heard, of("before")),
+        },
+        after: {
+          said: speakableText(pronounce(line.text)),
+          back: of("after"),
+          wer: wordError(line.heard, of("after")),
+        },
+      };
+    });
+    const mean = (pass: "before" | "after") =>
+      results.reduce((sum, r) => sum + r[pass].wer, 0) / results.length;
+    const pct = (n: number) => `${Math.round(n * 100)}%`;
+    const report = [
+      `Round trip, voice ${voice}: Pocket TTS, then Parakeet (${NodePath.basename(model)}).`,
+      "",
+      "| Line | Heard before | WER | Heard after | WER |",
+      "| --- | --- | --- | --- | --- |",
+      ...results.map(
+        (r) =>
+          `| ${r.text.replaceAll("|", "/")} | ${r.before.back} | ${pct(r.before.wer)} | ${r.after.back} | ${pct(r.after.wer)} |`,
+      ),
+      `| **Mean** | | **${pct(mean("before"))}** | | **${pct(mean("after"))}** |`,
+      "",
+    ].join("\n");
+    NodeFS.writeFileSync(NodePath.join(out, "results.json"), JSON.stringify(results, null, 2));
+    NodeFS.writeFileSync(NodePath.join(out, "report.md"), report);
+    console.log(report);
+  } finally {
+    engine.dispose();
+  }
+};
+
+await main();

@@ -339,6 +339,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
       onText: (text) => voice?.onSpoken(text),
+      respellings: () => voice?.respellings() ?? {},
       onPlaying: (text) => voice?.onPlaying(text),
       onWaiting: (waiting) => voice?.onNote(waiting ? "Loading the voice…" : null),
       onUnavailable: () =>

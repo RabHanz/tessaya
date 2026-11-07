@@ -95,6 +95,36 @@ describe("createSpeaker on the OS voice", () => {
     expect(order).toEqual(["start one.", "end one.", "start two.", "end two."]);
   });
 
+  it("gives the voice the respelled line, and keeps the written one for the screen and her echo", async () => {
+    const synthesised: string[] = [];
+    const noted: string[] = [];
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async () => {} },
+      voice: () => ({
+        kind: "synth",
+        synth: (text) => ({
+          stream: (async function* () {
+            synthesised.push(text);
+            yield Buffer.alloc(2);
+          })(),
+          cancel: () => {},
+        }),
+      }),
+      player: {
+        ...player,
+        play: async (wav) => {
+          await drain(wav);
+          return true;
+        },
+      },
+      onText: (text) => void noted.push(text),
+      respellings: () => ({ Kiro: "Keer-oh" }),
+    });
+    await speaker.speak("Freya asked Kiro about the VPN.");
+    expect(synthesised).toEqual(["Fray-uh asked Keer-oh about the V P N."]);
+    expect(noted).toEqual(["Freya asked Kiro about the VPN."]);
+  });
+
   it("says nothing at all in Written only", async () => {
     const said: string[] = [];
     const active: boolean[] = [];
