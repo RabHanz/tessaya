@@ -17,6 +17,7 @@ import {
   createWhisperCppStt,
   DEFAULT_TIMINGS,
 } from "@t3tools/baton-voice";
+import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
 import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -30,6 +31,7 @@ import {
   sessionMessageSentence,
   type VoiceIntentRequest,
   liveTimings,
+  withPreempt,
 } from "./desktopVoiceCore.ts";
 import { makeWavFileAudioInput, wavDeviceId } from "./WavFileAudioInput.ts";
 import { utteranceCaption } from "./voiceHud.ts";
@@ -302,5 +304,30 @@ describe("how long the voice listens", () => {
     expect(live.commandWindowMs).toBe(8_000);
     expect(live.conversationMs).toBe(120_000);
     expect(liveTimings(DEFAULT_TIMINGS).commandWindowMs).toBe(DEFAULT_TIMINGS.commandWindowMs);
+  });
+});
+
+describe("the dictionary preempt", () => {
+  it("runs only at go, and still when thinking ahead failed", async () => {
+    let preempted = 0;
+    const router = withPreempt(
+      {
+        route: async () => ({ kind: "none" }),
+        prepare: async () => {
+          throw new Error("offline");
+        },
+      },
+      async () => {
+        preempted += 1;
+        return "Added.";
+      },
+    );
+    const go = await router.prepare!(
+      { kind: "command", text: "add Tessaya to my dictionary", inheritedTarget: null },
+      { bus: emptyContextBus, now: 0 },
+    );
+    expect(preempted).toBe(0);
+    expect(await go()).toMatchObject({ kind: "ran", reply: "Added." });
+    expect(preempted).toBe(1);
   });
 });

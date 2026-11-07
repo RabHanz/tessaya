@@ -119,6 +119,8 @@ export const createSpeaker = (input: {
   readonly onActive?: (active: boolean) => void;
   /** Each sentence as it is taken, before anything plays. */
   readonly onText?: (text: string) => void;
+  /** Each sentence as it starts to play: the audio reported next is its. */
+  readonly onPlaying?: (text: string) => void;
   /** A line is held back while the voice loads: true when it starts waiting, false when it stops. */
   readonly onWaiting?: (waiting: boolean) => void;
   /** The voice could not speak this line. Nothing was said aloud; the text is all he gets. */
@@ -177,10 +179,12 @@ export const createSpeaker = (input: {
         }
       }
       if (choice.kind === "system") {
+        input.onPlaying?.(text);
         await input.os.speak(text).catch(() => undefined);
       } else if (source === null) {
         input.onUnavailable?.(text);
       } else {
+        input.onPlaying?.(text);
         const played = await input.player.play(source.stream).catch(() => false);
         if (mine === generation && !played) input.onUnavailable?.(text);
       }

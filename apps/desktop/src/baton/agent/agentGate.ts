@@ -28,6 +28,18 @@ export type Gate = (
   call: ToolCall,
 ) => Promise<{ readonly allow: true } | { readonly allow: false; readonly reason: string }>;
 
+/** He talked over her reply since this turn began: it does nothing more, and his next words say what he wants. */
+export const stopsOnCutIn =
+  (gate: Gate, cutSinceTurn: () => boolean): Gate =>
+  async (call) =>
+    cutSinceTurn()
+      ? {
+          allow: false,
+          reason:
+            "He cut in over your reply, so this was not done. Do nothing more this turn; his next words say what he wants.",
+        }
+      : gate(call);
+
 /** Has this turn read something outside the conversation? Reset when a new turn starts. */
 /** Where a yes to typing was given for: the window with the keyboard and the box that was clicked. */
 export interface TypingScope {

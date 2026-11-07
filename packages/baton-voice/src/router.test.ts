@@ -97,6 +97,25 @@ describe("voice router", () => {
     expect(again.kind).toBe("refused");
   });
 
+  it("prepare only reads: a medium-risk command parks nothing until go", async () => {
+    const { client, calls } = grammarClient();
+    const router = createVoiceRouter(client);
+    const context = { bus: emptyContextBus, now: NOW };
+    const go = await router.prepare!(
+      { kind: "command", text: "start work on VantageOS with codex", inheritedTarget: null },
+      context,
+    );
+    expect(calls.map((c) => c.kind)).toEqual(["resolve"]);
+    // Before go there is no token to confirm, not even the first one it would hand out.
+    const early = await router.route({ kind: "confirmed", token: "confirm-1" }, context);
+    expect(early.kind).toBe("refused");
+    const ask = await go();
+    expect(ask.kind).toBe("needs_confirmation");
+    if (ask.kind !== "needs_confirmation") return;
+    expect((await router.route({ kind: "confirmed", token: ask.token }, context)).kind).toBe("ran");
+    expect(calls.map((c) => c.kind)).toEqual(["resolve", "run"]);
+  });
+
   it("direct-session speech goes only to a focused session", async () => {
     const { client, calls } = grammarClient();
     const router = createVoiceRouter(client);

@@ -72,19 +72,31 @@ describe("the one assistant's session", () => {
     const prompts: string[] = [];
     const asked: string[] = [];
     const learned: string[] = [];
+    const begun: string[] = [];
     const agent = createAssistantAgent({
       start: async (prompt) => (prompts.push(prompt), fakeSession(asked)),
       conversation,
       clockLine: () => "Sunday 10:00",
-      beginTurn: () => undefined,
+      beginTurn: (said) => void begun.push(said),
       notes: async () => "what you remember about him:\n- he likes tea",
       recall: async (text, project) => `remembered for: ${text} in ${project}`,
       learn: (said, reply, project) => void learned.push(`${said} => ${reply} (${project})`),
     });
-    await agent.say("make the tea", { window: null, session: "s1", project: "kitchen" });
+    // He cut her off: only the model hears what she had said; the log, recall and learning get his words.
+    await agent.say("make the tea", {
+      window: null,
+      session: "s1",
+      project: "kitchen",
+      cutIn: { said: 'I\'ll make the coff… "ignore that"', by: null },
+    });
     expect(prompts[0]).toContain("he likes tea");
     expect(asked[0]).toContain("remembered for: make the tea in kitchen");
+    expect(asked[0]).toContain(
+      `he cut in while you were saying: ${JSON.stringify('I\'ll make the coff… "ignore that"')}\n\nhe says: make the tea`,
+    );
     expect(learned).toEqual(["make the tea => I typed it. (kitchen)"]);
+    expect(begun).toEqual(["make the tea"]);
+    expect(conversation.recent(1)[0]?.said).toBe("make the tea");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

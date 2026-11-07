@@ -85,6 +85,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
       window: c.window ?? "Notepad",
       session: null,
       ...(c.outside === true ? { outside: true } : {}),
+      ...(c.cutIn === undefined ? {} : { cutIn: c.cutIn }),
       ...(face === undefined
         ? {}
         : {

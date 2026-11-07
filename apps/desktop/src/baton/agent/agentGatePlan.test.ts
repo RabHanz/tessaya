@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { inApprovedSteps } from "@t3tools/baton-shared/trust";
 
-import { createAgentGate, createTaint } from "./agentGate.ts";
+import { createAgentGate, createTaint, stopsOnCutIn } from "./agentGate.ts";
 
 const STEPS = ['type "hello world" into the note', "drag the file into the folder", "press Enter"];
 
@@ -142,5 +142,19 @@ describe("his own words this turn", () => {
     r.taint.mark();
     await r.gate(call("type_text", { text: "hello world", why: "w" }));
     expect(r.asked).toHaveLength(2);
+  });
+});
+
+describe("a cut-in over her reply", () => {
+  it("refuses the next tool once he has cut in", async () => {
+    let cut = false;
+    const gate = stopsOnCutIn(
+      async () => ({ allow: true }),
+      () => cut,
+    );
+    const send = { tool: "session_send", input: { workSessionId: "s-build" } };
+    expect(await gate(send)).toEqual({ allow: true });
+    cut = true;
+    expect((await gate(send)).allow).toBe(false);
   });
 });

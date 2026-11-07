@@ -24,6 +24,7 @@ import {
   type EchoGuard,
   type OpenWakeWordPaths,
   type OpenWakeWordScorer,
+  type RouteOutcome,
   type SileroScorer,
   type SttProvider,
   type TtsProvider,
@@ -32,6 +33,7 @@ import {
   type VoiceRouter,
   type WakeWordModel,
 } from "@t3tools/baton-voice";
+import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
 import {
   applyContextSnapshot,
   emptyContextBus,
@@ -191,6 +193,8 @@ export interface BrainVoiceHook {
       readonly session?: string | null;
       /** The wake word that opened this window, which picks the persona; null for a hotkey. */
       readonly wake?: string | null;
+      /** He cut her off: what she had said by then. */
+      readonly cutIn?: CutIn | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
 }
@@ -213,6 +217,7 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
       session:
         focused.workSessionId === null ? null : `${focused.workSessionId} (${focused.evidence})`,
       wake: context.wake ?? null,
+      cutIn: context.cutIn ?? null,
     });
     return decision.kind === "refused"
       ? { kind: "refused", reply: decision.reply, reason: "high_risk" }
@@ -224,15 +229,38 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
 export const withPreempt = (
   inner: VoiceRouter,
   preempt: (text: string) => Promise<string | null>,
-): VoiceRouter => ({
-  route: async (effect, context) => {
-    if (effect.kind === "command") {
-      const reply = await preempt(effect.text);
-      if (reply !== null) return { kind: "ran", reply, workSessionId: null, source: "intent" };
-    }
-    return inner.route(effect, context);
-  },
-});
+): VoiceRouter => {
+  const answered = (reply: string): RouteOutcome => ({
+    kind: "ran",
+    reply,
+    workSessionId: null,
+    source: "intent",
+  });
+  const prepare = inner.prepare;
+  return {
+    route: async (effect, context) => {
+      if (effect.kind === "command") {
+        const reply = await preempt(effect.text);
+        if (reply !== null) return answered(reply);
+      }
+      return inner.route(effect, context);
+    },
+    // The preempt writes his dictionary, so it waits for `go` like everything else that acts.
+    ...(prepare === undefined
+      ? {}
+      : {
+          prepare: async (effect, context) => {
+            // A failed read must not lose a dictionary command: the preempt runs first, at go.
+            const go = prepare(effect, context);
+            go.catch(() => undefined);
+            return async () => {
+              const reply = await preempt(effect.text);
+              return reply === null ? (await go)() : answered(reply);
+            };
+          },
+        }),
+  };
+};
 
 /** Timings read at each use, so a change in Settings counts at the next wake without restarting the voice. */
 type Timings = typeof DEFAULT_TIMINGS & { readonly wakeWords?: ReadonlyArray<string> };

@@ -1,8 +1,8 @@
 /* oxlint-disable t3code/no-real-time-wait-in-tests -- Baton file predating the rule (D82) */
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
-import type { RouteOutcome } from "./router.ts";
+import type { RouteContext, RouteOutcome } from "./router.ts";
 
 const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
@@ -13,13 +13,23 @@ const rig = (
   reply?: Promise<void>,
   /** Recognition of line `n` waits on this: a busy recogniser. */
   slow?: (n: number) => Promise<void>,
+  /** A router that thinks ahead (`prepare`), a voice that records what it says, and his pause setting. */
+  ahead?: { readonly waitMs: number },
 ) => {
   let speech = false;
   let next = 0;
   const routed: string[] = [];
   const events: VoiceCoreEvent[] = [];
+  const thought: string[] = [];
+  const spoken: string[] = [];
+  let routeCalls = 0;
+  const ran = async (text: string): Promise<RouteOutcome> => {
+    routed.push(text);
+    await reply;
+    return { kind: "ran", reply: "ok", workSessionId: null, source: "test" };
+  };
   const core = createVoiceCore({
-    waitMs: () => 1_500,
+    waitMs: () => ahead?.waitMs ?? 1_500,
     wake: { name: "fake", reset: () => {}, process: () => null },
     vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
     stt: {
@@ -33,11 +43,21 @@ const rig = (
     router: {
       route: async (effect): Promise<RouteOutcome> => {
         if (effect.kind !== "command") return { kind: "none" };
-        routed.push(effect.text);
-        await reply;
-        return { kind: "ran", reply: "ok", workSessionId: null, source: "test" };
+        routeCalls += 1;
+        return ran(effect.text);
       },
+      ...(ahead === undefined
+        ? {}
+        : {
+            prepare: async (effect) => {
+              thought.push(effect.text);
+              return () => ran(effect.text);
+            },
+          }),
     },
+    ...(ahead === undefined
+      ? {}
+      : { tts: { name: "fake", speak: async (text: string) => void spoken.push(text) } }),
   });
   core.subscribe((event) => events.push(event));
   const push = (seconds: number, loud: boolean) => {
@@ -47,7 +67,7 @@ const rig = (
   const settle = async () => {
     for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
   };
-  return { core, push, routed, events, settle };
+  return { core, push, routed, events, settle, thought, spoken, routeCalls: () => routeCalls };
 };
 
 describe("one sentence with a breath in it", () => {
@@ -194,5 +214,181 @@ describe("one sentence with a breath in it", () => {
     expect(r.routed).toEqual([]);
     expect(r.events.some((e) => e.type === "dismissed")).toBe(true);
     expect(r.core.snapshot().machine.mode).toBe("sleeping");
+  });
+});
+
+describe("thinking ahead in the pause", () => {
+  it("never says or does a reply thought out before he carried on", async () => {
+    let recognised: () => void = () => {};
+    const second = new Promise<void>((resolve) => (recognised = resolve));
+    // The rest is recognised late, so the joined words go at once with nothing thought out for them.
+    const r = rig(
+      ["Open my notes please.", "And the calendar."],
+      undefined,
+      (n) => (n === 1 ? second : Promise.resolve()),
+      { waitMs: 3_000 },
+    );
+    r.core.activate("wake");
+    await r.core.idle();
+    r.push(1, true);
+    r.push(1, false);
+    await r.settle();
+    r.push(0.1, false);
+    await r.settle();
+    expect(r.thought).toEqual(["Open my notes please."]);
+    // He goes on inside the 1.65 s a finished sentence waits at this setting.
+    r.push(0.2, false);
+    r.push(1, true);
+    r.push(1, false);
+    await r.settle();
+    r.push(3, false);
+    recognised();
+    await r.settle();
+    r.push(0.2, false);
+    await r.settle();
+    await r.core.idle();
+    expect(r.thought).toEqual(["Open my notes please."]);
+    expect(r.routed).toEqual(["Open my notes please. And the calendar."]);
+    expect(r.spoken).toEqual(["ok"]);
+  });
+
+  it("sends the reply it thought out once he stays quiet, without asking again", async () => {
+    const r = rig(["Open my notes please."], undefined, undefined, { waitMs: 3_000 });
+    r.core.activate("wake");
+    await r.core.idle();
+    r.push(1, true);
+    r.push(1, false);
+    await r.settle();
+    r.push(3, false);
+    await r.settle();
+    await r.core.idle();
+    expect(r.thought).toEqual(["Open my notes please."]);
+    expect(r.routed).toEqual(["Open my notes please."]);
+    expect(r.routeCalls()).toBe(0);
+    expect(r.spoken).toEqual(["ok"]);
+  });
+});
+
+/** Headphones, where his voice over hers cuts in with no name; she speaks a reply four seconds long. */
+const overHer = (lines: ReadonlyArray<string>) => {
+  let speech = false;
+  let wakeNow = false;
+  let next = 0;
+  const cutIns: Array<RouteContext["cutIn"]> = [];
+  let cancelled = 0;
+  let stopVoice = () => {};
+  const outcomes: VoiceCoreEvent[] = [];
+  const core: ReturnType<typeof createVoiceCore> = createVoiceCore({
+    waitMs: () => 1_500,
+    speakerMode: () => "headphones",
+    wake: {
+      name: "fake",
+      reset: () => {},
+      process: () => (wakeNow ? ((wakeNow = false), 0.9) : null),
+      lastWord: () => "Freya",
+    },
+    vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+    stt: { name: "fake", transcribe: async () => lines[next++] ?? "" },
+    tts: {
+      name: "fake",
+      speak: (text) => {
+        // Two seconds of her four-second sentence have been heard.
+        core.playing(text);
+        core.reference(new Int16Array(16 * 4_000), 1_000_000 - 2_000);
+        return new Promise<void>((resolve) => (stopVoice = resolve));
+      },
+      cancel: () => {
+        cancelled += 1;
+        stopVoice();
+      },
+    },
+    router: {
+      route: async (effect, context): Promise<RouteOutcome> => {
+        if (effect.kind !== "command") return { kind: "none" };
+        cutIns.push(context.cutIn ?? null);
+        return {
+          kind: "ran",
+          // Only the first turn has a reply to talk over.
+          reply: cutIns.length === 1 ? "I'll open the March invoice now." : "",
+          workSessionId: null,
+          source: "test",
+        };
+      },
+    },
+  });
+  core.subscribe((event) => event.type === "outcome" && outcomes.push(event));
+  const push = (seconds: number, loud: boolean) => {
+    speech = loud;
+    for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+  };
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+  };
+  /** The first turn, answered aloud: she is speaking when this returns. */
+  const askFirst = async () => {
+    core.activate("wake");
+    await core.idle();
+    push(1, true);
+    push(1.2, false);
+    await settle();
+    push(0.2, false);
+    await settle();
+  };
+  const sayAndWait = async (seconds = 1) => {
+    push(seconds, true);
+    push(1.2, false);
+    await settle();
+    push(1, false);
+    await settle();
+    await core.idle();
+  };
+  return {
+    core,
+    push,
+    settle,
+    askFirst,
+    sayAndWait,
+    cutIns,
+    outcomes,
+    cancelled: () => cancelled,
+    wake: () => (wakeNow = true),
+  };
+};
+
+describe("cutting in over her", () => {
+  it("carries on from the word she had reached, and leaves what already ran alone", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice.", "No, the other one."]);
+    await r.askFirst();
+    await r.sayAndWait();
+    expect(r.cancelled()).toBeGreaterThan(0);
+    expect(r.cutIns).toEqual([null, { said: "I'll open the…", by: null }]);
+    expect(r.outcomes).toHaveLength(2);
+  });
+
+  it("keeps the note when he says her name as he cuts in", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice.", "Freya, no, the other one."]);
+    await r.askFirst();
+    r.push(0.3, true);
+    r.wake();
+    await r.sayAndWait(0.7);
+    expect(r.cutIns).toEqual([null, { said: "I'll open the…", by: null }]);
+  });
+
+  it("gives a later turn no note when what he said over her came to nothing", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice.", "What time is it?"]);
+    await r.askFirst();
+    // A cough over her: it cuts in, and is too short to be words.
+    r.push(0.15, true);
+    r.push(1.5, false);
+    await r.settle();
+    await r.core.idle();
+    r.core.activate("wake");
+    await r.core.idle();
+    await r.sayAndWait();
+    expect(r.cancelled()).toBeGreaterThan(0);
+    expect(r.cutIns).toEqual([null, null]);
   });
 });
