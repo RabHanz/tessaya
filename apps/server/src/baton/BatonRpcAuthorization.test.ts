@@ -278,6 +278,7 @@ describe("a memory-sync credential", () => {
     BATON_MEMORY_WS_METHODS.syncHello,
     BATON_MEMORY_WS_METHODS.syncPull,
     BATON_MEMORY_WS_METHODS.syncPush,
+    BATON_MEMORY_WS_METHODS.historySearch,
   ];
 
   it("syncs, and only it or the desktop app may; it can call nothing else", () => {

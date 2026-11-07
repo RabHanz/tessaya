@@ -22,6 +22,8 @@ export const BATON_MEMORY_WS_METHODS = {
   learn: "baton.memory.learn",
   import: "baton.memory.import",
   pull: "baton.memory.pull",
+  /** The history index of past work, on the server that holds it (D5): this one, or a paired peer. */
+  historySearch: "baton.memory.historySearch",
   syncHello: "baton.memory.syncHello",
   syncPull: "baton.memory.syncPull",
   syncPush: "baton.memory.syncPush",
@@ -261,6 +263,15 @@ export const BatonMemoryImportResult = Schema.Struct({
 /** The scheduled pull of learnings from the history index; what it finds is held for his yes (D150). */
 export const BatonMemoryPullInput = Schema.Struct({
   action: Schema.Literals(["status", "enable", "disable", "run"]),
+});
+export const BatonMemoryHistorySearchInput = Schema.Struct({
+  query: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(300))),
+  session: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+});
+/** `found` is false when no server with the index answered; `text` then says why in plain words. */
+export const BatonMemoryHistorySearchResult = Schema.Struct({
+  found: Schema.Boolean,
+  text: Schema.String,
 });
 export const BatonMemoryPullResult = Schema.Struct({
   enabled: Schema.Boolean,

@@ -143,7 +143,6 @@ import {
 } from "./browserRoute.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
-import { askHistory } from "@t3tools/baton-shared/historyIndex";
 import { windowsHello } from "../vault/hello.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { redactForHistory } from "../vault/redact.ts";
@@ -604,6 +603,8 @@ export const startScreenCompanion = (input: {
   readonly onOpenTab?: (tab: string) => void;
   readonly platform: string;
   readonly env: NodeJS.ProcessEnv;
+  /** This machine's own server, whether or not T3's window is up. */
+  readonly direct?: (method: string, body: unknown) => Promise<unknown>;
   /** Baton's one voice, injected so this module never loads the voice models. */
   readonly speak: (text: string) => Promise<void>;
   /** A turn finished with nothing further coming, for the cue after a wake word. */
@@ -2110,9 +2111,16 @@ export const startScreenCompanion = (input: {
   // The assistant's last numbered tree: a click by number is refused once any other caller numbered a list.
   let lastTree: number | undefined;
   const toolHost: ToolHost = {
+    // The index lives on one server (D5); this machine's server answers from it or from the paired peer that holds it.
     history: async (ask) => {
-      const answer = await askHistory(input.env, ask);
-      return answer.ok ? answer.text : answer.why;
+      if (input.direct === undefined) return "The history index is not available here.";
+      const answer = (await input.direct("baton.memory.historySearch", ask).catch(() => null)) as {
+        readonly text?: string;
+      } | null;
+      return (
+        answer?.text ??
+        "This computer's server did not answer, so past work could not be searched right now."
+      );
     },
     vault: {
       list: () => vaultHost!.list(),

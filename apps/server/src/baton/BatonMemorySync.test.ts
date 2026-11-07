@@ -188,3 +188,33 @@ it.live("drops only the credential a peer refused, not one paired again during t
     assert.strictEqual(left["box"]?.token, "new-token");
   }).pipe(Effect.provide(serviceLayer)),
 );
+
+it.live("searches past work on the first paired peer whose own index answers", () =>
+  Effect.gen(function* () {
+    const sync = yield* BatonMemorySync;
+    stored.delete("tessaya-memory-sync-peers");
+    const seen: Array<string> = [];
+    const server = NodeHttp.createServer((request, response) => {
+      seen.push(`${request.url} ${request.headers.authorization}`);
+      const found = request.headers.authorization === "Bearer with-index";
+      response
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ value: { found, text: found ? "the hits" : "not here" } }));
+    });
+    yield* Effect.callback<void>(
+      (resume) => void server.listen(0, "127.0.0.1", () => resume(Effect.void)),
+    );
+    const origin = `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`;
+    assert.isTrue(Option.isNone(yield* sync.history({ query: "pricing" })));
+    yield* sync.addPeer({ environmentId: "a", ...peer(origin, "no-index") });
+    yield* sync.addPeer({ environmentId: "b", ...peer(origin, "with-index") });
+    const answer = yield* sync.history({ query: "pricing" });
+    server.close();
+    assert.deepStrictEqual(answer, Option.some("the hits"));
+    assert.deepStrictEqual(seen, [
+      "/tessaya/desk/baton.memory.historySearch Bearer no-index",
+      "/tessaya/desk/baton.memory.historySearch Bearer with-index",
+    ]);
+    stored.delete("tessaya-memory-sync-peers");
+  }).pipe(Effect.provide(serviceLayer)),
+);

@@ -10,7 +10,7 @@ Open the **History** page. Search by words; each row has your raw words and the 
 
 - Secrets you speak are removed from what is kept.
 - Nothing here is sent anywhere. Deleting a row deletes it.
-- To search past agent work across projects, ask the assistant ("what did we decide about pricing?"); that reads a separate history index if your computer has one.
+- To search past agent work across projects, ask the assistant ("what did we decide about pricing?"); that reads a separate history index on this computer, or on a server you paired for memory sync that has one. If neither can be reached, the assistant says so.
 
 ## Your voice report
 

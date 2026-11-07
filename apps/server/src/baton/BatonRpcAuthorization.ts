@@ -137,6 +137,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   ],
   // Runs the history script on this machine and writes held proposals.
   [BATON_MEMORY_WS_METHODS.pull]: AuthOrchestrationOperateScope,
+  // Past work across every venture: his own servers (a sync-only credential) and the desktop app, like sync.
+  [BATON_MEMORY_WS_METHODS.historySearch]: AuthBatonMemorySyncScope,
   // Sync carries every item, walled or not, and overwrites or deletes them: a sync-only credential or the desktop app.
   // This server's own sync carries every item, walled or not, with credentials it keeps: the desktop app only.
   [BATON_MEMORY_WS_METHODS.syncState]: [AuthOrchestrationReadScope, AuthBatonHandsHostScope],
@@ -197,6 +199,7 @@ const SYNC_METHODS: ReadonlySet<string> = new Set([
   BATON_MEMORY_WS_METHODS.syncHello,
   BATON_MEMORY_WS_METHODS.syncPull,
   BATON_MEMORY_WS_METHODS.syncPush,
+  BATON_MEMORY_WS_METHODS.historySearch,
 ]);
 
 /** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, rules (standing jobs), memory, commitments and weave. */

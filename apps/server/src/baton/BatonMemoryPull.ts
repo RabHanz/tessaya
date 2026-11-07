@@ -6,10 +6,17 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import { askHistory, parseLearnings } from "@t3tools/baton-shared/historyIndex";
+import {
+  askHistory,
+  NOT_HERE,
+  parseLearnings,
+  type HistoryAnswer,
+} from "@t3tools/baton-shared/historyIndex";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
+import { BatonMemorySync } from "./BatonMemorySync.ts";
 
 export const PULL_FLAG = "learnings-pull";
 /** What to ask the index for; the index's own tags decide what a venture is. */
@@ -17,6 +24,25 @@ const QUERIES = ["learned", "lesson", "what worked", "what failed"];
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Runner = Parameters<typeof askHistory>[2];
+
+export const NO_SERVER =
+  "No server with the history index could be reached, so past work cannot be searched right now. The index lives on one of his servers; pair it with this one for memory sync, or try again when it is up.";
+
+/** This server's own index (D5: one server holds it), else the first paired peer whose index answers. */
+export const searchHistory = Effect.fn("BatonMemoryPull.search")(function* (
+  ask: { readonly query?: string; readonly session?: string },
+  env: Env = process.env,
+  run?: Runner,
+) {
+  const here = yield* Effect.promise(() => askHistory(env, ask, run));
+  // A peer's ask is answered from this server's own index only, so two servers never ask each other in a loop.
+  if (here.ok || here.why !== NOT_HERE || (yield* MemoryViewer) === "server") return here;
+  const there = yield* (yield* BatonMemorySync).history(ask);
+  return Option.match(there, {
+    onNone: (): HistoryAnswer => ({ ok: false, why: NO_SERVER }),
+    onSome: (text): HistoryAnswer => ({ ok: true, text }),
+  });
+});
 
 export const pullLearnings = Effect.fn("BatonMemoryPull.pull")(function* (
   env: Env = process.env,
@@ -27,7 +53,7 @@ export const pullLearnings = Effect.fn("BatonMemoryPull.pull")(function* (
   let held = 0;
   let why: string | null = null;
   for (const query of QUERIES) {
-    const answer = yield* Effect.promise(() => askHistory(env, { query }, run));
+    const answer = yield* searchHistory({ query }, env, run);
     if (!answer.ok) {
       why = answer.why;
       break;

@@ -21,6 +21,7 @@ import { dailyEpisode } from "./BatonMemoryEpisode.ts";
 import { pullIfEnabled } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemorySync } from "./BatonMemorySync.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 export class BatonMemoryReactor extends Context.Service<
@@ -74,7 +75,12 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const engine = yield* BatonEngine;
     const context = yield* Effect.context<
-      BatonJobService | WorkSessionService | BatonEngine | BatonMemoryService | BatonMemoryLearning
+      | BatonJobService
+      | WorkSessionService
+      | BatonEngine
+      | BatonMemoryService
+      | BatonMemoryLearning
+      | BatonMemorySync
     >();
     return {
       start: Effect.fn("BatonMemoryReactor.start")(function* () {

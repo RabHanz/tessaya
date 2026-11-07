@@ -59,7 +59,7 @@ import { BatonEngine } from "./BatonEngine.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
-import { pullAction } from "./BatonMemoryPull.ts";
+import { pullAction, searchHistory } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonCloudService } from "./BatonCloudService.ts";
@@ -578,6 +578,12 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [BATON_MEMORY_WS_METHODS.import]: (input) => run(importFolder(input.folder)),
     [BATON_MEMORY_WS_METHODS.pull]: (input) => run(pullAction(input.action)),
+    [BATON_MEMORY_WS_METHODS.historySearch]: (input) =>
+      run(
+        Effect.map(searchHistory(input), (answer) =>
+          answer.ok ? { found: true, text: answer.text } : { found: false, text: answer.why },
+        ),
+      ),
     [BATON_MEMORY_WS_METHODS.syncState]: () =>
       run(Effect.flatMap(BatonMemorySync, (sync) => sync.state)),
     [BATON_MEMORY_WS_METHODS.syncSetEnabled]: (input) =>

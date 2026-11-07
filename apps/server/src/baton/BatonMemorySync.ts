@@ -5,6 +5,8 @@
  * API keys (not encrypted), and goes only to the origin that issued it, never along a redirect.
  */
 import {
+  BATON_MEMORY_WS_METHODS,
+  BatonMemoryHistorySearchResult,
   BatonMemorySyncError,
   BatonMemorySyncHelloResult,
   BatonMemorySyncPullResult,
@@ -126,6 +128,11 @@ export class BatonMemorySync extends Context.Service<
       input: { readonly environmentId: string } & typeof StoredPeer.Type,
     ) => Effect.Effect<void, BatonMemorySyncError>;
     readonly forget: (environmentId: string) => Effect.Effect<void, BatonMemorySyncError>;
+    /** The first paired peer whose own history index answered; none when no peer has one or none answered. */
+    readonly history: (ask: {
+      readonly query?: string;
+      readonly session?: string;
+    }) => Effect.Effect<Option.Option<string>>;
     readonly run: Effect.Effect<{
       readonly servers: number;
       readonly applied: number;
@@ -172,12 +179,12 @@ export const make = Effect.gen(function* () {
   const live = (peers: StoredPeers, now: number) =>
     Object.entries(peers).filter(([, peer]) => peer.expiresAt > now);
 
-  const remote = (
+  const peerCall = (
     environmentId: string,
     peer: typeof StoredPeer.Type,
     refused: Map<string, string>,
-  ): SyncEndpoint => {
-    const call = Effect.fn("BatonMemorySync.peerCall")(function* <A>(
+  ) =>
+    Effect.fn("BatonMemorySync.peerCall")(function* <A>(
       method: string,
       input: unknown,
       schema: Schema.Codec<A, unknown>,
@@ -207,6 +214,13 @@ export const make = Effect.gen(function* () {
         ? Option.none<A>()
         : Schema.decodeUnknownOption(schema)(json.value.value);
     });
+
+  const remote = (
+    environmentId: string,
+    peer: typeof StoredPeer.Type,
+    refused: Map<string, string>,
+  ): SyncEndpoint => {
+    const call = peerCall(environmentId, peer, refused);
     return {
       id: environmentId,
       hello: call("baton.memory.syncHello", {}, BatonMemorySyncHelloResult),
@@ -288,6 +302,18 @@ export const make = Effect.gen(function* () {
         const { [environmentId]: _gone, ...rest } = peers;
         return rest;
       }),
+    history: Effect.fn("BatonMemorySync.history")(function* (ask) {
+      const now = DateTime.toEpochMillis(yield* DateTime.now);
+      for (const [id, peer] of live(yield* readPeers, now)) {
+        const answer = yield* peerCall(id, peer, new Map())(
+          BATON_MEMORY_WS_METHODS.historySearch,
+          ask,
+          BatonMemoryHistorySearchResult,
+        );
+        if (Option.isSome(answer) && answer.value.found) return Option.some(answer.value.text);
+      }
+      return Option.none<string>();
+    }),
     run,
   });
 });
