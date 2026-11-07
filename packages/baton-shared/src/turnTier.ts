@@ -62,7 +62,9 @@ export const tierOfSentence = (said: string): { readonly tier: TurnTier; readonl
   const t = plain(said.replace(/^\s*(?:look|listen|so|well|right|okay|ok),\s*/i, ""));
   if (words(t) > 30) return { tier: "deep", why: "long request" };
   if (DEEP.test(t)) return { tier: "deep", why: "planning or judgement" };
-  if (ACTION.test(t) && CHAIN.test(t)) return { tier: "deep", why: "several steps" };
+  // "Then start dictating" carries on from the last turn: a "then" that opens it chains nothing.
+  if (ACTION.test(t) && CHAIN.test(t.replace(/^(?:and |so |okay |ok )?then /, "")))
+    return { tier: "deep", why: "several steps" };
   // Before the fast checks: "what needs me? approve the first one" is an action, not a status question.
   if (ACTION.test(t)) return { tier: "default", why: "an action" };
   if (CLOCK.test(t)) return { tier: "fast", why: "time or date" };

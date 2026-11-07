@@ -48,6 +48,13 @@ describe("end of turn", () => {
     ["Do you know what time it is?", "usual"],
     ["Where am I?", "usual"],
     ["Can I?", "usual"],
+    // 0.1.73: cut at 576 ms, and she started dictation on the half request. The last sentence is what is open.
+    ["I want to test the dictation feature. Can you", "longer"],
+    ["I want to test the dictation feature. Can you.", "longer"],
+    // With its question mark it may be the whole ask: the usual wait, not the short one.
+    ["I want to test the dictation feature. Can you?", "usual"],
+    ["Notepad is open. Could you please", "longer"],
+    ["That worked. Can you?", "usual"],
     ["Is that so?", "usual"],
     // Finished sentences that end on a word that often trails off.
     ["Use plan A.", "sooner"],

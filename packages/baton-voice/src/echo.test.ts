@@ -400,6 +400,47 @@ describe("silence after a wake word", () => {
       }
     });
 
+    it("hears his answer to her question over her voice, even when her question says the word", async () => {
+      // 0.1.73: "Yes." was dropped as her own voice, "Yes, go ahead." as not a stop.
+      for (const [said, want] of [
+        ["Yes.", "yes"],
+        ["Yes, go ahead.", "yes"],
+        ["Jarvis, yes.", "yes"],
+        ["No.", "no"],
+      ] as const) {
+        const r = scripted(said);
+        const question = r.core.confirm("Clear the box? Say yes or no.");
+        await r.core.idle();
+        r.core.noteSpoken("Clear the box? Say yes or no.");
+        r.core.setSpeaking(true);
+        r.push(0.5);
+        r.speech(true);
+        r.push(0.5);
+        r.speech(false);
+        r.push(0.6);
+        await settled();
+        await r.core.idle();
+        expect(await Promise.race([question.answer, Promise.resolve("unheard")])).toBe(want);
+      }
+    });
+
+    it("never takes her own lone yes for his answer", async () => {
+      const r = scripted("Yes.");
+      const question = r.core.confirm("Clear it?");
+      await r.core.idle();
+      r.core.noteSpoken("Yes. I can clear it, shall I?");
+      r.core.setSpeaking(true);
+      r.push(0.5);
+      r.speech(true);
+      r.push(0.5);
+      r.speech(false);
+      r.push(0.6);
+      await settled();
+      await r.core.idle();
+      expect(r.core.snapshot().machine.pending).not.toBeNull();
+      question.cancel();
+    });
+
     it("logs what it heard over her voice and did not act on", async () => {
       const r = await talking("Can you hear me", "A sentence about reports.");
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({

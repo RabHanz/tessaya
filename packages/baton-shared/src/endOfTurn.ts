@@ -40,6 +40,9 @@ const ASKS_MORE = /(?:^|\s)(?:than|if|as)$/i;
 /** "Can you tell me about?": the subject is still to come. */
 const TOLD_ABOUT = /\b(?:tell|ask|show)\s+(?:me|us|him|her|them)\s+about$/i;
 
+/** "Can you", "could you please": a request whose verb is still to come. */
+const OPEN_REQUEST = /(?:^|\s)(?:can|could|would|will)\s+(?:you|we|i)(?:\s+please)?$/i;
+
 const bareOf = (t: string): string => t.replace(/[.!?…"')\]]+$/, "");
 
 /** The words end on one that leaves the sentence open, read by the mark the recogniser closed it with. */
@@ -48,19 +51,23 @@ const trailsOff = (t: string): boolean => {
   const dangling = DANGLING.test(bare) || DANGLING_A.test(bare);
   if (t.endsWith("?"))
     return (dangling && !ASKS_END.test(bare)) || ASKS_MORE.test(bare) || TOLD_ABOUT.test(bare);
-  return dangling || (OPEN_END.test(bare) && !/[.!]$/.test(t));
+  return dangling || OPEN_REQUEST.test(bare) || (OPEN_END.test(bare) && !/[.!]$/.test(t));
 };
 
 /** "What's going on?", "Where am I?": a whole question, but one that often goes on, so it gets the usual wait. */
 const mayGoOn = (t: string): boolean =>
-  t.endsWith("?") && OPEN_END.test(bareOf(t)) && !ASKS_END.test(bareOf(t));
+  t.endsWith("?") &&
+  ((OPEN_END.test(bareOf(t)) && !ASKS_END.test(bareOf(t))) || OPEN_REQUEST.test(bareOf(t)));
 
-/** The words stop mid-thought: a joining word, a comma, a lone opener, or a short fragment with no full stop. */
+/**
+ * The words stop mid-thought: a joining word, a comma, a lone opener, or a last sentence that is a short fragment
+ * with no full stop ("…the dictation feature. Can you").
+ */
 export const isUnfinished = (text: string): boolean => {
   const t = text.trim();
   if (t.length === 0) return false;
   if (/[,;:—-]$/.test(t) || LEAD_ONLY.test(t) || trailsOff(t)) return true;
-  return !/[.!?…]$/.test(t) && words(t) <= 6;
+  return !/[.!?…]$/.test(t) && words(t.split(/[.!?…]\s+/).at(-1) ?? t) <= 6;
 };
 
 /** A whole sentence, or a question ("What time?", "Who is he with?"), closed with its own mark. */

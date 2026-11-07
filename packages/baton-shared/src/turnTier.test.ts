@@ -38,6 +38,9 @@ describe("which model answers a chat turn", () => {
     ["how much is in the account, transfer it", "default"],
     ["is the build green? merge it", "default"],
     ["roll back the deploy", "default"],
+    // 0.1.73: a "then" that opens the sentence joins it to the last turn; it is one act, not a chain.
+    ["Then start dictating.", "default"],
+    ["open notepad then type hello", "deep"],
   ])("%s -> %s", (said, tier) => {
     expect(tierOfSentence(said).tier).toBe(tier);
   });

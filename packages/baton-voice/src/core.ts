@@ -24,7 +24,7 @@ import {
   type Playing,
 } from "@t3tools/baton-shared/endOfTurn";
 import { isAddressedFollowUp } from "@t3tools/baton-shared/followUp";
-import { isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
+import { answerOf, isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 import {
   DEFAULT_TIMINGS,
@@ -809,6 +809,22 @@ export const createVoiceCore = (input: {
           stopWaiting = null;
           acceptWake(1, startedAt, name, true);
           enqueue(woke(name));
+          return;
+        }
+        // Her question is waiting on him: his yes or no over her voice is the answer, unless she said those very
+        // words as a sentence of their own (her question says "yes or no", which is no answer).
+        const reply = stripWake(text.trim(), timings.wakeWords);
+        if (
+          said === undefined &&
+          machine.pending !== null &&
+          answerOf(reply) !== null &&
+          reply.split(/\s+/).length <= 4 &&
+          !hers
+            .flatMap((sentence) => sentence.split(/(?<=[.!?])\s+/))
+            .some((part) => plainWords(part) === plainWords(reply))
+        ) {
+          stopWaiting = null;
+          enqueue(() => dispatch({ type: "utterance", text: reply, at: now() }));
           return;
         }
         if (said === undefined) {
