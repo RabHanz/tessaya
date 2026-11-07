@@ -106,7 +106,7 @@
     {
       "key": "p-voice-name",
       "kind": "preference",
-      "text": "Call me Director when you speak to me",
+      "text": "Call me by my first name when you speak to me",
       "source": "user"
     },
     {
@@ -394,7 +394,7 @@
     {
       "key": "tz-wake",
       "kind": "decision",
-      "text": "The wake word is Freya and it runs on the laptop",
+      "text": "The wake word is Juniper and it is heard on the laptop",
       "source": "thread",
       "scope": "project",
       "scopeRef": "tessaya"
@@ -450,7 +450,7 @@
     {
       "key": "tz-laptop",
       "kind": "fact",
-      "text": "The Director's laptop runs Windows and Chrome",
+      "text": "My main laptop is a ThinkPad",
       "source": "thread",
       "scope": "project",
       "scopeRef": "tessaya"
@@ -458,7 +458,7 @@
     {
       "key": "tz-box",
       "kind": "fact",
-      "text": "The coding lanes run on the Hetzner box",
+      "text": "The coding agents run on the build server",
       "source": "thread",
       "scope": "project",
       "scopeRef": "tessaya"
@@ -466,7 +466,7 @@
     {
       "key": "tz-heavy-lock",
       "kind": "learning",
-      "text": "Heavy checks take the shared lock or the box runs out of memory",
+      "text": "Heavy builds take turns or the build server runs out of memory",
       "source": "job",
       "scope": "project",
       "scopeRef": "tessaya"
@@ -498,7 +498,7 @@
     {
       "key": "tz-tunnel",
       "kind": "fact",
-      "text": "Remote access goes through Tailscale",
+      "text": "Remote access goes through the company VPN",
       "source": "thread",
       "scope": "project",
       "scopeRef": "tessaya"
@@ -530,7 +530,7 @@
     {
       "key": "vo-daily",
       "kind": "fact",
-      "text": "The daily job builds the session history index at four in the morning",
+      "text": "The nightly job rebuilds the search index at four in the morning",
       "source": "thread",
       "scope": "project",
       "scopeRef": "ventureos"
@@ -538,7 +538,7 @@
     {
       "key": "vo-storage",
       "kind": "learning",
-      "text": "Raw transcripts filled the disk to ninety nine percent twice",
+      "text": "Old log files filled the server disk twice this year",
       "source": "job",
       "scope": "project",
       "scopeRef": "ventureos"
@@ -546,15 +546,15 @@
     {
       "key": "vo-retention",
       "kind": "decision",
-      "text": "Raw transcripts are kept fourteen days",
+      "text": "Chat logs are kept for thirty days",
       "source": "thread",
       "scope": "project",
       "scopeRef": "ventureos"
     },
     {
-      "key": "vo-kaggle",
+      "key": "vo-gpu",
       "kind": "fact",
-      "text": "Batch and GPU jobs go to the shared Kaggle account through the slots broker",
+      "text": "Batch and GPU jobs go to a rented cloud GPU service",
       "source": "thread",
       "scope": "project",
       "scopeRef": "ventureos"
@@ -562,15 +562,15 @@
     {
       "key": "vo-ci",
       "kind": "fact",
-      "text": "VentureOS CI can run on Kaggle when the box is busy",
+      "text": "VentureOS CI can run in the cloud when the server is busy",
       "source": "thread",
       "scope": "project",
       "scopeRef": "ventureos"
     },
     {
-      "key": "vo-dokploy",
+      "key": "vo-hosting",
       "kind": "fact",
-      "text": "Sites deploy through Dokploy on Server one",
+      "text": "Sites deploy through the hosting panel on the web server",
       "source": "thread",
       "scope": "project",
       "scopeRef": "ventureos"
@@ -948,15 +948,15 @@
       "source": "job"
     },
     {
-      "key": "op-earlyoom",
+      "key": "op-oom",
       "kind": "learning",
-      "text": "earlyoom kills the terminal multiplexer when several lanes run checks at once",
+      "text": "The editor gets killed when several builds run at once",
       "source": "job"
     },
     {
       "key": "op-cert",
       "kind": "learning",
-      "text": "The wildcard certificate renews automatically but Traefik needs a restart to pick it up",
+      "text": "The certificate renews automatically but the proxy needs a restart to pick it up",
       "source": "job"
     },
     {
@@ -968,19 +968,19 @@
     {
       "key": "op-ssh-key",
       "kind": "learning",
-      "text": "SSH to the box fails from the laptop until the agent has the key loaded",
+      "text": "SSH to the server fails until the agent has the key loaded",
       "source": "job"
     },
     {
-      "key": "op-chrome-bridge",
+      "key": "op-remote-browser",
       "kind": "learning",
-      "text": "The Chrome bridge to the laptop drops when Windows updates overnight",
+      "text": "The remote browser connection drops after overnight updates",
       "source": "job"
     },
     {
       "key": "op-pnpm-store",
       "kind": "learning",
-      "text": "Hardlinking node modules from another worktree saves gigabytes of disk",
+      "text": "Sharing installed packages between checkouts saves gigabytes of disk",
       "source": "job"
     },
     {
@@ -1010,7 +1010,7 @@
     {
       "key": "op-vpn",
       "kind": "learning",
-      "text": "Tailscale needs re-authenticating on the laptop every six months",
+      "text": "The VPN needs re-authenticating on the laptop every six months",
       "source": "job"
     },
     {
@@ -1028,13 +1028,13 @@
     {
       "key": "op-swap",
       "kind": "learning",
-      "text": "Adding swap on the box stopped the nightly build from crashing",
+      "text": "Adding swap on the server stopped the nightly build from crashing",
       "source": "job"
     },
     {
       "key": "op-transcribe",
       "kind": "learning",
-      "text": "Transcription is ten times faster on the Kaggle GPU than on the box",
+      "text": "Transcription is ten times faster on a cloud GPU than on the server",
       "source": "job"
     },
     {
@@ -1088,7 +1088,7 @@
     {
       "key": "d-salary",
       "kind": "decision",
-      "text": "Director's salary stays at the tax free threshold, the rest as dividends",
+      "text": "My salary stays at the tax free threshold, the rest as dividends",
       "source": "user"
     },
     {
@@ -1208,13 +1208,13 @@
     {
       "key": "d-ai-models",
       "kind": "decision",
-      "text": "Coding lanes run on Opus",
+      "text": "Coding agents run on the largest model",
       "source": "user"
     },
     {
       "key": "d-no-storage-ask",
       "kind": "decision",
-      "text": "Do not suggest buying more disk or memory for the box",
+      "text": "Do not suggest upgrading the server hardware",
       "source": "user"
     },
     {
@@ -1433,13 +1433,13 @@
     {
       "key": "s-model-old",
       "kind": "decision",
-      "text": "Coding lanes run on Sonnet",
+      "text": "Coding agents run on the mid-sized model",
       "source": "user"
     },
     {
       "key": "s-model",
       "kind": "decision",
-      "text": "All lanes switched to the larger model",
+      "text": "Every agent switched to the biggest model",
       "source": "user",
       "supersedes": "s-model-old"
     },
@@ -2074,7 +2074,7 @@
     {
       "key": "f-66",
       "kind": "fact",
-      "text": "The Tessaya ops notes are in the tessaya ops folder",
+      "text": "The Tessaya notes are in the shared drive",
       "source": "user"
     },
     {
@@ -2208,7 +2208,7 @@
     {
       "recall": true,
       "group": "direct",
-      "query": "how long are raw transcripts kept",
+      "query": "how long are chat logs kept",
       "present": ["vo-retention"]
     },
     {
@@ -2331,38 +2331,43 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "what hot drink should you make me",
+      "pending": "MEM-13",
+      "query": "what should you brew for me when I want a cuppa",
       "present": ["p-tea"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "can I book an early morning slot",
+      "pending": "MEM-13",
+      "query": "can I book an early slot at dawn",
       "present": ["p-mornings"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-13",
-      "query": "should I send that email to the client right away",
+      "pending": "MEM-16",
+      "query": "should I fire off that message to the customer straight away",
       "present": ["p-ask-before-send"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "which seat do I like when travelling",
+      "pending": "MEM-13",
+      "query": "where do I like to sit when I travel",
       "present": ["p-window-seat"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "what food should I order for him, he doesn't eat meat",
+      "pending": "MEM-13",
+      "query": "what should I get him for dinner, he doesn't eat meat",
       "present": ["p-vegetarian"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "who sorts out our legal paperwork",
+      "pending": "MEM-13",
+      "query": "who is our solicitor",
       "present": ["pp-lawyer"]
     },
     {
@@ -2378,12 +2383,6 @@
       "pending": "MEM-13",
       "query": "who repairs my vehicle",
       "present": ["pp-mechanic"]
-    },
-    {
-      "recall": true,
-      "group": "paraphrase",
-      "query": "where does my nephew's sister live",
-      "present": ["pp-brother"]
     },
     {
       "recall": true,
@@ -2433,7 +2432,8 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "how should parcels be sent cheaply",
+      "pending": "MEM-13",
+      "query": "what is the cheapest way to post a package",
       "scopeRef": "kiln",
       "present": ["kn-shipping"]
     },
@@ -2464,14 +2464,16 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "which accounting software do the bookkeeping clients use",
+      "pending": "MEM-16",
+      "query": "which accounting software do the bookkeeping customers run",
       "scopeRef": "northwind-books",
       "present": ["nw-software"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "how fast must she start talking",
+      "pending": "MEM-13",
+      "query": "how quickly should she answer out loud",
       "scopeRef": "tessaya",
       "present": ["tz-latency"]
     },
@@ -2486,7 +2488,8 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "why did the box run out of RAM",
+      "pending": "MEM-13",
+      "query": "why did the machine crash while compiling",
       "scopeRef": "tessaya",
       "present": ["tz-heavy-lock"]
     },
@@ -2501,7 +2504,8 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "why did the machine fill its drive",
+      "pending": "MEM-13",
+      "query": "why did the machine run out of storage",
       "scopeRef": "ventureos",
       "present": ["vo-storage"]
     },
@@ -2516,26 +2520,28 @@
       "recall": true,
       "group": "paraphrase",
       "pending": "MEM-13",
-      "query": "why is the scheduled task an hour out",
+      "query": "why is the scheduled task sixty minutes out",
       "present": ["op-cron-utc"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "which bank holds the company account",
+      "pending": "MEM-13",
+      "query": "where does the company keep its money",
       "present": ["d-bank"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "what do I pay myself",
       "present": ["d-salary"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "query": "when is the end of our financial year",
+      "pending": "MEM-13",
+      "query": "when does our accounting period close",
       "present": ["d-year-end"]
     },
     {
@@ -2577,7 +2583,7 @@
       "recall": true,
       "group": "paraphrase",
       "pending": "MEM-13",
-      "query": "why does the wireless internet cut out in the office",
+      "query": "why does the wireless internet cut out at work",
       "present": ["op-wifi"]
     },
     {
@@ -2698,7 +2704,7 @@
     {
       "recall": true,
       "group": "superseded",
-      "query": "which model do the coding lanes run on",
+      "query": "which model do the coding agents run on",
       "present": ["s-model"],
       "absent": ["s-model-old"]
     },
@@ -2731,6 +2737,12 @@
       "query": "what time is my alarm",
       "present": ["s-alarm"],
       "absent": ["s-alarm-old"]
+    },
+    {
+      "recall": true,
+      "group": "multi-hop",
+      "query": "where does Ella's dad live",
+      "present": ["pp-dan-kids", "pp-brother"]
     },
     {
       "recall": true,
@@ -2827,7 +2839,7 @@
     {
       "recall": true,
       "group": "multi-hop",
-      "query": "which runs first, the daily history job or the morning briefing",
+      "query": "which runs first, the nightly index job or the morning briefing",
       "present": ["vo-daily", "f-69"]
     },
     {
