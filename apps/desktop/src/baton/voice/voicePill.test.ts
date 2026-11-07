@@ -16,6 +16,8 @@ vi.mock("electron", async () => {
     static getAllWindows = () => fake.windows;
     bounds = { x: 0, y: 0, width: 0, height: 0 };
     focusable = false;
+    focused = false;
+    skipTaskbar = false;
     shown = false;
     calls: string[] = [];
     webContents = {
@@ -35,7 +37,14 @@ vi.mock("electron", async () => {
     isVisible = () => this.shown;
     isFocusable = () => this.focusable;
     setFocusable = (on: boolean) => void (this.focusable = on);
-    focus = () => undefined;
+    isFocused = () => this.focused;
+    focus = () => void (this.focused = this.focusable);
+    blur = () => {
+      if (!this.focused) return;
+      this.focused = false;
+      this.emit("blur");
+    };
+    setSkipTaskbar = (on: boolean) => void (this.skipTaskbar = on);
     showInactive = () => void (this.shown = true);
     hide = () => void (this.shown = false);
     destroy = () => undefined;
@@ -63,7 +72,9 @@ vi.mock("./voicePlayer.ts", () => ({ onAudioServiceGone: () => undefined }));
 import * as Electron from "electron";
 import { createVoicePill } from "./voicePill.ts";
 
+/** Fake timers, a fresh state folder and the IPC listeners; all undone when the test ends, pass or fail. */
 const setup = () => {
+  vi.useFakeTimers();
   fake.windows.length = 0;
   fake.cursor = { x: 0, y: 0 };
   (Electron.ipcMain as unknown as NodeEvents.EventEmitter).removeAllListeners();
@@ -71,6 +82,7 @@ const setup = () => {
   const escapes: Array<() => void> = [];
   const dismissed = vi.fn();
   const moves: boolean[] = [];
+  const focusedBack: number[] = [];
   const make = () =>
     createVoicePill({
       cueGain: () => 0,
@@ -83,8 +95,21 @@ const setup = () => {
       },
       onDismiss: dismissed,
       onMoving: (on) => moves.push(on),
+      foreground: async () => 42,
+      focusWindow: (window) => void focusedBack.push(window),
     });
-  return { stateDir, escapes, dismissed, moves, make };
+  return {
+    stateDir,
+    escapes,
+    dismissed,
+    moves,
+    focusedBack,
+    make,
+    [Symbol.dispose]: () => {
+      vi.useRealTimers();
+      NodeFS.rmSync(stateDir, { recursive: true, force: true });
+    },
+  };
 };
 
 // The pill is the first window; a drag adds the snap markers after it.
@@ -98,8 +123,8 @@ const send = (channel: string, ...args: unknown[]) =>
 
 describe("the pill is locked until Move pill is on", () => {
   it("takes a click as a click and never starts a drag while locked", async () => {
-    vi.useFakeTimers();
-    const { dismissed, make } = setup();
+    using t = setup();
+    const { dismissed, make } = t;
     const pill = make();
     pill.warm();
     await vi.advanceTimersByTimeAsync(0);
@@ -111,33 +136,56 @@ describe("the pill is locked until Move pill is on", () => {
     send("baton-pill:click", 0, 0, 50);
     expect(dismissed).toHaveBeenCalledTimes(1);
     pill.dispose();
-    vi.useRealTimers();
   });
 
   it("moves the whole pill while on, ignores clicks, and leaves by Esc or the check mark", async () => {
-    vi.useFakeTimers();
-    const { escapes, dismissed, moves, make } = setup();
+    using t = setup();
+    const { escapes, dismissed, moves, focusedBack, make } = t;
     const pill = make();
     pill.setMoving(true);
     await vi.advanceTimersByTimeAsync(0);
     expect(pill.moving()).toBe(true);
-    expect(page().isFocusable()).toBe(true);
+    expect(page().isFocused()).toBe(true);
+    expect((page() as unknown as { skipTaskbar: boolean }).skipTaskbar).toBe(true);
     send("baton-pill:click", 0, 0, 50);
     expect(dismissed).not.toHaveBeenCalled();
+    // A new place in Settings while moving: it goes there and stays movable.
+    pill.setEdge("top");
+    expect(pill.moving()).toBe(true);
+    expect(page().isVisible()).toBe(true);
     escapes.at(-1)!();
+    await vi.advanceTimersByTimeAsync(0);
     expect(pill.moving()).toBe(false);
+    expect(page().isFocusable()).toBe(false);
+    expect(focusedBack).toEqual([42]);
     pill.setMoving(true);
+    await vi.advanceTimersByTimeAsync(0);
     send("baton-pill:moving", false);
+    await vi.advanceTimersByTimeAsync(0);
     expect(pill.moving()).toBe(false);
+    expect(focusedBack).toEqual([42, 42]);
     expect(escapes).toHaveLength(0);
     expect(moves).toEqual([true, false, true, false]);
     pill.dispose();
-    vi.useRealTimers();
+  });
+
+  it("locks when he clicks into another app, and leaves the focus where he put it", async () => {
+    using t = setup();
+    const { escapes, focusedBack, make } = t;
+    const pill = make();
+    pill.setMoving(true);
+    await vi.advanceTimersByTimeAsync(0);
+    page().blur();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pill.moving()).toBe(false);
+    expect(escapes).toHaveLength(0);
+    expect(focusedBack).toEqual([]);
+    pill.dispose();
   });
 
   it("keeps where it was dragged, across a restart", async () => {
-    vi.useFakeTimers();
-    const { stateDir, make } = setup();
+    using t = setup();
+    const { stateDir, make } = t;
     const pill = make();
     pill.setMoving(true);
     await vi.advanceTimersByTimeAsync(0);
@@ -158,6 +206,5 @@ describe("the pill is locked until Move pill is on", () => {
     expect(again.placed()).toBe(true);
     expect(again.anchor()).toMatchObject({ x: moved.x, y: moved.y });
     again.dispose();
-    vi.useRealTimers();
   });
 });

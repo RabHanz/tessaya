@@ -153,14 +153,14 @@ grab.addEventListener('mouseleave',()=>{if(!drag)ipcRenderer.send('baton-pill:ho
 // A drag is a captured pointer: it ends when the pointer is released, cancelled or lost, never because the cursor left the capsule.
 const endDrag=why=>{if(!drag)return;drag=false;clearInterval(beat);grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false,why);};
 // Locked, a press and release on the capsule is always a click, which dismisses. Moving, it only drags.
-grab.addEventListener('pointerdown',e=>{if(e.button!==0||drag)return;down={x:e.screenX,y:e.screenY,t:performance.now()};if(moving())try{grab.setPointerCapture(e.pointerId);}catch(_){}});
+grab.addEventListener('pointerdown',e=>{if(e.button!==0||drag)return;down={x:e.screenX,y:e.screenY,t:performance.now()};ipcRenderer.send('baton-pill:press',true);try{grab.setPointerCapture(e.pointerId);}catch(_){}});
 grab.addEventListener('pointermove',e=>{if(down===null||drag||!moving())return;if(isClick(e.screenX-down.x,e.screenY-down.y,0))return;drag=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);beat=setInterval(()=>ipcRenderer.send('baton-pill:beat'),120);});
-grab.addEventListener('pointerup',e=>{const d=down;down=null;if(drag)return endDrag('up');if(d===null||moving()||grab.classList.contains('rest'))return;
+grab.addEventListener('pointerup',e=>{const d=down;down=null;ipcRenderer.send('baton-pill:press',false);if(drag)return endDrag('up');if(d===null||moving()||grab.classList.contains('rest'))return;
  ipcRenderer.send('baton-pill:click',e.screenX-d.x,e.screenY-d.y,performance.now()-d.t);});
 $('ok').addEventListener('click',()=>ipcRenderer.send('baton-pill:moving',false));
 addEventListener('keydown',e=>{if(e.key==='Escape'&&moving())ipcRenderer.send('baton-pill:moving',false);});
-grab.addEventListener('pointercancel',()=>{down=null;endDrag('cancel');});
-grab.addEventListener('lostpointercapture',()=>{down=null;endDrag('lost');});
+grab.addEventListener('pointercancel',()=>{down=null;ipcRenderer.send('baton-pill:press',false);endDrag('cancel');});
+grab.addEventListener('lostpointercapture',()=>{down=null;ipcRenderer.send('baton-pill:press',false);endDrag('lost');});
 grab.addEventListener('dblclick',()=>{if(grab.classList.contains('rest'))ipcRenderer.send('baton-pill:reset');});
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
 // The capsule's box goes to the main process, which decides by the cursor position when the window takes the mouse, so a missed forwarded mousemove cannot leave the pill dead.
@@ -265,6 +265,9 @@ export const createVoicePill = (input: {
   readonly onChange?: (state: TurnState) => void;
   /** Move pill went on or off, from wherever, so the tray's tick follows. */
   readonly onMoving?: (on: boolean) => void;
+  /** The window he was in (null when unknown), so locking the pill hands focus back to it. */
+  readonly foreground?: () => Promise<number | null>;
+  readonly focusWindow?: (window: number) => void;
   /** Esc while it is up. */
   readonly onDismiss: () => void;
   /** Each wake, from the event to the window on screen. */
@@ -303,6 +306,9 @@ export const createVoicePill = (input: {
   let hitTimer: ReturnType<typeof setTimeout> | null = null;
   let moving = false;
   let releaseMoveEscape: (() => void) | null = null;
+  let movedFrom: Promise<number | null> = Promise.resolve(null);
+  /** A press on the capsule is held: the window keeps the mouse even if the cursor slides off its edge. */
+  let pressing = false;
   const trace = (record: Record<string, unknown>) => {
     if (input.captureDir === undefined) return;
     try {
@@ -341,7 +347,7 @@ export const createVoicePill = (input: {
     }
     // Hidden for a moment (a screen grab hides every Tessaya window): keep the timer, or the pill comes back click-through.
     if (!target.isVisible()) return false;
-    if (dragTimer !== null) return true;
+    if (dragTimer !== null || pressing) return true;
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
     const over = cursorOverCapsule(cursor, b, capsule);
@@ -440,11 +446,28 @@ export const createVoicePill = (input: {
     saveSpots();
   };
 
+  /** Focusable only while moving, so Tab reaches the check mark; locked it never takes focus. */
+  const applyMoving = (target: Electron.BrowserWindow) => {
+    if (target.isDestroyed()) return;
+    const on = moving;
+    const gaveBack = !on && target.isFocused();
+    if (gaveBack) target.blur();
+    target.setFocusable(on);
+    // Windows can give a window that becomes focusable a taskbar button; Electron has no getter, so set it again.
+    target.setSkipTaskbar(true);
+    if (on) target.focus();
+    void target.webContents.executeJavaScript(`window.pill.moving(${on})`).catch(() => undefined);
+    if (gaveBack)
+      void movedFrom.then((was) => {
+        if (was !== null && !moving) input.focusWindow?.(was);
+      });
+  };
   const setMoving = (on: boolean) => {
     if (on === moving) return;
     moving = on;
     if (on) {
       releaseMoveEscape = input.holdEscape(() => setMoving(false));
+      movedFrom = input.foreground?.().catch(() => null) ?? Promise.resolve(null);
       raise();
       if (state.phase === "idle") call("window.pill.move()");
     } else {
@@ -453,13 +476,10 @@ export const createVoicePill = (input: {
       stopDrag(true);
     }
     const target = window;
-    void ready.then(() => {
-      if (target === null || target.isDestroyed()) return;
-      // Focusable only while moving, so Tab reaches the check mark; locked it never takes focus.
-      target.setFocusable(on);
-      if (on) target.focus();
+    // The window he was in is read before the pill takes the focus from it.
+    void Promise.all([ready, movedFrom]).then(() => {
+      if (target !== null && window === target) applyMoving(target);
     });
-    call(`window.pill.moving(${on})`);
     if (!on && state.phase === "idle") lower();
     input.onMoving?.(on);
   };
@@ -514,7 +534,12 @@ export const createVoicePill = (input: {
     protectFromCapture(created);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window = created;
+    // Clicking into another app ends Move pill, so Esc is not kept from every app.
+    created.on("blur", () => {
+      if (moving && window === created) setMoving(false);
+    });
     ready = loadDocument(created, PILL_DOCUMENT).then((loaded) => {
+      if (loaded && window === created && moving) applyMoving(created);
       // A pill that failed to load would stay blank: build it again, and show what it should.
       if (loaded || window !== created) return;
       if (!created.isDestroyed()) created.destroy();
@@ -668,7 +693,7 @@ export const createVoicePill = (input: {
 
   const closeIfLast = () => {
     const others = Electron.BrowserWindow.getAllWindows().filter(
-      (w) => !w.isDestroyed() && w.isFocusable(),
+      (w) => w !== window && !w.isDestroyed() && w.isFocusable(),
     );
     if (others.length === 0 && window !== null && !window.isDestroyed()) {
       window.destroy();
@@ -742,6 +767,9 @@ export const createVoicePill = (input: {
       });
     }, DRAG_MS);
     dragTimer.unref();
+  });
+  Electron.ipcMain.on("baton-pill:press", (event, on: unknown) => {
+    if (mine(event)) pressing = on === true;
   });
   Electron.ipcMain.on("baton-pill:moving", (event, on: unknown) => {
     if (mine(event) && on === false) setMoving(false);
@@ -818,6 +846,11 @@ export const createVoicePill = (input: {
       if (state.phase === "idle" && input.rest()) call(`window.pill.why(${JSON.stringify(next)})`);
     },
     setEdge: () => {
+      if (moving && window !== null && !window.isDestroyed()) {
+        // Hiding would take the focus and end the move: it goes to its new place still movable.
+        const display = Electron.screen.getDisplayMatching(window.getBounds());
+        return window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
+      }
       if (window !== null && !window.isDestroyed()) window.hide();
       stopHitTest();
       if (input.rest() && state.phase === "idle") {
