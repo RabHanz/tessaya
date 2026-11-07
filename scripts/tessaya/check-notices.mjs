@@ -55,9 +55,9 @@ export const wanted = (root) => {
   if (NodeFS.existsSync(models)) {
     for (const f of NodeFS.readdirSync(models)) if (f.endsWith(".onnx")) keys.add(`model:${f}`);
   }
-  // The server's memory recall model (MEM-13): its vocabulary is in git, the model is fetched at build time.
+  // The server's memory recall model (MEM-16): its vocabulary is in git, the model is fetched at build time.
   if (NodeFS.existsSync(NodePath.join(root, "apps/server/resources/memory-model/vocab.txt")))
-    keys.add("model:all-MiniLM-L6-v2");
+    keys.add("model:bge-small-en-v1.5");
   const fonts = read(root, "apps/desktop/src/baton/home/fonts.ts") ?? "";
   for (const m of fonts.matchAll(/^\s*"([A-Z][A-Za-z ]+)",\s*$/gm)) keys.add(`font:${m[1]}`);
   return keys;

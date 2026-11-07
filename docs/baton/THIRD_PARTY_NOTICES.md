@@ -130,7 +130,7 @@ Code's own dependencies are covered by `third-party-licenses.config.json`. Licen
   `enigo` (MIT); `hound` (Apache-2.0); `serde` and `serde_json` (MIT OR Apache-2.0); `windows-rs`, the `windows` crate
   (MIT OR Apache-2.0, Microsoft). Texts: `licences/MIT.txt`, `licences/Apache-2.0.txt`.
 - **whisper.cpp** (MIT, Copyright (c) Georgi Gerganov) is the fallback speech-to-text binary where it is used.
-- **all-MiniLM-L6-v2** (Apache-2.0, sentence-transformers; int8 ONNX conversion by Xenova, revision `751bff3`) is the server's memory recall model. Its `vocab.txt` is in `apps/server/resources/memory-model`; the model is fetched at build time and checked against a pinned sha256 (`scripts/tessaya/fetch-memory-model.mjs`).
+- **bge-small-en-v1.5** (MIT, Copyright (c) BAAI; int8 ONNX conversion by Xenova, revision `ea104da`) is the server's memory recall model. Text: `licences/MIT.txt`. Its `vocab.txt` (the same BERT uncased vocabulary) is in `apps/server/resources/memory-model`; the model is fetched at build time and checked against a pinned sha256 (`scripts/tessaya/fetch-memory-model.mjs`).
 
 ### Models
 

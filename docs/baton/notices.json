@@ -130,11 +130,11 @@
       "holder": "The Schibsted-Grotesk Project Authors",
       "mention": "Schibsted Grotesk"
     },
-    "model:all-MiniLM-L6-v2": {
-      "name": "all-MiniLM-L6-v2 (int8 ONNX, Xenova conversion)",
-      "licence": "Apache-2.0",
-      "holder": "sentence-transformers (UKP Lab), ONNX conversion by Xenova",
-      "mention": "all-MiniLM-L6-v2"
+    "model:bge-small-en-v1.5": {
+      "name": "bge-small-en-v1.5 (int8 ONNX, Xenova conversion)",
+      "licence": "MIT",
+      "holder": "Beijing Academy of Artificial Intelligence (BAAI), ONNX conversion by Xenova",
+      "mention": "bge-small-en-v1.5"
     }
   }
 }

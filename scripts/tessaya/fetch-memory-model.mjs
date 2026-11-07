@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Fetches the memory recall model (MEM-13): all-MiniLM-L6-v2, int8 ONNX, Apache-2.0, from the pinned Hugging Face
-// revision, and checks its sha256. The model is not in git (23 MB); vocab.txt beside it is. Usage:
+// Fetches the memory recall model (MEM-16): bge-small-en-v1.5, int8 ONNX, MIT, from the pinned Hugging Face
+// revision, and checks its sha256. The model is not in git (34 MB); vocab.txt beside it is. Usage:
 //   node scripts/tessaya/fetch-memory-model.mjs [destination folder]   (default: apps/server/resources/memory-model)
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -10,9 +10,9 @@ import * as NodeURL from "node:url";
 const { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } = NodeFS;
 const { dirname, join, resolve } = NodePath;
 
-const REVISION = "751bff37182d3f1213fa05d7196b954e230abad9";
-const URL_ = `https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/${REVISION}/onnx/model_quantized.onnx`;
-const SHA256 = "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1";
+const REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
+const URL_ = `https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/${REVISION}/onnx/model_quantized.onnx`;
+const SHA256 = "6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4";
 
 const root = resolve(dirname(NodeURL.fileURLToPath(import.meta.url)), "../..");
 const dir = resolve(process.argv[2] ?? join(root, "apps/server/resources/memory-model"));

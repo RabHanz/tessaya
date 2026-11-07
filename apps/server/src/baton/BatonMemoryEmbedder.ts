@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 /**
- * Sentence vectors for recall by meaning (MEM-13): all-MiniLM-L6-v2 int8 in a child process, so a native crash or an
+ * Sentence vectors for recall by meaning (MEM-13, MEM-16): bge-small-en-v1.5 int8 in a child process, so a native crash or an
  * out-of-memory in onnxruntime ends the child, never the server. Tokens are cut here; the child only runs the model.
  * No model, no onnxruntime, or a child that keeps failing: recall stays on keywords.
  */
@@ -17,16 +17,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
-import { meanPool } from "./memoryVectors.ts";
+import { clsPool } from "./memoryVectors.ts";
 import { createWordPiece } from "./wordpiece.ts";
 
-const MODEL_NAME = "all-MiniLM-L6-v2-int8";
+const MODEL_NAME = "bge-small-en-v1.5-int8";
 const MODEL_FILE = "model_quantized.onnx";
 const VOCAB_FILE = "vocab.txt";
 const DIM = 384;
 /** Memory items are short; a long one is read by its first 128 tokens, which bounds the cost of one. */
 const MAX_TOKENS = 128;
 const CALL_MS = 10_000;
+/** bge reads a search question with this instruction; stored items are embedded as they are. */
+const QUERY_PREFIX = "Represent this sentence for searching relevant passages: ";
 /** A child that dies this many times is not started again until the server restarts; recall stays on keywords. */
 export const MAX_CHILD_FAILURES = 3;
 /** Before each new child after a failure: 5 s, 10 s, 20 s. */
@@ -43,8 +45,8 @@ export class BatonMemoryEmbedder extends Context.Service<
   {
     /** The model's id (name and file hash), or null when this server has none (keyword recall only). */
     readonly model: string | null;
-    /** The text's unit vector, or null when the model is missing, failed, or has been switched off. */
-    readonly embed: (text: string) => Effect.Effect<Float32Array | null>;
+    /** The text's unit vector (as a search question when `query`), or null when the model is missing, failed, or off. */
+    readonly embed: (text: string, query?: boolean) => Effect.Effect<Float32Array | null>;
   }
 >()("t3/baton/BatonMemoryEmbedder") {}
 
@@ -205,8 +207,8 @@ export const makeEmbedder = Effect.fn("BatonMemoryEmbedder.make")(function* (
 
   return BatonMemoryEmbedder.of({
     model: `${MODEL_NAME}-${fileHash}`,
-    embed: Effect.fn("BatonMemoryEmbedder.embed")(function* (text: string) {
-      const ids = words.encode(text, MAX_TOKENS);
+    embed: Effect.fn("BatonMemoryEmbedder.embed")(function* (text: string, query?: boolean) {
+      const ids = words.encode(query === true ? QUERY_PREFIX + text : text, MAX_TOKENS);
       return yield* Effect.tryPromise({
         try: () => run(ids),
         catch: (error) =>
@@ -214,7 +216,7 @@ export const makeEmbedder = Effect.fn("BatonMemoryEmbedder.make")(function* (
             reason: error instanceof Error ? error.message : String(error),
           }),
       }).pipe(
-        Effect.map((hidden) => meanPool(hidden, ids.length, DIM)),
+        Effect.map((hidden) => clsPool(hidden, DIM)),
         Effect.catch((error) =>
           Effect.logWarning("memory embedding failed", error.reason).pipe(Effect.as(null)),
         ),

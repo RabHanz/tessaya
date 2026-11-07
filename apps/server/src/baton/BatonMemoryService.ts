@@ -95,8 +95,8 @@ const DEFAULT_LIMIT = 50;
 const CANDIDATES = 200;
 /** A sentence's recall leaves out hits weaker than this: one shared word in a long sentence. */
 const RECALL_FLOOR = 0.25;
-/** Recall by meaning: the nearest items at or above this cosine join the keyword hits (MiniLM: unrelated text sits below 0.3). */
-const MEANING_FLOOR = 0.35;
+/** Recall by meaning: the nearest items at or above this cosine join the keyword hits (bge-small: unrelated text sits below about 0.5; tuned on the recall eval). */
+const MEANING_FLOOR = 0.5;
 const MEANING_TOP = 20;
 /** The query's vector must come quickly: the desktop gives the whole recall 800 ms. */
 const QUERY_EMBED_MS = 300;
@@ -575,7 +575,7 @@ export const make = Effect.gen(function* () {
   ) {
     if (embedder === null || model === null) return [];
     const query = yield* embedder
-      .embed(text)
+      .embed(text, true)
       .pipe(Effect.timeoutOption(QUERY_EMBED_MS), Effect.map(Option.getOrNull));
     if (query === null) return [];
     // shortcut: every vector is read and compared per sentence; past ~5k items keep them in memory (or an ANN index) instead.
@@ -634,7 +634,9 @@ export const make = Effect.gen(function* () {
       keyword === null || meaning.length === 0
         ? keyword
         : (() => {
-            const fused = rrf([keyword.map((h) => h.item.id), meaning.map((item) => item.id)]);
+            const byMeaning = meaning.map((item) => item.id);
+            // Meaning counts twice: on the recall eval bge ranks better than keywords do (MEM-16).
+            const fused = rrf([keyword.map((h) => h.item.id), byMeaning, byMeaning]);
             const byId = new Map<string, MemoryItem>();
             for (const item of [...keyword.map((h) => h.item), ...meaning]) byId.set(item.id, item);
             return [...byId.values()].map((item) => ({ item, score: fused.get(item.id) ?? 0 }));

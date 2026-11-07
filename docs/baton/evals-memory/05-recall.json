@@ -1,5 +1,5 @@
 {
-  "about": "The per-sentence recall block (MEM-1): his standing preferences are already in the system prompt, so a spoken question must bring back what matches it, not the same notes again; another project's items stay out. Paraphrase cases wait for meaning-based retrieval (MEM-13); the two MiniLM still misses wait for a better embedder (MEM-16).",
+  "about": "The per-sentence recall block (MEM-1): his standing preferences are already in the system prompt, so a spoken question must bring back what matches it, not the same notes again; another project's items stay out. Paraphrase cases wait for meaning-based retrieval (MEM-13); bge-small (MEM-16) answers all three.",
   "items": [
     {
       "key": "spelling",
@@ -94,7 +94,7 @@
     },
     {
       "recall": true,
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "who handles my bookkeeping",
       "present": ["accountant"]
     },
@@ -106,7 +106,7 @@
     },
     {
       "recall": true,
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "what colour scheme do I like",
       "present": ["dark"]
     }

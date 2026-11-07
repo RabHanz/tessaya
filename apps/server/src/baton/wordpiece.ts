@@ -1,5 +1,5 @@
 /**
- * BERT's uncased WordPiece tokenizer, as all-MiniLM-L6-v2 was trained with it (BertTokenizer, do_lower_case): clean the
+ * BERT's uncased WordPiece tokenizer, as bge-small-en-v1.5 was trained with it (BertTokenizer, do_lower_case): clean the
  * text, space out CJK characters, lowercase and strip accents, split on punctuation, then greedy longest-match pieces
  * with "##" for the rest of a word. Pure; the vocabulary (vocab.txt, one token per line) is passed in.
  */

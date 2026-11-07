@@ -115,12 +115,17 @@ it.effect("without a model, recall is keyword recall as before", () =>
   }).pipe(Effect.provide(withModel(layerNone))),
 );
 
-it.effect("never ranks by a vector made from older wording", () =>
+it.effect("never ranks by a vector made from older wording or by another model", () =>
   Effect.gen(function* () {
     const memory = yield* BatonMemoryService;
     const sql = yield* SqlClient.SqlClient;
     const item = yield* memory.add({ kind: "fact", text: PRICE, source: "user" });
     yield* TestClock.adjust("2 minutes");
+    // As after an upgrade from the previous model: its vectors wait for the pass to embed them again.
+    yield* sql`UPDATE fabric_memory_vectors SET model = ${"all-MiniLM-L6-v2-int8-old"}`;
+    assert.notInclude((yield* memory.recall({ text: ASK })).block, "subscription");
+    yield* TestClock.adjust("11 minutes");
+    assert.include((yield* memory.recall({ text: ASK })).block, "subscription");
     // The words change underneath (as a sync can before the next pass): the old vector no longer speaks for it.
     yield* sql`UPDATE fabric_memory_items SET text = ${"He parks behind the station"} WHERE id = ${item.id}`;
     assert.notInclude((yield* memory.recall({ text: ASK })).block, "station");

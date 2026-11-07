@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { meanPool, nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
+import { clsPool, nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
 
 const unit = (...xs: number[]) => {
   const n = Math.hypot(...xs);
@@ -8,8 +8,8 @@ const unit = (...xs: number[]) => {
 };
 
 describe("recall by meaning", () => {
-  it("averages the token vectors and scales the result to length 1", () => {
-    const pooled = meanPool(Float32Array.from([2, 0, 0, 4]), 2, 2);
+  it("takes the first token's vector and scales it to length 1", () => {
+    const pooled = clsPool(Float32Array.from([1, 2, 9, 9]), 2);
     expect(Array.from(pooled).map((x) => Number(x.toFixed(4)))).toEqual([0.4472, 0.8944]);
   });
 

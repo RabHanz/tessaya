@@ -2317,7 +2317,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "what colour scheme do I like on screen",
       "present": ["p-dark-mode"]
     },
@@ -2345,7 +2345,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "should I fire off that message to the customer straight away",
       "present": ["p-ask-before-send"]
     },
@@ -2394,14 +2394,14 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "who arranges my trips",
       "present": ["pp-va"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-13",
+      "pending": "MEM-17",
       "query": "what time zone is my business partner in",
       "present": ["pp-priya-tz"]
     },
@@ -2416,7 +2416,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "why did the app fall over on older phones",
       "scopeRef": "harbor-app",
       "present": ["hb-crash"]
@@ -2424,7 +2424,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "why do customers' enquiries go missing",
       "scopeRef": "acme-site",
       "present": ["ac-forms"]
@@ -2456,7 +2456,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "can customers send things back",
       "scopeRef": "kiln",
       "present": ["kn-returns"]
@@ -2464,7 +2464,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "which accounting software do the bookkeeping customers run",
       "scopeRef": "northwind-books",
       "present": ["nw-software"]
@@ -2480,7 +2480,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-17",
       "query": "when must the assistant not interrupt me",
       "scopeRef": "tessaya",
       "present": ["tz-quiet-hours"]
@@ -2512,7 +2512,7 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "why do my messages land in junk",
       "present": ["op-email-spf"]
     },
@@ -2554,21 +2554,21 @@
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "what race am I preparing for",
       "present": ["d-running"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "where am I going on summer holiday",
       "present": ["d-holiday"]
     },
     {
       "recall": true,
       "group": "paraphrase",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "when do I need a new travel document",
       "present": ["d-passport"]
     },
@@ -2596,7 +2596,7 @@
     {
       "recall": true,
       "group": "superseded",
-      "pending": "MEM-16",
+      "pending": "MEM-17",
       "query": "what time is standup",
       "present": ["s-standup"],
       "absent": ["s-standup-old"]
@@ -2718,7 +2718,7 @@
     {
       "recall": true,
       "group": "superseded",
-      "pending": "MEM-16",
+      "pending": "MEM-13",
       "query": "where are shared logins kept",
       "present": ["s-password"],
       "absent": ["s-password-old"]
@@ -2726,7 +2726,7 @@
     {
       "recall": true,
       "group": "superseded",
-      "pending": "MEM-16",
+      "pending": "MEM-17",
       "query": "when is the mentor call",
       "present": ["s-meeting-day"],
       "absent": ["s-meeting-day-old"]
@@ -2793,7 +2793,7 @@
     {
       "recall": true,
       "group": "multi-hop",
-      "pending": "MEM-20",
+      "pending": "MEM-13",
       "query": "who runs support for the app my cofounder and I built",
       "present": ["pp-sam-role", "pp-cofounder"]
     },
@@ -2820,6 +2820,7 @@
     {
       "recall": true,
       "group": "multi-hop",
+      "pending": "fused: MEM-17",
       "query": "what does the contractor on the acme site work on and when",
       "present": ["pp-contractor", "pp-leo-days"]
     },

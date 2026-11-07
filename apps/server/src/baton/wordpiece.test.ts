@@ -10,7 +10,7 @@ const vocab = NodeFS.readFileSync(
   "utf8",
 );
 
-describe("BERT's uncased WordPiece, as all-MiniLM-L6-v2 reads text", () => {
+describe("BERT's uncased WordPiece, as bge-small-en-v1.5 reads text", () => {
   // Reference ids from Hugging Face `tokenizers` with the model's own tokenizer.json (padding removed).
   it.each<[string, ReadonlyArray<number>]>([
     ["Hello, world!", [101, 7592, 1010, 2088, 999, 102]],
