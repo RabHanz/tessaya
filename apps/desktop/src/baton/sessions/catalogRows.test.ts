@@ -353,6 +353,7 @@ describe("a row's real binding and Reattach", () => {
     const list = [
       { ...base, id: "p", pane: "fab~w1:p2", answeredBy: "baton-live" },
       { ...base, id: "h", pane: "fab~w1:p3", answeredBy: "claudeAgent" },
+      { ...base, id: "t", pane: null, threadId: "import:claudeAgent:t" },
     ];
     const service: CatalogService = {
       list: async () => list,
@@ -375,6 +376,7 @@ describe("a row's real binding and Reattach", () => {
     };
     expect(row("p")).toEqual(["Herdr pane fab~w1:p2", null]);
     expect(row("h")).toEqual(["T3-hosted handoff session", "Reattach"]);
+    expect(row("t")).toEqual(["T3 thread", null]);
     catalog.apply("c:h", "reattach");
     await vi.waitFor(() => expect(row("h")[1]).toBe("Reattach to w1:p9?"));
     catalog.apply("c:h", "reattach");

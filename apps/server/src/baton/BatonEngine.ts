@@ -643,6 +643,8 @@ export const layerStatic = (input: {
   readonly interrupted?: Array<ThreadId>;
   /** Collects the provider switches (handoffs). */
   readonly switched?: Array<{ readonly threadId: ThreadId; readonly tag: string }>;
+  /** Collects the threads that were unarchived. */
+  readonly unarchived?: Array<ThreadId>;
 }) =>
   Layer.succeed(BatonEngine, {
     threadShells: Effect.succeed(input.shells ?? []),
@@ -685,7 +687,11 @@ export const layerStatic = (input: {
     resumeQueue: () => Effect.void,
     keepActive: () => Effect.succeed(true),
     archiveThread: () => Effect.succeed(true),
-    unarchiveThread: () => Effect.succeed(true),
+    unarchiveThread: ({ threadId }) =>
+      Effect.sync(() => {
+        input.unarchived?.push(threadId);
+        return true;
+      }),
     deleteThread: () => Effect.succeed(true),
     createProject: () => Effect.succeed(null),
   });

@@ -283,7 +283,13 @@ export const catalogControls = (input: {
     stopLabel: r.state === "running" ? WORDS.stop : null,
     source: r.detail ?? (r.source === "history" ? "From history" : ""),
     // A stopped row says "Stopped" already.
-    binding: r.state === "running" ? (runningBinding(r)?.text ?? "") : "",
+    // A session resumed as a T3 thread (no Herdr) is that thread, not a plain terminal.
+    binding:
+      r.state !== "running"
+        ? ""
+        : r.threadId !== undefined && !r.pane
+          ? "T3 thread"
+          : (runningBinding(r)?.text ?? ""),
     reattachLabel:
       r.state === "running" && runningBinding(r)?.kind === "handoff"
         ? reattachOffers.has(r.id)

@@ -39,7 +39,7 @@ import { resendKept, stampKept } from "./UnboundMessages.ts";
 import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
-import { BatonEngine } from "./BatonEngine.ts";
+import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
 import {
@@ -152,6 +152,20 @@ export class BatonSessionCatalogService extends Context.Service<
   }
 >()("t3/baton/BatonSessionCatalogService") {}
 
+/**
+ * Whether a resumed session's thread exists, unarchived so it shows: the importer leaves a thread it already has as it
+ * was, and the live mirror archives an import nobody continued.
+ */
+export const openResumedThread = Effect.fn("BatonSessionCatalogService.openResumedThread")(
+  function* (engine: BatonEngineShape, threadId: ThreadId) {
+    const shell = yield* engine.threadShell(threadId);
+    if (shell === null) return false;
+    if (shell.archivedAt !== null && shell.archivedAt !== undefined)
+      return yield* engine.unarchiveThread({ tag: "resume", threadId });
+    return true;
+  },
+);
+
 export const layer = Layer.effect(
   BatonSessionCatalogService,
   Effect.gen(function* () {
@@ -226,7 +240,7 @@ export const layer = Layer.effect(
                 );
                 // The import commits events before it returns, but the thread's own record can trail them a moment.
                 for (let attempt = 0; attempt < 10; attempt += 1) {
-                  if ((yield* engine.value.threadShell(threadId)) !== null) {
+                  if (yield* openResumedThread(engine.value, threadId)) {
                     resumeLog({
                       event: "import-done",
                       outcome: "ok",
