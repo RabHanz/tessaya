@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
+import { DEFAULT_TIMINGS } from "./modeMachine.ts";
 import type { RouteContext, RouteOutcome } from "./router.ts";
 
 const FRAME = 320;
@@ -270,17 +271,29 @@ describe("thinking ahead in the pause", () => {
 });
 
 /** Headphones, where his voice over hers cuts in with no name; she speaks a reply four seconds long. */
-const overHer = (lines: ReadonlyArray<string>) => {
+const overHer = (
+  lines: ReadonlyArray<string>,
+  /** Speakers: only the stop listener hears him over her, and it hears these lines. */
+  speakers?: { readonly stopLines: ReadonlyArray<string> },
+) => {
   let speech = false;
   let wakeNow = false;
   let next = 0;
+  let nextStop = 0;
   const cutIns: Array<RouteContext["cutIn"]> = [];
+  const commands: string[] = [];
   let cancelled = 0;
   let stopVoice = () => {};
   const outcomes: VoiceCoreEvent[] = [];
   const core: ReturnType<typeof createVoiceCore> = createVoiceCore({
     waitMs: () => 1_500,
-    speakerMode: () => "headphones",
+    speakerMode: () => (speakers === undefined ? "headphones" : "speakers"),
+    ...(speakers === undefined
+      ? {}
+      : {
+          timings: { ...DEFAULT_TIMINGS, wakeWords: ["Freya", "Tessaya"] },
+          stopStt: { name: "stop", transcribe: async () => speakers.stopLines[nextStop++] ?? "" },
+        }),
     wake: {
       name: "fake",
       reset: () => {},
@@ -306,6 +319,7 @@ const overHer = (lines: ReadonlyArray<string>) => {
       route: async (effect, context): Promise<RouteOutcome> => {
         if (effect.kind !== "command") return { kind: "none" };
         cutIns.push(context.cutIn ?? null);
+        commands.push(effect.text);
         return {
           kind: "ran",
           // Only the first turn has a reply to talk over.
@@ -349,6 +363,7 @@ const overHer = (lines: ReadonlyArray<string>) => {
     askFirst,
     sayAndWait,
     cutIns,
+    commands,
     outcomes,
     cancelled: () => cancelled,
     wake: () => (wakeNow = true),
@@ -356,6 +371,39 @@ const overHer = (lines: ReadonlyArray<string>) => {
 };
 
 describe("cutting in over her", () => {
+  // 0.1.72: on speakers "Freya, actually, just give me one sentence." came to the stop listener as "Freya." /
+  // "Actually." / "Just give me one sentence", each dropped as "not a stop, said over her voice".
+  it("takes the name over her voice on speakers as a cut-in, and steers with the words after it", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice.", "Freya. Actually. Just give me one sentence."], {
+      stopLines: ["Freya."],
+    });
+    await r.askFirst();
+    // He talks over her; the stop listener hears the name, and the rest of what he says is his steer.
+    r.push(1.5, true);
+    r.push(1.2, false);
+    await r.settle();
+    r.push(1, false);
+    await r.settle();
+    r.push(1, false);
+    await r.core.idle();
+    expect(r.cancelled()).toBeGreaterThan(0);
+    expect(r.commands.at(-1)).toBe("Actually. Just give me one sentence.");
+    expect(r.cutIns.at(-1)).toMatchObject({ said: "I'll open the…" });
+  });
+
+  it("lets her own voice saying the name pass as her voice, not a cut-in", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const r = overHer(["Open the invoice."], { stopLines: ["Freya."] });
+    await r.askFirst();
+    r.core.noteSpoken("Freya here, opening it.");
+    r.push(1.5, true);
+    r.push(1.2, false);
+    await r.settle();
+    expect(r.cancelled()).toBe(0);
+    expect(r.commands).toEqual(["Open the invoice."]);
+  });
+
   it("carries on from the word she had reached, and leaves what already ran alone", async () => {
     using _now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     const r = overHer(["Open the invoice.", "No, the other one."]);

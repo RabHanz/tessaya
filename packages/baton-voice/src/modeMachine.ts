@@ -232,7 +232,18 @@ export const reduceVoice = (
     const kept =
       state.deadline === null
         ? state
-        : { ...state, deadline: Math.max(state.deadline, event.at + timings.conversationMs) };
+        : {
+            ...state,
+            // A command window is held as long as a command window, never a conversation's 30 s: a keep_open queued
+            // while a name said alone was being recognised runs after it.
+            deadline: Math.max(
+              state.deadline,
+              event.at +
+                (state.mode === "command_window"
+                  ? timings.commandWindowMs
+                  : timings.conversationMs),
+            ),
+          };
     return expire(kept, event.at);
   }
   const expired = expire(state, event.at);

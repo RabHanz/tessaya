@@ -92,6 +92,17 @@ describe("voice mode machine (§12.3)", () => {
     expect(state.mode).toBe("sleeping");
   });
 
+  it("a name said alone keeps the command window, not a conversation's 30 s", () => {
+    // 0.1.72: after "Freya." alone, a keep_open queued while it was recognised ran after it and held 30 s.
+    const { state } = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "Jarvis.", at: 1_000 },
+      { type: "keep_open", at: 1_200 },
+      { type: "tick", at: 1_200 + DEFAULT_TIMINGS.commandWindowMs + 1 },
+    ]);
+    expect(state.mode).toBe("sleeping");
+  });
+
   it("'that's all' ends the conversation", () => {
     const { state } = play([
       { type: "wake", at: 0 },
@@ -323,6 +334,21 @@ describe("the name a sentence starts with", () => {
     expect(stripWake("Teseat, what time is it?", names)).toBe("what time is it?");
     // A spelling of the name at the start only, as one word: "the seat" is not her.
     expect(namedWake("the seat, what time is it", names)).toBe(null);
+  });
+
+  it.each([
+    // 0.1.72: David's "Tessaya" came back as these, fired Freya's model and ran as Freya.
+    ["Tessiot, what time is it?", "Tessaya"],
+    ["Tessayot what time is it?", "Tessaya"],
+    ["Tessiah", "Tessaya"],
+    // "Tessa" is a name of its own: it is her only when spoken to, by a comma, a question or a request after it.
+    ["Tessa, what time is it?", "Tessaya"],
+    ["Tessa what time is it", "Tessaya"],
+    ["Tessa", "Tessaya"],
+    ["Tessa said she would call me later", null],
+    ["Tessa is coming at eight", null],
+  ] as const)("reads %j as %s", (text, name) => {
+    expect(namedWake(text, ["Freya", "Tessaya", "Alfred"])).toBe(name);
   });
 });
 

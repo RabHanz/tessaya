@@ -766,18 +766,20 @@ export const createVoiceCore = (input: {
   const finishStop = () => {
     const parts = stopFrames;
     const spoken = stopSpeech;
+    const startedAt = samples - stopSamples;
     clearStop();
     if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
     // Busy: the newest clip waits its turn, so his latest words are heard; only an older waiting one goes.
     if (stopBusy) {
       if (stopWaiting !== null) emit({ type: "dropped", text: "", reason: "recogniser busy" });
-      stopWaiting = parts;
+      stopWaiting = { parts, startedAt };
       return;
     }
-    recogniseStop(parts);
+    recogniseStop(parts, startedAt);
   };
-  let stopWaiting: Int16Array[] | null = null;
-  const recogniseStop = (parts: Int16Array[]) => {
+  let stopWaiting: { readonly parts: Int16Array[]; readonly startedAt: number } | null = null;
+  /** A clip heard over her voice, which began at the sample `startedAt`. */
+  const recogniseStop = (parts: Int16Array[], startedAt: number) => {
     stopBusy = true;
     void (input.stopStt ?? input.stt)
       .transcribe(joined(parts))
@@ -788,6 +790,15 @@ export const createVoiceCore = (input: {
           .map((n) => stripWake(words.slice(-n).join(" "), timings.wakeWords))
           .find(isStopPhrase);
         const hers = spokenLately.slice(-2);
+        // His wake word over her voice, which the wake model did not catch in the mix: a cut-in, from where this
+        // clip began, so the words after the name are his steer. Her own voice says the name only if her sentence did.
+        const name = said === undefined ? namedWake(text, timings.wakeWords ?? []) : null;
+        if (name !== null && !echoesSpeech(name, hers) && hearingItself() && !disposed) {
+          stopWaiting = null;
+          acceptWake(1, startedAt, name, true);
+          enqueue(woke(name));
+          return;
+        }
         if (said === undefined) {
           if (words.length > 0)
             emit({
@@ -817,7 +828,7 @@ export const createVoiceCore = (input: {
         stopWaiting = null;
         if (next === null || disposed) return;
         // Only while she still speaks: once she has stopped, the stop listener has nothing to stop.
-        if (hearingItself()) recogniseStop(next);
+        if (hearingItself()) recogniseStop(next.parts, next.startedAt);
         else emit({ type: "dropped", text: "", reason: "recogniser busy" });
       });
   };

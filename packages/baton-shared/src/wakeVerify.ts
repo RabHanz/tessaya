@@ -84,8 +84,21 @@ const LATIN: Readonly<Record<string, string>> = {
  * "Tessaya" came back as "Teseat" or "Teseot" in all 20 lines.)
  */
 const LEAD_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
-  tessaya: ["teseat", "teseot"],
+  // 0.1.72 (Microsoft David): "Tessiot", "Tessayot", "Tessiah".
+  tessaya: ["teseat", "teseot", "tessiot", "tessayot", "tessiah"],
 };
+
+/**
+ * Spellings that are names of their own ("Tessa"): the wake word only when spoken to, as the whole clip, with a
+ * comma after it, or with a question or request next. "Tessa said she would call me later" is about her.
+ */
+const ADDRESSED_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
+  tessaya: ["tessa"],
+};
+const ASKING =
+  /^(?:what|whats|who|where|when|why|how|please|tell|open|show|send|start|set|remind|play|turn|give|find|check|bring|type|explain|look|read|stop)$/;
+/** "Tessa can you…", not "Tessa can't come": a modal counts only with "you" after it. */
+const ASKING_WITH_YOU = /^(?:can|could|would|will)$/;
 
 const letters = (text: string): string =>
   [...text.toLowerCase().normalize("NFD")]
@@ -197,6 +210,14 @@ export const wakeWordLead = (
   const targets = wakeWords.map((w) => letters(w).replace(/ /g, "")).filter(Boolean);
   const heard = words.map((w) => letters(w).replace(/ /g, ""));
   if (targets.some((t) => (LEAD_SPELLINGS[t] ?? []).includes(heard[0] ?? ""))) return 1;
+  if (
+    targets.some((t) => (ADDRESSED_SPELLINGS[t] ?? []).includes(heard[0] ?? "")) &&
+    (heard.length === 1 ||
+      /,$/.test(words[0] ?? "") ||
+      ASKING.test(heard[1] ?? "") ||
+      (ASKING_WITH_YOU.test(heard[1] ?? "") && heard[2] === "you"))
+  )
+    return 1;
   for (let n = 1; n <= Math.min(MAX_WORDS, heard.length); n += 1) {
     const lead = heard.slice(0, n);
     if (lead.every(Boolean) && targets.some((t) => matches(lead, t, false))) return n;

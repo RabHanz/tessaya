@@ -55,6 +55,20 @@ export const PILL_SOUNDS: Record<PillSound, ReadonlyArray<PillNote>> = {
 };
 
 /** How long a cue sounds, with its tail, in milliseconds. */
+/**
+ * Whether the end cue sounds as the pill goes from `before` to `now` (null: it lowers). Once, when listening ends:
+ * as the window closes ("ended"), or as it lowers from anything that had not ended already. Never seconds later as
+ * an ended pill lowers: then it would blank the microphone over a name he may be saying.
+ */
+export const endCueOn = (before: string, now: string | null): boolean =>
+  now === "ended"
+    ? before !== "ended"
+    : now === null &&
+      before !== "idle" &&
+      before !== "ended" &&
+      before !== "error" &&
+      before !== "done";
+
 export const soundMs = (sound: PillSound): number =>
   Math.ceil((Math.max(...PILL_SOUNDS[sound].map((n) => n.at + n.len)) + 0.02) * 1000);
 
