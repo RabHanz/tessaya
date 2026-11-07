@@ -11,7 +11,9 @@ import * as TestClock from "effect/testing/TestClock";
 import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonMemoryEmbedder, layerNone, makeEmbedder } from "./BatonMemoryEmbedder.ts";
+import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, MemoryViewer, layer as memoryLayer } from "./BatonMemoryService.ts";
+import { BatonOneShot } from "./BatonOneShot.ts";
 
 /** A stand-in model: each word lands on one axis, so "pricing" and "costs" are near and "train" is far. */
 const AXIS: Readonly<Record<string, number>> = {
@@ -131,6 +133,40 @@ it.effect("never ranks by a vector made from older wording or by another model",
     assert.notInclude((yield* memory.recall({ text: ASK })).block, "station");
   }).pipe(Effect.provide(withModel(fakeModel))),
 );
+
+it.effect("shows the learning loop the fact a reworded update replaces, found by meaning", () => {
+  const prompts: string[] = [];
+  const oneShot = Layer.succeed(BatonOneShot, {
+    run: ((input: { readonly prompt: string }) => {
+      prompts.push(input.prompt);
+      return Effect.succeed({ items: [] } as never);
+    }) as BatonOneShot["Service"]["run"],
+  });
+  const config = Layer.succeed(ServerConfig.ServerConfig, {
+    dbPath: "/nowhere/statev2.sqlite",
+  } as unknown as ServerConfig.ServerConfig["Service"]);
+  return Effect.gen(function* () {
+    const memory = yield* BatonMemoryService;
+    const old = yield* memory.add({ kind: "fact", text: PRICE, source: "user" });
+    yield* TestClock.adjust("2 minutes");
+    yield* (yield* BatonMemoryLearning).learn({
+      origin: "job",
+      said: "We changed the pricing again last week",
+      reply: "Noted, I will use that from now on.",
+      sourceRef: null,
+      tainted: false,
+      project: null,
+    });
+    assert.include(prompts[0], old.id);
+  }).pipe(
+    Effect.provide(
+      learningLayer.pipe(
+        Layer.provideMerge(withModel(fakeModel)),
+        Layer.provideMerge(Layer.merge(oneShot, config)),
+      ),
+    ),
+  );
+});
 
 it.effect(
   "keeps another project's items out of the nearest 20, so they take no place from this one's",
