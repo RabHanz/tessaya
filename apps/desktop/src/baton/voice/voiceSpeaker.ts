@@ -160,9 +160,12 @@ export const createSpeaker = (input: {
     if (!force && input.silent?.() === true) return Promise.resolve();
     const text = speakableText(raw);
     if (text.length === 0) return Promise.resolve();
-    // What is shown and checked against her echo stays as written; only the voice is given it respelled.
+    // What is shown stays as written; only the voice is given it respelled. Her echo is checked against both.
     const spoken = speakableText(pronounce(raw, input.respellings?.() ?? {}));
     input.onText?.(text);
+    if (spoken !== text && spoken.length > 0) input.onText?.(spoken);
+    // Nothing left to say (only emoji): shown, and not a line the voice failed on.
+    if (spoken.length === 0) return Promise.resolve();
     const mine = generation;
     const first = pick();
     let source: ReturnType<typeof readAhead> | null = null;

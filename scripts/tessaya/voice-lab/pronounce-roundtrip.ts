@@ -1,8 +1,8 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off
 /**
  * Her voice (Pocket TTS) says each line as today and through `pronounce`, the sidecar's Parakeet hears it back, and the
- * word error per line goes to report.md. Pocket TTS is a Windows build: run it on the laptop, Node 23.6 or later:
- *   node pronounce-roundtrip.ts --pocket <voice\pocket> --sidecar tessaya-voice.exe --model <parakeet .gguf> --out <dir>
+ * word error per line goes to report.md. Pocket TTS is a Windows build: on the laptop (Node 22: add the flag):
+ *   node --experimental-strip-types pronounce-roundtrip.ts --pocket <voice\pocket> --sidecar tessaya-voice.exe --model <parakeet .gguf> --out <dir>
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -17,8 +17,15 @@ import {
 import { pronounce } from "../../../apps/desktop/src/baton/voice/pronounce.ts";
 import { speakableText } from "../../../apps/desktop/src/baton/voice/voiceSpeaker.ts";
 
-/** A line she might say, and how a person hearing it would write it down. */
-const LINES: ReadonlyArray<{ readonly text: string; readonly heard: string }> = [
+/**
+ * A line she might say, and how a person hearing it would write it down. `ownForm`: that reference is the pass's own
+ * rewrite (a time, a path, a link), so the line is shown but left out of the mean, which it would win by construction.
+ */
+const LINES: ReadonlyArray<{
+  readonly text: string;
+  readonly heard: string;
+  readonly ownForm?: true;
+}> = [
   { text: "Tessaya here, what do you need?", heard: "Tessaya here what do you need" },
   { text: "Ask Freya to read it back.", heard: "Ask Freya to read it back" },
   { text: "Baton restarted and T3 is up.", heard: "Baton restarted and T3 is up" },
@@ -26,8 +33,12 @@ const LINES: ReadonlyArray<{ readonly text: string; readonly heard: string }> = 
   { text: "CI failed on the PR.", heard: "CI failed on the PR" },
   { text: "The API key is in the URL.", heard: "The API key is in the URL" },
   { text: "Run the SQL query first.", heard: "Run the SQL query first" },
-  { text: "The call is at 9:30 GMT+5.", heard: "The call is at nine thirty GMT plus five" },
-  { text: "It starts at 14:00 UTC.", heard: "It starts at fourteen hundred UTC" },
+  {
+    text: "The call is at 9:30 GMT+5.",
+    heard: "The call is at nine thirty GMT plus five",
+    ownForm: true,
+  },
+  { text: "It starts at 14:00 UTC.", heard: "It starts at two pm UTC", ownForm: true },
   {
     text: "The deadline is 2026-11-07.",
     heard: "The deadline is seven November twenty twenty six",
@@ -36,10 +47,15 @@ const LINES: ReadonlyArray<{ readonly text: string; readonly heard: string }> = 
     text: "Version 0.1.73 is installed.",
     heard: "Version zero point one point seventy three is installed",
   },
-  { text: "I changed apps/desktop/src/core.ts for you.", heard: "I changed core dot ts for you" },
+  {
+    text: "I changed apps/desktop/src/core.ts for you.",
+    heard: "I changed core dot ts for you",
+    ownForm: true,
+  },
   {
     text: "It is at https://github.com/acme/app/pull/12 now.",
     heard: "It is at github dot com now",
+    ownForm: true,
   },
   { text: "Done ✅ and shipped 🚀.", heard: "Done and shipped" },
   {
@@ -179,8 +195,9 @@ const main = async () => {
         },
       };
     });
+    const scored = results.filter((_, index) => LINES[index]?.ownForm !== true);
     const mean = (pass: "before" | "after") =>
-      results.reduce((sum, r) => sum + r[pass].wer, 0) / results.length;
+      scored.reduce((sum, r) => sum + r[pass].wer, 0) / Math.max(scored.length, 1);
     const pct = (n: number) => `${Math.round(n * 100)}%`;
     const report = [
       `Round trip, voice ${voice}: Pocket TTS, then Parakeet (${NodePath.basename(model)}).`,
@@ -188,10 +205,10 @@ const main = async () => {
       "| Line | Heard before | WER | Heard after | WER |",
       "| --- | --- | --- | --- | --- |",
       ...results.map(
-        (r) =>
-          `| ${r.text.replaceAll("|", "/")} | ${r.before.back} | ${pct(r.before.wer)} | ${r.after.back} | ${pct(r.after.wer)} |`,
+        (r, index) =>
+          `| ${r.text.replaceAll("|", "/")}${LINES[index]?.ownForm === true ? " (not in the mean)" : ""} | ${r.before.back} | ${pct(r.before.wer)} | ${r.after.back} | ${pct(r.after.wer)} |`,
       ),
-      `| **Mean** | | **${pct(mean("before"))}** | | **${pct(mean("after"))}** |`,
+      `| **Mean of ${scored.length} lines** | | **${pct(mean("before"))}** | | **${pct(mean("after"))}** |`,
       "",
     ].join("\n");
     NodeFS.writeFileSync(NodePath.join(out, "results.json"), JSON.stringify(results, null, 2));

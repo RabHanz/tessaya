@@ -122,7 +122,31 @@ describe("createSpeaker on the OS voice", () => {
     });
     await speaker.speak("Freya asked Kiro about the VPN.");
     expect(synthesised).toEqual(["Fray-uh asked Keer-oh about the V P N."]);
-    expect(noted).toEqual(["Freya asked Kiro about the VPN."]);
+    // Both, so her own voice is known whether the recogniser writes "VPN" or "V P N".
+    expect(noted).toEqual([
+      "Freya asked Kiro about the VPN.",
+      "Fray-uh asked Keer-oh about the V P N.",
+    ]);
+  });
+
+  it("shows a line of only emoji, and says nothing without calling it unsaid", async () => {
+    const noted: string[] = [];
+    let unsaid = 0;
+    let played = 0;
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async () => {} },
+      voice: () => ({
+        kind: "synth",
+        synth: () => ({ stream: (async function* () {})(), cancel: () => {} }),
+      }),
+      player: { ...player, play: async () => ((played += 1), true) },
+      onText: (text) => void noted.push(text),
+      onUnavailable: () => void (unsaid += 1),
+    });
+    await speaker.speak("🎉");
+    expect(noted).toEqual(["🎉"]);
+    expect(unsaid).toBe(0);
+    expect(played).toBe(0);
   });
 
   it("says nothing at all in Written only", async () => {
