@@ -1,15 +1,28 @@
 {
-  "at": "2026-11-05T23:11:01.228Z",
-  "result": "gates",
+  "at": "2026-11-07T22:40:00.554Z",
+  "result": "conflict",
   "ok": false,
-  "pin": "47f2c8d29e981c7723467efe137ee19e91df924e",
-  "target": "25b53299b75d4d8d1d0667ad47e9cfed3749776e",
-  "behindCommits": 418,
-  "oldestUnsyncedDays": 3,
-  "conflictingPatches": [],
-  "conflictingFiles": [],
-  "touching": {},
+  "pin": "202d5b5616e3edf65706371e2b8a9c4f486d0a96",
+  "target": "a9e709f15f825cacac1b6d665fa1920c328d68b7",
+  "behindCommits": 79,
+  "oldestUnsyncedDays": 1,
+  "conflictingPatches": [
+    "0006-web-sidebar.patch",
+    "0010-public-hygiene.patch"
+  ],
+  "conflictingFiles": [
+    ".github/SECURITY.md",
+    "apps/web/public/manifest.webmanifest"
+  ],
+  "touching": {
+    ".github/SECURITY.md": [
+      "59ec1bac9f feat(marketing): help search engines tell t3.codes apart from copycat sites (#31142)"
+    ],
+    "apps/web/public/manifest.webmanifest": [
+      "b19c9f038a fix(web): add installable icons for Firefox on Android (#30420)"
+    ]
+  },
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261105T223828Z.log",
-  "hint": "The series applied but a gate failed. The branch is pushed; read the gates log."
+  "log": "/home/dev/.t3/baton-autosync/20261107T223916Z.log",
+  "hint": "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR."
 }
