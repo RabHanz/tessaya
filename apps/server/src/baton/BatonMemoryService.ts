@@ -14,6 +14,7 @@ import {
   effectiveConfidence,
   exportMarkdown,
   memoryBlock,
+  detectSecret,
   refuseToStore,
   reinforced,
   shouldDelete,
@@ -33,6 +34,7 @@ import {
   isLesson,
   type MemoryQuery,
 } from "@t3tools/baton-shared/memory";
+import { redactText } from "@t3tools/baton-shared/diagnostics";
 import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/baton-shared/osPack";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
@@ -42,6 +44,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonMemoryEmbedder } from "./BatonMemoryEmbedder.ts";
@@ -218,6 +221,15 @@ export class BatonMemoryService extends Context.Service<
     readonly noteOnce: (key: string, value: string) => Effect.Effect<boolean>;
   }
 >()("t3/baton/BatonMemoryService") {}
+
+const TALKS_SCRUBBED = "talks-scrubbed";
+const TALK_REDACTED = "[redacted: looks like a secret]";
+const decodeTalks = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
+/** A talk line's tokens taken out, or the whole line marked when it still looks like a secret. */
+const scrubTalk = (line: string): string => {
+  const out = redactText(line);
+  return detectSecret(out) === null ? out : TALK_REDACTED;
+};
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -904,6 +916,25 @@ export const make = Effect.gen(function* () {
       }
     }).pipe(Effect.forkScoped);
   }
+
+  // Talk notes kept before the assistant refused secrets could hold one. Once, each line is scrubbed in place; none is deleted.
+  yield* Effect.gen(function* () {
+    if (yield* flag(TALKS_SCRUBBED)) return;
+    const rows = yield* sql<{ key: string; value: string }>`
+      SELECT key, value FROM fabric_memory_meta WHERE key LIKE 'talks:%'
+    `.pipe(Effect.orDie);
+    for (const row of rows) {
+      const held = decodeTalks(row.value);
+      if (Option.isNone(held)) continue;
+      const clean = held.value.map(scrubTalk);
+      if (clean.every((line, i) => line === held.value[i])) continue;
+      // @effect-diagnostics-next-line globalJsonInEffect:off - an array of strings.
+      yield* sql`UPDATE fabric_memory_meta SET value = ${JSON.stringify(clean)} WHERE key = ${row.key}`.pipe(
+        Effect.orDie,
+      );
+    }
+    yield* setFlag(TALKS_SCRUBBED, true);
+  });
 
   return BatonMemoryService.of({
     origin,

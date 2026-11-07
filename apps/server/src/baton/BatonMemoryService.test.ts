@@ -7,6 +7,7 @@ import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
@@ -435,4 +436,25 @@ it.effect("a received item still goes through the never-store door", () =>
     assert.lengthOf(yield* b.list(), 0);
     assert.strictEqual((yield* b.syncHello).cursors["other"], "2026-01-02T00:00:00.000Z");
   }),
+);
+
+it.effect("scrubs secrets from talk notes kept before #410, once, keeping every line", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const key = `sk-${"a".repeat(24)}`;
+    yield* sql`INSERT INTO fabric_memory_meta (key, value) VALUES ('talks:2026-10-01', ${JSON.stringify(
+      [`use the key ${key} for the shop`, "the password is sunshine42", "book the dentist"],
+    )})`;
+    const memory = Context.get(yield* Layer.build(memoryLayer), BatonMemoryService);
+    assert.deepStrictEqual(yield* memory.talks("2026-10-01"), [
+      "use the key <secret> for the shop",
+      "[redacted: looks like a secret]",
+      "book the dentist",
+    ]);
+    assert.isTrue(yield* memory.flag("talks-scrubbed"));
+    // Done once: talk kept after the scrub is left as it is (new talk never holds a secret now).
+    yield* sql`UPDATE fabric_memory_meta SET value = '["kept after"]' WHERE key = 'talks:2026-10-01'`;
+    const again = Context.get(yield* Layer.build(memoryLayer), BatonMemoryService);
+    assert.deepStrictEqual(yield* again.talks("2026-10-01"), ["kept after"]);
+  }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );
