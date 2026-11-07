@@ -77,4 +77,41 @@ describe("streamingScorer", () => {
     expect(scored).toBeLessThanOrEqual(1 + 1 + 4 * (16_000 / 1280));
     expect(resets).toBe(1);
   });
+
+  // 0.1.73: the quiet a segment's end counts was kept across reset(), so a wake's new segment ended at once.
+  it("starts its counts afresh on reset, and a chunk still being scored from before does not count after it", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const started: number[] = [];
+    let first: () => void = () => {};
+    const scoringFirst = new Promise<void>((resolve) => (first = resolve));
+    const s = streamingScorer({
+      name: "fake",
+      chunkSamples: 1280,
+      reset: () => {},
+      threshold: 0.5,
+      // Silence is quiet and sound is speech; the first chunk is still being scored when reset() comes.
+      score: async (chunk) => {
+        started.push(chunk[0] ?? 0);
+        if (started.length === 1) {
+          first();
+          await gate;
+        }
+        return (chunk[0] ?? 0) > 0 ? 0.9 : 0.1;
+      },
+    });
+    for (let i = 0; i < 8; i += 1) s.feed(new Int16Array(320));
+    await scoringFirst;
+    s.reset();
+    expect(s.scored().quiet).toBe(0);
+    release();
+    await s.drain();
+    // The quiet chunk that was in flight, and the one queued behind it, count for nothing now.
+    expect(s.scored().quiet).toBe(0);
+    expect(s.last()).toBe(0);
+    for (let i = 0; i < 4; i += 1) s.feed(new Int16Array(320).fill(1_000));
+    await s.drain();
+    expect(s.scored()).toEqual({ speech: 1280, quiet: 0 });
+    expect(s.last()).toBe(0.9);
+  });
 });

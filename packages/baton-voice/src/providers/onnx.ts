@@ -157,6 +157,8 @@ export const streamingScorer = (input: {
   let stale = false;
   let speechScored = 0;
   let quietRun = 0;
+  /** Bumped by reset(): a chunk queued before it is about audio that no longer counts. */
+  let generation = 0;
   const feed = (frame: Int16Array) => {
     fed += frame.length;
     const joined = new Int16Array(pending.length + frame.length);
@@ -167,7 +169,9 @@ export const streamingScorer = (input: {
       const chunk = pending.slice(0, input.chunkSamples);
       pending = pending.slice(input.chunkSamples);
       const end = fed - pending.length;
+      const gen = generation;
       queue = queue.then(async () => {
+        if (gen !== generation) return;
         // Behind after a stall (launch, a busy computer), old quiet audio is skipped and the scorer starts fresh,
         // so it catches up with the microphone. Old speech is still scored: a name said at launch may be in it.
         if (fed - end > MAX_BEHIND && quiet(chunk)) {
@@ -180,6 +184,7 @@ export const streamingScorer = (input: {
           input.reset();
         }
         const s = await input.score(chunk);
+        if (gen !== generation) return;
         last = s;
         if (s >= input.threshold) {
           speechScored += chunk.length;
@@ -210,9 +215,12 @@ export const streamingScorer = (input: {
     firedAgo: () => fed - firedEnd,
     scored: () => ({ speech: speechScored, quiet: quietRun }),
     reset: () => {
+      generation += 1;
       pending = new Int16Array(0);
       fired = null;
       cooldown = 0;
+      quietRun = 0;
+      last = 0;
       input.reset();
     },
   };
