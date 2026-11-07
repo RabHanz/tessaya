@@ -120,12 +120,12 @@ describe("createSpeaker on the OS voice", () => {
       onText: (text) => void noted.push(text),
       respellings: () => ({ Kiro: "Keer-oh" }),
     });
-    await speaker.speak("Freya asked Kiro about the VPN.");
-    expect(synthesised).toEqual(["Fray-uh asked Keer-oh about the V P N."]);
-    // Both, so her own voice is known whether the recogniser writes "VPN" or "V P N".
+    await speaker.speak("Freya asked Kiro about the PR.");
+    expect(synthesised).toEqual(["Fray-uh asked Keer-oh about the P R."]);
+    // Both, so her own voice is known whether the recogniser writes "PR" or "P R".
     expect(noted).toEqual([
-      "Freya asked Kiro about the VPN.",
-      "Fray-uh asked Keer-oh about the V P N.",
+      "Freya asked Kiro about the PR.",
+      "Fray-uh asked Keer-oh about the P R.",
     ]);
   });
 

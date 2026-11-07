@@ -5,14 +5,16 @@ import { pronounce, pronounceFrom } from "./pronounce.ts";
 describe("what the voice is given to say", () => {
   it.each([
     // [what she wrote, what the voice is given]
-    ["Tessaya will check it.", "Tess-ay-uh will check it."],
+    // As written until the round trip picks a spelling: "Tess-ay-uh" was heard as "Tessa are".
+    ["Tessaya will check it.", "Tessaya will check it."],
     ["Ask Freya's window.", "Ask Fray-uh's window."],
     ["Baton is up, and T3 too.", "Batton is up, and T three too."],
     // The product only: "a baton" is the word.
     ["She passed the baton.", "She passed the baton."],
-    ["The VPN, the CI and the PR are fine.", "The V P N, the C I and the P R are fine."],
-    ["Two PRs and an API key.", "Two P Rs and an A P I key."],
-    ["Run the SQL against the URL.", "Run the S Q L against the U R L."],
+    // Pocket says these as letters already: "C I" was heard as "See I".
+    ["The VPN, the CI and the PR are fine.", "The VPN, the CI and the P R are fine."],
+    ["Two PRs and an API key.", "Two P Rs and an API key."],
+    ["Run the SQL against the URL.", "Run the SQL against the URL."],
     // Acronyms only in capitals, and only as whole words.
     ["Print it, then pr it and APIary.", "Print it, then pr it and APIary."],
     // Times, the British way.
@@ -58,8 +60,8 @@ describe("what the voice is given to say", () => {
     expect(pronounce("Baton runs Kiro on AWS, not aws or Kirov.", his)).toBe(
       "Bat-on runs Keer-oh on A W S, not aws or Kirov.",
     );
-    // His spelling of Tessaya is not respelled again by the built-in one.
-    expect(pronounce("Tessaya.", { Tessaya: "Tessaya" })).toBe("Tessaya.");
+    // His spelling of Freya is not respelled again by the built-in one.
+    expect(pronounce("Freya.", { Freya: "Freya" })).toBe("Freya.");
   });
 
   it("reads his list from the settings file, keeping only word and text pairs", () => {
