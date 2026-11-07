@@ -8,13 +8,16 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   BatonMemoryEmbedder,
   layer as embedderLayer,
   layerNone as noEmbedder,
 } from "./BatonMemoryEmbedder.ts";
+import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer, textHash } from "./BatonMemoryService.ts";
+import { BatonOneShot } from "./BatonOneShot.ts";
 import { vectorToBytes } from "./memoryVectors.ts";
 
 /** docs/baton/evals-memory/*.json: what is remembered, then what a question should bring back first. */
@@ -200,6 +203,81 @@ const retrieval = (arm: "keyword" | "fused", model: Layer.Layer<BatonMemoryEmbed
     ),
   );
 
+/** Old facts a reworded update leaves alive, at most; lower it when the loop improves. */
+const LEFT_AT_MOST = { keyword: 8, fused: 2 } as const;
+
+/**
+ * MEM-15: each superseded pair's new wording is said as a turn, with the old fact stored unlinked. A perfect extractor
+ * names the old fact's id whenever it is shown, so what is left alive is what the loop never showed it.
+ */
+const learning = (arm: "keyword" | "fused", model: Layer.Layer<BatonMemoryEmbedder>) =>
+  it.effect(`learning (${arm}): a reworded update replaces the fact it updates`, () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const learn = yield* BatonMemoryLearning;
+      const { items } = corpusOf.get("06-corpus.json")!;
+      const pairs = items.filter((i) => i.supersedes !== undefined);
+      const idOf = new Map<string, string>();
+      for (const { key, supersedes, ...draft } of items) {
+        if (supersedes === undefined) idOf.set(key, (yield* memory.add(draft)).id);
+      }
+      if (arm === "fused") yield* embedAll;
+      const alive: Array<string> = [];
+      for (const { key, supersedes, text } of pairs) {
+        target = { text, old: idOf.get(supersedes!)! };
+        yield* learn.learn({
+          origin: "turn",
+          said: text,
+          reply: "Noted.",
+          sourceRef: key,
+          tainted: false,
+          project: null,
+        });
+        const old = (yield* memory.list({ includeSuperseded: true, limit: 100_000 })).find(
+          (i) => i.id === target.old,
+        );
+        if (old?.supersededBy === null) alive.push(supersedes!);
+      }
+      console.log(
+        `memory eval ${arm} learning: ${alive.length}/${pairs.length} old facts left alive ${JSON.stringify(alive)}`,
+      );
+      assert.isAtMost(alive.length, LEFT_AT_MOST[arm]);
+    }).pipe(
+      Effect.provide(
+        learningLayer.pipe(
+          Layer.provideMerge(memoryLayer),
+          Layer.provideMerge(model),
+          Layer.provideMerge(oracle),
+          Layer.provideMerge(nowhere),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      ),
+    ),
+  );
+
+let target = { text: "", old: "" };
+/** The perfect extractor: it proposes his new wording and names the old fact when the prompt lists it. */
+const oracle = Layer.succeed(BatonOneShot, {
+  run: ((input: { readonly prompt: string }) =>
+    Effect.succeed({
+      items: [
+        {
+          kind: "fact",
+          text: target.text,
+          hisStatement: true,
+          replaces: input.prompt.includes(target.old) ? target.old : null,
+        },
+      ],
+    } as never)) as BatonOneShot["Service"]["run"],
+});
+const nowhere = Layer.succeed(ServerConfig.ServerConfig, {
+  dbPath: "/nowhere/statev2.sqlite",
+} as unknown as ServerConfig.ServerConfig["Service"]);
+
 retrieval("keyword", noEmbedder);
+learning("keyword", noEmbedder);
 // The model is not in git (scripts/tessaya/fetch-memory-model.mjs fetches it), so CI runs the keyword arm only.
-describe.runIf(hasModel)("with the local model", () => retrieval("fused", strictModel));
+describe.runIf(hasModel)("with the local model", () => {
+  retrieval("fused", strictModel);
+  learning("fused", strictModel);
+});

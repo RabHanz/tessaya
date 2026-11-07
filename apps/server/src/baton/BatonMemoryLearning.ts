@@ -41,7 +41,8 @@ const Proposals = Schema.Struct({
   ),
 });
 
-/** The existing memories closest to the exchange, shown to the extractor so it can name what it replaces. */
+/** The existing memories closest to the exchange, shown to the extractor so it can name what it replaces: this many by
+ * words, and as many again by recall. */
 const KNOWN_SHOWN = 8;
 
 export interface LearnResult {
@@ -73,11 +74,23 @@ export const make = Effect.gen(function* () {
       yield* memory.noteTalk(dayOf(yield* Clock.currentTimeMillis), input.said);
     }
     if (!worthLearningFrom(input)) return none;
-    const known = (yield* memory.search({
-      text: input.said,
-      limit: KNOWN_SHOWN,
+    const reader = {
       ...(input.agent === undefined ? {} : { agent: input.agent }),
-    })).map((hit) => hit.item);
+      ...(input.project === null ? {} : { scopeRef: input.project }),
+    };
+    // A project's turn never sees, so never replaces, another project's item (search only ranks by project).
+    const byWords = (yield* memory.search({ text: input.said, limit: KNOWN_SHOWN, ...reader }))
+      .map((hit) => hit.item)
+      .filter(
+        (item) =>
+          input.project === null || item.scope !== "project" || item.scopeRef === input.project,
+      );
+    // Recall's ranking adds meaning, so a reworded update is shown the fact it replaces (MEM-15). Recall's word floor
+    // drops what a long statement matches by few words, so the plain word search stays beside it.
+    const byRecall = yield* memory.related({ text: input.said, ...reader });
+    const known = [
+      ...new Map([...byWords, ...byRecall.slice(0, KNOWN_SHOWN)].map((i) => [i.id, i])).values(),
+    ];
     // A turn in a walled project keeps what it learns behind that wall, whatever scope the model chose.
     const walled =
       input.project !== null && isWalled(readPack(NodePath.dirname(config.dbPath)), input.project)

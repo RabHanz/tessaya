@@ -82,6 +82,30 @@ layer("BatonMemoryLearning", (it) => {
     }),
   );
 
+  it.effect("never shows or replaces another project's fact from a project's turn", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const learning = yield* BatonMemoryLearning;
+      const other = yield* memory.add({
+        kind: "decision",
+        text: "Standups are held on Fridays",
+        source: "thread",
+        scope: "project",
+        scopeRef: "harbour",
+      });
+      reply = {
+        items: [{ kind: "decision", text: "Standups are held on Tuesdays", replaces: other.id }],
+      };
+      prompts.length = 0;
+      yield* learning.learn(
+        turn({ said: "From now on standups are held on Tuesdays, not Fridays", project: "kiln" }),
+      );
+      assert.notInclude(prompts[0], other.id);
+      const all = yield* memory.list({ includeSuperseded: true, admin: true });
+      assert.isNull(all.find((i) => i.id === other.id)?.supersededBy);
+    }),
+  );
+
   it.effect("holds proposals from a tainted turn", () =>
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;

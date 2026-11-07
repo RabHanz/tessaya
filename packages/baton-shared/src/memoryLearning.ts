@@ -68,8 +68,11 @@ export const fromHisWords = (text: string, said: string): boolean => {
   return words.filter((w) => his.has(w)).length / words.length >= HIS_WORDS_SHARE;
 };
 
-const knownLine = (item: MemoryItem): string =>
-  `[id: ${item.id}] ${item.text} (${item.kind}${item.source === "user" ? ", his own words" : ""})`;
+/** One line per item: a stored text can neither close the list's tag nor pose as another item's id. */
+const knownLine = (item: MemoryItem): string => {
+  const text = item.text.replace(/\s+/g, " ").replace(/[<>]/g, "").replace(/\[id:/gi, "(id:");
+  return `[id: ${item.id}] ${text} (${item.kind}${item.source === "user" ? ", his own words" : ""})`;
+};
 
 export const extractionPrompt = (
   input: LearnInput,

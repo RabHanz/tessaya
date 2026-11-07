@@ -180,6 +180,12 @@ export class BatonMemoryService extends Context.Service<
     readonly forget: (id: string) => Effect.Effect<boolean>;
     /** He said yes to a held proposal. */
     readonly accept: (id: string) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
+    /** What recall ranks for a sentence (keywords and meaning fused), best first, before the block's budget cuts it. */
+    readonly related: (context: {
+      readonly text?: string | undefined;
+      readonly scopeRef?: string | null | undefined;
+      readonly agent?: string | undefined;
+    }) => Effect.Effect<ReadonlyArray<MemoryItem>>;
     /** The memory block for a prompt; with `turnRef` it records which items the turn used. */
     readonly recall: (context: {
       readonly text?: string | undefined;
@@ -597,11 +603,9 @@ export const make = Effect.gen(function* () {
     ).map(({ key }) => key);
   });
 
-  const recall = Effect.fn("BatonMemoryService.recall")(function* (context: {
+  const related = Effect.fn("BatonMemoryService.related")(function* (context: {
     readonly text?: string | undefined;
     readonly scopeRef?: string | null | undefined;
-    readonly budgetTokens?: number | undefined;
-    readonly turnRef?: string | undefined;
     readonly agent?: string | undefined;
   }) {
     const now = yield* nowMs;
@@ -657,18 +661,30 @@ export const make = Effect.gen(function* () {
               ].map((item) => ({ item, score: effectiveConfidence(item, now) }));
             },
           );
-    const ranked = hits
-      // Another project's items stay out of a turn that names its project.
-      .filter(
-        ({ item }) =>
-          typeof context.scopeRef !== "string" ||
-          item.scope !== "project" ||
-          item.scopeRef === context.scopeRef,
-      )
-      .filter(({ item }) => seen(item))
-      .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
-      .toSorted((a, b) => b.score - a.score)
-      .map((hit) => hit.item);
+    return (
+      hits
+        // Another project's items stay out of a turn that names its project.
+        .filter(
+          ({ item }) =>
+            typeof context.scopeRef !== "string" ||
+            item.scope !== "project" ||
+            item.scopeRef === context.scopeRef,
+        )
+        .filter(({ item }) => seen(item))
+        .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
+        .toSorted((a, b) => b.score - a.score)
+        .map((hit) => hit.item)
+    );
+  });
+
+  const recall = Effect.fn("BatonMemoryService.recall")(function* (context: {
+    readonly text?: string | undefined;
+    readonly scopeRef?: string | null | undefined;
+    readonly budgetTokens?: number | undefined;
+    readonly turnRef?: string | undefined;
+    readonly agent?: string | undefined;
+  }) {
+    const ranked = yield* related(context);
     const out = memoryBlock(ranked, context.budgetTokens ?? DEFAULT_RECALL_TOKENS);
     if (context.turnRef !== undefined && out.ids.length > 0) {
       yield* markUsed(context.turnRef, out.ids);
@@ -980,6 +996,7 @@ export const make = Effect.gen(function* () {
       yield* poke;
       return item;
     }),
+    related,
     recall,
     markUsed,
     used,
