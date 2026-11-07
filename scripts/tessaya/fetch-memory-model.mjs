@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fetches the memory recall model (MEM-16): bge-small-en-v1.5, int8 ONNX, MIT, from the pinned Hugging Face
-// revision, and checks its sha256. The model is not in git (23 MB); vocab.txt beside it is. Usage:
+// revision, and checks its sha256. The model is not in git (34 MB); vocab.txt beside it is. Usage:
 //   node scripts/tessaya/fetch-memory-model.mjs [destination folder]   (default: apps/server/resources/memory-model)
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
