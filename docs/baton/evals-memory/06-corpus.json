@@ -514,18 +514,18 @@
     {
       "key": "vo-purpose",
       "kind": "fact",
-      "text": "VentureOS runs the back office for all the ventures",
+      "text": "Harbour runs the back office for all the ventures",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-db",
       "kind": "fact",
-      "text": "VentureOS keeps its data in Postgres on the main server",
+      "text": "Harbour keeps its data in Postgres on the main server",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-daily",
@@ -533,7 +533,7 @@
       "text": "The nightly job rebuilds the search index at four in the morning",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-storage",
@@ -541,7 +541,7 @@
       "text": "Old log files filled the server disk twice this year",
       "source": "job",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-retention",
@@ -549,7 +549,7 @@
       "text": "Chat logs are kept for thirty days",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-gpu",
@@ -557,15 +557,15 @@
       "text": "Batch and GPU jobs go to a rented cloud GPU service",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-ci",
       "kind": "fact",
-      "text": "VentureOS CI can run in the cloud when the server is busy",
+      "text": "Harbour CI can run in the cloud when the server is busy",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-hosting",
@@ -573,7 +573,7 @@
       "text": "Sites deploy through the hosting panel on the web server",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-dns",
@@ -581,7 +581,7 @@
       "text": "DNS for every domain is on Cloudflare",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-cost",
@@ -589,7 +589,7 @@
       "text": "Spend on cloud compute stays under three hundred pounds a month",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-reports",
@@ -597,7 +597,7 @@
       "text": "The weekly numbers report goes out on Monday at nine",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "vo-invoices",
@@ -605,7 +605,7 @@
       "text": "Invoices are generated from the billing table on the first of the month",
       "source": "thread",
       "scope": "project",
-      "scopeRef": "ventureos"
+      "scopeRef": "harbour"
     },
     {
       "key": "hb-deploy",
@@ -2080,13 +2080,13 @@
     {
       "key": "f-67",
       "kind": "fact",
-      "text": "VentureOS has a dashboard for every venture",
+      "text": "Harbour has a dashboard for every venture",
       "source": "user"
     },
     {
       "key": "f-68",
       "kind": "fact",
-      "text": "VentureOS sends a morning briefing",
+      "text": "Harbour sends a morning briefing",
       "source": "user"
     },
     {
@@ -2498,7 +2498,7 @@
       "group": "paraphrase",
       "pending": "MEM-13",
       "query": "what limits our monthly hosting bill",
-      "scopeRef": "ventureos",
+      "scopeRef": "harbour",
       "present": ["vo-cost"]
     },
     {
@@ -2506,7 +2506,7 @@
       "group": "paraphrase",
       "pending": "MEM-13",
       "query": "why did the machine run out of storage",
-      "scopeRef": "ventureos",
+      "scopeRef": "harbour",
       "present": ["vo-storage"]
     },
     {
