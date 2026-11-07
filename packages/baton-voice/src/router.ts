@@ -86,6 +86,14 @@ const highRiskReply = (subject: string): string =>
 
 export interface VoiceRouter {
   readonly route: (effect: VoiceEffect, context: RouteContext) => Promise<RouteOutcome>;
+  /**
+   * Think a command through before he has surely finished: reads only, never speaks or acts. The
+   * returned `go` does the rest, as `route` would; a turn he carried on from is never sent.
+   */
+  readonly prepare?: (
+    effect: Extract<VoiceEffect, { kind: "command" }>,
+    context: RouteContext,
+  ) => Promise<() => Promise<RouteOutcome>>;
 }
 
 export const createVoiceRouter = (client: VoiceIntentClient): VoiceRouter => {
@@ -109,6 +117,54 @@ export const createVoiceRouter = (client: VoiceIntentClient): VoiceRouter => {
       };
     }
     return { kind: "ran", reply, workSessionId: resolution.workSessionId, source: "intent" };
+  };
+
+  const prepare: NonNullable<VoiceRouter["prepare"]> = async (effect, context) => {
+    const done = (outcome: RouteOutcome) => async () => outcome;
+    // Before: never send a high-risk sentence anywhere.
+    const subject = highRiskSubject(effect.text);
+    if (subject !== null)
+      return done({ kind: "refused", reply: highRiskReply(subject), reason: "high_risk" });
+    const focusedWorkSessionId = focusFor(effect.inheritedTarget, context);
+    const resolution = await client.resolve({
+      text: effect.text,
+      focusedWorkSessionId,
+      allowModel: true,
+    });
+    if (resolution.outcome === "refused") {
+      return done({
+        kind: "refused",
+        reply: resolution.refusal.message,
+        reason: resolution.refusal.reason,
+      });
+    }
+    // After: whatever read it (grammar or model), the answer is re-checked.
+    if (resolution.risk === "high") {
+      return done({
+        kind: "refused",
+        reply: highRiskReply("a high-risk action"),
+        reason: "high_risk",
+      });
+    }
+    const reads = resolution.command.kind.startsWith("status_");
+    if (resolution.risk === "medium" || (effect.restated === true && !reads)) {
+      return async () => {
+        counter += 1;
+        const token = `confirm-${counter}`;
+        parked.set(token, {
+          text: effect.text,
+          focusedWorkSessionId,
+          workSessionId: resolution.workSessionId,
+        });
+        return {
+          kind: "needs_confirmation",
+          token,
+          prompt: `${effect.restated === true ? `I took that as: ${effect.text} ` : ""}${resolution.description} Say "confirm" to go ahead.`,
+          workSessionId: resolution.workSessionId,
+        };
+      };
+    }
+    return () => run(effect.text, focusedWorkSessionId);
   };
 
   const route = async (effect: VoiceEffect, context: RouteContext): Promise<RouteOutcome> => {
@@ -146,50 +202,8 @@ export const createVoiceRouter = (client: VoiceIntentClient): VoiceRouter => {
         return { kind: "sent_to_session", reply, workSessionId: ladder.workSessionId };
       }
 
-      case "command": {
-        // Before: never send a high-risk sentence anywhere.
-        const subject = highRiskSubject(effect.text);
-        if (subject !== null)
-          return { kind: "refused", reply: highRiskReply(subject), reason: "high_risk" };
-        const focusedWorkSessionId = focusFor(effect.inheritedTarget, context);
-        const resolution = await client.resolve({
-          text: effect.text,
-          focusedWorkSessionId,
-          allowModel: true,
-        });
-        if (resolution.outcome === "refused") {
-          return {
-            kind: "refused",
-            reply: resolution.refusal.message,
-            reason: resolution.refusal.reason,
-          };
-        }
-        // After: whatever read it (grammar or model), the answer is re-checked.
-        if (resolution.risk === "high") {
-          return {
-            kind: "refused",
-            reply: highRiskReply("a high-risk action"),
-            reason: "high_risk",
-          };
-        }
-        const reads = resolution.command.kind.startsWith("status_");
-        if (resolution.risk === "medium" || (effect.restated === true && !reads)) {
-          counter += 1;
-          const token = `confirm-${counter}`;
-          parked.set(token, {
-            text: effect.text,
-            focusedWorkSessionId,
-            workSessionId: resolution.workSessionId,
-          });
-          return {
-            kind: "needs_confirmation",
-            token,
-            prompt: `${effect.restated === true ? `I took that as: ${effect.text} ` : ""}${resolution.description} Say "confirm" to go ahead.`,
-            workSessionId: resolution.workSessionId,
-          };
-        }
-        return run(effect.text, focusedWorkSessionId);
-      }
+      case "command":
+        return (await prepare(effect, context))();
 
       case "confirmed": {
         const item = parked.get(effect.token);
@@ -215,5 +229,5 @@ export const createVoiceRouter = (client: VoiceIntentClient): VoiceRouter => {
     }
   };
 
-  return { route };
+  return { route, prepare };
 };

@@ -13,13 +13,23 @@ const rig = (
   reply?: Promise<void>,
   /** Recognition of line `n` waits on this: a busy recogniser. */
   slow?: (n: number) => Promise<void>,
+  /** A router that thinks ahead (`prepare`), a voice that records what it says, and his pause setting. */
+  ahead?: { readonly waitMs: number },
 ) => {
   let speech = false;
   let next = 0;
   const routed: string[] = [];
   const events: VoiceCoreEvent[] = [];
+  const thought: string[] = [];
+  const spoken: string[] = [];
+  let routeCalls = 0;
+  const ran = async (text: string): Promise<RouteOutcome> => {
+    routed.push(text);
+    await reply;
+    return { kind: "ran", reply: "ok", workSessionId: null, source: "test" };
+  };
   const core = createVoiceCore({
-    waitMs: () => 1_500,
+    waitMs: () => ahead?.waitMs ?? 1_500,
     wake: { name: "fake", reset: () => {}, process: () => null },
     vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
     stt: {
@@ -33,11 +43,21 @@ const rig = (
     router: {
       route: async (effect): Promise<RouteOutcome> => {
         if (effect.kind !== "command") return { kind: "none" };
-        routed.push(effect.text);
-        await reply;
-        return { kind: "ran", reply: "ok", workSessionId: null, source: "test" };
+        routeCalls += 1;
+        return ran(effect.text);
       },
+      ...(ahead === undefined
+        ? {}
+        : {
+            prepare: async (effect) => {
+              thought.push(effect.text);
+              return () => ran(effect.text);
+            },
+          }),
     },
+    ...(ahead === undefined
+      ? {}
+      : { tts: { name: "fake", speak: async (text: string) => void spoken.push(text) } }),
   });
   core.subscribe((event) => events.push(event));
   const push = (seconds: number, loud: boolean) => {
@@ -47,7 +67,7 @@ const rig = (
   const settle = async () => {
     for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
   };
-  return { core, push, routed, events, settle };
+  return { core, push, routed, events, settle, thought, spoken, routeCalls: () => routeCalls };
 };
 
 describe("one sentence with a breath in it", () => {
@@ -194,5 +214,57 @@ describe("one sentence with a breath in it", () => {
     expect(r.routed).toEqual([]);
     expect(r.events.some((e) => e.type === "dismissed")).toBe(true);
     expect(r.core.snapshot().machine.mode).toBe("sleeping");
+  });
+});
+
+describe("thinking ahead in the pause", () => {
+  it("never says or does a reply thought out before he carried on", async () => {
+    let recognised: () => void = () => {};
+    const second = new Promise<void>((resolve) => (recognised = resolve));
+    // The rest is recognised late, so the joined words go at once with nothing thought out for them.
+    const r = rig(
+      ["Open my notes please.", "And the calendar."],
+      undefined,
+      (n) => (n === 1 ? second : Promise.resolve()),
+      { waitMs: 3_000 },
+    );
+    r.core.activate("wake");
+    await r.core.idle();
+    r.push(1, true);
+    r.push(1, false);
+    await r.settle();
+    r.push(0.1, false);
+    await r.settle();
+    expect(r.thought).toEqual(["Open my notes please."]);
+    // He goes on inside the 1.65 s a finished sentence waits at this setting.
+    r.push(0.2, false);
+    r.push(1, true);
+    r.push(1, false);
+    await r.settle();
+    r.push(3, false);
+    recognised();
+    await r.settle();
+    r.push(0.2, false);
+    await r.settle();
+    await r.core.idle();
+    expect(r.thought).toEqual(["Open my notes please."]);
+    expect(r.routed).toEqual(["Open my notes please. And the calendar."]);
+    expect(r.spoken).toEqual(["ok"]);
+  });
+
+  it("sends the reply it thought out once he stays quiet, without asking again", async () => {
+    const r = rig(["Open my notes please."], undefined, undefined, { waitMs: 3_000 });
+    r.core.activate("wake");
+    await r.core.idle();
+    r.push(1, true);
+    r.push(1, false);
+    await r.settle();
+    r.push(3, false);
+    await r.settle();
+    await r.core.idle();
+    expect(r.thought).toEqual(["Open my notes please."]);
+    expect(r.routed).toEqual(["Open my notes please."]);
+    expect(r.routeCalls()).toBe(0);
+    expect(r.spoken).toEqual(["ok"]);
   });
 });

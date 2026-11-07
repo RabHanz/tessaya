@@ -14,7 +14,12 @@
 import type { EchoGuard } from "./echoGuard.ts";
 import type { ContextBusState } from "@t3tools/baton-shared/contextBus";
 import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
-import { JOIN_WITHIN_MS, WAIT_DEFAULT_MS, commitMs } from "@t3tools/baton-shared/endOfTurn";
+import {
+  JOIN_WITHIN_MS,
+  WAIT_DEFAULT_MS,
+  commitMs,
+  thinkAheadMs,
+} from "@t3tools/baton-shared/endOfTurn";
 import { isAddressedFollowUp } from "@t3tools/baton-shared/followUp";
 import { isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
 
@@ -325,9 +330,38 @@ export const createVoiceCore = (input: {
     readonly text: string;
     readonly endAt: number;
     releaseAt: number;
+    /** When to start thinking out the reply (`thinkAhead`), and whether it has. */
+    readonly thinkAt: number;
+    thought: boolean;
     readonly settle: (kept: boolean) => void;
   }
   let held: Held | null = null;
+  /**
+   * A command thought out during the end-of-turn pause, read-only (`VoiceRouter.prepare`). It goes on only
+   * when the same words reach the router with the same context; otherwise it is never sent.
+   */
+  let ahead: {
+    readonly effect: VoiceEffect;
+    readonly bus: ContextBusState;
+    readonly target: string | null;
+    readonly wake: string | null;
+    readonly go: Promise<() => Promise<RouteOutcome>>;
+  } | null = null;
+  const wakeOf = (text: string) => namedWake(text, timings.wakeWords ?? []) ?? addressee;
+  const thinkAhead = (text: string) => {
+    ahead = null;
+    const prepare = input.router?.prepare;
+    if (prepare === undefined) return;
+    const { effects } = reduceVoice(machine, { type: "utterance", text, at: now() }, timings);
+    const [effect] = effects;
+    if (effects.length !== 1 || effect?.kind !== "command") return;
+    const wake = wakeOf(text);
+    const context = { bus, now: now(), mostRecentWorkSessionId: lastTarget, wake };
+    const go = prepare(effect, context);
+    // A discarded one fails quietly; a kept one fails where it is awaited.
+    go.catch(() => undefined);
+    ahead = { effect, bus, target: lastTarget, wake, go };
+  };
   let transcribing = 0;
   /** Where each segment still being recognised began, so held words wait for speech that may join them. */
   const recognising = new Set<number>();
@@ -376,15 +410,25 @@ export const createVoiceCore = (input: {
       const mine: Flight = { text: current.text, endAt: current.endAt, abort };
       if (turn) flight = mine;
       // "Tessaya, …" said in Freya's open window is for Tessaya, and so is what he says next without a name.
-      const named = namedWake(current.text, timings.wakeWords ?? []);
-      if (named !== null && turn) addressee = named;
+      if (turn) addressee = wakeOf(current.text);
+      const early = effect.kind === "command" ? ahead : null;
+      if (effect.kind === "command") ahead = null;
+      const thought =
+        early !== null &&
+        JSON.stringify(early.effect) === JSON.stringify(effect) &&
+        early.bus === bus &&
+        early.target === lastTarget &&
+        early.wake === addressee;
       const outcome = await Promise.race([
-        input.router.route(effect, {
-          bus,
-          now: now(),
-          mostRecentWorkSessionId: lastTarget,
-          wake: addressee,
-        }),
+        thought
+          ? // He may carry on while it is still being thought out: then it never acts.
+            early.go.then((go) => (flight === mine ? go() : null))
+          : input.router.route(effect, {
+              bus,
+              now: now(),
+              mostRecentWorkSessionId: lastTarget,
+              wake: addressee,
+            }),
         ...(turn ? [dropped] : []),
       ]);
       if (flight === mine) flight = null;
@@ -578,6 +622,7 @@ export const createVoiceCore = (input: {
       if (machine.deadline !== null && turn.startAt <= machine.deadline)
         await dispatch({ type: "keep_open", at: now() });
       await dispatch({ type: "utterance", text: said, at: now() });
+      ahead = null;
     });
     show();
   };
@@ -614,13 +659,17 @@ export const createVoiceCore = (input: {
   /** Wait out the end-of-turn pause for these words; false when later speech took them over. */
   const holdForMore = (text: string, endAt: number, lastWordAt: number): Promise<boolean> =>
     new Promise((resolve) => {
+      const words = stripWake(text, timings.wakeWords);
       const mine: Held = {
         text,
         endAt,
         // commitMs is silence after his last word, and the segmenter has already waited out part of it.
-        releaseAt: lastWordAt + commitMs(waitMs(), stripWake(text, timings.wakeWords)),
+        releaseAt: lastWordAt + commitMs(waitMs(), words),
+        thinkAt: lastWordAt + thinkAheadMs(waitMs(), words),
+        thought: false,
         settle: (kept) => {
           if (held === mine) held = null;
+          if (!kept) ahead = null;
           resolve(kept);
         },
       };
@@ -923,6 +972,11 @@ export const createVoiceCore = (input: {
         (segment !== null && joins(at - (segmentSamples * 1000) / VOICE_SAMPLE_RATE)) ||
         [...recognising].some(joins);
       const cap = coming ? JOIN_WAIT_MAX_MS : 3_000;
+      // Probably the end: the reply is thought out while the pause runs, and kept only if he stays quiet.
+      if (!held.thought && !busy && at >= held.thinkAt && at < held.releaseAt) {
+        held.thought = true;
+        thinkAhead(held.text);
+      }
       if (at >= held.releaseAt && (!busy || at >= held.releaseAt + cap)) held.settle(true);
     }
 

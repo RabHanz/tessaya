@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { commitMs, isUnfinished, JOIN_WITHIN_MS } from "./endOfTurn.ts";
+import { commitMs, isUnfinished, JOIN_WITHIN_MS, thinkAheadMs } from "./endOfTurn.ts";
 
 /** Splits in his log of 2026-11-01: pauses are speech_end gaps minus the later part's estimated length. */
 const FIRST_PAUSE_MS = 560;
@@ -11,38 +11,68 @@ const split = [
 ];
 
 describe("end of turn", () => {
-  it("reads unfinished and finished words", () => {
-    for (const t of [
-      "There's still many",
-      "Can you tell me what's the",
-      "and",
-      "so,",
-      "I think that",
-      "Look. What?",
-      "Well.",
-      "So, what",
-    ])
-      expect(isUnfinished(t)).toBe(true);
-    for (const t of [
-      "What time is it?",
-      "Where is Peru?",
-      "Textbox on screen.",
-      "Look at the screen.",
-      "So what needs me today?",
-      "Okay.",
-      "Right.",
-      "Okay, yes.",
-      "Right, send.",
-      "Okay thanks.",
-    ])
-      expect(isUnfinished(t)).toBe(false);
-  });
+  // Each row: what he said, and whether the turn waits longer, the usual time, or less than his setting.
+  const table: ReadonlyArray<readonly [string, "longer" | "usual" | "sooner"]> = [
+    ["There's still many", "longer"],
+    ["Can you tell me what's the", "longer"],
+    ["and", "longer"],
+    ["so,", "longer"],
+    ["I think that", "longer"],
+    ["Look. What?", "longer"],
+    ["Well.", "longer"],
+    ["So, what", "longer"],
+    // The recogniser closes a breath with a full stop or an ellipsis; the words are still open.
+    ["Open the…", "longer"],
+    ["Open the.", "longer"],
+    ["Open the door and then", "longer"],
+    ["Open the door and then.", "longer"],
+    ["I wanted to check the build so.", "longer"],
+    ["Send it to Sam but.", "longer"],
+    ["Move it to.", "longer"],
+    ["Okay, um.", "longer"],
+    // A question mark does not close a question that trails off.
+    ["What's the weather like in?", "longer"],
+    ["Can you tell me about?", "longer"],
+    ["Is it bigger than?", "longer"],
+    ["Do you know how?", "longer"],
+    ["Can you check if?", "longer"],
+    ["Who did you send it to?", "sooner"],
+    ["What's it about?", "sooner"],
+    ["What's it like?", "sooner"],
+    ["Who is that?", "sooner"],
+    ["So what?", "sooner"],
+    // Finished sentences that end on a word that often trails off.
+    ["Use plan A.", "sooner"],
+    ["Pick option A.", "sooner"],
+    ["Vitamin A.", "usual"],
+    ["I need to.", "usual"],
+    ["I have to go to.", "longer"],
+    ["Even so.", "usual"],
+    ["Okay so.", "usual"],
+    ["What time is it?", "sooner"],
+    ["Where is Peru?", "sooner"],
+    ["What time?", "sooner"],
+    ["Who is he with?", "sooner"],
+    ["Look at the screen.", "sooner"],
+    ["Open my notes please.", "sooner"],
+    ["So what needs me today?", "sooner"],
+    ["I think so.", "usual"],
+    ["Textbox on screen.", "sooner"],
+    ["Okay.", "usual"],
+    ["Right.", "usual"],
+    ["Okay, yes.", "usual"],
+    ["Right, send.", "usual"],
+    ["Okay thanks.", "usual"],
+    ["Open Notepad.", "usual"],
+    ["Tell me the time now please ok", "usual"],
+  ];
 
-  it("waits longer on unfinished words and less on a finished question", () => {
-    expect(commitMs(1_500, "There's still many")).toBeGreaterThan(
-      commitMs(1_500, "Tell me the time now please ok"),
-    );
-    expect(commitMs(1_500, "What time is it?")).toBeLessThan(1_500);
+  it.each(table)("%s waits %s", (text, wait) => {
+    expect(isUnfinished(text)).toBe(wait === "longer");
+    const ms = commitMs(1_500, text);
+    expect(ms > 1_500 ? "longer" : ms < 1_500 ? "sooner" : "usual").toBe(wait);
+    // The reply is thought out at once, or after his usual pause when the words trail off.
+    expect(thinkAheadMs(1_500, text)).toBe(wait === "longer" ? 1_500 : 0);
   });
 
   it("splits none of his logged turns, where the old fixed 0.8 s split them", () => {
