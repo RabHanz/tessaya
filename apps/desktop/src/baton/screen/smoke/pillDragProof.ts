@@ -19,13 +19,33 @@ import { createVoicePill } from "../../voice/voicePill.ts";
 
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "pill-drag-out");
 NodeFS.mkdirSync(out, { recursive: true });
-const progress = (m: string) => NodeFS.appendFileSync(NodePath.join(out, "progress.log"), `${new Date().toISOString()} ${m}\n`);
+const progress = (m: string) =>
+  NodeFS.appendFileSync(NodePath.join(out, "progress.log"), `${new Date().toISOString()} ${m}\n`);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 setTimeout(() => (progress("timed out"), Electron.app.exit(3)), 9 * 60_000).unref();
 
 const clip = NodeChildProcess.spawn(
   "ffmpeg",
-  ["-y", "-f", "gdigrab", "-framerate", "15", "-i", "desktop", "-vf", "scale=-2:720", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26", "-pix_fmt", "yuv420p", NodePath.join(out, "drag.mp4")],
+  [
+    "-y",
+    "-f",
+    "gdigrab",
+    "-framerate",
+    "15",
+    "-i",
+    "desktop",
+    "-vf",
+    "scale=-2:720",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "ultrafast",
+    "-crf",
+    "26",
+    "-pix_fmt",
+    "yuv420p",
+    NodePath.join(out, "drag.mp4"),
+  ],
   { stdio: ["pipe", "ignore", "ignore"], windowsHide: true },
 );
 clip.on("error", () => undefined);
@@ -37,7 +57,12 @@ const stopClip = () =>
     clip.stdin.write("q");
   });
 
-type Mode = "move handle" | "always-on rest" | "speaking" | "listening (Wake now)" | "listening after a screen look";
+type Mode =
+  | "move handle"
+  | "always-on rest"
+  | "speaking"
+  | "listening (Wake now)"
+  | "listening after a screen look";
 const makePill = (stateDir: string, mode: Mode) =>
   createVoicePill({
     cueGain: () => 0,
@@ -50,8 +75,10 @@ const makePill = (stateDir: string, mode: Mode) =>
     onDrag: (o) => progress(`drag outcome ${JSON.stringify(o)}`),
   });
 const show = (pill: ReturnType<typeof createVoicePill>, mode: Mode) => {
-  if (mode === "move handle") pill.showMove();
-  else if (mode === "always-on rest") pill.setRest(true);
+  // Locked by default: every drag below is made with Move pill on.
+  pill.setMoving(true);
+  if (mode === "move handle") return;
+  if (mode === "always-on rest") pill.setRest(true);
   else if (mode === "speaking") {
     pill.on({ type: "speaking", active: true });
     pill.micLevel(0.3);
@@ -65,7 +92,9 @@ const show = (pill: ReturnType<typeof createVoicePill>, mode: Mode) => {
 const pillWindow = async () => {
   for (const win of Electron.BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    const isPill = await win.webContents.executeJavaScript("typeof window.pill==='object'").catch(() => false);
+    const isPill = await win.webContents
+      .executeJavaScript("typeof window.pill==='object'")
+      .catch(() => false);
     if (isPill === true) return win;
   }
   throw new Error("the pill window is not there");
@@ -91,7 +120,12 @@ void Electron.app.whenReady().then(async () => {
   const base = STATES["empty"]!;
   createBatonHome({
     stateDir: out,
-    state: () => ({ status: { label: "Listening", tone: "good", device: "", mark: "", brandMark: "" }, controls: base.controls, ...(base.extra === undefined ? {} : { extra: base.extra }) }) as never,
+    state: () =>
+      ({
+        status: { label: "Listening", tone: "good", device: "", mark: "", brandMark: "" },
+        controls: base.controls,
+        ...(base.extra === undefined ? {} : { extra: base.extra }),
+      }) as never,
     apply: () => undefined,
     openSessions: () => undefined,
     appearance: () => "dark",
@@ -103,7 +137,14 @@ void Electron.app.whenReady().then(async () => {
   home?.focus();
   const lines: string[] = [];
   let allOk = true;
-  for (const [mode, grip] of [["move handle", false], ["always-on rest", false], ["speaking", false], ["listening (Wake now)", false], ["listening (Wake now)", true], ["listening after a screen look", false]] as const) {
+  for (const [mode, grip] of [
+    ["move handle", false],
+    ["always-on rest", false],
+    ["speaking", false],
+    ["listening (Wake now)", false],
+    ["listening (Wake now)", true],
+    ["listening after a screen look", false],
+  ] as const) {
     const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pill-drag-"));
     let pill = makePill(stateDir, mode);
     pill.warm();
@@ -124,7 +165,10 @@ void Electron.app.whenReady().then(async () => {
     await sleep(150);
     await driver.pressAt(from);
     for (let i = 1; i <= 20; i += 1) {
-      await driver.moveAt({ x: from.x + ((to.x - from.x) * i) / 20, y: from.y + ((to.y - from.y) * i) / 20 });
+      await driver.moveAt({
+        x: from.x + ((to.x - from.x) * i) / 20,
+        y: from.y + ((to.y - from.y) * i) / 20,
+      });
       await sleep(30);
     }
     await driver.releaseAt(to);
@@ -143,13 +187,20 @@ void Electron.app.whenReady().then(async () => {
     const kept = Math.hypot(again.x - after.x, again.y - after.y);
     const ok = moved > 100 && kept < 4;
     allOk = allOk && ok;
-    lines.push(`| ${mode}, from the ${grip ? "left grip" : "middle"} | ${Math.round(moved)} px | ${Math.round(kept)} px | ${ok ? "ok" : "FAILED"} |`);
+    lines.push(
+      `| ${mode}, from the ${grip ? "left grip" : "middle"} | ${Math.round(moved)} px | ${Math.round(kept)} px | ${ok ? "ok" : "FAILED"} |`,
+    );
     pill.dispose();
     await sleep(800);
   }
   await stopClip();
   const ok = allOk;
-  const text = [`### Pill drag with the real mouse: ${ok ? "works and the place is kept" : "FAILED"}`, "| pill state | moved by the drag (needs 100+) | off after a restart (needs under 4) | result |", "| --- | --- | --- | --- |", ...lines].join("\n");
+  const text = [
+    `### Pill drag with the real mouse: ${ok ? "works and the place is kept" : "FAILED"}`,
+    "| pill state | moved by the drag (needs 100+) | off after a restart (needs under 4) | result |",
+    "| --- | --- | --- | --- |",
+    ...lines,
+  ].join("\n");
   NodeFS.writeFileSync(NodePath.join(out, "results.md"), text);
   console.log(text);
   Electron.app.exit(ok ? 0 : 1);

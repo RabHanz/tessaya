@@ -3136,6 +3136,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
     onChange: (turn) => input.onPillState?.(turn.phase),
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
+    onMoving: () => render(),
+    foreground: async () => (await sidecar?.foreground())?.window ?? null,
+    focusWindow: (window) => void sidecar?.focusWindow(window).catch(() => undefined),
   });
   let fullscreen = false;
   const restWanted = () =>
@@ -5285,15 +5288,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.pillMove",
         section: "On screen",
         label: "Move the pill",
-        hint: "Shows the pill for ten seconds so you can drag it where you want it.",
+        hint: "Unlocks the pill so you can drag it. Click the check mark above it, or press Esc, when it is where you want it. Move pill in the tray menu does the same.",
         kind: "action",
-        button: "Move",
+        button: pill.moving() ? "Lock" : "Move",
       },
       {
         id: "v.pillRest",
         section: "On screen",
         label: "Show a small bar when Tessaya isn't listening",
-        hint: "Off, nothing shows until Tessaya is doing something. Drag the pill to move it, double-click to put it back.",
+        hint: "Off, nothing shows until Tessaya is doing something. Use Move pill in the tray menu to move it, double-click to put it back.",
         kind: "toggle",
         on: settings.pillAtRest,
       },
@@ -6156,7 +6159,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         input.extras?.notice(line);
         render();
       });
-    } else if (id === "v.pillMove") pill.showMove();
+    } else if (id === "v.pillMove") pill.setMoving(!pill.moving());
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.palette") {
       save({ palette: parsePalette(value) });
@@ -6317,6 +6320,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           const last = lastReply ?? lastDictation;
           if (last !== null) Electron.clipboard.writeText(last);
         },
+      },
+      {
+        label: "Move pill",
+        type: "checkbox",
+        checked: pill.moving(),
+        click: (item) => pill.setMoving(item.checked),
       },
       { type: "separator" },
       ...(input.extras?.menuItems() ?? []),
