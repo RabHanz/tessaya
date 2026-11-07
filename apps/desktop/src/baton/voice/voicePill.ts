@@ -37,6 +37,7 @@ import {
   PILL_SOUNDS,
   THINKING_AFTER_MS,
   THINKING_EVERY_MS,
+  endCueOn,
   soundMs,
   type PillSound,
 } from "./pillSounds.ts";
@@ -653,7 +654,7 @@ export const createVoicePill = (input: {
     if (view === null) {
       setEscape(false);
       if (previous.phase !== "idle") {
-        if (previous.phase !== "error" && previous.phase !== "done") sound_("end");
+        if (endCueOn(previous.phase, null)) sound_("end");
         lower();
       }
     } else {
@@ -668,6 +669,7 @@ export const createVoicePill = (input: {
         void ready.then(() => input.onShown?.(performance.now() - at));
       }
       if (state.phase === "error" && previous.phase !== "error") sound_("error");
+      if (endCueOn(previous.phase, state.phase)) sound_("end");
       if (state.phase === "listening" && !state.heard) {
         silentTimer = setTimeout(() => {
           if (loudest < DEAD_LEVEL) on({ type: "silent" });

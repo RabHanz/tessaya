@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "./pillSounds.ts";
+import { endCueOn, PILL_SOUNDS, renderSound, soundMs, type PillSound } from "./pillSounds.ts";
 
 describe("the cue sounds", () => {
   const all = Object.keys(PILL_SOUNDS) as PillSound[];
@@ -32,5 +32,24 @@ describe("the cue sounds", () => {
     expect(hz("finished")[2]!).toBeGreaterThan(hz("finished")[0]!);
     expect(PILL_SOUNDS.stepDone).toHaveLength(1);
     expect(PILL_SOUNDS.waiting).toHaveLength(1);
+  });
+});
+
+describe("the end cue", () => {
+  // 0.1.72: it played as the pill lowered, seconds after the window had closed, and its silence on the
+  // microphone took the start of his next "Freya, bring Notepad to the front".
+  it.each([
+    // [the phase before, the phase now (null: the pill lowers), whether the end cue sounds]
+    ["listening", "ended", true],
+    ["ended", null, false],
+    ["listening", null, true],
+    ["speaking", null, true],
+    ["error", null, false],
+    ["done", null, false],
+    ["idle", null, false],
+    ["ended", "ended", false],
+    ["listening", "thinking", false],
+  ] as const)("%s to %s: %s", (before, now, sounds) => {
+    expect(endCueOn(before, now)).toBe(sounds);
   });
 });

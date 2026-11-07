@@ -3355,6 +3355,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return null;
         case "effect":
           voiceDictated = event.effect.kind === "dictate" ? event.effect.text : "";
+          // Only the name, so no turn will end the Thinking it showed: back to Listening for the command.
+          if (event.effect.kind === "ignored" && event.effect.reason === "wake word only")
+            return { type: "resume" };
           return null;
       }
     })();
