@@ -931,6 +931,9 @@ export const createVoiceCore = (input: {
         : [...preRoll];
       segment = kept;
       segmentSamples = late ? kept.reduce((n, f) => n + f.length, 0) : preRollSamples;
+      // The detector's quiet count is from before (her voice, or the last window's tail, kept while she slept):
+      // counted against these words it ended them before it had heard them (0.1.73, "The pad to the front").
+      input.vad.reset();
       scoredSpeech = input.vad.scored?.().speech ?? 0;
       // The detector did not run while asleep, so what came after the name counts as speech until it says
       // otherwise; recognition decides whether it was words.

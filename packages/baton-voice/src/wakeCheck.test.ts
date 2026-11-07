@@ -876,3 +876,83 @@ describe("a wake from sleep with nothing after it", () => {
     },
   );
 });
+
+// 0.1.73: "Freya, bring Notepad to the front" became "The pad to the front": the segment a wake opened ended as
+// "no speech" 140 ms in, on a quiet count the speech detector had kept from before she slept.
+describe("the words right after the name", () => {
+  it("are kept when the speech detector is slow to hear them and its quiet count is stale", async () => {
+    let fire = false;
+    let firedAgo = 0;
+    let speech = false;
+    // Like Silero: it reports speech only a few frames after it starts, and counts the quiet it has scored.
+    const LAG = 10;
+    let run = 0;
+    let scoredSpeech = 0;
+    let quiet = 0;
+    const heard: number[] = [];
+    const events: VoiceCoreEvent[] = [];
+    const core = createVoiceCore({
+      waitMs: () => 0,
+      trustWake: () => true,
+      wake: {
+        name: "fake",
+        reset: () => {},
+        process: () => {
+          const score = fire ? 1 : null;
+          fire = false;
+          return score;
+        },
+        lastWord: () => "Sebastian",
+        firedAgo: () => firedAgo,
+      },
+      vad: {
+        name: "fake",
+        reset: () => {
+          run = 0;
+          scoredSpeech = 0;
+          quiet = 0;
+        },
+        isSpeech: (frame) => {
+          run = speech ? run + 1 : 0;
+          const heardIt = run > LAG;
+          if (heardIt) {
+            scoredSpeech += frame.length;
+            quiet = 0;
+          } else quiet += frame.length;
+          return heardIt;
+        },
+        scored: () => ({ speech: scoredSpeech, quiet }),
+      },
+      stt: {
+        name: "fake",
+        transcribe: async (pcm) => {
+          heard.push(pcm.length);
+          return "bring Notepad to the front";
+        },
+      },
+    });
+    core.subscribe((event) => events.push(event));
+    const push = (seconds: number) => {
+      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    };
+    // A window that ran out in silence: the detector heard seconds of quiet, then she slept.
+    core.activate("wake");
+    await core.idle();
+    push(DEFAULT_TIMINGS.commandWindowMs / 1_000 + 1);
+    await core.idle();
+    expect(core.snapshot().machine.mode).toBe("sleeping");
+    // The name, reported 120 ms late, with his command running straight on after it.
+    speech = true;
+    push(0.5);
+    fire = true;
+    firedAgo = Math.round(0.12 * 16_000);
+    push(1.5);
+    speech = false;
+    push(1);
+    await core.idle();
+    expect(events.some((e) => e.type === "dropped" && e.reason === "no speech")).toBe(false);
+    // One clip, from the name to the end of the command.
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toBeGreaterThan(1.5 * 16_000);
+  });
+});
