@@ -6277,7 +6277,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     } else if (id === "v.pillPlace" && value === "taskbar") {
       save({ pillEdge: "bottom" });
-      pill.setEdge("bottom");
+      pill.reposition();
       pill.putBack();
     } else if (
       id === "v.pillPlace" &&

@@ -144,6 +144,15 @@ export default defineConfig({
       outExtensions: () => ({ js: ".cjs" }),
       entry: ["src/mac-permission-preload.ts"],
     },
+    {
+      // The Tessaya pill's isolated page: a sandboxed preload, so self-contained too.
+      format: "cjs",
+      outDir: "dist-electron",
+      dts: false,
+      sourcemap: true,
+      outExtensions: () => ({ js: ".cjs" }),
+      entry: ["src/baton/voice/pillPreload.ts"],
+    },
   ],
   test: {
     include: [...defaultInclude, "../../native/kde-snap-shot/src/*.test.ts"],
