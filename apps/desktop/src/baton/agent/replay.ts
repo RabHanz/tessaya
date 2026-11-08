@@ -11,8 +11,9 @@ import * as NodePath from "node:path";
 import { clockLine } from "@t3tools/baton-shared/brain";
 import type { Brain } from "@t3tools/baton-shared/osPack";
 
-import { createConversationLog } from "../conversation/conversationLog.ts";
+import { createPersonaConversations } from "../conversation/conversationLog.ts";
 import { startVisionSession } from "../screen/claudeVision.ts";
+import type { TurnPersona } from "./agentPrompt.ts";
 import { createAssistantAgent, type Where } from "./agentSession.ts";
 import { startBatonMcp } from "./batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "./batonTools.ts";
@@ -36,6 +37,12 @@ export const replayTurn = async (input: {
   readonly said: string;
   /** Sentences said after `said` in the same session, such as the same question again. */
   readonly again?: ReadonlyArray<string>;
+  /** Turns another persona answered just before, on disk as after a restart, so the hand-off is real. */
+  readonly before?: ReadonlyArray<{
+    readonly persona: TurnPersona;
+    readonly said: string;
+    readonly reply: string;
+  }>;
   /** The clock the turn is given; the shipped line for a fixed Wednesday morning when left out. */
   readonly now?: { readonly at: Date; readonly timeZone: string };
   readonly where: Where;
@@ -70,6 +77,20 @@ export const replayTurn = async (input: {
     return text === undefined ? t : { ...t, run: async () => ({ text }) };
   });
   const mcp = await startBatonMcp({ tools, gate: refuse });
+  const conversations = createPersonaConversations({
+    dir: NodePath.join(dir, "conversation"),
+    legacy: NodePath.join(dir, "conversation.ndjson"),
+    lead: "executive",
+  });
+  // As after a restart: the turns are on disk and the agent learns who answered last from them.
+  for (const earlier of input.before ?? [])
+    conversations.of(earlier.persona.id).add({
+      route: "answer",
+      said: earlier.said,
+      reply: earlier.reply,
+      persona: earlier.persona.id,
+    });
+  const previous = input.before?.at(-1)?.persona;
   const agent = createAssistantAgent({
     start: async (systemPrompt, brain = input.brain) =>
       startVisionSession({
@@ -89,7 +110,9 @@ export const replayTurn = async (input: {
           inputs.push(call.input);
         },
       }),
-    conversation: createConversationLog({ file: NodePath.join(dir, "conversation.ndjson") }),
+    conversation: conversations.current,
+    conversationOf: conversations.of,
+    ...(previous === undefined ? {} : { previousPersona: previous }),
     clockLine: () =>
       clockLine(
         input.now?.at ?? new Date("2026-11-04T10:00:00Z"),

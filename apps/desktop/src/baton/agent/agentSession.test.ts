@@ -1,11 +1,14 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createConversationLog } from "../conversation/conversationLog.ts";
+import {
+  createConversationLog,
+  createPersonaConversations,
+} from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
 import { createAssistantAgent, shouldRecycle } from "./agentSession.ts";
 
@@ -71,12 +74,82 @@ describe("the one assistant's session", () => {
     expect(conversation.recent(1)[0]).toMatchObject({
       said: "what time is it",
       persona: "assistant",
-      personaName: "Freya",
     });
+    // Ids only on disk: a rename never leaves an old name in the file (P2).
+    expect(conversation.recent(1)[0]).not.toHaveProperty("personaName");
     // The same question again: the turn says what she just replied, so she does not say it again.
     await agent.say("What time is it?", { window: null, session: null });
     expect(asked[2]).toContain("he asked the same a moment ago and you replied:");
     expect(asked[1]).not.toContain("he asked the same");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps a conversation per persona and hands the last few turns to the next one, never a private one's (P2)", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    let clock = Date.parse("2026-11-08T10:00:00Z");
+    const conversations = createPersonaConversations({
+      dir,
+      legacy: NodePath.join(dir, "old.ndjson"),
+      lead: "executive",
+      now: () => new Date(clock),
+    });
+    const secret = new Set<string>();
+    const prompts: string[] = [];
+    const asked: string[] = [];
+    let replies = ["Ship it on Friday.", "I typed it."];
+    const agent = createAssistantAgent({
+      start: async (prompt) => {
+        prompts.push(prompt);
+        const session = fakeSession(asked);
+        return { ...session, ask: async (c) => (await session.ask(c), replies.shift() ?? "Ok.") };
+      },
+      conversation: conversations.current,
+      conversationOf: conversations.of,
+      isPrivate: (persona) => secret.has(persona),
+      now: () => clock,
+      clockLine: () => "Sunday 10:00",
+      beginTurn: () => undefined,
+    });
+    const brain = { model: "claude-sonnet-4-6", effort: "medium" } as const;
+    const freya = { id: "assistant", name: "Freya", role: "his day." };
+    const alfred = { id: "executive", name: "Alfred", role: "the lead." };
+    await agent.say("what is the plan", { window: null, session: null, brain, persona: freya });
+    await agent.say("type what Freya just said", {
+      window: null,
+      session: null,
+      brain,
+      persona: alfred,
+    });
+    expect(asked[1]).toContain(
+      "said to Freya just now:\nwhat Freya and he have said to each other",
+    );
+    expect(asked[1]).toContain("Freya replied (answer): Ship it on Friday.");
+    // Each persona's turns in its own file, and Alfred's session was not seeded with hers.
+    expect(
+      conversations
+        .of("assistant")
+        .recent()
+        .map((t) => t.said),
+    ).toEqual(["what is the plan"]);
+    expect(
+      conversations
+        .of("executive")
+        .recent()
+        .map((t) => t.said),
+    ).toEqual(["type what Freya just said"]);
+    expect(prompts[1]).not.toContain("Ship it on Friday.");
+    // Back to Freya: her own session already has her turn; Alfred's rides along as his.
+    await agent.say("thanks", { window: null, session: null, brain, persona: freya });
+    expect(asked[2]).toContain("Alfred replied (answer): I typed it.");
+    expect(asked[2]).not.toContain("Freya replied");
+    // Stale after ten minutes, and never across a private persona.
+    clock += 11 * 60_000;
+    replies = ["Ok."];
+    await agent.say("and now", { window: null, session: null, brain, persona: alfred });
+    expect(asked[3]).not.toContain("just now:");
+    secret.add("executive");
+    await agent.say("one more", { window: null, session: null, brain, persona: freya });
+    expect(asked[4]).not.toContain("said to Alfred");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

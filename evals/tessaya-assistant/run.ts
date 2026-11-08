@@ -82,6 +82,18 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     brain: { model, effort: values.effort ?? brain.effort },
     said: c.said,
     ...(c.again === undefined ? {} : { again: c.again }),
+    ...(c.before === undefined
+      ? {}
+      : {
+          before: c.before.map((b) => {
+            const by = personaFor(DEFAULT_OS_PACK.personas, { wake: b.wake, text: "" });
+            return {
+              persona: { id: by.id, name: by.name, role: by.role },
+              said: b.said,
+              reply: b.reply,
+            };
+          }),
+        }),
     ...(c.now === undefined ? {} : { now: { at: new Date(c.now.at), timeZone: c.now.timeZone } }),
     where: {
       window: c.window ?? "Notepad",

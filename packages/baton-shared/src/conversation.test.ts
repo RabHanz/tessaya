@@ -47,7 +47,6 @@ describe("the shared conversation", () => {
       JSON.stringify({
         ...turn(2, "and the weather", "Dry."),
         persona: "assistant",
-        personaName: "Freya",
         speaker: "saved:sam",
       }),
     );
@@ -55,8 +54,9 @@ describe("the shared conversation", () => {
     expect(
       parseTurn(JSON.stringify({ ...turn(3, "hi", "Hello."), speaker: "boss" }))?.speaker,
     ).toBe(undefined);
-    expect(conversationBlock({ recent: [saved!], earlier: [] })).toContain(
-      "you replied as Freya (answer): Dry.",
+    // Another persona's turns, handed to this one: hers, not "you replied".
+    expect(conversationBlock({ recent: [saved!], earlier: [], by: "Freya" })).toContain(
+      "Freya replied (answer): Dry.",
     );
   });
   it("finds an older turn by its words, and not one already in the recent window", () => {

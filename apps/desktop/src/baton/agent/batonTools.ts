@@ -78,6 +78,12 @@ export interface ToolHost {
   /** His choice of model and effort for chat turns ("auto" hands it back to the rules); null leaves that half as it is. */
   readonly assistantModel: (model: string | null, effort: string | null) => Promise<string>;
   readonly memory: (query: string) => Promise<string>;
+  /** One persona's conversation with him, by name (yours when undefined); a private persona's is refused (P2). */
+  readonly conversationSearch: (input: {
+    readonly persona: string | undefined;
+    readonly words: string | undefined;
+    readonly since: string | undefined;
+  }) => Promise<string>;
   readonly remember: (text: string) => Promise<string>;
   readonly forget: (id: string) => Promise<string>;
   /** Memory the assistant may pin and the list of what the last answer used (D150). */
@@ -697,6 +703,23 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         "Search what you remember by words: his notes, preferences, decisions, facts about his projects and people, what worked before, and earlier conversations older than what you were given. Each memory shows its id, its kind and how sure it is.",
       inputSchema: object({ query: { type: "string" } }, ["query"]),
       run: async (a) => ({ text: await host.memory(str(a, "query", 500)) }),
+    },
+    {
+      name: "conversation_search",
+      description:
+        'What he and one persona said to each other, for "what did Freya tell me about the venue". persona: that persona\'s name, yours when left out. words: what to look for; leave it out for the latest turns. since: an ISO date to start from. When it says the conversation is private, tell him that in a sentence and stop.',
+      inputSchema: object({
+        persona: { type: "string" },
+        words: { type: "string" },
+        since: { type: "string", description: "An ISO date or time, such as 2026-11-08." },
+      }),
+      run: async (a) => ({
+        text: await host.conversationSearch({
+          persona: optStr(a, "persona"),
+          words: a["words"] === undefined ? undefined : str(a, "words", 500),
+          since: optStr(a, "since"),
+        }),
+      }),
     },
     {
       name: "memory_remember",

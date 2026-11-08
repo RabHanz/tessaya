@@ -49,6 +49,7 @@ describe("backup and restore", () => {
       '{"notes":["key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"]}',
     );
     put(from, "baton-conversation.ndjson", '{"id":1}');
+    put(from, "conversation/assistant.ndjson", '{"id":1}');
     const tea = {
       id: "m1",
       kind: "preference",
@@ -76,6 +77,7 @@ describe("backup and restore", () => {
         "operating-system/executive.md",
         "operating-system/roles/legal.md",
         "baton-conversation.ndjson",
+        "conversation/assistant.ndjson",
         "memory-server.json",
       ]),
     );

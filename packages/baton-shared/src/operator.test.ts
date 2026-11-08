@@ -239,6 +239,7 @@ describe("Baton's own tools (D143)", () => {
       "sessions_list",
       "fleet_status",
       "memory_search",
+      "conversation_search",
       "memory_used",
       "vault_list",
       "history_search",

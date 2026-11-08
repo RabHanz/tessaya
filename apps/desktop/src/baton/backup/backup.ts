@@ -27,6 +27,7 @@ const FILES = [
 ];
 const DIRS: ReadonlyArray<{ readonly dir: string; readonly ext: RegExp }> = [
   { dir: "memory", ext: /\.md$/ },
+  { dir: "conversation", ext: /\.ndjson$/ },
   { dir: "operating-system", ext: /\.(md|json)$/ },
   { dir: "operating-system/roles", ext: /\.md$/ },
 ];

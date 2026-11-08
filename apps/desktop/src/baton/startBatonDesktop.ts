@@ -25,7 +25,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
-import { createConversationLog } from "./conversation/conversationLog.ts";
+import { conversationsIn } from "./conversation/conversationLog.ts";
 import {
   beginStart,
   failedStartMessage,
@@ -95,9 +95,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     let voice: DesktopBatonVoice | null = null;
     let screen: ScreenCompanion | null = null;
     let catalogStore: ReturnType<typeof createCatalog> | null = null;
-    const conversation = createConversationLog({
-      file: NodePath.join(environment.stateDir, "baton-conversation.ndjson"),
-    });
+    const conversations = conversationsIn(environment.stateDir);
     const run = <A>(effect: Effect.Effect<A>) => Effect.runPromiseWith(context)(effect);
     // The release feed is this repository's (D137); the install waits for a quiet moment.
     const lifecycle = createLifecycleLog({
@@ -498,7 +496,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         remoteOps,
         catalog: () => catalogStore?.tools,
         stateDir: environment.stateDir,
-        conversation,
+        conversations,
         onNote: noteTurn,
         platform: environment.platform,
         env: hostEnvironment,
@@ -589,7 +587,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     voice = startDesktopBatonVoice({
       loginEntry: environment.appUserModelId,
       stateDir: environment.stateDir,
-      conversation,
+      conversation: conversations.current,
       onNote: turnLog.note,
       logDir: environment.logDir,
       appVersion: environment.appVersion,

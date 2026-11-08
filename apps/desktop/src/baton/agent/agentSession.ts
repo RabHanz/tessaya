@@ -26,6 +26,9 @@ export const WARM_MAX = 4;
 export const WARM_DEBOUNCE_MS = 5_000;
 /** Quiet this long, and only the model he used last keeps its session; his next wake warms the rest. */
 export const WARM_IDLE_MS = 30 * 60_000;
+/** Another persona's turns this recent, up to this many, ride along when he turns to a new one (INTEGRATION.md 3.1 step 3). */
+export const HAND_OFF_MS = 10 * 60_000;
+const HAND_OFF_TURNS = 3;
 
 export const shouldRecycle = (state: {
   readonly alive: boolean;
@@ -72,6 +75,12 @@ export const createAssistantAgent = (input: {
   /** Starts the model session with this system prompt, on this model when one is given. */
   readonly start: (systemPrompt: string, brain?: Brain) => Promise<VisionSession>;
   readonly conversation: ConversationLog;
+  /** Each persona's own conversation (P2); without it every persona shares `conversation`. */
+  readonly conversationOf?: (persona: string | undefined) => ConversationLog;
+  /** A private persona's turns are never handed to another, nor another's to it. */
+  readonly isPrivate?: (persona: string) => boolean;
+  /** Who answered last before this agent existed (after a restart), so the first turn still gets the hand-off. */
+  readonly previousPersona?: TurnPersona;
   readonly now?: () => number;
   readonly clockLine: () => string;
   /** His notes and standing memory as a prompt block, read fresh when a session starts. */
@@ -89,6 +98,10 @@ export const createAssistantAgent = (input: {
   readonly images?: () => number;
 }): AssistantAgent => {
   const now = input.now ?? Date.now;
+  const logOf = (persona: string | undefined) =>
+    input.conversationOf?.(persona) ?? input.conversation;
+  /** The persona that answered last and its name then, for the hand-off; names stay in memory, never in a file. */
+  let lastPersona: TurnPersona | null = input.previousPersona ?? null;
   interface Warm {
     readonly session: Promise<VisionSession>;
     turns: number;
@@ -144,7 +157,7 @@ export const createAssistantAgent = (input: {
   };
 
   /** Starts a session for this model unless one is there, making room by dropping the least recently used. */
-  const open = (key: string, brain?: Brain): Warm => {
+  const open = (key: string, brain: Brain | undefined, persona: string | undefined): Warm => {
     const found = pool.get(key);
     if (found !== undefined) return found;
     while (pool.size >= WARM_MAX) {
@@ -156,7 +169,7 @@ export const createAssistantAgent = (input: {
       drop(oldest[0]);
     }
     // A new session gets as much as the old one held: the latest turns in full, the rest clipped.
-    const window = input.conversation.recent(RECYCLE_TURNS);
+    const window = logOf(persona).recent(RECYCLE_TURNS);
     const warm: Warm = {
       // Set before any await, so a second caller finds this session instead of starting another.
       session: Promise.resolve(input.notes?.() ?? "")
@@ -210,7 +223,7 @@ export const createAssistantAgent = (input: {
       drop(key);
       lastStart = "cold";
     }
-    const warm = open(key, brain);
+    const warm = open(key, brain, persona);
     return { agent: await warm.session, warm };
   };
 
@@ -236,14 +249,15 @@ export const createAssistantAgent = (input: {
       if (asked !== generation) return;
       const rest = later.filter((next) => next.persona === persona);
       later = [];
-      for (const next of rest) open(keyOf(next.brain, next.persona), next.brain);
+      for (const next of rest) open(keyOf(next.brain, next.persona), next.brain, next.persona);
     };
     // Turns answered without it (another model, a refusal, the older router) since it last looked.
-    const meanwhile = input.conversation
+    const log = logOf(persona);
+    const meanwhile = log
       .recent(RECYCLE_TURNS)
       .filter((t) => t.id > warm.seenId && !warm.own.has(t.id));
     warm.seenId = meanwhile.at(-1)?.id ?? warm.seenId;
-    const target = input.conversation.target();
+    const target = log.target();
     const project = where.project ?? null;
     const [presence, remembered] = await Promise.all([
       input.presence?.().catch(() => "") ?? "",
@@ -258,41 +272,49 @@ export const createAssistantAgent = (input: {
       ...(where.persona === undefined ? {} : { persona: where.persona }),
     });
     // A rule in the system prompt alone did not stop a fast model repeating itself; the note beside his sentence does.
-    const last = input.conversation.recent(1)[0];
+    const last = log.recent(1)[0];
     const words = (s: string) =>
       s
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, " ")
         .trim();
-    // Name who answered it when that was another persona: "you replied" would claim Freya's words as Alfred's.
-    const answeredBy =
-      where.persona !== undefined &&
-      last?.persona !== undefined &&
-      last.persona !== where.persona.id &&
-      last.personaName !== undefined
-        ? `${last.personaName} replied`
-        : "you replied";
     const repeated =
       last === undefined || last.reply === "" || words(last.said) !== words(text)
         ? ""
-        : `he asked the same a moment ago and ${answeredBy}: "${last.reply}". answer the way a person does the second time, not with that sentence again.`;
+        : `he asked the same a moment ago and you replied: "${last.reply}". answer the way a person does the second time, not with that sentence again.`;
     const missed =
       meanwhile.length === 0
         ? ""
         : `said and answered outside this chat since your last reply:\n${conversationBlock({ recent: meanwhile, earlier: [] })}`;
-    const record = (reply: string, note?: string) =>
+    // He turned from Freya to Alfred: Alfred hears what she just said, so "type what Freya just said" has her words.
+    const from = lastPersona;
+    const handed =
+      from === null ||
+      where.persona === undefined ||
+      logOf(from.id) === log ||
+      input.isPrivate?.(from.id) === true ||
+      input.isPrivate?.(where.persona.id) === true
+        ? []
+        : logOf(from.id)
+            .recent(HAND_OFF_TURNS)
+            .filter((t) => now() - Date.parse(t.at) < HAND_OFF_MS);
+    const handOff =
+      from === null || handed.length === 0
+        ? ""
+        : `said to ${from.name} just now:\n${conversationBlock({ recent: handed, earlier: [], by: from.name })}`;
+    const record = (reply: string, note?: string) => {
+      if (where.persona !== undefined) lastPersona = where.persona;
       warm.own.add(
-        input.conversation.add({
+        log.add({
           route: "answer",
           said: text,
           reply,
           ...(note === undefined ? {} : { note }),
           ...(where.window === null ? {} : { target: { label: where.window } }),
-          ...(where.persona === undefined
-            ? {}
-            : { persona: where.persona.id, personaName: where.persona.name }),
+          ...(where.persona === undefined ? {} : { persona: where.persona.id }),
         }).id,
       );
+    };
     let partial = "";
     let reply: string;
     const imagesBefore = imagesNow();
@@ -303,6 +325,7 @@ export const createAssistantAgent = (input: {
             type: "text",
             text: [
               header,
+              handOff,
               missed,
               remembered,
               where.cutIn == null ? "" : cutInLine(where.cutIn.said, where.cutIn.by),
@@ -357,7 +380,7 @@ export const createAssistantAgent = (input: {
           kept = new Set(wanted.map((brain) => keyOf(brain, persona)));
           // A persona with a live session already answers at once: nothing more to start on its wake.
           const live = wake && [...pool.keys()].some((key) => key.startsWith(`${who}/`));
-          if (!live) open(keyOf(wanted[0], persona), wanted[0]);
+          if (!live) open(keyOf(wanted[0], persona), wanted[0], persona);
           later = wanted.slice(1).map((brain) => ({ brain, persona }));
           touch();
         })
