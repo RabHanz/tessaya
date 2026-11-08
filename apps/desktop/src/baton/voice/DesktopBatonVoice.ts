@@ -1787,10 +1787,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     showDictation("Tidying…");
     const raw = oneShot.pending().join(" ");
+    // The level its clean-up may use, from the window it is going to (a bank or sign-in page by its title): kept on
+    // its row so a retry never goes above it.
+    const level = await levelNow(flushApp);
     const result = await oneShot.flush();
     if (result.status === "empty") return showDictation(null);
     lastDictation = result.text;
     history?.update(turnId ?? "", {
+      cleanup: level === "claude" ? "claude" : "local",
       raw,
       cleaned: result.text,
       status: result.failed ? "raw" : "ok",
@@ -3087,7 +3091,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (next) void duck.start(settings.duckWhileDictating);
     else void duck.stop();
     if (!next) heldByButton = false;
-    if (next) releaseRecordingEscape = input.holdEscape(() => sidecar?.cancel(), "recording");
+    if (next) releaseRecordingEscape = input.holdEscape(() => keyEsc(), "recording");
     else {
       releaseRecordingEscape?.();
       releaseRecordingEscape = null;
@@ -3105,40 +3109,51 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
-  /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
-  /** `app` is the window it was spoken in, captured when it was queued: a later dictation may have moved focus. */
-  const deliver = async (raw: string, target: number | null | undefined, app: FocusedApp) => {
-    const cleaned = await writeClean(raw, app).catch(() => null);
-    const { text, failed } = settleOneShot(raw, cleaned);
-    const fitted = text.length === 0 ? text : await fitToCaret(text, app);
-    lastDictation = fitted;
-    const turnId = record({
+  /** Esc twice (or ✕) during a key dictation: its words are held for undo when they come, not pasted. */
+  let discardKeyText = false;
+  const discardKeyDictation = () => {
+    discardKeyText = true;
+    sidecar?.finish();
+  };
+  /** One stray Esc must not lose his words, as in spoken dictation: the first asks, the second discards. */
+  const keyEsc = () => {
+    if (Date.now() < escArmedUntil) return discardKeyDictation();
+    escArmedUntil = Date.now() + ESC_AGAIN_MS;
+    showDictation("Press Esc again to discard");
+  };
+  /**
+   * A key or button dictation's words take the spoken one's path: one buffer, the window and title check, the
+   * clipboard when it cannot paste, History with the app, learning and the Scratchpad.
+   */
+  const keyToBuffer = (text: string, target: number | null | undefined) => {
+    const app: FocusedApp = {
+      exe: focusedApp.exe,
+      title: focusedApp.title,
+      ...(typeof target === "number" ? { window: target } : {}),
+    };
+    if (discardKeyText) {
+      discardKeyText = false;
+      if (text === "") return showDictation(null);
+      undo = { text, target: Promise.resolve(app) };
+      showDictation("Discarded · click to undo");
+      if (keptTimer !== null) clearTimeout(keptTimer);
+      keptTimer = setTimeout(() => {
+        undo = null;
+        showDictation(null);
+      }, UNDO_MS);
+      return;
+    }
+    if (text === "") return showDictation(null);
+    openTurn = record({
       kind: "dictation",
       app: app.exe,
-      raw,
-      cleaned: fitted,
-      status: failed ? "raw" : "ok",
-      model: failed ? null : settings.cleanupModel,
-      cleanup: cleaned === null ? "local" : cleaned.level === "claude" ? "claude" : "local",
+      raw: text,
+      cleaned: null,
+      status: "none",
       delivery: "hold key",
-      error: failed ? "Clean-up failed, inserted what was heard" : null,
     });
-    if (fitted.length > 0) {
-      learnWording(fitted);
-      learnFromEdits(fitted, turnId);
-    }
-    const pasted =
-      target === null || target === undefined || text.length === 0
-        ? false
-        : await sidecar?.pasteInto(fitted, target).catch((error: Error) => {
-            note = error.message;
-            return false;
-          });
-    if (pasted === true || text.length === 0) {
-      showDictation(null);
-      if (failed && pasted === true) pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
-      else if (pasted === true) offerSmarterCleanup();
-    } else keepText("Not pasted", fitted);
+    oneShot.push(text);
+    void flushDictation(Promise.resolve(app));
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
   const offerSmarterCleanup = () => {
@@ -3250,9 +3265,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return void heardOutside(outside);
       }
       if (event.dictated === true && event.error === undefined)
-        return void pasteInOrder(() => deliver(text, event.target, focusedApp)).catch(
-          (error: unknown) => keepText(error instanceof Error ? error.message : "Not pasted", text),
-        );
+        return keyToBuffer(text, event.target);
       if (text.length > 0) lastDictation = text;
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
@@ -3401,8 +3414,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     edge: () => settings.pillEdge,
     stateDir: input.stateDir,
     holdEscape: input.holdEscape,
-    onDictation: (insert) => endVoiceDictation(insert),
-    voiceDictating: () => dictatingByVoice,
+    onDictation: (insert) =>
+      dictatingByVoice
+        ? endVoiceDictation(insert)
+        : keyRecording()
+          ? insert
+            ? sidecar?.finish()
+            : discardKeyDictation()
+          : undefined,
+    // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
+    voiceDictating: () => dictatingByVoice || keyRecording(),
     workArea: () => workRect,
     onDismiss: () => {
       // Spoken dictation ends only by its ✓, ✕, Esc or "stop dictation", never a stray click on the pill.
@@ -4824,6 +4845,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       })),
       bindingsNote,
       mouseReady: mouseHookReady,
+      mouseButtons: input.platform === "win32",
       usage: input.sessions?.usage() ?? [],
       lifecycle,
       paths: [
@@ -6759,6 +6781,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             click: () => pickMic(d.label),
           })),
         ],
+      },
+      {
+        // The same dictation as the keys, buttons and words: it starts, or ends and pastes, whichever is running.
+        label: dictatingByVoice || keyRecording() ? "Stop dictation" : "Start dictation",
+        enabled: settings.dictation === "baton" && binary !== null,
+        click: () => void moveDictation("toggle"),
       },
       {
         label: "Copy last transcript or reply",

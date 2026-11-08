@@ -318,6 +318,8 @@ export interface HomeExtra {
   readonly bindingsNote: string | null;
   /** Whether Baton can act on a mouse button yet; until then they are saved and say so. */
   readonly mouseReady: boolean;
+  /** Mouse buttons can be bound here: the hook is the Windows helper's, so on Windows only. */
+  readonly mouseButtons: boolean;
   readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;
   readonly paths: ReadonlyArray<{
     readonly id: string;

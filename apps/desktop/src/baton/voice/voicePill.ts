@@ -189,7 +189,7 @@ window.pill={
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
   p.dataset.voice=v.voice?'on':'off';
-  $('c').textContent=v.phase==='ended'?'Say the wake word':v.phase==='dictating'&&v.voice?(v.caption||''):(v.caption&&/^to /.test(v.caption)?v.caption:'');},
+  $('c').textContent=v.phase==='ended'?'Say the wake word':v.phase==='dictating'?(v.caption||''):(v.caption&&/^to /.test(v.caption)?v.caption:'');},
  rest(why){const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
  level(n){if(live&&!isCalm())draw(Math.min(1,n));},
  hide(){$('p').className='';$('p').dataset.mark='off';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},

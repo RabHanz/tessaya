@@ -122,6 +122,10 @@ describe("more than one way to do an action", () => {
       reason: "Windows keeps Ctrl+Alt+Delete for itself.",
     });
     expect(checkInput(key("alt+f4"))).toMatchObject({ ok: false });
+    // A mouse button remapped to F13 to F24 in its own software binds alone, and so does a Win chord (Win+D).
+    expect(checkInput(key("F13"))).toEqual({ ok: true });
+    expect(checkInput(key("F24"))).toEqual({ ok: true });
+    expect(checkInput(key("Win+D"))).toEqual({ ok: true });
     expect(checkInput(key("Ctrl+C"))).toMatchObject({ ok: false });
     for (const fine of [
       key("F9"),

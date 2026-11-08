@@ -751,6 +751,8 @@ function bindingsPage(b) {
     const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); row.style.alignItems = 'flex-start';
     const t = $('div', 'text'); t.style.cssText = 'flex:1;min-width:0'; t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
     if (r.inputs.some(i => i.type === 'mouse') && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya’s input helper.'));
+    // A Windows key chord (a mouse's "Show Desktop" button sends Win+D) works here, but Windows loses it while bound.
+    for (const i of r.inputs) if (x.mouseButtons && i.type === 'key' && /^Meta\+/.test(i.accelerator)) { const f = $('div', 'fix', inputLabel(i) + ' is a Windows shortcut: while it is bound here, it stops doing its Windows job everywhere (Win+D no longer shows the desktop).'); f.style.color = 'var(--warn)'; t.appendChild(f); }
     for (const c of (r.conflicts || [])) { const i = r.inputs[c.index]; if (!i) continue; const f = $('div', 'fix', inputLabel(i) + ' is also used by ' + c.with.join(' and ') + '. Only one of them will work.'); f.style.color = 'var(--warn)'; t.appendChild(f); }
     const side = $('div'); side.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;max-width:60%';
     const on = capturing === r.action;
@@ -763,7 +765,7 @@ function bindingsPage(b) {
     else side.appendChild($('span', 'hint', 'Four is the most'));
     if (!r.isDefault && !on) { const rs = $('button', 'btn quiet', 'Reset'); rs.onclick = () => set('b.reset:' + r.action, null); side.appendChild(rs); }
     row.append(t, side); wrap.appendChild(row);
-    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', 'Press a key or a chord of up to three keys, or click a mouse button. Escape cancels.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
+    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', x.mouseButtons ? 'Press a key or a chord of up to three keys, or click a mouse button. Escape cancels.' : 'Press a key or a chord of up to three keys. Escape cancels. Mouse buttons can be bound on Windows only.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
     g.appendChild(wrap);
   }
   const f = $('div', 'row'); const ft = $('div', 'text'); ft.append($('div', 'label', 'Cancel a recording, a card or a drive'), $('div', 'hint', 'Always Escape.')); f.append(ft, chips({ type: 'key', accelerator: 'Escape' })); g.appendChild(f);
@@ -789,7 +791,7 @@ addEventListener('keydown', e => {
   const id = capturing; capturing = null; capNote = ''; set('b.add:' + id, JSON.stringify({ type: 'key', accelerator: a }));
 }, true);
 addEventListener('mousedown', e => {
-  if (!capturing) return;
+  if (!capturing || !(S.extra || {}).mouseButtons) return;
   let button = null;
   if (e.buttons === 3) button = 'left+right'; else if (e.button === 1) button = 'middle'; else if (e.button === 3) button = 'back'; else if (e.button === 4) button = 'forward';
   if (!button) return;
