@@ -180,7 +180,7 @@ interface PanePrompt {
   readonly details?: string;
 }
 
-const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
+export const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
 const screenTail: (screen: string) => string = panePrompt.screenTail;
 
 /** The visible screen of a Herdr pane read in-process (no node child per read), or null when Herdr cannot read it. */

@@ -13,11 +13,11 @@ import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import * as panePrompt from "../../../../scripts/tessaya/live/pane-prompt.mjs";
 import {
   askQuestion,
   askRunId,
   keepAsk,
+  parsePanePrompt,
   endedMirrorThreads,
   forgetUnarchived,
   liveMedia,
@@ -65,7 +65,7 @@ describe("a terminal permission prompt's card", () => {
     );
 
   it("a background agent's prompt becomes a card in plain words, its raw text behind Details", () => {
-    const found = panePrompt.parsePanePrompt(screen("pane-subagent-permission.txt"));
+    const found = parsePanePrompt(screen("pane-subagent-permission.txt"));
     expect(found).not.toBeNull();
     const card = decodeQuestion(askQuestion(found!, ""));
     expect(card.question).toBe(
