@@ -111,6 +111,8 @@ export interface PersonaConversations {
   readonly current: ConversationLog;
   /** The persona whose file holds the newest turn: who he spoke to last, after a restart or an instant reply too. */
   readonly latest: () => string | undefined;
+  /** Every persona with a turn, the one he spoke to last first. */
+  readonly byRecent: () => ReadonlyArray<string>;
   /** The speaker's latest turns and every other persona's not private: what he may ask to have typed back. */
   readonly heard: (
     count: number,
@@ -187,6 +189,12 @@ export const createPersonaConversations = (input: {
       .map((f) => f.slice(0, -7));
     return [...new Set([input.lead, ...ids])];
   };
+  const byRecent = () =>
+    personas()
+      .map((id) => ({ id, at: of(id).recent(1)[0]?.at ?? "" }))
+      .filter((x) => x.at !== "")
+      .toSorted((a, b) => b.at.localeCompare(a.at))
+      .map((x) => x.id);
   return {
     of,
     search: (persona, query, options = {}) => {
@@ -204,11 +212,8 @@ export const createPersonaConversations = (input: {
       speaking = persona;
     },
     current,
-    latest: () =>
-      personas()
-        .map((id) => ({ id, at: of(id).recent(1)[0]?.at ?? "" }))
-        .filter((x) => x.at !== "")
-        .toSorted((a, b) => b.at.localeCompare(a.at))[0]?.id,
+    latest: () => byRecent()[0],
+    byRecent,
     heard: (count, isPrivate) => {
       const self = speaking ?? input.lead;
       return [self, ...personas().filter((id) => id !== self && !isPrivate(id))].flatMap((id) =>

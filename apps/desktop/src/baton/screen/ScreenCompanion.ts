@@ -140,7 +140,7 @@ import {
   type ToolHost,
 } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
-import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
+import { createAssistantAgent, startPersonas, type AssistantAgent } from "../agent/agentSession.ts";
 import {
   answerConversationSearch,
   conversationsIn,
@@ -3360,6 +3360,21 @@ export const startScreenCompanion = (input: {
             "Chrome is connected, so the assistant can use it. Turn it off under Assistant if you would rather not.",
           );
         });
+      }
+      // At launch: the fast tier of each persona he is likely to wake first, since a wake is too late to start one.
+      if (wake == null) {
+        const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
+        const ids = pack.personas.map((p) => p.id);
+        agentOf().warmEach(
+          startPersonas(
+            pack.personas.find((p) => p.lead)?.id ?? ids[0] ?? "executive",
+            conversations.byRecent(),
+            ids,
+          ).map((persona) => ({
+            persona,
+            brain: tierBrains(modelOf(pack, persona), manual(), "fast")[0]!,
+          })),
+        );
       }
       warmTiers(
         wake == null

@@ -107,9 +107,52 @@ export const makeSentenceStream = () => {
   };
 };
 
-/** The clock, as the model should read it: his own zone, never a time read off a screen; background, not words to say. */
-export const clockLine = (now: Date, timeZone?: string): string =>
-  `(his clock, for your reference: ${new Intl.DateTimeFormat("en-GB", {
+const ONES = [
+  "",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty"];
+const inWords = (n: number): string =>
+  n < 20 ? ONES[n]! : `${TENS[Math.floor(n / 10)]}${n % 10 === 0 ? "" : `-${ONES[n % 10]}`}`;
+
+/**
+ * The clock, as the model should read it: his own zone, never a time read off a screen; background, not words to say.
+ * The minutes are spelled out both ways: from "11:32" a fast model said "twenty-eight minutes past eleven" (0.1.78).
+ */
+export const clockLine = (now: Date, timeZone?: string): string => {
+  const zone = timeZone === undefined ? {} : { timeZone };
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23",
+    ...zone,
+  }).formatToParts(now);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value);
+  const twelve = (h: number) => inWords(h % 12 === 0 ? 12 : h % 12);
+  const spoken =
+    minute === 0
+      ? `${twelve(hour)} o'clock`
+      : `${inWords(minute)} minute${minute === 1 ? "" : "s"} past ${twelve(hour)}, or ${inWords(60 - minute)} minute${minute === 59 ? "" : "s"} to ${twelve(hour + 1)}`;
+  return `(his clock, for your reference: ${new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -117,5 +160,6 @@ export const clockLine = (now: Date, timeZone?: string): string =>
     hour: "2-digit",
     minute: "2-digit",
     timeZoneName: "short",
-    ...(timeZone === undefined ? {} : { timeZone }),
-  }).format(now)})`;
+    ...zone,
+  }).format(now)}; that is ${spoken})`;
+};

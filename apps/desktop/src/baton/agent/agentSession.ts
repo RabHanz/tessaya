@@ -26,8 +26,21 @@ export const WARM_MAX = 4;
 export const WARM_DEBOUNCE_MS = 5_000;
 /** Quiet this long, and only the model he used last keeps its session; his next wake warms the rest. */
 export const WARM_IDLE_MS = 30 * 60_000;
+
+/**
+ * Whose fast tier starts at launch: the lead and the two he spoke to last (the pack's order without history), leaving
+ * one place of WARM_MAX for the tier a wake asks for. A wake alone came too late: a start takes 5-6 s (0.1.78).
+ */
+export const startPersonas = (
+  lead: string,
+  recent: ReadonlyArray<string>,
+  all: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  [...new Set([lead, ...recent.filter((id) => all.includes(id)), ...all])].slice(0, WARM_MAX - 1);
 /** Another persona's turns this recent, up to this many, ride along when he turns to a new one (INTEGRATION.md 3.1 step 3). */
 export const HAND_OFF_MS = 10 * 60_000;
+/** The same question within this is a repeat (he did not hear); later it is asked afresh. */
+const REPEAT_MS = 3 * 60_000;
 const HAND_OFF_TURNS = 3;
 
 export const shouldRecycle = (state: {
@@ -48,6 +61,10 @@ export interface AssistantAgent {
     persona?: string,
     /** A wake word: once per persona in a few seconds, and nothing started when it already has a live session. */
     wake?: boolean,
+  ) => void;
+  /** Start these sessions now, beside what is warm, without changing whose tiers are kept: the launch's first turns. */
+  readonly warmEach: (
+    sessions: ReadonlyArray<{ readonly brain: Brain; readonly persona: string }>,
   ) => void;
   /** Whether the last turn found its session started ("warm") or had to start one ("cold"), for the turn log. */
   readonly lastStart: () => "warm" | "starting" | "cold" | null;
@@ -284,7 +301,10 @@ export const createAssistantAgent = (input: {
         .replace(/[^a-z0-9]+/g, " ")
         .trim();
     const repeated =
-      last === undefined || last.reply === "" || words(last.said) !== words(text)
+      last === undefined ||
+      last.reply === "" ||
+      words(last.said) !== words(text) ||
+      now() - Date.parse(last.at) > REPEAT_MS
         ? ""
         : `he asked the same a moment ago and you replied: "${last.reply}". answer the way a person does the second time, not with that sentence again.`;
     const missed =
@@ -388,6 +408,15 @@ export const createAssistantAgent = (input: {
           const live = wake && [...pool.keys()].some((key) => key.startsWith(`${who}/`));
           if (!live) open(keyOf(wanted[0], persona), wanted[0], persona);
           later = wanted.slice(1).map((brain) => ({ brain, persona }));
+          touch();
+        })
+        .catch(() => undefined);
+    },
+    warmEach: (sessions) => {
+      queue = queue
+        .then(() => {
+          for (const { brain, persona } of sessions.slice(0, WARM_MAX))
+            open(keyOf(brain, persona), brain, persona);
           touch();
         })
         .catch(() => undefined);
