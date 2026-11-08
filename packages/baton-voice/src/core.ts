@@ -217,6 +217,8 @@ const SPOKEN_KEPT = 12;
 /** Speech over her voice for this long ducks it, and for this long cuts in: well inside the 300 ms to stop. */
 const DUCK_MS = 40;
 const BARGE_MS = 120;
+/** Near-end speech this long over her voice is him, not one stray frame of the echo guard. */
+const NEAR_RUN_MS = 60;
 
 const NOISE = /^(?:\[[^\]]*\]|\([^)]*\)|\s|[.,!?…-])*$/;
 
@@ -773,16 +775,20 @@ export const createVoiceCore = (input: {
     // Busy: the newest clip waits its turn, so his latest words are heard; only an older waiting one goes.
     if (stopBusy) {
       if (stopWaiting !== null) emit({ type: "dropped", text: "", reason: "recogniser busy" });
-      stopWaiting = { parts, startedAt };
+      stopWaiting = { parts, startedAt, endedAt: samples };
       return;
     }
-    recogniseStop(parts, startedAt);
+    recogniseStop(parts, startedAt, samples);
   };
-  let stopWaiting: { readonly parts: Int16Array[]; readonly startedAt: number } | null = null;
+  let stopWaiting: {
+    readonly parts: Int16Array[];
+    readonly startedAt: number;
+    readonly endedAt: number;
+  } | null = null;
   /** How much of the clip being heard over her voice is pre-roll, from before his speech began. */
   let stopPreRoll = 0;
   /** A clip heard over her voice, which began at the sample `startedAt`. */
-  const recogniseStop = (parts: Int16Array[], startedAt: number) => {
+  const recogniseStop = (parts: Int16Array[], startedAt: number, endedAt: number) => {
     stopBusy = true;
     void (input.stopStt ?? input.stt)
       .transcribe(joined(parts))
@@ -828,7 +834,9 @@ export const createVoiceCore = (input: {
           .flatMap((sentence) => sentence.split(/(?<=[.!?])\s+/))
           .some((part) => plainWords(part) === plainWords(reply));
         const his =
-          headphones() || (!speaking && startedAt >= spokeUntil) || lastNearEndAt >= startedAt;
+          headphones() ||
+          (!speaking && startedAt >= spokeUntil) ||
+          (lastNearRunAt >= startedAt && lastNearRunAt <= endedAt);
         if (
           (answer === "no" && !sheSaid) ||
           (answer === "yes" && !echoesSpeech(reply, hers) && his)
@@ -866,7 +874,7 @@ export const createVoiceCore = (input: {
         stopWaiting = null;
         if (next === null || disposed) return;
         // Only while she still speaks: once she has stopped, the stop listener has nothing to stop.
-        if (hearingItself()) recogniseStop(next.parts, next.startedAt);
+        if (hearingItself()) recogniseStop(next.parts, next.startedAt, next.endedAt);
         else emit({ type: "dropped", text: "", reason: "recogniser busy" });
       });
   };
@@ -939,6 +947,8 @@ export const createVoiceCore = (input: {
   let bargeRun = 0;
   /** The last sample the echo guard (or, on headphones, the detector) heard him over her voice. */
   let lastNearEndAt = -Infinity;
+  /** The last sample a run of near-end frames (NEAR_RUN_MS, short of a barge-in) ended on: one stray frame is not him. */
+  let lastNearRunAt = -Infinity;
   /** The detector's scored speech, as of the last frame. */
   let scoredSpeech = 0;
   let ducked = false;
@@ -1246,6 +1256,7 @@ export const createVoiceCore = (input: {
           ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
       bargeRun = flagged ? bargeRun + frame.length : 0;
       if (flagged) lastNearEndAt = samples;
+      if (bargeRun >= msToSamples(NEAR_RUN_MS)) lastNearRunAt = samples;
       if (bargeRun >= msToSamples(BARGE_MS)) {
         const onset = bargeRun;
         bargeRun = 0;

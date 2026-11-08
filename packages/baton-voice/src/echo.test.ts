@@ -406,14 +406,14 @@ describe("silence after a wake word", () => {
     const answering = async (
       said: string,
       question: string,
-      options: { readonly nearEnd?: boolean; readonly afterHer?: boolean } = {},
+      options: { readonly nearEnd?: number; readonly afterHer?: boolean } = {},
     ) => {
       let nearEnd = 0;
       const r = scripted(said, undefined, {
         reference: () => {},
         reset: () => {},
         state: () => ({ delayMs: 0, erleDb: 0, converged: true }),
-        // Two frames of his voice flagged: proof it is his, short of a barge-in.
+        // `nearEnd` frames of his voice flagged: two make a run (proof it is his, short of a barge-in), one is stray.
         process: () => ({ ready: true, nearEnd: (nearEnd -= 1) >= 0, erleDb: 20 }),
       });
       const asked = r.core.confirm(question);
@@ -425,7 +425,7 @@ describe("silence after a wake word", () => {
       r.core.setSpeaking(true);
       r.push(0.5);
       if (options.afterHer === true) r.core.setSpeaking(false);
-      if (options.nearEnd === true) nearEnd = 2;
+      nearEnd = options.nearEnd ?? 0;
       // Short enough to end inside her echo tail when he begins after she stopped.
       r.speech(true);
       r.push(0.12);
@@ -442,13 +442,15 @@ describe("silence after a wake word", () => {
       ["No.", "Shall I do that? Yes or no.", {}, "no"],
       ["Jarvis, no.", "Shall I do that? Yes or no.", {}, "no"],
       // 0.1.73: his yes is taken when the echo guard heard him, or he began after she stopped.
-      ["Yes, go ahead.", "Shall I clear the box?", { nearEnd: true }, "yes"],
-      ["Jarvis, yes.", "Shall I clear the box?", { nearEnd: true }, "yes"],
+      ["Yes, go ahead.", "Shall I clear the box?", { nearEnd: 2 }, "yes"],
+      ["Jarvis, yes.", "Shall I clear the box?", { nearEnd: 2 }, "yes"],
+      // One stray near-end frame is not his voice.
+      ["Yes, go ahead.", "Shall I clear the box?", { nearEnd: 1 }, "dropped"],
       ["Yes.", "Shall I clear the box?", { afterHer: true }, "yes"],
       // Her own words heard back never approve: a fragment, the "Yes" of "Yes or no.", her "Yes." as "Yeah.".
       ["do that", "Shall I do that? Yes or no.", {}, "dropped"],
       ["Yes", "Shall I do that? Yes or no.", {}, "dropped"],
-      ["Yes", "Shall I do that? Yes or no.", { nearEnd: true }, "dropped"],
+      ["Yes", "Shall I do that? Yes or no.", { nearEnd: 2 }, "dropped"],
       ["Yeah.", "Yes. Shall I do that?", {}, "dropped"],
       ["Yes.", "Shall I clear the box?", {}, "dropped"],
     ] as const)("%s over %j (%j) counts as %s", async (said, question, options, want) => {

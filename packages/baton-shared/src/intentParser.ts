@@ -195,9 +195,10 @@ const HIGH_RISK: ReadonlyArray<{ readonly pattern: RegExp; readonly subject: str
     subject: "merging a protected branch",
   },
   {
-    // Clearing a text box ("delete everything in the input box") is an edit, not this.
+    // A database, table or schema always; "everything" unless it is everything in a text box ("delete everything in
+    // the input box" is an edit), and only that word is exempt: "drop the database and clear the text box" is refused.
     pattern:
-      /\b(?:drop|truncate|wipe|delete)\b(?![^.]*\b(?:input|text|message|search|edit)\s+(?:box|field|area)\b)[^.]*\b(?:database|db|table|schema|everything)\b/,
+      /\b(?:drop|truncate|wipe|delete)\b[^.]*\b(?:database|db|table|schema)\b|\b(?:drop|truncate|wipe|delete)\b[^.]*\beverything\b(?!\s+(?:in|from)\s+(?:the\s+)?(?:input|text|message|search|edit)\s+(?:box|field|area)\b)/,
     subject: "a destructive database operation",
   },
   {
