@@ -103,6 +103,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       !customAnswerActive && progress.selectedOptionValues.includes(option.value ?? option.label),
   );
   const isCollapsed = collapsedQuestionId !== null && collapsedQuestionId === activeQuestion?.id;
+  // The progress helper types questions as the provider's, which carry no details.
+  const details = prompt.questions.find((q) => q.id === activeQuestion?.id)?.details;
 
   if (
     optimisticSingleSelect &&
@@ -264,11 +266,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               threadRef={threadRef}
               className={cn("pt-2 text-foreground/85", questionTextAlign)}
             />
-            {activeQuestion.details ? (
+            {details ? (
               <details className="mt-1 text-secondary-label text-xs">
                 <summary className="cursor-pointer select-none">Details</summary>
                 <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-2xs">
-                  {activeQuestion.details}
+                  {details}
                 </pre>
               </details>
             ) : null}
