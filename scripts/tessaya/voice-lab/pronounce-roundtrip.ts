@@ -1,9 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off
 /**
- * Her voice (Pocket TTS) says each line as today and through `pronounce`, the sidecar's Parakeet hears it back, and the
- * word error per line goes to report.md. Pocket TTS is a Windows build: on the laptop (Node 22: add the flag):
+ * Pocket TTS says each line as today and through `pronounce`, Parakeet hears it back, word error to report.md. Windows:
  *   node --experimental-strip-types pronounce-roundtrip.ts --pocket <voice\pocket> --sidecar tessaya-voice.exe --model <parakeet .gguf> --out <dir>
- * Add --word Tessaya --candidates "Tessaya,Tessayah,Tess-AY-ya,Tessaiya" to score spellings of one word instead.
+ * --word Tessaya scores spellings instead (voiceLabAudio's, or --candidates "A,B"); --save-wav <dir> keeps each as one WAV.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -17,6 +16,7 @@ import {
 } from "../../../apps/desktop/src/baton/voice/pocketVoice.ts";
 import { pronounce } from "../../../apps/desktop/src/baton/voice/pronounce.ts";
 import { speakableText } from "../../../apps/desktop/src/baton/voice/voiceSpeaker.ts";
+import { candidateFile, joinWavs, TESSAYA_CANDIDATES } from "./voiceLabAudio.ts";
 
 /**
  * A line she might say, and how a person hearing it would write it down. `ownForm`: that reference is the pass's own
@@ -146,14 +146,15 @@ const main = async () => {
   const voice = (flag("--voice") ?? "anna") as PocketVoice;
   // Candidate mode: --word Tessaya --candidates "Tessaya,Tessayah,Tess-AY-ya,Tessaiya" scores each spelling.
   const word = flag("--word");
-  const candidates = flag("--candidates")
-    ?.split(",")
-    .map((c) => c.trim())
-    .filter(Boolean);
+  const candidates =
+    flag("--candidates")
+      ?.split(",")
+      .map((c) => c.trim())
+      .filter(Boolean) ?? (word === undefined ? undefined : [...TESSAYA_CANDIDATES]);
+  const saveWav = flag("--save-wav");
   if (pocketRoot === undefined || sidecar === undefined || model === undefined || out === undefined)
     throw new Error("Needs --pocket, --sidecar, --model and --out.");
-  if ((word === undefined) !== (candidates === undefined))
-    throw new Error("Candidate mode needs both --word and --candidates.");
+  if (word === undefined && candidates !== undefined) throw new Error("--candidates needs --word.");
   NodeFS.mkdirSync(out, { recursive: true });
   const engine = createPocketEngine({
     root: pocketRoot,
@@ -167,13 +168,17 @@ const main = async () => {
     if (!(await engine.ensure(voice))) throw new Error(`Pocket TTS has no ${voice} voice here.`);
     const synth = engine.synthesise(voice);
     if (synth === null) throw new Error("Pocket TTS did not start.");
+    /** Pocket's own audio for each file said, for --save-wav. */
+    const spoken = new Map<string, Buffer>();
     /** Her voice says `text` into `name`.wav (16 kHz mono, as the sidecar takes it). */
     const say = async (text: string, name: string): Promise<string> => {
       const chunks: Buffer[] = [];
       for await (const chunk of synth(text).stream) chunks.push(chunk);
-      const wav = parseWav(Buffer.concat(chunks));
+      const raw = Buffer.concat(chunks);
+      const wav = parseWav(raw);
       const file = NodePath.join(out, `${name}.wav`);
       NodeFS.writeFileSync(file, encodeWav(toVoicePcm(wav.samples, wav.channels, wav.sampleRate)));
+      spoken.set(file, raw);
       return file;
     };
     /** What Parakeet hears in each file. */
@@ -205,6 +210,18 @@ const main = async () => {
             `${c}:${i}`,
             await say(speakableText(pronounce(sentence, { [word]: candidate })), `cand-${c}-${i}`),
           );
+      if (saveWav !== undefined) {
+        NodeFS.mkdirSync(saveWav, { recursive: true });
+        for (const [c, candidate] of candidates.entries())
+          NodeFS.writeFileSync(
+            NodePath.join(saveWav, candidateFile(c, candidate)),
+            joinWavs(
+              sentences
+                .map((_, i) => spoken.get(files.get(`${c}:${i}`) ?? ""))
+                .filter((b): b is Buffer => b !== undefined),
+            ),
+          );
+      }
       const heard = hear([...files.values()]);
       const rows = candidates.map((candidate, c) => {
         const back = sentences.map((_, i) => heard.get(files.get(`${c}:${i}`) ?? "") ?? "");
