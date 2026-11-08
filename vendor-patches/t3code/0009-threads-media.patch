@@ -158,6 +158,55 @@ index 617c3fa0988ef6c84236de5282f79e423c840695..a8229738b4e3316a8091ccb88c1e4a6f
 +  });
    return items;
  }
+diff --git a/apps/mobile/src/features/threads/PendingUserInputCard.tsx b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
+index 3a2127ea2931cb322354ef393a4f880b59694fb0..f0f6f8b6a29eca6b62b3ce31381574d5660cab4e 100644
+--- a/apps/mobile/src/features/threads/PendingUserInputCard.tsx
++++ b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
+@@ -7,7 +7,7 @@ import {
+   textDirection,
+   type TextDirection,
+ } from "@t3tools/shared/textDirection";
+-import { useRef } from "react";
++import { useRef, useState } from "react";
+ import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
+ import Animated, {
+   useAnimatedStyle,
+@@ -66,6 +66,27 @@ function proseDirectionStyle(text: string, setDirection: TextDirection | undefin
+   } as const;
+ }
+ 
++/** The raw text behind a plainly worded question, folded until asked for. */
++function QuestionDetails(props: { readonly details: string }) {
++  const [open, setOpen] = useState(false);
++  return (
++    <View className="gap-1">
++      <Pressable
++        accessibilityRole="button"
++        accessibilityState={{ expanded: open }}
++        onPress={() => setOpen(!open)}
++      >
++        <Text className="text-xs text-foreground-muted">{open ? "Hide details" : "Details"}</Text>
++      </Pressable>
++      {open ? (
++        <Text selectable className="font-mono text-xs text-foreground-muted">
++          {props.details}
++        </Text>
++      ) : null}
++    </View>
++  );
++}
++
+ function QuestionText(props: {
+   readonly markdown: string;
+   readonly environmentId: EnvironmentId;
+@@ -241,6 +262,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
+                 environmentId={props.environmentId}
+                 setDirection={setDirection}
+               />
++              {question.details ? <QuestionDetails details={question.details} /> : null}
+               <View className="gap-2">
+                 {question.options.map((option) => {
+                   const optionValue = option.value ?? option.label.trim();
 diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
 index d6fdc9e955cde9ce2288bdc5696fbc4e2e651211..21685d03f9283e88b59cd0f422d81d4f657cbe99 100644
 --- a/apps/mobile/src/features/threads/ThreadFeed.tsx
@@ -590,6 +639,25 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..8ffac92187d94bc5d11de7b29abd03f4
    const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
    const restingBlockDefs = showModeBlock
      ? [
+diff --git a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
+index a19e7f205cef9fcac31aa02c76e29a29a9c5afee..880d7d826c8013f1e88eed79dc75b4c334bc9807 100644
+--- a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
++++ b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
+@@ -264,6 +264,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
+               threadRef={threadRef}
+               className={cn("pt-2 text-foreground/85", questionTextAlign)}
+             />
++            {activeQuestion.details ? (
++              <details className="mt-1 text-secondary-label text-xs">
++                <summary className="cursor-pointer select-none">Details</summary>
++                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-2xs">
++                  {activeQuestion.details}
++                </pre>
++              </details>
++            ) : null}
+             {/* Rows span the header row's width so the radios align with the question text and the shortcut column sits under the dismiss button. */}
+             <div className="-ms-2 mt-1.5 sm:-ms-1.5">
+               {activeQuestion.options.map((option, index) => {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts b/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
 index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70b5b38b89 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
@@ -1588,6 +1656,19 @@ index fd0dca831e06dc2631771913901aebc90f1b1863..ca3206bb572903486d5efb75011e53b1
    const end = /[.?!]["'”’)]?(?=\s)/.exec(text);
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
+diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
+index 5c430ef75581a165d94ce16c7369c0245bdef5d8..584d24f4cb855e473be434c5cf5ae45489b3b659 100644
+--- a/packages/contracts/src/orchestrationV2.ts
++++ b/packages/contracts/src/orchestrationV2.ts
+@@ -1353,6 +1353,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
+   allowCustomAnswer: Schema.optional(Schema.Boolean),
+   initialAnswer: Schema.optional(Schema.String),
+   required: Schema.optional(Schema.Boolean),
++  /** The raw text behind a plainly worded question, shown on request. */
++  details: Schema.optional(Schema.String),
+ });
+ export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
+ 
 diff --git a/packages/shared/package.json b/packages/shared/package.json
 index 5d9a87ac7719dbf0e6a24460bdd4a2e8e790c10c..ed8bda7978989717f3ec382d9fb19586212ba9ae 100644
 --- a/packages/shared/package.json
