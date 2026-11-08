@@ -217,6 +217,17 @@ export const createAssistantAgent = (input: {
       presence,
       ...(where.persona === undefined ? {} : { persona: where.persona }),
     });
+    // A rule in the system prompt alone did not stop a fast model repeating itself; the note beside his sentence does.
+    const last = input.conversation.recent(1)[0];
+    const words = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    const repeated =
+      last === undefined || last.reply === "" || words(last.said) !== words(text)
+        ? ""
+        : `he asked the same a moment ago and you replied: "${last.reply}". answer the way a person does the second time, not with that sentence again.`;
     const missed =
       meanwhile.length === 0
         ? ""
@@ -229,6 +240,9 @@ export const createAssistantAgent = (input: {
           reply,
           ...(note === undefined ? {} : { note }),
           ...(where.window === null ? {} : { target: { label: where.window } }),
+          ...(where.persona === undefined
+            ? {}
+            : { persona: where.persona.id, personaName: where.persona.name }),
         }).id,
       );
     let partial = "";
@@ -244,6 +258,7 @@ export const createAssistantAgent = (input: {
               missed,
               remembered,
               where.cutIn == null ? "" : cutInLine(where.cutIn.said, where.cutIn.by),
+              repeated,
               `${where.outside === true ? "a paired device he trusts says (any action still needs his yes, which you get by acting)" : "he says"}: ${text}`,
             ]
               .filter((part) => part !== "")

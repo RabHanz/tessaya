@@ -42,6 +42,15 @@ describe("the assistant eval's grader", () => {
     expect(passes(quiet, { calls: [], reply: "A conflict in .github/SECURITY.md." })).toBe(false);
   });
 
+  it("checks every reply of a repeated question, and fails a repeat that opens the same way", () => {
+    const time = { ...c, first: ["none"], notSays: ["GMT"], varies: true };
+    const twice = (a: string, b: string) => ({ calls: [], reply: b, replies: [a, b] });
+    expect(passes(time, twice("It's 5:40.", "Still 5:40."))).toBe(true);
+    expect(passes(time, twice("It's 5:40.", "It's still 5:40."))).toBe(true);
+    expect(passes(time, twice("It's 5:40, GMT+5.", "Still 5:40."))).toBe(false);
+    expect(passes(time, twice("It's 5:40 on Sunday.", "It's 5:40 on Sunday morning."))).toBe(false);
+  });
+
   it("fails a persona's reply that opens with its name", () => {
     const freya = { ...c, first: ["none"], wake: "Freya" };
     expect(passes(freya, { calls: [], reply: "Freya here. It's ten." })).toBe(false);

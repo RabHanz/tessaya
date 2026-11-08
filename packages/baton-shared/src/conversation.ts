@@ -27,7 +27,15 @@ export interface ConversationTurn {
   readonly note?: string;
   /** What it was about, so "show it" and "tell it to" have something to mean. */
   readonly target?: ConversationTarget;
+  /** The persona's pack id that answered, so "what did Freya tell me" survives a new session and a rename. */
+  readonly persona?: string;
+  /** The name it answered as then, for the prompt. */
+  readonly personaName?: string;
+  /** Who spoke, once voice identity knows: him, a saved person, or a guest. */
+  readonly speaker?: ConversationSpeaker;
 }
+
+export type ConversationSpeaker = "owner" | "guest" | `saved:${string}`;
 
 export interface ConversationTarget {
   /** In his terms: "Tell Claude on Scheduler: run the tests", or the window he was using. */
@@ -71,6 +79,13 @@ export const parseTurn = (raw: string): ConversationTurn | null => {
       said: t.said,
       reply: t.reply,
       ...(typeof t.note === "string" ? { note: t.note } : {}),
+      ...(typeof t.persona === "string" ? { persona: t.persona } : {}),
+      ...(typeof t.personaName === "string" ? { personaName: t.personaName } : {}),
+      ...(t.speaker === "owner" ||
+      t.speaker === "guest" ||
+      (typeof t.speaker === "string" && t.speaker.startsWith("saved:"))
+        ? { speaker: t.speaker }
+        : {}),
       ...(typeof t.target?.label === "string"
         ? {
             target: {
@@ -124,7 +139,7 @@ export const searchTurns = (
 const INTRO = /^\s*(?:it's |this is )?[A-Z][a-z]+ here[.,!]\s*/;
 
 const turnText = (t: ConversationTurn, max: number): string =>
-  `he said: ${clip(t.said, max)}\nyou replied${t.route === "dictation" ? "" : ` (${t.route})`}: ${clip(t.reply.replace(INTRO, ""), max)}${t.note === undefined ? "" : `\n(${t.note})`}`;
+  `he said: ${clip(t.said, max)}\nyou replied${t.personaName === undefined ? "" : ` as ${t.personaName}`}${t.route === "dictation" ? "" : ` (${t.route})`}: ${clip(t.reply.replace(INTRO, ""), max)}${t.note === undefined ? "" : `\n(${t.note})`}`;
 
 /**
  * The block put before a planner's or an operator's request. Data, not instructions: the model is

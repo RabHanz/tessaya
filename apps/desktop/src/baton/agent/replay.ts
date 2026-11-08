@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * One sentence to the one assistant as it ships (its prompt, its tools on its MCP server, a real
  * `claude -p`), with every tool call refused except those that answer with a recorded text. Nothing
@@ -8,6 +8,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { clockLine } from "@t3tools/baton-shared/brain";
 import type { Brain } from "@t3tools/baton-shared/osPack";
 
 import { createConversationLog } from "../conversation/conversationLog.ts";
@@ -33,6 +34,10 @@ export const replayTurn = async (input: {
   readonly claudeBinary: string;
   readonly brain: Brain;
   readonly said: string;
+  /** Sentences said after `said` in the same session, such as the same question again. */
+  readonly again?: ReadonlyArray<string>;
+  /** The clock the turn is given; the shipped line for a fixed Wednesday morning when left out. */
+  readonly now?: { readonly at: Date; readonly timeZone: string };
   readonly where: Where;
   /** Tools that answer with this text; every other call is refused. */
   readonly answers?: Readonly<Record<string, string>>;
@@ -48,6 +53,8 @@ export const replayTurn = async (input: {
   /** Each call's arguments, in the order of `calls`. */
   readonly inputs: ReadonlyArray<unknown>;
   readonly reply: string;
+  /** Every reply, `said` first, then each of `again`. */
+  readonly replies: ReadonlyArray<string>;
 }> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-replay-"));
   const calls: string[] = [];
@@ -83,14 +90,20 @@ export const replayTurn = async (input: {
         },
       }),
     conversation: createConversationLog({ file: NodePath.join(dir, "conversation.ndjson") }),
-    clockLine: () => "Wednesday 10:00",
+    clockLine: () =>
+      clockLine(
+        input.now?.at ?? new Date("2026-11-04T10:00:00Z"),
+        input.now?.timeZone ?? "Europe/London",
+      ),
     beginTurn: () => undefined,
     ...(input.extra === undefined ? {} : { recall: async () => input.extra! }),
     ...(input.notes === undefined ? {} : { notes: () => input.notes! }),
   });
   try {
-    const reply = await agent.say(input.said, { ...input.where, brain: input.brain });
-    return { calls, inputs, reply };
+    const replies: string[] = [];
+    for (const said of [input.said, ...(input.again ?? [])])
+      replies.push(await agent.say(said, { ...input.where, brain: input.brain }));
+    return { calls, inputs, reply: replies.at(-1)!, replies };
   } finally {
     agent.dispose();
     await mcp.close();
