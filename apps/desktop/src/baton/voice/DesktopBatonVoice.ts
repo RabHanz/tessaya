@@ -222,7 +222,7 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
-import { REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
+import { REDACTED, detectSecret, type MemoryItem } from "@t3tools/baton-shared/memory";
 import {
   SERVER_MEMORY_NAME,
   applyRestore,
@@ -365,11 +365,13 @@ import {
   startDictationSidecar,
   type DictationEvent,
   type DictationSidecar,
+  type PasteVerdict,
   type FocusedApp,
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
+import { createLastLanded } from "./lastLanded.ts";
 import { dictationStep, type DictationEntry, type DictationStep } from "./dictationEntry.ts";
 import {
   importWisprDictionary,
@@ -1149,8 +1151,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The sidecar is recording or writing out a key dictation (`busyAfter`). */
   let sidecarBusy = false;
   let lastDictation: string | null = null;
-  /** The last words he dictated that landed (pasted, kept, or on the clipboard): paste-last's, never a command or discard. */
-  let lastInserted: string | null = null;
+  /** Paste-last's words: the last real dictation, never a command, a discard or a secret (`lastLanded`). */
+  const lastInserted = createLastLanded();
+  const landed = (text: string) => {
+    if (lastInserted.landed(text)) lastDictation = text;
+  };
   /** Every paste of his words, one at a time in the order he spoke: the hold key's and the buffered flush's. */
   const pasteInOrder = createInOrder();
   /** The pill's bars follow his speech, not full scale. */
@@ -1346,7 +1351,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   input.extras?.setTransformHotkeys?.(transforms.read().enabled);
   /** Clean-up, then the spoken cues he saved expand (Snippets). */
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
-    const level = await levelNow(app);
+    // Words that look like a secret are never put in a Claude prompt, whatever the level.
+    const level = detectSecret(raw) === null ? await levelNow(app) : "local";
     const out = await rewriter.clean({
       raw: biasTranscript(raw, dictionary),
       mode: chooseMode(app, settings.appModes),
@@ -1458,6 +1464,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     void encoder
       .encode(pcm)
       .then((bytes) => {
+        // A secret can be found while the clip encodes (a later chunk, the cleaned words): then none is kept.
+        if (history.get(turnId)?.raw === REDACTED) return;
         const saved = saveClip({
           dir: audioDir,
           id: `${turnId}-${Date.now().toString(36)}`,
@@ -1468,6 +1476,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         });
         if (saved.path === null) return;
         const turn = history.get(turnId);
+        if (turn?.raw === REDACTED) return void NodeFS.rmSync(saved.path, { force: true });
         history.update(turnId, {
           audio: [
             ...(turn?.audio === null || turn === null ? [] : clipPaths(turn.audio)),
@@ -1633,8 +1642,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           pcm.set(p, at);
           at += p.length;
         }
+        // A row kept at the local level, or from an app kept private, is heard again on this computer only.
+        const level = retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup);
         const heard = (
-          await makeSidecarStt(sidecar, undefined, undefined, recognise).transcribe(pcm)
+          await makeSidecarStt(
+            sidecar,
+            undefined,
+            undefined,
+            level === "claude" ? recognise : undefined,
+          ).transcribe(pcm)
         ).trim();
         if (heard === "") throw new Error("nothing recognised");
         let cleaned: string | null = null;
@@ -1644,7 +1660,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             .clean({
               raw: biasTranscript(heard, dictionary),
               mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
-              level: retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup),
+              level,
             })
             .catch(() => null);
           const settled = settleOneShot(heard, tidy);
@@ -1729,7 +1745,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   })();
   // Words a crash left behind are offered from the tray, never pasted with the next dictation.
   if (restored.length > 0) {
-    lastDictation = lastInserted = restored.join(" ");
+    landed(restored.join(" "));
     setTimeout(() => {
       note = "A dictation was not inserted. Tray: Copy last transcript.";
       render();
@@ -1788,17 +1804,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                   .catch(() => "refused" as const);
                 if (why === "ok") return true;
                 keptWhy = why;
+                // Which check stopped it, never the words: a refusal that keeps happening shows in the turn log.
+                input.onNote?.("paste_refused", { why, chars: text.length });
                 return false;
               }))(sidecar, app.window, app.title),
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
-  let keptWhy: "gone" | "changed" | "refused" = "refused";
+  let keptWhy: Exclude<PasteVerdict, "ok"> = "refused";
   /** The words go on the clipboard, out of the buffer, and the pill says why in one line. */
   const toClipboard = (text: string, taken: number, why: string) => {
     Electron.clipboard.writeText(text);
     oneShot.release(taken);
-    lastDictation = lastInserted = text;
+    landed(text);
     showDictation(`${why}, so it is on your clipboard`);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
@@ -1821,7 +1839,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const result = await oneShot.flush(app, options);
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
-    lastDictation = lastInserted = result.text;
+    landed(result.text);
     // A secret that came in a later chunk, or only in the cleaned words, is offered to the vault like one at the start.
     if (turnId !== null && history?.get(turnId)?.raw !== REDACTED)
       offerVault(result.raw, result.text);
@@ -1859,7 +1877,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             ? `${name} has closed`
             : keptWhy === "changed"
               ? `${name} changed while you spoke`
-              : `${name} did not take it`,
+              : keptWhy === "secret"
+                ? "That box is for a password"
+                : `${name} did not take it`,
       );
     }
     noteTiming();
@@ -3107,7 +3127,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         removed += 1;
       }
       if (scope === "history") {
-        lastDictation = lastInserted = null;
+        lastDictation = null;
+        lastInserted.clear();
         NodeFS.rmSync(NodePath.join(input.stateDir, "voice", "dictation-pending.json"), {
           force: true,
         });
@@ -3162,7 +3183,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
-    lastDictation = lastInserted = text;
+    landed(text);
     showDictation(`${why}. Tray: Copy last transcript.`);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
@@ -3395,18 +3416,38 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Timed from when the sidecar's recording arrived, so the cloud round trip counts in release → paste.
       const carried = { ...withRecording(event), arrivedAt: Date.now() };
       // One at a time, so dictations arrive in the order he spoke them; the paste re-checks its window (pasteInto).
-      cloudDictations = cloudDictations.then(() =>
-        recogniseWav(wav, event.audioMs ?? 0).then(
-          (text) => onDictation({ ...carried, wav: null, text }),
+      cloudDictations = cloudDictations.then(async () => {
+        // Read before recognition removes the file: a cloud dictation keeps its audio like a local one.
+        const keptPcm = settings.keepVoice
+          ? await NodeFS.promises
+              .readFile(wav)
+              .then(decodeWav)
+              .catch(() => null)
+          : null;
+        return recogniseWav(wav, event.audioMs ?? 0).then(
+          (text) =>
+            onDictation({ ...carried, wav: null, text, ...(keptPcm === null ? {} : { keptPcm }) }),
           (error: unknown) =>
             onDictation({
               ...carried,
               wav: null,
               error: error instanceof Error ? error.message : String(error),
             }),
-        ),
-      );
+        );
+      });
     } else if (event.ev === "text") {
+      // A recording he keeps: read once and its file removed on every path below, kept only on a dictated row.
+      const kept = event.audio ?? null;
+      const heardPcm: Promise<Int16Array | null> =
+        event.keptPcm !== undefined
+          ? Promise.resolve(event.keptPcm)
+          : kept === null
+            ? Promise.resolve(null)
+            : NodeFS.promises
+                .readFile(kept)
+                .then(decodeWav)
+                .catch(() => null)
+                .finally(() => void NodeFS.promises.rm(kept, { force: true }));
       // The sidecar drops an idle model after 10 minutes; this is what having it back cost.
       if ((event.loadMs ?? 0) > 0)
         input.onNote?.("speech_model_reload", { model: event.model ?? null, loadMs: event.loadMs });
@@ -3432,19 +3473,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           own.discarded === true,
           own.heard ?? null,
         );
-        const kept = event.audio ?? null;
-        if (kept !== null) {
-          // The key dictation's recording joins the row keyToBuffer just opened, as a spoken one's does, then goes.
-          const turnId = own.discarded === true ? null : openTurn;
-          void NodeFS.promises
-            .readFile(kept)
-            .then((bytes) => keepAudio(turnId, decodeWav(bytes)))
-            .catch(() => undefined)
-            .finally(() => void NodeFS.promises.rm(kept, { force: true }));
-        }
+        // The key dictation's recording joins the row keyToBuffer just opened, as a spoken one's does.
+        const turnId = own.discarded === true ? null : openTurn;
+        void heardPcm.then((pcm) => keepAudio(turnId, pcm));
         return;
       }
-      if (text.length > 0) lastDictation = lastInserted = text;
+      if (text.length > 0) landed(text);
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
         showDictation(null);
@@ -7024,10 +7058,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (clear?.click as (() => void) | undefined)?.();
     },
     pasteLast: () => {
-      const last = lastInserted;
+      const last = lastInserted.last();
       const side = sidecar;
-      if (last !== null && last !== "" && side !== null)
-        void pasteInOrder(() => side.paste(last)).catch(() => keepText("Not pasted", last));
+      if (last === null || last === "" || side === null) return;
+      // Into the window in front, with the dictation paste's checks: never into a password box.
+      void pasteInOrder(async () => {
+        const now = await side.foreground().catch(() => null);
+        const why =
+          now?.window === undefined
+            ? "gone"
+            : await side.pasteChecked(last, now.window, now.title).catch(() => "refused" as const);
+        if (why !== "ok")
+          keepText(why === "secret" ? "That box is for a password" : "Not pasted", last);
+      });
     },
     ask: () => {
       const ask = input.extras?.menuItems().find((i) => i.label === "Ask Tessaya…");

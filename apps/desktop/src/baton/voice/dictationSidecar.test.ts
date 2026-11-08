@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  pasteVerdictOf,
   focusedFrom,
   busyAfter,
   recordingAfter,
@@ -179,5 +180,13 @@ describe("the wake path's own model", () => {
     );
     expect(r.asked).toEqual(["/m/fast.gguf"]);
     expect(r.failed).toEqual([]);
+  });
+});
+
+describe("pasteVerdictOf", () => {
+  it("keeps the helper's reasons and calls anything else refused", () => {
+    for (const why of ["ok", "gone", "changed", "secret"] as const)
+      expect(pasteVerdictOf(why)).toBe(why);
+    for (const why of ["late", "weird", undefined, 3]) expect(pasteVerdictOf(why)).toBe("refused");
   });
 });

@@ -117,6 +117,8 @@ enum Msg {
     /// A fake microphone ran out of file, which stands in for releasing the key.
     FakeEnded,
     Finished { id: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
+    /// A dictation paste's checks are back from their worker (`paste_checked`).
+    PasteChecked { id: Option<u64>, text: String, why: &'static str, started: Instant },
 }
 
 struct Done {
@@ -918,15 +920,41 @@ fn focus_window_event(id: Option<u64>, window: isize, title: Option<&str>) -> Va
     v
 }
 
+/// The desktop waits this long for a checked paste (`pasteChecked`); a verdict after it is never pasted.
+const PASTE_DEADLINE: Duration = Duration::from_millis(1_500);
+
+/// Which step stops a dictation paste, in the order they are checked.
+fn paste_verdict(focused: bool, same_window: bool, same_title: bool, secret: bool) -> &'static str {
+    if !focused {
+        "gone"
+    } else if !same_window || !same_title {
+        "changed"
+    } else if secret {
+        "secret"
+    } else {
+        "ok"
+    }
+}
+
 #[cfg(windows)]
 fn focus_for_paste(window: isize) -> Result<(), String> {
     capture::focus_window(window).map(drop)
 }
 
-/// Elsewhere the window is only checked: bringing one forward is the Windows helper's.
+/// Bringing a window forward is the Windows helper's; elsewhere the words go to the clipboard, as before.
 #[cfg(not(windows))]
 fn focus_for_paste(_window: isize) -> Result<(), String> {
-    Ok(())
+    Err("not on this platform yet".to_string())
+}
+
+#[cfg(windows)]
+fn focused_is_secret() -> bool {
+    uia::focused_is_secret()
+}
+
+#[cfg(not(windows))]
+fn focused_is_secret() -> bool {
+    false
 }
 
 #[cfg(not(windows))]
@@ -1372,27 +1400,23 @@ fn serve() {
                             emit(json!({"ev": "pasted", "id": id, "error": result.err(), "pasteMs": paste_ms}));
                         }
                     }
-                    // The dictation paste in one call: bring its window forward, check it is the same window and page,
-                    // then paste. `why` says which step stopped it, as the desktop's three calls did.
+                    // The dictation paste in one call: bring its window forward, check it is the same window and page and
+                    // not a password box, then paste. The checks run on a worker (focusing can stall for seconds); only the
+                    // paste, which needs enigo, comes back to this loop, and only inside the deadline the desktop waits.
                     "paste_checked" => {
                         let id = value["id"].as_u64();
-                        let text = value["text"].as_str().unwrap_or("");
+                        let text = value["text"].as_str().unwrap_or("").to_string();
                         let target = value["target"].as_i64().unwrap_or(0) as isize;
-                        let title = value["title"].as_str().unwrap_or("");
+                        let title = value["title"].as_str().unwrap_or("").to_string();
                         let started = Instant::now();
-                        let line = if focus_for_paste(target).is_err() {
-                            json!({"ev": "paste_checked", "id": id, "why": "gone"})
-                        } else if foreground_window() != target || window_app(target).1 != title {
-                            json!({"ev": "paste_checked", "id": id, "why": "changed"})
-                        } else {
-                            match paste_text(&mut enigo, text, config.paste) {
-                                Ok(()) => json!({"ev": "paste_checked", "id": id, "why": "ok"}),
-                                Err(e) => json!({"ev": "paste_checked", "id": id, "why": "refused", "error": e}),
-                            }
-                        };
-                        let mut line = line;
-                        line["pasteMs"] = json!(started.elapsed().as_millis() as u64);
-                        emit(line);
+                        let tx = tx.clone();
+                        thread::spawn(move || {
+                            let focused = focus_for_paste(target).is_ok();
+                            let now = foreground_window();
+                            let title_now = window_app(target).1;
+                            let why = paste_verdict(focused, now == target, title_now == title, focused_is_secret());
+                            let _ = tx.send(Msg::PasteChecked { id, text, why, started });
+                        });
                     }
                     "quit" => return,
                     _ => {}
@@ -1441,6 +1465,21 @@ fn serve() {
             }
             Msg::Key { hold: false, pressed: false } => toggle_down = false,
             Msg::FakeEnded => finish(&mut recording, &job_tx, true),
+            Msg::PasteChecked { id, text, why, started } => {
+                // Past the deadline the desktop has kept the words already; pasting them now would type them twice.
+                let why = if why == "ok" && started.elapsed() >= PASTE_DEADLINE { "late" } else { why };
+                let mut line = json!({"ev": "paste_checked", "id": id, "why": why});
+                if why == "ok" {
+                    if let Err(e) = paste_text(&mut enigo, &text, config.paste) {
+                        line = json!({"ev": "paste_checked", "id": id, "why": "refused", "error": e});
+                    }
+                }
+                line["pasteMs"] = json!(started.elapsed().as_millis() as u64);
+                if why == "secret" {
+                    line["secret"] = json!(true);
+                }
+                emit(line);
+            }
             Msg::MicFailed(message) => {
                 recording = None;
                 let _ = job_tx.send(Work::Abort);
@@ -1634,6 +1673,22 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_paste_stops_at_the_first_failed_check() {
+        let rows = [
+            ((false, true, true, false), "gone"),
+            ((false, false, false, true), "gone"),
+            ((true, false, true, false), "changed"),
+            ((true, true, false, false), "changed"),
+            ((true, false, false, true), "changed"),
+            ((true, true, true, true), "secret"),
+            ((true, true, true, false), "ok"),
+        ];
+        for ((focused, same_window, same_title, secret), want) in rows {
+            assert_eq!(paste_verdict(focused, same_window, same_title, secret), want);
+        }
+    }
 
     #[test]
     fn the_wake_path_and_dictation_keep_their_own_models_and_never_load_one_twice() {

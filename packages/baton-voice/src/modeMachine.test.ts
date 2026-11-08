@@ -432,10 +432,9 @@ describe("a spoken cancel", () => {
 });
 
 describe("isLoneBreath", () => {
-  it("drops only a hum or a breath, never a word he could mean", () => {
-    for (const text of ["Um.", "uhh", "Mm-hm?", "Hmm", "er"])
-      expect(isLoneBreath(text), text).toBe(true);
-    for (const text of ["Yeah.", "Okay", "um, send it", "no", ""])
+  it("drops only a breath, never a word or a yes he could mean", () => {
+    for (const text of ["Um.", "uhh", "er", "Erm"]) expect(isLoneBreath(text), text).toBe(true);
+    for (const text of ["Yeah.", "Okay", "Mm-hm.", "Mm", "um, send it", "no", ""])
       expect(isLoneBreath(text), text).toBe(false);
   });
 });

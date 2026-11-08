@@ -667,6 +667,22 @@ pub fn focus_state(window: Option<&str>) -> Result<Value, String> {
     }
 }
 
+/// The focused field is a password box or named like a secret: the rule `detail` keeps. A field that will not say
+/// whether it is a password box counts as one. Runs on its own thread, with its own STA, never on the helper's loop.
+pub fn focused_is_secret() -> bool {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+            Ok(automation) => automation,
+            Err(_) => return false,
+        };
+        let Ok(element) = automation.GetFocusedElement() else { return false };
+        let password = element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true);
+        let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        password || secret_name(&name)
+    }
+}
+
 /// The words either side of the caret in the focused field, as the desktop's PowerShell read did, without starting
 /// PowerShell (300 ms or more) for each dictation. Null when the field does not say.
 pub fn caret_context(chars: i32) -> Result<Value, String> {
