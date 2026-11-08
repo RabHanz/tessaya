@@ -38,6 +38,8 @@ export interface DictationConfig {
   readonly latch?: boolean;
   /** The input-bindings file the sidecar's mouse hook reads; null or empty means no hook. */
   readonly mouse?: string | null;
+  /** Keep the speech model loaded between dictations (about 1.2 GB for v3); off on a machine with under 10 GB. */
+  readonly keepLoaded?: boolean;
 }
 
 /**
@@ -161,6 +163,8 @@ export type DictationEvent =
       /** Set by the desktop as the event arrives: its recording's window, and whether it was discarded. */
       readonly app?: FocusedApp;
       readonly discarded?: boolean;
+      /** Cloud recognition: when the sidecar's recording reached the desktop, before the cloud heard it. */
+      readonly arrivedAt?: number;
       /** Cloud recognition: the recording for the desktop to recognise, deleted once it has; the text is then empty. */
       readonly wav?: string | null;
       readonly audioMs?: number;

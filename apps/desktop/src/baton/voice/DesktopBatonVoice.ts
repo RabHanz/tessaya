@@ -1371,6 +1371,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let lastInsert: { text: string; at: number; key: string } | null = null;
   const windowKey = (app: { readonly exe: string; readonly title: string }) =>
     `${app.exe}\n${app.title}`;
+  const CARET_LIMIT_MS = 1_500;
   /** The text made to fit the words already there: spacing, capitals, punctuation. */
   const fitToCaret = async (
     text: string,
@@ -1381,7 +1382,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const around =
       (await (sidecar === null
         ? readCaretContext(input.platform)
-        : sidecar.caret().catch(() => null))) ??
+        : Promise.race([
+            sidecar.caret().catch(() => null),
+            // A field that hangs UI Automation never holds the paste: past the old PowerShell limit it did not say.
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), CARET_LIMIT_MS)),
+          ]))) ??
       contextFromLastInsert(
         lastInsert === null ? null : { ...lastInsert, sameWindow: lastInsert.key === key },
         Date.now(),
@@ -1723,7 +1728,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     }, 0);
   }
-  // shortcut: one key dictation timed at a time; a second that ends before the first is pasted takes over its line.
+  // shortcut: one dictation timed at a time, a second ending before the first pastes takes over its line; key the timer
+  // by turn id once overlapping dictations show up in dictation_timing.
   let dictationTimer: DictationTimer | null = null;
   const noteTiming = () => {
     const line = dictationTimer?.line(true);
@@ -1742,7 +1748,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     clean: (raw, app) =>
       app.window === undefined
         ? Promise.resolve(null)
-        : writeClean(raw, app).then((c) => (dictationTimer?.cleaned(c.stage), c)),
+        : writeClean(raw, app).then((c) => (dictationTimer?.cleaned(c.stage, c.speculated), c)),
     fit: (text, app) =>
       app.window === undefined
         ? Promise.resolve(text)
@@ -1850,6 +1856,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** ✓ (or "stop dictation") inserts what was said; ✕ or Esc throws it away. Nothing else ends spoken dictation. */
   const endVoiceDictation = (insert: boolean) => {
     if (!dictatingByVoice) return;
+    // ✓ is the spoken dictation's release: its line runs from here to the pill leaving.
+    if (insert)
+      dictationTimer = startDictationTiming(
+        { ev: "text", id: null, text: oneShot.pending().join(" "), releaseMs: 0 },
+        "voice",
+      );
     if (!insert) {
       discarding = true;
       const text = oneShot.pending().join(" ");
@@ -1920,8 +1932,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         (await sidecar.foreground().catch(() => null)) ??
         focusedApp;
       const timer = startDictationTiming({ ev: "text", id: null, text: request.text }, "voice");
-      const { text, stage } = await writeClean(request.text, app);
-      timer.cleaned(stage);
+      const { text, stage, speculated } = await writeClean(request.text, app);
+      timer.cleaned(stage, speculated);
       const fitted = await fitToCaret(text, app);
       timer.fitted();
       const target = app.window;
@@ -3060,6 +3072,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       cleanup: true,
       latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
+      // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
+      keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
     });
   };
 
@@ -3366,7 +3380,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (event.ev === "text" && typeof event.wav === "string") {
       const wav = event.wav;
       // Its window and its discard are taken now, as it arrives, not when the cloud has recognised it.
-      const carried = withRecording(event);
+      // Timed from when the sidecar's recording arrived, so the cloud round trip counts in release → paste.
+      const carried = { ...withRecording(event), arrivedAt: Date.now() };
       // One at a time, so dictations arrive in the order he spoke them; the paste re-checks its window (pasteInto).
       cloudDictations = cloudDictations.then(() =>
         recogniseWav(wav, event.audioMs ?? 0).then(

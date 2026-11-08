@@ -22,6 +22,8 @@ export interface DictationTimingLine {
   /** Text → cleaned, → fitted to the caret, → pasted, → pill gone; null for a stage that did not happen. */
   readonly cleanupMs: number | null;
   readonly cleanup: string | null;
+  /** The cleaned text was ready from the pause before release. */
+  readonly speculated: boolean;
   readonly fitMs: number | null;
   readonly pasteMs: number | null;
   readonly pillGoneMs: number | null;
@@ -32,7 +34,7 @@ export interface DictationTimingLine {
 }
 
 export interface DictationTimer {
-  readonly cleaned: (stage: string, at?: number) => void;
+  readonly cleaned: (stage: string, speculated?: boolean, at?: number) => void;
   readonly fitted: (at?: number) => void;
   readonly pasted: (at?: number) => void;
   readonly pillGone: (at?: number) => void;
@@ -47,10 +49,11 @@ export const startDictationTiming = (
 ): DictationTimer => {
   const textAt = now();
   const timing = event.timing ?? null;
-  const asrMs = event.releaseMs ?? null;
-  const releaseAt = asrMs === null ? null : textAt - asrMs;
+  const releaseAt = event.releaseMs == null ? null : (event.arrivedAt ?? textAt) - event.releaseMs;
+  const asrMs = releaseAt === null ? null : textAt - releaseAt;
   let cleanedAt: number | null = null;
   let cleanup: string | null = null;
+  let speculated = false;
   let fittedAt: number | null = null;
   // The sidecar pasted it itself (cleanup off): it landed as the text came.
   let pastedAt: number | null = event.pasted === true && event.pasteMs != null ? textAt : null;
@@ -59,7 +62,8 @@ export const startDictationTiming = (
   const since = (at: number | null, from: number | null) =>
     at === null || from === null ? null : Math.max(0, at - from);
   return {
-    cleaned: (stage, at = now()) => {
+    cleaned: (stage, guessed = false, at = now()) => {
+      if (cleanedAt === null) speculated = guessed;
       cleanedAt ??= at;
       cleanup ??= stage;
     },
@@ -87,6 +91,7 @@ export const startDictationTiming = (
         audioMs: event.audioMs ?? null,
         cleanupMs: since(cleanedAt, textAt),
         cleanup,
+        speculated,
         fitMs: since(fittedAt, cleanedAt ?? textAt),
         pasteMs: event.pasteMs ?? since(pastedAt, fittedAt ?? cleanedAt ?? textAt),
         pillGoneMs: since(pillAt, pastedAt ?? textAt),

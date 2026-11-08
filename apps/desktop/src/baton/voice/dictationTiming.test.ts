@@ -8,6 +8,17 @@ const clock = (start: number) => {
 };
 
 describe("startDictationTiming", () => {
+  it("counts the cloud round trip from when the recording reached the desktop", () => {
+    const c = clock(20_000);
+    const timer = startDictationTiming(
+      { ev: "text", id: null, text: "hi", dictated: true, releaseMs: 200, arrivedAt: 19_000 },
+      null,
+      c.now,
+    );
+    timer.pasted(c.at(20_100));
+    expect(timer.line(true)).toMatchObject({ asrMs: 1_200, releaseToPasteMs: 1_300 });
+  });
+
   it("measures a hold-key dictation from release to the pill leaving", () => {
     const c = clock(10_000);
     const timer = startDictationTiming(
@@ -26,7 +37,7 @@ describe("startDictationTiming", () => {
       null,
       c.now,
     );
-    timer.cleaned("model", c.at(10_650));
+    timer.cleaned("model", true, c.at(10_650));
     timer.fitted(c.at(10_700));
     timer.pasted(c.at(10_800));
     expect(timer.line()).toBeNull();
@@ -39,6 +50,7 @@ describe("startDictationTiming", () => {
       asrMs: 400,
       cleanupMs: 650,
       cleanup: "model",
+      speculated: true,
       fitMs: 50,
       pasteMs: 100,
       pillGoneMs: 100,

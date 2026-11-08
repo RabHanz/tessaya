@@ -102,6 +102,9 @@ struct Config {
     /// handed back, not run through the local model.
     #[serde(default)]
     external: Option<PathBuf>,
+    /// The desktop says this machine has the memory to keep the dictation model loaded between dictations.
+    #[serde(default, rename = "keepLoaded")]
+    keep_loaded: bool,
 }
 
 enum Msg {
@@ -1166,9 +1169,9 @@ fn serve() {
                             Ok(next) => {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
-                                let bound = !config.hold.is_empty() || !config.toggle.is_empty();
+                                let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
                                 let local = config.model.is_some() && config.external.is_none();
-                                let _ = job_tx.send(Work::Keep(bound && local));
+                                let _ = job_tx.send(Work::Keep(config.keep_loaded && bound && local));
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {

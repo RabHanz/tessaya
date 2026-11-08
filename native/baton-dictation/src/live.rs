@@ -7,6 +7,8 @@
 const RATE: usize = 16_000;
 const FRAME: usize = RATE / 50;
 const PAUSE_FRAMES: usize = 10;
+/// The longest tail release may skip: a pause cut leaves half its pause behind.
+const QUIET_TAIL_MAX: usize = RATE * 3 / 4;
 
 #[derive(Clone, Copy)]
 pub struct ChunkParams {
@@ -135,16 +137,21 @@ impl Chunker {
         Some(self.cut(at, false))
     }
 
-    /// Nothing but quiet since the last cut, judged against the whole recording: the words before it are
-    /// already decoded, so release has nothing left to wait for.
+    /// Nothing but quiet since the last cut: short, below the recording's speech, and flat in its own levels, so a
+    /// soft word after a pause is still heard. The words before it are decoded, so release has nothing to wait for.
     pub fn pending_is_quiet(&self, heard: &[f32]) -> bool {
+        if self.pending.len() > QUIET_TAIL_MAX {
+            return false;
+        }
         let levels = frame_levels(heard);
         let (floor, loud) = (percentile(&levels, 0.1), percentile(&levels, 0.9));
         if loud < floor * 2.0 {
             return false;
         }
         let quiet = floor + (loud - floor) * 0.1;
-        frame_levels(&self.pending).iter().all(|l| *l <= quiet)
+        let own = frame_levels(&self.pending);
+        let (own_floor, own_loud) = (percentile(&own, 0.1), percentile(&own, 1.0));
+        own.iter().all(|l| *l <= quiet) && own_loud <= own_floor * 2.0 + SILENCE
     }
 }
 
@@ -245,6 +252,18 @@ mod tests {
         let more = tone(0.5, 0.2);
         pcm.extend_from_slice(&more);
         assert!(chunker.push(&more).is_none());
+        assert!(!chunker.pending_is_quiet(&pcm));
+    }
+
+    #[test]
+    fn a_soft_word_after_a_pause_is_still_decoded() {
+        let mut pcm = tone(3.0, 0.2);
+        pcm.extend(tone(0.6, 0.2 / 300.0));
+        let mut chunker = Chunker::new(PARAMS);
+        assert_eq!(pcm.chunks(480).filter_map(|c| chunker.push(c)).count(), 1);
+        let soft = tone(0.15, 0.2 * 0.15);
+        pcm.extend_from_slice(&soft);
+        assert!(chunker.push(&soft).is_none());
         assert!(!chunker.pending_is_quiet(&pcm));
     }
 

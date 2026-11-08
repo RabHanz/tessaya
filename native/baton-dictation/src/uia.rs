@@ -676,6 +676,12 @@ pub fn caret_context(chars: i32) -> Result<Value, String> {
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
         let element = automation.GetFocusedElement().map_err(err)?;
+        // A password box, or one named like a secret, is never read: the rule `detail` keeps.
+        let password = element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true);
+        let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        if password || secret_name(&name) {
+            return Ok(json!({"before": null, "after": null}));
+        }
         let around = (|| -> windows::core::Result<Option<(String, String)>> {
             let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
             let selection = pattern.GetSelection()?;
