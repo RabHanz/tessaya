@@ -54,6 +54,8 @@ export const shouldRecycle = (state: {
   state.idleMs >= RECYCLE_IDLE_MS ||
   (state.images ?? 0) >= RECYCLE_IMAGES;
 
+export type SessionStart = "warm" | "starting" | "recycled" | "cold";
+
 export interface AssistantAgent {
   /** Start a session on each of these models for this persona now, so no sentence waits for one. */
   readonly warm: (
@@ -62,12 +64,18 @@ export interface AssistantAgent {
     /** A wake word: once per persona in a few seconds, and nothing started when it already has a live session. */
     wake?: boolean,
   ) => void;
-  /** Start these sessions now, beside what is warm, without changing whose tiers are kept: the launch's first turns. */
+  /**
+   * Start these sessions now, beside what is warm, without changing whose tiers are kept, and pin them: making room
+   * drops any other tier first. Called again with a new set, the pins move.
+   */
   readonly warmEach: (
     sessions: ReadonlyArray<{ readonly brain: Brain; readonly persona: string }>,
   ) => void;
-  /** Whether the last turn found its session started ("warm") or had to start one ("cold"), for the turn log. */
-  readonly lastStart: () => "warm" | "starting" | "cold" | null;
+  /**
+   * For the turn log: the last turn found its session started ("warm"), found it still starting ("starting"), found
+   * it dead or spent and started another ("recycled"), or found none ("cold").
+   */
+  readonly lastStart: () => SessionStart | null;
   /** What he said, with where he is; the reply streams to `onDelta` as it is written. */
   readonly say: (text: string, where: Where, onDelta?: (delta: string) => void) => Promise<string>;
   readonly dispose: () => void;
@@ -147,7 +155,9 @@ export const createAssistantAgent = (input: {
     readonly brain: Brain | undefined;
     readonly persona: string | undefined;
   }> = [];
-  let lastStart: "warm" | "starting" | "cold" | null = null;
+  let lastStart: SessionStart | null = null;
+  /** The launch's fast tiers (`warmEach`): a default or deep tier is evicted before one of these (0.1.79). */
+  let pinned = new Set<string>();
   /** The persona whose tiers are `kept`: the one woken, until a turn by another says the wake named the wrong one. */
   let keptPersona: string | undefined;
   const warmedAt = new Map<string, number>();
@@ -186,7 +196,10 @@ export const createAssistantAgent = (input: {
     while (pool.size >= WARM_MAX) {
       const oldest = [...pool]
         .filter(([k]) => !kept.has(k) && k !== inUse)
-        .toSorted((x, y) => x[1].lastAt - y[1].lastAt)[0];
+        .toSorted(
+          (x, y) =>
+            Number(pinned.has(x[0])) - Number(pinned.has(y[0])) || x[1].lastAt - y[1].lastAt,
+        )[0];
       // Every one is a warmed tier: this extra model sits beside them rather than evict one.
       if (oldest === undefined) break;
       drop(oldest[0]);
@@ -245,7 +258,7 @@ export const createAssistantAgent = (input: {
         return { agent: current, warm: found };
       }
       drop(key);
-      lastStart = "cold";
+      lastStart = "recycled";
     }
     const warm = open(key, brain, persona);
     return { agent: await warm.session, warm };
@@ -419,6 +432,7 @@ export const createAssistantAgent = (input: {
     warmEach: (sessions) => {
       queue = queue
         .then(() => {
+          pinned = new Set(sessions.map(({ brain, persona }) => keyOf(brain, persona)));
           for (const { brain, persona } of sessions.slice(0, WARM_MAX))
             open(keyOf(brain, persona), brain, persona);
           touch();

@@ -1038,6 +1038,21 @@ export const startScreenCompanion = (input: {
   /** The tiers of the persona he is talking to (the one his wake word names), and only that persona's (P1). */
   /** The persona whose tiers were warmed last, so a sentence that names another ("ask Alfred…") warms that one. */
   let warmedFor: string | null = null;
+  /** Pins (and starts, where missing) the fast tier of the lead and the two personas he spoke to last. */
+  const pinFastTiers = (speaking?: string) => {
+    const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
+    const ids = pack.personas.map((p) => p.id);
+    agentOf().warmEach(
+      startPersonas(
+        pack.personas.find((p) => p.lead)?.id ?? ids[0] ?? "executive",
+        [...(speaking === undefined ? [] : [speaking]), ...conversations.byRecent()],
+        ids,
+      ).map((persona) => ({
+        persona,
+        brain: tierBrains(modelOf(pack, persona), manual(), "fast")[0]!,
+      })),
+    );
+  };
   const warmTiers = (persona: Persona = face, wake = false) => {
     warmedFor = persona.id;
     agentOf().warm(
@@ -3087,7 +3102,11 @@ export const startScreenCompanion = (input: {
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
     // A device's turn never changes whose conversation he is in.
-    if (!outside) conversations.setCurrent(face.id);
+    if (!outside) {
+      conversations.setCurrent(face.id);
+      // The pins follow him: the lead, this persona and the one before keep their fast tiers (0.1.79).
+      pinFastTiers(face.id);
+    }
     leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
     // The wake named one persona and the words another ("Tessaya, ask Alfred…"): his tiers, before the turn runs.
@@ -3388,20 +3407,7 @@ export const startScreenCompanion = (input: {
         });
       }
       // At launch: the fast tier of each persona he is likely to wake first, since a wake is too late to start one.
-      if (wake == null) {
-        const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
-        const ids = pack.personas.map((p) => p.id);
-        agentOf().warmEach(
-          startPersonas(
-            pack.personas.find((p) => p.lead)?.id ?? ids[0] ?? "executive",
-            conversations.byRecent(),
-            ids,
-          ).map((persona) => ({
-            persona,
-            brain: tierBrains(modelOf(pack, persona), manual(), "fast")[0]!,
-          })),
-        );
-      }
+      if (wake == null) pinFastTiers();
       warmTiers(
         wake == null
           ? face
