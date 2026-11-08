@@ -108,6 +108,7 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
 import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
 import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
 import { AdvancedSettings } from "./AdvancedSettings";
+import { BatonVoiceSettingsNotice, tessayaDictation } from "../../speech/batonDictation";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingResetButton,
@@ -1172,6 +1173,8 @@ export function VoiceSettingsPanel() {
     chosenEnvironment?.serverConfig != null &&
     chosenEnvironment.serverConfig.environment.capabilities.voiceTranscription !== true;
   const model = prepared && modelStatus?.supported ? modelStatus : null;
+  const tessaya = tessayaDictation();
+  if (tessaya) return <BatonVoiceSettingsNotice dictation={tessaya} />;
 
   return (
     <SettingsPageContainer

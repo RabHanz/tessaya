@@ -308,6 +308,15 @@ export interface BatonDesktopBridge {
   ) => () => void;
   /** §14 rung 3 for the voice core: the work session on screen, or null. */
   readonly setBatonVoiceFocus?: (workSessionId: string | null) => void;
+  /**
+   * Present while Tessaya's voice runs on this computer (P8): T3's own microphones dictate through Tessaya's engine
+   * and pill instead of T3's speech service. `start` dictates into the focused field, as Tessaya's key does.
+   */
+  readonly tessayaDictation?: {
+    readonly start: () => void;
+    readonly stop: () => void;
+    readonly openSettings: () => void;
+  };
 }
 
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */

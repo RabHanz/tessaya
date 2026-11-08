@@ -1,3 +1,4 @@
+import { tessayaDictation, withTessayaDictation } from "./batonDictation";
 import {
   cancelEnvironmentSpeechModelDownload,
   downloadEnvironmentSpeechModel,
@@ -141,7 +142,11 @@ export function useVoiceTranscriptionDestination() {
   };
 }
 
-export function useEnvironmentSpeechInput(input: HookInput) {
+// Tessaya (P8): on a desktop running Tessaya's voice, T3's microphones dictate through it.
+export const useEnvironmentSpeechInput = (input: HookInput) =>
+  withTessayaDictation(useT3EnvironmentSpeechInput(input), tessayaDictation());
+
+function useT3EnvironmentSpeechInput(input: HookInput) {
   const navigate = useNavigate();
   const destination = useVoiceTranscriptionDestination();
   const prepared = destination.prepared;

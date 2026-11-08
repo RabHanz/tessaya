@@ -8144,6 +8144,27 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
          </span>
        ) : null}
      </span>
+diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
+index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..7abac06c395903b583949156149c55715d7f7bf6 100644
+--- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
++++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
+@@ -108,6 +108,7 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
+ import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
+ import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
+ import { AdvancedSettings } from "./AdvancedSettings";
++import { BatonVoiceSettingsNotice, tessayaDictation } from "../../speech/batonDictation";
+ import {
+   SETTINGS_PICKER_TRIGGER_CLASSNAME,
+   SettingResetButton,
+@@ -1172,6 +1173,8 @@ export function VoiceSettingsPanel() {
+     chosenEnvironment?.serverConfig != null &&
+     chosenEnvironment.serverConfig.environment.capabilities.voiceTranscription !== true;
+   const model = prepared && modelStatus?.supported ? modelStatus : null;
++  const tessaya = tessayaDictation();
++  if (tessaya) return <BatonVoiceSettingsNotice dictation={tessaya} />;
+ 
+   return (
+     <SettingsPageContainer
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
 index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536a26b441b 100644
 --- a/apps/web/src/routes/__root.tsx
@@ -8175,6 +8196,28 @@ index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536
          <ReopenClosedViewShortcut />
          <ConfirmDialogHost />
          <CustomSnoozeDialogHost />
+diff --git a/apps/web/src/speech/useEnvironmentSpeechInput.ts b/apps/web/src/speech/useEnvironmentSpeechInput.ts
+index c569c14500be68d6be66c20bd45496bd8b102ebd..4340a91db37d6f09781e0cfb618eaba539206469 100644
+--- a/apps/web/src/speech/useEnvironmentSpeechInput.ts
++++ b/apps/web/src/speech/useEnvironmentSpeechInput.ts
+@@ -1,3 +1,4 @@
++import { tessayaDictation, withTessayaDictation } from "./batonDictation";
+ import {
+   cancelEnvironmentSpeechModelDownload,
+   downloadEnvironmentSpeechModel,
+@@ -141,7 +142,11 @@ export function useVoiceTranscriptionDestination() {
+   };
+ }
+ 
+-export function useEnvironmentSpeechInput(input: HookInput) {
++// Tessaya (P8): on a desktop running Tessaya's voice, T3's microphones dictate through it.
++export const useEnvironmentSpeechInput = (input: HookInput) =>
++  withTessayaDictation(useT3EnvironmentSpeechInput(input), tessayaDictation());
++
++function useT3EnvironmentSpeechInput(input: HookInput) {
+   const navigate = useNavigate();
+   const destination = useVoiceTranscriptionDestination();
+   const prepared = destination.prepared;
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 index 4ac36acedf761847ea5db4db237120aaa0da9939..6000541e431ca46a1dbcb5774da2c9511c1f2583 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
