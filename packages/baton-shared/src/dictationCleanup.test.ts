@@ -176,6 +176,18 @@ describe("checkRewrite", () => {
     expect(
       checkRewrite("Move it to Netties tonight.", "Move it to Kubernetes tonight.", k8s).ok,
     ).toBe(true);
+    // His word with nothing in what he said that it could be is refused, however close the letters.
+    const vos = [{ phrase: "Kubernetes", replacement: null, heard: ["Cooper Netties"] }];
+    expect(
+      checkRewrite(
+        "About the clipping kuber, is it free?",
+        "About the clipping Kubernetes, is it free?",
+        vos,
+      ).ok,
+    ).toBe(false);
+    expect(checkRewrite("Ask the Cooper Netties team.", "Ask the Kubernetes team.", vos).ok).toBe(
+      true,
+    );
     // His word written split by the model is still his word.
     expect(checkRewrite("Ask Kubernetes now.", "Ask Kubernetes now.", k8s).ok).toBe(true);
     // Her own names' strict forms need no entry.

@@ -478,6 +478,27 @@ export const checkRewrite = (
     const lower = name.toLowerCase();
     if (!inLower.includes(lower) && !known.has(lower)) return fail(`new name ${name}`);
   }
+  // One of his words the answer brought in needs something in what he said that it is: itself, split, or a form
+  // it is known to be heard as. "clipping venture" never becomes VentureOS.
+  const said = (form: string) =>
+    new RegExp(
+      String.raw`(?<![\p{L}\p{N}])${form
+        .split(/\s*/)
+        .map(escapeRegExp)
+        .join(String.raw`\s?`)}(?![\p{L}\p{N}])`,
+      "iu",
+    ).test(input);
+  for (const d of his) {
+    const term = d.replacement ?? d.phrase;
+    if (
+      !new RegExp(String.raw`(?<![\p{L}\p{N}])${escapeRegExp(term)}(?![\p{L}\p{N}])`, "u").test(
+        output,
+      )
+    )
+      continue;
+    if (!said(term.replace(/\s+/g, "")) && !(d.heard ?? []).some(said))
+      return fail(`new term ${term}`);
+  }
   for (const token of input.match(CODE_TOKEN) ?? [])
     if (!output.includes(token.replace(/[.,]+$/, ""))) return fail(`lost term ${token}`);
 
