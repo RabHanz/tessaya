@@ -18,7 +18,8 @@ describe("every voice control has a handler", () => {
     expect(controls.length).toBeGreaterThan(20);
   });
 
+  // A list control (kind "list") sends `<id>:add` and `<id>:rm`, so its branch names those.
   it.each(controls)("%s is handled", (id) => {
-    expect(source).toMatch(new RegExp(`id === "${id.replace(".", "\\.")}"`));
+    expect(source).toMatch(new RegExp(`id === "${id.replace(".", "\\.")}(?::(?:add|rm))?"`));
   });
 });
