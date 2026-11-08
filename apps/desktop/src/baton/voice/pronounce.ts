@@ -49,6 +49,52 @@ const escape = (word: string): string => word.replace(/[.*+?^${}()|[\]\\]/g, "\\
 /** "github.com" → "github dot com". */
 const dots = (text: string): string => text.split(".").filter(Boolean).join(" dot ");
 
+/** File extensions the way he says them (0.1.74); any other is spelled as letters. */
+const EXTENSIONS: Readonly<Record<string, string>> = {
+  md: "M D",
+  ts: "T S",
+  tsx: "T S X",
+  json: "jason",
+  yaml: "yammel",
+  yml: "yammel",
+  webmanifest: "web manifest",
+  sqlite: "S Q lite",
+  exe: "exe",
+  ps1: "P S one",
+  mjs: "M J S",
+  png: "P N G",
+  svg: "S V G",
+  html: "H T M L",
+  css: "C S S",
+  py: "pie",
+  rs: "R S",
+  toml: "tomel",
+  lock: "lock",
+  env: "env",
+  log: "log",
+  zip: "zip",
+};
+const sayExtension = (ext: string): string =>
+  EXTENSIONS[ext.toLowerCase()] ?? ext.toUpperCase().split("").join(" ");
+
+/** A file as said: its name ("SECURITY" as the word), "dot", and its extension ("index.test.ts": "index dot test dot T S"). */
+const sayFile = (file: string): string => {
+  // A short ALL-CAPS name is an acronym, spelled ("PR" is "P R"); a longer one is a word ("SECURITY" is "security").
+  const word = (part: string) =>
+    /^[A-Z]{2,3}$/.test(part)
+      ? part.split("").join(" ")
+      : /^[A-Z][A-Z0-9_-]+$/.test(part)
+        ? part.toLowerCase()
+        : part;
+  // A dotfile is all name: ".env.local" is "dot env dot local".
+  if (file.startsWith("."))
+    return `dot ${file.slice(1).split(".").filter(Boolean).map(word).join(" dot ")}`;
+  const at = file.lastIndexOf(".");
+  const name = file.slice(0, Math.max(0, at)).split(".").filter(Boolean).map(word).join(" dot ");
+  return `${name === "" ? "" : `${name} `}dot ${sayExtension(file.slice(at + 1))}`;
+};
+const KNOWN = Object.keys(EXTENSIONS).concat(["js", "txt", "csv"]).join("|");
+
 /** Whole words from both lists; his own win over the built-in ones. One pass, so nothing is respelled twice. */
 const respell = (text: string, his: Readonly<Record<string, string>>): string => {
   const exact = new Map<string, string>();
@@ -148,16 +194,20 @@ export const pronounce = (text: string, his: Readonly<Record<string, string>> = 
     .replace(/\b(?:https?:\/\/|www\.)[^\s]*[^\s.,;:!?)]/gi, (url) =>
       dots(url.replace(/^(?:https?:\/\/)?(?:www\.)?/i, "").split(/[/?#]/)[0] ?? ""),
     )
-    // A path reads as the file it names ("apps/desktop/src/core.ts" is "core dot ts"); a drive or root may have
-    // spaces in its folders. The file needs a letter in its name and its extension: "1/2.5" is a number.
+    // A path reads as only the file it names ("apps/desktop/src/core.ts" is "core dot T S"), its folders dropped,
+    // dot-folders too; a drive or root may have spaces in its folders. The file needs a letter in its name and its
+    // extension: "1/2.5" is a number.
     .replace(
-      /(?:[A-Za-z]:\\(?:[^\\\n]+\\)*|~?\/(?:[^/\n]+\/)*|(?:[\w.-]+[\\/])+)([\w-]*[A-Za-z][\w-]*(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,4})\b/g,
-      (_, file: string) => dots(file),
+      /(?:[A-Za-z]:\\(?:[^\\\n]+\\)*|~?\/(?:[^/\n]+\/)*|(?:[\w.-]+[\\/])+)(\.[A-Za-z][\w-]*(?:\.[\w-]+)*|[\w-]*[A-Za-z][\w-]*(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,15})\b/g,
+      (_, file: string) => sayFile(file),
     )
-    // A whole file name: "index.test.ts" is "index dot test dot ts".
+    // A whole file name with a known extension, or a dotfile on its own (".env").
     .replace(
-      /\b([A-Za-z][\w-]*(?:\.[\w-]+)*\.(?:ts|tsx|js|mjs|json|md|py|rs|toml|yaml|yml|txt|log|csv))\b/g,
-      (file: string) => dots(file),
+      new RegExp(
+        `\\b[A-Za-z][\\w-]*(?:\\.[\\w-]+)*\\.(?:${KNOWN})\\b|(?<![\\w.])\\.(?:${KNOWN})\\b`,
+        "gi",
+      ),
+      (file: string) => sayFile(file),
     );
   return (
     respell(notEnglish(written) ? written : figures(written), his)

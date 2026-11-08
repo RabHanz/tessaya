@@ -19,6 +19,8 @@ export interface AssistantCase {
   readonly wake?: string;
   /** Words the reply must contain, such as the persona's name. */
   readonly says?: string;
+  /** Text the spoken reply must not contain, such as a path or a file's extension. */
+  readonly notSays?: ReadonlyArray<string>;
   /** Tools that run in this case, each answering with this text; every other call is refused. */
   readonly answers?: Readonly<Record<string, string>>;
   /** The window he is using; Notepad when left out. */
@@ -469,6 +471,28 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       dictation_start:
         'Dictation is on, typing into the window that has the keyboard. He says "stop dictation" or clicks ✓ to insert, ✕ or Esc to throw it away.',
     },
+  },
+  {
+    id: "spoken-file-names",
+    source:
+      "0.1.74 test-mic run: she read out .github/SECURITY.md and apps/web/public/manifest.webmanifest",
+    said: "why did the merge in the shop session stop?",
+    first: ["sessions_list", "sessions_find", "session_show", "fleet_status"],
+    answers: {
+      sessions_list: "- shop [id: s-shop] stopped",
+      sessions_find: "- shop [id: s-shop] stopped",
+      session_show:
+        "shop [id: s-shop]: the merge stopped with a conflict in two files, .github/SECURITY.md and apps/web/public/manifest.webmanifest.",
+      fleet_status:
+        "shop: stopped, merge conflict in .github/SECURITY.md and apps/web/public/manifest.webmanifest",
+    },
+    notSays: [
+      ".github/SECURITY.md",
+      "apps/web/public",
+      "manifest.webmanifest",
+      ".md",
+      ".webmanifest",
+    ],
   },
   {
     id: "dictation-apps",

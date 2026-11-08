@@ -27,6 +27,7 @@ export const passes = (c: AssistantCase, sample: Sample): boolean => {
     (c.model === undefined || sample.model === c.model) &&
     !(c.not ?? []).includes(first) &&
     (c.says === undefined || sample.reply.toLowerCase().includes(c.says.toLowerCase())) &&
+    !(c.notSays ?? []).some((text) => sample.reply.includes(text)) &&
     // A persona never opens with "<name> here": the card and the voice already say who answers.
     (c.wake === undefined || !/^\W*\w+ here\b/i.test(sample.reply)) &&
     (c.goal === undefined ||
