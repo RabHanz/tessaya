@@ -45,21 +45,26 @@ export const liveThreadSwitchRefusal = (input: {
     : null;
 
 /**
- * What a model pick does on a live thread. A Claude model changes the session's own model (typed as /model); the
- * Terminal session entry keeps it, or takes a handed-off thread back; any other provider continues in a new thread.
+ * What a model pick does on a live thread. Still on its session: a Claude model on the session's own login changes
+ * the session's model (/model), the Terminal session entry keeps it, and another provider or login continues in a
+ * new thread. Handed off: the thread is ordinary, except that the Terminal session entry takes it back.
  */
 export const livePick = (input: {
   readonly pickedInstance: string;
   readonly pickedDriver: string | null;
   readonly currentInstance: string;
-}): "session-model" | "unchanged" | "switch-back" | "continue-in" =>
-  input.pickedInstance === LIVE_INSTANCE
-    ? input.currentInstance === LIVE_INSTANCE
+  /** The picked instance runs as the login the terminal session uses. */
+  readonly sameAccount: boolean;
+}): "session-model" | "unchanged" | "switch-back" | "continue-in" | "normal" =>
+  input.currentInstance !== LIVE_INSTANCE
+    ? input.pickedInstance === LIVE_INSTANCE
+      ? "switch-back"
+      : "normal"
+    : input.pickedInstance === LIVE_INSTANCE
       ? "unchanged"
-      : "switch-back"
-    : input.pickedDriver === "claudeAgent"
-      ? "session-model"
-      : "continue-in";
+      : input.pickedDriver === "claudeAgent" && input.sameAccount
+        ? "session-model"
+        : "continue-in";
 
 /** The header line for a reply the session says a safety classifier stopped; null for any other text. */
 export const classifierStopReason = (lastReply: string | null): string | null =>

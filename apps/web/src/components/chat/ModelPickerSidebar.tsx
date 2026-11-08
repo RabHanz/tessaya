@@ -4,7 +4,7 @@ import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import { instanceRoom } from "./BatonPickerAccount";
+import { instanceRoom, RailLimitMark } from "./BatonPickerAccount";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
@@ -143,7 +143,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               ? describeUnavailableInstance(entry)
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
-                : [entry.displayName, instanceRoom(entry, now)].filter(Boolean).join(" · ");
+                : entry.displayName;
+            const room = isUnavailable || isContextDisabled ? null : instanceRoom(entry, now);
 
             const button = (
               <Toolbar.Button
@@ -186,6 +187,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   }
                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                 />
+                {room?.onLimit ? <RailLimitMark /> : null}
               </Toolbar.Button>
             );
 
@@ -209,6 +211,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                     align="center"
                   >
                     {tooltip}
+                    {room ? <div className="text-muted-foreground">{room.text}</div> : null}
                   </TooltipPopup>
                 </Tooltip>
               </div>

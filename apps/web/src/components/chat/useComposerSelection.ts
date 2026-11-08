@@ -18,7 +18,12 @@ import { type SetStateAction } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toastManager } from "../ui/toast";
 import { livePick } from "@t3tools/baton-shared/liveThread";
-import { useContinueInNewThread, useLiveSessionChange } from "./BatonLiveModel";
+import {
+  runsAsLiveLogin,
+  useContinueInNewThread,
+  useLiveAccounts,
+  useLiveSessionChange,
+} from "./BatonLiveModel";
 import { resolveAppModelSelectionForInstance } from "../../modelSelection";
 import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
 import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
@@ -146,6 +151,9 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
   const continueInNewThread = useContinueInNewThread();
+  const liveAccounts = useLiveAccounts(
+    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
+  );
   const onProviderModelSelect = (
     instanceId: ProviderInstanceId,
     model: string,
@@ -158,6 +166,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
         pickedInstance: instanceId,
         pickedDriver: entry?.driver ?? null,
         currentInstance: activeThread.modelSelection.instanceId,
+        sameAccount: runsAsLiveLogin(instanceId, liveAccounts),
       });
       if (route === "session-model") liveSession.apply({ model });
       else if (route === "switch-back")
@@ -172,8 +181,10 @@ export function useComposerSelection(input: ComposerSelectionInput) {
           { instanceId, model },
           entry?.displayName ?? String(instanceId),
         );
-      if (options?.focusComposer !== false) scheduleComposerFocus();
-      return;
+      if (route !== "normal") {
+        if (options?.focusComposer !== false) scheduleComposerFocus();
+        return;
+      }
     }
     const resolvedDriverKind = entry?.driver ?? null;
     if (

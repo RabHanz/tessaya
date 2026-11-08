@@ -27,6 +27,7 @@ import {
   ComposerPickerFooter,
   describeComposerEffort,
 } from "./ComposerModelEffort";
+import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import { useLiveTraits } from "./BatonLiveModel";
 import { BatonLimitMark, BatonPickerAccount, BatonUsageDetails } from "./BatonPickerAccount";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
@@ -207,7 +208,12 @@ export function ComposerControlsBar(props: {
       multipleModelSelections={multipleModelSelections}
       onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
       selectedModelSelection={selectedModelSelection}
-      onProviderModelSelect={onProviderModelSelect}
+      onProviderModelSelect={(instanceId, model, options) => {
+        // The Terminal session entry, already current, changes nothing: the pick just closes the picker.
+        if (instanceId === LIVE_INSTANCE && selectedInstanceId === LIVE_INSTANCE)
+          onModelPickerOpenChange(false);
+        onProviderModelSelect(instanceId, model, options);
+      }}
       activeInstanceId={
         providerCatalogPending
           ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
@@ -250,14 +256,16 @@ export function ComposerControlsBar(props: {
           runtimeModeOptions={compatibleRuntimeModeOptions}
           onRuntimeModeChange={handleRuntimeModeChange}
         >
-          {props.onUsageLimitsCommand ? (
-            <BatonUsageDetails
-              onOpen={() => {
-                onModelPickerOpenChange(false);
-                props.onUsageLimitsCommand?.();
-              }}
-            />
-          ) : null}
+          <BatonUsageDetails
+            onOpen={
+              props.onUsageLimitsCommand
+                ? () => {
+                    onModelPickerOpenChange(false);
+                    props.onUsageLimitsCommand?.();
+                  }
+                : null
+            }
+          />
         </ComposerPickerFooter>
       }
       renderInstanceDetail={(entry) => (

@@ -314,10 +314,14 @@ export const makeHandlers = Effect.gen(function* () {
         Effect.gen(function* () {
           const adopted = yield* AdoptedSessionService;
           const catalog = yield* BatonSessionCatalogService;
+          const claudeModels = (yield* (yield* ProviderRegistry.ProviderRegistry).getProviders)
+            .filter((provider) => provider.driver === "claudeAgent")
+            .flatMap((provider) => provider.models.map((model) => model.slug));
           const services = yield* Effect.context<never>();
           return yield* Effect.promise(() =>
             setModelResumingStopped({
-              run: () => Effect.runPromiseWith(services)(liveSetModel(adopted, input)),
+              run: () =>
+                Effect.runPromiseWith(services)(liveSetModel(adopted, input, claudeModels)),
               // The same session id, in Herdr; a resume that made no pane did not bring it back.
               resume: async () =>
                 (

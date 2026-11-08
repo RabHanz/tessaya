@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { limitsAge } from "./BatonLimitsAge";
+import { limitsAge } from "./accountRoom.ts";
 
 const now = Date.parse("2026-10-30T12:00:00Z");
+// @effect-diagnostics-next-line globalDate:off -- a display label, not a date value
 const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
 
 describe("limitsAge", () => {

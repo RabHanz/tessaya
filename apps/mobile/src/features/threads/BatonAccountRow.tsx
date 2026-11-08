@@ -2,9 +2,10 @@
  * The account under each provider in the model sheet (T6, as web's BatonPickerAccount): who it runs as, its room left,
  * and on the thread's own Claude instance the "Keep on this account" pin, which automatic rotation respects.
  */
-import { useAtomValue } from "@effect/atom-react";
-import { accountReturnsAt, instanceAccount, type BatonAccount } from "@t3tools/baton-contracts";
-import { isLiveThreadId } from "@t3tools/baton-shared/liveThread";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { instanceAccount, type BatonAccount } from "@t3tools/baton-contracts";
+import { accountRow } from "@t3tools/baton-shared/accountRoom";
+import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
@@ -17,18 +18,25 @@ import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 
-export function accountRoom(account: BatonAccount): string {
-  const returnsAt = accountReturnsAt(account);
-  if (returnsAt !== null) {
-    const when = new Date(returnsAt).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    return `out until ${when}`;
-  }
-  return account.headroomPercent === null ? "limits unknown" : `${account.headroomPercent}% left`;
+function RunsAs({ account }: { readonly account: BatonAccount }) {
+  // The sheet is short-lived: the reading's age as of opening it is enough.
+  const [now] = useState(Date.now);
+  return (
+    <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
+      Runs as {account.label} · {accountRow(account, now)}
+    </Text>
+  );
+}
+
+/** A terminal session runs on the machine's active login (cswap), not on an instance's. */
+function LiveAccount({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const pool = useAtomValue(batonWorkSessions.accountPoolQuery({ environmentId, input: {} }));
+  const account = Option.getOrNull(AsyncResult.value(pool))?.accounts.find((entry) => entry.active);
+  return account === undefined ? null : (
+    <View className="mx-4 px-1 pb-1">
+      <RunsAs account={account} />
+    </View>
+  );
 }
 
 export function BatonAccountRow(props: {
@@ -44,7 +52,10 @@ export function BatonAccountRow(props: {
       : configs
           .get(props.environmentId)
           ?.providers.find((entry) => entry.instanceId === props.instanceId);
-  if (provider === undefined || props.environmentId === null) return null;
+  if (props.environmentId === null) return null;
+  if (props.instanceId === LIVE_INSTANCE)
+    return <LiveAccount environmentId={props.environmentId} />;
+  if (provider === undefined) return null;
   const email = provider.auth.email?.trim() ?? "";
   if (provider.usageLimits === undefined && email === "") return null;
   const account = instanceAccount(provider, true);
@@ -54,9 +65,7 @@ export function BatonAccountRow(props: {
     provider.driver === "claudeAgent";
   return (
     <View className="mx-4 gap-1 px-1 pb-1">
-      <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
-        Runs as {account.label} · {accountRoom(account)}
-      </Text>
+      <RunsAs account={account} />
       {pinnable && props.pinThreadId !== null ? (
         <KeepSwitch environmentId={props.environmentId} threadId={props.pinThreadId} />
       ) : null}
@@ -65,18 +74,16 @@ export function BatonAccountRow(props: {
 }
 
 function KeepSwitch(props: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId }) {
-  const query = useAtomValue(
-    batonWorkSessions.threadKeptQuery({
-      environmentId: props.environmentId,
-      input: { threadId: props.threadId },
-    }),
-  );
+  const keptAtom = batonWorkSessions.threadKeptQuery({
+    environmentId: props.environmentId,
+    input: { threadId: props.threadId },
+  });
+  const query = useAtomValue(keptAtom);
+  const refresh = useAtomRefresh(keptAtom);
   const setKeep = useAtomCommand(batonWorkSessions.threadKeep, "keep on this account");
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const stored = Option.getOrNull(AsyncResult.value(query))?.keep ?? null;
-  // An older server has no such setting.
-  if (stored === null) return null;
-  const keep = chosen ?? stored;
+  // Null on an older server, which has no such setting.
+  const keep = Option.getOrNull(AsyncResult.value(query))?.keep ?? null;
+  if (keep === null) return null;
   return (
     <View className="min-h-9 flex-row items-center justify-between">
       <Text className="text-sm text-foreground">Keep on this account</Text>
@@ -88,7 +95,7 @@ function KeepSwitch(props: { readonly environmentId: EnvironmentId; readonly thr
             environmentId: props.environmentId,
             input: { threadId: props.threadId, keep: next },
           }).then((result) => {
-            if (result._tag === "Success") setChosen(result.value.keep);
+            if (result._tag === "Success") refresh();
           })
         }
       />

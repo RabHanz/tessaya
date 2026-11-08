@@ -3,10 +3,11 @@
  * "Keep on this account" pin, and on a live thread what a pick there does. Each account is a provider instance;
  * a mirrored terminal session runs on cswap's machine login, which the Usage page switches.
  */
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { accountReturnsAt, instanceAccount, type BatonAccount } from "@t3tools/baton-contracts";
+import { accountRow, returnsLabel } from "@t3tools/baton-shared/accountRoom";
 import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
-import type { EnvironmentId, ProviderInstanceId, ScopedThreadRef } from "@t3tools/contracts";
+import type { ProviderInstanceId, ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { ChartNoAxesColumnIcon, HourglassIcon, LockIcon, LockOpenIcon } from "lucide-react";
@@ -19,24 +20,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
-import { limitsAge } from "./BatonLimitsAge";
-
-const returnsLabel = (returnsAt: string) =>
-  new Date(returnsAt).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
-export function accountRow(account: BatonAccount, now: number): string {
-  const returnsAt = accountReturnsAt(account);
-  if (returnsAt !== null) return `out until ${returnsLabel(returnsAt)}`;
-  const room =
-    account.headroomPercent === null ? "limits unknown" : `${account.headroomPercent}% left`;
-  const age = account.usageCheckedAt === null ? null : limitsAge(account.usageCheckedAt, now);
-  return age === null ? room : `${room} · ${age.text.toLowerCase()}`;
-}
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { runsAsLiveLogin, useLiveAccounts } from "./BatonLiveModel";
 
 /** An instance's account, when it reports a login or limits; null for one that reports neither. */
 const accountOf = (entry: ProviderInstanceEntry): BatonAccount | null =>
@@ -46,10 +31,8 @@ const accountOf = (entry: ProviderInstanceEntry): BatonAccount | null =>
 
 const useNow = () => Date.parse(`${useNowMinute()}:00Z`);
 
-function useLiveAccount(environmentId: EnvironmentId) {
-  const pool = useAtomValue(batonWorkSessions.accountPoolQuery({ environmentId, input: {} }));
-  return Option.getOrNull(AsyncResult.value(pool))?.accounts.find((entry) => entry.active);
-}
+const useLiveAccount = (threadRef: ScopedThreadRef) =>
+  useLiveAccounts(threadRef).find((entry) => entry.active);
 
 function AccountLine(props: {
   readonly account: BatonAccount;
@@ -88,9 +71,31 @@ function Note({ children }: { readonly children: React.ReactNode }) {
   );
 }
 
-function LiveSessionAccount({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const account = useLiveAccount(environmentId);
+function ContinueInNote({ name }: { readonly name: string }) {
+  return (
+    <Note>
+      <span className="font-medium text-foreground/80">Continue in {name}</span>: a model picked
+      here opens a new thread with this conversation. The terminal session stays as it is.
+    </Note>
+  );
+}
+
+function LiveSessionAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const account = useLiveAccount(threadRef);
   return account === undefined ? null : <AccountLine account={account} email="" />;
+}
+
+/** A Claude instance on a live thread: /model into the session only when it runs as the session's own login. */
+function LiveClaudeNote(props: {
+  readonly entry: ProviderInstanceEntry;
+  readonly threadRef: ScopedThreadRef;
+}) {
+  const accounts = useLiveAccounts(props.threadRef);
+  return runsAsLiveLogin(props.entry.instanceId, accounts) ? (
+    <Note>A model picked here changes the terminal session's own model.</Note>
+  ) : (
+    <ContinueInNote name={props.entry.displayName} />
+  );
 }
 
 /** The row under the model list for the instance being browsed (or the thread's own, under Favorites). */
@@ -100,17 +105,17 @@ export function BatonPickerAccount(props: {
   readonly threadInstanceId: ProviderInstanceId;
 }) {
   const { entry, threadRef } = props;
-  if (threadRef !== null && isLiveThreadId(threadRef.threadId)) {
-    if (entry.instanceId === LIVE_INSTANCE)
-      return <LiveSessionAccount environmentId={threadRef.environmentId} />;
+  // A handed-off live thread is ordinary (livePick); only the Terminal session entry stays special.
+  if (
+    threadRef !== null &&
+    isLiveThreadId(threadRef.threadId) &&
+    (props.threadInstanceId === LIVE_INSTANCE || entry.instanceId === LIVE_INSTANCE)
+  ) {
+    if (entry.instanceId === LIVE_INSTANCE) return <LiveSessionAccount threadRef={threadRef} />;
     return entry.driverKind === "claudeAgent" ? (
-      <Note>A model picked here changes the terminal session's own model.</Note>
+      <LiveClaudeNote entry={entry} threadRef={threadRef} />
     ) : (
-      <Note>
-        <span className="font-medium text-foreground/80">Continue in {entry.displayName}</span>: a
-        model picked here opens a new thread with this conversation. The terminal session stays as
-        it is.
-      </Note>
+      <ContinueInNote name={entry.displayName} />
     );
   }
   const account = accountOf(entry);
@@ -128,19 +133,17 @@ export function BatonPickerAccount(props: {
 
 /** "Keep on this account": automatic rotation leaves this thread where he put it. Pressed again, it unpins. */
 function KeepToggle({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const query = useAtomValue(
-    batonWorkSessions.threadKeptQuery({
-      environmentId: threadRef.environmentId,
-      input: { threadId: threadRef.threadId },
-    }),
-  );
+  const keptAtom = batonWorkSessions.threadKeptQuery({
+    environmentId: threadRef.environmentId,
+    input: { threadId: threadRef.threadId },
+  });
+  const query = useAtomValue(keptAtom);
+  const refresh = useAtomRefresh(keptAtom);
   const setKeep = useAtomCommand(batonWorkSessions.threadKeep, { reportFailure: false });
-  const [chosen, setChosen] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
-  const stored = Option.getOrNull(AsyncResult.value(query))?.keep ?? null;
-  // An older server has no such setting.
-  if (stored === null) return null;
-  const keep = chosen ?? stored;
+  // Null on an older server, which has no such setting.
+  const keep = Option.getOrNull(AsyncResult.value(query))?.keep ?? null;
+  if (keep === null) return null;
   const toggle = () => {
     setBusy(true);
     void setKeep({
@@ -148,7 +151,7 @@ function KeepToggle({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
       input: { threadId: threadRef.threadId, keep: !keep },
     }).then((result) => {
       setBusy(false);
-      if (result._tag === "Success") setChosen(result.value.keep);
+      if (result._tag === "Success") refresh();
       else
         toastManager.add({
           type: "error",
@@ -187,8 +190,8 @@ function Mark({ account }: { readonly account: BatonAccount | null | undefined }
   );
 }
 
-function LiveMark({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  return <Mark account={useLiveAccount(environmentId)} />;
+function LiveMark({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  return <Mark account={useLiveAccount(threadRef)} />;
 }
 
 /** The picker trigger's one limit mark: shown only while the thread's account is on a limit. */
@@ -197,24 +200,57 @@ export function BatonLimitMark(props: {
   readonly threadRef: ScopedThreadRef | null;
 }) {
   if (props.threadRef !== null && props.entry?.instanceId === LIVE_INSTANCE)
-    return <LiveMark environmentId={props.threadRef.environmentId} />;
+    return <LiveMark threadRef={props.threadRef} />;
   return props.entry === undefined ? null : <Mark account={accountOf(props.entry)} />;
 }
 
-/** The picker rail's tooltip text for an instance's room left, or null when it reports none. */
-export function instanceRoom(entry: ProviderInstanceEntry, now: number): string | null {
+/** The picker rail's room left for an instance: its tooltip line, and whether the account is on a limit. */
+export function instanceRoom(
+  entry: ProviderInstanceEntry,
+  now: number,
+): { readonly text: string; readonly onLimit: boolean } | null {
   if (entry.snapshot.usageLimits === undefined) return null;
-  return accountRow(instanceAccount(entry.snapshot, true), now);
+  const account = instanceAccount(entry.snapshot, true);
+  return { text: accountRow(account, now), onLimit: accountReturnsAt(account) !== null };
 }
 
-/** The picker footer's way to T3's own usage panel (the one /usage-limits opens). */
-export function BatonUsageDetails({ onOpen }: { readonly onOpen: () => void }) {
+/** The rail button's limit mark, in its corner. */
+export function RailLimitMark() {
+  return (
+    <HourglassIcon
+      aria-hidden
+      data-testid="model-picker-rail-limit-mark"
+      className="pointer-events-none absolute right-0.5 bottom-0.5 z-40 size-2.5 text-warning-foreground"
+    />
+  );
+}
+
+/** The picker footer's way to T3's own usage panel (the one /usage-limits opens); disabled with a reason. */
+export function BatonUsageDetails({ onOpen }: { readonly onOpen: (() => void) | null }) {
+  const button = (
+    <Button
+      size="xs"
+      variant="ghost"
+      disabled={onOpen === null}
+      data-testid="model-picker-usage-details"
+      onClick={onOpen ?? undefined}
+    >
+      <ChartNoAxesColumnIcon />
+      Usage details
+    </Button>
+  );
   return (
     <span className="ms-auto">
-      <Button size="xs" variant="ghost" data-testid="model-picker-usage-details" onClick={onOpen}>
-        <ChartNoAxesColumnIcon />
-        Usage details
-      </Button>
+      {onOpen === null ? (
+        <Tooltip>
+          <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
+          <TooltipPopup side="top">
+            No usage reading for this provider, or the message has attachments
+          </TooltipPopup>
+        </Tooltip>
+      ) : (
+        button
+      )}
     </span>
   );
 }

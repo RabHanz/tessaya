@@ -34,22 +34,23 @@ describe("a mirrored live thread", () => {
 });
 
 describe("a model picked on a live thread", () => {
-  const pick = (
-    pickedInstance: string,
-    pickedDriver: string | null,
-    currentInstance = "baton-live",
-  ) => livePick({ pickedInstance, pickedDriver, currentInstance });
-  it("types only Claude models into the session; another provider continues in a new thread", () => {
-    expect(pick("claudeAgent", "claudeAgent")).toBe("session-model");
-    expect(pick("claude-work", "claudeAgent")).toBe("session-model");
-    expect(pick("codex", "codex")).toBe("continue-in");
-    expect(pick("opencode", "opencode")).toBe("continue-in");
-    expect(pick("gone", null)).toBe("continue-in");
-  });
-  it("keeps the session on its own entry, and takes a handed-off thread back", () => {
-    expect(pick("baton-live", "acpRegistry")).toBe("unchanged");
-    expect(pick("baton-live", "acpRegistry", "codex")).toBe("switch-back");
-  });
+  it.each([
+    // picked instance, driver, thread's instance, same login, route
+    ["claudeAgent", "claudeAgent", "baton-live", true, "session-model"],
+    ["claude-work", "claudeAgent", "baton-live", false, "continue-in"],
+    ["codex", "codex", "baton-live", true, "continue-in"],
+    ["gone", null, "baton-live", false, "continue-in"],
+    ["baton-live", "acpRegistry", "baton-live", true, "unchanged"],
+    // Handed off: ordinary, and the Terminal session entry takes it back.
+    ["baton-live", "acpRegistry", "codex", false, "switch-back"],
+    ["claudeAgent", "claudeAgent", "codex", true, "normal"],
+    ["codex", "codex", "claudeAgent", false, "normal"],
+  ] as const)(
+    "%s (%s) on %s, same login %s: %s",
+    (pickedInstance, pickedDriver, currentInstance, sameAccount, route) => {
+      expect(livePick({ pickedInstance, pickedDriver, currentInstance, sameAccount })).toBe(route);
+    },
+  );
 });
 
 describe("a reply stopped by the safety classifier", () => {
