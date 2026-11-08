@@ -26,14 +26,21 @@ const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
 
+interface CleanInput {
+  readonly raw: string;
+  readonly mode: DictationMode;
+  readonly level: CleanupLevel;
+}
+
 export interface Rewriter {
   /** Called when recording starts, so the session is up by the time he stops. */
   readonly warm: () => void;
-  readonly clean: (input: {
-    readonly raw: string;
-    readonly mode: DictationMode;
-    readonly level: CleanupLevel;
-  }) => Promise<CleanedText & { readonly ms: number }>;
+  /**
+   * The words so far, at a pause while he still holds the key: cleaned now, so a `clean` of the same words after
+   * release takes this answer instead of waiting a turn (about 1.2 s through the CLI).
+   */
+  readonly speculate: (input: CleanInput) => void;
+  readonly clean: (input: CleanInput) => Promise<CleanedText & { readonly ms: number }>;
   readonly dispose: () => void;
 }
 
@@ -88,7 +95,14 @@ export const makeRewriter = (input: {
     }
   };
 
-  const ask = async (text: string, mode: DictationMode): Promise<string> => {
+  // One session answers one question at a time: a speculative clean and the real one never overlap on it.
+  let line: Promise<unknown> = Promise.resolve();
+  const ask = (text: string, mode: DictationMode): Promise<string> => {
+    const turn = line.then(() => askNow(text, mode));
+    line = turn.catch(() => undefined);
+    return turn;
+  };
+  const askNow = async (text: string, mode: DictationMode): Promise<string> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const answer = await Promise.race([
@@ -114,18 +128,32 @@ export const makeRewriter = (input: {
     }
   };
 
+  const run = ({ raw, mode, level }: CleanInput) =>
+    cleanDictation({
+      raw,
+      mode,
+      level,
+      dictionary: input.dictionary(),
+      ask,
+      ...(input.always === undefined ? {} : { always: input.always }),
+    });
+  /** Only the latest guess is kept: words said after it make it stale. */
+  let guess: { readonly key: string; readonly cleaned: Promise<CleanedText> } | null = null;
+  const keyOf = (c: CleanInput) => `${c.level}\n${c.mode}\n${c.raw}`;
+
   return {
     warm,
-    clean: async ({ raw, mode, level }) => {
+    speculate: (c) => {
+      if (c.level !== "claude" || guess?.key === keyOf(c)) return;
+      const cleaned = run(c);
+      cleaned.catch(() => undefined);
+      guess = { key: keyOf(c), cleaned };
+    },
+    clean: async (c) => {
       const started = Date.now();
-      const cleaned = await cleanDictation({
-        raw,
-        mode,
-        level,
-        dictionary: input.dictionary(),
-        ask,
-        ...(input.always === undefined ? {} : { always: input.always }),
-      });
+      const ready = guess?.key === keyOf(c) ? guess.cleaned : null;
+      guess = null;
+      const cleaned = await (ready ?? run(c)).catch(() => run(c));
       return { ...cleaned, ms: Date.now() - started };
     },
     dispose: drop,

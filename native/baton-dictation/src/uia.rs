@@ -16,7 +16,8 @@ use windows::Win32::UI::Accessibility::{
     UIA_IsPasswordPropertyId, UIA_ListItemControlTypeId, UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId,
     UIA_SelectionItemIsSelectedPropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId,
     UIA_ToggleToggleStatePropertyId, UIA_TogglePatternId, UIA_TreeItemControlTypeId, UIA_ValuePatternId,
-    UIA_ValueValuePropertyId,
+    UIA_ValueValuePropertyId, IUIAutomationTextPattern, TextPatternRangeEndpoint_End, TextPatternRangeEndpoint_Start,
+    TextUnit_Character, UIA_TextPatternId,
 };
 use windows::core::{BOOL, BSTR};
 use windows::Win32::Foundation::{HWND, LPARAM};
@@ -663,6 +664,44 @@ pub fn focus_state(window: Option<&str>) -> Result<Value, String> {
             format!("{}: {}{}", s.kind, s.name.trim().chars().take(80).collect::<String>(), detail(&element, true, &s.name))
         });
         Ok(json!({"window": title, "handle": top.0 as isize, "focus": focus}))
+    }
+}
+
+/// The words either side of the caret in the focused field, as the desktop's PowerShell read did, without starting
+/// PowerShell (300 ms or more) for each dictation. Null when the field does not say.
+pub fn caret_context(chars: i32) -> Result<Value, String> {
+    let err = |e: windows::core::Error| e.to_string();
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+        let element = automation.GetFocusedElement().map_err(err)?;
+        let around = (|| -> windows::core::Result<Option<(String, String)>> {
+            let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
+            let selection = pattern.GetSelection()?;
+            if selection.Length()? == 0 {
+                return Ok(None);
+            }
+            let range = selection.GetElement(0)?;
+            let before = range.Clone()?;
+            before.MoveEndpointByRange(TextPatternRangeEndpoint_End, &range, TextPatternRangeEndpoint_Start)?;
+            before.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -chars)?;
+            let after = range.Clone()?;
+            after.MoveEndpointByRange(TextPatternRangeEndpoint_Start, &range, TextPatternRangeEndpoint_End)?;
+            after.MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Character, chars)?;
+            Ok(Some((before.GetText(chars)?.to_string(), after.GetText(chars)?.to_string())))
+        })()
+        .ok()
+        .flatten();
+        if let Some((before, after)) = around {
+            return Ok(json!({"before": before, "after": after}));
+        }
+        // An empty field with no text pattern still says so through its value.
+        let empty = element
+            .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
+            .and_then(|v| v.CurrentValue())
+            .is_ok_and(|v| v.is_empty());
+        Ok(if empty { json!({"before": "", "after": ""}) } else { json!({"before": null, "after": null}) })
     }
 }
 

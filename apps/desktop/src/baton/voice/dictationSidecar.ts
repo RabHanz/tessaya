@@ -12,6 +12,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
+import type { CaretContext } from "@t3tools/baton-shared/dictationFit";
 import { outsideLanguages } from "@t3tools/baton-shared/dictationLanguages";
 import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/baton-voice";
 
@@ -135,6 +136,8 @@ export type DictationEvent =
   | { readonly ev: "binding"; readonly id: string; readonly up?: boolean }
   | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
   | { readonly ev: "transcribing" }
+  /** The words so far, at a pause while the key is still held. */
+  | { readonly ev: "partial"; readonly text: string }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
   | { readonly ev: "idle" }
@@ -238,6 +241,8 @@ export interface DictationSidecar {
   /** `number`: the model's own read, numbered and kept for clicks by number; other reads leave those numbers alone. */
   readonly uiTree: (window?: string, find?: string, number?: boolean) => Promise<UiTree>;
   readonly focusState: (window?: string) => Promise<FocusState>;
+  /** The words either side of the caret in the focused field; null when it does not say. */
+  readonly caret: () => Promise<CaretContext | null>;
   readonly input: (input: SidecarInput) => Promise<void>;
   /** Adds text to the box of a window by its UI Automation value: no keyboard, clipboard or focus. */
   readonly setValue: (
@@ -423,6 +428,12 @@ export const startDictationSidecar = (input: {
           error === undefined ? { value: undefined } : { error },
         );
       }
+      if (event["ev"] === "caret") {
+        const { before, after } = event;
+        return settle(event["id"] as number, {
+          value: typeof before === "string" && typeof after === "string" ? { before, after } : null,
+        });
+      }
       if (event["ev"] === "foreground") {
         return settle(event["id"] as number, { value: focusedFrom(event) });
       }
@@ -528,6 +539,7 @@ export const startDictationSidecar = (input: {
         ...(find === undefined ? {} : { find }),
         ...(number === true ? { number: true } : {}),
       }),
+    caret: () => call<CaretContext | null>({ cmd: "caret" }),
     focusState: (window) =>
       call<FocusState>({ cmd: "focus_state", ...(window === undefined ? {} : { window }) }),
     input: (input) => call<void>({ cmd: "input", ...input }),

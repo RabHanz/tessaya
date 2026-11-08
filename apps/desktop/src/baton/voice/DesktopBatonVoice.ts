@@ -1377,8 +1377,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     app: { readonly exe: string; readonly title: string },
   ): Promise<string> => {
     const key = windowKey(app);
+    // The sidecar reads it in-process; PowerShell (300 ms or more to start) only without one.
     const around =
-      (await readCaretContext(input.platform)) ??
+      (await (sidecar === null
+        ? readCaretContext(input.platform)
+        : sidecar.caret().catch(() => null))) ??
       contextFromLastInsert(
         lastInsert === null ? null : { ...lastInsert, sameWindow: lastInsert.key === key },
         Date.now(),
@@ -3311,6 +3314,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
+    // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
+    if (event.ev === "partial") {
+      const app = focusedApp;
+      if (settings.dictationCleanup === "claude")
+        void levelNow(app).then((level) =>
+          rewriter.speculate({
+            raw: biasTranscript(event.text, dictionary),
+            mode: chooseMode(app, settings.appModes),
+            level,
+          }),
+        );
+      return;
+    }
     // A restarted helper forgets that voice dictation runs; told again, its key presses stay this dictation's ✓.
     if (event.ev === "ready") sidecar?.voice(dictatingByVoice);
     if (event.ev === "configured") mouseHookReady = event.mouse === true;

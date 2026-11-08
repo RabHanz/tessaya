@@ -296,7 +296,7 @@ fn infer(session: &mut Session, pcm: &mut Vec<f32>, language: Option<String>) ->
 
 /// The new words of one piece; the context before them only helps the model hear them.
 fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -> Result<String, String> {
-    let Piece { mut pcm, context } = piece;
+    let Piece { mut pcm, context, .. } = piece;
     lift_gain(&mut pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
     let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
@@ -339,9 +339,17 @@ impl Live {
 
     fn decode(&mut self, session: &mut Session, piece: Piece) {
         let started = Instant::now();
+        let at_pause = piece.at_pause;
         match decode_piece(session, piece, self.language.clone()) {
             Ok(text) if text.is_empty() => {}
-            Ok(text) => self.text.push(text),
+            Ok(text) => {
+                self.text.push(text);
+                // At a pause the words so far may be all of it: the desktop starts their cleanup now, so a release
+                // right after finds it done.
+                if at_pause {
+                    emit(json!({"ev": "partial", "text": self.text.join(" ")}));
+                }
+            }
             Err(e) => self.failed = Some(e),
         }
         self.infer_ms += started.elapsed().as_millis() as u64;
@@ -365,7 +373,7 @@ impl Live {
             });
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
-        if self.failed.is_none() {
+        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard) {
             if let Some(piece) = self.chunker.finish() {
                 self.decode(session, piece);
             }
@@ -976,6 +984,19 @@ fn focus_state_event(id: Option<u64>, window: Option<&str>) -> Value {
     out
 }
 
+#[cfg(windows)]
+fn caret_event(id: Option<u64>) -> Value {
+    let mut out = uia::caret_context(120).unwrap_or_else(|e| json!({"error": e}));
+    out["ev"] = json!("caret");
+    out["id"] = json!(id);
+    out
+}
+
+#[cfg(not(windows))]
+fn caret_event(id: Option<u64>) -> Value {
+    json!({"ev": "caret", "id": id, "before": null, "after": null})
+}
+
 #[cfg(not(windows))]
 fn focus_state_event(id: Option<u64>, _window: Option<&str>) -> Value {
     json!({"ev": "focus_state", "id": id, "error": "not on this platform yet"})
@@ -1219,6 +1240,10 @@ fn serve() {
                         let find = value["find"].as_str().map(str::to_string);
                         let numbered = value["number"].as_bool().unwrap_or(false);
                         thread::spawn(move || emit(ui_tree(id, window.as_deref(), find.as_deref(), numbered)));
+                    }
+                    "caret" => {
+                        let id = value["id"].as_u64();
+                        thread::spawn(move || emit(caret_event(id)));
                     }
                     "focus_state" => {
                         let id = value["id"].as_u64();
