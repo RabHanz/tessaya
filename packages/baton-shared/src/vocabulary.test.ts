@@ -54,7 +54,7 @@ describe("vocabulary file", () => {
     const terms = promptTerms(entries);
     // Her own names come first and carry how they are mis-heard; his words follow, most used first.
     expect(terms.slice(0, 3).map((t) => t.split(" ")[0])).toEqual(["Tessaya", "VentureOS", "T3"]);
-    expect(terms.slice(3)).toEqual(["Parakeet", 'Baton (heard as "Buton", "button")']);
+    expect(terms.slice(3)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
   });
 });
@@ -66,8 +66,7 @@ describe("her own names", () => {
       ["Go over the whole of Teceyas code.", "Go over the whole of Tessaya's code."],
       ["To say um", "Tessaya"],
       ["Ask venture OS to check it.", "Ask VentureOS to check it."],
-      ["Add the accounts to button on the laptop.", "Add the accounts to Baton on the laptop."],
-      ["Fix the button UI.", "Fix the Baton UI."],
+      ["Ship the Buton build.", "Ship the Baton build."],
       ["Move it into D3 code.", "Move it into T3 code."],
       // Controls: the everyday word, and real names.
       ["Any header button is not working.", "Any header button is not working."],

@@ -401,7 +401,6 @@ import {
   type TurnEvent,
 } from "@t3tools/baton-shared/voiceTurn";
 import {
-  biasTranscript,
   correctionsBetween,
   learnCorrection,
   observeWording,
@@ -1341,7 +1340,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
     const level = await levelNow(app);
     const out = await rewriter.clean({
-      raw: biasTranscript(raw, dictionary),
+      raw: raw,
       mode: chooseMode(app, settings.appModes),
       level,
     });
@@ -1632,7 +1631,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (turn.kind === "dictation") {
           const tidy = await rewriter
             .clean({
-              raw: biasTranscript(heard, dictionary),
+              raw: heard,
               mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
               level: retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup),
             })
@@ -1653,7 +1652,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Re-runs the tidy-up on the stored words; nothing is inserted unless he copies it.
       const cleaned = await rewriter
         .clean({
-          raw: biasTranscript(turn.raw, dictionary),
+          raw: turn.raw,
           mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
           level: retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup),
         })
@@ -3072,7 +3071,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
     });
-    if (cleanupStaysWarm()) rewriter.warm();
+    syncCleanupSession();
   };
   /** Up at the claude level, gone below it: a session nobody will ask holds memory for nothing. */
   const syncCleanupSession = () => (cleanupStaysWarm() ? rewriter.warm() : rewriter.dispose());
@@ -3342,7 +3341,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (settings.dictationCleanup === "claude")
         void levelNow(app).then((level) =>
           rewriter.speculate({
-            raw: biasTranscript(event.text, dictionary),
+            raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
           }),
@@ -6966,6 +6965,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const setDictation = (dictation: VoiceSettings["dictation"]) => {
     save({ dictation });
+    syncCleanupSession();
     configureDictation();
     render();
     if (dictation === "baton") requestDictation();
@@ -7068,6 +7068,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (holdKey !== settings.holdKey || toggleKey !== settings.toggleKey)
       save({ holdKey, toggleKey });
     configureDictation();
+    // Unbinding the last dictation key ends the Claude session it kept warm.
+    syncCleanupSession();
   };
   applyBindings();
   Electron.app.on("will-quit", () => {

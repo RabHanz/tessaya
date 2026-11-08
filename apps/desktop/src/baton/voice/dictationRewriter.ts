@@ -18,6 +18,7 @@ import {
 } from "@t3tools/baton-shared/dictationCleanup";
 
 import {
+  biasTranscript,
   mergeWispr,
   parseVocabulary,
   type NeverList,
@@ -161,7 +162,8 @@ export const makeRewriter = (input: {
     ask: (text: string, mode: DictationMode) => Promise<string>,
   ) =>
     cleanDictation({
-      raw,
+      // His own names put back first; Raw and Off keep exactly what was heard.
+      raw: mode === "raw" || level === "off" ? raw : biasTranscript(raw, input.dictionary()),
       mode,
       level,
       dictionary: input.dictionary(),

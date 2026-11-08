@@ -29,7 +29,7 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
   raw: "Raw, exactly as heard",
 };
 
-import { promptTerms, similar, withOwnWords } from "./vocabulary.ts";
+import { promptTerms, withOwnWords } from "./vocabulary.ts";
 
 export interface DictionaryEntry {
   readonly phrase: string;
@@ -444,35 +444,39 @@ export const checkRewrite = (
       return fail(`lost number ${number}`);
 
   const his = withOwnWords(dictionary);
-  const known = his
-    .flatMap((d) => [d.phrase, d.replacement ?? ""])
-    .join(" ")
-    .toLowerCase();
+  // Whole words: "Tessa" is not known because "Tessaya" is.
+  const known = new Set(
+    his.flatMap((d) => `${d.phrase} ${d.replacement ?? ""}`.toLowerCase().split(/\s+/)),
+  );
   const outLower = output.toLowerCase();
   const inLower = input.toLowerCase();
-  // His words the answer brought in: a name it replaced must be a known mis-hearing of one, or sound like one.
-  const brought = his.filter((d) => {
-    const term = d.replacement ?? d.phrase;
-    return output.includes(term) && !input.includes(term);
-  });
+  // A name may go only for one of his words the answer brought in, and only as a form it is known to be heard as.
   const misheard = (name: string) =>
-    brought.some(
-      (d) =>
-        (d.heard ?? []).some((h) => h.toLowerCase() === name.toLowerCase()) ||
-        similar(name, d.replacement ?? d.phrase) >= 0.5,
-    );
+    his.some((d) => {
+      const term = d.replacement ?? d.phrase;
+      return (
+        output.includes(term) &&
+        !input.includes(term) &&
+        (d.heard ?? []).some((h) => h.toLowerCase().split(" ").includes(name.toLowerCase()))
+      );
+    });
   // Exact case: "stripe" for "Stripe" is a lost name, even if the letters survived.
+  // As a whole word: "Tessa" does not survive inside "Tessaya".
+  const survives = (name: string) =>
+    new RegExp(String.raw`(?<![\p{L}\p{N}])${escapeRegExp(name)}(?![\p{L}\p{N}])`, "u").test(
+      output,
+    );
   for (const name of namesIn(input))
     if (
-      !output.includes(name) &&
+      !survives(name) &&
       !spans.inside.includes(name) &&
-      !known.includes(name.toLowerCase()) &&
+      !known.has(name.toLowerCase()) &&
       !misheard(name)
     )
       return fail(`lost name ${name}`);
   for (const name of namesIn(output)) {
     const lower = name.toLowerCase();
-    if (!inLower.includes(lower) && !known.includes(lower)) return fail(`new name ${name}`);
+    if (!inLower.includes(lower) && !known.has(lower)) return fail(`new name ${name}`);
   }
   for (const token of input.match(CODE_TOKEN) ?? [])
     if (!output.includes(token.replace(/[.,]+$/, ""))) return fail(`lost term ${token}`);
@@ -544,7 +548,7 @@ export const rewriteSystemPrompt = (dictionary: ReadonlyArray<DictionaryEntry>):
       .join("\n")}`,
     terms.length === 0
       ? ""
-      : `His words, spelt as he spells them, with forms the speech recogniser has written for some. The recogniser often writes one of his words as a word or name that sounds like it, one it has never seen before ("Hexner" for Hetzner). Where a word in the dictation sounds like one of his and his word fits the sentence, write his word with its capitals. A word that fits as it stands, such as a real person's name or a "button" on a screen, stays.\n${terms.map((t) => `- ${t}`).join("\n")}`,
+      : `His words, spelt as he spells them, with forms the speech recogniser has written for some. The recogniser often writes one of his words as a word or name that sounds like it, one it has never seen before ("Cooper Netties" for Kubernetes). Where a word in the dictation sounds like one of his and his word fits the sentence, write his word with its capitals. A word that fits as it stands, such as a real person's name or a "button" on a screen, stays.\n${terms.map((t) => `- ${t}`).join("\n")}`,
     EXAMPLES,
   ]
     .filter((part) => part.length > 0)

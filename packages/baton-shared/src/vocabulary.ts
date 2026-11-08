@@ -217,7 +217,7 @@ export const candidateWords = (text: string): ReadonlyArray<string> => {
 export type SeenWords = Readonly<Record<string, number>>;
 
 const NAMES = new Set(
-  "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori sam tom bob jim tim dan mike steve chris nick ben will liz kate jen".split(
+  "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori tessa tess sam tom bob jim tim dan mike steve chris nick ben will liz kate jen".split(
     " ",
   ),
 );
@@ -328,8 +328,8 @@ export const learnCorrection = (
 };
 
 /**
- * Tessaya's own names as Parakeet writes them, mined from the training split of his Wispr clips (DICT-WISPR). A form
- * that is also an everyday word changes only beside a word that shows the name is meant.
+ * Tessaya's own names as Parakeet writes them, mined from the training split of his Wispr clips (DICT-WISPR). Only
+ * forms that are never everyday words or real names: "button", "baton", "Tessa" and "Tesla" are left to the model.
  */
 const OWN_HEARD: ReadonlyArray<{
   readonly to: string;
@@ -341,47 +341,8 @@ const OWN_HEARD: ReadonlyArray<{
     to: "Tessaya",
     form,
   })),
-  ...["Tesla", "Tessa"].map((form) => ({
-    to: "Tessaya",
-    form,
-    before: ["of", "on", "about"],
-    after: ["manager", "ui", "uis", "app", "desktop", "itself", "voice", "dictation"],
-  })),
   ...["venture OS", "ventureOS", "VenturoS"].map((form) => ({ to: "VentureOS", form })),
-  ...["baton", "Buton"].map((form) => ({ to: "Baton", form })),
-  // The common noun takes "a" or "the": straight after one of these words it is the name.
-  {
-    to: "Baton",
-    form: "button",
-    before: [
-      "to",
-      "of",
-      "from",
-      "with",
-      "without",
-      "using",
-      "through",
-      "like",
-      "into",
-      "about",
-      "via",
-      "sure",
-      "update",
-      "fix",
-    ],
-    after: [
-      "ui",
-      "logo",
-      "dictation",
-      "app",
-      "desktop",
-      "natively",
-      "itself",
-      "voice",
-      "manager",
-      "repo",
-    ],
-  },
+  { to: "Baton", form: "Buton" },
   { to: "T3", form: "T three" },
   { to: "T3", form: "D3", after: ["code", "codes", "chat", "sessions", "s"] },
 ];
@@ -394,7 +355,7 @@ const WORD_END = String.raw`(?![\p{L}\p{N}_/\\@-]|\.\w)`;
 const OWN_NAME_SPELLING = /^[TG][aeiy][sc]{1,2}(?:[aeiy]{0,2}[yi][aeiy]{0,2})$/i;
 const OWN_NAME_END = /(?:ya|ia|aia|eya|aya)$/i;
 /** A clip that is only her name, as he says it to wake her. */
-const OWN_NAME_ALONE = /^(?:(?:to|ta|they|te|tes) (?:say|sea|saya|seya)|tessa)(?: (?:um|uh))?$/;
+const OWN_NAME_ALONE = /^(?:to|ta|they|te|tes) (?:say|sea|saya|seya)(?: (?:um|uh))?$/;
 
 /** Her own names put back before clean-up: whole words, any capitals, the longer form first, as Wispr does. */
 export const applyOwnNames = (text: string): string => {
@@ -475,7 +436,8 @@ export const biasTranscript = (
     );
   if (terms.length === 0) return text;
   return text.replace(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu, (word) => {
-    if (word.length < 5) return word;
+    // A real first name ("Tessa") is someone, not a near-miss of his word.
+    if (word.length < 5 || NAMES.has(word.toLowerCase())) return word;
     for (const term of terms) {
       if (word === term || word[0]!.toLowerCase() !== term[0]!.toLowerCase()) continue;
       if (
