@@ -2582,10 +2582,7 @@ export const startScreenCompanion = (input: {
           );
         }
       }
-      // The team board as the persona asking sees it; a device's turn names no persona, so walls hide it all.
-      const asking =
-        op === "team" && !turnLock.deviceRunning() ? { ...args, agent: face.id } : args;
-      return actions?.jobs?.(op, asking) ?? "Jobs are not reachable from here yet.";
+      return actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.";
     },
     target: async (label, workSessionId) => {
       conversation.add({
@@ -2631,11 +2628,16 @@ export const startScreenCompanion = (input: {
     if (response !== 0) return "He said no. Nothing was saved; say so in a few words.";
     return save(false);
   };
+  /** His own session's tools: the team board is read as the persona answering him; the outside slot keeps `toolHost`. */
+  const hisHost: ToolHost = {
+    ...toolHost,
+    jobs: (op, args) => toolHost.jobs(op, op === "team" ? { ...args, agent: face.id } : args),
+  };
   const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
     sessionWithOwnMcp(
       () =>
         startBatonMcp({
-          tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
+          tools: withFailureGuard(buildBatonTools(hisHost), toolFailures),
           gate: stopsOnCutIn(agentGate, cutIns.since),
           scrub: (text) => vaultHost?.scrub(text) ?? text,
           onResult: ({ text, ...r }) => {

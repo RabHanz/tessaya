@@ -65,6 +65,9 @@ layer("the team board (P4)", (it) => {
         yield* job("j-1", "p-shop", "Ship the shop", "engineering");
         yield* job("j-2", "p-vault", "Rotate the vault keys", "engineering");
         yield* job("j-3", "p-shop", "Old release", "engineering");
+        // Sebastian's only work is walled, and one job is in a project nobody can name.
+        yield* job("j-4", "p-vault", "Audit the vault", "research");
+        yield* job("j-5", "p-gone", "Lost project work", "operations");
         yield* sessions.settle({ id: WorkSessionId.make("j-3") });
         const memory = yield* BatonMemoryService;
         yield* memory.add({
@@ -114,7 +117,10 @@ layer("the team board (P4)", (it) => {
         assert.strictEqual(alfred.role, "sessions, builds and releases");
         const freya = outside.members.find((m) => m.id === "operations")!;
         assert.include(freya.episode?.text ?? "", "dinner for eight");
+        // A project it cannot name counts as walled, and work it may not see does not show as busy either.
+        assert.deepEqual(freya.jobs, []);
         assert.isFalse(freya.busy);
+        assert.isFalse(outside.members.find((m) => m.id === "research")!.busy);
 
         // His own Now page sees through the walls.
         const his = yield* teamBoard({ admin: true }).pipe(

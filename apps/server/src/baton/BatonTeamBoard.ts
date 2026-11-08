@@ -29,6 +29,7 @@ const packPrivate = (persona: Persona): boolean =>
 const lastTurn = (sourceRef: string | null): number =>
   Number(/-(\d+)$/.exec(sourceRef ?? "")?.[1] ?? 0);
 
+/** `isPrivate` beside the pack's flag: P5 passes its grants here (a persona private to this caller). */
 export const teamBoard = Effect.fn("BatonTeamBoard.read")(function* (
   input: BatonTeamBoardInput,
   isPrivate: (persona: string) => boolean = () => false,
@@ -44,8 +45,9 @@ export const teamBoard = Effect.fn("BatonTeamBoard.read")(function* (
   const titles = new Map((yield* (yield* BatonEngine).projects).map((p) => [p.id, p.title]));
   const owners = yield* (yield* BatonJobService).personas();
   const terms = new Set((yield* (yield* BatonJobService).allTerms()).map((t) => t.workSessionId));
+  // Archived sessions are left out by the query; settled ones are dropped below.
   const active = (yield* (yield* WorkSessionService)
-    .list({})
+    .list({ includeArchived: false })
     .pipe(Effect.orElseSucceed(() => []))).filter((s) => s.status === "active" && terms.has(s.id));
   const episodes = (yield* (yield* BatonMemoryService).list({
     kinds: ["episode"],
@@ -73,13 +75,19 @@ export const teamBoard = Effect.fn("BatonTeamBoard.read")(function* (
       members.push({ ...base, jobs: [], episode: null, recent: [] });
       continue;
     }
-    const seen = jobs.filter((s) => may(titles.get(s.projectId) ?? null));
+    // A project it cannot name is treated as walled: only the server and his own view see its work.
+    const seen = jobs.filter((s) => {
+      const title = titles.get(s.projectId);
+      return title === undefined ? all : may(title);
+    });
     const episode = episodes.find((e) => e.sourceRef?.startsWith(`conversation:${persona.id}:`));
     const recent = (yield* record.query({ actor: persona.name, limit: 20 }))
       .filter((r) => may(r.project ?? null))
       .slice(0, RECENT_LINES);
     members.push({
       ...base,
+      // Busy only with work this caller may see: a walled job must not show through as "busy".
+      busy: seen.length > 0,
       jobs: seen.map((s) => ({ id: s.id, title: s.title })),
       episode: episode === undefined ? null : { text: episode.text, at: episode.createdAt },
       recent: recent.map((r) => ({ at: r.at, subject: r.subject, outcome: r.outcome })),

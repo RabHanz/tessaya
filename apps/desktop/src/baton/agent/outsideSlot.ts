@@ -97,11 +97,14 @@ export const createOutsideSlot = (input: {
     jobs: async (op, args) =>
       op === "weave_send" && detectSecret(String(args["text"] ?? "")) !== null
         ? "That looks like a secret, and a weave never carries one. Nothing was sent."
-        : op === "user_job_create"
-          ? input.host.jobs("user_job_propose", args)
-          : op === "user_job_update" || op === "user_job_delete"
-            ? "Only he can change or remove his standing jobs; they are on his Trust page."
-            : input.host.jobs(op, args),
+        : op === "team"
+          ? // A device's view names no persona and never asks for his own: walled work stays hidden.
+            input.host.jobs("team", {})
+          : op === "user_job_create"
+            ? input.host.jobs("user_job_propose", args)
+            : op === "user_job_update" || op === "user_job_delete"
+              ? "Only he can change or remove his standing jobs; they are on his Trust page."
+              : input.host.jobs(op, args),
   };
   return {
     gate,
