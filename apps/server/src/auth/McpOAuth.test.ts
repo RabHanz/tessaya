@@ -1,7 +1,10 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  AuthAccessTokenType,
+  AuthEnvironmentBootstrapTokenType,
   AuthMcpClientAccess,
+  AuthTokenExchangeGrantType,
   AuthStandardClientScopes,
   type AuthCreatePairingCredentialInput,
   EnvironmentHttpApi,
@@ -593,3 +596,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
   expect(matches("https://bot.example/cb", "https://bot.example/cb?x=1")).toBe(false);
   expect(matches("https://bot.example/cb", "https://evil.example/cb")).toBe(false);
 });
+
+it.live("gives a token asked for under a scope's renamed spelling the scope its link granted", () =>
+  withRoutes((handler, auth) =>
+    Effect.gen(function* () {
+      const link = yield* auth.issuePairingCredential({ scopes: ["baton:hands"] });
+      const response = yield* handler(
+        at(
+          "/oauth/token",
+          form({
+            grant_type: AuthTokenExchangeGrantType,
+            subject_token: link.credential,
+            subject_token_type: AuthEnvironmentBootstrapTokenType,
+            requested_token_type: AuthAccessTokenType,
+            scope: "tessaya:hands",
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(yield* json<{ scope: string }>(response)).toMatchObject({ scope: "baton:hands" });
+    }),
+  ),
+);
