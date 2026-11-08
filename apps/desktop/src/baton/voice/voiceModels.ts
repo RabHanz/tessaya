@@ -39,11 +39,49 @@ export const wakeModelFor = (
   languages: ReadonlyArray<string>,
   speechModel: "v3" | "fast",
 ): DownloadableModel | null =>
-  speechModel !== "fast" &&
-  languages.length > 0 &&
-  languages.every((code) => code.toLowerCase().split("-")[0] === "en")
-    ? PARAKEET_FAST_MODEL
-    : null;
+  speechModel !== "fast" && englishOnly(languages) ? PARAKEET_FAST_MODEL : null;
+
+const englishOnly = (languages: ReadonlyArray<string>) =>
+  languages.length > 0 && languages.every((code) => code.toLowerCase().split("-")[0] === "en");
+
+/** His laptop (8 threads, 16 GB) logged model loads of 1-14 s, so a load over this is a slow machine. */
+const SLOW_START_MS = 30_000;
+
+/**
+ * Slow starts in a row, after one that took `loadMs`. A start that downloaded the model first (cold disk, the virus
+ * scanner) counts neither way.
+ */
+export const slowStartsAfter = (previous: number, loadMs: number, downloaded: boolean) =>
+  downloaded ? previous : loadMs > SLOW_START_MS ? previous + 1 : 0;
+
+/**
+ * Why this machine is too weak for the 0.6B model, or null. Cores and memory count only on a fresh install, where no
+ * earlier pick of his can be lost; one slow start can be a busy login, so it takes two in a row.
+ */
+export const weakMachine = (machine: {
+  readonly freshInstall: boolean;
+  readonly cpus: number;
+  readonly memoryBytes: number;
+  readonly slowStarts: number;
+}): string | null => {
+  if (machine.freshInstall && machine.cpus <= 4) return `${machine.cpus} logical cores`;
+  if (machine.freshInstall && machine.memoryBytes < 10 * 2 ** 30)
+    return `${Math.round(machine.memoryBytes / 2 ** 30)} GB of memory`;
+  return machine.slowStarts >= 2 ? `${machine.slowStarts} slow starts in a row` : null;
+};
+
+export const machinePicksFast = (
+  settings: {
+    readonly speechModel: "v3" | "fast";
+    readonly speechModelPicked?: "you" | "machine" | undefined;
+    readonly languages: ReadonlyArray<string>;
+  },
+  weak: string | null,
+) =>
+  weak !== null &&
+  settings.speechModelPicked === undefined &&
+  settings.speechModel === "v3" &&
+  englishOnly(settings.languages);
 
 export interface DownloadableModel {
   readonly file: string;

@@ -376,7 +376,10 @@ import {
   modelPresent,
   PARAKEET_FAST_MODEL,
   PARAKEET_MODEL,
+  machinePicksFast,
+  slowStartsAfter,
   wakeModelFor,
+  weakMachine,
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
@@ -590,6 +593,10 @@ interface VoiceSettings {
   readonly dictation: "baton" | "wispr";
   /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
   readonly speechModel: "v3" | "fast";
+  /** Who set speechModel: unset is the default, which a weak machine may change (machinePicksFast); his pick never. */
+  readonly speechModelPicked?: "you" | "machine";
+  /** Starts in a row whose model load was slow (slowStartsAfter). */
+  readonly slowStarts?: number;
   readonly holdKey: string;
   readonly toggleKey: string;
   /** The first-run guide was finished or skipped. */
@@ -1078,6 +1085,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     writeJsonFile(settingsPath, settings);
     pushHome();
   };
+  const freshInstall =
+    NodeFS.existsSync(setupMarker) ||
+    !NodeFS.existsSync(NodePath.join(input.stateDir, "baton-home.shown"));
+  const pickForMachine = () => {
+    const weak = weakMachine({
+      freshInstall,
+      cpus: NodeOS.availableParallelism(),
+      memoryBytes: NodeOS.totalmem(),
+      slowStarts: settings.slowStarts ?? 0,
+    });
+    if (!machinePicksFast(settings, weak)) return false;
+    save({ speechModel: "fast", speechModelPicked: "machine" });
+    input.onNote?.("speech_model_auto", { model: "fast", reason: weak });
+    return true;
+  };
+  pickForMachine();
 
   const tray = new Electron.Tray(
     trayIcon({
@@ -3132,6 +3155,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ),
       );
     } else if (event.ev === "text") {
+      // The sidecar drops an idle model after 10 minutes; this is what having it back cost.
+      if ((event.loadMs ?? 0) > 0)
+        input.onNote?.("speech_model_reload", { model: event.model ?? null, loadMs: event.loadMs });
       note = event.error ?? event.pasteError ?? note;
       const text = event.text ?? "";
       const outside = outsideLanguages(text, settings.languages);
@@ -3509,6 +3535,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   /** Fetched once a session, quietly, the first time the wake path wants a model dictation does not use. */
   let wakeModelFetched = false;
+  /** This run downloaded dictation's model, so its first load reads a cold file and says nothing about the machine. */
+  let speechModelDownloaded = false;
+  /** A language only v3 knows, added while the machine had him on the fast model: offered with the switch. */
+  let languageOffer: string | null = null;
   /** It would not load: dictation's model hears him for the rest of this session. */
   let wakeModelBroken = false;
   /**
@@ -3555,6 +3585,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             dir: modelsDir,
             model,
             onProgress: (fraction) => {
+              if (fraction < 1) speechModelDownloaded = true;
               note =
                 fraction < 1
                   ? `Downloading the speech model: ${Math.round(fraction * 100)}%`
@@ -3701,6 +3732,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           modelRead = true;
           const loadMs = await warmSidecar.preload();
           step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
+          const slowStarts = slowStartsAfter(
+            settings.slowStarts ?? 0,
+            loadMs,
+            speechModelDownloaded,
+          );
+          if (slowStarts !== (settings.slowStarts ?? 0)) save({ slowStarts });
+          if (pickForMachine()) requestDictation();
           speechLoadMs = 0;
         }
         return wakeStt(warmSidecar).transcribe(pcm);
@@ -5279,6 +5317,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.speechModel",
         section: "Dictation",
         label: "Speech model",
+        ...(settings.speechModelPicked === "machine"
+          ? { hint: "Picked for this computer, which is slow for the larger model." }
+          : {}),
         kind: "choice",
         value: settings.speechModel,
         options: [
@@ -5287,6 +5328,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
         more: true,
       },
+      ...(languageOffer === null
+        ? []
+        : [
+            {
+              id: "v.speechModelOffer",
+              section: "Dictation",
+              label: `Hear ${languageName(languageOffer)}`,
+              hint: `This computer picked the fast English model because it is slow for the larger one. The 25-language model knows ${languageName(languageOffer)}, and is slower here.`,
+              kind: "action" as const,
+              button: `Switch and add ${languageName(languageOffer)}`,
+            },
+          ]),
       ...cloudRows(),
       {
         id: "v.language",
@@ -6320,6 +6373,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ dictationCleanupChosen: true, dictationCleanup: value });
     } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
       const code = languageCode(id.endsWith(":add") ? settings.speechModel : "v3", value);
+      const v3Code = code === undefined ? languageCode("v3", value) : undefined;
+      if (settings.speechModelPicked === "machine" && v3Code !== undefined) {
+        languageOffer = v3Code;
+        return render();
+      }
       if (code === undefined) {
         note = `${value.trim()} is not a language this speech model knows.`;
         return render();
@@ -6362,7 +6420,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     } else if (id === "v.cloudTest") void testCloud();
     else if (id === "v.speechModel" && (value === "v3" || value === "fast")) setSpeechModel(value);
-    else if (id === "v.appMode" && typeof value === "string" && focusedApp.exe.length > 0) {
+    else if (id === "v.speechModelOffer" && languageOffer !== null) {
+      save({ languages: [...new Set([...settings.languages, languageOffer])] });
+      languageOffer = null;
+      setSpeechModel("v3");
+    } else if (id === "v.appMode" && typeof value === "string" && focusedApp.exe.length > 0) {
       const exe = focusedApp.exe.toLowerCase();
       const { [exe]: _old, ...others } = settings.appModes;
       save({
@@ -6625,7 +6687,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const setSpeechModel = (speechModel: VoiceSettings["speechModel"]) => {
-    save({ speechModel, ...(speechModel === "fast" ? { languages: ["en"] } : {}) });
+    save({
+      speechModel,
+      speechModelPicked: "you",
+      ...(speechModel === "fast" ? { languages: ["en"] } : {}),
+    });
     if (parakeetPath !== null || settings.enabled) requestDictation();
     else render();
   };

@@ -69,6 +69,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.cleanup": "dictation",
   "v.appMode": "dictation",
   "v.speechModel": "dictation",
+  "v.speechModelOffer": "dictation",
   "v.recognition": "dictation",
   "v.cloudProvider": "dictation",
   "v.cloudKey": "dictation",
