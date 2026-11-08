@@ -369,12 +369,7 @@ import {
 } from "./dictationSidecar.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { dictationStep, type DictationEntry, type DictationStep } from "./dictationEntry.ts";
-import {
-  importWisprDictionary,
-  makeRewriter,
-  dictionaryPath,
-  readDictionary,
-} from "./dictationRewriter.ts";
+import { importWispr, makeRewriter, readDictionary } from "./dictationRewriter.ts";
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import {
@@ -414,6 +409,7 @@ import {
   parseNever,
   type NeverList,
   parseAddToDictionary,
+  removeHeard,
   upsertEntry,
   type SeenWords,
   type VocabularyEntry,
@@ -3522,9 +3518,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ),
     });
     markPhase("dictation-sidecar-spawn:end");
-    dictionary = NodeFS.existsSync(dictionaryPath(input.stateDir))
-      ? readDictionary(input.stateDir, [])
-      : await importWisprDictionary({ stateDir: input.stateDir, appData: input.env["APPDATA"] });
+    dictionary = await importWispr({
+      stateDir: input.stateDir,
+      appData: input.env["APPDATA"],
+      entries: readDictionary(input.stateDir, []),
+      never,
+      putSnippet: ({ cue, text }) => {
+        if (!snippets.list().some((s) => s.cue === cue.toLowerCase()))
+          snippets.put({ cue: cue.toLowerCase(), text, apps: [] });
+      },
+    });
     markPhase("dictation-devices:begin");
     devices = await listSidecarDevices();
     markPhase("dictation-devices:end");
@@ -4956,6 +4959,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         source: d.source ?? "added",
         count: d.count ?? null,
         lastSeen: d.lastSeen ?? null,
+        heard: d.heard ?? [],
       })),
       hotkeys: [
         ...currentBindings().flatMap((row) =>
@@ -6183,9 +6187,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       rememberNever(dictionary.filter((e) => e.source === "learned").map((e) => e.phrase));
       dictionary = forgetLearned(dictionary);
       saveDictionary(input.stateDir, dictionary);
+    } else if (id === "d.unhear" && typeof value === "string") {
+      try {
+        const e = JSON.parse(value) as { phrase?: unknown; form?: unknown };
+        if (typeof e.phrase === "string" && typeof e.form === "string") {
+          // A form he took off is not taught again by a correction.
+          rememberNever([e.form]);
+          dictionary = removeHeard(dictionary, e.phrase, e.form);
+          saveDictionary(input.stateDir, dictionary);
+        }
+      } catch {
+        // A malformed change is ignored; the list stays as it was.
+      }
     } else if (id === "d.remove" && typeof value === "string") {
       // Deleting a word he did not add himself means he does not want it: it never comes back.
-      if (dictionary.some((e) => e.phrase === value && e.source === "learned"))
+      if (dictionary.some((e) => e.phrase === value && e.source !== "added"))
         rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);

@@ -13,7 +13,7 @@ import {
   removeEntry,
   saveDictionary,
 } from "./dictionaryEdit.ts";
-import { dictionaryPath, readDictionary } from "./dictationRewriter.ts";
+import { dictionaryPath, importWispr, readDictionary } from "./dictationRewriter.ts";
 
 describe("the vocabulary", () => {
   it("adds a word, keeps one entry per phrase, and ignores an empty one", () => {
@@ -70,5 +70,36 @@ describe("the vocabulary", () => {
     NodeFS.writeFileSync(settings, '{"holdKey":"F9",');
     readSettings(settings);
     expect(NodeFS.readFileSync(`${settings}.bad`, "utf8")).toBe('{"holdKey":"F9",');
+  });
+
+  it("reads Wispr's table once, read-only: heard forms onto his words, snippets to his snippets", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const appData = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "wispr-"));
+    NodeFS.mkdirSync(NodePath.join(appData, "Wispr Flow"));
+    const db = new DatabaseSync(NodePath.join(appData, "Wispr Flow", "flow.sqlite"));
+    db.exec(
+      "create table Dictionary (phrase text, replacement text, observedSource, isSnippet int, frequencyUsed int, isDeleted int)",
+    );
+    db.exec(`insert into Dictionary values
+      ('Hetzner', null, 'Hexner', 0, 34, 0), ('Gone', null, null, 0, 1, 1),
+      ('Weavia', null, 'Wavia', 0, 3, 0), ('my email address', 'a@b.co', null, 1, 0, 0)`);
+    db.close();
+    const state = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "vocab-"));
+    saveDictionary(state, [{ phrase: "Hetzner", replacement: null }]);
+    const put: Array<{ cue: string; text: string }> = [];
+    const once = {
+      stateDir: state,
+      appData,
+      putSnippet: (s: { cue: string; text: string }) => put.push(s),
+    };
+    const entries = await importWispr({ ...once, entries: readDictionary(state, []) });
+    // An existing list is only enriched: Weavia was deleted after the first import, or never taken.
+    expect(entries).toEqual([
+      { phrase: "Hetzner", replacement: null, source: "added", count: 34, heard: ["Hexner"] },
+    ]);
+    expect(readDictionary(state, [])).toEqual(entries);
+    expect(put).toEqual([{ cue: "my email address", text: "a@b.co" }]);
+    expect(await importWispr({ ...once, entries: [] })).toEqual([]);
+    expect(put).toHaveLength(1);
   });
 });
