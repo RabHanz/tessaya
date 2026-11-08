@@ -11,6 +11,7 @@
 import type { BatonProjectRef } from "@t3tools/baton-contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 
 import { RepositoryIdentityResolver } from "../project/RepositoryIdentityResolver.ts";
@@ -18,7 +19,7 @@ import { RepositoryIdentityResolver } from "../project/RepositoryIdentityResolve
 export const folderProjectRef = (cwd: string): BatonProjectRef => {
   const leaf =
     cwd
-      .split("/")
+      .split(/[\\/]/)
       .filter((part) => part.length > 0)
       .pop() ?? cwd;
   return { key: `dir:${leaf.toLowerCase()}`, label: leaf };
@@ -46,7 +47,9 @@ export const projectRefWithin = (
   cwd: string,
   budget: Duration.Input,
 ): Effect.Effect<BatonProjectRef> =>
-  projectRefFor(cwd).pipe(
-    Effect.timeoutOption(budget),
-    Effect.map((found) => Option.getOrElse(found, () => folderProjectRef(cwd))),
-  );
+  Effect.gen(function* () {
+    // Detached so only the wait times out: the lookup finishes and fills the resolver's cache for the next read.
+    const lookup = yield* Effect.forkDetach(projectRefFor(cwd));
+    const found = yield* Fiber.join(lookup).pipe(Effect.timeoutOption(budget));
+    return Option.getOrElse(found, () => folderProjectRef(cwd));
+  });

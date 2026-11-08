@@ -153,7 +153,7 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
         ...session,
         project,
       })),
-    { concurrency: "unbounded" },
+    { concurrency: 4 },
   );
   const herdr = yield* Effect.forEach(
     herdrCache.candidates,
@@ -164,7 +164,7 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
             ...candidate,
             project,
           })),
-    { concurrency: "unbounded" },
+    { concurrency: 4 },
   );
   const fleet: BatonFleet = { ...built, herdr, claudeSessions };
   const result: BatonFleet = input.needsUserOnly === true ? filterFleetNeedsUser(fleet) : fleet;

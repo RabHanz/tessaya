@@ -137,7 +137,7 @@ it.effect(
     Effect.gen(function* () {
       let started = 0;
       let finished = 0;
-      // The laptop's own fleet took 27-40 s while the desktop's door gave up at 20 s (2026-11-08).
+      // Longer than the desktop door's 20 s wait.
       const slowListing = Effect.sync(() => started++).pipe(
         Effect.andThen(Effect.sleep("30 seconds")),
         Effect.andThen(Effect.sync(() => ++finished)),

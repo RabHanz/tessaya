@@ -919,21 +919,19 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3cc3f526e25fdec86271f8d6fdda3a82
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
    ),
 diff --git a/apps/server/src/vcs/GitVcsDriver.test.ts b/apps/server/src/vcs/GitVcsDriver.test.ts
-index ec8809d895f6d3fa4f3b73588cf112b177cfa6d3..cfddd7acfb2f9882c52ff6ce030f6b17e2df11f2 100644
+index ec8809d895f6d3fa4f3b73588cf112b177cfa6d3..382195a6bddde471eb30182adcbb772b2352a038 100644
 --- a/apps/server/src/vcs/GitVcsDriver.test.ts
 +++ b/apps/server/src/vcs/GitVcsDriver.test.ts
-@@ -1254,6 +1254,28 @@ it.effect("GitVcsDriver treats a missing git executable as outside any repositor
+@@ -1254,6 +1254,26 @@ it.effect("GitVcsDriver treats a missing git executable as outside any repositor
    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
  );
  
 +it.effect("GitVcsDriver does not spawn git for a folder with no .git above it", () =>
 +  Effect.gen(function* () {
-+    const fileSystem = yield* FileSystem.FileSystem;
 +    const path = yield* Path.Path;
-+    const cwd = path.join(yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-plain-" }), "a");
-+    yield* fileSystem.makeDirectory(cwd);
++    // The filesystem root, because a temp folder can sit inside a checkout (TMPDIR in a worktree).
++    const cwd = path.parse(path.resolve(".")).root;
 +    let spawned = 0;
-+    // On a busy Windows laptop one `git rev-parse` outside any repository took 4.5 s and timed out (2026-11-08).
 +    const driver = yield* GitVcsDriver.makeVcsDriverShape().pipe(
 +      Effect.provideService(
 +        VcsProcess.VcsProcess,
@@ -945,7 +943,7 @@ index ec8809d895f6d3fa4f3b73588cf112b177cfa6d3..cfddd7acfb2f9882c52ff6ce030f6b17
 +
 +    assert.strictEqual(yield* driver.detectRepository(cwd), null);
 +    assert.strictEqual(spawned, 0);
-+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
++  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 +);
 +
  it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(

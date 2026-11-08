@@ -5,6 +5,7 @@
  */
 import {
   BatonFleetResult,
+  WorkSessionStorageError,
   type BatonFleet,
   type BatonSessionsAcrossResult,
   type WorkSessionError,
@@ -142,6 +143,7 @@ export const sharedRun = Effect.fn("BatonSessionsAcross.sharedRun")(function* <A
   return Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     if (kept !== null && now - kept.at < ttlMs) return yield* kept.exit;
+    if (running?.pollUnsafe() !== undefined) running = null;
     running ??= yield* run.pipe(
       Effect.onExit((exit) =>
         Effect.map(Clock.currentTimeMillis, (at) => {
@@ -200,7 +202,22 @@ export const make = Effect.gen(function* () {
     };
   });
   // Callers share one listing in flight and its answer for a few seconds, so a looping client cannot multiply peer calls.
-  const across = yield* sharedRun(Effect.provideContext(list(false), local), 5_000);
+  const across = yield* sharedRun(
+    Effect.provideContext(list(false), local).pipe(
+      // A ceiling, so a hung listing cannot hold every later caller.
+      Effect.timeoutOrElse({
+        duration: "90 seconds",
+        orElse: () =>
+          Effect.fail(
+            new WorkSessionStorageError({
+              operation: "sessions.across",
+              cause: "no answer in 90 s",
+            }),
+          ),
+      }),
+    ),
+    5_000,
+  );
   const here = Effect.provideContext(list(true), local);
   return BatonSessionsAcross.of({
     list: Effect.fn("BatonSessionsAcross.listFor")(function* (input) {
