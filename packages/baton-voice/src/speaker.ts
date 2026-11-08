@@ -96,12 +96,15 @@ export interface SpeakerClip {
  */
 export const decideSpeaker = (input: {
   readonly clips: ReadonlyArray<SpeakerClip>;
+  /** The model that made the clips' vectors; another model's cut-offs and profiles say nothing about them. */
+  readonly model: string;
   readonly profiles: ReadonlyArray<SpeakerProfile>;
   readonly policy: SpeakerPolicy | null;
   readonly use: SpeakerUse;
 }): SpeakerVerdict => {
   const { policy } = input;
-  if (policy === null) return { kind: "unverified", why: "no-model" };
+  if (policy === null || input.model !== policy.model)
+    return { kind: "unverified", why: "no-model" };
   const mine = input.profiles.filter((p) => p.model === policy.model);
   if (!mine.some((p) => p.kind === "owner")) return { kind: "unverified", why: "no-profile" };
   if (input.clips.length === 0) return { kind: "unverified", why: "failed" };

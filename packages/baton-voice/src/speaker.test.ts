@@ -29,12 +29,20 @@ const decide = (
   ms: number,
   use: "listen" | "steer" | "act",
   profiles = [owner],
-) => decideSpeaker({ clips: vectors.map((vector) => ({ vector, ms })), profiles, policy, use });
+) =>
+  decideSpeaker({
+    clips: vectors.map((vector) => ({ vector, ms })),
+    model: "m",
+    profiles,
+    policy,
+    use,
+  });
 
 describe("decideSpeaker", () => {
   it("is unverified, never a guess, with no model, no owner profile, or too little speech", () => {
     expect(
       decideSpeaker({
+        model: "m",
         clips: [{ vector: at(0.9), ms: 3000 }],
         profiles: [owner],
         policy: null,
@@ -98,6 +106,7 @@ describe("decideSpeaker fails closed", () => {
     expect(decide([at(0.45)], 4000, "act").kind).toBe("owner");
     expect(decide([at(0.38), at(0.38), at(0.38)], 2000, "act").kind).toBe("owner");
     const mixed = decideSpeaker({
+      model: "m",
       clips: [
         { vector: at(0.9), ms: 500 },
         { vector: at(0.9), ms: 500 },
