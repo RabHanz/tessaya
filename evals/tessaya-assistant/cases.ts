@@ -620,6 +620,27 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     notSays: ["GMT", "UTC", "zone", "PKT", "Karachi", "Pakistan"],
   },
   {
+    id: "time-minutes-exact",
+    source:
+      'Voice test 0.1.78: "Twenty-two minutes past eleven... no, thirty-two": the fast model misread the minutes',
+    wake: "Freya",
+    said: "what time is it?",
+    now: { at: "2026-11-08T06:32:00Z", timeZone: "Asia/Karachi" },
+    first: ["none"],
+    // 11:32. At the baseline it also said "twenty-eight minutes past eleven" and "half past".
+    notSays: [
+      "twenty-two",
+      "Twenty-two",
+      "22",
+      "twenty-eight minutes past",
+      "twenty-nine",
+      "Twenty-eight minutes past",
+      "alf past",
+      "no,",
+      "No,",
+    ],
+  },
+  {
     id: "time-asked-again",
     source:
       "Voice test 2026-11-08: the same question asked about 12 times got the same sentence each time",

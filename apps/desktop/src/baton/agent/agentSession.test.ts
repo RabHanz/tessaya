@@ -10,7 +10,7 @@ import {
   createPersonaConversations,
 } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
-import { createAssistantAgent, shouldRecycle } from "./agentSession.ts";
+import { createAssistantAgent, startPersonas, shouldRecycle } from "./agentSession.ts";
 
 /** The pool's starts and the turn's follow-ups run a few promise turns behind the call. */
 const settled = async () => {
@@ -33,7 +33,11 @@ const fakeSession = (log: string[]): VisionSession => {
 describe("the one assistant's session", () => {
   it("is seeded with the last reply in full, so 'type what you said' has the words", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
-    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    let clock = Date.parse("2026-11-08T10:00:00Z");
+    const conversation = createConversationLog({
+      file: NodePath.join(dir, "c.ndjson"),
+      now: () => new Date(clock),
+    });
     const long = `The plan has three parts. ${"Detail. ".repeat(80)}Ship it on Friday.`;
     conversation.add({ route: "answer", said: "what is the plan", reply: long });
 
@@ -42,6 +46,7 @@ describe("the one assistant's session", () => {
     const agent = createAssistantAgent({
       start: async (prompt) => (prompts.push(prompt), fakeSession(asked)),
       conversation,
+      now: () => clock,
       clockLine: () => "Sunday 10:00",
       beginTurn: () => undefined,
     });
@@ -81,6 +86,10 @@ describe("the one assistant's session", () => {
     await agent.say("What time is it?", { window: null, session: null });
     expect(asked[2]).toContain("he asked the same a moment ago and you replied:");
     expect(asked[1]).not.toContain("he asked the same");
+    // Asked again ten minutes on, it is a new question: 0.1.78 said "the time has moved on since the last answer".
+    clock += 10 * 60_000;
+    await agent.say("What time is it?", { window: null, session: null });
+    expect(asked[3]).not.toContain("he asked the same");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -475,6 +484,47 @@ describe("the one assistant's session", () => {
     });
     await vi.waitFor(() => expect(disposed).toHaveLength(1));
     expect(["sonnet#1", "haiku#2"]).toContain(disposed[0]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("at launch starts the fast tier of the lead and the two personas he spoke to last, so no first turn is cold (0.1.78)", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const started: string[] = [];
+    const agent = createAssistantAgent({
+      start: async (_prompt, brain) => {
+        started.push(brain?.model ?? "none");
+        return { ask: async () => "Ok.", alive: () => true, dispose: () => undefined };
+      },
+      conversation: createConversationLog({ file: NodePath.join(dir, "c.ndjson") }),
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const haiku = { model: "haiku", effort: "low" };
+    const ids = startPersonas(
+      "executive",
+      ["operations", "executive", "engineering", "research"],
+      ["executive", "engineering", "research", "operations"],
+    );
+    expect(ids).toEqual(["executive", "operations", "engineering"]);
+    // With no history yet, the pack's order fills the two places.
+    expect(startPersonas("executive", [], ["executive", "engineering", "research"])).toEqual([
+      "executive",
+      "engineering",
+      "research",
+    ]);
+    agent.warmEach(ids.map((persona) => ({ brain: haiku, persona })));
+    await settled();
+    expect(started).toEqual(["haiku", "haiku", "haiku"]);
+    for (const id of ids) {
+      await agent.say("what time is it", {
+        window: null,
+        session: null,
+        brain: haiku,
+        persona: { id, name: id, role: "" },
+      });
+      expect(agent.lastStart()).toBe("warm");
+    }
+    expect(started).toHaveLength(3);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
