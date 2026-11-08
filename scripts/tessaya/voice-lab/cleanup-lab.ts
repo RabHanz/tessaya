@@ -16,7 +16,7 @@ import {
   type DictionaryEntry,
 } from "../../../packages/baton-shared/src/dictationCleanup.ts";
 import {
-  importWisprDictionary,
+  importWispr,
   makeRewriter,
   readDictionary,
 } from "../../../apps/desktop/src/baton/voice/dictationRewriter.ts";
@@ -34,7 +34,7 @@ const saved = readDictionary(state, []);
 const labDictionary: ReadonlyArray<DictionaryEntry> =
   saved.length > 0
     ? saved
-    : await importWisprDictionary({ stateDir: state, appData: process.env["APPDATA"] });
+    : await importWispr({ stateDir: state, appData: process.env["APPDATA"], entries: [] });
 let dictionary = labDictionary;
 const rewriter = (always: boolean, limitMs?: number) =>
   makeRewriter({

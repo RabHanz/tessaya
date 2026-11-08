@@ -4,6 +4,7 @@
  * and has no tools (D84). It can never hold dictation up: past `HARD_LIMIT_MS` the local text goes
  * in, the session is dropped, and the next dictation starts another.
  */
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import {
@@ -16,7 +17,13 @@ import {
   type DictionaryEntry,
 } from "@t3tools/baton-shared/dictationCleanup";
 
-import { parseVocabulary, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
+import {
+  mergeWispr,
+  parseVocabulary,
+  type NeverList,
+  type VocabularyEntry,
+  type WisprRow,
+} from "@t3tools/baton-shared/vocabulary";
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 
@@ -233,29 +240,45 @@ export const readDictionary = (
     createJsonStore(dictionaryPath(stateDir), fallback, isList).read().filter(isEntry),
   );
 
-/** Wispr's table, read-only, once: what he taught it should not have to be taught twice. */
-export const importWisprDictionary = async (input: {
+/** Set once Wispr's table has been read in, so a word he deleted since does not come back from there. */
+const wisprMarker = (stateDir: string) => NodePath.join(stateDir, "voice", "wispr-imported.json");
+
+/**
+ * Wispr's table, read-only, once: what he taught it should not have to be taught twice. The words join his
+ * vocabulary with the forms Wispr mis-heard them as; the snippets go to `putSnippet`. A missing Wispr changes
+ * nothing and is looked for again next start.
+ */
+export const importWispr = async (input: {
   readonly stateDir: string;
   readonly appData: string | undefined;
-}): Promise<ReadonlyArray<DictionaryEntry>> => {
-  if (input.appData === undefined) return [];
+  readonly entries: ReadonlyArray<VocabularyEntry>;
+  readonly never?: NeverList;
+  readonly putSnippet?: (snippet: { readonly cue: string; readonly text: string }) => void;
+}): Promise<ReadonlyArray<VocabularyEntry>> => {
+  if (input.appData === undefined || NodeFS.existsSync(wisprMarker(input.stateDir)))
+    return input.entries;
   try {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(NodePath.join(input.appData, "Wispr Flow", "flow.sqlite"), {
       readOnly: true,
     });
     const rows = db
-      .prepare("select phrase, replacement from Dictionary where isDeleted = 0")
-      .all() as unknown as ReadonlyArray<{ phrase: string | null; replacement: string | null }>;
+      .prepare(
+        "select phrase, replacement, observedSource, isSnippet, frequencyUsed from Dictionary where isDeleted = 0",
+      )
+      .all() as unknown as ReadonlyArray<WisprRow>;
     db.close();
-    const entries = rows.flatMap((row): ReadonlyArray<DictionaryEntry> =>
-      row.phrase === null || row.phrase.length === 0
-        ? []
-        : [{ phrase: row.phrase, replacement: row.replacement?.length ? row.replacement : null }],
+    const merged = mergeWispr(
+      input.entries,
+      rows,
+      input.never,
+      !NodeFS.existsSync(dictionaryPath(input.stateDir)),
     );
-    writeJsonFile(dictionaryPath(input.stateDir), entries);
-    return entries;
+    for (const snippet of merged.snippets) input.putSnippet?.(snippet);
+    writeJsonFile(dictionaryPath(input.stateDir), merged.entries);
+    writeJsonFile(wisprMarker(input.stateDir), { at: new Date().toISOString() });
+    return merged.entries;
   } catch {
-    return [];
+    return input.entries;
   }
 };

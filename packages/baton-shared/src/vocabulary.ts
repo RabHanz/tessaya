@@ -5,7 +5,7 @@
  * his own Claude clean-up call (the term list in the prompt).
  */
 
-export type VocabularySource = "added" | "learned";
+export type VocabularySource = "added" | "learned" | "wispr";
 
 export interface VocabularyEntry {
   /** What is heard (or, with no replacement, the word spelt as he spells it). */
@@ -17,6 +17,8 @@ export interface VocabularyEntry {
   readonly count?: number;
   /** ISO time it was last added, corrected or seen. */
   readonly lastSeen?: string;
+  /** How the recogniser has written this word, as Wispr's `observedSource`: hints for the clean-up, not a find-and-replace. */
+  readonly heard?: ReadonlyArray<string>;
 }
 
 /** A learned word needs this many sightings (corrections, or distinct turns) to enter. */
@@ -24,6 +26,40 @@ export const LEARN_THRESHOLD = 3;
 export const CORRECTION_THRESHOLD = 2;
 /** The clean-up prompt lists at most this many, the most used first. */
 export const PROMPT_TERMS = 200;
+
+const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Distinct forms, never the word itself; an absent list stays absent so old files read back unchanged. */
+const withHeard = (phrase: string, value: unknown): { readonly heard?: ReadonlyArray<string> } => {
+  if (!Array.isArray(value)) return {};
+  const forms = [
+    ...new Set(
+      value
+        .filter((v): v is string => typeof v === "string")
+        .map((v) => v.replace(/\s+/g, " ").trim())
+        .filter((v) => /\p{L}/u.test(v) && v.length <= 60 && !sameWord(v, phrase)),
+    ),
+  ];
+  return forms.length > 0 ? { heard: forms } : {};
+};
+
+/** Takes one mis-heard form off the entry for `phrase`. */
+export const removeHeard = (
+  entries: ReadonlyArray<VocabularyEntry>,
+  phrase: string,
+  form: string,
+): ReadonlyArray<VocabularyEntry> =>
+  entries.map((e) => {
+    if (!sameWord(e.phrase, phrase) || e.heard === undefined) return e;
+    const { heard, ...rest } = e;
+    return {
+      ...rest,
+      ...withHeard(
+        e.phrase,
+        heard.filter((h) => !sameWord(h, form)),
+      ),
+    };
+  });
 
 /** A file that is not a list is no vocabulary; an entry that is not text is skipped. */
 export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> =>
@@ -40,12 +76,13 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
               typeof entry.replacement === "string" && entry.replacement.length > 0
                 ? entry.replacement
                 : null,
-            source: entry.source === "learned" ? "learned" : "added",
+            source: entry.source === "learned" || entry.source === "wispr" ? entry.source : "added",
             count:
               typeof entry.count === "number" && Number.isFinite(entry.count) && entry.count > 0
                 ? Math.floor(entry.count)
                 : 1,
             ...(typeof entry.lastSeen === "string" ? { lastSeen: entry.lastSeen } : {}),
+            ...withHeard(entry.phrase, entry.heard),
           },
         ];
       })
@@ -57,8 +94,6 @@ export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyAr
     .sort((a, b) => (b.count ?? 1) - (a.count ?? 1))
     .slice(0, PROMPT_TERMS)
     .map((entry) => entry.replacement ?? entry.phrase);
-
-const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** Adds or strengthens one entry. `source: "added"` wins over learned once he has said it himself. */
 export const upsertEntry = (
@@ -82,7 +117,10 @@ export const upsertEntry = (
     i === at
       ? {
           ...entry,
-          source: entry.source === "added" || next.source === "added" ? "added" : "learned",
+          source:
+            entry.source === "added" || next.source === "added"
+              ? "added"
+              : (entry.source ?? next.source),
           count: (entry.count ?? 1) + by,
           lastSeen: now,
         }
@@ -310,4 +348,70 @@ export const biasTranscript = (text: string, entries: ReadonlyArray<VocabularyEn
     }
     return word;
   });
+};
+
+/** One row of Wispr Flow's `Dictionary` table, as read from its database. */
+export interface WisprRow {
+  readonly phrase: string | null;
+  readonly replacement: string | null;
+  /** The form Wispr wrote before he corrected it; not always text. */
+  readonly observedSource: unknown;
+  readonly isSnippet: number | null;
+  readonly frequencyUsed: number | null;
+}
+
+/**
+ * What he taught Wispr, added to his vocabulary: each word with the forms it was mis-heard as, and how often he
+ * used it. Snippets come back apart, for his snippets, and leave the dictionary an earlier import put them in.
+ * `addWords: false` only enriches the words he has, so one he deleted after an earlier import stays deleted.
+ */
+export const mergeWispr = (
+  entries: ReadonlyArray<VocabularyEntry>,
+  rows: ReadonlyArray<WisprRow>,
+  never: NeverList = [],
+  addWords = true,
+): {
+  readonly entries: ReadonlyArray<VocabularyEntry>;
+  readonly snippets: ReadonlyArray<{ readonly cue: string; readonly text: string }>;
+} => {
+  let next = entries;
+  const snippets: Array<{ cue: string; text: string }> = [];
+  for (const row of rows) {
+    const phrase = row.phrase?.trim() ?? "";
+    const replacement = row.replacement?.trim() || null;
+    if (phrase.length === 0) continue;
+    if (row.isSnippet === 1) {
+      if (replacement === null) continue;
+      snippets.push({ cue: phrase, text: replacement });
+      next = next.filter((e) => !(sameWord(e.phrase, phrase) && e.replacement === replacement));
+      continue;
+    }
+    if (isNever(never, phrase)) continue;
+    const heard = withHeard(phrase, [row.observedSource]).heard ?? [];
+    const used = Math.max(1, Math.floor(row.frequencyUsed ?? 1));
+    if (!next.some((e) => sameWord(e.phrase, phrase))) {
+      if (!addWords) continue;
+      next = [
+        ...next,
+        {
+          phrase,
+          replacement,
+          source: "wispr",
+          count: used,
+          ...(heard.length > 0 ? { heard } : {}),
+        },
+      ];
+      continue;
+    }
+    next = next.map((e) =>
+      sameWord(e.phrase, phrase)
+        ? {
+            ...e,
+            count: Math.max(e.count ?? 1, used),
+            ...withHeard(e.phrase, [...(e.heard ?? []), ...heard]),
+          }
+        : e,
+    );
+  }
+  return { entries: next, snippets };
 };

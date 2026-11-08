@@ -7,6 +7,8 @@ import {
   addNever,
   isNever,
   learnCorrection,
+  mergeWispr,
+  removeHeard,
   skipWord,
   observeWording,
   parseAddToDictionary,
@@ -23,12 +25,14 @@ describe("vocabulary file", () => {
       parseVocabulary([
         { phrase: "Kubernetes", replacement: null },
         { phrase: "gee pee tee", replacement: "GPT", source: "learned", count: 4, lastSeen: NOW },
+        { phrase: "Tessaya", replacement: null, source: "wispr", heard: ["Tisia", "tessaya", 3] },
         { phrase: "" },
         "x",
       ]),
     ).toEqual([
       { phrase: "Kubernetes", replacement: null, source: "added", count: 1 },
       { phrase: "gee pee tee", replacement: "GPT", source: "learned", count: 4, lastSeen: NOW },
+      { phrase: "Tessaya", replacement: null, source: "wispr", count: 1, heard: ["Tisia"] },
     ]);
     expect(parseVocabulary({})).toEqual([]);
   });
@@ -49,6 +53,69 @@ describe("vocabulary file", () => {
     entries = upsertEntry(entries, { phrase: "baton", replacement: null, source: "added" }, NOW);
     expect(promptTerms(entries)).toEqual(["Parakeet", "Baton"]);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
+  });
+});
+
+describe("Wispr's dictionary", () => {
+  const rows = [
+    {
+      phrase: "Kubernetes",
+      replacement: null,
+      observedSource: "Cooper Netties",
+      isSnippet: 0,
+      frequencyUsed: 34,
+    },
+    {
+      phrase: "Opus",
+      replacement: "",
+      observedSource: new Uint8Array([1]),
+      isSnippet: 0,
+      frequencyUsed: 55,
+    },
+    {
+      phrase: "my sign-off",
+      replacement: "Kind regards, Sam",
+      observedSource: null,
+      isSnippet: 1,
+      frequencyUsed: 0,
+    },
+    { phrase: "Dee", replacement: null, observedSource: "she", isSnippet: 0, frequencyUsed: 2 },
+  ];
+
+  it("keeps the form each word was mis-heard as, its use, and moves snippets out", () => {
+    const old = [
+      { phrase: "Kubernetes", replacement: null, source: "added" as const, count: 1 },
+      {
+        phrase: "my sign-off",
+        replacement: "Kind regards, Sam",
+        source: "added" as const,
+        count: 1,
+      },
+    ];
+    const { entries, snippets } = mergeWispr(old, rows, ["Dee"]);
+    expect(entries).toEqual([
+      {
+        phrase: "Kubernetes",
+        replacement: null,
+        source: "added",
+        count: 34,
+        heard: ["Cooper Netties"],
+      },
+      { phrase: "Opus", replacement: null, source: "wispr", count: 55 },
+    ]);
+    expect(snippets).toEqual([{ cue: "my sign-off", text: "Kind regards, Sam" }]);
+  });
+
+  it("never brings back a word he deleted after the first import", () => {
+    expect(mergeWispr([], rows, [], false).entries).toEqual([]);
+  });
+
+  it("takes one heard form off", () => {
+    const entries = [{ phrase: "Tessaya", replacement: null, heard: ["Tisia", "Tessa"] }];
+    expect(removeHeard(entries, "tessaya", "tessa")).toEqual([
+      { phrase: "Tessaya", replacement: null, heard: ["Tisia"] },
+    ]);
+    expect(removeHeard(entries, "Tessaya", "Tisia").map((e) => e.heard)).toEqual([["Tessa"]]);
   });
 });
 

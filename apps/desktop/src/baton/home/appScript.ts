@@ -540,10 +540,15 @@ function vocabulary(p) {
       const no = $('button', 'x'); no.appendChild(icon('x', 14)); no.setAttribute('aria-label', 'Cancel'); no.onclick = () => { editing = null; render(); };
       const w2 = $('div', 'pair'); w2.append(ok, no); r.append(e1, $('div', 'arrow', '\u2192'), e2, w2); g.appendChild(r); continue;
     }
-    const meta = $('div', 'hint'); meta.append($('span', 'badge ' + w.source, w.source === 'learned' ? 'Learned' : 'Added'));
+    const meta = $('div', 'hint'); meta.append($('span', 'badge ' + w.source, w.source === 'learned' ? 'Learned' : w.source === 'wispr' ? 'From Wispr' : 'Added'));
     if (w.count) meta.append(document.createTextNode(' used ' + w.count + (w.count === 1 ? ' time' : ' times')));
     if (w.lastSeen) meta.append(document.createTextNode(' \u00b7 last ' + when(w.lastSeen)));
     const l = $('div'); l.appendChild($('div', 'label', w.phrase)); l.appendChild(meta);
+    if (w.heard && w.heard.length) {
+      const hv = $('div', 'hint', 'Heard as ');
+      w.heard.forEach(h => { hv.append(document.createTextNode(h)); const hx = $('button', 'x'); hx.appendChild(icon('x', 12)); hx.setAttribute('aria-label', 'Stop treating ' + h + ' as ' + w.phrase); hx.onclick = () => set('d.unhear', JSON.stringify({ phrase: w.phrase, form: h })); hv.append(hx); });
+      l.appendChild(hv);
+    }
     const rr = $('div', 'hint', w.replacement === null ? 'same, with its capitals fixed' : w.replacement);
     const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { editing = w.phrase; render(); };
     const x = $('button', 'x'); x.appendChild(icon('x', 14)); x.setAttribute('aria-label', 'Delete ' + w.phrase); x.onclick = () => set('d.remove', w.phrase);
