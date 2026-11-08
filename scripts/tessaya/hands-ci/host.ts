@@ -243,6 +243,7 @@ export const makeHost = (outDir: string): Host => {
     dictation: async () => "none",
     assistantModel: async () => "none",
     memory: async () => "none",
+    conversationSearch: async () => "none",
     remember: async () => "none",
     forget: async () => "none",
     jobs: async () => "none",

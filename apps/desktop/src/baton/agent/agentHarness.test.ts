@@ -49,6 +49,7 @@ const rig = async (opts: { yes: boolean; his?: (t: string) => boolean; window?: 
     dictation: async () => "",
     assistantModel: async () => "",
     memory: async () => "",
+    conversationSearch: async () => "",
     target: async () => "",
   };
   const gate = createAgentGate({

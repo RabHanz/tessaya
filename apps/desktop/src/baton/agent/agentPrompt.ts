@@ -39,8 +39,15 @@ export const agentSystemPrompt = (input: {
   readonly earlier?: ReadonlyArray<ConversationTurn>;
   /** His own notes (`notesBlock`), put before the conversation. */
   readonly notes?: string;
+  readonly self?: string;
+  readonly nameOf?: (persona: string) => string | undefined;
 }): string => {
-  const block = conversationBlock({ recent: input.recent, earlier: input.earlier ?? [] });
+  const block = conversationBlock({
+    recent: input.recent,
+    earlier: input.earlier ?? [],
+    ...(input.self === undefined ? {} : { self: input.self }),
+    ...(input.nameOf === undefined ? {} : { nameOf: input.nameOf }),
+  });
   return [AGENT_PROMPT, input.notes ?? "", block].filter((part) => part !== "").join("\n\n");
 };
 

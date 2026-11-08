@@ -24,6 +24,12 @@ export interface AssistantCase {
   /** Sentences he says next in the same session; with `varies`, no reply may open as the one before did. */
   readonly again?: ReadonlyArray<string>;
   readonly varies?: boolean;
+  /** Turns another persona (by its wake word) answered just before, in its own conversation (P2). */
+  readonly before?: ReadonlyArray<{
+    readonly wake: string;
+    readonly said: string;
+    readonly reply: string;
+  }>;
   /** His clock for the turn (an ISO time and his zone); a fixed Wednesday morning when left out. */
   readonly now?: { readonly at: string; readonly timeZone: string };
   /** Tools that run in this case, each answering with this text; every other call is refused. */
@@ -110,6 +116,13 @@ const overnight = describeAuditTrail(
     ],
   }),
 );
+
+/** Notepad in front with an empty box, for the cases that type words from the conversation. */
+const typeIntoNotepad = {
+  screen_capture: "Notepad is in front. Its text box is empty and has the caret.",
+  click: "Clicked the text box in Notepad.",
+  type_text: "Typed into Notepad (notepad.exe: Untitled - Notepad).",
+};
 
 export const assistantCases: ReadonlyArray<AssistantCase> = [
   // He talked over her reply: his words alone ("no, the web-shop one") mean nothing without where she was.
@@ -625,5 +638,79 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     now: { at: "2026-11-08T00:40:00Z", timeZone: "Asia/Karachi" },
     first: ["none"],
     says: "November",
+  },
+  {
+    id: "alfred-types-what-freya-said",
+    source:
+      "INTEGRATION.md R3 (P2): each persona has its own conversation; the hand-off carries Freya's words to Alfred",
+    wake: "Alfred",
+    said: "type what Freya just said",
+    before: [
+      {
+        wake: "Freya",
+        said: "what should I tell the venue about Saturday?",
+        reply:
+          "Tell them we need the room from six, not seven, and ask whether the bar stays open until midnight.",
+      },
+    ],
+    // The prompt's own order for "type what you said": look, click the box, then type.
+    first: ["screen_capture", "type_text"],
+    answers: typeIntoNotepad,
+    goal: "type_text",
+    maxCalls: 3,
+    goalArgs: ["room from six"],
+  },
+  {
+    id: "alfred-types-what-you-just-said",
+    source:
+      "INTEGRATION.md R3 (L-41, ORC-1, MEM-2): 'Alfred, type what you just said' after a Freya turn and a restart types her words",
+    wake: "Alfred",
+    said: "type what you just said",
+    before: [
+      {
+        wake: "Freya",
+        said: "what should I tell the venue about Saturday?",
+        reply:
+          "Tell them we need the room from six, not seven, and ask whether the bar stays open until midnight.",
+      },
+    ],
+    // The prompt's own order for "type what you said": look, click the box, then type.
+    first: ["screen_capture", "type_text"],
+    answers: typeIntoNotepad,
+    goal: "type_text",
+    maxCalls: 3,
+    goalArgs: ["room from six"],
+  },
+  {
+    id: "alfred-ignores-unrelated-hand-off",
+    source:
+      "Control for the P2 hand-off: an unrelated question to Alfred after a Freya turn is answered alone, without her words",
+    wake: "Alfred",
+    said: "what's two plus two?",
+    before: [
+      {
+        wake: "Freya",
+        said: "what should I tell the venue about Saturday?",
+        reply:
+          "Tell them we need the room from six, not seven, and ask whether the bar stays open until midnight.",
+      },
+    ],
+    first: ["none"],
+    notSays: ["venue", "six", "midnight", "Freya"],
+  },
+  {
+    id: "what-did-freya-tell-me",
+    source: "INTEGRATION.md 3.1 step 8 (P2): another persona's words come from conversation_search",
+    said: "what did Freya tell me about the venue?",
+    first: ["conversation_search"],
+    not: ["memory_search", "history_search"],
+    goal: "conversation_search",
+    maxCalls: 1,
+    goalArgs: ["freya"],
+    answers: {
+      conversation_search:
+        "2026-11-07 18:02\nhe said: what should I tell the venue about Saturday?\nFreya replied: Tell them we need the room from six, not seven.",
+    },
+    says: "six",
   },
 ];

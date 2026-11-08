@@ -141,7 +141,12 @@ import {
 } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
-import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
+import {
+  answerConversationSearch,
+  conversationsIn,
+  createConversationLog,
+  type PersonaConversations,
+} from "../conversation/conversationLog.ts";
 import {
   accessibilityLooksOff,
   chooseBrowserRoute,
@@ -625,8 +630,8 @@ export const startScreenCompanion = (input: {
   readonly onAction?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Every reply and every refusal reason, for the turn log: what Baton said and why it would not. */
   readonly onNote?: (kind: string, fields: Readonly<Record<string, unknown>>) => void;
-  /** The one conversation, shared with the voice side. Made here when none is given. */
-  readonly conversation?: ConversationLog;
+  /** A conversation per persona, shared with the voice side. Made here when none is given. */
+  readonly conversations?: PersonaConversations;
   /** What each turn was given and did, for the lab's trace table. */
   readonly onTrace?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Lets the voice tray show the companion's own entries. */
@@ -723,10 +728,13 @@ export const startScreenCompanion = (input: {
   let showing = 0;
 
   let actions: AssistantActions | null = null;
-  /** One conversation for every route, on disk, in full (D142). */
-  const conversation =
-    input.conversation ??
-    createConversationLog({ file: NodePath.join(input.stateDir, "baton-conversation.ndjson") });
+  /** Every route's turns, on disk, in full (D142), in the file of the persona speaking (P2). */
+  const conversations = input.conversations ?? conversationsIn(input.stateDir);
+  const conversation = conversations.current;
+  // P5 adds the private flag to a persona's file; until then every persona's conversation may be shared.
+  const isPrivate = (_persona: string): boolean => false;
+  const nameOf = (id: string) =>
+    readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find((p) => p.id === id)?.name;
   // The Chrome check never runs on the render path and never blocks or throws: it runs off to the side, gives up
   // after a few seconds, and the window shows the last answer.
   let chromeSeen: { readonly at: number; readonly check: ChromeCheck } = {
@@ -1841,7 +1849,8 @@ export const startScreenCompanion = (input: {
     textIsHis: (text) =>
       textIsFromConversation(
         text,
-        conversation.recent(12).filter((t) => !outsideSaid.has(t.said)),
+        // "Alfred, type what Freya just said": her words are his too, unless she is private.
+        conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
       ),
     focusedWindow: gateWindow,
     pointerField: (tool, call) => tool === "click_element" && clickTargetsField(lastControls, call),
@@ -2493,11 +2502,21 @@ export const startScreenCompanion = (input: {
         ...kept,
         ...hits.map(
           (t) =>
-            `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
+            `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\n${(t.persona !== undefined && t.persona !== face.id ? nameOf(t.persona) : undefined) ?? "you"} replied: ${t.reply}`,
         ),
       ];
       return found.length === 0 ? "Nothing earlier matches." : found.join("\n\n");
     },
+    conversationSearch: async (ask) =>
+      answerConversationSearch(
+        {
+          conversations,
+          personas: readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
+          speaking: face,
+          isPrivate,
+        },
+        ask,
+      ),
     remember: (text) => memory.remember(text),
     forget: (id) => memory.forget(id),
     pin: (id, pinned) => memory.pin(id, pinned),
@@ -2665,6 +2684,10 @@ export const startScreenCompanion = (input: {
     agent ??= createAssistantAgent({
       start: agentStart,
       conversation,
+      conversationOf: conversations.of,
+      isPrivate,
+      latest: conversations.latest,
+      nameOf,
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
       images: () => imagesSent,
@@ -3037,6 +3060,8 @@ export const startScreenCompanion = (input: {
     woke = wake;
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
+    // A device's turn never changes whose conversation he is in.
+    if (!outside) conversations.setCurrent(face.id);
     leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
     // The wake named one persona and the words another ("Tessaya, ask Alfred…"): his tiers, before the turn runs.
@@ -3321,6 +3346,7 @@ export const startScreenCompanion = (input: {
         wake,
         text: "",
       });
+      conversations.setCurrent(face.id);
     },
     warm: (wake) => {
       // First run: a Chrome that is already connected turns this on, once; otherwise it stays off and asks again next time.

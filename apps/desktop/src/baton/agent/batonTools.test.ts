@@ -34,6 +34,7 @@ const host = (log: string[], windows: string[] = ["w1"]): ToolHost => ({
   dictation: async (on) => (log.push(`dictation ${on}`), "ok"),
   assistantModel: async (model, effort) => (log.push(`model ${model} ${effort}`), "ok"),
   memory: async (q) => (log.push(`memory ${q}`), "found"),
+  conversationSearch: async (q) => (log.push(`conversation ${JSON.stringify(q)}`), "found"),
   target: async () => "noted",
 });
 

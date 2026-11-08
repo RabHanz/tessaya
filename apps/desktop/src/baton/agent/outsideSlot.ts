@@ -74,6 +74,7 @@ export const createOutsideSlot = (input: {
       const kept = await memory.search(query);
       return kept.length === 0 ? "Nothing earlier matches." : kept.join("\n\n");
     },
+    conversationSearch: async () => "A paired device's request cannot read his conversations.",
     remember: (text) => memory.remember(text),
     forget: (id) => memory.forget(id),
     pin: (id, pinned) => memory.pin(id, pinned),

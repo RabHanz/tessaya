@@ -24,9 +24,16 @@ const FILES = [
   "playbooks.json",
   "standing-jobs.json",
   "baton-conversation.ndjson",
+  "baton-conversation.ndjson.1",
 ];
+/** A backup from before P2 holds the one shared conversation: it restores as the lead's, as the first start moves it. */
+const MOVED: Readonly<Record<string, string>> = {
+  "baton-conversation.ndjson": "conversation/executive.ndjson",
+  "baton-conversation.ndjson.1": "conversation/executive.ndjson.1",
+};
 const DIRS: ReadonlyArray<{ readonly dir: string; readonly ext: RegExp }> = [
   { dir: "memory", ext: /\.md$/ },
+  { dir: "conversation", ext: /\.ndjson(\.1)?$/ },
   { dir: "operating-system", ext: /\.(md|json)$/ },
   { dir: "operating-system/roles", ext: /\.md$/ },
 ];
@@ -109,6 +116,8 @@ export const allowedName = (name: string): boolean =>
 
 export interface RestoreRow {
   readonly name: string;
+  /** The name in the zip, when it restores under another (`MOVED`). */
+  readonly from?: string;
   readonly action: "new" | "replaces" | "same" | "refused";
 }
 
@@ -123,9 +132,11 @@ export const previewRestore = (zipBytes: Buffer, stateDir: string): RestorePrevi
   if (entries instanceof Error) return entries;
   const rows = entries.map((e): RestoreRow => {
     if (!allowedName(e.name)) return { name: e.name, action: "refused" };
-    const have = read(NodePath.join(stateDir, ...e.name.split("/")));
+    const name = MOVED[e.name] ?? e.name;
+    const have = read(NodePath.join(stateDir, ...name.split("/")));
     return {
-      name: e.name,
+      name,
+      ...(name === e.name ? {} : { from: e.name }),
       action: have === null ? "new" : have.equals(e.data) ? "same" : "replaces",
     };
   });
@@ -137,7 +148,7 @@ export const applyRestore = (preview: RestorePreview, stateDir: string): number 
   let written = 0;
   for (const row of preview.rows) {
     if (row.action === "refused" || row.action === "same") continue;
-    const data = preview.entries.find((e) => e.name === row.name)!.data;
+    const data = preview.entries.find((e) => e.name === (row.from ?? row.name))!.data;
     const target = NodePath.join(stateDir, ...row.name.split("/"));
     if (!NodePath.resolve(target).startsWith(NodePath.resolve(stateDir) + NodePath.sep)) continue;
     NodeFS.mkdirSync(NodePath.dirname(target), { recursive: true });

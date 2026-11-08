@@ -102,6 +102,7 @@ const BATON_QUIET = new Set([
   "session_show",
   "fleet_status",
   "memory_search",
+  "conversation_search",
   "memory_used",
   "memory_history",
   "vault_list",
