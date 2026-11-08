@@ -8,6 +8,7 @@ import type {
   BatonKeptResult,
   BatonCatalogWaitingInput,
   BatonCatalogWaitingResult,
+  BatonTurnsInFlightResult,
   WatchFinding,
 } from "@t3tools/baton-contracts";
 import {
@@ -68,6 +69,7 @@ import {
   watchLiveSessions,
   type WatchdogOutcome,
 } from "@t3tools/baton-shared/watch";
+import { turnsInFlight } from "@t3tools/baton-shared/turnsInFlight";
 import { createSessionCatalog, sendOutcome, type CatalogPorts } from "./SessionCatalog.ts";
 import { realCatalogPorts } from "./SessionCatalogLive.ts";
 
@@ -149,6 +151,8 @@ export class BatonSessionCatalogService extends Context.Service<
     readonly waiting: (
       input: typeof BatonCatalogWaitingInput.Type,
     ) => Effect.Effect<typeof BatonCatalogWaitingResult.Type>;
+    /** What an update or restart would cut off mid-turn here (SESS-SURVIVE). */
+    readonly inFlight: () => Effect.Effect<typeof BatonTurnsInFlightResult.Type>;
   }
 >()("t3/baton/BatonSessionCatalogService") {}
 
@@ -920,6 +924,14 @@ export const layer = Layer.effect(
         input: typeof BatonCatalogWaitingInput.Type,
       ) {
         return yield* Effect.sync(() => catalog.waitingFor(input.sessionId, input.discard));
+      }),
+      inFlight: Effect.fn("BatonSessionCatalogService.inFlight")(function* () {
+        const threads = Option.isNone(engine) ? [] : yield* engine.value.threadShells;
+        const live = yield* Effect.promise(() => ports.live().catch(() => []));
+        return turnsInFlight({
+          threads: threads.map((t) => ({ ...t, id: String(t.id) })),
+          live,
+        });
       }),
     });
   }),

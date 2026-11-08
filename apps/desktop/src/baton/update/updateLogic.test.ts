@@ -60,9 +60,14 @@ describe("when to fetch and when to install", () => {
     expect(shouldDownload(state({ status: "available", availableVersion: "0.1.4" }))).toBe(false);
   });
   it("never installs in the middle of a turn", () => {
-    expect(canInstallNow({ voiceBusy: false, assistantBusy: false })).toBe(true);
-    expect(canInstallNow({ voiceBusy: true, assistantBusy: false })).toBe(false);
-    expect(canInstallNow({ voiceBusy: false, assistantBusy: true })).toBe(false);
+    const quiet = { voiceBusy: false, assistantBusy: false, inFlight: null };
+    expect(canInstallNow(quiet)).toBe(true);
+    expect(canInstallNow({ ...quiet, voiceBusy: true })).toBe(false);
+    expect(canInstallNow({ ...quiet, assistantBusy: true })).toBe(false);
+    // SESS-SURVIVE: a session turn running on this machine would be cut off by the restart.
+    expect(canInstallNow({ ...quiet, inFlight: "A session is mid-turn: “Fix the build”." })).toBe(
+      false,
+    );
   });
 });
 
@@ -85,7 +90,14 @@ describe("the window's rows", () => {
     expect(counting).toMatchObject({ button: "Restart now", secondary: "Later", lead: true });
     expect((counting as { hint: string }).hint).toContain("restarts at");
     const [waiting] = updateControls(ready, false, { restartAt: 0, waiting: true });
-    expect((waiting as { hint: string }).hint).toContain("as soon as this conversation ends");
+    expect((waiting as { hint: string }).hint).toContain("as soon as the current turns finish");
+    // What it waits for, by name, when a session is mid-turn.
+    const [sessions] = updateControls(ready, false, {
+      restartAt: 0,
+      waiting: true,
+      inFlight: "A session is mid-turn: “Fix the build”.",
+    });
+    expect((sessions as { hint: string }).hint).toContain("“Fix the build”");
     expect(
       (updateControls(state(), false, null, "Updated to 0.1.4.")[0] as { hint: string }).hint,
     ).toContain("Updated to 0.1.4.");

@@ -109,6 +109,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_SESSIONS_WS_METHODS.reattach]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.kept]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.waiting]: AuthOrchestrationOperateScope,
+  // Whether anything is mid-turn: titles only, a read.
+  [BATON_SESSIONS_WS_METHODS.inFlight]: AuthOrchestrationReadScope,
   // It names the linked environments, which upstream lists only behind access:read.
   [BATON_SESSIONS_WS_METHODS.across]: [AuthOrchestrationReadScope, AuthAccessReadScope],
   // Cloud tasks: looking is a read; creating, approving or applying is operate.
@@ -232,7 +234,18 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_SESSIONS_WS_METHODS.across,
   // This machine's own catalog with T3's window closed; another machine's goes through the window.
   ...(
-    ["list", "folders", "resume", "create", "cleanup", "autoResume", "reattach", "waiting"] as const
+    [
+      "list",
+      "folders",
+      "resume",
+      "create",
+      "cleanup",
+      "autoResume",
+      "reattach",
+      "waiting",
+      // The updater's check before it restarts this machine (SESS-SURVIVE).
+      "inFlight",
+    ] as const
   ).map((op) => BATON_SESSIONS_WS_METHODS[op]),
   BATON_LIVE_WS_METHODS.herdrSend,
   // Another server's sync over plain HTTPS, with its sync-only credential.

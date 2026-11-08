@@ -8,7 +8,13 @@
 import type { DesktopUpdateState } from "@t3tools/contracts";
 
 import type { HomeControl } from "../home/batonHome.ts";
-import { isReady, shouldDownload, updateControls, canInstallNow } from "./updateLogic.ts";
+import {
+  isReady,
+  shouldDownload,
+  updateControls,
+  canInstallNow,
+  type UpdateBusy,
+} from "./updateLogic.ts";
 import { COUNTDOWN_MS, nextStep, SNOOZE_MS, type Phase } from "./updatePlan.ts";
 
 export interface BatonUpdates {
@@ -30,7 +36,7 @@ export const createBatonUpdater = (input: {
   readonly download: () => Promise<unknown>;
   /** Writes why Baton is going down, then installs and relaunches. */
   readonly install: (version: string) => Promise<unknown>;
-  readonly busy: () => { readonly voiceBusy: boolean; readonly assistantBusy: boolean };
+  readonly busy: () => UpdateBusy;
   /** The heads-up: open the window and raise a notification. */
   readonly headsUp: (version: string, restartAt: number) => void;
   /** Said once, after a restart that was an update. */
@@ -103,6 +109,7 @@ export const createBatonUpdater = (input: {
           ? {
               restartAt: phase.kind === "countdown" ? phase.restartAt : Date.now(),
               waiting: !quiet(),
+              inFlight: input.busy().inFlight,
             }
           : null,
         input.backAfter,

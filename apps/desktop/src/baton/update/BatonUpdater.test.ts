@@ -23,7 +23,7 @@ const state = (downloadedVersion: string | null): DesktopUpdateState => ({
   canRetry: false,
 });
 
-const make = (initial: DesktopUpdateState) => {
+const make = (initial: DesktopUpdateState, inFlight: () => string | null = () => null) => {
   const headsUp = vi.fn();
   const install = vi.fn(async () => undefined);
   const updater = createBatonUpdater({
@@ -31,7 +31,7 @@ const make = (initial: DesktopUpdateState) => {
     check: async () => undefined,
     download: async () => undefined,
     install,
-    busy: () => ({ voiceBusy: false, assistantBusy: false }),
+    busy: () => ({ voiceBusy: false, assistantBusy: false, inFlight: inFlight() }),
     headsUp,
     backAfter: null,
     onChange: () => undefined,
@@ -66,5 +66,19 @@ describe("the update restart", () => {
     // A remote update lifts the wait and goes through the countdown again.
     updater.soon();
     expect(headsUp).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits while a session's turn runs on this machine, even on Restart now, then restarts (SESS-SURVIVE)", async () => {
+    let running: string | null = "A session is mid-turn: “Fix the build”.";
+    const { updater, install } = make(state(null), () => running);
+    updater.onState(state("0.1.5"));
+    await vi.advanceTimersByTimeAsync(COUNTDOWN_MS + 5_000);
+    updater.install();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(install).not.toHaveBeenCalled();
+    expect((updater.controls()[0] as { hint: string }).hint).toContain("“Fix the build”");
+    running = null;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(install).toHaveBeenCalledTimes(1);
   });
 });

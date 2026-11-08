@@ -116,6 +116,9 @@ export const layer = McpToolAccess.toLayer(
       tessaya_rules: McpToolAccess.reads((input) =>
         call(handlers[BATON_ORCHESTRATION_WS_METHODS.ruleList](input)),
       ),
+      tessaya_in_flight: McpToolAccess.reads(() =>
+        call(handlers[BATON_SESSIONS_WS_METHODS.inFlight]()),
+      ),
       // Titles and folders only: the history index would let an agent test any word against every transcript.
       tessaya_sessions: McpToolAccess.reads((input) =>
         call(
