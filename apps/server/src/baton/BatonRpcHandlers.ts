@@ -9,6 +9,7 @@
  * routes needs nothing Baton-specific: upstream's own ws tests compile and run unchanged, and a
  * server without Baton's layer answers `fabric.*` with a defect naming why.
  */
+import { teamBoard } from "./BatonTeamBoard.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
@@ -404,6 +405,7 @@ export const makeHandlers = Effect.gen(function* () {
         }),
       ),
     [BATON_JOB_WS_METHODS.jobList]: () => run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
+    [BATON_JOB_WS_METHODS.jobTeam]: (input) => run(teamBoard(input)),
     [BATON_JOB_WS_METHODS.jobStart]: (input) => run(JobFlow.startJob(input)),
     [BATON_JOB_WS_METHODS.jobPlace]: (input) => run(JobFlow.placeJob(input)),
     [BATON_JOB_WS_METHODS.jobHandoff]: (input) => run(handoffTo(input)),

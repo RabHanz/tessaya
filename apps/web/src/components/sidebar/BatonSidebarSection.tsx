@@ -118,6 +118,7 @@ export function BatonSidebarSection(props: {
   const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
   const createPairingCredential = useAtomCommand(authEnvironment.createPairingCredential, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
+  const jobTeam = useAtomCommand(batonWorkSessions.jobTeam, quiet);
   const jobPlace = useAtomCommand(batonWorkSessions.jobPlace, quiet);
   const jobHandoff = useAtomCommand(batonWorkSessions.jobHandoff, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
@@ -204,6 +205,17 @@ export function BatonSidebarSection(props: {
       }
       case "watch":
         return done(await watchGet({ ...env, input: {} }));
+      // His own server's team; the persona asking is checked there, and walls apply to it.
+      case "team":
+        return done(
+          await jobTeam({
+            ...env,
+            input: {
+              ...(text("agent") === "" ? {} : { agent: text("agent") }),
+              ...(args["admin"] === true ? { admin: true } : {}),
+            },
+          }),
+        );
       case "start": {
         // The server that runs it places it: the project he named there, and its first ready Claude.
         const strings = (key: string) =>

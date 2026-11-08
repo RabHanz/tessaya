@@ -109,6 +109,8 @@ import {
   BatonJobRefInput,
   BatonJobRefineInput,
   BatonJobHandoffInput,
+  BatonTeamBoardInput,
+  BatonTeamBoardResult,
   BatonJobPlaceInput,
   BatonJobPlacementError,
   BatonJobStartInput,
@@ -358,6 +360,11 @@ const WsBatonJobPlaceRpc = Rpc.make(BATON_JOB_WS_METHODS.jobPlace, {
   payload: BatonJobPlaceInput,
   success: BatonJobStartResult,
   error: Schema.Union([BatonJobPlacementError, WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobTeamRpc = Rpc.make(BATON_JOB_WS_METHODS.jobTeam, {
+  payload: BatonTeamBoardInput,
+  success: BatonTeamBoardResult,
+  error: EnvironmentAuthorizationError,
 });
 const WsBatonJobHandoffRpc = Rpc.make(BATON_JOB_WS_METHODS.jobHandoff, {
   payload: BatonJobHandoffInput,
@@ -841,6 +848,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobStartRpc,
   WsBatonJobPlaceRpc,
   WsBatonJobHandoffRpc,
+  WsBatonJobTeamRpc,
   WsBatonJobAgreeRpc,
   WsBatonJobRefineRpc,
   WsBatonJobGrantRpc,

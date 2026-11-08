@@ -428,6 +428,7 @@ export interface AssistantActions {
       | "trust_show"
       | "activity_today"
       | "record"
+      | "team"
       | "permission_off"
       | "weave_send"
       | "weave_list"
@@ -2581,7 +2582,10 @@ export const startScreenCompanion = (input: {
           );
         }
       }
-      return actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.";
+      // The team board as the persona asking sees it; a device's turn names no persona, so walls hide it all.
+      const asking =
+        op === "team" && !turnLock.deviceRunning() ? { ...args, agent: face.id } : args;
+      return actions?.jobs?.(op, asking) ?? "Jobs are not reachable from here yet.";
     },
     target: async (label, workSessionId) => {
       conversation.add({

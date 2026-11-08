@@ -6,6 +6,7 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 
 - `tessaya_jobs` and `tessaya_watch`: jobs, their parts, and work that looks stuck or waits for you.
 - `tessaya_record`: what happened, who did it and for which project.
+- `tessaya_team_board`: who on the team is doing what: each persona's current jobs, its latest conversation and its newest Record lines. A private persona shows only whether it is busy.
 - `tessaya_rules`: standing rules and when they last fired.
 - `tessaya_sessions`: the Claude Code sessions on this computer, by title and folder.
 - `tessaya_fleet`: what is live right now: each piece of work and its state, the Herdr panes and the running Claude Code processes.

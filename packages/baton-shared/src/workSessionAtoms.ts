@@ -275,6 +275,11 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:job-list",
       tag: BATON_JOB_WS_METHODS.jobList,
     }),
+    /** Who on the team is doing what (P4): a read of jobs, episodes and the Record. */
+    jobTeam: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-team",
+      tag: BATON_JOB_WS_METHODS.jobTeam,
+    }),
     jobStart: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-start",
       tag: BATON_JOB_WS_METHODS.jobStart,

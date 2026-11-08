@@ -103,6 +103,10 @@ export const layer = McpToolAccess.toLayer(
       tessaya_record: McpToolAccess.reads((input) =>
         call(handlers[BATON_RECORD_WS_METHODS.list]({ ...input, limit: input.limit ?? 30 })),
       ),
+      // Read as a client (MemoryViewer's default here): walls hold, no persona can be named, his own view is closed.
+      tessaya_team_board: McpToolAccess.reads(() =>
+        call(handlers[BATON_JOB_WS_METHODS.jobTeam]({})),
+      ),
       // Read as a client (MemoryViewer's default here): walls hold and no persona can be named.
       tessaya_memory_search: McpToolAccess.reads((input) =>
         call(

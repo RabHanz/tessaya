@@ -56,6 +56,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
     "What did Freya tell me about the venue?",
     "Searches what you and one persona said to each other.",
   ],
+  team_board: ["What is Alfred working on?", "Each persona's jobs and its last conversation."],
   memory_remember: ["Remember that I prefer tabs", "Keeps a note you can edit in Memory."],
   memory_forget: ["Forget that note about tabs", "Removes a memory."],
   history_search: ["What did we decide about pricing?", "Searches past work across your projects."],

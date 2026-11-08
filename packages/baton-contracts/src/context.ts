@@ -319,6 +319,7 @@ export interface BatonJobBridgeRequest {
   readonly kind: "job";
   readonly op:
     | "list"
+    | "team"
     | "start"
     | "agree"
     | "refine"

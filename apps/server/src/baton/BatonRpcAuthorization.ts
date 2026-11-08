@@ -82,6 +82,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.
   [BATON_RECORD_WS_METHODS.append]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
   [BATON_JOB_WS_METHODS.jobList]: AuthOrchestrationReadScope,
+  [BATON_JOB_WS_METHODS.jobTeam]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobStart]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobPlace]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobHandoff]: AuthOrchestrationOperateScope,
@@ -211,6 +212,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_ORCHESTRATION_WS_METHODS.ruleEnable,
   BATON_ORCHESTRATION_WS_METHODS.ruleDisable,
   BATON_JOB_WS_METHODS.jobList,
+  BATON_JOB_WS_METHODS.jobTeam,
   BATON_JOB_WS_METHODS.jobAgree,
   BATON_JOB_WS_METHODS.jobRefine,
   BATON_JOB_WS_METHODS.jobStop,
