@@ -4000,7 +4000,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       onLevel: (frame) => {
         const level = frameLevel(frame);
         micNow = level;
-        pill.micLevel(level, pillGain(level));
+        pill.micLevel(level, pillGain(level), frame);
         silence.feed(level, Date.now());
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
       },
