@@ -72,6 +72,32 @@ describe("localClean", () => {
       "Ask orbit about Meta Ads.",
     );
     expect(localClean("metadata", "default", dictionary)).toBe("Metadata");
+    // Wispr keeps names in small letters ("google"): that never takes a heard capital away.
+    expect(
+      localClean("Ask Google first.", "default", [{ phrase: "google", replacement: null }]),
+    ).toBe("Ask Google first.");
+  });
+
+  it("drops an abandoned idea through the reversal, joining what replaced it", () => {
+    expect(
+      localClean(
+        "Give him medieval armour and a rocket launcher. No, terrible idea. A mustache comb, but bigger.",
+        "default",
+      ),
+    ).toBe("Give him medieval armour and a mustache comb, but bigger.");
+    expect(localClean("That's not a terrible idea at all, keep it.", "default")).toBe(
+      "That's not a terrible idea at all, keep it.",
+    );
+  });
+
+  it("drops a So or a Like, that only opens a sentence", () => {
+    expect(localClean("So we ship it today. Like, what is left?", "default")).toBe(
+      "We ship it today. What is left?",
+    );
+    expect(localClean("Like a sword, but blunt. It is so good.", "default")).toBe(
+      "Like a sword, but blunt. It is so good.",
+    );
+    expect(localClean("So far it holds.", "default")).toBe("So far it holds.");
   });
 
   it("breaks lines only for a break said on its own", () => {
@@ -88,6 +114,10 @@ describe("localClean", () => {
     expect(localClean(raw, "raw")).toBe(raw);
     expect(localClean("Sounds good to me.", "chat")).toBe("Sounds good to me");
     expect(localClean("git status.", "code")).toBe("git status");
+    // To a coding agent he speaks sentences, which keep their stop.
+    expect(localClean("Run the tests again before you push.", "code")).toBe(
+      "Run the tests again before you push.",
+    );
     expect(localClean("Hi Sam, it shipped. Thanks, Robin.", "email")).toBe(
       "Hi Sam,\n\nIt shipped.\n\nThanks,\nRobin",
     );
@@ -105,9 +135,9 @@ describe("needsModel", () => {
   it("pastes a short dictation at once unless he corrected himself in it", () => {
     expect(needsModel("see you at the the station", "default")).toBe(false);
     expect(needsModel("you know, the usual", "default")).toBe(false);
-    // Taken out locally, a filler phrase in a long dictation still marks a false start for the model.
-    const long = "I think we should, you know, I think we should just kill it and start again.";
-    expect(needsModel(localClean(long, "default"), "default", long)).toBe(true);
+    expect(
+      needsModel("I think we should just kill it and start again from the top.", "default"),
+    ).toBe(true);
     expect(needsModel("Fix the bug.", "notes")).toBe(false);
     expect(needsModel("Friday, no, actually Saturday.", "default")).toBe(true);
   });
@@ -149,6 +179,23 @@ describe("checkRewrite", () => {
     expect(checkRewrite(email, email.replace(" to Marcus", "")).ok).toBe(false);
     expect(
       checkRewrite("Send it to Priya, no wait, sorry, send it to Marcus.", "Send it to Marcus.").ok,
+    ).toBe(true);
+  });
+
+  it("lets an abandoned idea go, and an ordinal become digits", () => {
+    const said =
+      "Give him medieval armour and a rocket launcher. No, terrible idea. A mustache comb, like a late fifteenth century greatsword.";
+    expect(
+      checkRewrite(
+        said,
+        "Give him medieval armour and a mustache comb, like a late 15th-century greatsword.",
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkRewrite(
+        "Do a one final pass over the folder now.",
+        "Do a final pass over the folder now.",
+      ).ok,
     ).toBe(true);
   });
 
