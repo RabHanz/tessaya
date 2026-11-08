@@ -220,7 +220,7 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
-import { REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
+import { detectSecret, REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
 import {
   SERVER_MEMORY_NAME,
   applyRestore,
@@ -401,7 +401,7 @@ import {
   type TurnEvent,
 } from "@t3tools/baton-shared/voiceTurn";
 import {
-  correctionsBetween,
+  correctionsAtCaret,
   learnCorrection,
   observeWording,
   addNever,
@@ -722,6 +722,8 @@ const STATE_REFRESH_MS = 5 * 60_000;
 const CONTEXT_REFRESH_MS = 10_000;
 /** Long enough for him to fix a word in the field before it is read back. */
 const LEARN_READBACK_MS = 8_000;
+/** As the paste's own caret read: a field that hangs UI Automation teaches nothing. */
+const LEARN_CARET_MS = 1_500;
 /** Joins a taught form to its word in the toast, and splits it back on Discard. */
 const TAUGHT = " \u2192 ";
 /** How soon a plugged or unplugged mic is noticed; listing devices costs a few milliseconds. */
@@ -1230,16 +1232,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return next.entries;
     }).catch(() => undefined);
   };
-  /** A few seconds later, what he changed in the field teaches the words he meant. */
-  const learnFromEdits = (written: string, turnId: string | null = null) => {
-    if (!settings.learnWords) return;
+  /**
+   * A few seconds later, what he changed in the field teaches the words he meant. Only through the sidecar, which
+   * never reads a password or secret field, never in a private app, and never when either side looks like a secret.
+   */
+  const learnFromEdits = (
+    written: string,
+    turnId: string | null,
+    app: { readonly exe: string; readonly title: string },
+  ) => {
+    if (!settings.learnWords || cleanupLevelFor("claude", app) !== "claude") return;
     setTimeout(() => {
-      void readCaretContext(input.platform).then((around) => {
-        if (around === null || written.trim().length === 0) return;
-        const tail = around.before.slice(-(written.length + 2)).trim();
-        const fixes = correctionsBetween(written.trim(), tail);
+      const reader = sidecar;
+      if (reader === null || written.trim().length === 0 || detectSecret(written) !== null) return;
+      void Promise.race([
+        reader.caret().catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), LEARN_CARET_MS)),
+      ]).then((around) => {
+        if (around === null || detectSecret(around.before) !== null) return;
+        const { fixes, fixed } = correctionsAtCaret(written.trim(), around.before);
         if (fixes.length === 0) return;
-        if (turnId !== null) history?.update(turnId, { corrected: true, fixed: tail });
+        if (turnId !== null) history?.update(turnId, { corrected: true, fixed });
         return changeVocabulary((entries, now) =>
           fixes.reduce((all, fix) => {
             const next = learnCorrection(seenWords, all, fix, now, never);
@@ -1837,7 +1850,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
     if (result.status === "pasted") {
       learnWording(result.text);
-      learnFromEdits(result.text, turnId);
+      learnFromEdits(result.text, turnId, app);
       if (result.failed) {
         showDictation(null);
         pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });

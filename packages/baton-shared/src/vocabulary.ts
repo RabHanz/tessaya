@@ -216,6 +216,40 @@ const COMMON = new Set(
   ),
 );
 
+/** Grammar, not a name: "Their" for "There" or "in to" for "into" is never taught, whatever its capitals. */
+const EVERYDAY = new Set(
+  "there they're theirs its it's you're too two than were where wear into onto maybe cannot already anyway everyday altogether whatever whoever because about after before over under up down out off all any some no not yes".split(
+    " ",
+  ),
+);
+const everyday = (text: string): boolean =>
+  text
+    .toLowerCase()
+    .split(/\s+/)
+    .some((w) => COMMON.has(w) || EVERYDAY.has(w));
+
+/**
+ * The corrections in the words just before the caret, aligned word by word: the dictation's own length, or up to
+ * two words shorter or longer for a span he typed over ("git hub" became "GitHub"), so text before it never counts.
+ */
+export const correctionsAtCaret = (
+  written: string,
+  before: string,
+): {
+  readonly fixes: ReadonlyArray<{ readonly heard: string; readonly meant: string }>;
+  readonly fixed: string;
+} => {
+  const n = tokens(written).length;
+  const starts = [...before.matchAll(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu)].map((m) => m.index);
+  for (const k of [n, n - 1, n - 2, n + 1, n + 2]) {
+    if (k < 1 || k > starts.length) continue;
+    const fixed = before.slice(starts[starts.length - k]).trim();
+    const fixes = correctionsBetween(written, fixed);
+    if (fixes.length > 0) return { fixes, fixed };
+  }
+  return { fixes: [], fixed: "" };
+};
+
 /** Words that look like names or terms: capitalised mid-sentence, camelCase, or with digits. */
 export const candidateWords = (text: string): ReadonlyArray<string> => {
   const found = new Set<string>();
@@ -329,7 +363,13 @@ export const learnCorrection = (
   now: string,
   never: NeverList = [],
 ): Learned => {
-  if (isNever(never, fix.meant) || isNever(never, fix.heard) || skipsCorrection(fix.meant)) {
+  if (
+    isNever(never, fix.meant) ||
+    isNever(never, fix.heard) ||
+    skipsCorrection(fix.meant) ||
+    everyday(fix.heard) ||
+    everyday(fix.meant)
+  ) {
     return { seen, entries, added: [], taught: [] };
   }
   const key = `${fix.heard.toLowerCase()}>${fix.meant}`;
@@ -384,6 +424,8 @@ export const unteach = (
 ): ReadonlyArray<VocabularyEntry> =>
   removeHeard(entries, fix.meant, fix.heard).filter(
     (e) =>
+      // The literal rule a second correction added goes with it.
+      !(sameWord(e.phrase, fix.heard) && e.replacement === fix.meant) &&
       !(
         sameWord(e.phrase, fix.meant) &&
         e.replacement === null &&

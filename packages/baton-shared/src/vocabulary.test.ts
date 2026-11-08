@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   biasTranscript,
   candidateWords,
+  correctionsAtCaret,
   correctionsBetween,
   addNever,
   isNever,
@@ -221,8 +222,29 @@ describe("learning from his corrections", () => {
       { phrase: "Thomas", heard: ["Tomas"] },
       { phrase: "Tomas", replacement: "Thomas", source: "learned", count: 2 },
     ]);
+    // Grammar is never taught, whatever its capitals or spacing.
+    for (const fix of [
+      { heard: "Their", meant: "There" },
+      { heard: "in to", meant: "into" },
+      { heard: "may be", meant: "maybe" },
+    ])
+      expect(
+        learnCorrection({ [`${fix.heard.toLowerCase()}>${fix.meant}`]: 1 }, [], fix, NOW).entries,
+      ).toEqual([]);
+    // A dictation pasted after text already in the field, then shortened by his fix, is still found.
+    expect(
+      correctionsAtCaret(
+        "Ask the git hub team today",
+        "Notes from Monday. The build is green. Ask the GitHub team today",
+      ),
+    ).toEqual({
+      fixes: [{ heard: "git hub", meant: "GitHub" }],
+      fixed: "Ask the GitHub team today",
+    });
     // Undo takes the form off, and the word with it when that form was all it had learned.
     expect(unteach(learnCorrection({}, [], one[0]!, NOW).entries, one[0]!)).toEqual([]);
+    // After two fixes, Discard takes the literal rule too.
+    expect(unteach(state.entries, one[0]!)).toEqual([]);
     const his = [{ phrase: "Tessaya", replacement: null, source: "added" as const, count: 4 }];
     const taught = learnCorrection({}, his, { heard: "Tisia", meant: "Tessaya" }, NOW);
     expect(taught.entries[0]?.heard).toEqual(["Tisia"]);
