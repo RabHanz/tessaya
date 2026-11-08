@@ -811,17 +811,27 @@ export const createVoiceCore = (input: {
           enqueue(woke(name));
           return;
         }
-        // Her question is waiting on him: his yes or no over her voice is the answer, unless she said those very
-        // words as a sentence of their own (her question says "yes or no", which is no answer).
+        // Her question is waiting on him. Over her voice a "no" is his answer (at worst nothing runs), unless she said
+        // it as a sentence of her own. A yes approves an act, so a fragment of her own ("do that", the "Yes" of "Yes or
+        // no.") must not pass: it counts only when it is not her words heard back and his voice is known to be his,
+        // begun after she stopped, on headphones, or flagged as near-end speech by the echo guard.
         const reply = stripWake(text.trim(), timings.wakeWords);
-        if (
+        const answer =
           said === undefined &&
           machine.pending !== null &&
-          answerOf(reply) !== null &&
-          reply.split(/\s+/).length <= 4 &&
-          !hers
-            .flatMap((sentence) => sentence.split(/(?<=[.!?])\s+/))
-            .some((part) => plainWords(part) === plainWords(reply))
+          machine.mode !== "dictation" &&
+          !disposed &&
+          reply.split(/\s+/).length <= 4
+            ? answerOf(reply)
+            : null;
+        const sheSaid = hers
+          .flatMap((sentence) => sentence.split(/(?<=[.!?])\s+/))
+          .some((part) => plainWords(part) === plainWords(reply));
+        const his =
+          headphones() || (!speaking && startedAt >= spokeUntil) || lastNearEndAt >= startedAt;
+        if (
+          (answer === "no" && !sheSaid) ||
+          (answer === "yes" && !echoesSpeech(reply, hers) && his)
         ) {
           stopWaiting = null;
           enqueue(() => dispatch({ type: "utterance", text: reply, at: now() }));
@@ -906,6 +916,7 @@ export const createVoiceCore = (input: {
     // She speaks: whatever the last wake was, it is her turn now, and nothing may dismiss it.
     if (active) lone = null;
     if (!active) fresh = true;
+    if (!active && speaking) spokeUntil = samples;
     speaking = active;
     if (active) {
       // What was being heard is now mixed with Baton's own voice.
@@ -919,6 +930,8 @@ export const createVoiceCore = (input: {
     enqueue(() => dispatch({ type: "keep_open", at: now() }));
   };
   const headphones = () => input.speakerMode?.() === "headphones";
+  /** The sample where her last sentence stopped playing. */
+  let spokeUntil = -Infinity;
   const hearingItself = () => !headphones() && (speaking || samples < echoUntil);
   /** Was the microphone hearing her at this sample? A name the scorer reports late is judged by when it was said. */
   const heardItselfAt = (at: number) =>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
+import type { EchoGuard } from "./echoGuard.ts";
 import { SET_ASIDE, type SttProvider } from "./types.ts";
 
 /** The stop path runs beside the core's queue, a few promise turns away. */
@@ -86,7 +87,7 @@ describe("Baton hearing itself", () => {
 
 describe("silence after a wake word", () => {
   /** The rig, with the VAD and the recogniser under the test's control. */
-  const scripted = (transcript = "Yeah.", stopStt?: SttProvider) => {
+  const scripted = (transcript = "Yeah.", stopStt?: SttProvider, echo?: EchoGuard) => {
     let failing = false;
     let holding: Array<() => void> | null = null;
     let fire = false;
@@ -122,6 +123,7 @@ describe("silence after a wake word", () => {
         },
       },
       ...(stopStt === undefined ? {} : { stopStt }),
+      ...(echo === undefined ? {} : { echo }),
       router: {
         route: async (effect) => {
           if ("text" in effect) routed.push(`${effect.kind}:${effect.text}`);
@@ -400,45 +402,57 @@ describe("silence after a wake word", () => {
       }
     });
 
-    it("hears his answer to her question over her voice, even when her question says the word", async () => {
-      // 0.1.73: "Yes." was dropped as her own voice, "Yes, go ahead." as not a stop.
-      for (const [said, want] of [
-        ["Yes.", "yes"],
-        ["Yes, go ahead.", "yes"],
-        ["Jarvis, yes.", "yes"],
-        ["No.", "no"],
-      ] as const) {
-        const r = scripted(said);
-        const question = r.core.confirm("Clear the box? Say yes or no.");
-        await r.core.idle();
-        r.core.noteSpoken("Clear the box? Say yes or no.");
-        r.core.setSpeaking(true);
-        r.push(0.5);
-        r.speech(true);
-        r.push(0.5);
-        r.speech(false);
-        r.push(0.6);
-        await settled();
-        await r.core.idle();
-        expect(await Promise.race([question.answer, Promise.resolve("unheard")])).toBe(want);
-      }
-    });
-
-    it("never takes her own lone yes for his answer", async () => {
-      const r = scripted("Yes.");
-      const question = r.core.confirm("Clear it?");
+    /** She asks `question` aloud and he says the scripted words over it; resolves with his answer or the drop. */
+    const answering = async (
+      said: string,
+      question: string,
+      options: { readonly nearEnd?: boolean; readonly afterHer?: boolean } = {},
+    ) => {
+      let nearEnd = 0;
+      const r = scripted(said, undefined, {
+        reference: () => {},
+        reset: () => {},
+        state: () => ({ delayMs: 0, erleDb: 0, converged: true }),
+        // Two frames of his voice flagged: proof it is his, short of a barge-in.
+        process: () => ({ ready: true, nearEnd: (nearEnd -= 1) >= 0, erleDb: 20 }),
+      });
+      const asked = r.core.confirm(question);
       await r.core.idle();
-      r.core.noteSpoken("Yes. I can clear it, shall I?");
+      const dropped = new Promise<string>((resolve) =>
+        r.core.subscribe((e) => e.type === "dropped" && resolve(`dropped: ${e.reason}`)),
+      );
+      r.core.noteSpoken(question);
       r.core.setSpeaking(true);
       r.push(0.5);
+      if (options.afterHer === true) r.core.setSpeaking(false);
+      if (options.nearEnd === true) nearEnd = 2;
+      // Short enough to end inside her echo tail when he begins after she stopped.
       r.speech(true);
-      r.push(0.5);
+      r.push(0.12);
       r.speech(false);
-      r.push(0.6);
-      await settled();
-      await r.core.idle();
-      expect(r.core.snapshot().machine.pending).not.toBeNull();
-      question.cancel();
+      r.push(0.35);
+      const result = await Promise.race([asked.answer, dropped]);
+      asked.cancel();
+      return result;
+    };
+
+    it.each([
+      // [he says, her question, how it is known to be his, what counts]
+      // A no over her voice is his answer: at worst nothing runs.
+      ["No.", "Shall I do that? Yes or no.", {}, "no"],
+      ["Jarvis, no.", "Shall I do that? Yes or no.", {}, "no"],
+      // 0.1.73: his yes is taken when the echo guard heard him, or he began after she stopped.
+      ["Yes, go ahead.", "Shall I clear the box?", { nearEnd: true }, "yes"],
+      ["Jarvis, yes.", "Shall I clear the box?", { nearEnd: true }, "yes"],
+      ["Yes.", "Shall I clear the box?", { afterHer: true }, "yes"],
+      // Her own words heard back never approve: a fragment, the "Yes" of "Yes or no.", her "Yes." as "Yeah.".
+      ["do that", "Shall I do that? Yes or no.", {}, "dropped"],
+      ["Yes", "Shall I do that? Yes or no.", {}, "dropped"],
+      ["Yes", "Shall I do that? Yes or no.", { nearEnd: true }, "dropped"],
+      ["Yeah.", "Yes. Shall I do that?", {}, "dropped"],
+      ["Yes.", "Shall I clear the box?", {}, "dropped"],
+    ] as const)("%s over %j (%j) counts as %s", async (said, question, options, want) => {
+      expect(await answering(said, question, options)).toMatch(new RegExp(`^${want}`));
     });
 
     it("logs what it heard over her voice and did not act on", async () => {

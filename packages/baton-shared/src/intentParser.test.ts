@@ -470,6 +470,7 @@ describe("resolveBatonIntent — what it will not do", () => {
       "Restart the production api",
       "Merge it into main",
       "Drop the database",
+      "Tell VantageOS to delete everything",
       "Show me the API key",
       "Rotate the credentials",
     ]) {

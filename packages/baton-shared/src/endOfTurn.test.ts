@@ -55,6 +55,9 @@ describe("end of turn", () => {
     ["I want to test the dictation feature. Can you?", "usual"],
     ["Notepad is open. Could you please", "longer"],
     ["That worked. Can you?", "usual"],
+    // A finished first sentence and a short command with no mark: the recogniser closes what it hears end, so a
+    // missing mark is a cut more often than not; it waits longer, as a short unmarked turn always has.
+    ["I checked the logs from this morning. Merge it", "longer"],
     ["Is that so?", "usual"],
     // Finished sentences that end on a word that often trails off.
     ["Use plan A.", "sooner"],

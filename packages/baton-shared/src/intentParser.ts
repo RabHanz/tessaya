@@ -195,7 +195,9 @@ const HIGH_RISK: ReadonlyArray<{ readonly pattern: RegExp; readonly subject: str
     subject: "merging a protected branch",
   },
   {
-    pattern: /\b(?:drop|truncate|wipe|delete)\b[^.]*\b(?:database|db|table|schema)\b/,
+    // Clearing a text box ("delete everything in the input box") is an edit, not this.
+    pattern:
+      /\b(?:drop|truncate|wipe|delete)\b(?![^.]*\b(?:input|text|message|search|edit)\s+(?:box|field|area)\b)[^.]*\b(?:database|db|table|schema|everything)\b/,
     subject: "a destructive database operation",
   },
   {
