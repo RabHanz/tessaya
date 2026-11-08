@@ -51,8 +51,38 @@ describe("vocabulary file", () => {
       1,
     );
     entries = upsertEntry(entries, { phrase: "baton", replacement: null, source: "added" }, NOW);
-    expect(promptTerms(entries)).toEqual(["Parakeet", "Baton"]);
+    const terms = promptTerms(entries);
+    // Her own names come first and carry how they are mis-heard; his words follow, most used first.
+    expect(terms.slice(0, 3).map((t) => t.split(" ")[0])).toEqual(["Tessaya", "VentureOS", "T3"]);
+    expect(terms.slice(3)).toEqual(["Parakeet", 'Baton (heard as "Buton", "button")']);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
+  });
+});
+
+describe("her own names", () => {
+  it("are put back where Parakeet mis-hears them, and only where the name fits", () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["Quick update on Tisia.", "Quick update on Tessaya."],
+      ["Go over the whole of Teceyas code.", "Go over the whole of Tessaya's code."],
+      ["To say um", "Tessaya"],
+      ["Ask venture OS to check it.", "Ask VentureOS to check it."],
+      ["Add the accounts to button on the laptop.", "Add the accounts to Baton on the laptop."],
+      ["Fix the button UI.", "Fix the Baton UI."],
+      ["Move it into D3 code.", "Move it into T3 code."],
+      // Controls: the everyday word, and real names.
+      ["Any header button is not working.", "Any header button is not working."],
+      ["Press the button to start.", "Press the button to start."],
+      [
+        "Ask Tessa from accounts, and copy Tasha in.",
+        "Ask Tessa from accounts, and copy Tasha in.",
+      ],
+      ["The D3 chart library is fine.", "The D3 chart library is fine."],
+      [
+        "Set BATON_THREADS on baton/dictation-magic.",
+        "Set BATON_THREADS on baton/dictation-magic.",
+      ],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, [])).toBe(meant);
   });
 });
 

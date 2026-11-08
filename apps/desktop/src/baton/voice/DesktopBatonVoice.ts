@@ -1258,6 +1258,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     env: input.env,
     platform: input.platform,
     dictionary: () => dictionary,
+    keepWarm: () => cleanupStaysWarm(),
   });
   /** Held to where the words came from and where he is now. Unknown counts as secret. */
   const levelNow = async (spokenIn: { readonly exe: string; readonly title: string }) => {
@@ -3071,7 +3072,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
     });
+    if (cleanupStaysWarm()) rewriter.warm();
   };
+  /** Up at the claude level, gone below it: a session nobody will ask holds memory for nothing. */
+  const syncCleanupSession = () => (cleanupStaysWarm() ? rewriter.warm() : rewriter.dispose());
+  /** A dictation key (or mouse button) is bound and its words go to Claude: the first dictation must not wait for it. */
+  const cleanupStaysWarm = () =>
+    settings.dictationCleanup === "claude" &&
+    settings.dictation === "baton" &&
+    parakeetPath !== null &&
+    currentBindings().some(
+      (row) => (row.def.id === "hold" || row.def.id === "toggle") && row.inputs.length > 0,
+    );
 
   const showDictation = (caption: string | null, tidying = false) => {
     pill.on({ type: "dictating", caption, tidying }, { silent: !settings.holdKeyCues });
@@ -6369,6 +6381,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (act?.kind === "style") styles.set(act.category, act.style);
       else if (act?.kind === "level") {
         save({ dictationCleanupChosen: true, dictationCleanup: cleanupSettingOf(act.level) });
+        syncCleanupSession();
       } else if (act?.kind === "guide") void runStyleGuide();
     } else if (id.startsWith("tr.")) {
       const act = transformAction(id, value);
@@ -6632,6 +6645,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.download") requestDictation();
     else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
+      syncCleanupSession();
     } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
       const code = languageCode(id.endsWith(":add") ? settings.speechModel : "v3", value);
       const v3Code = code === undefined ? languageCode("v3", value) : undefined;

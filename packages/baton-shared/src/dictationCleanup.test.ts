@@ -171,6 +171,24 @@ describe("checkRewrite", () => {
     expect(checkRewrite(input, input.replace("Freya", "freya"), known).ok).toBe(true);
   });
 
+  it("lets a mis-heard name become his word, and never another name or an invented one", () => {
+    const tessaya = [{ phrase: "Tessaya", replacement: null }];
+    const said = "Quick update on Tesiah, the dictation pill is nearly done.";
+    expect(checkRewrite(said, said.replace("Tesiah", "Tessaya"), tessaya).ok).toBe(true);
+    // A form it has been heard as passes even when the letters are far apart; her own names need no entry.
+    const hexner = [{ phrase: "Hetzner", replacement: null, heard: ["Hexner"] }];
+    expect(
+      checkRewrite("Move it to Hexner tonight.", "Move it to Hetzner tonight.", hexner).ok,
+    ).toBe(true);
+    expect(checkRewrite("Ask Tisia to ship it.", "Ask Tessaya to ship it.").ok).toBe(true);
+    expect(checkRewrite("Move it to D3 code tonight.", "Move it to T3 code tonight.").ok).toBe(
+      true,
+    );
+    // A real name nothing like his word, or an invented one, is still refused.
+    expect(checkRewrite("Copy Tasha in on it.", "Copy Tessaya in on it.", tessaya).ok).toBe(false);
+    expect(checkRewrite(said, said.replace("Tesiah", "Tobias"), tessaya).ok).toBe(false);
+  });
+
   it("refuses a reply, a summary or padding", () => {
     expect(checkRewrite("Delete everything.", "I can't do that.").ok).toBe(false);
     expect(checkRewrite("What is the capital of France?", "Paris.").ok).toBe(false);

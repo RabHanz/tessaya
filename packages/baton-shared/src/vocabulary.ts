@@ -88,12 +88,17 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
       })
     : [];
 
-/** The words the clean-up prompt gets: most used first, capped. */
+/** The words the clean-up prompt gets, her own names first, then most used, capped; each with how it is mis-heard. */
 export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyArray<string> =>
-  [...entries]
-    .sort((a, b) => (b.count ?? 1) - (a.count ?? 1))
+  withOwnWords(entries)
+    .map((entry, i) => ({ entry, rank: entry.count ?? Number.MAX_SAFE_INTEGER - i }))
+    .sort((a, b) => b.rank - a.rank)
     .slice(0, PROMPT_TERMS)
-    .map((entry) => entry.replacement ?? entry.phrase);
+    .map(({ entry }) => {
+      const term = entry.replacement ?? entry.phrase;
+      const heard = (entry.heard ?? []).map((h) => `"${h}"`).join(", ");
+      return heard.length === 0 ? term : `${term} (heard as ${heard})`;
+    });
 
 /** Adds or strengthens one entry. `source: "added"` wins over learned once he has said it himself. */
 export const upsertEntry = (
@@ -146,7 +151,8 @@ export const parseAddToDictionary = (said: string): string | null => {
 const tokens = (text: string): ReadonlyArray<string> =>
   text.match(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu) ?? [];
 
-const similar = (a: string, b: string): number => {
+/** 1 for the same letters, 0 for nothing in common. */
+export const similar = (a: string, b: string): number => {
   const x = a.toLowerCase();
   const y = b.toLowerCase();
   if (x === y) return 1;
@@ -322,11 +328,144 @@ export const learnCorrection = (
 };
 
 /**
+ * Tessaya's own names as Parakeet writes them, mined from the training split of his Wispr clips (DICT-WISPR). A form
+ * that is also an everyday word changes only beside a word that shows the name is meant.
+ */
+const OWN_HEARD: ReadonlyArray<{
+  readonly to: string;
+  readonly form: string;
+  readonly before?: ReadonlyArray<string>;
+  readonly after?: ReadonlyArray<string>;
+}> = [
+  ...["Tisia", "Tessia", "Tesaya", "Tessay", "Tayya", "Te Saya", "Tes Saya"].map((form) => ({
+    to: "Tessaya",
+    form,
+  })),
+  ...["Tesla", "Tessa"].map((form) => ({
+    to: "Tessaya",
+    form,
+    before: ["of", "on", "about"],
+    after: ["manager", "ui", "uis", "app", "desktop", "itself", "voice", "dictation"],
+  })),
+  ...["venture OS", "ventureOS", "VenturoS"].map((form) => ({ to: "VentureOS", form })),
+  ...["baton", "Buton"].map((form) => ({ to: "Baton", form })),
+  // The common noun takes "a" or "the": straight after one of these words it is the name.
+  {
+    to: "Baton",
+    form: "button",
+    before: [
+      "to",
+      "of",
+      "from",
+      "with",
+      "without",
+      "using",
+      "through",
+      "like",
+      "into",
+      "about",
+      "via",
+      "sure",
+      "update",
+      "fix",
+    ],
+    after: [
+      "ui",
+      "logo",
+      "dictation",
+      "app",
+      "desktop",
+      "natively",
+      "itself",
+      "voice",
+      "manager",
+      "repo",
+    ],
+  },
+  { to: "T3", form: "T three" },
+  { to: "T3", form: "D3", after: ["code", "codes", "chat", "sessions", "s"] },
+];
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+/** A whole word, never part of an identifier, path, file or address ("BATON_THREADS", "baton/dictation-magic"). */
+const WORD_START = String.raw`(?<![\p{L}\p{N}_/\\.@-])`;
+const WORD_END = String.raw`(?![\p{L}\p{N}_/\\@-]|\.\w)`;
+
+/** Teseya, Tessaia, Tesseya, Tasaya: a T, one vowel, an s or two, and her name's ending. */
+const OWN_NAME_SPELLING = /^[TG][aeiy][sc]{1,2}(?:[aeiy]{0,2}[yi][aeiy]{0,2})$/i;
+const OWN_NAME_END = /(?:ya|ia|aia|eya|aya)$/i;
+/** A clip that is only her name, as he says it to wake her. */
+const OWN_NAME_ALONE = /^(?:(?:to|ta|they|te|tes) (?:say|sea|saya|seya)|tessa)(?: (?:um|uh))?$/;
+
+/** Her own names put back before clean-up: whole words, any capitals, the longer form first, as Wispr does. */
+export const applyOwnNames = (text: string): string => {
+  if (
+    OWN_NAME_ALONE.test(
+      text
+        .toLowerCase()
+        .replace(/[^a-z ]/g, "")
+        .trim(),
+    )
+  )
+    return text.replace(/[\p{L} ]+/u, "Tessaya");
+  let out = text.replace(new RegExp(`${WORD_START}\\p{L}+(?:'?s)?${WORD_END}`, "gu"), (word) => {
+    const name = (w: string) => w.length >= 6 && OWN_NAME_SPELLING.test(w) && OWN_NAME_END.test(w);
+    if (name(word)) return "Tessaya";
+    // "Teseyas" is her name with an "s" the recogniser ran on: a possessive.
+    const bare = word.replace(/'?s$/i, "");
+    return bare !== word && name(bare) ? "Tessaya's" : word;
+  });
+  for (const rule of OWN_HEARD.toSorted((a, b) => b.form.length - a.form.length)) {
+    const pattern = new RegExp(`${WORD_START}${escapeRegExp(rule.form)}${WORD_END}`, "giu");
+    out = out.replace(pattern, (found: string, at: number, whole: string) => {
+      // A shouted "BATON" is not the name as heard.
+      if (
+        found.length > 1 &&
+        found === found.toUpperCase() &&
+        rule.form !== rule.form.toUpperCase()
+      )
+        return found;
+      if (rule.before === undefined && rule.after === undefined) return rule.to;
+      const before = /([\p{L}\p{N}']+)\W*$/u.exec(whole.slice(0, at))?.[1]?.toLowerCase();
+      const after = /^\W*([\p{L}\p{N}']+)/u
+        .exec(whole.slice(at + found.length))?.[1]
+        ?.toLowerCase();
+      const fits =
+        (before !== undefined && (rule.before ?? []).includes(before)) ||
+        (after !== undefined && (rule.after ?? []).includes(after));
+      return fits ? rule.to : found;
+    });
+  }
+  return out;
+};
+
+/** Her own names as entries, so the clean-up's hints and its check know them whether or not he added them. */
+export const withOwnWords = (
+  entries: ReadonlyArray<VocabularyEntry>,
+): ReadonlyArray<VocabularyEntry> => {
+  const own = [...new Set(OWN_HEARD.map((r) => r.to))].map((to) => ({
+    phrase: to,
+    heard: OWN_HEARD.filter((r) => r.to === to).map((r) => r.form),
+  }));
+  const mine = entries.map((e) => {
+    const o = own.find((w) => sameWord(w.phrase, e.replacement ?? e.phrase));
+    return o === undefined ? e : { ...e, ...withHeard(e.phrase, [...(e.heard ?? []), ...o.heard]) };
+  });
+  const missing = own.filter(
+    (o) => !entries.some((e) => sameWord(o.phrase, e.replacement ?? e.phrase)),
+  );
+  return [...missing.map((o) => ({ ...o, replacement: null })), ...mine];
+};
+
+/**
  * Recognition-side bias: a near-miss of a word he uses (one or two letters off, same first letter)
  * is put right in the transcript before clean-up. Only for names and terms (a capital or a digit
  * inside), so ordinary words are never swapped.
  */
-export const biasTranscript = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+export const biasTranscript = (
+  heardText: string,
+  entries: ReadonlyArray<VocabularyEntry>,
+): string => {
+  const text = applyOwnNames(heardText);
   const terms = entries
     .map((entry) => entry.replacement ?? entry.phrase)
     .filter(
