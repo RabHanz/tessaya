@@ -22,7 +22,7 @@ const povey = Float64Array.from(
   (_, i) => (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FRAME - 1))) ** 0.85,
 );
 
-/** Each mel bin's weights over the FFT bins 0..FFT/2-1, as Kaldi's MelBanks builds them. */
+/** Each mel bin's weights over the FFT bins it covers, as Kaldi's MelBanks builds them. */
 const banks = (() => {
   const lo = mel(LOW_HZ);
   const delta = (mel(HIGH_HZ) - lo) / (BINS + 1);
@@ -30,37 +30,53 @@ const banks = (() => {
     const left = lo + m * delta;
     const centre = left + delta;
     const right = centre + delta;
-    const weights = new Float64Array(FFT / 2);
+    let first = -1;
+    const weights: number[] = [];
     for (let k = 0; k < FFT / 2; k += 1) {
       const at = mel((k * RATE) / FFT);
-      if (at > left && at < right)
-        weights[k] = at <= centre ? (at - left) / (centre - left) : (right - at) / (right - centre);
+      if (at > left && at < right) {
+        if (first < 0) first = k;
+        weights.push(
+          at <= centre ? (at - left) / (centre - left) : (right - at) / (right - centre),
+        );
+      }
     }
-    return weights;
+    return { first, weights: Float64Array.from(weights) };
   });
 })();
 
-/** In-place radix-2 FFT of a real frame; returns the power spectrum for bins 0..n/2-1. */
-const powerSpectrum = (frame: Float64Array): Float64Array => {
-  const n = frame.length;
-  const re = Float64Array.from(frame);
-  const im = new Float64Array(n);
-  for (let i = 1, j = 0; i < n; i += 1) {
-    let bit = n >> 1;
+// The FFT's bit-reversal order and twiddle factors, worked out once.
+const REVERSED = (() => {
+  const out = new Uint16Array(FFT);
+  for (let i = 1, j = 0; i < FFT; i += 1) {
+    let bit = FFT >> 1;
     for (; j & bit; bit >>= 1) j ^= bit;
     j ^= bit;
-    if (i < j) {
-      [re[i], re[j]] = [re[j]!, re[i]!];
-    }
+    out[i] = j;
   }
-  for (let size = 2; size <= n; size <<= 1) {
-    const step = (-2 * Math.PI) / size;
-    for (let start = 0; start < n; start += size) {
-      for (let k = 0; k < size / 2; k += 1) {
-        const wr = Math.cos(step * k);
-        const wi = Math.sin(step * k);
+  return out;
+})();
+const COS = Float64Array.from({ length: FFT / 2 }, (_, k) => Math.cos((-2 * Math.PI * k) / FFT));
+const SIN = Float64Array.from({ length: FFT / 2 }, (_, k) => Math.sin((-2 * Math.PI * k) / FFT));
+const re = new Float64Array(FFT);
+const im = new Float64Array(FFT);
+const power = new Float64Array(FFT / 2);
+
+/** Radix-2 FFT of a real frame into `power`, bins 0..FFT/2-1. */
+const powerSpectrum = (frame: Float64Array): void => {
+  for (let i = 0; i < FFT; i += 1) {
+    re[REVERSED[i]!] = frame[i]!;
+    im[i] = 0;
+  }
+  for (let size = 2; size <= FFT; size <<= 1) {
+    const half = size >> 1;
+    const stride = FFT / size;
+    for (let start = 0; start < FFT; start += size) {
+      for (let k = 0; k < half; k += 1) {
+        const wr = COS[k * stride]!;
+        const wi = SIN[k * stride]!;
         const a = start + k;
-        const b = a + size / 2;
+        const b = a + half;
         const tr = re[b]! * wr - im[b]! * wi;
         const ti = re[b]! * wi + im[b]! * wr;
         re[b] = re[a]! - tr;
@@ -70,9 +86,7 @@ const powerSpectrum = (frame: Float64Array): Float64Array => {
       }
     }
   }
-  const out = new Float64Array(n / 2);
-  for (let k = 0; k < n / 2; k += 1) out[k] = re[k]! * re[k]! + im[k]! * im[k]!;
-  return out;
+  for (let k = 0; k < FFT / 2; k += 1) power[k] = re[k]! * re[k]! + im[k]! * im[k]!;
 };
 
 /** 16 kHz PCM (int16 scale) to frames × 80 log mel energies, mean-subtracted per bin. Empty under one frame. */
@@ -91,11 +105,11 @@ export const fbank = (
     for (let i = FRAME - 1; i > 0; i -= 1) frame[i] = frame[i]! - PREEMPH * frame[i - 1]!;
     frame[0] = frame[0]! - PREEMPH * frame[0]!;
     for (let i = 0; i < FRAME; i += 1) frame[i] = frame[i]! * povey[i]!;
-    const power = powerSpectrum(frame);
+    powerSpectrum(frame);
     for (let m = 0; m < BINS; m += 1) {
-      const w = banks[m]!;
+      const { first, weights } = banks[m]!;
       let e = 0;
-      for (let k = 0; k < FFT / 2; k += 1) e += w[k]! * power[k]!;
+      for (let k = 0; k < weights.length; k += 1) e += weights[k]! * power[first + k]!;
       data[f * BINS + m] = Math.log(Math.max(e, FLT_EPSILON));
     }
   }

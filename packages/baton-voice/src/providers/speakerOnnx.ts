@@ -26,10 +26,11 @@ export interface SpeakerEmbedder {
 export const createSpeakerEmbedder = async (
   path: string,
   model: string,
+  threads = 1,
 ): Promise<SpeakerEmbedder> => {
   const ort = await loadOrt();
   const session = await ort.InferenceSession.create(path, {
-    intraOpNumThreads: 1,
+    intraOpNumThreads: threads,
     interOpNumThreads: 1,
     executionMode: "sequential",
   });
