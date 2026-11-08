@@ -3698,7 +3698,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (!settings.verifyWake || word === null || sidecar === null) return null;
         try {
           const heard = await wakeStt(sidecar).transcribe(pcm);
-          const ok = wakeWordHeard(heard, word);
+          const ok = wakeWordHeard(heard, word, score);
           if (!ok) input.onNote?.("wake_check", { word, heard, score });
           return ok;
         } catch {

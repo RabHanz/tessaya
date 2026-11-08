@@ -72,6 +72,28 @@ describe("the second check before a wake", () => {
       expect([text, wakeWordHeard(text, word)]).toEqual([text, false]);
   });
 
+  it("takes his own 'Tessaya' as Parakeet writes it, only alone at the clip's start and with the model sure (G1)", () => {
+    // 0.1.73-74: his live wakes came back "To say." and "To see her."; the one clip he says is right, "To say here".
+    for (const text of ["To say.", "To see her.", "Tuh say.", "To say here.", "to say"])
+      expect([text, wakeWordHeard(text, "Tessaya", 1.05)]).toEqual([text, true]);
+    for (const [text, score] of [
+      // The model unsure: as before.
+      ["To say.", 0.98],
+      ["To see her.", undefined],
+      // Something before them, or a sentence after.
+      ["I want to say.", 1.05],
+      ["Nice to see her.", 1.05],
+      ["To say a few words.", 1.05],
+      ["To see her again tomorrow.", 1.05],
+      // Not these forms.
+      ["To see you.", 1.05],
+      ["They say.", 1.05],
+    ] as const)
+      expect([text, wakeWordHeard(text, "Tessaya", score)]).toEqual([text, false]);
+    // Only her name: another wake word is never these.
+    expect(wakeWordHeard("To say.", "Freya", 1.05)).toBe(false);
+  });
+
   it("rejects speech that only sounds a little like it, and silence", () => {
     expect(wakeWordHeard("and the sixth of November", "Sebastian")).toBe(false);
     expect(wakeWordHeard("it was a nice day at the beach", "Alfred")).toBe(false);
