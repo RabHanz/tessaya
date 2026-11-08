@@ -141,6 +141,7 @@ import {
 } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, startPersonas, type AssistantAgent } from "../agent/agentSession.ts";
+import { createEpisodeWatch } from "../conversation/conversationEpisodes.ts";
 import {
   answerConversationSearch,
   conversationsIn,
@@ -774,6 +775,28 @@ export const startScreenCompanion = (input: {
     // His slot only: a device's turn has its own memory client with no persona (outsideSlot.ts).
     agent: () => face.id,
   });
+  /** Personas whose turns read outside content since their last episode: that episode waits for his yes. */
+  const taintedSinceEpisode = new Set<string>();
+  const episodes = createEpisodeWatch({
+    conversations,
+    file: NodePath.join(input.stateDir, "conversation", "episodes.json"),
+    nameOf,
+    send: async (e) => {
+      if (actions?.memory === undefined) return false;
+      await actions.memory("learn", {
+        said: e.transcript,
+        reply: "",
+        tainted: taintedSinceEpisode.has(e.persona),
+        agent: e.persona,
+        origin: "conversation",
+        turnRef: e.sourceRef,
+      });
+      taintedSinceEpisode.delete(e.persona);
+      return true;
+    },
+  });
+  const episodeTimer = setInterval(() => void episodes.tick(), 5 * 60_000);
+  episodeTimer.unref?.();
   let stopMemorySync: (() => void) | null = null;
   const memorySync = createMemorySync({
     file: NodePath.join(input.stateDir, "baton-memory.json"),
@@ -2691,8 +2714,8 @@ export const startScreenCompanion = (input: {
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
       images: () => imagesSent,
-      notes: async () => {
-        const standing = await memory.standing();
+      notes: async (persona) => {
+        const standing = await memory.standing(persona);
         // His operating-system pack frames the jobs this assistant starts and splits (D148), read fresh.
         const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
         return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
@@ -2710,6 +2733,7 @@ export const startScreenCompanion = (input: {
       learn: (said, reply, project) => {
         // Called before this turn is written, so the newest turn in the file is the one before.
         const before = conversation.recent(1)[0];
+        if (agentTaint.on()) taintedSinceEpisode.add(face.id);
         memory.learn(
           said,
           reply,
@@ -3776,6 +3800,7 @@ export const startScreenCompanion = (input: {
     },
     dispose: () => {
       disposed = true;
+      clearInterval(episodeTimer);
       stopMemorySync?.();
       agent?.dispose();
       for (const mcp of agentMcps) void mcp.close();

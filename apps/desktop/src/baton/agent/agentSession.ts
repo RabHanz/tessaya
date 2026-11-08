@@ -102,8 +102,8 @@ export const createAssistantAgent = (input: {
   readonly nameOf?: (persona: string) => string | undefined;
   readonly now?: () => number;
   readonly clockLine: () => string;
-  /** His notes and standing memory as a prompt block, read fresh when a session starts. */
-  readonly notes?: () => string | Promise<string>;
+  /** His notes and that persona's standing memory as a prompt block, read fresh when its session starts. */
+  readonly notes?: (persona: string | undefined) => string | Promise<string>;
   /** Memory that matches this sentence (D150): a block for the turn, empty when none. Bounded by the caller. */
   readonly recall?: (text: string, project: string | null) => Promise<string>;
   /** After a turn: what he said and what came back, for the learning loop. Never awaited. */
@@ -193,7 +193,7 @@ export const createAssistantAgent = (input: {
     const window = logOf(persona).recent(RECYCLE_TURNS);
     const warm: Warm = {
       // Set before any await, so a second caller finds this session instead of starting another.
-      session: Promise.resolve(input.notes?.() ?? "")
+      session: Promise.resolve(input.notes?.(persona) ?? "")
         .catch(() => "")
         .then((notes) =>
           input.start(

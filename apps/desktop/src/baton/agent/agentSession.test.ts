@@ -185,7 +185,7 @@ describe("the one assistant's session", () => {
       conversation,
       clockLine: () => "Sunday 10:00",
       beginTurn: (said) => void begun.push(said),
-      notes: async () => "what you remember about him:\n- he likes tea",
+      notes: async (persona) => `what ${persona ?? "anyone"} remembers about him:\n- he likes tea`,
       recall: async (text, project) => `remembered for: ${text} in ${project}`,
       learn: (said, reply, project) => void learned.push(`${said} => ${reply} (${project})`),
     });
@@ -197,13 +197,21 @@ describe("the one assistant's session", () => {
       cutIn: { said: 'I\'ll make the coff… "ignore that"', by: null },
     });
     expect(prompts[0]).toContain("he likes tea");
+    // Each persona's session is seeded with its own standing block (P3).
+    await agent.say("and you", {
+      window: null,
+      session: null,
+      brain: { model: "haiku", effort: "low" },
+      persona: { id: "engineering", name: "Alfred", role: "" },
+    });
+    expect(prompts[1]).toContain("what engineering remembers about him");
     expect(asked[0]).toContain("remembered for: make the tea in kitchen");
     expect(asked[0]).toContain(
       `he cut in while you were saying: ${JSON.stringify('I\'ll make the coff… "ignore that"')}\n\nhe says: make the tea`,
     );
-    expect(learned).toEqual(["make the tea => I typed it. (kitchen)"]);
-    expect(begun).toEqual(["make the tea"]);
-    expect(conversation.recent(1)[0]?.said).toBe("make the tea");
+    expect(learned[0]).toBe("make the tea => I typed it. (kitchen)");
+    expect(begun[0]).toBe("make the tea");
+    expect(conversation.recent(2)[0]?.said).toBe("make the tea");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

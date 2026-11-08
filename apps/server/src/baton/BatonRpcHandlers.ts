@@ -567,7 +567,7 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(BatonMemoryLearning, (learning) =>
           learning.learn({
-            origin: "turn",
+            origin: input.origin ?? "turn",
             said: input.said,
             reply: input.reply,
             sourceRef: input.turnRef ?? null,

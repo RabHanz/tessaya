@@ -106,6 +106,14 @@ like any other. Exports are plain markdown the user owns; they leave the machine
    session's latest summary. It makes no model call unless more than a handful of items need merging by meaning.
 5. Job learnings: when a job ends, the extractor is asked specifically "what worked, what failed, what should the next
    attempt do differently", and writes `learning` items scoped to that project.
+6. Episodes (MEM-18): the cheap model writes two or three sentences on what was asked, what was done and how it ended,
+   as one `episode` item, when a job reports, when a work session leaves "active" (a job's session is left to the
+   job), and when a persona's conversation has been quiet for 30 minutes (the desktop sends that persona's turns since
+   its last episode to `learn` with `origin: "conversation"`). The text starts with the day in words ("Tuesday,
+   3 November 2026, with Freya: ..."), so a question naming the day finds it, and recall adds the day's name for
+   "yesterday" and "today". A conversation episode's `sourceRef` is `conversation:<persona id>:<first>-<last turn>`:
+   whose it was, until the persona column (P5) holds it. Each is written once per source; one from a tainted stretch
+   waits for his yes like any other.
 
 ## 5. Retrieval
 
@@ -124,8 +132,8 @@ like any other. Exports are plain markdown the user owns; they leave the machine
   (his own view), so a new caller that forgets the persona fails closed. Only the desktop app's own session may name a
   persona or ask for `admin`: for any other token (a phone, a browser, an agent, a linked server's sync) every read
   (list, search, recall, used, export, sync pull) hides walled items, and a walled item is "no such memory" to its
-  writes. The server's own upkeep sees everything (`MemoryViewer`). The standing block is shared by every persona in
-  a session, so it carries nothing walled; walled items reach a persona only through its own sentence's block. The
+  writes. The server's own upkeep sees everything (`MemoryViewer`). The standing block is read as the persona whose
+  session it is (each persona has its own sessions, P1), so its team's walled items can sit there and no one else's. The
   extractor is shown only what the turn's persona may recall, and what a turn in a walled project learns is kept in that
   project whatever scope the model chose. His Memory page lists everything.
 - "Show what you used" opens a card listing those items, from the per-turn record in `memory_uses` (turn id, item ids).

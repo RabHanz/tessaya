@@ -177,6 +177,8 @@ export const BatonMemoryLearnInput = Schema.Struct({
   previous: Schema.optionalKey(Schema.String),
   /** The persona whose turn it was (its pack id). */
   agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+  /** "conversation": `said` is a persona's turns since its last episode, kept as one episode (MEM-18). */
+  origin: Schema.optionalKey(Schema.Literal("conversation")),
 });
 export const BatonMemoryLearnResult = Schema.Struct({
   stored: Schema.Number,

@@ -69,6 +69,17 @@ describe("desktop memory", () => {
     expect(await memory.standing()).toBe("");
   });
 
+  it("reads the standing block as the persona whose session it is (P3)", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const memory = createDesktopMemory({
+      call: async (_op, args) => (calls.push(args), { block: "b" }),
+      notes: notes(),
+    });
+    await memory.standing("engineering");
+    await memory.standing();
+    expect(calls).toEqual([{ budgetTokens: 600, agent: "engineering" }, { budgetTokens: 600 }]);
+  });
+
   it("recalls for the sentence under the turn's reference and reads what was used", async () => {
     const calls: Array<[string, Record<string, unknown>]> = [];
     const call = async (op: string, args: Record<string, unknown>) => {

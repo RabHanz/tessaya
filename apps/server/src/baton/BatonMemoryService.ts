@@ -22,6 +22,7 @@ import {
   startingConfidence,
   tokens,
   winner,
+  datedQuery,
   type MemoryChange,
   type MemoryHit,
   type MemoryDraft,
@@ -615,7 +616,8 @@ export const make = Effect.gen(function* () {
     const keyword =
       words.length > 0
         ? (yield* search({
-            text: context.text!,
+            // "yesterday" also asks for that day's name, as an episode is written (MEM-18).
+            text: datedQuery(context.text!, now),
             ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
             ...(context.agent === undefined ? {} : { agent: context.agent }),
             limit: 40,

@@ -69,9 +69,15 @@ export const createDesktopMemory = (input: {
       lastTurnRef = `turn-${Date.now()}-${turn}`;
       return lastTurnRef;
     },
-    /** Standing memory for the first prompt: pinned and what he told it about working with him. Shared by every persona, so no walled project's items. */
-    standing: async (): Promise<string> => {
-      const out = await ask<{ block: string }>("recall", { budgetTokens: 600 });
+    /**
+     * Standing memory for a persona's first prompt: pinned and what he told it about working with him, as that persona
+     * may recall it (P3): a walled project's items reach only its team, and a session is never shared by two personas.
+     */
+    standing: async (persona?: string): Promise<string> => {
+      const out = await ask<{ block: string }>("recall", {
+        budgetTokens: 600,
+        ...(persona === undefined ? {} : { agent: persona }),
+      });
       return out?.block ?? "";
     },
     /** What matches this sentence, for the turn; empty when the server is slow or has nothing. */

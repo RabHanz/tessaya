@@ -4,13 +4,17 @@
  * cheap model proposes memory items; the pure rules decide which become drafts and the store's door
  * decides which are kept. A failure here never reaches the user: learning is a bonus, never a gate.
  */
-import { detectSecret } from "@t3tools/baton-shared/memory";
+import { detectSecret, type MemoryItem } from "@t3tools/baton-shared/memory";
 import {
   draftsFromProposals,
+  episodePrompt,
+  episodeText,
   extractionPrompt,
+  LEARN_MIN_CHARS,
   planMerges,
   planRewrites,
   worthLearningFrom,
+  type EpisodeOrigin,
   type LearnInput,
 } from "@t3tools/baton-shared/memoryLearning";
 import * as Clock from "effect/Clock";
@@ -41,6 +45,22 @@ const Proposals = Schema.Struct({
   ),
 });
 
+const Episode = Schema.Struct({ summary: Schema.String });
+
+export interface EpisodeInput {
+  readonly origin: EpisodeOrigin;
+  /** Who or what it was about, as the episode names it: "with Freya", 'the job "shop README"'. */
+  readonly title: string;
+  readonly transcript: string;
+  /**
+   * Unique per episode, so it is written once. A conversation's carries the persona id
+   * (`conversation:<persona id>:<first turn>-<last turn>`): P5's persona column is filled from it.
+   */
+  readonly sourceRef: string;
+  readonly project: string | null;
+  readonly tainted: boolean;
+}
+
 /** The existing memories closest to the exchange, shown to the extractor so it can name what it replaces: this many by
  * words, and as many again by recall. */
 const KNOWN_SHOWN = 8;
@@ -54,6 +74,8 @@ export class BatonMemoryLearning extends Context.Service<
   BatonMemoryLearning,
   {
     readonly learn: (input: LearnInput) => Effect.Effect<LearnResult>;
+    /** MEM-18: the cheap model's two or three sentences on what happened, kept as an episode; null when nothing was kept. */
+    readonly episode: (input: EpisodeInput) => Effect.Effect<MemoryItem | null>;
     /** The daily pass: merge near-duplicates, then delete what expired or faded. */
     readonly consolidate: Effect.Effect<{ readonly merged: number; readonly swept: number }>;
     /** The weekly pass: near-duplicates become one item with the fuller wording. */
@@ -66,8 +88,55 @@ export const make = Effect.gen(function* () {
   const oneShot = yield* BatonOneShot;
   const config = yield* ServerConfig.ServerConfig;
 
+  const episode = Effect.fn("BatonMemoryLearning.episode")(function* (input: EpisodeInput) {
+    // VAULT.md section 1: a secret never reaches the model's prompt or the store.
+    if (detectSecret(input.transcript) !== null || input.transcript.trim().length < LEARN_MIN_CHARS)
+      return null;
+    const done = `episode:${input.sourceRef}`;
+    if (yield* memory.flag(done)) return null;
+    const out = yield* oneShot
+      .run({
+        prompt: episodePrompt(input.title, input.transcript),
+        outputSchema: Episode,
+        model: readRouting(NodePath.dirname(config.dbPath)).cheap,
+      })
+      .pipe(Effect.orElseSucceed(() => null));
+    if (out === null || out.summary.trim() === "" || detectSecret(out.summary) !== null)
+      return null;
+    const item = yield* memory
+      .add({
+        kind: "episode",
+        text: episodeText(yield* Clock.currentTimeMillis, input.title, out.summary),
+        source: input.origin === "job" ? "job" : "thread",
+        sourceRef: input.sourceRef,
+        ...(input.project === null ? {} : { scope: "project" as const, scopeRef: input.project }),
+        tainted: input.tainted,
+      })
+      .pipe(Effect.orElseSucceed(() => null));
+    // Marked only once it is kept, so a failed call is tried again with the same turns.
+    if (item !== null) yield* memory.setFlag(done, true);
+    return item;
+  });
+
   const learn = Effect.fn("BatonMemoryLearning.learn")(function* (input: LearnInput) {
     const none: LearnResult = { stored: 0, held: 0 };
+    // A persona's conversation gone idle: its turns were learned from one by one, so this keeps only the episode.
+    if (input.origin === "conversation") {
+      const name =
+        input.agent === undefined
+          ? undefined
+          : readPack(NodePath.dirname(config.dbPath)).personas.find((p) => p.id === input.agent)
+              ?.name;
+      const item = yield* episode({
+        origin: "conversation",
+        title: name === undefined ? "a conversation" : `with ${name}`,
+        transcript: input.said,
+        sourceRef: input.sourceRef ?? `conversation:${input.agent ?? "unknown"}`,
+        project: input.project,
+        tainted: input.tainted,
+      });
+      return item === null ? none : item.proposed ? { stored: 0, held: 1 } : { stored: 1, held: 0 };
+    }
     // VAULT.md section 1: a secret is neither kept as talk nor put in the extractor's prompt.
     if (detectSecret(`${input.said}\n${input.reply}`) !== null) return none;
     if (input.origin === "turn" && input.said.trim() !== "") {
@@ -163,7 +232,7 @@ export const make = Effect.gen(function* () {
     return done;
   }).pipe(Effect.provideService(MemoryViewer, "server"));
 
-  return BatonMemoryLearning.of({ learn, consolidate, rewriteNearDuplicates });
+  return BatonMemoryLearning.of({ learn, episode, consolidate, rewriteNearDuplicates });
 });
 
 export const layer = Layer.effect(BatonMemoryLearning, make);

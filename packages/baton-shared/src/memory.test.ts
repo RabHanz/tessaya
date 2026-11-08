@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyDecision,
+  datedQuery,
   effectiveConfidence,
   exportMarkdown,
   memoryBlock,
@@ -329,5 +330,21 @@ describe("whyRemembered", () => {
     expect(model).toContain("65% sure");
     expect(model).toContain("last used it in an answer on 2026-02-03");
     expect(model).toContain("forgotten after 2026-03-01");
+  });
+});
+
+describe("a question about a day (MEM-18)", () => {
+  it("adds the day's name and date for yesterday and today, as episodes write it, and leaves the rest", () => {
+    const sun = Date.parse("2026-11-08T10:00:00Z");
+    expect(datedQuery("what did Freya tell me yesterday", sun)).toBe(
+      "what did Freya tell me yesterday Saturday 7 November",
+    );
+    expect(datedQuery("what did we do this morning", sun)).toBe(
+      "what did we do this morning Sunday 8 November",
+    );
+    expect(datedQuery("what did the shop job do on Tuesday", sun)).toBe(
+      "what did the shop job do on Tuesday",
+    );
+    expect(datedQuery("who is my accountant", sun)).toBe("who is my accountant");
   });
 });

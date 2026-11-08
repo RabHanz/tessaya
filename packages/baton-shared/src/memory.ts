@@ -596,3 +596,28 @@ export interface MemoryVersion {
 
 /** Versions kept per item; the oldest go first. */
 export const MEMORY_VERSIONS_KEPT = 20;
+
+const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/**
+ * "yesterday" and "today" in a question also ask for that day as episodes write it ("Tuesday 3 November"), so
+ * "what did Freya tell me yesterday" finds the episode by its words. A question that names the weekday already has it.
+ * shortcut: days are UTC, as `episodeText` writes them; pass his zone if a late evening lands on the wrong day.
+ */
+export const datedQuery = (text: string, nowMs: number): string => {
+  const said = text.toLowerCase();
+  if (DAY_NAMES.some((d) => said.includes(d))) return text;
+  const day = (ms: number) =>
+    // @effect-diagnostics-next-line globalDate:off - a plain day name, as `episodeText` writes it.
+    new Date(ms).toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    });
+  const extra = [
+    ...(/\byesterday\b/.test(said) ? [day(nowMs - 86_400_000)] : []),
+    ...(/\btoday\b|\bthis (morning|afternoon)\b/.test(said) ? [day(nowMs)] : []),
+  ];
+  return extra.length === 0 ? text : `${text} ${extra.join(" ")}`;
+};
