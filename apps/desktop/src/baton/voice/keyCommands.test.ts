@@ -1,43 +1,46 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createCommandClips, keyCommandOf, withoutTrailingCommand } from "./keyCommands.ts";
+import { createCommandClips } from "./keyCommands.ts";
 
 const frame = (loud: boolean) => ({ level: loud ? 0.4 : 0.02, pcm: new Int16Array(512) });
-
-describe("a spoken stop or cancel while a key dictation records", () => {
-  it("hears only a whole command, never the words he dictates", () => {
-    expect(keyCommandOf("Stop dictation.")).toBe("stop");
-    expect(keyCommandOf("stop dictating")).toBe("stop");
-    expect(keyCommandOf("Cancel.")).toBe("cancel");
-    expect(keyCommandOf("scratch that")).toBe("cancel");
-    // Dictated words that hold a command are words, not a command.
-    expect(keyCommandOf("we should stop the build")).toBeNull();
-    expect(keyCommandOf("please cancel the order tomorrow")).toBeNull();
-    expect(keyCommandOf("")).toBeNull();
-  });
-
-  it("cuts a short utterance with a pause after it, and lets long speech run on", () => {
-    // 32 ms frames at 16 kHz: 10 loud frames, then a 15-frame pause, is one short clip.
-    const clips = createCommandClips();
-    const seen: number[] = [];
-    for (let i = 0; i < 10; i += 1) clips.feed(frame(true));
-    for (let i = 0; i < 15; i += 1) {
-      const clip = clips.feed(frame(false));
-      if (clip !== null) seen.push(clip.length);
+const feed = (
+  clips: ReturnType<typeof createCommandClips>,
+  pattern: ReadonlyArray<[boolean, number]>,
+) => {
+  const out: number[] = [];
+  for (const [loud, n] of pattern)
+    for (let i = 0; i < n; i += 1) {
+      const clip = clips.feed(frame(loud));
+      if (clip !== null) out.push(clip.length);
     }
-    expect(seen).toHaveLength(1);
-    // A long stretch of dictation (4 s) is not a command clip.
-    const long = createCommandClips();
-    let any = false;
-    for (let i = 0; i < 125; i += 1) any = long.feed(frame(true)) !== null || any;
-    for (let i = 0; i < 15; i += 1) any = long.feed(frame(false)) !== null || any;
-    expect(any).toBe(false);
+  return out;
+};
+
+describe("the clips a spoken command is heard in while a key dictation records", () => {
+  it("cuts a short utterance with a pause after it, with a little quiet before it for a soft first sound", () => {
+    // 32 ms frames: quiet, 10 loud frames, then a 15-frame pause is one clip, with 3 frames of pre-roll.
+    const clips = createCommandClips();
+    expect(
+      feed(clips, [
+        [false, 5],
+        [true, 10],
+        [false, 15],
+      ]),
+    ).toEqual([(3 + 10 + 12) * 512]);
   });
 
-  it("takes the command off the end of the dictation it ended", () => {
-    expect(withoutTrailingCommand("Send the report today. Stop dictation.")).toBe(
-      "Send the report today.",
-    );
-    expect(withoutTrailingCommand("Send the report today")).toBe("Send the report today");
+  it("lets long speech run on, and drops a sound too short to be a command", () => {
+    expect(
+      feed(createCommandClips(), [
+        [true, 125],
+        [false, 15],
+      ]),
+    ).toEqual([]);
+    expect(
+      feed(createCommandClips(), [
+        [true, 3],
+        [false, 15],
+      ]),
+    ).toEqual([]);
   });
 });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { classifyDictation, isBareStop, staysLocal } from "./dictation.ts";
+import {
+  beforeSpokenStop,
+  classifyDictation,
+  isBareStop,
+  keyDictationCommand,
+  staysLocal,
+} from "./dictation.ts";
 
 const idle = { dictating: false };
 const on = { dictating: true };
@@ -127,5 +133,42 @@ describe("how he actually says it (voice-turns, 1 Nov)", () => {
     ]) {
       expect(isBareStop(said)).toBe(false);
     }
+  });
+});
+
+describe("a spoken command during a key or button dictation", () => {
+  it("is only a whole stop dictation: cancels and corrections are his words", () => {
+    expect(keyDictationCommand("Stop dictation.")).toBe("stop");
+    expect(keyDictationCommand("stop dictating")).toBe("stop");
+    // Nothing spoken discards: these stay text, and the clean-up resolves a self-correction.
+    for (const words of ["cancel", "Cancel that.", "scratch that", "no wait", "never mind"])
+      expect(keyDictationCommand(words)).toBeNull();
+    expect(keyDictationCommand("we should stop the build")).toBeNull();
+    expect(keyDictationCommand("")).toBeNull();
+  });
+
+  it("is taken off what was pasted, with anything said after it", () => {
+    expect(beforeSpokenStop("Send the report today. Stop dictation.")).toBe(
+      "Send the report today.",
+    );
+    expect(beforeSpokenStop("Send the report, stop dictation, thanks")).toBe("Send the report");
+    expect(beforeSpokenStop("Send the report today")).toBe("Send the report today");
+    // Dictated content that says cancel or scratch that is kept as it is.
+    expect(beforeSpokenStop("Cancel the order, scratch that, move it to Friday")).toBe(
+      "Cancel the order, scratch that, move it to Friday",
+    );
+  });
+
+  it("keeps his case, apostrophes and lines when stop dictation ends the words", () => {
+    expect(
+      classifyDictation("Don’t send it\nyet, Sam. Stop dictation.", { dictating: true }),
+    ).toEqual({
+      kind: "stop",
+      text: "Don’t send it\nyet, Sam.",
+    });
+    expect(classifyDictation("Call  Ana  now stop dictation", { dictating: true })).toEqual({
+      kind: "stop",
+      text: "Call  Ana  now",
+    });
   });
 });
