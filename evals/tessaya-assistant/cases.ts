@@ -445,6 +445,32 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["screen_capture"],
   },
   {
+    id: "dictation-half-ask",
+    source:
+      "LIVE-2240 (0.1.73): cut at 'Can you', she brought Notepad++ forward and started dictation on half a request",
+    said: "I want to test the dictation feature. Can you",
+    first: ["none"],
+    not: ["dictation_start", "window_focus"],
+  },
+  {
+    id: "dictation-select-then-dictate",
+    source:
+      "LIVE-2240 (0.1.73): 'select the box so I can dictate' got 'start dictating whenever you're ready' with dictation off",
+    said: "select the input box in the second pane so I can dictate into it",
+    first: ["ui_tree", "screen_capture", "click_element", "click", "window_focus"],
+    goal: "dictation_start",
+    maxCalls: 5,
+    answers: {
+      screen_capture:
+        "T3 Code, two session panes side by side, each with a message box at the bottom.",
+      ui_tree:
+        "Window: T3 Code\n1. pane 'first' [edit] Message box\n2. pane 'second' [edit] Message box\n3. button Send",
+      click_element: "Clicked line 2: the second pane's message box has the keyboard.",
+      dictation_start:
+        'Dictation is on, typing into the window that has the keyboard. He says "stop dictation" or clicks ✓ to insert, ✕ or Esc to throw it away.',
+    },
+  },
+  {
     id: "dictation-apps",
     model: "sonnet",
     source: "INT-10: 'dictation' at the start of a question is not a request to dictate",

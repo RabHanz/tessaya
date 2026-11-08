@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
+import type { EchoGuard } from "./echoGuard.ts";
 import { SET_ASIDE, type SttProvider } from "./types.ts";
 
 /** The stop path runs beside the core's queue, a few promise turns away. */
@@ -86,7 +87,7 @@ describe("Baton hearing itself", () => {
 
 describe("silence after a wake word", () => {
   /** The rig, with the VAD and the recogniser under the test's control. */
-  const scripted = (transcript = "Yeah.", stopStt?: SttProvider) => {
+  const scripted = (transcript = "Yeah.", stopStt?: SttProvider, echo?: EchoGuard) => {
     let failing = false;
     let holding: Array<() => void> | null = null;
     let fire = false;
@@ -122,6 +123,7 @@ describe("silence after a wake word", () => {
         },
       },
       ...(stopStt === undefined ? {} : { stopStt }),
+      ...(echo === undefined ? {} : { echo }),
       router: {
         route: async (effect) => {
           if ("text" in effect) routed.push(`${effect.kind}:${effect.text}`);
@@ -398,6 +400,61 @@ describe("silence after a wake word", () => {
         const r = await talking(said, "The next step is to stop the service.");
         expect(r.events.some((e) => e.type === "stop_heard")).toBe(true);
       }
+    });
+
+    /** She asks `question` aloud and he says the scripted words over it; resolves with his answer or the drop. */
+    const answering = async (
+      said: string,
+      question: string,
+      options: { readonly nearEnd?: number; readonly afterHer?: boolean } = {},
+    ) => {
+      let nearEnd = 0;
+      const r = scripted(said, undefined, {
+        reference: () => {},
+        reset: () => {},
+        state: () => ({ delayMs: 0, erleDb: 0, converged: true }),
+        // `nearEnd` frames of his voice flagged: two make a run (proof it is his, short of a barge-in), one is stray.
+        process: () => ({ ready: true, nearEnd: (nearEnd -= 1) >= 0, erleDb: 20 }),
+      });
+      const asked = r.core.confirm(question);
+      await r.core.idle();
+      const dropped = new Promise<string>((resolve) =>
+        r.core.subscribe((e) => e.type === "dropped" && resolve(`dropped: ${e.reason}`)),
+      );
+      r.core.noteSpoken(question);
+      r.core.setSpeaking(true);
+      r.push(0.5);
+      if (options.afterHer === true) r.core.setSpeaking(false);
+      nearEnd = options.nearEnd ?? 0;
+      // Short enough to end inside her echo tail when he begins after she stopped.
+      r.speech(true);
+      r.push(0.12);
+      r.speech(false);
+      r.push(0.35);
+      const result = await Promise.race([asked.answer, dropped]);
+      asked.cancel();
+      return result;
+    };
+
+    it.each([
+      // [he says, her question, how it is known to be his, what counts]
+      // A no over her voice is his answer: at worst nothing runs.
+      ["No.", "Shall I do that? Yes or no.", {}, "no"],
+      ["Jarvis, no.", "Shall I do that? Yes or no.", {}, "no"],
+      // 0.1.73: his yes is taken when the echo guard heard him, or he began after she stopped.
+      ["Yes, go ahead.", "Shall I clear the box?", { nearEnd: 2 }, "yes"],
+      ["Jarvis, yes.", "Shall I clear the box?", { nearEnd: 2 }, "yes"],
+      // One stray near-end frame is not his voice.
+      ["Yes, go ahead.", "Shall I clear the box?", { nearEnd: 1 }, "dropped"],
+      ["Yes.", "Shall I clear the box?", { afterHer: true }, "yes"],
+      // Her own words heard back never approve: a fragment, the "Yes" of "Yes or no.", her "Yes." as "Yeah.".
+      ["do that", "Shall I do that? Yes or no.", {}, "dropped"],
+      ["Yes", "Shall I do that? Yes or no.", {}, "dropped"],
+      ["Yes", "Shall I do that? Yes or no.", { nearEnd: 2 }, "dropped"],
+      ["Yeah.", "Yes. Shall I do that?", {}, "dropped"],
+      ["Yes.", "Shall I clear the box?", {}, "dropped"],
+    ] as const)("%s over %j (%j) counts as %s", async (said, question, options, want) => {
+      expect(await answering(said, question, options)).toMatch(new RegExp(`^${want}`));
     });
 
     it("logs what it heard over her voice and did not act on", async () => {

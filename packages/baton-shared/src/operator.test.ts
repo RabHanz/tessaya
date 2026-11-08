@@ -198,6 +198,15 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(rewrite, off).verdict).toBe("allow");
     expect(judgeToolCall(rewrite, read).verdict).toBe("ask");
     expect(judgeToolCall(rewrite, { ...off, focusedShell: true }).verdict).toBe("ask");
+    // 0.1.73: clearing a text box was asked about as "a destructive database operation".
+    const clear = {
+      tool: "mcp__baton__text_command",
+      input: { instruction: "select all and delete everything in the input box" },
+    };
+    expect(judgeToolCall(clear, off).verdict).toBe("allow");
+    expect(
+      judgeToolCall({ tool: "Bash", input: { command: "psql -c 'drop the table users'" } }, on),
+    ).toMatchObject({ verdict: "ask", why: "This is a destructive database operation." });
     expect(judgeToolCall({ tool: "mcp__baton__text_undo", input: {} }, read).verdict).toBe("allow");
     expect(judgeToolCall({ tool: "mcp__baton__commit_list", input: {} }, read).verdict).toBe(
       "allow",

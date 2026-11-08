@@ -48,6 +48,16 @@ describe("end of turn", () => {
     ["Do you know what time it is?", "usual"],
     ["Where am I?", "usual"],
     ["Can I?", "usual"],
+    // 0.1.73: cut at 576 ms, and she started dictation on the half request. The last sentence is what is open.
+    ["I want to test the dictation feature. Can you", "longer"],
+    ["I want to test the dictation feature. Can you.", "longer"],
+    // With its question mark it may be the whole ask: the usual wait, not the short one.
+    ["I want to test the dictation feature. Can you?", "usual"],
+    ["Notepad is open. Could you please", "longer"],
+    ["That worked. Can you?", "usual"],
+    // A finished first sentence and a short command with no mark: the recogniser closes what it hears end, so a
+    // missing mark is a cut more often than not; it waits longer, as a short unmarked turn always has.
+    ["I checked the logs from this morning. Merge it", "longer"],
     ["Is that so?", "usual"],
     // Finished sentences that end on a word that often trails off.
     ["Use plan A.", "sooner"],
