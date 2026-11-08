@@ -1,4 +1,10 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import { describe, expect, it } from "vite-plus/test";
+
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 
 import { REDACTED } from "@t3tools/baton-shared/memory";
 
@@ -80,5 +86,74 @@ describe("history", () => {
     history.update(id, { raw: "see you at five", cleaned: "See you at five." });
     expect(history.get(id)).toMatchObject({ raw: "see you at five", cleaned: "See you at five." });
     history.close();
+  });
+
+  it("a secret marked later redacts the stored words and deletes the kept audio; the decided clean-up is kept", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "history-"));
+    const clip = NodePath.join(dir, "clip.webm");
+    NodeFS.writeFileSync(clip, "audio");
+    const history = openHistory(":memory:", () => "t1");
+    const id = history.add({
+      at: "2026-11-08T10:00:00.000Z",
+      kind: "dictation",
+      app: "chrome.exe",
+      raw: "the code for the door",
+      cleaned: "The code for the door.",
+      status: "ok",
+      model: null,
+      delivery: "hold key",
+      error: null,
+      audio: clip,
+      cleanup: "local",
+    });
+    expect(history.get(id)?.cleanup).toBe("local");
+    // Only the cleaned words carry it: the stored heard words and the recording go too.
+    history.update(id, { cleaned: "The password is hunter-fake-77." });
+    expect(history.get(id)).toMatchObject({ raw: REDACTED, cleaned: REDACTED, audio: null });
+    expect(NodeFS.existsSync(clip)).toBe(false);
+    history.close();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("scrubs rows kept before redaction covered every write, once", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "history-"));
+    const file = NodePath.join(dir, "history.sqlite");
+    // A file as an older build left it: a voice row whose later words were kept in plain text.
+    const old = new NodeSqlite.DatabaseSync(file);
+    old.exec(`create table turns (id text primary key, at text not null, kind text not null, app text not null default '',
+      raw text not null, cleaned text, status text not null, model text, delivery text, audio text,
+      corrected integer not null default 0, error text, fixed text, seconds real, versions text)`);
+    old
+      .prepare("insert into turns (id, at, kind, raw, cleaned, status) values (?, ?, ?, ?, ?, ?)")
+      .run(
+        "a",
+        "2026-11-01T10:00:00.000Z",
+        "dictation",
+        "my password is hunter-fake-77",
+        null,
+        "none",
+      );
+    old
+      .prepare("insert into turns (id, at, kind, raw, cleaned, status) values (?, ?, ?, ?, ?, ?)")
+      .run(
+        "b",
+        "2026-11-01T11:00:00.000Z",
+        "dictation",
+        "see you at five",
+        "See you at five.",
+        "ok",
+      );
+    old.close();
+    const history = openHistory(file);
+    expect(history.get("a")?.raw).toBe(REDACTED);
+    expect(history.get("b")?.raw).toBe("see you at five");
+    history.close();
+    // Once: a later open does not scan again (and a row written since is already safe).
+    const again = new NodeSqlite.DatabaseSync(file);
+    expect(
+      (again.prepare("pragma user_version").get() as { user_version: number }).user_version,
+    ).toBe(1);
+    again.close();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

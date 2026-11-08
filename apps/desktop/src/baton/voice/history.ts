@@ -46,6 +46,8 @@ export interface HistoryTurn {
   readonly error: string | null;
   /** Empty until the first retry; then v1 (as first heard) and each retry, in order. */
   readonly versions: ReadonlyArray<HistoryVersion>;
+  /** The clean-up level decided when he dictated (his setting, the app and its window title): a retry stays at or below it. */
+  readonly cleanup: "local" | "claude" | null;
 }
 
 /**
@@ -53,6 +55,12 @@ export interface HistoryTurn {
  * and the fixed text and every version are checked too. Every write goes through this, so no path keeps one in plain
  * text, however late its words arrive (voice dictation fills its row chunk by chunk).
  */
+/** A secret in the heard or the written words. */
+const hasSecret = (change: { readonly raw?: string; readonly cleaned?: string | null }) =>
+  [change.raw, change.cleaned].some(
+    (text) => typeof text === "string" && detectSecret(text) !== null,
+  );
+
 const safeWords = <
   T extends {
     readonly raw?: string;
@@ -63,9 +71,7 @@ const safeWords = <
 >(
   change: T,
 ): T => {
-  const secret = [change.raw, change.cleaned].some(
-    (text) => typeof text === "string" && detectSecret(text) !== null,
-  );
+  const secret = hasSecret(change);
   return {
     ...change,
     ...(secret && change.raw !== undefined ? { raw: REDACTED } : {}),
@@ -86,9 +92,12 @@ const safeWords = <
 
 export interface History {
   readonly add: (
-    turn: Omit<HistoryTurn, "id" | "corrected" | "audio" | "fixed" | "seconds" | "versions"> & {
+    turn: Omit<
+      HistoryTurn,
+      "id" | "corrected" | "audio" | "fixed" | "seconds" | "versions" | "cleanup"
+    > & {
       readonly seconds?: number | null;
-    } & { readonly audio?: string | null },
+    } & { readonly audio?: string | null; readonly cleanup?: "local" | "claude" | null },
   ) => string;
   readonly update: (
     id: string,
@@ -120,7 +129,7 @@ export interface History {
 }
 
 const COLUMNS =
-  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed, seconds, versions";
+  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed, seconds, versions, cleanup";
 
 type Row = Record<string, string | number | null>;
 const toTurn = (row: Row): HistoryTurn => ({
@@ -141,6 +150,7 @@ const toTurn = (row: Row): HistoryTurn => ({
   fixed: row["fixed"] === null || row["fixed"] === undefined ? null : String(row["fixed"]),
   error: row["error"] === null ? null : String(row["error"]),
   versions: parseVersions(row["versions"]),
+  cleanup: row["cleanup"] === "claude" ? "claude" : row["cleanup"] === "local" ? "local" : null,
 });
 
 const parseVersions = (value: unknown): ReadonlyArray<HistoryVersion> => {
@@ -185,6 +195,51 @@ export const openHistory = (
   ) {
     db.exec("alter table turns add column versions text");
   }
+  if (
+    !(db.prepare("pragma table_info(turns)").all() as Array<{ name: string }>).some(
+      (c) => c.name === "cleanup",
+    )
+  ) {
+    db.exec("alter table turns add column cleanup text");
+  }
+  /** A redacted row keeps no recording of the words it hides. */
+  const dropAudio = (audio: unknown) => {
+    if (typeof audio !== "string") return;
+    for (const path of audio.split("\n")) if (path !== "") NodeFS.rmSync(path, { force: true });
+  };
+  // Once: rows kept before every write was redacted (voice dictation filled its row unredacted until 0.1.80).
+  if ((db.prepare("pragma user_version").get() as { user_version: number }).user_version < 1) {
+    const rows = db
+      .prepare("select id, raw, cleaned, fixed, versions, audio from turns")
+      .all() as Row[];
+    for (const row of rows) {
+      const raw = String(row["raw"] ?? "");
+      const cleaned = row["cleaned"] === null ? null : String(row["cleaned"]);
+      const fixed = typeof row["fixed"] === "string" ? row["fixed"] : null;
+      const versions = parseVersions(row["versions"]);
+      const safe = safeWords({ raw, cleaned, fixed, versions });
+      if (
+        safe.raw === raw &&
+        safe.cleaned === cleaned &&
+        safe.fixed === fixed &&
+        JSON.stringify(safe.versions) === JSON.stringify(versions)
+      )
+        continue;
+      const secret = hasSecret({ raw, cleaned });
+      if (secret) dropAudio(row["audio"]);
+      db.prepare(
+        "update turns set raw = ?, cleaned = ?, fixed = ?, versions = ?, audio = ? where id = ?",
+      ).run(
+        safe.raw ?? raw,
+        safe.cleaned ?? null,
+        safe.fixed ?? null,
+        JSON.stringify(safe.versions ?? []),
+        secret ? null : ((row["audio"] as string | null) ?? null),
+        String(row["id"]),
+      );
+    }
+    db.exec("pragma user_version = 1");
+  }
   const get = (id: string): HistoryTurn | null => {
     const row = db.prepare(`select ${COLUMNS} from turns where id = ?`).get(id) as Row | undefined;
     return row === undefined ? null : toTurn(row);
@@ -194,7 +249,7 @@ export const openHistory = (
       const turn = safeWords(written);
       const id = newId();
       db.prepare(
-        `insert into turns (id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, seconds) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        `insert into turns (id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, seconds, cleanup) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
       ).run(
         id,
         turn.at,
@@ -208,11 +263,28 @@ export const openHistory = (
         turn.audio ?? null,
         turn.error,
         turn.seconds ?? null,
+        turn.cleanup ?? null,
       );
       return id;
     },
     update: (id, written) => {
-      const entries = Object.entries(safeWords(written)).filter(([, v]) => v !== undefined);
+      // A secret in the new words hides the stored ones too, and the recording of them.
+      const marked = hasSecret(written);
+      const stored = marked ? get(id) : null;
+      if (stored !== null) dropAudio(stored.audio);
+      const change = {
+        ...safeWords(written),
+        ...(stored === null
+          ? {}
+          : {
+              raw: REDACTED,
+              ...(stored.cleaned === null && written.cleaned === undefined
+                ? {}
+                : { cleaned: REDACTED }),
+              audio: null,
+            }),
+      };
+      const entries = Object.entries(change).filter(([, v]) => v !== undefined);
       if (entries.length === 0) return;
       const sets = entries.map(([key]) => `${key} = ?`).join(", ");
       const values = entries.map(([, v]) =>

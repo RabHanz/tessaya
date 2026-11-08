@@ -133,5 +133,8 @@ describe("a History retry's clean-up level", () => {
     // A password manager, or a row with no app (voice dictation), counts as secret.
     expect(retryCleanupLevel("claude", "1password.exe")).toBe("local");
     expect(retryCleanupLevel("claude", "")).toBe("local");
+    // Decided local when he dictated (a bank or sign-in page, known only by its title then): a retry stays local.
+    expect(retryCleanupLevel("claude", "chrome.exe", "local")).toBe("local");
+    expect(retryCleanupLevel("claude", "chrome.exe", "claude")).toBe("claude");
   });
 });

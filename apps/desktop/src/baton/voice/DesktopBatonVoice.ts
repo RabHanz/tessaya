@@ -216,7 +216,7 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
-import type { MemoryItem } from "@t3tools/baton-shared/memory";
+import { REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
 import {
   SERVER_MEMORY_NAME,
   applyRestore,
@@ -1330,10 +1330,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   input.extras?.setTransformHotkeys?.(transforms.read().enabled);
   /** Clean-up, then the spoken cues he saved expand (Snippets). */
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
+    const level = await levelNow(app);
     const out = await rewriter.clean({
       raw: biasTranscript(raw, dictionary),
       mode: chooseMode(app, settings.appModes),
-      level: await levelNow(app),
+      level,
     });
     // A name the model brought in is refused; the turn log keeps which, so a wrong refusal can be told from a right one.
     if (out.stage === "fallback" && out.why?.startsWith("new name") === true)
@@ -1350,7 +1351,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const rewritten = await autoRewrite(auto, text).catch(() => null);
       if (rewritten !== null) text = rewritten;
     }
-    return { ...out, text };
+    // The level decided here goes on its History row, so a retry never goes above it.
+    return { ...out, text, level };
   };
   let snippetNote = "";
   /** What Baton last put in a field, where an app will not say what is around the caret. */
@@ -1424,6 +1426,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Saves a clip for a turn, in the background, if he asked for it and the drive has room. */
   const keepAudio = (turnId: string | null, pcm: Int16Array | null) => {
     if (history === null || testRun || turnId === null || pcm === null || pcm.length === 0) return;
+    // A row redacted for a secret keeps no recording of it (the store also drops one kept before it was marked).
+    if (history.get(turnId)?.raw === REDACTED) return;
     const gate = saveGate(keepSettings(), freeBytesOf(input.stateDir));
     keepNote = gate.ok ? null : settings.keepVoice ? gate.reason : null;
     if (!gate.ok) return;
@@ -1462,6 +1466,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly delivery: string | null;
     readonly error?: string | null;
     readonly seconds?: number | null;
+    readonly cleanup?: "local" | "claude" | null;
   }): string | null => {
     if (history === null || testRun || turn.raw.trim().length === 0) return null;
     // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
@@ -1485,6 +1490,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         delivery: turn.delivery,
         error: turn.error ?? null,
         seconds: turn.seconds ?? null,
+        cleanup: turn.cleanup ?? null,
       });
     } catch {
       return null;
@@ -1610,7 +1616,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             .clean({
               raw: biasTranscript(heard, dictionary),
               mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
-              level: retryCleanupLevel(settings.dictationCleanup, turn.app),
+              level: retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup),
             })
             .catch(() => null);
           const settled = settleOneShot(heard, tidy);
@@ -1631,7 +1637,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         .clean({
           raw: biasTranscript(turn.raw, dictionary),
           mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
-          level: retryCleanupLevel(settings.dictationCleanup, turn.app),
+          level: retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup),
         })
         .catch(() => null);
       const { text, failed } = settleOneShot(turn.raw, cleaned);
@@ -3077,6 +3083,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       cleaned: fitted,
       status: failed ? "raw" : "ok",
       model: failed ? null : settings.cleanupModel,
+      cleanup: cleaned === null ? "local" : cleaned.level === "claude" ? "claude" : "local",
       delivery: "hold key",
       error: failed ? "Clean-up failed, inserted what was heard" : null,
     });

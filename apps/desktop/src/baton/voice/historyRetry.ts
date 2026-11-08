@@ -103,11 +103,16 @@ export const useVersion = (
 ): HistoryVersion | null => turn.versions[index] ?? null;
 
 /**
- * A retry's clean-up level: never above his setting, and local for an app marked secret or a row with no app (voice
- * dictation): unknown counts as secret, as it does when he dictates. "off" still tidies locally on a retry.
+ * A retry's clean-up level: never above his setting or what was decided when he dictated (a bank or sign-in page is
+ * known then by its title, which the row does not keep), and local for a secret app or a row with no app.
  */
 export const retryCleanupLevel = (
   setting: "off" | "local" | "claude",
   app: string,
+  decided: "local" | "claude" | null = null,
 ): "local" | "claude" =>
-  strictestCleanup<"claude">(setting === "claude" ? "claude" : "local", [{ exe: app, title: "" }]);
+  decided === "local"
+    ? "local"
+    : strictestCleanup<"claude">(setting === "claude" ? "claude" : "local", [
+        { exe: app, title: "" },
+      ]);
