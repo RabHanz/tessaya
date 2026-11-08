@@ -23,9 +23,13 @@ import type {
   PeerLinkSummary,
   ServerProvider,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -124,6 +128,33 @@ export const peerFleets = Effect.fn("BatonSessionsAcross.peerFleets")(function* 
   };
 });
 
+/**
+ * One run shared by every caller and kept for `ttlMs`. Unlike `Effect.cachedWithTTL`, a caller that gives up (the
+ * desktop's door stops at 20 s) does not abandon the run, so a slow listing finishes once instead of restarting forever.
+ */
+export const sharedRun = Effect.fn("BatonSessionsAcross.sharedRun")(function* <A, E>(
+  run: Effect.Effect<A, E>,
+  ttlMs: number,
+) {
+  const scope = yield* Scope.Scope;
+  let kept: { readonly at: number; readonly exit: Exit.Exit<A, E> } | null = null;
+  let running: Fiber.Fiber<A, E> | null = null;
+  return Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    if (kept !== null && now - kept.at < ttlMs) return yield* kept.exit;
+    running ??= yield* run.pipe(
+      Effect.onExit((exit) =>
+        Effect.map(Clock.currentTimeMillis, (at) => {
+          kept = { at, exit };
+          running = null;
+        }),
+      ),
+      Effect.forkIn(scope),
+    );
+    return yield* Fiber.join(running);
+  });
+});
+
 export class BatonSessionsAcross extends Context.Service<
   BatonSessionsAcross,
   {
@@ -169,10 +200,7 @@ export const make = Effect.gen(function* () {
     };
   });
   // Callers share one listing in flight and its answer for a few seconds, so a looping client cannot multiply peer calls.
-  const across = yield* Effect.cachedWithTTL(
-    Effect.provideContext(list(false), local),
-    "5 seconds",
-  );
+  const across = yield* sharedRun(Effect.provideContext(list(false), local), 5_000);
   const here = Effect.provideContext(list(true), local);
   return BatonSessionsAcross.of({
     list: Effect.fn("BatonSessionsAcross.listFor")(function* (input) {
