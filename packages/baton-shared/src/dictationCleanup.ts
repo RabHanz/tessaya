@@ -479,7 +479,7 @@ export const checkRewrite = (
     if (!inLower.includes(lower) && !known.has(lower)) return fail(`new name ${name}`);
   }
   // One of his words the answer brought in needs something in what he said that it is: itself, split, or a form
-  // it is known to be heard as. "clipping venture" never becomes VentureOS.
+  // it is known to be heard as. "clipping kuber" never becomes Kubernetes.
   const said = (form: string) =>
     new RegExp(
       String.raw`(?<![\p{L}\p{N}])${form
