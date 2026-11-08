@@ -271,6 +271,13 @@ export const DICTIONARY_CASES: ReadonlyArray<CleanupCase> = [
     keep: ["button UI", "click the button", "with button presses", "update to Baton"],
     dictionary: [{ phrase: "Baton", replacement: null, heard: ["button"] }],
   },
+  // Control: an everyday word near his taught word never becomes it ("clipping venture").
+  {
+    raw: "And about the clipping kuber, does it also need any starting funds or is it completely free?",
+    keep: ["clipping kuber"],
+    gone: ["Kubernetes"],
+    dictionary: [{ phrase: "Kubernetes", replacement: null, heard: ["Cooper Netties"] }],
+  },
   {
     raw: "Did the build pass? And did anyone tell Sam it shipped?",
     keep: ["pass?", "shipped?"],
