@@ -3286,6 +3286,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     render();
   };
 
+  /** The target window's rect in DIP: the pill shows on its screen. Read by the pill as soon as it is built. */
+  let workRect: Electron.Rectangle | null = null;
   const pill: VoicePill = createVoicePill({
     look: () => ({ motion: settings.motion, glass: settings.glass }),
     menuItems: () => [
@@ -3315,6 +3317,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     holdEscape: input.holdEscape,
     onDictation: (insert) => endVoiceDictation(insert),
     voiceDictating: () => dictatingByVoice,
+    workArea: () => workRect,
     onDismiss: () => {
       // Spoken dictation ends only by its ✓, ✕, Esc or "stop dictation", never a stray click on the pill.
       if (dictatingByVoice || undoDiscard()) return;
@@ -3369,6 +3372,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     })().catch(() => undefined);
   }, 3_000).unref();
   let dictatingByVoice = false;
+  /** The target window's rect is read in the background: only the newest read may move the pill. */
+  let workReads = 0;
+  const noteWork = (app: Promise<FocusedApp | null> | null) => {
+    const read = (workReads += 1);
+    void app?.then((found) => {
+      if (read !== workReads) return;
+      workRect = found?.rect == null ? null : Electron.screen.screenToDipRect(null, found.rect);
+      pill.retarget();
+    });
+    return app;
+  };
   const stateTurn = (next: VoiceState, target: string | null): TurnEvent | null => {
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
@@ -3376,7 +3390,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Where he is as dictation starts; the turn that started it may have used the wake's.
       if (!wasDictating) {
         // Bound to the window it starts in; the words wait here and go there in one paste when it ends.
-        const target = sidecar === null ? null : sidecar.foreground().catch(() => null);
+        const target = sidecar === null ? null : noteWork(sidecar.foreground().catch(() => null));
         dictationHold.start(target);
         void duck.start(settings.duckWhileDictating);
         collecting = true;
@@ -3433,7 +3447,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "wake":
           // Read before anything of ours shows: what he had in front of him when he said the name.
           if (!dictatingByVoice && sidecar !== null)
-            dictationHold.setTarget(sidecar.foreground().catch(() => null));
+            dictationHold.setTarget(noteWork(sidecar.foreground().catch(() => null)));
           // Before she answers, and after the target is read: he may have put headphones on since the last look.
           setImmediate(() => void output.refresh());
           return { type: "wake", word: wordName(event.word) };

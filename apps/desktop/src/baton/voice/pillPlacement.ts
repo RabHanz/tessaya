@@ -1,6 +1,6 @@
 /**
- * Where the pill sits (D141). Dragged, it keeps its place per display as a fraction of that display's
- * work area, so a change of resolution, scaling or taskbar moves it with the screen and never off it.
+ * Where the pill sits (D141). Dragged, it keeps one place as a fraction of a work area, so it lands in the same spot
+ * on whichever screen is active, and a change of resolution, scaling or taskbar moves it with the screen, never off it.
  * Pure, so the arithmetic is testable without a display.
  */
 export interface Area {
@@ -149,3 +149,44 @@ export const cursorOverCapsule = (
   cursor.x <= window.x + capsule.x + capsule.width + pad &&
   cursor.y >= window.y + capsule.y - pad &&
   cursor.y <= window.y + capsule.y + capsule.height + pad;
+
+export interface Screen {
+  readonly id: number;
+  readonly bounds: Area;
+  readonly workArea: Area;
+}
+
+const inside = (area: Area, x: number, y: number): boolean =>
+  x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height;
+
+const overlap = (a: Area, b: Area): number =>
+  Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+
+/**
+ * The screen where the work is, all in DIP: the one holding most of the target window, else the cursor's, else the
+ * primary. Picked when the pill appears or the target changes, never as the cursor moves.
+ */
+export const pickScreen = <S extends Screen>(
+  screens: ReadonlyArray<S>,
+  primary: S,
+  at: {
+    readonly window?: Area | null;
+    readonly cursor?: { readonly x: number; readonly y: number } | null;
+  },
+): S => {
+  const { window, cursor } = at;
+  if (window != null) {
+    const most = screens
+      .map((s) => ({ s, shared: overlap(s.bounds, window) }))
+      .sort((a, b) => b.shared - a.shared)[0];
+    if (most !== undefined && most.shared > 0) return most.s;
+  }
+  const byCursor =
+    cursor == null ? undefined : screens.find((s) => inside(s.bounds, cursor.x, cursor.y));
+  return byCursor ?? primary;
+};
+
+/** His one place for every screen; a place saved per screen by an older version stands in until he moves it again. */
+export const sharedSpot = (spots: Readonly<Record<string, Spot>>): Spot | undefined =>
+  spots["any"] ?? Object.values(spots)[0];
