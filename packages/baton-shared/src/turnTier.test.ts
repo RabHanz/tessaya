@@ -9,6 +9,7 @@ import {
   modelCommand,
   tierBrains,
   tierOfSentence,
+  createTierMemories,
 } from "./turnTier.ts";
 
 const opus = { model: "opus", effort: "medium" };
@@ -66,6 +67,27 @@ describe("which model answers a chat turn", () => {
     expect(chooseTurnBrain("what time is it", opus, "deep").tier).toBe("fast");
     // A yes after a quick answer may start real work: never carried on the fast model.
     expect(chooseTurnBrain("yes, go ahead", opus, "fast").tier).toBe("default");
+  });
+
+  it("talks rather than answers a lookup while a conversation with the persona is going (PRESENCE rule 5)", () => {
+    // Mid-conversation a greeting or a short question is conversation: the default model, not the fast one.
+    for (const said of ["hi", "how are you", "who is that?", "is it any good?"])
+      expect([said, chooseTurnBrain(said, opus, "default").tier]).toEqual([said, "default"]);
+    // The clock and status stay quick, in a conversation or not.
+    expect(chooseTurnBrain("what time is it", opus, "default").tier).toBe("fast");
+    expect(chooseTurnBrain("what needs me?", opus, "default").tier).toBe("fast");
+    // Out of a conversation a greeting is still quick.
+    expect(chooseTurnBrain("hi", opus).tier).toBe("fast");
+  });
+
+  it("keeps each persona's last tier apart, so Freya's yes never inherits Alfred's", () => {
+    let t = 0;
+    const tiers = createTierMemories(() => t);
+    tiers.of("alfred").settled("deep");
+    expect(tiers.of("alfred").previous()).toBe("deep");
+    expect(tiers.of("freya").previous()).toBeNull();
+    t = TIER_CARRY_MS + 1;
+    expect(tiers.of("alfred").previous()).toBeNull();
   });
 
   it("warms every model a persona's turns can land on, the likeliest first", () => {

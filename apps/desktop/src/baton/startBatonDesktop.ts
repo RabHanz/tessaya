@@ -680,7 +680,8 @@ export const startBatonDesktop = Effect.gen(function* () {
               turnLog.event(event);
               // He is about to say something: have the sessions up before he finishes.
               if (event.type === "wake") {
-                screen?.warm();
+                // Only the persona he named is warmed (P1), before he has finished speaking.
+                screen?.warm(event.word);
                 if (!dictating) lastWake = event.word;
               }
               if (event.type === "state") dictating = event.state === "dictation";

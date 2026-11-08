@@ -277,7 +277,7 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("keeps a warm session per model on one conversation, at most three", async () => {
+  it("keeps a warm session per model on one conversation, at most four", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
     const started: string[] = [];
@@ -318,6 +318,70 @@ describe("the one assistant's session", () => {
     await agent.say("hello", { window: null, session: null, brain: { model: "x", effort: "low" } });
     await agent.say("hello", { window: null, session: null, brain: { model: "y", effort: "low" } });
     await vi.waitFor(() => expect(disposed).toEqual(["x"]));
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps each persona's sessions apart in one pool of four, and warms only the one he woke (P1)", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    const disposed: string[] = [];
+    let tick = 0;
+    let n = 0;
+    const agent = createAssistantAgent({
+      now: () => (tick += 1),
+      start: async (prompt, brain) => {
+        const name = `${brain?.model ?? "none"}#${(n += 1)}`;
+        started.push(name);
+        return {
+          ask: async () => `${name} answer`,
+          alive: () => true,
+          dispose: () => void disposed.push(name),
+        };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const sonnet = { model: "sonnet", effort: "medium" };
+    const haiku = { model: "haiku", effort: "low" };
+    const persona = (id: string) => ({ id, name: id, role: "" });
+    // Freya's wake warms Freya's tiers only.
+    agent.warm([sonnet, haiku], "freya");
+    await agent.say("hello", {
+      window: null,
+      session: null,
+      brain: sonnet,
+      persona: persona("freya"),
+    });
+    expect(agent.lastStart()).toBe("warm");
+    await vi.waitFor(() => expect(started).toEqual(["sonnet#1", "haiku#2"]));
+    // Alfred on the same model gets a session of his own, cold because his wake did not come first.
+    await agent.say("hello", {
+      window: null,
+      session: null,
+      brain: sonnet,
+      persona: persona("alfred"),
+    });
+    expect(agent.lastStart()).toBe("cold");
+    expect(started).toEqual(["sonnet#1", "haiku#2", "sonnet#3"]);
+    // Alfred's wake: his tiers are kept, and making room takes Freya's, never his.
+    agent.warm([sonnet, haiku], "alfred");
+    await agent.say("again", {
+      window: null,
+      session: null,
+      brain: haiku,
+      persona: persona("alfred"),
+    });
+    expect(agent.lastStart()).toBe("cold");
+    await agent.say("more", {
+      window: null,
+      session: null,
+      brain: { model: "opus", effort: "high" },
+      persona: persona("alfred"),
+    });
+    await vi.waitFor(() => expect(disposed).toHaveLength(1));
+    expect(["sonnet#1", "haiku#2"]).toContain(disposed[0]);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

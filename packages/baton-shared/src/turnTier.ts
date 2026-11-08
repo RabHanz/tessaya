@@ -171,7 +171,10 @@ const autoTurnBrain = (said: string, ceiling: Brain, previous: TurnTier | null):
     previous !== null && own.why === "short reply"
       ? // A yes to a quick answer may start real work: it is never carried on the fast model.
         { tier: previous === "fast" ? "default" : previous, why: "answers the last turn" }
-      : own;
+      : previous !== null && (own.why === "greeting" || own.why === "short question")
+        ? // PRESENCE rule 5: in a conversation with the persona, "how are you" or "what do you think?" is talk.
+          { tier: "default" as TurnTier, why: "in conversation" }
+        : own;
   const tier = TIERS[Math.min(TIERS.indexOf(picked.tier), TIERS.indexOf(top))]!;
   return {
     tier,
@@ -216,6 +219,20 @@ export const createTierMemory = (now: () => number = Date.now) => {
     /** A device's or agent's turn is not his: his next yes does not answer it. */
     settled: (tier: TurnTier, outside = false) => {
       if (!outside) last = { tier, at: now() };
+    },
+  };
+};
+
+/** One last-tier memory per persona (P1): Freya's "yes" never carries Alfred's deep planning turn. */
+export const createTierMemories = (now: () => number = Date.now) => {
+  const each = new Map<string, ReturnType<typeof createTierMemory>>();
+  return {
+    of: (persona: string) => {
+      const found = each.get(persona);
+      if (found !== undefined) return found;
+      const made = createTierMemory(now);
+      each.set(persona, made);
+      return made;
     },
   };
 };
