@@ -137,6 +137,7 @@ import {
   reviewSkill,
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
+import { createInOrder } from "./inOrder.ts";
 import { createVolumeDuck } from "./volumeDuck.ts";
 import { pronounceFrom } from "./pronounce.ts";
 import {
@@ -394,6 +395,7 @@ import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, wantsMoving, type VoicePill } from "./voicePill.ts";
 import {
   dictationCaption,
+  createSpeechGain,
   frameLevel,
   isCancelPhrase,
   type TurnEvent,
@@ -1138,6 +1140,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The sidecar is recording or writing out a key dictation (`busyAfter`). */
   let sidecarBusy = false;
   let lastDictation: string | null = null;
+  /** Every paste of his words, one at a time in the order he spoke: the hold key's and the buffered flush's. */
+  const pasteInOrder = createInOrder();
+  /** The pill's bars follow his speech, not full scale. */
+  const pillGain = createSpeechGain();
   /** What Baton last answered, so Copy last transcript can take it; cleared by his next words. */
   let lastReply: string | null = null;
   let spokenTurnId: string | null = null;
@@ -1730,17 +1736,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         : sidecar === null || flushApp.window === undefined
           ? // Never into whatever has the keyboard now: with no window of its own the words are kept.
             Promise.resolve(false)
-          : (async (target: number) => {
-              keptWhy = "refused";
-              const focused = await sidecar.focusWindow(target).catch(() => ({ error: "gone" }));
-              if (focused.error !== undefined) return ((keptWhy = "gone"), false);
-              // The same window but another page or document now: his words were not for that.
-              const now = await sidecar.foreground().catch(() => null);
-              if (now === null || now.window !== target || now.title !== flushApp.title)
-                return ((keptWhy = "changed"), false);
-              if (await sidecar.pasteInto(text, target).catch(() => false)) return true;
-              return ((keptWhy = "refused"), false);
-            })(flushApp.window),
+          : ((side: NonNullable<typeof sidecar>, target: number, title: string) =>
+              pasteInOrder(async () => {
+                keptWhy = "refused";
+                const focused = await side.focusWindow(target).catch(() => ({ error: "gone" }));
+                if (focused.error !== undefined) return ((keptWhy = "gone"), false);
+                // The same window but another page or document now: his words were not for that.
+                const now = await side.foreground().catch(() => null);
+                if (now === null || now.window !== target || now.title !== title)
+                  return ((keptWhy = "changed"), false);
+                if (await side.pasteInto(text, target).catch(() => false)) return true;
+                return ((keptWhy = "refused"), false);
+              }))(sidecar, flushApp.window, flushApp.title),
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
@@ -1876,8 +1883,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         focusedApp;
       const { text } = await writeClean(request.text, app);
       const fitted = await fitToCaret(text, app);
-      if (app.window === undefined) return sidecar.paste(fitted);
-      if (await sidecar.pasteInto(fitted, app.window).catch(() => false)) return;
+      const target = app.window;
+      const side = sidecar;
+      const pasted = await pasteInOrder(async () =>
+        target === undefined
+          ? (await side.paste(fitted), true)
+          : side.pasteInto(fitted, target).catch(() => false),
+      );
+      if (pasted) return;
       // The router hears inserted: false, and the outcome keeps the words on the pill and in the tray.
       throw new Error("Not pasted");
     },
@@ -3064,14 +3077,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
   /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
-  const deliver = async (raw: string, target: number | null | undefined) => {
-    const cleaned = await writeClean(raw, focusedApp).catch(() => null);
+  /** `app` is the window it was spoken in, captured when it was queued: a later dictation may have moved focus. */
+  const deliver = async (raw: string, target: number | null | undefined, app: FocusedApp) => {
+    const cleaned = await writeClean(raw, app).catch(() => null);
     const { text, failed } = settleOneShot(raw, cleaned);
-    const fitted = text.length === 0 ? text : await fitToCaret(text, focusedApp);
+    const fitted = text.length === 0 ? text : await fitToCaret(text, app);
     lastDictation = fitted;
     const turnId = record({
       kind: "dictation",
-      app: focusedApp.exe,
+      app: app.exe,
       raw,
       cleaned: fitted,
       status: failed ? "raw" : "ok",
@@ -3151,8 +3165,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       note = event.message;
       showDictation(null);
       pill.on({ type: "trouble", message: event.message });
+    } else if (event.ev === "paste_check") {
+      // What the clipboard held at the chord and whether the target read it, for the turn log (no words).
+      input.onNote?.("paste_check", { ...event });
     } else if (event.ev === "unread") {
-      keepText("Nothing took the paste. On your clipboard", event.text);
+      keepText(
+        event.onClipboard === false ? "Not pasted" : "Nothing took the paste. On your clipboard",
+        event.text,
+      );
     } else if (event.ev === "text" && typeof event.wav === "string") {
       const wav = event.wav;
       // One at a time, so dictations arrive in the order he spoke them; the paste re-checks its window (pasteInto).
@@ -3179,7 +3199,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return void heardOutside(outside);
       }
       if (event.dictated === true && event.error === undefined)
-        return void deliver(text, event.target);
+        return void pasteInOrder(() => deliver(text, event.target, focusedApp)).catch(
+          (error: unknown) => keepText(error instanceof Error ? error.message : "Not pasted", text),
+        );
       if (text.length > 0) lastDictation = text;
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
@@ -3862,7 +3884,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       onLevel: (frame) => {
         const level = frameLevel(frame);
         micNow = level;
-        pill.micLevel(level);
+        pill.micLevel(level, pillGain(level));
         silence.feed(level, Date.now());
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
       },
@@ -6768,7 +6790,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (clear?.click as (() => void) | undefined)?.();
     },
     pasteLast: () => {
-      if (lastDictation !== null && lastDictation !== "") void sidecar?.paste(lastDictation);
+      const last = lastDictation;
+      const side = sidecar;
+      if (last !== null && last !== "" && side !== null)
+        void pasteInOrder(() => side.paste(last)).catch(() => keepText("Not pasted", last));
     },
     ask: () => {
       const ask = input.extras?.menuItems().find((i) => i.label === "Ask Tessaya…");

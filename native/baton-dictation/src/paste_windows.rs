@@ -33,113 +33,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::keys::{send_chord, PasteMethod};
+use crate::paste_tx::{
+    evaluate, held_at_chord, take_over, Held, TakeOver, TxState, WaitDecision, RESTORE_TIMEOUT,
+};
 
 fn log(message: &str) {
     eprintln!("{message}");
-}
-
-/// How long after the *last* observed read the transcript stays on the
-/// clipboard before restoring. Covers applications that read the clipboard
-/// several times per paste (e.g. Chromium probe-then-read).
-const QUIET_PERIOD: Duration = Duration::from_millis(200);
-
-/// Upper bound on how long the transcript may occupy the clipboard before we
-/// restore regardless of receipts. Long enough that a realistically loaded
-/// target always gets to read first; short enough that a lost keystroke does
-/// not strand the transcript on the clipboard for long.
-const RESTORE_TIMEOUT: Duration = Duration::from_secs(8);
-
-/// When the chord could not be injected at all, no legitimate receipt can
-/// arrive, so restore quickly instead of waiting out the full timeout.
-const FAILED_INJECTION_TIMEOUT: Duration = Duration::from_millis(500);
-
-/// Shared, cross-thread record of one paste transaction.
-#[derive(Debug)]
-struct TxState {
-    /// When the transcript was published to the clipboard.
-    pub published_at: Instant,
-    /// When the paste chord was injected. Only receipts *after* this count as
-    /// evidence the target read the transcript — earlier reads are eager third
-    /// parties reacting to the clipboard change itself.
-    pub injected_at: Option<Instant>,
-    /// The chord could not be sent; short-circuit the wait.
-    pub injection_failed: bool,
-    /// Times at which a consumer requested the clipboard data.
-    pub receipts: Vec<Instant>,
-    /// Someone else took clipboard ownership (user copied elsewhere, ...).
-    pub ownership_lost: bool,
-    /// A newer paste transaction settled this one early (see flush logic in
-    /// the platform modules).
-    pub cancelled: bool,
-    /// First post-injection receipt has been logged.
-    pub logged_receipt: bool,
-}
-
-impl TxState {
-    pub fn new() -> Self {
-        Self {
-            published_at: Instant::now(),
-            injected_at: None,
-            injection_failed: false,
-            receipts: Vec::new(),
-            ownership_lost: false,
-            cancelled: false,
-            logged_receipt: false,
-        }
-    }
-
-    /// Records a read receipt, logging the first one that counts as evidence.
-    pub fn record_receipt(&mut self, at: Instant) {
-        self.receipts.push(at);
-        if !self.logged_receipt {
-            if let Some(injected) = self.injected_at {
-                if at >= injected {
-                    self.logged_receipt = true;
-                    log(&format!(
-                        "[reliable-paste] clipboard read {}ms after chord",
-                        at.duration_since(injected).as_millis()
-                    ));
-                }
-            }
-        }
-    }
-
-    pub fn last_receipt_after_injection(&self) -> Option<Instant> {
-        let injected = self.injected_at?;
-        self.receipts.iter().copied().rev().find(|t| *t >= injected)
-    }
-
-    pub fn any_receipt_after_injection(&self) -> bool {
-        self.last_receipt_after_injection().is_some()
-    }
-}
-
-enum WaitDecision {
-    KeepWaiting,
-    /// Stop waiting; settle the transaction (auto-submit + guarded restore).
-    Finish,
-}
-
-/// Pure decision: given the current transaction state, keep waiting for the
-/// target to read, or finish now. Both platform event loops call this.
-fn evaluate(state: &TxState, now: Instant) -> WaitDecision {
-    if state.ownership_lost || state.cancelled {
-        return WaitDecision::Finish;
-    }
-    if let Some(last) = state.last_receipt_after_injection() {
-        if now.duration_since(last) >= QUIET_PERIOD {
-            return WaitDecision::Finish;
-        }
-    }
-    let deadline = if state.injection_failed {
-        FAILED_INJECTION_TIMEOUT
-    } else {
-        RESTORE_TIMEOUT
-    };
-    if now.duration_since(state.published_at) >= deadline {
-        return WaitDecision::Finish;
-    }
-    WaitDecision::KeepWaiting
 }
 
 const CLASS_NAME: PCWSTR = w!("BatonPasteTxWindow");
@@ -163,6 +62,8 @@ pub(super) struct WinTxShared {
     /// Copied HBITMAP (as raw usize), restored via SetClipboardData.
     saved_bitmap: Mutex<Option<usize>>,
     sequence: Mutex<u32>,
+    /// The message window that owns the clipboard while the transcript is on it (as raw isize).
+    owner: Mutex<isize>,
 }
 
 /// The transaction currently holding the clipboard, if any. A new
@@ -226,7 +127,15 @@ unsafe extern "system" fn paste_wnd_proc(
             if !shared.is_null() {
                 let shared = &*shared;
                 if let Ok(mut st) = shared.state.lock() {
-                    st.record_receipt(Instant::now());
+                    let at = Instant::now();
+                    if st.record_receipt(at) {
+                        if let Some(injected) = st.injected_at {
+                            log(&format!(
+                                "[reliable-paste] clipboard read {}ms after chord",
+                                at.duration_since(injected).as_millis()
+                            ));
+                        }
+                    }
                 }
                 if wparam.0 as u32 == CF_UNICODETEXT.0 as u32 {
                     render_text(shared);
@@ -286,30 +195,72 @@ fn ensure_window_class(hinstance: HINSTANCE) {
     });
 }
 
-/// If a previous transaction is still holding the clipboard, settle it now so
-/// the snapshot below captures the user's original clipboard content. The
-/// previous worker observes `cancelled` on its next timer tick and tears down
-/// without restoring.
-fn flush_pending() {
-    let previous = match PENDING.lock() {
-        Ok(mut slot) => slot.take(),
-        Err(_) => None,
-    };
-    let Some(previous) = previous else {
-        return;
-    };
-    match previous.state.lock() {
-        Ok(mut st) => st.cancelled = true,
-        Err(_) => return,
-    }
-    let sequence = *previous.sequence.lock().unwrap();
-    let still_ours = unsafe { GetClipboardSequenceNumber() } == sequence;
-    if still_ours {
-        unsafe { restore_snapshot(&previous) };
+fn is_pending(shared: &WinTxShared) -> bool {
+    PENDING
+        .lock()
+        .map(|slot| {
+            slot.as_ref()
+                .map(|pending| Arc::as_ptr(pending) == shared as *const WinTxShared)
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
+fn clear_pending(shared: &WinTxShared) {
+    if let Ok(mut slot) = PENDING.lock() {
+        let is_us = slot
+            .as_ref()
+            .map(|pending| Arc::as_ptr(pending) == shared as *const WinTxShared)
+            .unwrap_or(false);
+        if is_us {
+            *slot = None;
+        }
     }
 }
 
-/// Restores the snapshotted clipboard contents. Safe to call from any thread.
+/// Before a new paste snapshots the clipboard: wait for the previous one's target to read it, then let it settle as
+/// its own timer would (`take_over`), so the snapshot is his clipboard and never an earlier transcript.
+fn flush_pending() {
+    let Some(previous) = PENDING.lock().ok().and_then(|slot| slot.clone()) else {
+        return;
+    };
+    let started = Instant::now();
+    let decision = loop {
+        let decision = previous
+            .state
+            .lock()
+            .map(|st| take_over(&st, Instant::now()))
+            .unwrap_or(TakeOver::Settle);
+        if decision != TakeOver::Wait || started.elapsed() >= RESTORE_TIMEOUT {
+            break decision;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    if decision == TakeOver::Settle {
+        // Its timer (every 25 ms) settles it now; this only waits for that.
+        let settling = Instant::now();
+        while settling.elapsed() < Duration::from_millis(200) {
+            if !is_pending(&previous) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+    // Taken over: settled here as its timer would, so an unread one keeps its words; never a forced restore.
+    {
+        let Ok(mut st) = previous.state.lock() else {
+            return;
+        };
+        if st.cancelled {
+            return;
+        }
+        st.cancelled = true;
+        st.taken_over = true;
+    }
+    settle(&previous);
+    clear_pending(&previous);
+}
+
 /// Nothing read the transcript: it stays on the clipboard, and the app is told, so it is not lost.
 unsafe fn leave_transcript(shared: &WinTxShared) {
     if OpenClipboard(None).is_ok() {
@@ -319,10 +270,11 @@ unsafe fn leave_transcript(shared: &WinTxShared) {
     }
 }
 
-unsafe fn restore_snapshot(shared: &WinTxShared) {
+/// Puts the snapshotted clipboard back. Safe to call from any thread; false when the clipboard could not be opened.
+unsafe fn restore_snapshot(shared: &WinTxShared) -> bool {
     if OpenClipboard(None).is_err() {
         log(&format!("paste: could not open clipboard to restore"));
-        return;
+        return false;
     }
     let _ = EmptyClipboard();
     if let Ok(formats) = shared.snapshot.lock() {
@@ -353,6 +305,49 @@ unsafe fn restore_snapshot(shared: &WinTxShared) {
     }
     let _ = CloseClipboard();
     log(&format!("paste: restored previous clipboard"));
+    true
+}
+
+/// Ends one transaction: his clipboard back when the target read it, the words left when nothing did, and nothing
+/// touched when something else wrote the clipboard since. Called once, by its timer or by a newer paste.
+fn settle(shared: &WinTxShared) {
+    let (receipt, ownership_lost, injection_failed) = match shared.state.lock() {
+        Ok(st) => (
+            st.any_receipt_after_injection(),
+            st.ownership_lost,
+            st.injection_failed,
+        ),
+        Err(_) => return,
+    };
+    if ownership_lost {
+        log(&format!("paste: settling: clipboard ownership lost"));
+    } else if receipt {
+        log(&format!("paste: settling: reads went quiet"));
+    } else if injection_failed {
+        log(&format!("paste: settling: chord injection failed"));
+    } else {
+        log(&format!("paste: settling: nothing read it; leaving the words"));
+    }
+    let sequence = *shared.sequence.lock().unwrap();
+    let still_ours = !ownership_lost && unsafe { GetClipboardSequenceNumber() } == sequence;
+    let restored = still_ours && receipt && unsafe { restore_snapshot(shared) };
+    if still_ours && !receipt {
+        unsafe { leave_transcript(shared) };
+    }
+    if !still_ours {
+        log(&format!("paste: clipboard changed externally; leaving it untouched"));
+    }
+    crate::emit(serde_json::json!({
+        "ev": "paste_check",
+        "phase": "settled",
+        "read": receipt,
+        "restored": restored,
+        "changedOutside": !still_ours,
+    }));
+    // Unread words are never dropped: on the clipboard when they are still there, otherwise kept by the desktop.
+    if !receipt {
+        crate::emit(serde_json::json!({"ev": "unread", "text": shared.text, "onClipboard": still_ours}));
+    }
 }
 
 unsafe fn snapshot_clipboard(hwnd: HWND, shared: &WinTxShared) -> Result<(), String> {
@@ -471,74 +466,33 @@ unsafe fn publish_formats() -> Result<(), String> {
 }
 
 fn on_timer(_hwnd: HWND, shared: &WinTxShared) {
-    let now = Instant::now();
-    let finish = {
+    enum Next {
+        Wait,
+        Settle,
+        Quit,
+    }
+    let next = {
         let mut st = match shared.state.lock() {
             Ok(st) => st,
             Err(_) => return,
         };
-        if st.cancelled {
-            true
+        if st.taken_over || st.cancelled {
+            Next::Quit
+        } else if evaluate(&st, Instant::now()) == WaitDecision::Finish {
+            st.cancelled = true;
+            Next::Settle
         } else {
-            match evaluate(&st, now) {
-                WaitDecision::KeepWaiting => false,
-                WaitDecision::Finish => {
-                    st.cancelled = true;
-                    true
-                }
-            }
+            Next::Wait
         }
     };
-    if !finish {
-        return;
-    }
-
-    let (receipt, ownership_lost, injection_failed) = {
-        let st = match shared.state.lock() {
-            Ok(st) => st,
-            Err(_) => return,
-        };
-        (
-            st.any_receipt_after_injection(),
-            st.ownership_lost,
-            st.injection_failed,
-        )
-    };
-    if ownership_lost {
-        log(&format!("paste: settling: clipboard ownership lost"));
-    } else if receipt {
-        log(&format!("paste: settling: reads went quiet"));
-    } else if injection_failed {
-        log(&format!("paste: settling: chord injection failed, restoring quickly"));
-    } else {
-        log(&format!("paste: settling: no read within timeout, restoring anyway"));
-    }
-
-    let sequence = *shared.sequence.lock().unwrap();
-    let still_ours = !ownership_lost && unsafe { GetClipboardSequenceNumber() } == sequence;
-    if still_ours {
-        if receipt {
-            unsafe { restore_snapshot(shared) };
-        } else {
-            unsafe { leave_transcript(shared) };
+    match next {
+        Next::Wait => return,
+        Next::Settle => {
+            settle(shared);
+            clear_pending(shared);
         }
-    } else {
-        log(&format!("paste: clipboard changed externally; leaving it untouched"));
+        Next::Quit => {}
     }
-    if !receipt {
-        crate::emit(serde_json::json!({"ev": "unread", "text": shared.text}));
-    }
-
-    if let Ok(mut slot) = PENDING.lock() {
-        let is_us = slot
-            .as_ref()
-            .map(|pending| Arc::as_ptr(pending) as *const WinTxShared == shared as *const _)
-            .unwrap_or(false);
-        if is_us {
-            *slot = None;
-        }
-    }
-
     unsafe {
         PostQuitMessage(0);
     }
@@ -615,6 +569,7 @@ fn pump_thread(shared: Arc<WinTxShared>, ready: Sender<Result<(), String>>) {
             }
         };
         *shared.sequence.lock().unwrap() = sequence;
+        *shared.owner.lock().unwrap() = hwnd.0 as isize;
         shared.state.lock().unwrap().published_at = Instant::now();
         if let Ok(mut slot) = PENDING.lock() {
             *slot = Some(shared.clone());
@@ -638,11 +593,12 @@ pub fn run(
     enigo: &mut enigo::Enigo,
 ) -> Result<(), String> {
     let shared = Arc::new(WinTxShared {
-        state: Mutex::new(TxState::new()),
+        state: Mutex::new(TxState::new(Instant::now())),
         text: text.to_string(),
         snapshot: Mutex::new(Vec::new()),
         saved_bitmap: Mutex::new(None),
         sequence: Mutex::new(0),
+        owner: Mutex::new(0),
     });
 
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
@@ -657,6 +613,29 @@ pub fn run(
         Err(_) => return Err("reliable paste worker died before publishing".to_string()),
     }
     log(&format!("paste: published transcript (delayed render)"));
+
+    // Only our own, unchanged transcript is pasted: if anything wrote the clipboard since we published, the chord
+    // would paste that under his dictation's name.
+    let held = unsafe {
+        let owner = *shared.owner.lock().unwrap();
+        held_at_chord(
+            *shared.sequence.lock().unwrap(),
+            GetClipboardSequenceNumber(),
+            GetClipboardOwner().map(|h| h.0 as isize == owner).unwrap_or(false),
+        )
+    };
+    crate::emit(serde_json::json!({
+        "ev": "paste_check",
+        "phase": "chord",
+        "held": if held == Held::Ours { "ours" } else { "other" },
+        "chars": text.chars().count(),
+    }));
+    if held == Held::Other {
+        if let Ok(mut st) = shared.state.lock() {
+            st.injection_failed = true;
+        }
+        return Err("Something else was put on the clipboard before the paste, so nothing was pasted.".to_string());
+    }
 
     // Mark injection *before* sending: enigo holds the chord for ~100ms and a
     // fast target may legitimately read while the chord is still held.

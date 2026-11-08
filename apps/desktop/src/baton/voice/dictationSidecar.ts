@@ -139,8 +139,19 @@ export type DictationEvent =
   | { readonly ev: "loading"; readonly elapsedMs: number }
   | { readonly ev: "idle" }
   | { readonly ev: "error"; readonly message: string }
+  /** Just before the chord, what the clipboard held (ours or something else); when settled, whether it was read. */
+  | {
+      readonly ev: "paste_check";
+      readonly phase: "chord" | "settled";
+      readonly held?: "ours" | "other";
+      readonly chars?: number;
+      readonly read?: boolean;
+      readonly restored?: boolean;
+      readonly changedOutside?: boolean;
+    }
   /** The paste chord went out and nothing read the clipboard. */
-  | { readonly ev: "unread"; readonly text: string }
+  /** False when something else wrote the clipboard since: the desktop keeps the words (tray: Copy last transcript). */
+  | { readonly ev: "unread"; readonly text: string; readonly onClipboard?: boolean }
   | {
       readonly ev: "text";
       readonly id: number | null;
