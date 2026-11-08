@@ -4,12 +4,24 @@
  * says what the session itself answered, never what was only typed. A session not in Herdr offers to be brought in.
  */
 import { effortCommand } from "@t3tools/baton-shared/liveModel";
-import type { EnvironmentId, ProviderOptionSelection, ScopedThreadRef } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import type {
+  EnvironmentId,
+  ModelSelection,
+  ProviderOptionSelection,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { newThreadId } from "~/lib/utils";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { waitForThreadShell } from "../../state/entities";
+import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { toastManager } from "../ui/toast";
 import type { TraitsSelectionInput } from "./TraitsPicker";
 
@@ -101,5 +113,46 @@ export function useLiveTraits(
         }),
       );
     },
+  };
+}
+
+/**
+ * "Continue in <provider>" from a live thread: T3's own fork of the conversation into a new thread on that model, so
+ * its first send hands the context over (T3's provider switch). The terminal session and its thread stay as they are.
+ */
+export function useContinueInNewThread() {
+  const fork = useAtomCommand(threadEnvironment.forkFromRun, { reportFailure: false });
+  const navigate = useNavigate();
+  return async (
+    thread: EnvironmentThreadShell,
+    selection: ModelSelection,
+    providerName: string,
+  ) => {
+    const runId = thread.latestRun?.runId;
+    if (runId === undefined) {
+      toastManager.add({
+        type: "info",
+        title: "Nothing to continue yet",
+        description: "Send a message in the session first.",
+      });
+      return;
+    }
+    const targetThreadId = newThreadId();
+    const result = await fork({
+      environmentId: thread.environmentId,
+      input: {
+        sourceThreadId: thread.id,
+        targetThreadId,
+        runId,
+        title: `${thread.title} (${providerName})`,
+      },
+    });
+    const target = scopeThreadRef(thread.environmentId, targetThreadId);
+    if (result._tag !== "Success" || !(await waitForThreadShell(target))) {
+      toastManager.add({ type: "error", title: `Could not continue in ${providerName}` });
+      return;
+    }
+    useComposerDraftStore.getState().setModelSelection(target, selection, { explicit: true });
+    await navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(target) });
   };
 }

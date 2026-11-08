@@ -17,7 +17,8 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type SetStateAction } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toastManager } from "../ui/toast";
-import { useLiveSessionChange } from "./BatonLiveModel";
+import { livePick } from "@t3tools/baton-shared/liveThread";
+import { useContinueInNewThread, useLiveSessionChange } from "./BatonLiveModel";
 import { resolveAppModelSelectionForInstance } from "../../modelSelection";
 import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
 import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
@@ -140,22 +141,40 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       : null,
   );
 
-  // A mirrored terminal session changes model inside itself; picking another provider here would start a twin.
+  // A mirrored terminal session changes model inside itself; another provider continues in a new thread (livePick).
   const liveSession = useLiveSessionChange(
     activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
+  const continueInNewThread = useContinueInNewThread();
   const onProviderModelSelect = (
     instanceId: ProviderInstanceId,
     model: string,
     options?: { focusComposer?: boolean },
   ) => {
     if (!activeThread) return;
+    const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
     if (liveSession.sessionId !== null) {
-      liveSession.apply({ model });
+      const route = livePick({
+        pickedInstance: instanceId,
+        pickedDriver: entry?.driver ?? null,
+        currentInstance: activeThread.modelSelection.instanceId,
+      });
+      if (route === "session-model") liveSession.apply({ model });
+      else if (route === "switch-back")
+        setComposerDraftModelSelection(
+          scopeThreadRef(activeThread.environmentId, activeThread.id),
+          { instanceId, model },
+          { explicit: true, replaceOptions: true },
+        );
+      else if (route === "continue-in")
+        void continueInNewThread(
+          activeThread,
+          { instanceId, model },
+          entry?.displayName ?? String(instanceId),
+        );
       if (options?.focusComposer !== false) scheduleComposerFocus();
       return;
     }
-    const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
     const resolvedDriverKind = entry?.driver ?? null;
     if (
       !supportsProviderSwitchingViaHandoff &&

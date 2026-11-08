@@ -5,7 +5,7 @@ import {
   bindingOf,
   pinnedLiveSelection,
   classifierStopReason,
-  describeAnswerer,
+  livePick,
   liveSessionKey,
   liveThreadSwitchRefusal,
   runningLiveSessionKeys,
@@ -33,23 +33,22 @@ describe("a mirrored live thread", () => {
   });
 });
 
-describe("who answers a thread", () => {
-  it("names the harness, session, model, effort and account, and flags a summary handoff on a live thread", () => {
-    const live = describeAnswerer({
-      threadId: "baton-live4:cc828d1b-1111",
-      instanceId: "baton-live",
-      model: "claude-opus-5-5",
-      effort: "medium",
-      account: "Main",
-    });
-    expect(live).toMatchObject({ harness: "herdr-session", handedOff: false });
-    expect(live.line).toBe("Terminal session · cc828d1b · claude-opus-5-5 · medium · Main");
-    const twin = describeAnswerer({
-      threadId: "baton-live4:cc828d1b-1111",
-      instanceId: "claudeAgent",
-      model: "claude-opus-5-5",
-    });
-    expect(twin).toMatchObject({ harness: "t3-hosted", handedOff: true });
+describe("a model picked on a live thread", () => {
+  const pick = (
+    pickedInstance: string,
+    pickedDriver: string | null,
+    currentInstance = "baton-live",
+  ) => livePick({ pickedInstance, pickedDriver, currentInstance });
+  it("types only Claude models into the session; another provider continues in a new thread", () => {
+    expect(pick("claudeAgent", "claudeAgent")).toBe("session-model");
+    expect(pick("claude-work", "claudeAgent")).toBe("session-model");
+    expect(pick("codex", "codex")).toBe("continue-in");
+    expect(pick("opencode", "opencode")).toBe("continue-in");
+    expect(pick("gone", null)).toBe("continue-in");
+  });
+  it("keeps the session on its own entry, and takes a handed-off thread back", () => {
+    expect(pick("baton-live", "acpRegistry")).toBe("unchanged");
+    expect(pick("baton-live", "acpRegistry", "codex")).toBe("switch-back");
   });
 });
 

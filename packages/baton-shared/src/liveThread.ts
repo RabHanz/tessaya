@@ -44,40 +44,22 @@ export const liveThreadSwitchRefusal = (input: {
       : "This thread is answered by a handoff session, which Tessaya will not wake. Retire the handoff session, or switch the thread back to its live session."
     : null;
 
-export interface Answerer {
-  /** Who actually answers this thread's messages. */
-  readonly harness: "herdr-session" | "t3-hosted";
-  /** True when a mirrored live thread is being answered by a new T3-hosted session instead of its own. */
-  readonly handedOff: boolean;
-  readonly line: string;
-}
-
-/** The model, effort, account and harness that answer a thread, in one line for its header. */
-export const describeAnswerer = (input: {
-  readonly threadId: string;
-  readonly instanceId: string;
-  readonly model: string;
-  readonly effort?: string | null;
-  readonly account?: string | null;
-}): Answerer => {
-  const live = input.instanceId === LIVE_INSTANCE;
-  const harness = live ? "herdr-session" : "t3-hosted";
-  const session = isLiveThreadId(input.threadId)
-    ? input.threadId.replace(/^[^:]*:/, "").slice(0, 8)
-    : null;
-  const parts = [
-    live ? "Terminal session" : "T3-hosted session",
-    session === null ? null : session,
-    input.model,
-    input.effort ? input.effort : null,
-    input.account ? input.account : null,
-  ].filter((part): part is string => part !== null && part !== "");
-  return {
-    harness,
-    handedOff: !live && isLiveThreadId(input.threadId),
-    line: parts.join(" · "),
-  };
-};
+/**
+ * What a model pick does on a live thread. A Claude model changes the session's own model (typed as /model); the
+ * Terminal session entry keeps it, or takes a handed-off thread back; any other provider continues in a new thread.
+ */
+export const livePick = (input: {
+  readonly pickedInstance: string;
+  readonly pickedDriver: string | null;
+  readonly currentInstance: string;
+}): "session-model" | "unchanged" | "switch-back" | "continue-in" =>
+  input.pickedInstance === LIVE_INSTANCE
+    ? input.currentInstance === LIVE_INSTANCE
+      ? "unchanged"
+      : "switch-back"
+    : input.pickedDriver === "claudeAgent"
+      ? "session-model"
+      : "continue-in";
 
 /** The header line for a reply the session says a safety classifier stopped; null for any other text. */
 export const classifierStopReason = (lastReply: string | null): string | null =>

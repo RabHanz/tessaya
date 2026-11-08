@@ -28,6 +28,7 @@ import {
   describeComposerEffort,
 } from "./ComposerModelEffort";
 import { useLiveTraits } from "./BatonLiveModel";
+import { BatonLimitMark, BatonPickerAccount, BatonUsageDetails } from "./BatonPickerAccount";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
@@ -89,6 +90,7 @@ export function ComposerControlsBar(props: {
   onModelPickerOpenChange: (open: boolean) => void;
   modelPickerIconClassName: string | undefined;
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
+  onUsageLimitsCommand: ChatComposerProps["onUsageLimitsCommand"];
 }) {
   const {
     environmentId,
@@ -153,8 +155,9 @@ export function ComposerControlsBar(props: {
     measuredHiddenBlockCount,
   });
   const controlSize = composerControlsCollapsed ? "xs" : "sm";
+  const batonThreadRef = routeKind === "server" ? routeThreadRef : null;
   const traitsInput = useLiveTraits(
-    routeKind === "server" ? routeThreadRef : null,
+    batonThreadRef,
     resolveComposerTraitsInput({
       provider: selectedProvider,
       instanceId: selectedInstanceId,
@@ -226,7 +229,15 @@ export function ComposerControlsBar(props: {
         MODEL_TRIGGER_STATES,
         composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
       )}
-      triggerSuffix={effort.suffix}
+      triggerSuffix={
+        <>
+          {effort.suffix}
+          <BatonLimitMark
+            entry={providerInstanceEntries.find((entry) => entry.instanceId === selectedInstanceId)}
+            threadRef={batonThreadRef}
+          />
+        </>
+      }
       triggerDetail={effort.detail}
       triggerShortcuts={
         pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
@@ -238,8 +249,24 @@ export function ComposerControlsBar(props: {
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           onRuntimeModeChange={handleRuntimeModeChange}
-        />
+        >
+          {props.onUsageLimitsCommand ? (
+            <BatonUsageDetails
+              onOpen={() => {
+                onModelPickerOpenChange(false);
+                props.onUsageLimitsCommand?.();
+              }}
+            />
+          ) : null}
+        </ComposerPickerFooter>
       }
+      renderInstanceDetail={(entry) => (
+        <BatonPickerAccount
+          entry={entry}
+          threadRef={batonThreadRef}
+          threadInstanceId={selectedInstanceId}
+        />
+      )}
       terminalOpen={terminalOpen}
       open={modelPickerOpen}
       instanceIndicatorBackground={

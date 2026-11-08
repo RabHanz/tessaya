@@ -1,4 +1,4 @@
-// D92 proof, read-only: the account label, its menu and the limits age on a paired server.
+// D92 proof, read-only: the account row in the model picker and the limits age on a paired server.
 //   node limits-account-proof.mjs <pair-url-file> <frame-dir>     Playwright from $PLAYWRIGHT_DIR
 import * as NodeFS from "node:fs";
 import * as NodeModule from "node:module";
@@ -11,14 +11,12 @@ const page = await (await browser.newContext({ viewport: { width: 1440, height: 
 await page.goto(NodeFS.readFileSync(pairFile, "utf8").trim());
 await page.waitForSelector("li[data-thread-item]", { timeout: 60_000 });
 await page.locator("li[data-thread-item]").first().click();
-const account = page.getByTestId("thread-account");
+// The account, its room left and the pin are in T3's model picker (T6).
+await page.locator("[data-chat-provider-model-picker]").first().click();
+const account = page.getByTestId("model-picker-account");
 await account.waitFor({ timeout: 30_000 });
-console.log("label:", (await account.innerText()).trim());
-await page.screenshot({ path: `${frames}/header-1440.png` });
-await account.click();
-await page.waitForTimeout(500);
-console.log("menu:", (await page.getByRole("menu").innerText()).replace(/\n+/g, " | "));
-await page.screenshot({ path: `${frames}/menu-1440.png` });
+console.log("account:", (await account.innerText()).replace(/\n+/g, " | "));
+await page.screenshot({ path: `${frames}/picker-1440.png` });
 await page.keyboard.press("Escape");
 const details = page.getByRole("button", { name: /thread details/i }).first();
 if (await details.count()) await details.click().catch(() => {});

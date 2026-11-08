@@ -4,6 +4,8 @@ import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { instanceRoom } from "./BatonPickerAccount";
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import {
@@ -45,6 +47,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
     props.onSelectInstance(instanceId);
   };
   const showFavorites = props.showFavorites ?? true;
+  const now = Date.parse(`${useNowMinute()}:00Z`);
   const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
@@ -140,7 +143,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               ? describeUnavailableInstance(entry)
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
-                : entry.displayName;
+                : [entry.displayName, instanceRoom(entry, now)].filter(Boolean).join(" · ");
 
             const button = (
               <Toolbar.Button
