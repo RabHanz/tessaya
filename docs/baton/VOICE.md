@@ -144,7 +144,8 @@ missing, Wispr's table is read once, read-only.
 `scripts/tessaya/voice-lab`, all headless and nothing pasted: `whisper_lab.py` (quiet and whisper-like audio,
 `make` then `score`), `replay_lab.py` (release to text at real-time pace through `BATON_FAKE_MIC`),
 `cleanup-lab.ts` with `cleanup-cases.ts`, bundled by `bundle-cleanup.sh` (the rewrite on written cases and on
-his clips, aggregates only). One CPU-heavy laptop job at a time: a speed figure taken beside other work is void.
+his clips, aggregates only; `names` runs the app's whole path on Parakeet text kept outside the repo, for the
+per-name score against his Wispr finals). One CPU-heavy laptop job at a time: a speed figure taken beside other work is void.
 Quiet-speech numbers are in D104.
 
 `scripts/tessaya/voice-lab/voice-lab.ps1` on the laptop: `replay` and `dictation` use his stored Wispr

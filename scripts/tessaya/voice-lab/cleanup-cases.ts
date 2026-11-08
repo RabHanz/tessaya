@@ -6,6 +6,8 @@ export interface CleanupCase {
   readonly raw: string;
   readonly keep: ReadonlyArray<string>;
   readonly gone?: ReadonlyArray<string>;
+  /** His words for this case; without it the lab's own dictionary is used. */
+  readonly dictionary?: ReadonlyArray<{ readonly phrase: string; readonly replacement: null }>;
 }
 
 export const DEFAULT_CASES: ReadonlyArray<CleanupCase> = [
@@ -212,5 +214,38 @@ export const MODE_CASES: ReadonlyArray<
     mode: "notes",
     raw: "Things to chase: the Stripe payout, the Companies House filing, and the disk on the box.",
     keep: ["Stripe payout", "Companies House filing", "disk on the box", "- "],
+  },
+];
+
+const OWN_NAMES = [{ phrase: "Tessaya", replacement: null }] as const;
+
+/**
+ * His words reach the model as hints, as Wispr's dictionary does (DICT-WISPR). Source: his recorded script of
+ * 2026-11-08, where Parakeet wrote "Tisia" and the cleanup kept it, and split his one question in two.
+ */
+export const DICTIONARY_CASES: ReadonlyArray<CleanupCase> = [
+  {
+    raw: "Hey Sam, um quick update on Tisia. So the dictation pill is uh nearly done. Can you ask the agent to like um check the wake word results first? And also send me the new pill recordings. The ones with the island version by tomorrow morning. Thanks.",
+    keep: ["update on Tessaya", "first and also send", "by tomorrow morning?"],
+    gone: ["Tisia", "first?"],
+    dictionary: OWN_NAMES,
+  },
+  {
+    raw: "I want the Tesiah dictation to feel instant, so warm the session before he speaks.",
+    keep: ["Tessaya dictation"],
+    gone: ["Tesiah"],
+    dictionary: OWN_NAMES,
+  },
+  // Controls: a real name near his word, and two questions he asked as two.
+  {
+    raw: "Ask Tessa from accounts whether the invoice went out, and copy Tasha in.",
+    keep: ["Tessa from accounts", "Tasha"],
+    gone: ["Tessaya"],
+    dictionary: OWN_NAMES,
+  },
+  {
+    raw: "Did the build pass? And did anyone tell Sam it shipped?",
+    keep: ["pass?", "shipped?"],
+    dictionary: OWN_NAMES,
   },
 ];
