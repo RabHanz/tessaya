@@ -26,14 +26,23 @@ const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
 
+interface CleanInput {
+  readonly raw: string;
+  readonly mode: DictationMode;
+  readonly level: CleanupLevel;
+}
+
 export interface Rewriter {
   /** Called when recording starts, so the session is up by the time he stops. */
   readonly warm: () => void;
-  readonly clean: (input: {
-    readonly raw: string;
-    readonly mode: DictationMode;
-    readonly level: CleanupLevel;
-  }) => Promise<CleanedText & { readonly ms: number }>;
+  /**
+   * The words so far, at a pause while he still holds the key: cleaned now, so a `clean` of the same words after
+   * release takes this answer instead of waiting a turn (about 1.2 s through the CLI).
+   */
+  readonly speculate: (input: CleanInput) => void;
+  readonly clean: (
+    input: CleanInput,
+  ) => Promise<CleanedText & { readonly ms: number; readonly speculated: boolean }>;
   readonly dispose: () => void;
 }
 
@@ -88,45 +97,113 @@ export const makeRewriter = (input: {
     }
   };
 
-  const ask = async (text: string, mode: DictationMode): Promise<string> => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const answer = await Promise.race([
-        get().ask([{ type: "text", text: rewriteMessage(text, mode) }]),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error("timed out")),
-            input.limitMs ?? hardLimitMs(text),
-          );
-        }),
-      ]);
-      turns += 1;
-      return answer.trim();
-    } catch (error) {
-      // A late answer would be read as the next dictation's. The next session starts now: left
-      // to the next dictation, its cold start would use up that one's limit too.
-      drop();
-      warm();
-      throw error;
-    } finally {
-      clearTimeout(timer);
-      if (turns >= TURNS_PER_SESSION) drop();
-    }
+  /** The session's turn in flight, by its own answer: the next question waits for it, not for a timer. */
+  let busy: Promise<unknown> = Promise.resolve();
+  const send = (text: string, mode: DictationMode): Promise<string> => {
+    const answer = get().ask([{ type: "text", text: rewriteMessage(text, mode) }]);
+    busy = answer.catch(() => undefined);
+    return answer.then((a) => a.trim());
+  };
+  /** The real clean's question, against a deadline counted from when `clean` was called. */
+  const askBy =
+    (deadline: number) =>
+    async (text: string, mode: DictationMode): Promise<string> => {
+      let sent = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const answer = await Promise.race([
+          busy.then(() => {
+            if (Date.now() >= deadline) throw new Error("timed out");
+            sent = true;
+            return send(text, mode);
+          }),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error("timed out")), deadline - Date.now());
+          }),
+        ]);
+        turns += 1;
+        return answer;
+      } catch (error) {
+        // Our own late answer would be read as the next dictation's, so that session goes and the next starts now.
+        // Still waiting behind a guess, nothing of ours was asked: the session stays.
+        if (sent) {
+          drop();
+          warm();
+        }
+        throw error;
+      } finally {
+        clearTimeout(timer);
+        if (turns >= TURNS_PER_SESSION) drop();
+      }
+    };
+
+  const run = (
+    { raw, mode, level }: CleanInput,
+    ask: (text: string, mode: DictationMode) => Promise<string>,
+  ) =>
+    cleanDictation({
+      raw,
+      mode,
+      level,
+      dictionary: input.dictionary(),
+      ask,
+      ...(input.always === undefined ? {} : { always: input.always }),
+    });
+  const keyOf = (c: CleanInput) => `${c.level}\n${c.mode}\n${c.raw.trim()}`;
+  /** The latest guess started, one at most in flight, and the newest waiting behind it; older ones are never asked. */
+  let guess: { readonly key: string; readonly cleaned: Promise<CleanedText> } | null = null;
+  let guessing = false;
+  let waiting: CleanInput | null = null;
+  const startGuess = (c: CleanInput) => {
+    const key = keyOf(c);
+    guessing = true;
+    // A guess is not counted against the session's turns, and is never timed out here: the session's own limit holds.
+    const cleaned = run(c, (text, mode) =>
+      busy.then(() => (guess?.key === key ? send(text, mode) : Promise.reject(new Error("stale")))),
+    );
+    guess = { key, cleaned };
+    void cleaned
+      .catch(() => undefined)
+      .then(() => {
+        guessing = false;
+        const next = waiting;
+        waiting = null;
+        if (next !== null) startGuess(next);
+      });
   };
 
   return {
     warm,
-    clean: async ({ raw, mode, level }) => {
+    speculate: (c) => {
+      if (c.level !== "claude") return;
+      const key = keyOf(c);
+      if (guess?.key === key || (waiting !== null && keyOf(waiting) === key)) return;
+      if (guessing) waiting = c;
+      else startGuess(c);
+    },
+    clean: async (c) => {
       const started = Date.now();
-      const cleaned = await cleanDictation({
-        raw,
-        mode,
-        level,
-        dictionary: input.dictionary(),
-        ask,
-        ...(input.always === undefined ? {} : { always: input.always }),
-      });
-      return { ...cleaned, ms: Date.now() - started };
+      const deadline = started + (input.limitMs ?? hardLimitMs(c.raw));
+      // The real clean goes before any guess still waiting, and only a guess for these exact words is taken.
+      waiting = null;
+      const ready = guess?.key === keyOf(c) ? guess.cleaned : null;
+      guess = null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const guessed =
+        ready === null
+          ? null
+          : await Promise.race([
+              ready.catch(() => null),
+              new Promise<null>((resolve) => {
+                timer = setTimeout(() => resolve(null), deadline - Date.now());
+              }),
+            ]);
+      clearTimeout(timer);
+      const cleaned =
+        guessed !== null && (guessed.stage === "model" || guessed.stage === "local")
+          ? guessed
+          : await run(c, askBy(deadline));
+      return { ...cleaned, ms: Date.now() - started, speculated: cleaned === guessed };
     },
     dispose: drop,
   };

@@ -13,7 +13,7 @@ are one row, "Wake words", behind "Change", inside the folded part of Listening.
 | Tab                              | Sections today                                               | Folded or behind "Change"                                                                                                                                                                                                                     |
 | -------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Voice                            | Listening, Answers, On screen                                | Wake words (folded, then behind Change); "Send words to the focused session" (folded); "Where the pill sits" (folded); "Sounds for the dictation key" (folded); every choice (mic, wait, sounds, voice, volume, how it answers) behind Change |
-| Dictation                        | Dictation                                                    | Tidy what I said, Writing style per app, Speech model, Last transcript (folded)                                                                                                                                                               |
+| Dictation                        | Dictation                                                    | Clean up with AI, Writing style per app, Speech model, Last transcript (folded)                                                                                                                                                               |
 | History                          | Recordings                                                   | none                                                                                                                                                                                                                                          |
 | Memory                           | Notes, Operating-system pack                                 | pack roles and routing (folded)                                                                                                                                                                                                               |
 | Skills                           | Plugins, Skills, MCP servers                                 | skills (folded)                                                                                                                                                                                                                               |
@@ -43,7 +43,7 @@ A search box in the window's top bar finds any setting by its words and opens it
 - _Shortcuts:_ the fixed keys, read-only.
 - _Advanced (folded, named):_ Sounds for the dictation key.
 
-**Dictation:** _Dictate with_ (engine, speech model, how words arrive); _Clean-up and style_ (Tidy what I said, writing
+**Dictation:** _Dictate with_ (engine, speech model, how words arrive); _Clean-up and style_ (Clean up with AI, writing
 style per app, learn words from my edits); _Last transcript_. Nothing folded except the speech-model picker.
 
 **Assistant:** _Who does the work_ (works through, login, one assistant); _What it may do_ (act without asking,

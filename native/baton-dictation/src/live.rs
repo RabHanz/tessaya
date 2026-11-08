@@ -7,6 +7,8 @@
 const RATE: usize = 16_000;
 const FRAME: usize = RATE / 50;
 const PAUSE_FRAMES: usize = 10;
+/// The longest tail release may skip: a pause cut leaves half its pause behind.
+const QUIET_TAIL_MAX: usize = RATE * 3 / 4;
 
 #[derive(Clone, Copy)]
 pub struct ChunkParams {
@@ -18,7 +20,9 @@ pub struct ChunkParams {
 impl ChunkParams {
     /// BATON_CHUNK=min_ms,max_ms,context_ms is for measuring, like BATON_THREADS.
     pub fn from_env() -> Self {
-        let mut ms = [2_500, 8_000, 1_000];
+        // Measured on 80 of his clips against Wispr (PR #649): 1 s of context cost 16.5% WER, 3 s with these lengths 5.0%
+        // (whole-clip 3.4%). A pause before release still leaves nothing to decode (`pending_is_quiet`).
+        let mut ms = [6_000, 15_000, 3_000];
         if let Ok(text) = std::env::var("BATON_CHUNK") {
             for (slot, value) in ms.iter_mut().zip(text.split(',')) {
                 *slot = value.trim().parse().unwrap_or(*slot);
@@ -34,6 +38,8 @@ impl ChunkParams {
 pub struct Piece {
     pub pcm: Vec<f32>,
     pub context: usize,
+    /// Cut at a pause he made, not at the length limit: the likely end of what he meant to say.
+    pub at_pause: bool,
 }
 
 fn frame_levels(pcm: &[f32]) -> Vec<f32> {
@@ -95,7 +101,7 @@ impl Chunker {
         Self { params, pending: Vec::new(), tail: Vec::new(), scanned_at: 0 }
     }
 
-    fn cut(&mut self, at: usize) -> Piece {
+    fn cut(&mut self, at: usize, at_pause: bool) -> Piece {
         let new: Vec<f32> = self.pending.drain(..at).collect();
         let context = self.tail.len();
         let mut pcm = std::mem::take(&mut self.tail);
@@ -103,7 +109,7 @@ impl Chunker {
         let keep = pcm.len().saturating_sub(self.params.context_samples);
         self.tail = pcm[keep..].to_vec();
         self.scanned_at = 0;
-        Piece { pcm, context }
+        Piece { pcm, context, at_pause }
     }
 
     /// Takes audio; returns a piece when a pause, or the length limit, makes one certain.
@@ -114,11 +120,11 @@ impl Chunker {
         }
         self.scanned_at = self.pending.len();
         if let Some(at) = last_pause(&self.pending, self.params.min_samples) {
-            return Some(self.cut(at));
+            return Some(self.cut(at, true));
         }
         if self.pending.len() >= self.params.max_samples {
             let at = quietest(&self.pending);
-            return Some(self.cut(at));
+            return Some(self.cut(at, false));
         }
         None
     }
@@ -129,7 +135,24 @@ impl Chunker {
             return None;
         }
         let at = self.pending.len();
-        Some(self.cut(at))
+        Some(self.cut(at, false))
+    }
+
+    /// Nothing but quiet since the last cut: short, below the recording's speech, and flat in its own levels, so a
+    /// soft word after a pause is still heard. The words before it are decoded, so release has nothing to wait for.
+    pub fn pending_is_quiet(&self, heard: &[f32]) -> bool {
+        if self.pending.len() > QUIET_TAIL_MAX {
+            return false;
+        }
+        let levels = frame_levels(heard);
+        let (floor, loud) = (percentile(&levels, 0.1), percentile(&levels, 0.9));
+        if loud < floor * 2.0 {
+            return false;
+        }
+        let quiet = floor + (loud - floor) * 0.1;
+        let own = frame_levels(&self.pending);
+        let (own_floor, own_loud) = (percentile(&own, 0.1), percentile(&own, 1.0));
+        own.iter().all(|l| *l <= quiet) && own_loud <= own_floor * 2.0 + SILENCE
     }
 }
 
@@ -217,6 +240,32 @@ mod tests {
         let got = pieces(&mut Chunker::new(PARAMS), &tone(7.0, 0.2));
         assert!(got.len() >= 2);
         assert!(got.iter().all(|p| p.pcm.len() - p.context <= 6 * RATE + RATE / 2));
+    }
+
+    #[test]
+    fn a_pause_before_release_leaves_nothing_to_decode() {
+        let mut pcm = tone(3.0, 0.2);
+        pcm.extend(tone(0.6, 0.2 / 300.0));
+        let mut chunker = Chunker::new(PARAMS);
+        let cut: Vec<Piece> = pcm.chunks(480).filter_map(|c| chunker.push(c)).collect();
+        assert!(cut.len() == 1 && cut[0].at_pause);
+        assert!(chunker.pending_is_quiet(&pcm));
+        let more = tone(0.5, 0.2);
+        pcm.extend_from_slice(&more);
+        assert!(chunker.push(&more).is_none());
+        assert!(!chunker.pending_is_quiet(&pcm));
+    }
+
+    #[test]
+    fn a_soft_word_after_a_pause_is_still_decoded() {
+        let mut pcm = tone(3.0, 0.2);
+        pcm.extend(tone(0.6, 0.2 / 300.0));
+        let mut chunker = Chunker::new(PARAMS);
+        assert_eq!(pcm.chunks(480).filter_map(|c| chunker.push(c)).count(), 1);
+        let soft = tone(0.15, 0.2 * 0.15);
+        pcm.extend_from_slice(&soft);
+        assert!(chunker.push(&soft).is_none());
+        assert!(!chunker.pending_is_quiet(&pcm));
     }
 
     #[test]
