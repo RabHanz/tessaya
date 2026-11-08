@@ -66,7 +66,7 @@ const CATS = ['general','voice','personas','assistant','privacy','appearance','k
 const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
 const INTRO = {};
 for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
-let cur = 'home', collapsed = false, modal = null, S = null, query = '';
+let cur = 'home', collapsed = (() => { try { return localStorage.getItem('tessaya.rail') === '1'; } catch (e) { return false; } })(), modal = null, S = null, query = '';
 let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
@@ -987,7 +987,7 @@ function syncInd(still) {
   let ind = document.getElementById('navind');
   if (!ind) { ind = $('div'); ind.id = 'navind'; ind.setAttribute('aria-hidden', 'true'); app.appendChild(ind); }
   const a = document.querySelector('#navlist .nav[aria-current]');
-  if (!a || collapsed) { ind.style.opacity = '0'; return; }
+  if (!a) { ind.style.opacity = '0'; return; }
   const ar = app.getBoundingClientRect(), r = a.getBoundingClientRect(); const nr = document.getElementById('navlist').getBoundingClientRect();
   const y = r.top - ar.top + (r.height - 18) / 2;
   ind.setAttribute('data-g', GROUP_OF[cur] || 'now');
@@ -999,6 +999,15 @@ function syncChrome() {
   if (!booted) { booted = true; const h = document.documentElement; h.classList.add('boot'); setTimeout(() => h.classList.remove('boot'), 1400); }
 }
 let booted = false;
+// Collapsed, the sidebar is a rail of icons, remembered; its labels float outside #navlist, whose scroll would clip them.
+function toggleRail() { collapsed = !collapsed; try { localStorage.setItem('tessaya.rail', collapsed ? '1' : '0'); } catch (e) {} railTip({}); render(); }
+function railTip(e) {
+  const t = e.target && e.target.closest && e.target.closest('#side [data-tip]'); let tip = document.getElementById('railtip');
+  if (!tip) { tip = $('div'); tip.id = 'railtip'; tip.setAttribute('aria-hidden', 'true'); document.body.appendChild(tip); }
+  tip.hidden = !collapsed || !t || /out/.test(e.type); if (tip.hidden) return;
+  const r = t.getBoundingClientRect(); tip.textContent = t.getAttribute('data-tip'); tip.style.top = (r.top + r.height / 2) + 'px'; tip.style.left = (r.right + 10) + 'px';
+}
+for (const ev of ['pointerover', 'pointerout', 'focusin', 'focusout']) document.addEventListener(ev, railTip);
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
   if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.mode === 'open') { setupAuto = true; setupStep = S.extra.setup.step || 0; modal = 'setup'; }
@@ -1012,18 +1021,18 @@ function render(state) {
   for (const [gname, ids] of GROUPS) {
     const folded = foldedGroups.has(gname); const gl = $('button', 'glabel'); gl.setAttribute('data-g', gname.toLowerCase()); gl.setAttribute('aria-expanded', String(!folded)); gl.append($('span', null, gname), icon('fold', 14));
     gl.onclick = () => { if (foldedGroups.has(gname)) foldedGroups.delete(gname); else foldedGroups.add(gname); saveFolded(); render(); }; nav.appendChild(gl);
-    for (const id of ids) { if (folded && cur !== id) continue; const b = $('button', 'nav'); b.setAttribute('data-g', GROUP_OF[id]); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
+    for (const id of ids) { if (folded && cur !== id && !collapsed) continue; const b = $('button', 'nav'); b.setAttribute('data-g', GROUP_OF[id]); b.setAttribute('data-tip', names[id]); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   }
   side.appendChild(nav);
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
-  const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => go('general');
-  const hp = $('button', 'nav'); hp.append(icon('help'), $('span', null, 'Help')); if (cur === 'help') hp.setAttribute('aria-current', 'page'); hp.onclick = () => go('help');
-  const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
+  const foot = $('div', 'foot'); const st = $('button', 'nav'); st.setAttribute('data-tip', 'Settings'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => go('general');
+  const hp = $('button', 'nav'); hp.setAttribute('data-tip', 'Help'); hp.append(icon('help'), $('span', null, 'Help')); if (cur === 'help') hp.setAttribute('aria-current', 'page'); hp.onclick = () => go('help');
+  const t3 = $('button', 'nav'); t3.setAttribute('data-tip', 'Open T3 sessions'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
   foot.append(t3, hp, st); side.appendChild(foot);
   }, 'brand');
   setRegion(document.getElementById('top'), top => {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
-  const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
+  const tg = $('button', 'ibtn'); tg.id = 'railtoggle'; tg.setAttribute('aria-label', collapsed ? 'Expand the sidebar' : 'Collapse the sidebar'); tg.setAttribute('aria-expanded', String(!collapsed)); tg.appendChild(icon('side')); tg.onclick = toggleRail; top.appendChild(tg);
   const stt = $('div', 'state'); stt.setAttribute('role', 'status'); stt.setAttribute('data-tone', S.status.tone); if (lastState !== null && lastState !== S.status.label) stt.className += ' morph'; lastState = S.status.label; const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', L('alerts.title')); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);

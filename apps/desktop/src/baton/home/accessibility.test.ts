@@ -89,6 +89,29 @@ describe("the mark breathes while the window can be seen", () => {
   });
 });
 
+describe("the collapsed sidebar", () => {
+  it("is a rail of named icons, says so on its toggle, and is remembered", async () => {
+    const page = await openWindowPage(APP_SCRIPT, {
+      status: { label: "Listening", tone: "good", device: "", mark: "" },
+      controls: [],
+    });
+    page.exec("toggleRail()");
+    const byId = (id: string) => page.elements().find((e) => e.id === id)!;
+    expect(byId("app").classList.contains("collapsed")).toBe(true);
+    expect(byId("railtoggle").getAttribute("aria-expanded")).toBe("false");
+    expect(byId("railtoggle").getAttribute("aria-label")).toBe("Expand the sidebar");
+    // Every page is still in the rail with its name, for a tooltip and a screen reader.
+    const navs = page.elements().filter((e) => e.className === "nav" && e.getAttribute("data-tip"));
+    expect(navs.length).toBeGreaterThan(15);
+    for (const nav of navs) expect(nav.textContent).toContain(nav.getAttribute("data-tip"));
+    page.exec(
+      "{ const e = document.createElement('div'); e.id = 'probe'; e.textContent = localStorage.getItem('tessaya.rail'); document.body.appendChild(e); }",
+    );
+    expect(page.textOf("probe")).toBe("1");
+    expect(page.errors).toEqual([]);
+  });
+});
+
 describe("a refresh keeps the breathing mark", () => {
   it("leaves the brand in the page across a sidebar rebuild so its animation does not restart", () => {
     expect(APP_SCRIPT).toContain("fresh.remove(); el.append(...next.childNodes)");

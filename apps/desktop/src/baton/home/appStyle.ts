@@ -83,9 +83,19 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 
 /* Shell: the sidebar and the top bar sit straight on the window's field; the page is one glass sheet floating on it. */
 #app{position:relative;isolation:isolate;display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100%;transition:grid-template-columns .22s var(--ease)}
-#app.collapsed{grid-template-columns:0 1fr}
+#app.collapsed{grid-template-columns:64px minmax(0,1fr)}
 #side{position:relative;isolation:isolate;display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
-#app.collapsed #side{visibility:hidden}
+#app.collapsed #side{padding:16px 8px 12px}
+#app.collapsed .brand{justify-content:center;padding:0 0 14px}
+#app.collapsed .brand #mark{width:36px;height:36px;border-radius:10px}
+#app.collapsed .brand .bt,#app.collapsed .sidecard{display:none}
+#app.collapsed .glabel{height:1px;padding:0;margin:9px 12px;background:var(--line-strong);pointer-events:none}
+#app.collapsed .glabel>*,#app.collapsed .glabel::before{display:none}
+#app.collapsed .nav{justify-content:center;padding:9px 0}
+#app.collapsed .nav>span:not(.n){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#app.collapsed .nav .n{position:absolute;top:2px;right:4px;min-width:16px;padding:0 4px;font-size:10px}
+#railtip{position:fixed;z-index:60;transform:translateY(-50%);background:var(--ink);color:var(--on-ink);padding:4px 9px;border-radius:8px;font:500 12px/1.4 var(--sans);white-space:nowrap;pointer-events:none;box-shadow:var(--card-shadow)}
+#railtip[hidden]{display:none}
 .brand{display:flex;align-items:center;gap:12px;padding:0 6px 20px}
 .brand #mark{width:56px;height:56px;display:block;flex:none;color:var(--ink)}
 .brand #mark svg,.aboutmark svg{width:100%;height:100%;display:block}
@@ -127,7 +137,6 @@ html.live #navind.go{transition:transform var(--dur-slow) var(--ease-settle),opa
 .foot .nav{color:var(--soft)}
 
 #main{display:flex;flex-direction:column;min-width:0;padding:0 12px 12px 0}
-#app.collapsed #main{padding-left:12px}
 #top{position:relative;-webkit-app-region:drag;padding-right:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 6px)!important;height:50px;display:flex;align-items:center;gap:8px;padding:0 6px 0 4px;flex:none}
 #top button,#top input,#top select,#top a,#top .state,#top .pop{-webkit-app-region:no-drag}
 #top .search{margin-left:auto;width:230px;height:34px;padding:0 14px;border-radius:999px;border:0;background:var(--glass-card);box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-shade);color:var(--ink);font-size:13px}
