@@ -18,6 +18,7 @@ import {
 } from "@t3tools/baton-shared/dictationCleanup";
 
 import {
+  biasTranscript,
   mergeWispr,
   parseVocabulary,
   type NeverList,
@@ -64,6 +65,11 @@ export const makeRewriter = (input: {
   readonly limitMs?: number;
   readonly start?: typeof startVisionSession;
   readonly always?: boolean;
+  /**
+   * While true (a dictation key is bound at the claude level), a session is always up: one that ends is replaced
+   * at once and idling never ends it, so no dictation waits for Claude Code to start (about 2 s of 3.4 s cold).
+   */
+  readonly keepWarm?: () => boolean;
 }): Rewriter => {
   let session: VisionSession | null = null;
   let turns = 0;
@@ -76,14 +82,21 @@ export const makeRewriter = (input: {
     session = null;
     turns = 0;
   };
+  /** Drops the session; the next is started now when it should stay warm. */
+  const renew = () => {
+    drop();
+    if (input.keepWarm?.() === true) warm();
+  };
   let prompt = "";
   const get = (): VisionSession => {
     // A word he just taught is in the next clean-up, not the next session.
     const current = rewriteSystemPrompt(input.dictionary());
-    if (current !== prompt) drop();
+    if (current !== prompt || session?.alive() === false) drop();
     prompt = current;
     if (idle !== null) clearTimeout(idle);
-    idle = setTimeout(drop, IDLE_MS);
+    idle = setTimeout(() => {
+      if (input.keepWarm?.() !== true) drop();
+    }, IDLE_MS);
     session ??= (input.start ?? startVisionSession)({
       claudeBinary: input.claudeBinary,
       model: input.model,
@@ -140,7 +153,7 @@ export const makeRewriter = (input: {
         throw error;
       } finally {
         clearTimeout(timer);
-        if (turns >= TURNS_PER_SESSION) drop();
+        if (turns >= TURNS_PER_SESSION) renew();
       }
     };
 
@@ -149,7 +162,8 @@ export const makeRewriter = (input: {
     ask: (text: string, mode: DictationMode) => Promise<string>,
   ) =>
     cleanDictation({
-      raw,
+      // His own names put back first; Raw and Off keep exactly what was heard.
+      raw: mode === "raw" || level === "off" ? raw : biasTranscript(raw, input.dictionary()),
       mode,
       level,
       dictionary: input.dictionary(),

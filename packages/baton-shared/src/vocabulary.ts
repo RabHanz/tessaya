@@ -88,12 +88,22 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
       })
     : [];
 
-/** The words the clean-up prompt gets: most used first, capped. */
+/** The words the clean-up prompt gets, her own names first, then most used, capped; each with how it is mis-heard. */
 export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyArray<string> =>
-  [...entries]
-    .sort((a, b) => (b.count ?? 1) - (a.count ?? 1))
+  withOwnWords(entries)
+    .map((entry, i) => ({ entry, rank: entry.count ?? Number.MAX_SAFE_INTEGER - i }))
+    .sort((a, b) => b.rank - a.rank)
     .slice(0, PROMPT_TERMS)
-    .map((entry) => entry.replacement ?? entry.phrase);
+    .map(({ entry }) => {
+      const term = entry.replacement ?? entry.phrase;
+      // An everyday-looking form ("button", "venture OS") as a hint makes the model swap every "button" and "venture";
+      // those are put back in code, only where the name fits.
+      const heard = (entry.heard ?? [])
+        .filter((h) => /^\p{Lu}/u.test(h))
+        .map((h) => `"${h}"`)
+        .join(", ");
+      return heard.length === 0 ? term : `${term} (heard as ${heard})`;
+    });
 
 /** Adds or strengthens one entry. `source: "added"` wins over learned once he has said it himself. */
 export const upsertEntry = (
@@ -146,7 +156,8 @@ export const parseAddToDictionary = (said: string): string | null => {
 const tokens = (text: string): ReadonlyArray<string> =>
   text.match(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu) ?? [];
 
-const similar = (a: string, b: string): number => {
+/** 1 for the same letters, 0 for nothing in common. */
+export const similar = (a: string, b: string): number => {
   const x = a.toLowerCase();
   const y = b.toLowerCase();
   if (x === y) return 1;
@@ -211,7 +222,7 @@ export const candidateWords = (text: string): ReadonlyArray<string> => {
 export type SeenWords = Readonly<Record<string, number>>;
 
 const NAMES = new Set(
-  "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori sam tom bob jim tim dan mike steve chris nick ben will liz kate jen".split(
+  "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori tessa tess sam tom bob jim tim dan mike steve chris nick ben will liz kate jen".split(
     " ",
   ),
 );
@@ -322,11 +333,178 @@ export const learnCorrection = (
 };
 
 /**
+ * Tessaya's own names as Parakeet writes them, mined from the training split of his Wispr clips (DICT-WISPR). Only
+ * forms that are never everyday words or real names: "button", "baton", "Tessa" and "Tesla" are left to the model.
+ */
+const OWN_HEARD: ReadonlyArray<{
+  readonly to: string;
+  readonly form: string;
+  readonly before?: ReadonlyArray<string>;
+  readonly after?: ReadonlyArray<string>;
+}> = [
+  ...["Tisia", "Tessia", "Tesaya", "Tessay", "Tayya", "Te Saya", "Tes Saya"].map((form) => ({
+    to: "Tessaya",
+    form,
+  })),
+  { to: "Baton", form: "Buton" },
+  { to: "T3", form: "T three" },
+  { to: "T3", form: "D3", after: ["code", "codes", "chat", "sessions", "s"] },
+];
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+/** A whole word, never part of an identifier, path, file or address ("BATON_THREADS", "baton/dictation-magic"). */
+const WORD_START = String.raw`(?<![\p{L}\p{N}_/\\.@-])`;
+const WORD_END = String.raw`(?![\p{L}\p{N}_/\\@-]|\.\w)`;
+
+/** Teseya, Tessaia, Tesseya, Tasaya: a T, one vowel, an s or two, and her name's ending. */
+const OWN_NAME_SPELLING = /^[TG][aeiy][sc]{1,2}(?:[aeiy]{0,2}[yi][aeiy]{0,2})$/i;
+const OWN_NAME_END = /(?:ya|ia|aia|eya|aya)$/i;
+/** A clip that is only her name, as he says it to wake her. */
+const OWN_NAME_ALONE = /^(?:to|ta|they|te|tes) (?:say|sea|saya|seya)(?: (?:um|uh))?$/;
+
+/** Her own names put back before clean-up: whole words, any capitals, the longer form first, as Wispr does. */
+export const applyOwnNames = (text: string): string => {
+  if (
+    OWN_NAME_ALONE.test(
+      text
+        .toLowerCase()
+        .replace(/[^a-z ]/g, "")
+        .trim(),
+    )
+  )
+    return text.replace(/[\p{L} ]+/u, "Tessaya");
+  let out = text.replace(new RegExp(`${WORD_START}\\p{L}+(?:'?s)?${WORD_END}`, "gu"), (word) => {
+    const name = (w: string) => w.length >= 6 && OWN_NAME_SPELLING.test(w) && OWN_NAME_END.test(w);
+    if (name(word)) return "Tessaya";
+    // "Teseyas" is her name with an "s" the recogniser ran on: a possessive.
+    const bare = word.replace(/'?s$/i, "");
+    return bare !== word && name(bare) ? "Tessaya's" : word;
+  });
+  for (const rule of OWN_HEARD.toSorted((a, b) => b.form.length - a.form.length)) {
+    const pattern = new RegExp(`${WORD_START}${escapeRegExp(rule.form)}${WORD_END}`, "giu");
+    out = out.replace(pattern, (found: string, at: number, whole: string) => {
+      // A shouted "BATON" is not the name as heard.
+      if (
+        found.length > 1 &&
+        found === found.toUpperCase() &&
+        rule.form !== rule.form.toUpperCase()
+      )
+        return found;
+      if (rule.before === undefined && rule.after === undefined) return rule.to;
+      const before = /([\p{L}\p{N}']+)\W*$/u.exec(whole.slice(0, at))?.[1]?.toLowerCase();
+      const after = /^\W*([\p{L}\p{N}']+)/u
+        .exec(whole.slice(at + found.length))?.[1]
+        ?.toLowerCase();
+      const fits =
+        (before !== undefined && (rule.before ?? []).includes(before)) ||
+        (after !== undefined && (rule.after ?? []).includes(after));
+      return fits ? rule.to : found;
+    });
+  }
+  return out;
+};
+
+/** Her own names as entries, so the clean-up's hints and its check know them whether or not he added them. */
+export const withOwnWords = (
+  entries: ReadonlyArray<VocabularyEntry>,
+): ReadonlyArray<VocabularyEntry> => {
+  const own = [...new Set(OWN_HEARD.map((r) => r.to))].map((to) => ({
+    phrase: to,
+    heard: OWN_HEARD.filter((r) => r.to === to).map((r) => r.form),
+  }));
+  const mine = entries.map((e) => {
+    const o = own.find((w) => sameWord(w.phrase, e.replacement ?? e.phrase));
+    return o === undefined ? e : { ...e, ...withHeard(e.phrase, [...(e.heard ?? []), ...o.heard]) };
+  });
+  const missing = own.filter(
+    (o) => !entries.some((e) => sameWord(o.phrase, e.replacement ?? e.phrase)),
+  );
+  return [...missing.map((o) => ({ ...o, replacement: null })), ...mine];
+};
+
+/**
  * Recognition-side bias: a near-miss of a word he uses (one or two letters off, same first letter)
  * is put right in the transcript before clean-up. Only for names and terms (a capital or a digit
  * inside), so ordinary words are never swapped.
  */
-export const biasTranscript = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+/**
+ * His words written split or joined ("Wispr flow" or "WisprFlow" for Wispr Flow, "T 3" for T3) put back as he spells
+ * them: a split form of his own term is never an ordinary word. Two or three words in a row, nothing between.
+ */
+export const joinSplitTerms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+  const terms = new Map<string, string>();
+  for (const e of withOwnWords(entries)) {
+    const term = e.replacement ?? e.phrase;
+    const key = term.replace(/\s+/g, "").toLowerCase();
+    if ((key.length >= 3 || /\p{N}/u.test(key)) && /^[\p{L}\p{N}]+$/u.test(key))
+      terms.set(key, term);
+  }
+  if (terms.size === 0) return text;
+  const words = [...text.matchAll(new RegExp(`${WORD_START}[\\p{L}\\p{N}]+${WORD_END}`, "gu"))];
+  let out = "";
+  let from = 0;
+  for (let i = 0; i < words.length; i += 1) {
+    // Longest first, and only words with one space between: "T 3 code" never loses "code".
+    for (const size of [3, 2]) {
+      const run = words.slice(i, i + size);
+      if (run.length < size) continue;
+      const start = run[0]!.index;
+      const end = run.at(-1)!.index + run.at(-1)![0].length;
+      const found = text.slice(start, end);
+      if (found !== run.map((w) => w[0]).join(" ")) continue;
+      const term = terms.get(found.replace(/ /g, "").toLowerCase());
+      if (term === undefined) continue;
+      out += text.slice(from, start) + term;
+      from = end;
+      i += size - 1;
+      break;
+    }
+  }
+  return out + text.slice(from);
+};
+
+/** Before these the bare word is his name ("to button on the laptop"); after an article it is the thing. */
+const NAME_SLOT_BEFORE = new Set(
+  "to of with without using in on from into about via through".split(" "),
+);
+const NAME_SLOT_AFTER = new Set(
+  "and or but is was are were has have will can should so then because on in to for with at from as".split(
+    " ",
+  ),
+);
+
+/**
+ * A form he taught (from Wispr or a correction) that is an everyday word ("button" for Baton) changes only in the
+ * bare slot after a preposition, with no article, and only when what follows is not more of a noun phrase.
+ */
+const applyTaughtForms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+  let out = text;
+  for (const e of entries)
+    for (const form of e.heard ?? []) {
+      if (!/^\p{L}+$/u.test(form)) continue;
+      const term = e.replacement ?? e.phrase;
+      out = out.replace(
+        new RegExp(`${WORD_START}${escapeRegExp(form)}${WORD_END}`, "giu"),
+        (found: string, at: number, whole: string) => {
+          const before = /([\p{L}']+)[^\p{L}\n]*$/u.exec(whole.slice(0, at))?.[1]?.toLowerCase();
+          const rest = whole.slice(at + found.length);
+          const after = /^ ([\p{L}']+)/u.exec(rest)?.[1]?.toLowerCase();
+          const ends = after === undefined && /^(?:[,.;:!?]|\s*$)/.test(rest);
+          return before !== undefined &&
+            NAME_SLOT_BEFORE.has(before) &&
+            (ends || (after !== undefined && NAME_SLOT_AFTER.has(after)))
+            ? term
+            : found;
+        },
+      );
+    }
+  return out;
+};
+
+export const biasTranscript = (
+  heardText: string,
+  entries: ReadonlyArray<VocabularyEntry>,
+): string => {
+  const text = joinSplitTerms(applyTaughtForms(applyOwnNames(heardText), entries), entries);
   const terms = entries
     .map((entry) => entry.replacement ?? entry.phrase)
     .filter(
@@ -336,7 +514,8 @@ export const biasTranscript = (text: string, entries: ReadonlyArray<VocabularyEn
     );
   if (terms.length === 0) return text;
   return text.replace(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu, (word) => {
-    if (word.length < 5) return word;
+    // A real first name ("Tessa") is someone, not a near-miss of his word.
+    if (word.length < 5 || NAMES.has(word.toLowerCase())) return word;
     for (const term of terms) {
       if (word === term || word[0]!.toLowerCase() !== term[0]!.toLowerCase()) continue;
       if (
