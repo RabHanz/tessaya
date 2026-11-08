@@ -170,6 +170,7 @@ import {
   leadsProject,
   modelOf,
   personaFor,
+  rosterLine,
   type Brain,
   type Persona,
   type ProjectRef,
@@ -2728,6 +2729,8 @@ export const startScreenCompanion = (input: {
       isPrivate,
       latest: conversations.latest,
       nameOf,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ownTurn: (t) => !outsideSaid.has(t.said),
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
       images: () => imagesSent,
@@ -3014,6 +3017,10 @@ export const startScreenCompanion = (input: {
             (turnProject !== null && leadsProject(face, turnProject, actions?.projects?.() ?? []))
               ? {}
               : { lead: leadName }),
+            roster: rosterLine(
+              readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
+              face.id,
+            ),
           },
           brain: brain.brain,
         },

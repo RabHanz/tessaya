@@ -21,6 +21,18 @@ import { buildBatonTools, type ToolHost } from "./batonTools.ts";
 export const REPLAY_REFUSED =
   "This is a test run and nothing runs. Do not try anything else; reply 'ok'.";
 
+/** A small seeded random (mulberry32): the same sample index picks the same greeting manner. */
+const seeded = (seed: number): (() => number) => {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+};
+
 /** Every host call fails: the gate refuses first, so this is only a backstop. */
 const host = new Proxy(
   {},
@@ -45,6 +57,8 @@ export const replayTurn = async (input: {
     /** How long before this turn it was said; a minute when left out. */
     readonly minutesAgo?: number;
   }>;
+  /** Seeds the greeting's manner, so a run is repeatable sample by sample; random when left out. */
+  readonly seed?: number;
   /** The clock the turn is given; the shipped line for a fixed Wednesday morning when left out. */
   readonly now?: { readonly at: Date; readonly timeZone: string };
   readonly where: Where;
@@ -100,6 +114,10 @@ export const replayTurn = async (input: {
   clock = turnAt;
   const names = new Map((input.before ?? []).map((b) => [b.persona.id, b.persona.name]));
   const agent = createAssistantAgent({
+    // The case's clock, so the hand-off window and "you last spoke with him" measure from the turn, not from today.
+    now: () => clock.getTime(),
+    timeZone: input.now?.timeZone ?? "Europe/London",
+    ...(input.seed === undefined ? {} : { random: seeded(input.seed) }),
     start: async (systemPrompt, brain = input.brain) =>
       startVisionSession({
         claudeBinary: input.claudeBinary,

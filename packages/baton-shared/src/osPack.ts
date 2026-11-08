@@ -61,6 +61,8 @@ export interface Persona {
   readonly projects: ReadonlyArray<string>;
   /** The projects it leads (`leads:`): it hands out their work and is on their team. */
   readonly leads: ReadonlyArray<string>;
+  /** P5's `private:` (not read from the pack yet): its conversation and memory are its own, and the roster leaves it out. */
+  readonly private?: boolean;
 }
 
 /** The pack's files as they ship: front-matter for the face, then the brief. */
@@ -183,6 +185,24 @@ export const mergePack = (
 };
 
 export const DEFAULT_OS_PACK: OsPack = mergePack({});
+
+/**
+ * Who the other personas are, in one line ("Tessaya leads and hands out the work; Alfred handles sessions, builds and
+ * releases"), so a persona can say who to ask (PRESENCE). The part of a role before its first ";" is what it does.
+ * A private persona (P5) is left out.
+ */
+export const rosterLine = (
+  personas: ReadonlyArray<Pick<Persona, "id" | "name" | "role" | "lead" | "private">>,
+  self: string,
+): string =>
+  personas
+    .filter((p) => p.id !== self && p.private !== true)
+    .map((p) =>
+      p.lead
+        ? `${p.name} leads and hands out the work`
+        : `${p.name} handles ${p.role.split(";")[0]!.trim().replace(/\.$/, "")}`,
+    )
+    .join("; ");
 
 /**
  * Who answers: the persona whose wake word woke him, else the one he named first in the sentence,
