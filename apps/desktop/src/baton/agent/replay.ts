@@ -90,7 +90,7 @@ export const replayTurn = async (input: {
       reply: earlier.reply,
       persona: earlier.persona.id,
     });
-  const previous = input.before?.at(-1)?.persona;
+  const names = new Map((input.before ?? []).map((b) => [b.persona.id, b.persona.name]));
   const agent = createAssistantAgent({
     start: async (systemPrompt, brain = input.brain) =>
       startVisionSession({
@@ -112,7 +112,8 @@ export const replayTurn = async (input: {
       }),
     conversation: conversations.current,
     conversationOf: conversations.of,
-    ...(previous === undefined ? {} : { previousPersona: previous }),
+    latest: conversations.latest,
+    nameOf: (id) => names.get(id),
     clockLine: () =>
       clockLine(
         input.now?.at ?? new Date("2026-11-04T10:00:00Z"),

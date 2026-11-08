@@ -682,6 +682,23 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     goalArgs: ["room from six"],
   },
   {
+    id: "alfred-ignores-unrelated-hand-off",
+    source:
+      "Control for the P2 hand-off: an unrelated question to Alfred after a Freya turn is answered alone, without her words",
+    wake: "Alfred",
+    said: "what's two plus two?",
+    before: [
+      {
+        wake: "Freya",
+        said: "what should I tell the venue about Saturday?",
+        reply:
+          "Tell them we need the room from six, not seven, and ask whether the bar stays open until midnight.",
+      },
+    ],
+    first: ["none"],
+    notSays: ["venue", "six", "midnight", "Freya"],
+  },
+  {
     id: "what-did-freya-tell-me",
     source: "INTEGRATION.md 3.1 step 8 (P2): another persona's words come from conversation_search",
     said: "what did Freya tell me about the venue?",

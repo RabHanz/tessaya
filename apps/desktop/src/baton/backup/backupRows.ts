@@ -44,7 +44,7 @@ export const backupControls = (
           ...preview.rows.map((r, i): HomeControl => ({
             id: `bk.row:${i}`,
             section: previewSection,
-            label: r.name,
+            label: r.from === undefined ? r.name : `${r.from} → ${r.name}`,
             kind: "check",
             status: r.action === "refused" ? "warn" : "ok",
             detail: text(`backup.${r.action}`),

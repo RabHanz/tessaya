@@ -58,6 +58,15 @@ describe("the shared conversation", () => {
     expect(conversationBlock({ recent: [saved!], earlier: [], by: "Freya" })).toContain(
       "Freya replied (answer): Dry.",
     );
+    // The lead's file still holds the shared file's turns: each is labelled by who answered it.
+    const mixed = conversationBlock({
+      recent: [saved!, turn(4, "and you?", "Fine.")],
+      earlier: [],
+      self: "executive",
+      nameOf: (id) => (id === "assistant" ? "Freya" : undefined),
+    });
+    expect(mixed).toContain("Freya replied (answer): Dry.");
+    expect(mixed).toContain("you replied (answer): Fine.");
   });
   it("finds an older turn by its words, and not one already in the recent window", () => {
     const turns = [

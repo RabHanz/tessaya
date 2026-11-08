@@ -106,6 +106,8 @@ describe("the one assistant's session", () => {
       conversation: conversations.current,
       conversationOf: conversations.of,
       isPrivate: (persona) => secret.has(persona),
+      latest: conversations.latest,
+      nameOf: (id) => ({ assistant: "Freya", executive: "Alfred" })[id],
       now: () => clock,
       clockLine: () => "Sunday 10:00",
       beginTurn: () => undefined,
@@ -150,6 +152,15 @@ describe("the one assistant's session", () => {
     secret.add("executive");
     await agent.say("one more", { window: null, session: null, brain, persona: freya });
     expect(asked[4]).not.toContain("said to Alfred");
+    // A reply that never went through the agent (an instant answer) still hands over.
+    secret.clear();
+    await agent.say("hello", { window: null, session: null, brain, persona: alfred });
+    clock += 60_000;
+    conversations
+      .of("assistant")
+      .add({ route: "answer", said: "time?", reply: "Twenty past ten.", persona: "assistant" });
+    await agent.say("type that", { window: null, session: null, brain, persona: alfred });
+    expect(asked[6]).toContain("Freya replied (answer): Twenty past ten.");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

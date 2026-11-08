@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import { applyRestore, memoryRestore, planBackup, previewRestore, writeBackup } from "./backup.ts";
+import { backupControls } from "./backupRows.ts";
 import { makeZip, readZip } from "./zip.ts";
 
 const tmp = () => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "backup-"));
@@ -119,6 +120,41 @@ describe("backup and restore", () => {
     expect(NodeFS.readFileSync(NodePath.join(to, "fabric-voice.json.bak"), "utf8")).toBe(
       '{"holdKey":"Pause"}',
     );
+  });
+
+  it("restores a backup from before P2 into the lead's conversation, and says so; .1 files go both ways", () => {
+    const old = tmp();
+    put(old, "baton-conversation.ndjson", '{"id":2}');
+    put(old, "baton-conversation.ndjson.1", '{"id":1}');
+    put(old, "conversation/assistant.ndjson.1", '{"id":3}');
+    const zipFile = NodePath.join(tmp(), "old.zip");
+    writeBackup(zipFile, planBackup(old, null));
+
+    const to = tmp();
+    put(to, "conversation/executive.ndjson", '{"id":9}');
+    const preview = previewRestore(NodeFS.readFileSync(zipFile), to);
+    if (preview instanceof Error) throw preview;
+    expect(preview.rows).toEqual([
+      {
+        name: "conversation/executive.ndjson",
+        from: "baton-conversation.ndjson",
+        action: "replaces",
+      },
+      {
+        name: "conversation/executive.ndjson.1",
+        from: "baton-conversation.ndjson.1",
+        action: "new",
+      },
+      { name: "conversation/assistant.ndjson.1", action: "new" },
+    ]);
+    expect(backupControls({ file: "old.zip", rows: preview.rows }, null)[2]?.label).toBe(
+      "baton-conversation.ndjson → conversation/executive.ndjson",
+    );
+    expect(applyRestore(preview, to)).toBe(3);
+    expect(NodeFS.readFileSync(NodePath.join(to, "conversation/executive.ndjson"), "utf8")).toBe(
+      '{"id":2}',
+    );
+    expect(NodeFS.existsSync(NodePath.join(to, "baton-conversation.ndjson"))).toBe(false);
   });
 
   it("refuses any name it would not have written, so a hand-made zip cannot climb out", () => {

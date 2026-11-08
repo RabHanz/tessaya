@@ -1,9 +1,14 @@
-// @effect-diagnostics globalFetch:off
+// @effect-diagnostics globalFetch:off nodeBuiltinImport:off
 /**
  * The repeatable proof of the operator's gate (D127, D128): `scripts/tessaya/operator-proof.sh` runs this.
  * No microphone, no pointer, no model. Each case feeds the harness's own protocol lines through the
  * real gate: Claude's `control_request` and Codex's approval requests in, the harness's reply out.
  */
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
 import {
   gatePrompt,
   judgeToolCall,
@@ -14,6 +19,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
+import { createPersonaConversations } from "../conversation/conversationLog.ts";
 import { startBatonMcp, type BatonTool } from "../agent/batonMcp.ts";
 import { makeCodexClient } from "./codexOperator.ts";
 import { toolAnswerOf, toolRequestOf, toolUsesOf } from "./claudeVision.ts";
@@ -238,6 +244,39 @@ describe("operator proof: the one assistant's tools", () => {
     expect(a.ran).toContain("type_text:The reply I gave you.");
     expect(a.asked).toEqual([]);
     await a.mcp.close();
+  });
+
+  it("PROOF 5b: after a screenshot, Alfred types what Freya just said with no question, never a private persona's", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "proof-conv-"));
+    const conversations = createPersonaConversations({
+      dir,
+      legacy: NodePath.join(dir, "none.ndjson"),
+      lead: "executive",
+    });
+    const reply = "Tell them we need the room from six, not seven.";
+    conversations
+      .of("assistant")
+      .add({ route: "answer", said: "venue?", reply, persona: "assistant" });
+    conversations.setCurrent("executive");
+    const secret = new Set<string>();
+    // As ScreenCompanion wires the gate.
+    const his = (t: string) =>
+      textIsFromConversation(
+        t,
+        conversations.heard(12, (p) => secret.has(p)),
+      );
+    const a = await assistant("no", { his });
+    await a.call("screen_capture", {});
+    expect(
+      (await a.call("type_text", { text: reply, why: "into Notepad" }))?.isError,
+    ).toBeUndefined();
+    expect(a.asked).toEqual([]);
+    secret.add("assistant");
+    await a.call("screen_capture", {});
+    expect((await a.call("type_text", { text: reply, why: "into Notepad" }))?.isError).toBe(true);
+    expect(a.asked).toHaveLength(1);
+    await a.mcp.close();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
   it("PROOF 6: text that came from the screen asks first, and without a yes it is not typed", async () => {

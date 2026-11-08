@@ -142,6 +142,7 @@ import {
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import {
+  answerConversationSearch,
   conversationsIn,
   createConversationLog,
   type PersonaConversations,
@@ -732,6 +733,8 @@ export const startScreenCompanion = (input: {
   const conversation = conversations.current;
   // P5 adds the private flag to a persona's file; until then every persona's conversation may be shared.
   const isPrivate = (_persona: string): boolean => false;
+  const nameOf = (id: string) =>
+    readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find((p) => p.id === id)?.name;
   // The Chrome check never runs on the render path and never blocks or throws: it runs off to the side, gives up
   // after a few seconds, and the window shows the last answer.
   let chromeSeen: { readonly at: number; readonly check: ChromeCheck } = {
@@ -1846,7 +1849,8 @@ export const startScreenCompanion = (input: {
     textIsHis: (text) =>
       textIsFromConversation(
         text,
-        conversation.recent(12).filter((t) => !outsideSaid.has(t.said)),
+        // "Alfred, type what Freya just said": her words are his too, unless she is private.
+        conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
       ),
     focusedWindow: gateWindow,
     pointerField: (tool, call) => tool === "click_element" && clickTargetsField(lastControls, call),
@@ -2498,38 +2502,21 @@ export const startScreenCompanion = (input: {
         ...kept,
         ...hits.map(
           (t) =>
-            `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
+            `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\n${(t.persona !== undefined && t.persona !== face.id ? nameOf(t.persona) : undefined) ?? "you"} replied: ${t.reply}`,
         ),
       ];
       return found.length === 0 ? "Nothing earlier matches." : found.join("\n\n");
     },
-    conversationSearch: async ({ persona, words, since }) => {
-      const personas = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas;
-      const named =
-        persona === undefined
-          ? face
-          : personas.find((p) => p.name.toLowerCase() === persona.trim().toLowerCase());
-      if (named === undefined)
-        return `There is no persona called ${persona}. The personas are ${personas.map((p) => p.name).join(", ")}.`;
-      if (named.id !== face.id && isPrivate(named.id))
-        return `That's private to ${named.name}; you can share it in Settings.`;
-      const turns =
-        words === undefined
-          ? conversations
-              .of(named.id)
-              .recent(5)
-              .filter((t) => since === undefined || t.at >= since)
-          : conversations.search(named.id, words, since === undefined ? {} : { since });
-      const by = named.id === face.id ? "you" : named.name;
-      return turns.length === 0
-        ? `Nothing in what he and ${named.name} said matches.`
-        : turns
-            .map(
-              (t) =>
-                `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\n${by} replied: ${t.reply}`,
-            )
-            .join("\n\n");
-    },
+    conversationSearch: async (ask) =>
+      answerConversationSearch(
+        {
+          conversations,
+          personas: readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
+          speaking: face,
+          isPrivate,
+        },
+        ask,
+      ),
     remember: (text) => memory.remember(text),
     forget: (id) => memory.forget(id),
     pin: (id, pinned) => memory.pin(id, pinned),
@@ -2699,16 +2686,8 @@ export const startScreenCompanion = (input: {
       conversation,
       conversationOf: conversations.of,
       isPrivate,
-      // Created at the first sentence: after a restart, who he spoke to last still hands over.
-      ...(() => {
-        const id = conversations.latest();
-        const was = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find(
-          (p) => p.id === id,
-        );
-        return was === undefined
-          ? {}
-          : { previousPersona: { id: was.id, name: was.name, role: was.role } };
-      })(),
+      latest: conversations.latest,
+      nameOf,
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
       images: () => imagesSent,
@@ -3081,7 +3060,8 @@ export const startScreenCompanion = (input: {
     woke = wake;
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
-    conversations.setCurrent(face.id);
+    // A device's turn never changes whose conversation he is in.
+    if (!outside) conversations.setCurrent(face.id);
     leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
     // The wake named one persona and the words another ("Tessaya, ask Alfred…"): his tiers, before the turn runs.

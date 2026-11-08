@@ -79,8 +79,10 @@ export const createAssistantAgent = (input: {
   readonly conversationOf?: (persona: string | undefined) => ConversationLog;
   /** A private persona's turns are never handed to another, nor another's to it. */
   readonly isPrivate?: (persona: string) => boolean;
-  /** Who answered last before this agent existed (after a restart), so the first turn still gets the hand-off. */
-  readonly previousPersona?: TurnPersona;
+  /** The persona that answered last on any route, read from the files, so a restart or an instant reply still hands over. */
+  readonly latest?: () => string | undefined;
+  /** A persona's name in the pack, for the hand-off and for turns another persona answered. */
+  readonly nameOf?: (persona: string) => string | undefined;
   readonly now?: () => number;
   readonly clockLine: () => string;
   /** His notes and standing memory as a prompt block, read fresh when a session starts. */
@@ -100,8 +102,10 @@ export const createAssistantAgent = (input: {
   const now = input.now ?? Date.now;
   const logOf = (persona: string | undefined) =>
     input.conversationOf?.(persona) ?? input.conversation;
-  /** The persona that answered last and its name then, for the hand-off; names stay in memory, never in a file. */
-  let lastPersona: TurnPersona | null = input.previousPersona ?? null;
+  const labels = (persona: string | undefined) => ({
+    ...(persona === undefined ? {} : { self: persona }),
+    ...(input.nameOf === undefined ? {} : { nameOf: input.nameOf }),
+  });
   interface Warm {
     readonly session: Promise<VisionSession>;
     turns: number;
@@ -180,6 +184,7 @@ export const createAssistantAgent = (input: {
               recent: window.slice(-RECENT_TURNS),
               earlier: window.slice(0, -RECENT_TURNS),
               notes,
+              ...labels(persona),
             }),
             brain,
           ),
@@ -285,9 +290,11 @@ export const createAssistantAgent = (input: {
     const missed =
       meanwhile.length === 0
         ? ""
-        : `said and answered outside this chat since your last reply:\n${conversationBlock({ recent: meanwhile, earlier: [] })}`;
+        : `said and answered outside this chat since your last reply:\n${conversationBlock({ recent: meanwhile, earlier: [], ...labels(persona) })}`;
     // He turned from Freya to Alfred: Alfred hears what she just said, so "type what Freya just said" has her words.
-    const from = lastPersona;
+    const fromId = input.latest?.();
+    const from =
+      fromId === undefined ? null : { id: fromId, name: input.nameOf?.(fromId) ?? fromId };
     const handed =
       from === null ||
       where.persona === undefined ||
@@ -301,9 +308,8 @@ export const createAssistantAgent = (input: {
     const handOff =
       from === null || handed.length === 0
         ? ""
-        : `said to ${from.name} just now:\n${conversationBlock({ recent: handed, earlier: [], by: from.name })}`;
+        : `said to ${from.name} just now:\n${conversationBlock({ recent: handed, earlier: [], by: from.name, ...labels(from.id) })}`;
     const record = (reply: string, note?: string) => {
-      if (where.persona !== undefined) lastPersona = where.persona;
       warm.own.add(
         log.add({
           route: "answer",
