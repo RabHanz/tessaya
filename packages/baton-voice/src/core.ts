@@ -217,6 +217,13 @@ const STOP_END_SILENCE_MS = 350;
 const STOP_MAX_MS = 2_000;
 /** Generation reads ahead of playback, so this covers what is playing now. */
 const SPOKEN_KEPT = 12;
+/**
+ * A name heard over her voice is her own only when it is in what she is saying now: the sentence playing, or the few
+ * generated just ahead of it. A name she said replies ago (Alfred quoting "Freya") is not now (0.1.75 H3).
+ */
+const NAME_ECHO_SENTENCES = 4;
+/** In a dictation every word is text, so more of what came before the detector's answer is kept. */
+const DICTATION_PRE_ROLL_MS = 800;
 /** Speech over her voice for this long ducks it, and for this long cuts in: well inside the 300 ms to stop. */
 const DUCK_MS = 40;
 const BARGE_MS = 120;
@@ -846,6 +853,11 @@ export const createVoiceCore = (input: {
   // A separate path from `work`: that queue waits on routing and on speech, which is what he
   // is trying to stop. One transcription at a time; a window that arrives during one is skipped.
   const spokenLately: string[] = [];
+  /** What she is saying now: the sentence playing and those generated just ahead of it. */
+  const sayingNow = () => [
+    ...(sounding === null ? [] : [sounding.text]),
+    ...spokenLately.slice(-NAME_ECHO_SENTENCES),
+  ];
   const noteSpoken = (text: string) => {
     spokenLately.push(text);
     spokenLately.splice(0, Math.max(0, spokenLately.length - SPOKEN_KEPT));
@@ -915,8 +927,8 @@ export const createVoiceCore = (input: {
         const asHeard = words.slice(0, words.length - restWords).join(" ");
         if (
           name !== null &&
-          !echoesSpeech(name, spokenLately) &&
-          !echoesSpeech(asHeard, spokenLately) &&
+          !echoesSpeech(name, sayingNow()) &&
+          !echoesSpeech(asHeard, sayingNow()) &&
           machine.mode !== "dictation" &&
           !disposed
         ) {
@@ -1262,7 +1274,7 @@ export const createVoiceCore = (input: {
       score !== null &&
       heardItselfAt(firedAt) &&
       wakeWord !== null &&
-      echoesSpeech(wakeWord, spokenLately) &&
+      echoesSpeech(wakeWord, sayingNow()) &&
       !sure
     ) {
       // The reply itself says the name: it is its own voice, never a barge-in.
@@ -1405,8 +1417,15 @@ export const createVoiceCore = (input: {
       if (scored !== undefined) scoredSpeech = scored.speech;
       if (segment === null && speech) {
         segmentPeak = null;
-        segment = [...preRoll];
-        segmentSamples = preRollSamples;
+        // The detector answers late (a busy computer, its own warm-up after a reset): the words it had not reached
+        // yet are in `recent`, so the utterance starts that far back as well as its pre-roll (0.1.75: "This is a"
+        // and "Tessaya" lost from the start of a dictation). Dictation keeps more: every word in it is text.
+        const back =
+          msToSamples(machine.mode === "dictation" ? DICTATION_PRE_ROLL_MS : seg.preRollMs) +
+          (input.vad.behind?.() ?? 0);
+        const before = recent.filter((r) => r.end > samples - frame.length - back);
+        segment = before.map((r) => r.frame);
+        segmentSamples = before.reduce((n, r) => n + r.frame.length, 0);
       }
       if (segment !== null) {
         segment.push(frame);

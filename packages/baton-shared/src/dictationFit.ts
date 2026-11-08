@@ -96,6 +96,13 @@ export const fitInsertion = (context: CaretContext, inserted: string): string =>
   return `${lead}${text}${trail}`;
 };
 
+/**
+ * With the words around the caret unknown (the app did not say in time), a finished sentence ends with a space, so
+ * text already after the caret does not run into it ("…name here.Hello World", 0.1.75).
+ */
+export const fitWithoutContext = (inserted: string): string =>
+  /[.!?…]["'”’)\]]*$/.test(inserted) ? `${inserted} ` : inserted;
+
 /** What Baton last inserted, as the fallback when an app does not expose its text. */
 export const contextFromLastInsert = (
   last: { readonly text: string; readonly at: number; readonly sameWindow: boolean } | null,

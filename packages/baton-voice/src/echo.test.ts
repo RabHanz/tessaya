@@ -852,3 +852,40 @@ describe("a dictation clip's quiet tail", () => {
     expect(trimQuietTail(new Int16Array(16_000)).length).toBe(16_000);
   });
 });
+
+describe("the start of what he says, when the speech detector is behind (0.1.75 H1, H4)", () => {
+  /** A detector `lagFrames` behind the microphone: it says speech only that many frames after it began. */
+  const lagging = (lagFrames: number, dictating: boolean) => {
+    let speech = false;
+    let run = 0;
+    const heard: number[] = [];
+    const core = createVoiceCore({
+      waitMs: () => 0,
+      wake: { name: "fake", reset: () => {}, process: () => null },
+      vad: {
+        name: "fake",
+        reset: () => {},
+        isSpeech: () => (speech ? (run += 1) > lagFrames : ((run = 0), false)),
+        behind: () => (speech && run <= lagFrames ? run * FRAME : 0),
+      },
+      stt: { name: "fake", transcribe: async (pcm) => (heard.push(pcm.length), "words") },
+    });
+    const push = (seconds: number, on: boolean) => {
+      speech = on;
+      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    };
+    return { core, heard, push, dictating };
+  };
+
+  it("keeps the words the detector had not reached yet, in a dictation", async () => {
+    const r = lagging(20, true);
+    await r.core.setDictation(true);
+    await r.core.idle();
+    // 1.5 s of speech; the detector says so only 20 frames (0.64 s) in, then 0.8 s of quiet ends it.
+    r.push(1.5, true);
+    r.push(1.2, false);
+    await r.core.idle();
+    expect(r.heard).toHaveLength(1);
+    expect(r.heard[0]!).toBeGreaterThanOrEqual((frames(1.5) + frames(0.8)) * FRAME);
+  });
+});
