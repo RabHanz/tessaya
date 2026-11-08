@@ -150,7 +150,8 @@ export type DictationEvent =
       readonly changedOutside?: boolean;
     }
   /** The paste chord went out and nothing read the clipboard. */
-  | { readonly ev: "unread"; readonly text: string }
+  /** False when something else wrote the clipboard since: the desktop keeps the words (tray: Copy last transcript). */
+  | { readonly ev: "unread"; readonly text: string; readonly onClipboard?: boolean }
   | {
       readonly ev: "text";
       readonly id: number | null;

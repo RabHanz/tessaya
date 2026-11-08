@@ -284,18 +284,18 @@ export const frameLevel = (frame: Int16Array): number => {
 };
 
 /**
- * The pill's bars, normalised to his speech like an AGC: a frame's level over a running peak of his recent speech,
- * above a running noise floor. On a quiet mic his speech is 0.1 to 0.4 of full scale and the bars barely moved
- * (0.1.79). The peak falls slowly (about 7 s to halve at 30 frames a second); the floor drops at once and creeps up.
- * For the display only: silence detection and the mic test keep `frameLevel` as it is.
+ * The pill's bars, normalised to his speech (an AGC): level over a slowly falling peak, gated at 1.5 times a noise
+ * floor that rises only on noise-like frames, so a quiet mic's speech fills them and a fluctuating room stays low.
+ * Display only: silence detection and the mic test keep `frameLevel`.
  */
 export const createSpeechGain = () => {
   let peak = 0.15;
   let floor = 0.05;
   return (level: number): number => {
     peak = Math.max(level, peak * 0.997, 0.15);
-    floor = level < floor ? level : floor + (level - floor) * 0.002;
-    return Math.max(0, Math.min(1, (level - floor) / Math.max(peak - floor, 0.1)));
+    if (level < floor) floor += (level - floor) * 0.2;
+    else if (level < floor * 2.5) floor += (level - floor) * 0.05;
+    return Math.max(0, Math.min(1, (level - floor * 1.5) / Math.max(peak - floor, 0.25)));
   };
 };
 

@@ -308,5 +308,22 @@ describe("frameLevel", () => {
     for (let round = 0; round < 20; round += 1) loudShown = [0.1, 0.9, 1, 0.6, 0.1].map(loud);
     expect(Math.max(...loudShown)).toBeLessThanOrEqual(1);
     expect(loudShown[0]).toBeLessThan(0.1);
+    // A room's fluctuating noise alone (0.03 to 0.13) never fills the bars.
+    const noise = Array.from(
+      { length: 60 },
+      (_, i) => 0.08 + 0.035 * Math.sin(i * 1.7) + 0.02 * Math.sin(i * 0.9),
+    );
+    const quietRoom = createSpeechGain();
+    let noiseShown: number[] = [];
+    for (let round = 0; round < 5; round += 1) noiseShown = noise.map(quietRoom);
+    expect(Math.max(...noiseShown)).toBeLessThan(0.15);
+    // A long sentence with no pause keeps moving: the floor does not climb with his voice.
+    const talking = createSpeechGain();
+    const sentence = [
+      0.06, 0.2, 0.3, 0.35, 0.28, 0.32, 0.25, 0.3, 0.36, 0.22, 0.3, 0.27, 0.33, 0.2, 0.3, 0.06,
+    ];
+    let said: number[] = [];
+    for (let round = 0; round < 5; round += 1) said = sentence.map(talking);
+    expect(Math.min(...said.slice(2, 14))).toBeGreaterThan(0.3);
   });
 });

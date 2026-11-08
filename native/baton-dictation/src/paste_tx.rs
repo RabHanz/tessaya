@@ -14,6 +14,10 @@ pub const RESTORE_TIMEOUT: Duration = Duration::from_secs(8);
 /// When the chord could not be injected at all, no legitimate receipt can arrive, so restore quickly.
 pub const FAILED_INJECTION_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// A new paste waits no longer than this for an unread chord: past it the old one is left unread (its words kept),
+/// so a dead target never holds the sidecar's loop, and his key presses, for the full restore timeout.
+pub const UNREAD_TAKEOVER: Duration = Duration::from_millis(1500);
+
 /// Shared, cross-thread record of one paste transaction.
 #[derive(Debug)]
 pub struct TxState {
@@ -30,6 +34,8 @@ pub struct TxState {
     pub ownership_lost: bool,
     /// Settled: restored, left or handed on. Set once.
     pub cancelled: bool,
+    /// A newer paste settled it; its own timer only tears down.
+    pub taken_over: bool,
     /// First post-injection receipt has been logged.
     pub logged_receipt: bool,
 }
@@ -43,6 +49,7 @@ impl TxState {
             receipts: Vec::new(),
             ownership_lost: false,
             cancelled: false,
+            taken_over: false,
             logged_receipt: false,
         }
     }
@@ -100,11 +107,33 @@ pub fn evaluate(state: &TxState, now: Instant) -> WaitDecision {
     WaitDecision::KeepWaiting
 }
 
-/// Whether a new paste may take the clipboard from the one before it now. Settling the previous one before its
-/// target had read it put his old clipboard back under a Ctrl+V still on its way, so that is what got pasted
-/// (0.1.79). A new paste waits exactly as long as the previous one would have waited on its own.
-pub fn may_take_over(previous: &TxState, now: Instant) -> bool {
-    evaluate(previous, now) == WaitDecision::Finish
+/// What a new paste does about the one before it.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TakeOver {
+    /// Its target may still read it: wait.
+    Wait,
+    /// It is done (read and quiet, timed out, or his copy replaced it): let it settle as it would on its own.
+    Settle,
+    /// Its chord has gone unread too long: leave its words where he can get them and go on.
+    LeaveUnread,
+}
+
+/// Settling the previous paste before its target had read it put his old clipboard back under a Ctrl+V still on its
+/// way, so that is what got pasted (0.1.79). A new paste waits as the previous one would on its own, but never more
+/// than `UNREAD_TAKEOVER` for a chord nothing has read.
+pub fn take_over(previous: &TxState, now: Instant) -> TakeOver {
+    if evaluate(previous, now) == WaitDecision::Finish {
+        return TakeOver::Settle;
+    }
+    match previous.injected_at {
+        Some(injected)
+            if !previous.any_receipt_after_injection()
+                && now.duration_since(injected) >= UNREAD_TAKEOVER =>
+        {
+            TakeOver::LeaveUnread
+        }
+        _ => TakeOver::Wait,
+    }
 }
 
 /// What the clipboard holds just before the chord: ours only while we still own it and nothing wrote since we
@@ -138,7 +167,7 @@ mod tests {
         let t0 = Instant::now();
         let previous = sent(t0);
         // The second flush arrives 100 ms after the first Ctrl+V, which the target has not read yet.
-        assert!(!may_take_over(&previous, t0 + Duration::from_millis(100)));
+        assert_eq!(take_over(&previous, t0 + Duration::from_millis(100)), TakeOver::Wait);
     }
 
     #[test]
@@ -146,18 +175,28 @@ mod tests {
         let t0 = Instant::now();
         let mut previous = sent(t0);
         previous.record_receipt(t0 + Duration::from_millis(40));
-        assert!(!may_take_over(&previous, t0 + Duration::from_millis(100)));
-        assert!(may_take_over(&previous, t0 + Duration::from_millis(260)));
+        assert_eq!(take_over(&previous, t0 + Duration::from_millis(100)), TakeOver::Wait);
+        assert_eq!(take_over(&previous, t0 + Duration::from_millis(260)), TakeOver::Settle);
     }
 
     #[test]
-    fn a_new_paste_takes_over_once_the_last_one_has_waited_out() {
+    fn an_unread_chord_is_left_unread_after_a_second_and_a_half_not_restored_over() {
         let t0 = Instant::now();
         let previous = sent(t0);
-        assert!(may_take_over(&previous, t0 + RESTORE_TIMEOUT));
+        assert_eq!(take_over(&previous, t0 + Duration::from_millis(1400)), TakeOver::Wait);
+        // Not the 8 s restore timeout: his next hold-key press must not wait that long behind it.
+        assert_eq!(take_over(&previous, t0 + UNREAD_TAKEOVER), TakeOver::LeaveUnread);
+    }
+
+    #[test]
+    fn a_new_paste_settles_one_that_is_done() {
+        let t0 = Instant::now();
         let mut lost = sent(t0);
         lost.ownership_lost = true;
-        assert!(may_take_over(&lost, t0));
+        assert_eq!(take_over(&lost, t0), TakeOver::Settle);
+        let mut failed = TxState::new(t0);
+        failed.injection_failed = true;
+        assert_eq!(take_over(&failed, t0 + FAILED_INJECTION_TIMEOUT), TakeOver::Settle);
     }
 
     #[test]
