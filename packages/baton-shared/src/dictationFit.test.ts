@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { contextFromLastInsert, fitInsertion } from "./dictationFit.ts";
+import { contextFromLastInsert, fitInsertion, fitWithoutContext } from "./dictationFit.ts";
 
 describe("fitInsertion", () => {
   const rows: ReadonlyArray<readonly [string, string, string, string]> = [
@@ -33,6 +33,17 @@ describe("fitInsertion", () => {
 });
 
 describe("contextFromLastInsert", () => {
+  it("ends a finished sentence with a space when the words around the caret are unknown (0.1.75 H2)", () => {
+    // Pasted before "Hello World", unseen: "…name here.Hello World".
+    expect(fitWithoutContext("Should type her own name here.")).toBe(
+      "Should type her own name here. ",
+    );
+    expect(fitWithoutContext("Done?")).toBe("Done? ");
+    // Mid-sentence words are left as they are: no guess at what follows.
+    expect(fitWithoutContext("and then")).toBe("and then");
+    expect(fitWithoutContext("Done. ")).toBe("Done. ");
+  });
+
   it("uses the last insertion only for the same window and while it is fresh", () => {
     const last = { text: "Done.", at: 1_000, sameWindow: true };
     expect(contextFromLastInsert(last, 2_000)).toEqual({ before: "Done.", after: "" });

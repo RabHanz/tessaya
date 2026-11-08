@@ -217,6 +217,15 @@ const STOP_END_SILENCE_MS = 350;
 const STOP_MAX_MS = 2_000;
 /** Generation reads ahead of playback, so this covers what is playing now. */
 const SPOKEN_KEPT = 12;
+/**
+ * A name heard over her voice is her own only when it is in what she is saying now: the sentence playing, or the few
+ * generated just ahead of it. A name she said replies ago (Alfred quoting "Freya") is not now (0.1.75 H3).
+ */
+const NAME_ECHO_SENTENCES = 4;
+/** In a dictation every word is text, so more of what came before the detector's answer is kept. */
+const DICTATION_PRE_ROLL_MS = 800;
+/** The detector's lag counted at most this far: further behind than that it skips quiet audio to catch up. */
+const BEHIND_CAP_MS = 4_000;
 /** Speech over her voice for this long ducks it, and for this long cuts in: well inside the 300 ms to stop. */
 const DUCK_MS = 40;
 const BARGE_MS = 120;
@@ -560,6 +569,7 @@ export const createVoiceCore = (input: {
     const before = machine;
     const result = reduceVoice(machine, event, timings);
     machine = result.state;
+    if (before.mode !== "dictation" && machine.mode === "dictation") dictationFrom = samples;
     show();
     if (result.effects.length > 0) await handle(result.effects, before);
   };
@@ -582,6 +592,7 @@ export const createVoiceCore = (input: {
   };
 
   const finishSegment = () => {
+    lastSegmentEnd = samples;
     const parts = segment;
     const spoken = speechSamples;
     const peak = segmentPeak;
@@ -846,6 +857,13 @@ export const createVoiceCore = (input: {
   // A separate path from `work`: that queue waits on routing and on speech, which is what he
   // is trying to stop. One transcription at a time; a window that arrives during one is skipped.
   const spokenLately: string[] = [];
+  /** What she is saying now: the sentence playing and those generated just ahead of it. */
+  const sayingNow = () => [
+    // The sentence that just finished, whose echo may still be in the room, and the one playing.
+    ...played.slice(-1),
+    ...(sounding === null ? [] : [sounding.text]),
+    ...spokenLately.slice(-NAME_ECHO_SENTENCES),
+  ];
   const noteSpoken = (text: string) => {
     spokenLately.push(text);
     spokenLately.splice(0, Math.max(0, spokenLately.length - SPOKEN_KEPT));
@@ -867,6 +885,7 @@ export const createVoiceCore = (input: {
     // Where his speech began: the clip starts with the pre-roll, which the cut-in adds back itself (`openAt`).
     const startedAt = samples - stopSamples + stopPreRoll;
     clearStop();
+    lastSegmentEnd = samples;
     if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
     // Dictation is on: every clip over her closing line is his words. None is dropped as busy, each takes its place in
     // the queue as it ends (so the buffer stays in the order he spoke), and only her own line heard back is cut off.
@@ -915,8 +934,8 @@ export const createVoiceCore = (input: {
         const asHeard = words.slice(0, words.length - restWords).join(" ");
         if (
           name !== null &&
-          !echoesSpeech(name, spokenLately) &&
-          !echoesSpeech(asHeard, spokenLately) &&
+          !echoesSpeech(name, sayingNow()) &&
+          !echoesSpeech(asHeard, sayingNow()) &&
           machine.mode !== "dictation" &&
           !disposed
         ) {
@@ -1010,6 +1029,9 @@ export const createVoiceCore = (input: {
   let echoUntil = 0;
   /** Speech before this sample is the wake word's tail. */
   let creditFrom = 0;
+  /** Where the last utterance (or stop clip) ended, and where the current dictation began: an utterance never starts before either. */
+  let lastSegmentEnd = 0;
+  let dictationFrom = 0;
   /** A wake word cut in, and what he says next is being heard. Nothing may drop it. */
   let barged = false;
   /**
@@ -1262,7 +1284,7 @@ export const createVoiceCore = (input: {
       score !== null &&
       heardItselfAt(firedAt) &&
       wakeWord !== null &&
-      echoesSpeech(wakeWord, spokenLately) &&
+      echoesSpeech(wakeWord, sayingNow()) &&
       !sure
     ) {
       // The reply itself says the name: it is its own voice, never a barge-in.
@@ -1405,8 +1427,23 @@ export const createVoiceCore = (input: {
       if (scored !== undefined) scoredSpeech = scored.speech;
       if (segment === null && speech) {
         segmentPeak = null;
-        segment = [...preRoll];
-        segmentSamples = preRollSamples;
+        // The detector answers late (a busy computer, its own warm-up after a reset): the words it had not reached
+        // yet are in `recent`, so the utterance starts that far back as well as its pre-roll (0.1.75: "This is a"
+        // and "Tessaya" lost from the start of a dictation). Dictation keeps more: every word in it is text.
+        const back =
+          msToSamples(machine.mode === "dictation" ? DICTATION_PRE_ROLL_MS : seg.preRollMs) +
+          Math.min(input.vad.behind?.() ?? 0, msToSamples(BEHIND_CAP_MS));
+        // Never back into what is not his: the last utterance (or stop clip), her voice and its echo tail, or the
+        // time before dictation began, so her own closing line ("…say stop dictation") is never typed.
+        const from = Math.max(
+          samples - frame.length - back,
+          lastSegmentEnd,
+          echoUntil,
+          machine.mode === "dictation" ? dictationFrom : 0,
+        );
+        const before = recent.filter((r) => r.end - r.frame.length >= from);
+        segment = before.map((r) => r.frame);
+        segmentSamples = before.reduce((n, r) => n + r.frame.length, 0);
       }
       if (segment !== null) {
         segment.push(frame);

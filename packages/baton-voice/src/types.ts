@@ -65,6 +65,8 @@ export interface VadProvider {
    * last answer for frames it has not scored yet (a burst after a stall); these only move when it has.
    */
   readonly scored?: () => { readonly speech: number; readonly quiet: number };
+  /** Samples fed that it has not scored yet: how far behind the microphone its answer is. */
+  readonly behind?: () => number;
   /** Its latest speech probability (0–1), for the turn log. */
   readonly probability?: () => number;
 }

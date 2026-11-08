@@ -157,6 +157,8 @@ export const streamingScorer = (input: {
   let stale = false;
   let speechScored = 0;
   let quietRun = 0;
+  /** Where the last scored chunk ended, in samples fed. */
+  let scoredEnd = 0;
   /** Bumped by reset(): a chunk queued before it is about audio that no longer counts. */
   let generation = 0;
   const feed = (frame: Int16Array) => {
@@ -177,6 +179,7 @@ export const streamingScorer = (input: {
         if (fed - end > MAX_BEHIND && quiet(chunk)) {
           stale = true;
           quietRun += chunk.length;
+          scoredEnd = end;
           return;
         }
         if (stale) {
@@ -186,6 +189,7 @@ export const streamingScorer = (input: {
         const s = await input.score(chunk);
         if (gen !== generation) return;
         last = s;
+        scoredEnd = end;
         if (s >= input.threshold) {
           speechScored += chunk.length;
           quietRun = 0;
@@ -214,6 +218,7 @@ export const streamingScorer = (input: {
     last: () => last,
     firedAgo: () => fed - firedEnd,
     scored: () => ({ speech: speechScored, quiet: quietRun }),
+    behind: () => Math.max(0, fed - scoredEnd),
     reset: () => {
       generation += 1;
       pending = new Int16Array(0);
@@ -329,6 +334,7 @@ export const createSileroVad = async (
     reset: s.reset,
     drain: s.drain,
     scored: s.scored,
+    behind: s.behind,
     probability: s.last,
   };
 };
