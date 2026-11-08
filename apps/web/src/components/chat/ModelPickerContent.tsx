@@ -368,6 +368,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onFocusEffort?: () => void;
   /** Closes the list column, inside the popup's fixed height. */
   listFooter?: ReactNode;
+  /** Above the footer: the browsed instance's account (the thread's own under Favorites). */
+  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
 }) {
   const {
     searchInputRef,
@@ -710,6 +712,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   const selectedEntry =
     selectedInstanceId === "favorites" ? undefined : entryByInstanceId.get(selectedInstanceId);
+  const detailEntry = selectedEntry ?? entryByInstanceId.get(props.activeInstanceId);
   const providerSetupEntries =
     !isSearching && canOpenProviderSetup
       ? instanceEntries.filter(
@@ -1075,6 +1078,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               onRequestClose={onRequestClose}
               onOpenProviderSetup={onOpenProviderSetup}
             />
+            {detailEntry ? props.renderInstanceDetail?.(detailEntry) : null}
             {props.listFooter}
           </div>
         </Combobox>

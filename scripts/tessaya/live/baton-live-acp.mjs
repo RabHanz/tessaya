@@ -54,6 +54,21 @@ export function promptText(blocks) {
 export const LIVE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const EFFORT_AS_IS = "session";
 
+/**
+ * What T3 shows as this session's model: the agent in the terminal, which keeps its own model (the slug stays `live`,
+ * the thread's model in LiveSessionMirror). Picking another Claude model in T3 types /model into the session.
+ */
+export const LIVE_MODELS = {
+  availableModels: [
+    {
+      modelId: "live",
+      name: "Claude Code",
+      description: "The model is the session's own; pick one to change it there.",
+    },
+  ],
+  currentModelId: "live",
+};
+
 /** The effort control T3's own composer shows for a live thread; the session itself keeps the real value. */
 export const effortConfigOption = (current = EFFORT_AS_IS) => ({
   id: "effort",
@@ -62,7 +77,7 @@ export const effortConfigOption = (current = EFFORT_AS_IS) => ({
   type: "select",
   currentValue: current,
   options: [
-    { value: EFFORT_AS_IS, name: "As the session has it" },
+    { value: EFFORT_AS_IS, name: "Current" },
     ...LIVE_EFFORTS.map((effort) => ({ value: effort, name: effort })),
   ],
 });
@@ -1180,13 +1195,17 @@ async function handle(message) {
       };
     case "session/new": {
       const bound = sessionOfLiveThread(process.env.T3CODE_THREAD_ID);
-      if (bound !== null) return { sessionId: bound, configOptions: [effortConfigOption()] };
+      if (bound !== null)
+        return { sessionId: bound, models: LIVE_MODELS, configOptions: [effortConfigOption()] };
       const unbound = `${UNBOUND}-${process.pid}-${id}`;
       if (typeof params.cwd === "string") newSessionCwd.set(unbound, params.cwd);
-      return { sessionId: unbound, configOptions: [effortConfigOption()] };
+      return { sessionId: unbound, models: LIVE_MODELS, configOptions: [effortConfigOption()] };
     }
     case "session/resume":
-      return { configOptions: [effortConfigOption()] };
+      return { models: LIVE_MODELS, configOptions: [effortConfigOption()] };
+    // The model is the session's own: T3 re-selecting "live" changes nothing (a real pick types /model, 0009).
+    case "session/set_model":
+      return {};
     case "session/set_config_option":
       return { configOptions: [effortConfigOption(await setEffort(params))] };
     case "session/prompt":

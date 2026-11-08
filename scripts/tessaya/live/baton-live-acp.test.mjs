@@ -11,6 +11,7 @@ import * as NodeURL from "node:url";
 import { LIVE_EFFORT_CHOICES } from "../../../packages/baton-shared/src/liveModel.ts";
 import {
   effortConfigOption,
+  LIVE_MODELS,
   LIVE_EFFORTS,
   isAdoptRequest,
   isAnswerInTerminal,
@@ -259,13 +260,18 @@ NodeTest.test(
       const init = await call(1, "initialize", { protocolVersion: 2 });
       NodeAssert.equal(init.result.protocolVersion, 1);
       NodeAssert.deepEqual(init.result.agentCapabilities.sessionCapabilities, { resume: {} });
-      NodeAssert.match(
-        (await call(2, "session/new", { cwd, mcpServers: [] })).result.sessionId,
-        /^baton-unbound/,
+      const opened = (await call(2, "session/new", { cwd, mcpServers: [] })).result;
+      NodeAssert.match(opened.sessionId, /^baton-unbound/);
+      // T3's composer shows these words as they are: what is in the terminal, never the slug "live" or a sentence.
+      NodeAssert.deepEqual(
+        opened.models.availableModels.map((m) => [m.modelId, m.name]),
+        [["live", "Claude Code"]],
       );
+      for (const option of opened.configOptions[0].options)
+        NodeAssert.ok(option.name.length <= 8, option.name);
       NodeAssert.deepEqual(
         (await call(3, "session/resume", { sessionId: sid, cwd, mcpServers: [] })).result,
-        { configOptions: [effortConfigOption()] },
+        { models: LIVE_MODELS, configOptions: [effortConfigOption()] },
       );
 
       // Busy the whole time: the send must not wait for idle, or T3 queues the next message.

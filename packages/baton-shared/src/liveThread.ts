@@ -44,40 +44,27 @@ export const liveThreadSwitchRefusal = (input: {
       : "This thread is answered by a handoff session, which Tessaya will not wake. Retire the handoff session, or switch the thread back to its live session."
     : null;
 
-export interface Answerer {
-  /** Who actually answers this thread's messages. */
-  readonly harness: "herdr-session" | "t3-hosted";
-  /** True when a mirrored live thread is being answered by a new T3-hosted session instead of its own. */
-  readonly handedOff: boolean;
-  readonly line: string;
-}
-
-/** The model, effort, account and harness that answer a thread, in one line for its header. */
-export const describeAnswerer = (input: {
-  readonly threadId: string;
-  readonly instanceId: string;
-  readonly model: string;
-  readonly effort?: string | null;
-  readonly account?: string | null;
-}): Answerer => {
-  const live = input.instanceId === LIVE_INSTANCE;
-  const harness = live ? "herdr-session" : "t3-hosted";
-  const session = isLiveThreadId(input.threadId)
-    ? input.threadId.replace(/^[^:]*:/, "").slice(0, 8)
-    : null;
-  const parts = [
-    live ? "Terminal session" : "T3-hosted session",
-    session === null ? null : session,
-    input.model,
-    input.effort ? input.effort : null,
-    input.account ? input.account : null,
-  ].filter((part): part is string => part !== null && part !== "");
-  return {
-    harness,
-    handedOff: !live && isLiveThreadId(input.threadId),
-    line: parts.join(" · "),
-  };
-};
+/**
+ * What a model pick does on a live thread. Still on its session: a Claude model on the session's own login changes
+ * the session's model (/model), the Terminal session entry keeps it, and another provider or login continues in a
+ * new thread. Handed off: the thread is ordinary, except that the Terminal session entry takes it back.
+ */
+export const livePick = (input: {
+  readonly pickedInstance: string;
+  readonly pickedDriver: string | null;
+  readonly currentInstance: string;
+  /** The picked instance runs as the login the terminal session uses. */
+  readonly sameAccount: boolean;
+}): "session-model" | "unchanged" | "switch-back" | "continue-in" | "normal" =>
+  input.currentInstance !== LIVE_INSTANCE
+    ? input.pickedInstance === LIVE_INSTANCE
+      ? "switch-back"
+      : "normal"
+    : input.pickedInstance === LIVE_INSTANCE
+      ? "unchanged"
+      : input.pickedDriver === "claudeAgent" && input.sameAccount
+        ? "session-model"
+        : "continue-in";
 
 /** The header line for a reply the session says a safety classifier stopped; null for any other text. */
 export const classifierStopReason = (lastReply: string | null): string | null =>

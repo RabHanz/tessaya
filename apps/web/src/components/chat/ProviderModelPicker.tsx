@@ -112,6 +112,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
    */
   effortColumn?: ReactNode;
   footer?: ReactNode;
+  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
@@ -274,6 +275,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           : (props.getModelDisabledReason?.(instanceId, model) ?? null)
       }
       onInstanceModelChange={handleInstanceModelChange}
+      {...(props.renderInstanceDetail ? { renderInstanceDetail: props.renderInstanceDetail } : {})}
       {...(docked
         ? {
             docked,

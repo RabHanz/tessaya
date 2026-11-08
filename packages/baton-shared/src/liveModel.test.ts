@@ -20,6 +20,7 @@ const deps = (over: Partial<LiveModelDeps> & { transcript?: () => string }): Liv
     mark: () => 0,
     since: () => over.transcript?.() ?? written,
     wait: async () => undefined,
+    claudeModels: ["claude-opus-5-5"],
     ...over,
   };
 };
@@ -68,6 +69,16 @@ describe("setLiveModel", () => {
       state: "applied",
       confirmed: expect.arrayContaining([expect.stringContaining("Opus 5.5")]),
     });
+  });
+
+  it("refuses another provider's model without typing anything", async () => {
+    const sent: string[] = [];
+    const result = await setLiveModel(
+      deps({ send: async (_pane, text) => (sent.push(text), true) }),
+      { model: "gpt-5.5" },
+    );
+    expect(result.state).toBe("refused");
+    expect(sent).toEqual([]);
   });
 
   it("says it was not confirmed when the session stays silent, never that it was applied", async () => {

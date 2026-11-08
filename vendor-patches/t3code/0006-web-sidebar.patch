@@ -8052,14 +8052,14 @@ index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff2
    ]
  }
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..f39014ea8ec23238d211529a14e7e2f0f3b59131 100644
+index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..0fc80fd35f9374c8f87b37e82c21c295f0f263d1 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -20,6 +20,7 @@ import {
    type MouseEvent as ReactMouseEvent,
  } from "react";
  import { isTrailingDoubleClick } from "../Sidebar.logic";
-+import { BatonThreadAccount } from "./BatonThreadAccount";
++import { BatonLiveStatus } from "./BatonLiveStatus";
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { toastManager } from "../ui/toast";
@@ -8067,22 +8067,27 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..f39014ea8ec23238d211529a14e7e2f0
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
-+      {isServerThread ? <BatonThreadAccount threadRef={activeThreadRef} /> : null}
++      {isServerThread ? <BatonLiveStatus threadRef={activeThreadRef} /> : null}
        {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
      </div>
    );
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..b835cd5071f0e33b69bdd739a4db0e730dcdf54e 100644
+index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..bc168d78fb1886fc34334b7e25747d7cd2965b2a 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
 +++ b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-@@ -1,5 +1,6 @@
+@@ -1,8 +1,11 @@
  import { Toolbar } from "@base-ui/react/toolbar";
  import { type ProviderInstanceId } from "@t3tools/contracts";
 +import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
  import { memo, useLayoutEffect, useRef, useState } from "react";
  import { StarIcon } from "lucide-react";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-@@ -39,6 +40,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
++import { instanceRoom, RailLimitMark } from "./BatonPickerAccount";
++import { useNowMinute } from "../../hooks/useNowMinute";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import { cn } from "~/lib/utils";
+ import {
+@@ -39,10 +42,12 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
    selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
    getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
  }) {
@@ -8090,7 +8095,12 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..b835cd5071f0e33b69bdd739a4db0e73
    const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
      props.onSelectInstance(instanceId);
    };
-@@ -123,7 +125,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+   const showFavorites = props.showFavorites ?? true;
++  const now = Date.parse(`${useNowMinute()}:00Z`);
+   const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
+   const sidebarContentRef = useRef<HTMLDivElement>(null);
+   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
+@@ -123,7 +128,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
              </>
            ) : null}
  
@@ -8099,7 +8109,15 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..b835cd5071f0e33b69bdd739a4db0e73
              const isUnavailable = !isProviderInstancePickerReady(entry);
              const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
              const unavailableSelectionIsReachable =
-@@ -169,6 +171,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -139,6 +144,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+               : isContextDisabled
+                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
+                 : entry.displayName;
++            const room = isUnavailable || isContextDisabled ? null : instanceRoom(entry, now);
+ 
+             const button = (
+               <Toolbar.Button
+@@ -169,6 +175,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                    acpRegistryAgentId={entry.acpRegistryAgentId}
                    acpRegistryIconUrl={entry.acpRegistryIconUrl}
                    showBadge={showInstanceBadge}
@@ -8107,6 +8125,22 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..b835cd5071f0e33b69bdd739a4db0e73
                    className="size-6 z-30"
                    iconClassName="size-5"
                    indicatorBackground={
+@@ -180,6 +187,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+                   }
+                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
+                 />
++                {room?.onLimit ? <RailLimitMark /> : null}
+               </Toolbar.Button>
+             );
+ 
+@@ -203,6 +211,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+                     align="center"
+                   >
+                     {tooltip}
++                    {room ? <div className="text-muted-foreground">{room.text}</div> : null}
+                   </TooltipPopup>
+                 </Tooltip>
+               </div>
 diff --git a/apps/web/src/components/chat/ProviderInstanceIcon.tsx b/apps/web/src/components/chat/ProviderInstanceIcon.tsx
 index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf078167b235e1 100644
 --- a/apps/web/src/components/chat/ProviderInstanceIcon.tsx

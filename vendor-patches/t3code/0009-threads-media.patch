@@ -592,18 +592,28 @@ index c810890ebf96b1c7112c721575303c5f7ed7a435..e59f34cb462f6a4ce5aeaed355d4a1c1
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
 diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
-index 0002beeaf9fef7dd2c9920799430367027b4c23b..8ffac92187d94bc5d11de7b29abd03f4a89d13d0 100644
+index 0002beeaf9fef7dd2c9920799430367027b4c23b..2bf2e3fafeda2222b6434b020e90ee158e5881b3 100644
 --- a/apps/web/src/components/chat/ComposerControlsBar.tsx
 +++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
-@@ -27,6 +27,7 @@ import {
+@@ -27,6 +27,9 @@ import {
    ComposerPickerFooter,
    describeComposerEffort,
  } from "./ComposerModelEffort";
++import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 +import { useLiveTraits } from "./BatonLiveModel";
++import { BatonLimitMark, BatonPickerAccount, BatonUsageDetails } from "./BatonPickerAccount";
  import type { useComposerProviderModel } from "./useComposerProviderModel";
  import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
  
-@@ -152,19 +153,22 @@ export function ComposerControlsBar(props: {
+@@ -88,6 +91,7 @@ export function ComposerControlsBar(props: {
+   onModelPickerOpenChange: (open: boolean) => void;
+   modelPickerIconClassName: string | undefined;
+   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
++  onUsageLimitsCommand: ChatComposerProps["onUsageLimitsCommand"];
+ }) {
+   const {
+     environmentId,
+@@ -152,19 +156,23 @@ export function ComposerControlsBar(props: {
      measuredHiddenBlockCount,
    });
    const controlSize = composerControlsCollapsed ? "xs" : "sm";
@@ -620,8 +630,9 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..8ffac92187d94bc5d11de7b29abd03f4
 -    onPromptEdit,
 -    planModeEnabled,
 -  });
++  const batonThreadRef = routeKind === "server" ? routeThreadRef : null;
 +  const traitsInput = useLiveTraits(
-+    routeKind === "server" ? routeThreadRef : null,
++    batonThreadRef,
 +    resolveComposerTraitsInput({
 +      provider: selectedProvider,
 +      instanceId: selectedInstanceId,
@@ -639,6 +650,65 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..8ffac92187d94bc5d11de7b29abd03f4
    const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
    const restingBlockDefs = showModeBlock
      ? [
+@@ -200,7 +208,12 @@ export function ComposerControlsBar(props: {
+       multipleModelSelections={multipleModelSelections}
+       onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
+       selectedModelSelection={selectedModelSelection}
+-      onProviderModelSelect={onProviderModelSelect}
++      onProviderModelSelect={(instanceId, model, options) => {
++        // The Terminal session entry, already current, changes nothing: the pick just closes the picker.
++        if (instanceId === LIVE_INSTANCE && selectedInstanceId === LIVE_INSTANCE)
++          onModelPickerOpenChange(false);
++        onProviderModelSelect(instanceId, model, options);
++      }}
+       activeInstanceId={
+         providerCatalogPending
+           ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
+@@ -222,7 +235,15 @@ export function ComposerControlsBar(props: {
+         MODEL_TRIGGER_STATES,
+         composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
+       )}
+-      triggerSuffix={effort.suffix}
++      triggerSuffix={
++        <>
++          {effort.suffix}
++          <BatonLimitMark
++            entry={providerInstanceEntries.find((entry) => entry.instanceId === selectedInstanceId)}
++            threadRef={batonThreadRef}
++          />
++        </>
++      }
+       triggerDetail={effort.detail}
+       triggerShortcuts={
+         pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
+@@ -234,8 +255,26 @@ export function ComposerControlsBar(props: {
+           runtimeMode={compatibleRuntimeMode}
+           runtimeModeOptions={compatibleRuntimeModeOptions}
+           onRuntimeModeChange={handleRuntimeModeChange}
+-        />
++        >
++          <BatonUsageDetails
++            onOpen={
++              props.onUsageLimitsCommand
++                ? () => {
++                    onModelPickerOpenChange(false);
++                    props.onUsageLimitsCommand?.();
++                  }
++                : null
++            }
++          />
++        </ComposerPickerFooter>
+       }
++      renderInstanceDetail={(entry) => (
++        <BatonPickerAccount
++          entry={entry}
++          threadRef={batonThreadRef}
++          threadInstanceId={selectedInstanceId}
++        />
++      )}
+       terminalOpen={terminalOpen}
+       open={modelPickerOpen}
+       instanceIndicatorBackground={
 diff --git a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
 index a19e7f205cef9fcac31aa02c76e29a29a9c5afee..b453e976fd0211e9aaec10d2ed73fc73e33d9942 100644
 --- a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
@@ -1459,39 +1529,70 @@ index 1a0c3aa014ad02d4f9d114ee094059344a66ef2f..5213f9d5dad8046db3776f2a19e5590b
    onCancelWorktreeSetup: (() => void) | null;
    retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
 diff --git a/apps/web/src/components/chat/useComposerSelection.ts b/apps/web/src/components/chat/useComposerSelection.ts
-index a6312466d9747ce40a6e94b4c8de347f10ea29c7..7bd23e1757f9e1657d0fc65dc6ff07b79975e33e 100644
+index a6312466d9747ce40a6e94b4c8de347f10ea29c7..4cd9f1fe4508ddd1e68991f5fb6337fcf1fcabec 100644
 --- a/apps/web/src/components/chat/useComposerSelection.ts
 +++ b/apps/web/src/components/chat/useComposerSelection.ts
-@@ -17,6 +17,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+@@ -17,6 +17,13 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
  import { type SetStateAction } from "react";
  import { useNavigate } from "@tanstack/react-router";
  import { toastManager } from "../ui/toast";
-+import { useLiveSessionChange } from "./BatonLiveModel";
++import { livePick } from "@t3tools/baton-shared/liveThread";
++import {
++  runsAsLiveLogin,
++  useContinueInNewThread,
++  useLiveAccounts,
++  useLiveSessionChange,
++} from "./BatonLiveModel";
  import { resolveAppModelSelectionForInstance } from "../../modelSelection";
  import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
  import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
-@@ -139,12 +140,21 @@ export function useComposerSelection(input: ComposerSelectionInput) {
+@@ -139,6 +146,14 @@ export function useComposerSelection(input: ComposerSelectionInput) {
        : null,
    );
  
-+  // A mirrored terminal session changes model inside itself; picking another provider here would start a twin.
++  // A mirrored terminal session changes model inside itself; another provider continues in a new thread (livePick).
 +  const liveSession = useLiveSessionChange(
++    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
++  );
++  const continueInNewThread = useContinueInNewThread();
++  const liveAccounts = useLiveAccounts(
 +    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
 +  );
    const onProviderModelSelect = (
      instanceId: ProviderInstanceId,
      model: string,
-     options?: { focusComposer?: boolean },
+@@ -146,6 +161,31 @@ export function useComposerSelection(input: ComposerSelectionInput) {
    ) => {
      if (!activeThread) return;
-+    if (liveSession.sessionId !== null) {
-+      liveSession.apply({ model });
-+      if (options?.focusComposer !== false) scheduleComposerFocus();
-+      return;
-+    }
      const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
++    if (liveSession.sessionId !== null) {
++      const route = livePick({
++        pickedInstance: instanceId,
++        pickedDriver: entry?.driver ?? null,
++        currentInstance: activeThread.modelSelection.instanceId,
++        sameAccount: runsAsLiveLogin(instanceId, liveAccounts),
++      });
++      if (route === "session-model") liveSession.apply({ model });
++      else if (route === "switch-back")
++        setComposerDraftModelSelection(
++          scopeThreadRef(activeThread.environmentId, activeThread.id),
++          { instanceId, model },
++          { explicit: true, replaceOptions: true },
++        );
++      else if (route === "continue-in")
++        void continueInNewThread(
++          activeThread,
++          { instanceId, model },
++          entry?.displayName ?? String(instanceId),
++        );
++      if (route !== "normal") {
++        if (options?.focusComposer !== false) scheduleComposerFocus();
++        return;
++      }
++    }
      const resolvedDriverKind = entry?.driver ?? null;
      if (
+       !supportsProviderSwitchingViaHandoff &&
 diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
 index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..12b2319d5bc8c7c9566e2db76d0c1d9afd4cb80a 100644
 --- a/apps/web/src/components/chat/useComposerSend.ts
