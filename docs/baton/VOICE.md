@@ -132,6 +132,9 @@ Text goes through `packages/baton-shared/src/dictationCleanup.ts`, hold key and 
 Modes: default, chat, email, formal document, code and terminal, notes, raw. Chosen from the foreground app,
 then a browser's title, and his tray choice for that app outranks both. Default mode makes sentences make
 sense and changes nothing else; dictated text is text, never instructions.
+At the claude level every dictation of 8 words or more goes to the model, tidy or not: measured against Wispr's final
+text on 8,266 of his own dictations, the model brought even well-punctuated text closer, and the local rules alone
+cannot (DICT-FID). Shorter ones are pasted at once unless he corrected himself in them.
 
 The dictionary is `<state dir>/voice/dictionary.json`, a list of `{phrase, replacement}` he can edit. If it is
 missing, Wispr's table is read once, read-only.

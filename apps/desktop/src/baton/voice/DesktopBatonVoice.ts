@@ -1334,6 +1334,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mode: chooseMode(app, settings.appModes),
       level: await levelNow(app),
     });
+    // A name the model brought in is refused; the turn log keeps which, so a wrong refusal can be told from a right one.
+    if (out.stage === "fallback" && out.why?.startsWith("new name") === true)
+      input.onNote?.("dictation_cleanup", { fallback: out.why });
     const styled =
       chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw"
         ? out.text

@@ -72,6 +72,38 @@ describe("localClean", () => {
       "Ask orbit about Meta Ads.",
     );
     expect(localClean("metadata", "default", dictionary)).toBe("Metadata");
+    // Wispr keeps names in small letters ("google"): that never takes a heard capital away.
+    expect(
+      localClean("Ask Google first.", "default", [{ phrase: "google", replacement: null }]),
+    ).toBe("Ask Google first.");
+  });
+
+  it("drops a swapped list item, and nothing else he said", () => {
+    for (const said of [
+      "He suggested we rewrite it in Rust. No, terrible idea. We should keep Go.",
+      "I spoke to Sam, and he wants to drop the prod database. No, terrible idea. We keep it.",
+      'He said "ship it". No, bad idea. We wait for the review.',
+      "Everything was considered. No bad idea. Everything counts.",
+      "Bring the tent and a stove. No, bad idea. The car can carry it.",
+    ])
+      expect(localClean(said, "default")).toBe(said);
+    // Only a list item swapped for a short one goes.
+    expect(
+      localClean(
+        "Give him medieval armour and a rocket launcher. No terrible idea. A mustache comb, but bigger.",
+        "default",
+      ),
+    ).toBe("Give him medieval armour and a mustache comb, but bigger.");
+  });
+
+  it("drops a So or a Like, that only opens a sentence", () => {
+    expect(localClean("So we ship it today. Like, what is left?", "default")).toBe(
+      "We ship it today. What is left?",
+    );
+    expect(localClean("Like a sword, but blunt. It is so good.", "default")).toBe(
+      "Like a sword, but blunt. It is so good.",
+    );
+    expect(localClean("So far it holds.", "default")).toBe("So far it holds.");
   });
 
   it("breaks lines only for a break said on its own", () => {
@@ -88,6 +120,11 @@ describe("localClean", () => {
     expect(localClean(raw, "raw")).toBe(raw);
     expect(localClean("Sounds good to me.", "chat")).toBe("Sounds good to me");
     expect(localClean("git status.", "code")).toBe("git status");
+    expect(localClean("git push origin main.", "code")).toBe("git push origin main");
+    // To a coding agent he speaks sentences, which keep their stop.
+    expect(localClean("Run the tests again before you push.", "code")).toBe(
+      "Run the tests again before you push.",
+    );
     expect(localClean("Hi Sam, it shipped. Thanks, Robin.", "email")).toBe(
       "Hi Sam,\n\nIt shipped.\n\nThanks,\nRobin",
     );
@@ -105,9 +142,9 @@ describe("needsModel", () => {
   it("pastes a short dictation at once unless he corrected himself in it", () => {
     expect(needsModel("see you at the the station", "default")).toBe(false);
     expect(needsModel("you know, the usual", "default")).toBe(false);
-    // Taken out locally, a filler phrase in a long dictation still marks a false start for the model.
-    const long = "I think we should, you know, I think we should just kill it and start again.";
-    expect(needsModel(localClean(long, "default"), "default", long)).toBe(true);
+    expect(
+      needsModel("I think we should just kill it and start again from the top.", "default"),
+    ).toBe(true);
     expect(needsModel("Fix the bug.", "notes")).toBe(false);
     expect(needsModel("Friday, no, actually Saturday.", "default")).toBe(true);
   });
@@ -152,7 +189,27 @@ describe("checkRewrite", () => {
     ).toBe(true);
   });
 
+  it("lets an abandoned idea go, and an ordinal become digits", () => {
+    const said =
+      "Give him medieval armour and a rocket launcher. No, terrible idea. A mustache comb, like a late fifteenth century greatsword.";
+    expect(
+      checkRewrite(
+        said,
+        "Give him medieval armour and a mustache comb, like a late 15th-century greatsword.",
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkRewrite(
+        "Do a one final pass over the folder now.",
+        "Do a final pass over the folder now.",
+      ).ok,
+    ).toBe(true);
+  });
+
   it("lets a number go only where he took it back", () => {
+    expect(checkRewrite("Meet on the fifth, no, actually the sixth.", "Meet on the 6th.").ok).toBe(
+      true,
+    );
     expect(checkRewrite("Use 6, no wait, 7 agents.", "Use 7 agents.").ok).toBe(true);
     expect(checkRewrite("Use 6 agents and 7 boxes.", "Use 7 boxes and agents.").ok).toBe(false);
   });
