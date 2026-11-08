@@ -33,7 +33,7 @@ import { AccountPoolService } from "./AccountPoolService.ts";
 import { BatonEngine, batonStateInputFromShell } from "./BatonEngine.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
-import { projectRefFor } from "./ProjectRef.ts";
+import { projectRefWithin } from "./ProjectRef.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 /** A provider window at 100% is the account saying it is out, not a guess. */
@@ -43,6 +43,8 @@ const isExhausted = (usedPercent: number): boolean => usedPercent >= 100;
 // is read on every repaint and discovery is several CLI calls; upgrade to
 // Herdr's socket event stream when the adapter subscribes instead of polling.
 const HERDR_CACHE_MS = 15_000;
+// A repository lookup runs git, which a slow disk can hold for up to the runner's 60 s; the fleet answers without it.
+const PROJECT_REF_BUDGET = "2 seconds";
 let herdrCache: {
   at: number;
   candidates: ReadonlyArray<AdoptedSessionCandidate>;
@@ -144,13 +146,25 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
   });
 
   const live = yield* readClaudeLiveSessions({ account: herdrCache.account });
-  const claudeSessions = yield* Effect.forEach(live, (session) =>
-    Effect.map(projectRefFor(session.cwd), (project) => ({ ...session, project })),
+  const claudeSessions = yield* Effect.forEach(
+    live,
+    (session) =>
+      Effect.map(projectRefWithin(session.cwd, PROJECT_REF_BUDGET), (project) => ({
+        ...session,
+        project,
+      })),
+    { concurrency: "unbounded" },
   );
-  const herdr = yield* Effect.forEach(herdrCache.candidates, (candidate) =>
-    candidate.cwd == null
-      ? Effect.succeed(candidate)
-      : Effect.map(projectRefFor(candidate.cwd), (project) => ({ ...candidate, project })),
+  const herdr = yield* Effect.forEach(
+    herdrCache.candidates,
+    (candidate) =>
+      candidate.cwd == null
+        ? Effect.succeed(candidate)
+        : Effect.map(projectRefWithin(candidate.cwd, PROJECT_REF_BUDGET), (project) => ({
+            ...candidate,
+            project,
+          })),
+    { concurrency: "unbounded" },
   );
   const fleet: BatonFleet = { ...built, herdr, claudeSessions };
   const result: BatonFleet = input.needsUserOnly === true ? filterFleetNeedsUser(fleet) : fleet;

@@ -9,7 +9,9 @@
  * a repository key.
  */
 import type { BatonProjectRef } from "@t3tools/baton-contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import { RepositoryIdentityResolver } from "../project/RepositoryIdentityResolver.ts";
 
@@ -38,3 +40,13 @@ export const projectRefFor = (cwd: string): Effect.Effect<BatonProjectRef> =>
       label: name.toLowerCase() === folder.toLowerCase() ? folder : name,
     };
   });
+
+/** For reads that must answer promptly (the fleet): past `budget` the folder's own name stands in. */
+export const projectRefWithin = (
+  cwd: string,
+  budget: Duration.Input,
+): Effect.Effect<BatonProjectRef> =>
+  projectRefFor(cwd).pipe(
+    Effect.timeoutOption(budget),
+    Effect.map((found) => Option.getOrElse(found, () => folderProjectRef(cwd))),
+  );
