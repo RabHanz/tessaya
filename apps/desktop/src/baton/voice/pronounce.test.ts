@@ -34,12 +34,33 @@ describe("what the voice is given to say", () => {
     ],
     ["Update to v0.1.73.", "Update to version 0 point 1 point 73."],
     ["The router is 192.168.1.1.", "The router is 192 dot 168 dot 1 dot 1."],
-    // Paths: the file they name, its full stop kept; and only with a letter in it.
-    ["See apps/desktop/src/core.ts now.", "See core dot ts now."],
-    ["See apps/desktop/src/core.ts.", "See core dot ts."],
-    ["Run index.test.ts again.", "Run index dot test dot ts again."],
-    ["Saved to C:\\Users\\user\\notes.md.", "Saved to notes dot md."],
-    ["Saved to C:\\Users\\user\\My Notes\\plan.md, as asked.", "Saved to plan dot md, as asked."],
+    // Paths: only the file they name, its full stop kept; and only with a letter in it. Extensions the way he says
+    // them (0.1.74), any other spelled as letters; an ALL-CAPS name said as a word.
+    ["See apps/desktop/src/core.ts now.", "See core dot T S now."],
+    ["See apps/desktop/src/core.ts.", "See core dot T S."],
+    ["Run index.test.ts again.", "Run index dot test dot T S again."],
+    ["Saved to C:\\Users\\user\\notes.md.", "Saved to notes dot M D."],
+    ["Saved to C:\\Users\\user\\My Notes\\plan.md, as asked.", "Saved to plan dot M D, as asked."],
+    [
+      "There is a conflict in two files, .github/SECURITY.md and apps/web/public/manifest.webmanifest.",
+      "There is a conflict in two files, security dot M D and manifest dot web manifest.",
+    ],
+    ["Open package.json and config.yaml.", "Open package dot jason and config dot yammel."],
+    [
+      "It is in state.sqlite, run setup.ps1.",
+      "It is in state dot S Q lite, run setup dot P S one.",
+    ],
+    // An unknown extension is spelled out in a path; on its own "example.com" stays a site, not a file.
+    ["Check the .env file and src/app.xyz.", "Check the dot env file and app dot X Y Z."],
+    ["Mail them at example.com.", "Mail them at example.com."],
+    [
+      "Edit Pill.tsx and main.py, then build.rs.",
+      "Edit Pill dot T S X and main dot pie, then build dot R S.",
+    ],
+    // A dotfile in a path, and one with parts; a short ALL-CAPS name spelled as the acronym it is.
+    ["Copy src/.env and config/.env.local.", "Copy dot env and dot env dot local."],
+    ["See docs/PR.md first.", "See P R dot M D first."],
+    ["Read docs/API.md and SECURITY.md.", "Read A P I dot M D and security dot M D."],
     ["Step 1/2.5 done.", "Step 1/2.5 done."],
     // Links: the site, with the sentence's own punctuation kept.
     ["Open https://github.com/acme/app/pull/12 please.", "Open github dot com please."],

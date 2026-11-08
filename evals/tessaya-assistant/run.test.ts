@@ -36,6 +36,12 @@ describe("the assistant eval's grader", () => {
     expect(passes(named, { calls: [], reply: "It's four." })).toBe(false);
   });
 
+  it("fails a spoken reply that says what the case forbids, such as a path", () => {
+    const quiet = { ...c, first: ["none"], notSays: [".md", "/"] };
+    expect(passes(quiet, { calls: [], reply: "The security policy has a conflict." })).toBe(true);
+    expect(passes(quiet, { calls: [], reply: "A conflict in .github/SECURITY.md." })).toBe(false);
+  });
+
   it("fails a persona's reply that opens with its name", () => {
     const freya = { ...c, first: ["none"], wake: "Freya" };
     expect(passes(freya, { calls: [], reply: "Freya here. It's ten." })).toBe(false);

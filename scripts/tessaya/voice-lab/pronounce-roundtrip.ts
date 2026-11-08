@@ -59,6 +59,36 @@ const LINES: ReadonlyArray<{
     ownForm: true,
   },
   { text: "Done ✅ and shipped 🚀.", heard: "Done and shipped" },
+  // 0.1.74: paths say only the file, and each extension the way he says it.
+  {
+    text: "A conflict in two files, .github/SECURITY.md and apps/web/public/manifest.webmanifest.",
+    heard: "A conflict in two files security dot MD and manifest dot web manifest",
+  },
+  {
+    text: "Open package.json and config.yaml.",
+    heard: "Open package dot json and config dot yaml",
+  },
+  {
+    text: "It is in state.sqlite; run setup.ps1.",
+    heard: "It is in state dot SQLite run setup dot PS1",
+  },
+  { text: "Edit Pill.tsx and core.ts.", heard: "Edit pill dot TSX and core dot TS" },
+  {
+    text: "Check main.py, build.rs and Cargo.toml.",
+    heard: "Check main dot py build dot RS and cargo dot toml",
+  },
+  {
+    text: "See index.html, app.css and logo.svg.",
+    heard: "See index dot HTML app dot CSS and logo dot SVG",
+  },
+  {
+    text: "Then icon.png, boot.mjs and voice.exe.",
+    heard: "Then icon dot PNG boot dot MJS and voice dot exe",
+  },
+  {
+    text: "Keep .env, yarn.lock, out.log and build.zip.",
+    heard: "Keep dot env yarn dot lock out dot log and build dot zip",
+  },
   {
     text: "**Two things:** the build, and the deploy.",
     heard: "Two things the build and the deploy",
