@@ -33,9 +33,11 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { WorkspaceListEmptyDetail } from "../layout/workspace/WorkspaceListEmptyDetail";
 import { WorkspaceListHeader } from "../layout/workspace/WorkspaceListHeader";
+import { useBatonLiveOnly } from "../threads/batonLiveOnly";
 import { buildHomeListFilterMenuItems } from "./home-list-filter-menu";
 
 export function HomeRouteScreen() {
+  const batonLiveOnly = useBatonLiveOnly();
   const nativePrimaryColumn = use(NativePrimaryColumnContext);
   const { layout, primarySidebarSearchQuery, setPrimarySidebarSearchQuery, startNewTask } =
     useAdaptiveWorkspaceLayout();
@@ -174,7 +176,8 @@ export function HomeRouteScreen() {
             accessibilityLabel: "Search threads",
           }}
           filter={{
-            customized: selectedEnvironmentId !== null || selectedProjectKey !== null,
+            customized:
+              selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
             items: buildHomeListFilterMenuItems({
               environments,
               projects: projectFilterOptions,

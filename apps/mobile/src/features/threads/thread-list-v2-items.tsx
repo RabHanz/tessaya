@@ -38,6 +38,7 @@ import type { ThreadListProvider } from "../../state/thread-list-environments";
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Menu } from "../../components/ui/Menu";
+import { BatonLiveTag } from "./BatonLiveTag";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
@@ -1271,6 +1272,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </Text>
         ) : props.environmentLabel ? (
           <View className="min-w-0 flex-1 flex-row items-center gap-1">
+            <BatonLiveTag threadId={thread.id} />
             {props.environmentMachine ? (
               <EnvironmentMachineSymbol
                 kind={props.environmentMachine}
@@ -1295,7 +1297,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             </Text>
           </View>
         ) : (
-          <View className="flex-1" />
+          <View className="flex-1 flex-row">
+            <BatonLiveTag threadId={thread.id} />
+          </View>
         )}
         {pr ? (
           <Pressable

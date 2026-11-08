@@ -95,14 +95,13 @@ index ba375768150971d21761ca38f5afd3715a4f1c03..f139eebdaa4a60911dfb06e9fa6a9732
    test: {
      include: [...defaultInclude, "../../native/kde-snap-shot/src/*.test.ts"],
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index e93c0733fa09a82d359454200b420d18c0a0a1b5..be7e3863a5e15337aefa4f475be6cc21e9500890 100644
+index e93c0733fa09a82d359454200b420d18c0a0a1b5..365d962218214410543358585fce37b813cbfd67 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
-@@ -69,6 +69,8 @@
+@@ -69,6 +69,7 @@
      "@react-navigation/elements": "2.9.45",
      "@react-navigation/native": "7.5.1",
      "@react-navigation/native-stack": "7.21.0",
-+    "@t3tools/baton-contracts": "workspace:*",
 +    "@t3tools/baton-shared": "workspace:*",
      "@t3tools/client-runtime": "workspace:*",
      "@t3tools/contracts": "workspace:*",

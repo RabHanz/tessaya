@@ -1,3 +1,133 @@
+diff --git a/apps/mobile/src/features/home/HomeRouteScreen.tsx b/apps/mobile/src/features/home/HomeRouteScreen.tsx
+index 99ede8afe7c4aecc9ff8342f3f0b4d0f0b68bb57..1288344e9a5beb94b8bd18d0d6a79a2248cdde5d 100644
+--- a/apps/mobile/src/features/home/HomeRouteScreen.tsx
++++ b/apps/mobile/src/features/home/HomeRouteScreen.tsx
+@@ -33,9 +33,11 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
+ import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
+ import { WorkspaceListEmptyDetail } from "../layout/workspace/WorkspaceListEmptyDetail";
+ import { WorkspaceListHeader } from "../layout/workspace/WorkspaceListHeader";
++import { useBatonLiveOnly } from "../threads/batonLiveOnly";
+ import { buildHomeListFilterMenuItems } from "./home-list-filter-menu";
+ 
+ export function HomeRouteScreen() {
++  const batonLiveOnly = useBatonLiveOnly();
+   const nativePrimaryColumn = use(NativePrimaryColumnContext);
+   const { layout, primarySidebarSearchQuery, setPrimarySidebarSearchQuery, startNewTask } =
+     useAdaptiveWorkspaceLayout();
+@@ -174,7 +176,8 @@ export function HomeRouteScreen() {
+             accessibilityLabel: "Search threads",
+           }}
+           filter={{
+-            customized: selectedEnvironmentId !== null || selectedProjectKey !== null,
++            customized:
++              selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
+             items: buildHomeListFilterMenuItems({
+               environments,
+               projects: projectFilterOptions,
+diff --git a/apps/mobile/src/features/home/HomeScreen.tsx b/apps/mobile/src/features/home/HomeScreen.tsx
+index dac883341cc1011b1b4e06b76f17888cb182db2f..56c1b903e753476cbdc1157e6854cf6493670fdd 100644
+--- a/apps/mobile/src/features/home/HomeScreen.tsx
++++ b/apps/mobile/src/features/home/HomeScreen.tsx
+@@ -89,6 +89,7 @@ import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-sw
+ import { useFabScroll } from "./FabScrollContext";
+ import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
+ import { ThreadListFilters } from "./ThreadListFilters";
++import { liveThreadsOnly, useBatonLiveOnly } from "../threads/batonLiveOnly";
+ 
+ interface HomeScreenProps {
+   readonly projects: ReadonlyArray<EnvironmentProject>;
+@@ -456,13 +457,14 @@ export function HomeScreen(props: HomeScreenProps) {
+   } = listEnvironments;
+   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
+   const pendingOrder = usePendingThreadOrder();
++  const batonLiveOnly = useBatonLiveOnly();
+   const {
+     layout: threadListV2Layout,
+     items: threadListV2Items,
+     contentOnlyThreadKeys,
+     olderSettledShelf,
+   } = useThreadListV2({
+-    threads: props.threads,
++    threads: liveThreadsOnly(props.threads, batonLiveOnly),
+     pendingTasks: props.pendingTasks,
+     environmentId: props.selectedEnvironmentId,
+     projectRefs: v2ScopedProjectGroup === null ? null : v2ScopedProjectGroup.projectRefs,
+diff --git a/apps/mobile/src/features/home/ThreadListFilters.tsx b/apps/mobile/src/features/home/ThreadListFilters.tsx
+index 196e6a86480b561b1c9efa0a41b54a56791b843c..9217b45117f09971cc16ae5356e9c3375b134230 100644
+--- a/apps/mobile/src/features/home/ThreadListFilters.tsx
++++ b/apps/mobile/src/features/home/ThreadListFilters.tsx
+@@ -1,6 +1,7 @@
+ import { Pressable, ScrollView } from "react-native";
+ import { SymbolView } from "../../components/ui/AppSymbol";
+ import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
++import { setBatonLiveOnly, useBatonLiveOnly } from "../threads/batonLiveOnly";
+ import type { EnvironmentId } from "@t3tools/contracts";
+ import type {
+   HomeListFilterMenuEnvironment,
+@@ -17,6 +18,7 @@ export function ThreadListFilters(props: {
+   /** List padding the scroller bleeds through so pills start where row content does. */
+   readonly gutter: number;
+ }) {
++  const liveOnly = useBatonLiveOnly();
+   const selectedEnvironment = props.environments.find(
+     (environment) => environment.environmentId === props.selectedEnvironmentId,
+   );
+@@ -98,6 +100,16 @@ export function ThreadListFilters(props: {
+           <SymbolView name="xmark.circle.fill" size={18} tintColorClassName="accent-icon-muted" />
+         </Pressable>
+       ) : null}
++      <ListFilterMenu
++        label={liveOnly ? "Live only" : "All threads"}
++        accessibilityLabel="Filter threads to live sessions"
++        active={liveOnly}
++        actions={[
++          { id: "all", title: "All threads", state: liveOnly ? "off" : "on" },
++          { id: "live", title: "Live only", state: liveOnly ? "on" : "off" },
++        ]}
++        onSelect={(id) => setBatonLiveOnly(id === "live")}
++      />
+     </ScrollView>
+   );
+ }
+diff --git a/apps/mobile/src/features/home/home-list-filter-menu.ts b/apps/mobile/src/features/home/home-list-filter-menu.ts
+index 617c3fa0988ef6c84236de5282f79e423c840695..0208ee5091a0c8134380a8672c6383754edfd517 100644
+--- a/apps/mobile/src/features/home/home-list-filter-menu.ts
++++ b/apps/mobile/src/features/home/home-list-filter-menu.ts
+@@ -2,6 +2,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
+ 
+ import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
+ 
++import { getBatonLiveOnly, setBatonLiveOnly } from "../threads/batonLiveOnly";
++
+ export interface HomeListFilterMenuEnvironment {
+   readonly environmentId: EnvironmentId;
+   readonly label: string;
+@@ -64,5 +66,25 @@ export function buildHomeListFilterMenuItems(props: {
+     });
+   }
+ 
++  // Tessaya: live sessions only (P5); the caller re-renders through useBatonLiveOnly.
++  items.push({
++    id: "live",
++    title: "Sessions",
++    items: [
++      {
++        id: "live:all",
++        title: "All threads",
++        selected: !getBatonLiveOnly(),
++        onPress: () => setBatonLiveOnly(false),
++      },
++      {
++        id: "live:only",
++        title: "Live only",
++        subtitle: "Claude Code sessions running in a terminal",
++        selected: getBatonLiveOnly(),
++        onPress: () => setBatonLiveOnly(true),
++      },
++    ],
++  });
+   return items;
+ }
 diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
 index d6fdc9e955cde9ce2288bdc5696fbc4e2e651211..21685d03f9283e88b59cd0f422d81d4f657cbe99 100644
 --- a/apps/mobile/src/features/threads/ThreadFeed.tsx
@@ -31,6 +161,76 @@ index d6fdc9e955cde9ce2288bdc5696fbc4e2e651211..21685d03f9283e88b59cd0f422d81d4f
          setInteractionState((current) => ({
            ...current,
            expandedTurnIds: new Set(current.expandedTurnIds).add(latest.runId),
+diff --git a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
+index dce389c836669cd9409d658dc9d2682da73e5183..478e81b7eb0a6cda0b041e52f64f934d6e5ed046 100644
+--- a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
++++ b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
+@@ -41,6 +41,7 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
+ import { requestThreadMessageJump } from "./threadMessageJump";
+ import { useThreadListSearchMatches } from "./useThreadListSearchMatches";
+ import { useHomeListOptions } from "../home/home-list-options";
++import { liveThreadsOnly, useBatonLiveOnly } from "./batonLiveOnly";
+ import { buildHomeListFilterMenuItems } from "../home/home-list-filter-menu";
+ import { buildHomeProjectScopes } from "../home/homeThreadList";
+ import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
+@@ -110,6 +111,7 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
+ }
+ 
+ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
++  const batonLiveOnly = useBatonLiveOnly();
+   const floatingTabsEnabled = useAndroidFloatingTabs();
+   const { themeVariables: materialTheme } = useAppearancePreferences();
+   const drawerColor = materialTheme["--color-drawer"];
+@@ -265,7 +267,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+     contentOnlyThreadKeys,
+     olderSettledShelf,
+   } = useThreadListV2({
+-    threads,
++    threads: liveThreadsOnly(threads, batonLiveOnly),
+     pendingTasks,
+     environmentId: options.selectedEnvironmentId,
+     projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
+@@ -535,7 +537,8 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+         accessibilityLabel: "Search threads",
+       }}
+       filter={{
+-        customized: options.selectedEnvironmentId !== null || selectedProjectKey !== null,
++        customized:
++          options.selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
+         items: buildHomeListFilterMenuItems({
+           environments,
+           projects: projectFilterOptions,
+diff --git a/apps/mobile/src/features/threads/thread-list-v2-items.tsx b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
+index c9043a8d6c181ea5a4eb40a5a057851f32a7afef..efff2f314c34f80122bb83828cb914f2067063f4 100644
+--- a/apps/mobile/src/features/threads/thread-list-v2-items.tsx
++++ b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
+@@ -38,6 +38,7 @@ import type { ThreadListProvider } from "../../state/thread-list-environments";
+ import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
+ import { AppText as Text } from "../../components/ui/AppText";
+ import { Menu } from "../../components/ui/Menu";
++import { BatonLiveTag } from "./BatonLiveTag";
+ import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
+ import { ProjectFavicon } from "../../components/ProjectFavicon";
+ import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
+@@ -1271,6 +1272,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+           </Text>
+         ) : props.environmentLabel ? (
+           <View className="min-w-0 flex-1 flex-row items-center gap-1">
++            <BatonLiveTag threadId={thread.id} />
+             {props.environmentMachine ? (
+               <EnvironmentMachineSymbol
+                 kind={props.environmentMachine}
+@@ -1295,7 +1297,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+             </Text>
+           </View>
+         ) : (
+-          <View className="flex-1" />
++          <View className="flex-1 flex-row">
++            <BatonLiveTag threadId={thread.id} />
++          </View>
+         )}
+         {pr ? (
+           <Pressable
 diff --git a/apps/server/scripts/dev-replay-agent.ts b/apps/server/scripts/dev-replay-agent.ts
 index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40a35d85e9 100644
 --- a/apps/server/scripts/dev-replay-agent.ts

@@ -719,6 +719,12 @@ function searchPage(p) {
   const by = new Map(); for (const c of hits) { const t = c.tab || 'advanced'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
   for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + (CATS.some(c => c[0] === t) ? 'Settings, ' : '') + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
 }
+// Sessions are T3's thread list (P5): counts here, the list filtered to live sessions there.
+function liveSessionsPage(p) {
+  const st = (S.extra && S.extra.stats) || {}; const g = $('div', 'stats tiles');
+  for (const [n, l] of [[st.needYou || 0, 'need you'], [st.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); g.appendChild(r); }
+  const b = $('button', 'btn primary', 'Show live sessions'); b.style.marginTop = '14px'; b.onclick = () => real && ipc.send('baton-home:sessions', 'live'); p.append(g, b);
+}
 function tabPage(p) {
   if (query.trim() && !modal) return searchPage(p);
   if (cur === 'home') return home(p);
@@ -726,6 +732,7 @@ function tabPage(p) {
   if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; p.appendChild(tb); }
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
+  if (cur === 'sessions') return liveSessionsPage(p);
   const items = tabControls(cur);
   const EMPTY = { sessions: 'No sessions yet. Start one in Claude Code or T3 and it appears here.', approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));

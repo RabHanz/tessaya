@@ -220,6 +220,8 @@ export interface BatonUsageSummary {
 
 export type BatonSessionRequest =
   | { readonly kind: "open"; readonly environmentId: string; readonly threadId: string }
+  /** The thread list with only live sessions shown (its Live only filter on), from the Sessions tab. */
+  | { readonly kind: "showLive" }
   /** The session catalog across every connected environment; the answer's detail is JSON (see baton/sessions/catalogBridge). */
   | { readonly kind: "catalogList"; readonly query: string; readonly background?: boolean }
   | { readonly kind: "catalogCleanup"; readonly apply: boolean }

@@ -2,6 +2,7 @@ import { attachSidebarTree } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
+import { liveThreadsOnly, useBatonLiveOnly } from "./sidebar/batonLiveOnly";
 import { openThreadInSplit } from "./panes/batonPanesStore";
 import {
   BATON_DETACH_MENU_ITEM,
@@ -482,8 +483,9 @@ function useSidebarThreads(input: {
   const settledVisibleCount =
     settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
 
+  const [batonLiveOnly] = useBatonLiveOnly();
   const partition = partitionSidebarThreads({
-    threads,
+    threads: liveThreadsOnly(threads, batonLiveOnly),
     scopedProjectKeys,
     delegatedUnderParent,
     serverConfigs,

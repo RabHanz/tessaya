@@ -6809,7 +6809,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     stateDir: input.stateDir,
     state: homeState,
     apply: applyHome,
-    openSessions: input.openMainWindow,
+    // The Sessions tab is T3's own thread list, filtered to live sessions (P5).
+    openSessions: (liveOnly) => {
+      input.openMainWindow();
+      if (liveOnly) void input.sessions?.request({ kind: "showLive" }, 15_000);
+    },
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
       if (tab === "memory") void memoryTab.load();

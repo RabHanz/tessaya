@@ -9,7 +9,6 @@ import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import {
   batonDesktopBridge,
-  type BatonFleetEntry,
   type BatonIntentResolution,
   type BatonJobBridgeRequest,
   type BatonCommitmentBridgeRequest,
@@ -20,6 +19,7 @@ import {
   type EnvironmentId,
   type ProjectId,
   type ScopedThreadRef,
+  type ThreadId,
 } from "@t3tools/baton-contracts";
 import { homeOf, resolveRunOn } from "@t3tools/baton-shared/runOn";
 import {
@@ -27,7 +27,6 @@ import {
   AuthBatonMemorySyncScope,
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
-  type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -36,10 +35,6 @@ import { batonUsageSummaries } from "../../batonUsage";
 
 import { focusedWorkSessionFromThreads } from "../../batonContextView";
 import { useBatonFleet } from "../../batonFleetResolvers";
-import {
-  deriveProviderEntriesByEnvironment,
-  isProviderInstancePickerReady,
-} from "../../providerInstances";
 import { useProjects } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { weaveAcross, weaveSessionsOf } from "./batonWeaveAcross";
@@ -55,7 +50,9 @@ import { readPreparedConnection } from "../../state/session";
 import { syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
 import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
 import { BatonIntentBar } from "./BatonIntentBar";
-import { BatonProjectsBlock } from "./BatonProjectsBlock";
+import { BatonSessionRequests } from "./BatonSessionRequests";
+import { useBatonLiveOnly } from "./batonLiveOnly";
+import { Toggle } from "../ui/toggle";
 
 const COPIED_KEY = "t3:baton:commitments-copied";
 /** Which linked-to-own commitment copies have finished; a lost marker only repeats a copy that changes nothing. */
@@ -86,8 +83,9 @@ export function BatonSidebarSection(props: {
 }): ReactNode {
   const fleet = useBatonFleet();
   const fleets = useBatonFleets(fleet.environmentIds);
-  const projects = useProjects();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
+  const projects = useProjects();
+  const [liveOnly, setLiveOnly] = useBatonLiveOnly();
   const primary = fleet.environmentIds[0];
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   // What the desktop owns lives on this app's own server, never on whichever connection registered first.
@@ -157,35 +155,9 @@ export function BatonSidebarSection(props: {
   const projectByEnvironmentId = new Map(
     projects.map((project) => [`${project.environmentId}:${project.id}`, project]),
   );
-  const projectByKey = new Map(projects.map((project) => [batonProjectKey(project).key, project]));
-  const providerEntries = deriveProviderEntriesByEnvironment(
-    [...serverConfigs].map(([environmentId, config]) => [environmentId, config.providers]),
-  );
-
   const resolveWorkProject = (environmentId: EnvironmentId, projectId: ProjectId) => {
     const project = projectByEnvironmentId.get(`${environmentId}:${projectId}`);
     return project === undefined ? null : batonProjectKey(project);
-  };
-  const resolveWorkAccount = (environmentId: EnvironmentId, entry: BatonFleetEntry) => {
-    const instance = entry.threads.find(
-      (thread) => thread.threadId === entry.activeThreadId,
-    )?.providerInstanceId;
-    return instance == null
-      ? null
-      : (fleet.resolveProviderAccount(environmentId, instance)?.label ?? null);
-  };
-  const listHandoffTargets = (environmentId: EnvironmentId) =>
-    [...(providerEntries.get(environmentId)?.values() ?? [])].flatMap((entry) => {
-      if (!isProviderInstancePickerReady(entry)) return [];
-      const model = entry.models.find((candidate) => candidate.isDefault) ?? entry.models[0];
-      return model === undefined
-        ? []
-        : [{ instanceId: entry.instanceId, label: entry.displayName, model: model.slug }];
-    });
-  // A work session opens the thread it runs through; with none live there is nothing to open.
-  const openWorkSession = (environmentId: EnvironmentId, entry: BatonFleetEntry) => {
-    const threadId = entry.activeThreadId ?? entry.threads[0]?.threadId ?? null;
-    if (threadId !== null) void props.onOpenThread(scopeThreadRef(environmentId, threadId));
   };
   /** The desktop assistant's job tools: the project by the name he said, the first ready Claude as the worker. */
   const onJob = async (request: BatonJobBridgeRequest): Promise<unknown> => {
@@ -586,17 +558,24 @@ export function BatonSidebarSection(props: {
         onPhone={onPhone}
         onCloud={onCloud}
       />
-      <BatonProjectsBlock
+      <Toggle
+        size="xs"
+        variant="pill"
+        className="self-start"
+        pressed={liveOnly}
+        onPressedChange={(pressed) => setLiveOnly(pressed)}
+        aria-label="Show only live sessions"
+      >
+        Live only
+      </Toggle>
+      <BatonSessionRequests
         environmentIds={fleet.environmentIds}
         resolveEnvironmentLabel={fleet.resolveEnvironmentLabel}
         resolveWorkProject={resolveWorkProject}
-        resolveWorkAccount={resolveWorkAccount}
-        resolveProjectForKey={(key) => projectByKey.get(key) ?? null}
-        onOpenWorkSession={openWorkSession}
         onOpenThreadById={(environmentId, threadId) =>
           void props.onOpenThread(scopeThreadRef(environmentId, threadId as ThreadId))
         }
-        listHandoffTargets={listHandoffTargets}
+        onShowLive={() => setLiveOnly(true)}
       />
     </div>
   );

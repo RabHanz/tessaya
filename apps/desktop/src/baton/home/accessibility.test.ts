@@ -112,6 +112,22 @@ describe("the collapsed sidebar", () => {
   });
 });
 
+describe("the Sessions tab", () => {
+  it("keeps its counts and opens T3's own list filtered to live sessions", async () => {
+    const page = await openWindowPage(APP_SCRIPT, {
+      status: { label: "Listening", tone: "good", device: "", mark: "" },
+      controls: [],
+      extra: { stats: { needYou: 2, sessions: 5 } },
+    });
+    const text = page.show("sessions");
+    expect(text).toContain("2need you");
+    expect(text).toContain("5live sessions");
+    expect(text).toContain("Show live sessions");
+    expect(APP_SCRIPT).toContain("ipc.send('baton-home:sessions', 'live')");
+    expect(page.errors).toEqual([]);
+  });
+});
+
 describe("a refresh keeps the breathing mark", () => {
   it("leaves the brand in the page across a sidebar rebuild so its animation does not restart", () => {
     expect(APP_SCRIPT).toContain("fresh.remove(); el.append(...next.childNodes)");
