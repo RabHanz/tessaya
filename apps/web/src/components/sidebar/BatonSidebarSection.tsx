@@ -42,6 +42,7 @@ import {
 } from "../../providerInstances";
 import { useProjects } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
+import { ownServerOf } from "./batonOwnServer";
 import { weaveAcross, weaveSessionsOf } from "./batonWeaveAcross";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
@@ -68,10 +69,9 @@ export function BatonSidebarSection(props: {
   const projects = useProjects();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const primary = fleet.environmentIds[0];
-  // His memory lives on this app's own server, not on whichever connection registered first.
+  // His memory and the phone inbox live on this app's own server, not on whichever connection registered first.
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const memoryHome =
-    fleet.environmentIds.find((id) => id === primaryEnvironmentId) ?? fleet.environmentIds[0];
+  const memoryHome = ownServerOf(fleet.environmentIds, primaryEnvironmentId);
   // Where each job was started, so a later stop or agree asks the server that holds it.
   const jobHomes = useRef(new Map<string, string>());
   const usage = JSON.stringify(
@@ -385,8 +385,9 @@ export function BatonSidebarSection(props: {
     };
   };
   const onPhone = async (request: BatonPhoneBridgeRequest): Promise<unknown> => {
+    if (memoryHome === undefined) throw new Error("The phone relay did not answer.");
     const result = await phoneCall({
-      environmentId: primary,
+      environmentId: memoryHome,
       input: { op: request.op, args: request.args } as never,
     });
     if (result._tag === "Success") return (result.value as { value: unknown }).value;
