@@ -14,6 +14,7 @@ import * as NodePath from "node:path";
 import type {
   BatonFocusTarget,
   BatonJob,
+  BatonTeamBoardResult,
   BatonJobBridgeRequest,
   BatonCommitmentBridgeRequest,
   BatonPhoneBridgeRequest,
@@ -442,7 +443,7 @@ import { boostCore, quietThreshold, silenceWhile } from "@t3tools/baton-shared/q
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
-import { describeJobs } from "../agent/jobText.ts";
+import { describeJobs, describeTeam } from "../agent/jobText.ts";
 import { deskCall, serverOnly } from "./deskCall.ts";
 import { buildAuditTrail, describeAuditTrail } from "@t3tools/baton-shared/audit";
 import { describeWatch, findingsFromRecord } from "@t3tools/baton-shared/watch";
@@ -2457,6 +2458,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return (value as { text?: string } | null)?.text ?? "Nothing was set up.";
       if (op === "list") return describeJobs(value?.jobs ?? []);
       if (op === "watch") return describeWatch(value?.findings ?? []);
+      if (op === "team")
+        return describeTeam((value as BatonTeamBoardResult | null) ?? { members: [] });
       if (op === "start") {
         return `Started. The worker is writing its plan in its own thread; nothing happens until he agrees. The job id is ${value?.terms?.workSessionId ?? "unknown"}.`;
       }
@@ -4829,11 +4832,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ?.filter((m) => !m.proposed && new Date(m.createdAt).toDateString() === day)
       .slice(0, 5)
       .map((m) => m.text);
+    // His own view of the team (walled projects included), for the Now page.
+    const team = (
+      serverReachable()
+        ? ((await requestKept({ kind: "job", op: "team", args: { admin: true } }).catch(
+            () => null,
+          )) as BatonTeamBoardResult | null)
+        : null
+    )?.members;
     const probed = await probe(settings.claudeBinary);
     const { nightly } = last;
     const state = initiative.state();
     nowData = {
       loaded: true,
+      ...(team === undefined ? {} : { team }),
       brief: standingStore.load().brief?.text ?? null,
       runs: [
         ...latestRuns(standingStore.load()).map((r) => {

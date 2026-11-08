@@ -77,6 +77,42 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     replyMustNot: /\b(has been|I've|I have|is now|successfully) stopped\b/i,
   },
   {
+    id: "outside-team-board",
+    source: "P4: 'who is doing what' is the team board, read without asking him",
+    prompt: "What is each of Tessaya's personas working on right now?",
+    answers: {
+      tessaya_team_board: {
+        members: [
+          {
+            id: "engineering",
+            name: "Alfred",
+            role: "sessions, builds and releases",
+            private: false,
+            busy: true,
+            jobs: [{ id: "j-1", title: "Ship the shop" }],
+            episode: null,
+            recent: [],
+          },
+          {
+            id: "operations",
+            name: "Freya",
+            role: "his day, his messages and his reminders",
+            private: false,
+            busy: false,
+            jobs: [],
+            episode: {
+              text: "Tuesday, 3 November 2026, with Freya: the venue is booked from six",
+              at: "2026-11-03T18:00:00Z",
+            },
+            recent: [],
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_team_board"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
     id: "outside-reads-without-asking",
     source: "Parity phase B: a question is answered with the read tools, not by bothering him",
     prompt: "Is anything in Tessaya stuck or waiting on me right now?",

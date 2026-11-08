@@ -83,6 +83,14 @@ export const deskCall = (
   switch (body.op as BatonJobBridgeRequest["op"]) {
     case "list":
       return { method: "baton.job.list", input: {} };
+    case "team":
+      return {
+        method: "baton.job.team",
+        input: {
+          ...(text("agent") === "" ? {} : { agent: text("agent") }),
+          ...(args["admin"] === true ? { admin: true } : {}),
+        },
+      };
     // The server places a job here; one he asked to run on another machine stays on T3's own session to it.
     case "start": {
       const runOn = text("runOn").trim();

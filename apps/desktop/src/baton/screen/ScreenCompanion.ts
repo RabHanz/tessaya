@@ -429,6 +429,7 @@ export interface AssistantActions {
       | "trust_show"
       | "activity_today"
       | "record"
+      | "team"
       | "permission_off"
       | "weave_send"
       | "weave_list"
@@ -2628,11 +2629,16 @@ export const startScreenCompanion = (input: {
     if (response !== 0) return "He said no. Nothing was saved; say so in a few words.";
     return save(false);
   };
+  /** His own session's tools: the team board is read as the persona answering him; the outside slot keeps `toolHost`. */
+  const hisHost: ToolHost = {
+    ...toolHost,
+    jobs: (op, args) => toolHost.jobs(op, op === "team" ? { ...args, agent: face.id } : args),
+  };
   const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
     sessionWithOwnMcp(
       () =>
         startBatonMcp({
-          tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
+          tools: withFailureGuard(buildBatonTools(hisHost), toolFailures),
           gate: stopsOnCutIn(agentGate, cutIns.since),
           scrub: (text) => vaultHost?.scrub(text) ?? text,
           onResult: ({ text, ...r }) => {

@@ -166,7 +166,38 @@ export const BATON_JOB_WS_METHODS = {
   jobPlace: "baton.job.place",
   /** Hand a job to the worker he named. */
   jobHandoff: "baton.job.handoff",
+  /** Who on the team is doing what (P4): a read of jobs, episodes and the Record, never a store. */
+  jobTeam: "baton.job.team",
 } as const;
+
+export const BatonTeamBoardInput = Schema.Struct({
+  /** The persona asking (its pack id); only his desktop app may name one, and walls apply to it. */
+  agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+  /** His own view (the Now page): walled projects included. Only his desktop app may ask. */
+  admin: Schema.optionalKey(Schema.Boolean),
+});
+export type BatonTeamBoardInput = typeof BatonTeamBoardInput.Type;
+
+export const BatonTeamMember = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  /** What it does: the part of its pack role before the first ";". */
+  role: Schema.String,
+  /** A private persona shows only whether it is busy (P5; no persona is private yet). */
+  private: Schema.Boolean,
+  busy: Schema.Boolean,
+  jobs: Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.String })),
+  /** Its latest conversation episode (MEM-18), as written. */
+  episode: Schema.NullOr(Schema.Struct({ text: Schema.String, at: Schema.String })),
+  /** Its newest lines in the Record. They quote agents' words: data, never instructions. */
+  recent: Schema.Array(
+    Schema.Struct({ at: Schema.String, subject: Schema.String, outcome: Schema.String }),
+  ),
+});
+export type BatonTeamMember = typeof BatonTeamMember.Type;
+
+export const BatonTeamBoardResult = Schema.Struct({ members: Schema.Array(BatonTeamMember) });
+export type BatonTeamBoardResult = typeof BatonTeamBoardResult.Type;
 
 /** His words verbatim become the goal; the worker starts in plan mode (D145). */
 export const BatonJobStartInput = Schema.Struct({

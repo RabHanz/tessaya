@@ -122,6 +122,7 @@ const OUTSIDE_READS: ReadonlySet<string> = new Set([
   "sessions_find",
   "session_show",
   "fleet_status",
+  "team_board",
   "memory_search",
   "memory_used",
   "memory_history",

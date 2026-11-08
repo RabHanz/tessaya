@@ -293,9 +293,17 @@ export const make = Effect.gen(function* () {
     (query.scope === undefined || item.scope === query.scope);
 
   const listAll = Effect.fn("BatonMemoryService.listAll")(function* (query: MemoryQuery = {}) {
-    const rows = yield* sql<ItemRow>`
-      SELECT * FROM fabric_memory_items ORDER BY pinned DESC, updated_at DESC
-    `.pipe(Effect.orDie);
+    // Kinds are narrowed in the query, so a read of episodes (the team board) does not load every item.
+    const rows = yield* (
+      query.kinds !== undefined && query.kinds.length > 0
+        ? sql<ItemRow>`
+          SELECT * FROM fabric_memory_items WHERE kind IN ${sql.in(query.kinds)}
+          ORDER BY pinned DESC, updated_at DESC
+        `
+        : sql<ItemRow>`
+          SELECT * FROM fabric_memory_items ORDER BY pinned DESC, updated_at DESC
+        `
+    ).pipe(Effect.orDie);
     return rows
       .map(fromRow)
       .filter((item) => matches(item, query))
