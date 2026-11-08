@@ -1003,7 +1003,10 @@ export const startScreenCompanion = (input: {
   });
   let disposed = false;
   /** The tiers of the persona he is talking to (the one his wake word names), and only that persona's (P1). */
-  const warmTiers = (persona: Persona = face) =>
+  /** The persona whose tiers were warmed last, so a sentence that names another ("ask Alfred…") warms that one. */
+  let warmedFor: string | null = null;
+  const warmTiers = (persona: Persona = face, wake = false) => {
+    warmedFor = persona.id;
     agentOf().warm(
       tierBrains(
         modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), persona.id),
@@ -1011,7 +1014,9 @@ export const startScreenCompanion = (input: {
         tierMemories.of(persona.id).previous() ?? "default",
       ),
       persona.id,
+      wake,
     );
+  };
   /** Voice, tray, settings and the assistant_model tool all land here; the next turn uses it, and its session is warmed now. */
   const chooseModel = (choice: ManualBrain): string => {
     save({ assistantModel: choice.model ?? "auto", assistantEffort: choice.effort ?? "auto" });
@@ -3034,6 +3039,8 @@ export const startScreenCompanion = (input: {
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
     leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
+    // The wake named one persona and the words another ("Tessaya, ask Alfred…"): his tiers, before the turn runs.
+    if (!outside && warmedFor !== null && face.id !== warmedFor) warmTiers(face);
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
     const secret = redactForHistory(text, null).secret;
     // A device's words are never held for his vault or offered to it.
@@ -3335,6 +3342,7 @@ export const startScreenCompanion = (input: {
               wake,
               text: "",
             }),
+        wake != null,
       );
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
