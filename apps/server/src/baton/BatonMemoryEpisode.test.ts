@@ -65,6 +65,7 @@ layer("dailyEpisode", (it) => {
 });
 
 let summary = "The scheduler refactor replaced the cron parser and ended settled.";
+const sessionPrompts: string[] = [];
 const sessionLayer = it.layer(
   learningLayer.pipe(
     Layer.provideMerge(memoryLayer),
@@ -72,7 +73,10 @@ const sessionLayer = it.layer(
     Layer.provideMerge(workSessionLayer),
     Layer.provideMerge(
       Layer.succeed(BatonOneShot, {
-        run: (() => Effect.succeed({ summary } as never)) as BatonOneShot["Service"]["run"],
+        run: ((input: { readonly prompt: string }) => (
+          sessionPrompts.push(input.prompt),
+          Effect.succeed({ summary } as never)
+        )) as BatonOneShot["Service"]["run"],
       }),
     ),
     Layer.provideMerge(
@@ -83,6 +87,7 @@ const sessionLayer = it.layer(
     Layer.provideMerge(
       Layer.succeed(BatonEngine, {
         recentMessages: () => Effect.succeed([]),
+        projects: Effect.succeed([{ id: "p", title: "shop" }]),
       } as unknown as BatonEngine["Service"]),
     ),
     Layer.provideMerge(SqlitePersistenceMemory),
@@ -103,14 +108,17 @@ sessionLayer("a work session's end (MEM-18)", (it) => {
         });
         assert.isNull(yield* episodeFromSession(active));
         const settled = yield* sessions.settle({ id });
-        const episode = yield* episodeFromSession(settled);
+        const episode = (yield* episodeFromSession(settled))?.item;
         assert.strictEqual(episode?.kind, "episode");
         assert.include(
           episode?.text ?? "",
           'the session "Scheduler refactor": The scheduler refactor',
         );
+        // Behind its project's wall, like any item learned there; the agent's words are framed as someone else's.
+        assert.deepEqual([episode?.scope, episode?.scopeRef], ["project", "shop"]);
+        assert.include(sessionPrompts.at(-1) ?? "", "written by an agent, not by him");
         // The same end again writes nothing.
-        assert.isNull(yield* episodeFromSession(settled));
+        assert.strictEqual((yield* episodeFromSession(settled))?.outcome, "skip");
         yield* (yield* BatonJobService).create({
           id: WorkSessionId.make("job-2"),
           projectId: ProjectId.make("p"),

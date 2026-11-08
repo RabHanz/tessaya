@@ -575,6 +575,8 @@ export const makeHandlers = Effect.gen(function* () {
             project: input.project ?? null,
             previous: input.previous ?? null,
             ...(input.agent === undefined ? {} : { agent: input.agent }),
+            ...(input.at === undefined ? {} : { at: input.at }),
+            ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
           }),
         ),
       ),

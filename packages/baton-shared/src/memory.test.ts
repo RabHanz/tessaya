@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyDecision,
+  asksAboutThePast,
   datedQuery,
   effectiveConfidence,
   exportMarkdown,
@@ -346,5 +347,16 @@ describe("a question about a day (MEM-18)", () => {
       "what did the shop job do on Tuesday",
     );
     expect(datedQuery("who is my accountant", sun)).toBe("who is my accountant");
+    // In his zone: at 02:00 in Karachi on Monday it is still Sunday in UTC.
+    expect(
+      datedQuery("what did we say yesterday", Date.parse("2026-11-08T21:00:00Z"), "Asia/Karachi"),
+    ).toBe("what did we say yesterday Sunday 8 November");
+  });
+  it("says which questions are about what happened, so only they get many episodes", () => {
+    expect(asksAboutThePast("what did Freya tell me about the venue")).toBe(true);
+    expect(asksAboutThePast("where are we having dinner on Saturday")).toBe(true);
+    expect(asksAboutThePast("what happened last week")).toBe(true);
+    expect(asksAboutThePast("where does the staging server run")).toBe(false);
+    expect(asksAboutThePast("what spelling do I use")).toBe(false);
   });
 });

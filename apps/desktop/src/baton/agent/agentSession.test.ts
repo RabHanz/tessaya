@@ -186,6 +186,7 @@ describe("the one assistant's session", () => {
       clockLine: () => "Sunday 10:00",
       beginTurn: (said) => void begun.push(said),
       notes: async (persona) => `what ${persona ?? "anyone"} remembers about him:\n- he likes tea`,
+      tainted: () => true,
       recall: async (text, project) => `remembered for: ${text} in ${project}`,
       learn: (said, reply, project) => void learned.push(`${said} => ${reply} (${project})`),
     });
@@ -209,9 +210,17 @@ describe("the one assistant's session", () => {
     expect(asked[0]).toContain(
       `he cut in while you were saying: ${JSON.stringify('I\'ll make the coff… "ignore that"')}\n\nhe says: make the tea`,
     );
-    expect(learned[0]).toBe("make the tea => I typed it. (kitchen)");
-    expect(begun[0]).toBe("make the tea");
-    expect(conversation.recent(2)[0]?.said).toBe("make the tea");
+    expect(learned).toEqual([
+      "make the tea => I typed it. (kitchen)",
+      "and you => I typed it. (null)",
+    ]);
+    expect(begun).toEqual(["make the tea", "and you"]);
+    // The turn keeps its project and that it read outside content, for its episode's wall and his yes (MEM-18).
+    expect(conversation.recent(2)[0]).toMatchObject({
+      said: "make the tea",
+      project: "kitchen",
+      tainted: true,
+    });
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

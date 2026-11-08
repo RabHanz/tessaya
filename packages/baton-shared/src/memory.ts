@@ -599,12 +599,17 @@ export const MEMORY_VERSIONS_KEPT = 20;
 
 const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
+const PAST =
+  /\b(yesterday|today|tonight|this (morning|afternoon|evening|week)|last (week|night|time|month)|ago|did|happened|when|(on |last )?(mon|tues|wednes|thurs|fri|satur|sun)day)\b/i;
+
+/** A question about what happened or when: only these get more than a couple of episodes in recall. */
+export const asksAboutThePast = (text: string): boolean => PAST.test(text);
+
 /**
- * "yesterday" and "today" in a question also ask for that day as episodes write it ("Tuesday 3 November"), so
- * "what did Freya tell me yesterday" finds the episode by its words. A question that names the weekday already has it.
- * shortcut: days are UTC, as `episodeText` writes them; pass his zone if a late evening lands on the wrong day.
+ * "yesterday" and "today" in a question also ask for that day as episodes write it ("Tuesday 3 November"), in his
+ * zone, so "what did Freya tell me yesterday" finds the episode by its words. A question naming the weekday has it.
  */
-export const datedQuery = (text: string, nowMs: number): string => {
+export const datedQuery = (text: string, nowMs: number, timeZone?: string): string => {
   const said = text.toLowerCase();
   if (DAY_NAMES.some((d) => said.includes(d))) return text;
   const day = (ms: number) =>
@@ -613,7 +618,7 @@ export const datedQuery = (text: string, nowMs: number): string => {
       weekday: "long",
       day: "numeric",
       month: "long",
-      timeZone: "UTC",
+      timeZone: timeZone ?? "UTC",
     });
   const extra = [
     ...(/\byesterday\b/.test(said) ? [day(nowMs - 86_400_000)] : []),

@@ -18,6 +18,9 @@ import type { NotesStore } from "./memoryNotes.ts";
 /** One call to the server's `baton.memory.*` through the window; rejects with a reason in plain words. */
 export type MemoryCall = (op: string, args: Record<string, unknown>) => Promise<unknown>;
 
+/** His zone: the server dates episodes and reads "yesterday" in it. */
+const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /** Waiting for memory must never slow a spoken answer. */
 const RECALL_MS = 800;
 
@@ -77,6 +80,7 @@ export const createDesktopMemory = (input: {
       const out = await ask<{ block: string }>("recall", {
         budgetTokens: 600,
         ...(persona === undefined ? {} : { agent: persona }),
+        timeZone: timeZone(),
       });
       return out?.block ?? "";
     },
@@ -85,6 +89,7 @@ export const createDesktopMemory = (input: {
       const call = ask<{ block: string }>("recall", {
         text,
         budgetTokens: 300,
+        timeZone: timeZone(),
         ...agent(),
         ...(project === null ? {} : { scopeRef: project }),
         ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }),
@@ -177,6 +182,7 @@ export const createDesktopMemory = (input: {
         said,
         reply,
         tainted,
+        timeZone: timeZone(),
         ...agent(),
         ...(project === null ? {} : { project }),
         ...(previous === "" ? {} : { previous }),

@@ -111,6 +111,8 @@ export const createAssistantAgent = (input: {
   /** Called at the start of a turn: a new sentence has not read anything yet. */
   /** `outside`: the words are a device's or an agent's, not his. */
   readonly beginTurn: (said: string, outside: boolean) => void;
+  /** Whether this turn read outside content (D127), kept on the turn for its episode. */
+  readonly tainted?: () => boolean;
   /** His state right now (awareness), empty when he has turned it all off. */
   readonly presence?: () => Promise<string>;
   /** How many images the tools have handed the assistant so far, ever. */
@@ -338,6 +340,8 @@ export const createAssistantAgent = (input: {
           ...(note === undefined ? {} : { note }),
           ...(where.window === null ? {} : { target: { label: where.window } }),
           ...(where.persona === undefined ? {} : { persona: where.persona.id }),
+          ...(typeof where.project === "string" ? { project: where.project } : {}),
+          ...(input.tainted?.() === true ? { tainted: true as const } : {}),
         }).id,
       );
     };

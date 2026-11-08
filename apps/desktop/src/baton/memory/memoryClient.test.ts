@@ -77,7 +77,12 @@ describe("desktop memory", () => {
     });
     await memory.standing("engineering");
     await memory.standing();
-    expect(calls).toEqual([{ budgetTokens: 600, agent: "engineering" }, { budgetTokens: 600 }]);
+    // His zone goes with it, so "yesterday" and an episode's day are his (MEM-18).
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(calls).toEqual([
+      { budgetTokens: 600, agent: "engineering", timeZone },
+      { budgetTokens: 600, timeZone },
+    ]);
   });
 
   it("recalls for the sentence under the turn's reference and reads what was used", async () => {

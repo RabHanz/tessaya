@@ -29,6 +29,12 @@ export class BatonMemoryReactor extends Context.Service<
   { readonly start: () => Effect.Effect<void, never, Scope.Scope> }
 >()("t3/baton/BatonMemoryReactor") {}
 
+/** The project's title, which memory scopes by (as a turn's project is), or null when it is not known. */
+const projectTitle = Effect.fn("BatonMemoryReactor.projectTitle")(function* (projectId: string) {
+  const projects = yield* (yield* BatonEngine).projects;
+  return projects.find((p) => p.id === projectId)?.title ?? null;
+});
+
 /**
  * A job worker's thread finished a turn after the go-ahead: its last message is the report. The
  * planning turn is not a report, so a thread with a single user message is skipped.
@@ -58,12 +64,13 @@ export const learnFromJobThread = Effect.fn("BatonMemoryReactor.learnFromJobThre
     tainted: false,
     project: null,
   });
+  const session = yield* (yield* WorkSessionService).get(id).pipe(Effect.orElseSucceed(() => null));
   yield* learning.episode({
     origin: "job",
     title: `the job "${terms.goal.slice(0, 60)}"`,
     transcript: `Goal: ${terms.goal}\n\nReport: ${last.text}`,
     sourceRef: `job:${id}:${digest.slice(0, 12)}`,
-    project: null,
+    project: session === null ? null : yield* projectTitle(session.projectId),
     tainted: false,
   });
 });
@@ -97,7 +104,7 @@ export const episodeFromSession = Effect.fn("BatonMemoryReactor.episodeFromSessi
     title: `the session "${session.title.slice(0, 60)}"`,
     transcript,
     sourceRef: `session:${session.id}:${session.updatedAt}`,
-    project: null,
+    project: yield* projectTitle(session.projectId),
     tainted: false,
   });
 });

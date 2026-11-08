@@ -31,6 +31,10 @@ export interface ConversationTurn {
   readonly persona?: string;
   /** Who spoke, once voice identity knows: him, a saved person, or a guest. */
   readonly speaker?: ConversationSpeaker;
+  /** The project the turn was in (memory's project ref), so its episode stays behind that project's wall. */
+  readonly project?: string;
+  /** The turn read outside content (D127): what is learned from it waits for his yes. */
+  readonly tainted?: true;
 }
 
 export type ConversationSpeaker = "owner" | "guest" | `saved:${string}`;
@@ -78,6 +82,8 @@ export const parseTurn = (raw: string): ConversationTurn | null => {
       reply: t.reply,
       ...(typeof t.note === "string" ? { note: t.note } : {}),
       ...(typeof t.persona === "string" ? { persona: t.persona } : {}),
+      ...(typeof t.project === "string" ? { project: t.project } : {}),
+      ...(t.tainted === true ? { tainted: true as const } : {}),
       ...(t.speaker === "owner" ||
       t.speaker === "guest" ||
       (typeof t.speaker === "string" && t.speaker.startsWith("saved:"))

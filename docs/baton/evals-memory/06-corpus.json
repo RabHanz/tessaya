@@ -2190,6 +2190,30 @@
       "kind": "episode",
       "text": "Friday, 6 November 2026, with Freya: He asked to book dinner for Saturday. Freya found a table for eight at the Italian place and he confirmed it.",
       "source": "thread"
+    },
+    {
+      "key": "f-staging-helsinki",
+      "kind": "fact",
+      "text": "The staging server runs in Helsinki since the November move",
+      "source": "user"
+    },
+    {
+      "key": "e-staging-falkenstein",
+      "kind": "episode",
+      "text": "Monday, 2 November 2026, with Alfred: He asked where to put the staging server. Alfred moved it to Falkenstein and checked the deploy.",
+      "source": "thread"
+    },
+    {
+      "key": "f-piano-wednesday",
+      "kind": "fact",
+      "text": "Piano lessons are on Wednesday evenings",
+      "source": "user"
+    },
+    {
+      "key": "e-piano-monday",
+      "kind": "episode",
+      "text": "Monday, 2 November 2026, with Freya: He asked her to find a piano teacher. Freya booked a first lesson for Monday afternoon and added it to the calendar.",
+      "source": "thread"
     }
   ],
   "cases": [
@@ -3013,6 +3037,24 @@
       "group": "episode",
       "query": "what did I talk about with Freya on Friday",
       "present": ["e-freya-dinner"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "where does the staging server run",
+      "top": "f-staging-helsinki"
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "which city is the staging server in",
+      "top": "f-staging-helsinki"
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "when are my piano lessons",
+      "top": "f-piano-wednesday"
     }
   ]
 }

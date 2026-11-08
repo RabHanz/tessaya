@@ -144,6 +144,8 @@ export const BatonMemoryRecallInput = Schema.Struct({
   turnRef: Schema.optionalKey(Schema.String),
   /** The persona the block is for (its pack id). Without one, nothing from a walled project comes back. */
   agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+  /** His IANA zone, so "yesterday" is his day. */
+  timeZone: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
 });
 export const BatonMemoryRecallResult = Schema.Struct({
   block: Schema.String,
@@ -172,17 +174,24 @@ export const BatonMemoryLearnInput = Schema.Struct({
   /** The turn read something from outside, so nothing from it is kept without his yes. */
   tainted: Schema.Boolean,
   project: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  turnRef: Schema.optionalKey(Schema.String),
+  /** A conversation episode's `conversation:<persona id>:<first>-<last turn>` (the server checks it); else the turn. */
+  turnRef: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(128))),
   /** The exchange before, so "yes, do that from now on" has a referent. */
   previous: Schema.optionalKey(Schema.String),
   /** The persona whose turn it was (its pack id). */
   agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
   /** "conversation": `said` is a persona's turns since its last episode, kept as one episode (MEM-18). */
   origin: Schema.optionalKey(Schema.Literal("conversation")),
+  /** When it happened (ISO): a conversation episode is dated from its last turn. */
+  at: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(40))),
+  /** His IANA zone, kept for the episodes the server writes on its own. */
+  timeZone: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
 });
 export const BatonMemoryLearnResult = Schema.Struct({
   stored: Schema.Number,
   held: Schema.Number,
+  /** A conversation episode: "kept" or "skip" moves the desktop past those turns; "retry" sends them again. */
+  episode: Schema.optionalKey(Schema.Literals(["kept", "skip", "retry"])),
 });
 
 /** Sync between servers (D150, MEMORY.md section 6): last writer wins, a tombstone beats an older item. */
