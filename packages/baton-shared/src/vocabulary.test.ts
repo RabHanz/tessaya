@@ -59,9 +59,9 @@ describe("vocabulary file", () => {
 describe("Wispr's dictionary", () => {
   const rows = [
     {
-      phrase: "Hetzner",
+      phrase: "Kubernetes",
       replacement: null,
-      observedSource: "Hexner",
+      observedSource: "Cooper Netties",
       isSnippet: 0,
       frequencyUsed: 34,
     },
@@ -73,8 +73,8 @@ describe("Wispr's dictionary", () => {
       frequencyUsed: 55,
     },
     {
-      phrase: "my email address",
-      replacement: "a@b.co",
+      phrase: "my sign-off",
+      replacement: "Kind regards, Sam",
       observedSource: null,
       isSnippet: 1,
       frequencyUsed: 0,
@@ -84,15 +84,26 @@ describe("Wispr's dictionary", () => {
 
   it("keeps the form each word was mis-heard as, its use, and moves snippets out", () => {
     const old = [
-      { phrase: "Hetzner", replacement: null, source: "added" as const, count: 1 },
-      { phrase: "my email address", replacement: "a@b.co", source: "added" as const, count: 1 },
+      { phrase: "Kubernetes", replacement: null, source: "added" as const, count: 1 },
+      {
+        phrase: "my sign-off",
+        replacement: "Kind regards, Sam",
+        source: "added" as const,
+        count: 1,
+      },
     ];
     const { entries, snippets } = mergeWispr(old, rows, ["Dee"]);
     expect(entries).toEqual([
-      { phrase: "Hetzner", replacement: null, source: "added", count: 34, heard: ["Hexner"] },
+      {
+        phrase: "Kubernetes",
+        replacement: null,
+        source: "added",
+        count: 34,
+        heard: ["Cooper Netties"],
+      },
       { phrase: "Opus", replacement: null, source: "wispr", count: 55 },
     ]);
-    expect(snippets).toEqual([{ cue: "my email address", text: "a@b.co" }]);
+    expect(snippets).toEqual([{ cue: "my sign-off", text: "Kind regards, Sam" }]);
   });
 
   it("never brings back a word he deleted after the first import", () => {

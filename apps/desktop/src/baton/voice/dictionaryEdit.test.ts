@@ -81,11 +81,11 @@ describe("the vocabulary", () => {
       "create table Dictionary (phrase text, replacement text, observedSource, isSnippet int, frequencyUsed int, isDeleted int)",
     );
     db.exec(`insert into Dictionary values
-      ('Hetzner', null, 'Hexner', 0, 34, 0), ('Gone', null, null, 0, 1, 1),
-      ('Weavia', null, 'Wavia', 0, 3, 0), ('my email address', 'a@b.co', null, 1, 0, 0)`);
+      ('Kubernetes', null, 'Cooper Netties', 0, 34, 0), ('Gone', null, null, 0, 1, 1),
+      ('Weavia', null, 'Wavia', 0, 3, 0), ('my sign-off', 'Kind regards, Sam', null, 1, 0, 0)`);
     db.close();
     const state = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "vocab-"));
-    saveDictionary(state, [{ phrase: "Hetzner", replacement: null }]);
+    saveDictionary(state, [{ phrase: "Kubernetes", replacement: null }]);
     const put: Array<{ cue: string; text: string }> = [];
     const once = {
       stateDir: state,
@@ -95,10 +95,16 @@ describe("the vocabulary", () => {
     const entries = await importWispr({ ...once, entries: readDictionary(state, []) });
     // An existing list is only enriched: Weavia was deleted after the first import, or never taken.
     expect(entries).toEqual([
-      { phrase: "Hetzner", replacement: null, source: "added", count: 34, heard: ["Hexner"] },
+      {
+        phrase: "Kubernetes",
+        replacement: null,
+        source: "added",
+        count: 34,
+        heard: ["Cooper Netties"],
+      },
     ]);
     expect(readDictionary(state, [])).toEqual(entries);
-    expect(put).toEqual([{ cue: "my email address", text: "a@b.co" }]);
+    expect(put).toEqual([{ cue: "my sign-off", text: "Kind regards, Sam" }]);
     expect(await importWispr({ ...once, entries: [] })).toEqual([]);
     expect(put).toHaveLength(1);
   });
