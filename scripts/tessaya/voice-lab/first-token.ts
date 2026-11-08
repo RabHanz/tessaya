@@ -10,10 +10,13 @@ interface Turn {
   readonly at: string;
   readonly persona?: string;
   readonly firstTokenMs?: number | null;
-  readonly session?: "warm" | "cold" | null;
+  readonly session?: "warm" | "starting" | "recycled" | "cold" | null;
 }
 
-/** Median and 90th percentile of the first-token times, and how many started cold. */
+/**
+ * Median and 90th percentile of the first-token times, and how many started cold; and the median by how the session
+ * was found, so a launch warm still starting ("starting") shows apart from a dead one ("recycled") and none ("cold").
+ */
 export const summarise = (turns: ReadonlyArray<Turn>) => {
   const split = { switched: [] as Turn[], same: [] as Turn[] };
   turns.forEach((t, i) =>
@@ -31,7 +34,13 @@ export const summarise = (turns: ReadonlyArray<Turn>) => {
       cold: group.filter((t) => t.session === "cold").length,
     };
   };
-  return { switched: stats(split.switched), same: stats(split.same) };
+  const bySession = Object.fromEntries(
+    (["warm", "starting", "recycled", "cold"] as const).map((state) => {
+      const { turns: count, medianMs } = stats(turns.filter((t) => t.session === state));
+      return [state, { turns: count, medianMs }];
+    }),
+  );
+  return { switched: stats(split.switched), same: stats(split.same), bySession };
 };
 
 const main = () => {

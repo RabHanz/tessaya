@@ -638,6 +638,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       "alf past",
       "no,",
       "No,",
+      // Both forms read aloud: "five past one, or fifty-five to two".
+      ", or ",
     ],
   },
   {

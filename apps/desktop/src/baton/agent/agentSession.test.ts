@@ -528,6 +528,53 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("0.1.79: Freya's and Alfred's default tiers never evict the lead's pinned fast tier; a dead session is 'recycled'", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const started: string[] = [];
+    const disposed: string[] = [];
+    let alive = true;
+    const agent = createAssistantAgent({
+      start: async (_prompt, brain) => {
+        const name = `${brain?.model ?? "none"}#${started.length + 1}`;
+        started.push(name);
+        return {
+          ask: async () => "Ok.",
+          alive: () => alive,
+          dispose: () => void disposed.push(name),
+        };
+      },
+      conversation: createConversationLog({ file: NodePath.join(dir, "c.ndjson") }),
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const fast = { model: "haiku", effort: "low" };
+    const deflt = { model: "sonnet", effort: "medium" };
+    const persona = (id: string) => ({ id, name: id, role: "" });
+    const say = (id: string, brain: typeof fast) =>
+      agent.say("hi", { window: null, session: null, brain, persona: persona(id) });
+    // Launch: the fast tiers of the lead and the two he spoke to last (pinned), and the lead's default tier.
+    agent.warmEach(
+      ["executive", "operations", "engineering"].map((p) => ({ brain: fast, persona: p })),
+    );
+    agent.warm([deflt, fast], "executive");
+    await settled();
+    expect(started).toEqual(["haiku#1", "haiku#2", "haiku#3", "sonnet#4"]);
+    // Freya's action, then Alfred's, each on the default tier: what makes room is a default tier, never a pinned fast one.
+    agent.warm([deflt, fast], "operations", true);
+    await say("operations", deflt);
+    agent.warm([deflt, fast], "engineering", true);
+    await say("engineering", deflt);
+    expect(disposed).toEqual(["sonnet#4", "sonnet#5"]);
+    // Seven minutes on, the lead's first fast turn is warm.
+    await say("executive", fast);
+    expect(agent.lastStart()).toBe("warm");
+    // A session found dead is started again, and the log says so: not a session that was never there.
+    alive = false;
+    await say("operations", fast);
+    expect(agent.lastStart()).toBe("recycled");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("after a wake that named the wrong persona, warms nothing more of it and evicts nothing of the one who answered", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
