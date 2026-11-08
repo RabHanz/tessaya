@@ -26,7 +26,7 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -125,6 +125,8 @@ struct Done {
     wav: Option<String>,
     /// The model file a clip sent to `transcribe` was recognised with, for the turn log; None for a live recording.
     model: Option<String>,
+    /// A dictation's stage times from its key press, for the desktop's `dictation_timing`; None for a clip.
+    timing: Option<Value>,
 }
 
 struct Job {
@@ -241,7 +243,7 @@ enum Work {
     Load { id: Option<u64>, model: PathBuf },
     Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf> },
     Audio(Vec<f32>),
-    End { target: Option<isize>, released: Instant },
+    End { target: Option<isize>, released: Instant, timing: Value },
     Abort,
 }
 
@@ -357,6 +359,7 @@ impl Live {
                 pieces: 0,
                 wav: Some(wav),
                 model: None,
+                timing: None,
             });
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
@@ -379,6 +382,7 @@ impl Live {
             pieces: self.pieces,
             wav: None,
             model: None,
+            timing: None,
         })
     }
 }
@@ -514,6 +518,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                         pieces: 1,
                         wav: None,
                         model,
+                        timing: None,
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
@@ -555,9 +560,11 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                     }
                 }
             }
-            Ok(Work::End { target, released }) => {
+            Ok(Work::End { target, released, timing }) => {
                 let Some(current) = live.take() else { continue };
-                let result = current.finish(loaded.as_mut().map(|(_, session)| session), released);
+                let result = current
+                    .finish(loaded.as_mut().map(|(_, session)| session), released)
+                    .map(|done| Done { timing: Some(timing), ..done });
                 let _ = out.send(Msg::Finished { id: None, dictated: true, target, result });
             }
             Ok(Work::Abort) => live = None,
@@ -670,11 +677,15 @@ fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String>
 struct LiveSink {
     work: Sender<Work>,
     samples: Arc<AtomicUsize>,
+    first_audio: Arc<OnceLock<Instant>>,
 }
 
 impl Sink for LiveSink {
     fn process_chunk(&mut self, chunk: AudioChunk<'_>) {
         let samples = chunk.samples[..chunk.valid_frames].to_vec();
+        if !samples.is_empty() {
+            let _ = self.first_audio.set(Instant::now());
+        }
         self.samples.fetch_add(samples.len(), Ordering::Relaxed);
         let _ = self.work.send(Work::Audio(samples));
     }
@@ -690,6 +701,11 @@ struct Recording {
     samples: Arc<AtomicUsize>,
     started: Instant,
     target: isize,
+    /// When the key (or start) asked for it, the microphone took, and the first audio arrived.
+    pressed: Instant,
+    mic_ms: u64,
+    first_audio: Arc<OnceLock<Instant>>,
+    via: &'static str,
 }
 
 impl Drop for Recording {
@@ -706,7 +722,14 @@ fn fake_mic() -> Option<PathBuf> {
     std::env::var_os("BATON_FAKE_MIC").map(PathBuf::from)
 }
 
-fn play_fake(path: &Path, work: Sender<Work>, samples: Arc<AtomicUsize>, stop: Arc<AtomicBool>, tx: Sender<Msg>) -> Result<(), String> {
+fn play_fake(
+    path: &Path,
+    work: Sender<Work>,
+    samples: Arc<AtomicUsize>,
+    first_audio: Arc<OnceLock<Instant>>,
+    stop: Arc<AtomicBool>,
+    tx: Sender<Msg>,
+) -> Result<(), String> {
     let pcm = read_wav(path)?;
     thread::spawn(move || {
         let started = Instant::now();
@@ -716,6 +739,7 @@ fn play_fake(path: &Path, work: Sender<Work>, samples: Arc<AtomicUsize>, stop: A
             if stop.load(Ordering::Relaxed) {
                 return;
             }
+            let _ = first_audio.set(Instant::now());
             samples.fetch_add(chunk.len(), Ordering::Relaxed);
             let _ = work.send(Work::Audio(chunk.to_vec()));
         }
@@ -994,24 +1018,28 @@ fn serve() {
     let mut voice_on = false;
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
-    let begin = |config: &Config, recording: &mut Option<Recording>, tx: &Sender<Msg>, job_tx: &Sender<Work>| {
+    // `via`: the hold key, the toggle key, or `start` (a held mouse button or the desktop), for the timing line.
+    let begin = |config: &Config, recording: &mut Option<Recording>, tx: &Sender<Msg>, job_tx: &Sender<Work>, via: &'static str| {
         if recording.is_some() {
             return;
         }
+        let pressed = Instant::now();
         let Some(model) = config.model.clone() else {
             emit(json!({"ev": "error", "message": "no model configured"}));
             return;
         };
         let _ = job_tx.send(Work::Begin { model, language: config.language.clone(), external: config.external.clone() });
         let samples = Arc::new(AtomicUsize::new(0));
+        let first_audio = Arc::new(OnceLock::new());
         let opened = match fake_mic() {
             Some(path) => {
                 let stop = Arc::new(AtomicBool::new(false));
-                play_fake(&path, job_tx.clone(), samples.clone(), stop.clone(), tx.clone()).map(|()| Source::Fake(stop))
+                play_fake(&path, job_tx.clone(), samples.clone(), first_audio.clone(), stop.clone(), tx.clone())
+                    .map(|()| Source::Fake(stop))
             }
             None => {
                 let tx = tx.clone();
-                let sink = LiveSink { work: job_tx.clone(), samples: samples.clone() };
+                let sink = LiveSink { work: job_tx.clone(), samples: samples.clone(), first_audio: first_audio.clone() };
                 recorder_config(config.device.as_deref(), config.channel).and_then(|cfg| {
                     let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
                         let _ = tx.send(Msg::MicFailed(e.to_string()));
@@ -1026,8 +1054,10 @@ fn serve() {
             Ok(source) => {
                 let target = foreground_window();
                 let (app, title) = window_app(target);
-                *recording = Some(Recording { source, samples, started: Instant::now(), target });
-                emit(json!({"ev": "recording", "app": app, "title": title}));
+                let mic_ms = pressed.elapsed().as_millis() as u64;
+                *recording =
+                    Some(Recording { source, samples, started: Instant::now(), target, pressed, mic_ms, first_audio, via });
+                emit(json!({"ev": "recording", "app": app, "title": title, "micMs": mic_ms}));
             }
             Err(message) => {
                 let _ = job_tx.send(Work::Abort);
@@ -1049,7 +1079,14 @@ fn serve() {
         match stopped {
             Ok(()) if samples.load(Ordering::Relaxed) >= MIN_SAMPLES => {
                 emit(json!({"ev": "transcribing", "heldMs": held_for.as_millis() as u64}));
-                let _ = job_tx.send(Work::End { target, released });
+                let since = |at: Instant| at.saturating_duration_since(current.pressed).as_millis() as u64;
+                let timing = json!({
+                    "via": current.via,
+                    "micMs": current.mic_ms,
+                    "firstAudioMs": current.first_audio.get().map(|at| since(*at)),
+                    "releasedMs": since(released),
+                });
+                let _ = job_tx.send(Work::End { target, released, timing });
             }
             Ok(()) => {
                 let _ = job_tx.send(Work::Abort);
@@ -1189,13 +1226,13 @@ fn serve() {
                         if recording.is_some() {
                             finish(&mut recording, &job_tx, true);
                         } else {
-                            begin(&config, &mut recording, &tx, &job_tx);
+                            begin(&config, &mut recording, &tx, &job_tx, "toggle");
                         }
                     }
                     // A mouse button held to dictate, and the desktop ending a recording from any of its entry points.
                     "start" => {
                         if recording.is_none() {
-                            begin(&config, &mut recording, &tx, &job_tx);
+                            begin(&config, &mut recording, &tx, &job_tx, "start");
                         }
                     }
                     "finish" => {
@@ -1244,8 +1281,10 @@ fn serve() {
                         if target.is_some() && !should_paste(target, foreground_window()) {
                             emit(json!({"ev": "pasted", "id": id, "moved": true}));
                         } else {
+                            let started = Instant::now();
                             let result = paste_text(&mut enigo, text, config.paste);
-                            emit(json!({"ev": "pasted", "id": id, "error": result.err()}));
+                            let paste_ms = started.elapsed().as_millis() as u64;
+                            emit(json!({"ev": "pasted", "id": id, "error": result.err(), "pasteMs": paste_ms}));
                         }
                     }
                     "quit" => return,
@@ -1265,7 +1304,7 @@ fn serve() {
                             }
                             _ => {
                                 held = true;
-                                begin(&config, &mut recording, &tx, &job_tx);
+                                begin(&config, &mut recording, &tx, &job_tx, "hold");
                             }
                         },
                         Out::Stop => {
@@ -1288,7 +1327,7 @@ fn serve() {
                     toggle_down = true;
                     match dictation_press(recording.is_some(), voice_on) {
                         Press::Finish => finish(&mut recording, &job_tx, true),
-                        Press::Begin => begin(&config, &mut recording, &tx, &job_tx),
+                        Press::Begin => begin(&config, &mut recording, &tx, &job_tx, "toggle"),
                         Press::ToDesktop => emit(json!({"ev": "binding", "id": "toggle"})),
                     }
                 }
@@ -1305,15 +1344,19 @@ fn serve() {
             Msg::Finished { id, dictated, target, result } => match result {
                 Ok(done) => {
                     let mut pasted_error = None;
+                    let mut paste_ms = None;
                     let paste = dictated && !config.cleanup && should_paste(target, foreground_window());
                     if paste && !done.text.is_empty() {
+                        let started = Instant::now();
                         pasted_error = paste_text(&mut enigo, &done.text, config.paste).err();
+                        paste_ms = Some(started.elapsed().as_millis() as u64);
                     }
                     emit(json!({
                         "ev": "text", "id": id, "text": done.text, "audioMs": done.audio_ms,
                         "inferMs": done.infer_ms, "loadMs": done.load_ms, "pasteError": pasted_error,
                         "dictated": dictated, "pasted": paste, "target": target,
                         "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav, "model": done.model,
+                        "timing": done.timing, "pasteMs": paste_ms,
                     }));
                 }
                 Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": dictated})),

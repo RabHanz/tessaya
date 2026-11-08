@@ -172,7 +172,20 @@ export type DictationEvent =
       /** The window it was spoken for; null when it must not be pasted. */
       readonly target?: number | null;
       readonly releaseMs?: number | null;
+      readonly inferMs?: number;
+      readonly pieces?: number;
+      /** How long the sidecar's own paste took (cleanup off); null when it did not paste. */
+      readonly pasteMs?: number | null;
+      readonly timing?: SidecarTiming | null;
     };
+
+/** A live dictation's stage times from its key press (`dictationTiming`). */
+export interface SidecarTiming {
+  readonly via: "hold" | "toggle" | "start";
+  readonly micMs: number;
+  readonly firstAudioMs: number | null;
+  readonly releasedMs: number;
+}
 
 export interface SidecarDevice {
   readonly name: string;
