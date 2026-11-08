@@ -341,7 +341,6 @@ const OWN_HEARD: ReadonlyArray<{
     to: "Tessaya",
     form,
   })),
-  ...["venture OS", "ventureOS", "VenturoS"].map((form) => ({ to: "VentureOS", form })),
   { to: "Baton", form: "Buton" },
   { to: "T3", form: "T three" },
   { to: "T3", form: "D3", after: ["code", "codes", "chat", "sessions", "s"] },
