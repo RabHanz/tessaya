@@ -68,19 +68,25 @@ describe("a terminal permission prompt's card", () => {
     const found = parsePanePrompt(screen("pane-subagent-permission.txt"));
     expect(found).not.toBeNull();
     const card = decodeQuestion(askQuestion(found!, ""));
-    expect(card.question).toBe(
-      "A background agent (Record all variants in both themes plus…) wants to run a command that deletes files in drafts/pill/v2/proto. Allow?",
+    expect(card.question).toMatch(
+      /^Claude Code flags this as dangerous: A background agent \(Record all variants in both themes plus…\) wants to run `cd .+ && rm -rf stills\/\* src\/raw;.+`, which deletes files in \/srv\/work\/projects-00001\/t3code\/stills\/\*\. Allow\?$/,
     );
     expect(card.options.map((o) => o.label)).toEqual(["Allow", "Deny"]);
     expect(card.details).toContain("rm -rf stills/* src/raw");
   });
 
-  it("a card T3 closed while its prompt is still on screen comes back once an answer could have landed", () => {
-    const ask = { closedAt: null };
-    expect(keepAsk(ask, true, 0)).toBe(true);
-    expect(keepAsk(ask, false, 1_000)).toBe(true);
-    expect(keepAsk(ask, false, 15_000)).toBe(true);
-    expect(keepAsk(ask, false, 21_001)).toBe(false);
+  it("a card closed while its prompt still shows comes back only after an answer that pressed nothing, once", () => {
+    const first = { at: 1_000, again: false };
+    const answered = { pending: false, answered: true, answeredAt: 5_000 };
+    expect(keepAsk(first, { ...answered, pending: true })).toBe(true);
+    // Dismissed or expired: no answer, so it stays closed.
+    expect(keepAsk(first, { ...answered, answered: false })).toBe(true);
+    // Answered, but the bridge has not finished with it yet (or finished with an older card).
+    expect(keepAsk(first, { ...answered, answeredAt: null })).toBe(true);
+    expect(keepAsk(first, { ...answered, answeredAt: 500 })).toBe(true);
+    expect(keepAsk(first, answered)).toBe(false);
+    // The card raised again is not raised a third time.
+    expect(keepAsk({ at: 6_000, again: true }, { ...answered, answeredAt: 9_000 })).toBe(true);
   });
 });
 

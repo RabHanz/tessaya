@@ -90,6 +90,7 @@ import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { resendKept, sessionOfThread, stampKept } from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
 import { splitPaneRef } from "./HerdrAdapterLive.ts";
+import { liveQueueDir } from "./BatonLiveQueue.ts";
 // @ts-expect-error -- plain JS shared with the live agent, which runs without a build; typed below
 import * as panePrompt from "../../../../scripts/tessaya/live/pane-prompt.mjs";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
@@ -247,17 +248,38 @@ export const unreadPrompt = (
         customIndex: null,
       };
 
-/** Longer than the live agent waits for an answered prompt to leave the screen (PROMPT_CLEAR_TRIES). */
-const ASK_REOPEN_MS = 20_000;
-
 /**
- * Whether the card for the prompt still on screen stays. One T3 closed (an answer that pressed nothing, a dismiss)
- * comes back once an answer has had time to clear the prompt, so a waiting session never shows no card.
+ * Whether the card for the prompt still on screen stays. One T3 closed comes back only when it was answered, the bridge
+ * has since finished with that answer (`answeredAt`, its marker) and the prompt still shows: an answer that pressed
+ * nothing. A dismissed or expired card stays closed, and a card is raised again at most once.
  */
-export const keepAsk = (ask: { closedAt: number | null }, pending: boolean, nowMs: number) => {
-  if (pending) return true;
-  ask.closedAt ??= nowMs;
-  return nowMs - ask.closedAt < ASK_REOPEN_MS;
+export const keepAsk = (
+  ask: { readonly at: number; readonly again: boolean },
+  state: {
+    readonly pending: boolean;
+    readonly answered: boolean;
+    readonly answeredAt: number | null;
+  },
+) =>
+  state.pending ||
+  !state.answered ||
+  ask.again ||
+  state.answeredAt === null ||
+  state.answeredAt < ask.at;
+
+/** When the live bridge last finished pressing a card's answer for the session (its `<id>.answered`), or null. */
+const answeredAt = (sessionId: string): number | null => {
+  try {
+    const at = Number(
+      NodeFS.readFileSync(
+        NodePath.join(liveQueueDir(), `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.answered`),
+        "utf8",
+      ),
+    );
+    return Number.isFinite(at) ? at : null;
+  } catch {
+    return null;
+  }
 };
 
 /** The T3 question a terminal prompt becomes. T3 sends its answer back as "<question>\n<answer>". */
@@ -792,8 +814,10 @@ interface Follow {
     readonly requestId: RuntimeRequestId;
     readonly itemId: TurnItemId;
     readonly request: OrchestrationV2RuntimeRequest;
-    /** When T3 closed it while the same prompt stayed on screen. */
-    closedAt: number | null;
+    /** When it was raised (ms). */
+    readonly at: number;
+    /** It is the same prompt raised again, so it is not raised a third time. */
+    readonly again: boolean;
   } | null;
   /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
   promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
@@ -1557,16 +1581,15 @@ const make = Effect.gen(function* () {
         readable: read !== null && read.options.length > 0,
         shown: found?.key ?? null,
       });
-      if (
-        follow.ask !== null &&
-        follow.ask.key === found?.key &&
-        keepAsk(
-          follow.ask,
-          (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending",
-          nowMs,
-        )
-      )
-        return;
+      const again = follow.ask !== null && follow.ask.key === found?.key;
+      if (again && follow.ask !== null) {
+        const pending =
+          (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending";
+        const item = pending ? null : yield* engine.turnItem(follow.threadId, follow.ask.itemId);
+        const answered = item?.type === "user_input_request" && item.questionAnswer !== undefined;
+        if (keepAsk(follow.ask, { pending, answered, answeredAt: answeredAt(session.sessionId) }))
+          return;
+      }
       const now = yield* DateTime.now;
       if (follow.ask !== null) {
         const open = follow.ask;
@@ -1642,7 +1665,7 @@ const make = Effect.gen(function* () {
         resolvedAt: null,
       };
       yield* expireOtherAsks(follow, String(requestId));
-      follow.ask = { key: found.key, requestId, itemId, request, closedAt: null };
+      follow.ask = { key: found.key, requestId, itemId, request, at: stamp, again };
       const askRun = askRunId(follow.target, yield* engine.threadRuns(follow.threadId));
       yield* engine.writeEvents({
         events: [

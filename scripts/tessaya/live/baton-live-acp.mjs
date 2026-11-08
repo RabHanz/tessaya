@@ -619,11 +619,40 @@ export async function readPanePrompt(paneRef) {
  * D88: answer the prompt showing in the pane with keystrokes, then wait until it is gone. Returns
  * what to tell the thread, or null when `text` is not an answer to it (nothing was pressed).
  */
-export async function answerPrompt(sessionId, paneRef, text) {
+const answering = new Map(); // pane -> the answer being pressed there, so two never interleave keys
+
+/** `<id>.answered`: when the bridge last finished with a card's answer; the mirror re-raises a card only after it. */
+const answeredFile = (dir, sessionId) =>
+  NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.answered`);
+
+export function answerPrompt(sessionId, paneRef, text) {
+  const done = (answering.get(paneRef) ?? Promise.resolve()).then(() =>
+    answerNow(sessionId, paneRef, text),
+  );
+  const tail = done.catch(() => {});
+  answering.set(paneRef, tail);
+  void tail.then(() => {
+    if (answering.get(paneRef) === tail) answering.delete(paneRef);
+  });
+  return done;
+}
+
+async function answerNow(sessionId, paneRef, text) {
   const shown = await readPanePrompt(paneRef);
   if (shown === null) return null;
   // A plain message is never an answer: only the question card's own "<question>\n<answer>" presses keys.
   if (!isCardAnswer(text, shown)) return null;
+  try {
+    return await pressAnswer(sessionId, paneRef, text, shown);
+  } finally {
+    try {
+      NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
+      NodeFS.writeFileSync(answeredFile(QUEUE_DIR, sessionId), String(Date.now()));
+    } catch {}
+  }
+}
+
+async function pressAnswer(sessionId, paneRef, text, shown) {
   const answer = answerFrom(text, shown);
   const plan = answerKeys(shown, answer);
   if (plan === null) return null;

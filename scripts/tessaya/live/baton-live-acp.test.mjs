@@ -65,7 +65,10 @@ const fixture = (name) =>
 
 NodeTest.test("a permission dialog on the screen is read with its options (D88)", () => {
   const prompt = parsePanePrompt(fixture("pane-permission.txt"));
-  NodeAssert.equal(prompt.question, "Claude wants to run a command: Print a test string. Allow?");
+  NodeAssert.equal(
+    prompt.question,
+    "Claude wants to run `echo PERM-TEST` (Print a test string). Allow?",
+  );
   NodeAssert.match(prompt.details, /echo PERM-TEST\n[^]*Do you want to proceed\?$/);
   NodeAssert.deepEqual(
     prompt.options.map((o) => o.label),
@@ -989,13 +992,15 @@ NodeTest.test("the live effort list is the one the server types", () => {
   NodeAssert.deepEqual(LIVE_EFFORTS, [...LIVE_EFFORT_CHOICES]);
 });
 
+const SUBAGENT_QUESTION =
+  "Claude Code flags this as dangerous: A background agent (Record all variants in both themes plus…) wants to run " +
+  "`cd /srv/work/projects-00001/tessaya-ops/drafts/pill/v2/proto && rm -rf stills/* src/raw; timeout 900 node…`, " +
+  "which deletes files in /srv/work/projects-00001/t3code/stills/*. Allow?";
+
 NodeTest.test("a background agent's permission prompt is a card a person can read", () => {
   const screen = fixture("pane-subagent-permission.txt");
   const prompt = parsePanePrompt(screen);
-  NodeAssert.equal(
-    prompt.question,
-    "A background agent (Record all variants in both themes plus…) wants to run a command that deletes files in drafts/pill/v2/proto. Allow?",
-  );
+  NodeAssert.equal(prompt.question, SUBAGENT_QUESTION);
   NodeAssert.deepEqual(
     prompt.options.map((o) => o.label),
     ["Allow", "Deny"],
@@ -1020,19 +1025,86 @@ NodeTest.test("a background agent's permission prompt is a card a person can rea
 });
 
 /** A Claude Code permission dialog as a pane shows it. */
-const dialog = (head, boxed, question, options) =>
+const dialog = (head, boxed, question, options, warning = []) =>
   [
     "─".repeat(60),
     ...head.map((l) => ` ${l}`),
     "╌".repeat(60),
     ...boxed.map((l) => ` ${l}`),
     "╌".repeat(60),
+    ...warning.map((l) => ` ${l}`),
     "",
     ` ${question}`,
     ...options.map((o, i) => `${i === 0 ? " ❯" : "  "} ${i + 1}. ${o}`),
     "",
     " Esc to cancel · Tab to amend",
   ].join("\n");
+const bash = (command, description = "Run it", warning = []) =>
+  dialog(
+    ["Bash command", description],
+    [command],
+    "Do you want to proceed?",
+    ["Yes", "No"],
+    warning,
+  );
+
+NodeTest.test("an answer to one permission card never answers the next one on the screen", () => {
+  const a = parsePanePrompt(bash("ls"));
+  const b = parsePanePrompt(bash("rm -rf build"));
+  NodeAssert.notEqual(a.question, b.question);
+  NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, b), false);
+  NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, a), true);
+});
+
+NodeTest.test("a plain permission question never hides what the command does", () => {
+  const rows = [
+    [
+      bash("git clean -fdx && git reset --hard", "List files"),
+      "Claude wants to run `git clean -fdx && git reset --hard`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("cd /repo && rm -rf ~/", "Tidy up"),
+      "Claude wants to run `cd /repo && rm -rf ~/`, which deletes files in ~. Allow?",
+    ],
+    [
+      bash("rm -rf /etc", "Clean"),
+      "Claude wants to run `rm -rf /etc`, which deletes files in /etc. Allow?",
+    ],
+    [bash("rm -rf /"), "Claude wants to run `rm -rf /`, which deletes files in /. Allow?"],
+    [
+      bash("find . -name '*.log' -delete"),
+      "Claude wants to run `find . -name '*.log' -delete`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("shred -u secrets.txt"),
+      "Claude wants to run `shred -u secrets.txt`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("dd if=/dev/zero of=/dev/sda"),
+      "Claude wants to run `dd if=/dev/zero of=/dev/sda`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("echo '' > notes.md"),
+      "Claude wants to run `echo '' > notes.md`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("mv data.db /dev/null"),
+      "Claude wants to run `mv data.db /dev/null`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("npm test 2>&1 > /dev/null", "Test"),
+      "Claude wants to run `npm test 2>&1 > /dev/null` (Test). Allow?",
+    ],
+    [
+      bash("cd /repo && rm -rf out/*", "Clean", [
+        "Dangerous rm operation on statically-unresolvable target: /repo/out/*",
+      ]),
+      "Claude Code flags this as dangerous: Claude wants to run `cd /repo && rm -rf out/*`, which deletes files in /repo/out/*. Allow?",
+    ],
+  ];
+  for (const [screen, question] of rows)
+    NodeAssert.equal(parsePanePrompt(screen).question, question);
+});
 
 NodeTest.test("every tool's permission prompt reads plainly, with two or three choices", () => {
   const cases = [
@@ -1043,7 +1115,7 @@ NodeTest.test("every tool's permission prompt reads plainly, with two or three c
         "Do you want to make this edit to main.ts?",
         ["Yes", "Yes, allow all edits during this session (shift+tab)", "No"],
       ),
-      "Claude wants to edit main.ts. Allow?",
+      "Claude wants to edit apps/web/src/main.ts. Allow?",
       ["Allow", "Allow always for this", "Deny"],
     ],
     [
@@ -1057,7 +1129,7 @@ NodeTest.test("every tool's permission prompt reads plainly, with two or three c
           "No, and tell Claude what to do differently (esc)",
         ],
       ),
-      "A background agent wants to fetch a web page from docs.example.com. Allow?",
+      "A background agent wants to fetch https://docs.example.com/guide. Allow?",
       ["Allow", "Allow always for this", "Deny"],
     ],
     [
@@ -1067,7 +1139,17 @@ NodeTest.test("every tool's permission prompt reads plainly, with two or three c
         "Do you want to proceed?",
         ["Yes", "No"],
       ),
-      "Claude wants to use the send_message tool from slack. Allow?",
+      'Claude wants to use the send_message tool from slack (slack - send_message(channel: "#ops", text: "hi") (MCP)). Allow?',
+      ["Allow", "Deny"],
+    ],
+    [
+      dialog(
+        ["Tool use"],
+        ['fetcher - fetch(url: "https://x.dev") (MCP)'],
+        "Do you want to proceed?",
+        ["Yes", "No"],
+      ),
+      'Claude wants to use the fetch tool from fetcher (fetcher - fetch(url: "https://x.dev") (MCP)). Allow?',
       ["Allow", "Deny"],
     ],
     [
@@ -1076,8 +1158,18 @@ NodeTest.test("every tool's permission prompt reads plainly, with two or three c
         "Yes, and don't ask again for git status commands in /repo",
         "No",
       ]),
-      "Claude wants to run a command. Allow?",
+      "Claude wants to run `git status`. Allow?",
       ["Allow", "Allow always for this", "Deny"],
+    ],
+    [
+      dialog(["Bash command"], ["git push"], "Do you want to proceed?", [
+        "Yes",
+        "Yes, and don't ask again for git push commands",
+        "Yes, and always allow git commands",
+        "No",
+      ]),
+      "Claude wants to run `git push`. Allow?",
+      ["Allow", "Allow always for this", "Yes, and always allow git commands", "Deny"],
     ],
   ];
   for (const [screen, question, labels] of cases) {
@@ -1093,21 +1185,24 @@ NodeTest.test("every tool's permission prompt reads plainly, with two or three c
     });
   }
   // "Always" says what it covers.
-  NodeAssert.match(parsePanePrompt(cases[3][0]).options[1].description, /git status commands/);
+  NodeAssert.match(parsePanePrompt(cases[4][0]).options[1].description, /git status commands/);
 });
 
 NodeTest.test(
-  "a permission prompt that cannot be read still offers Allow and Deny, with its text",
+  "a permission prompt that cannot be read still offers Allow and Deny, with only the dialog's text",
   () => {
-    const prompt = parsePanePrompt(
-      [
-        "Something new · from a future agent",
-        "Do you want to proceed?",
-        "  (a layout not seen before)",
-        "",
-        " Esc to cancel",
-      ].join("\n"),
-    );
+    const screen = [
+      "✻ Thinking… (12s)",
+      "─".repeat(40),
+      " Something new · from a future agent",
+      " Do you want to proceed?",
+      // No highlighted choice: the reader cannot tell which one Enter takes.
+      "   1. Yes",
+      "   2. No",
+      "",
+      " Esc to cancel",
+    ].join("\n");
+    const prompt = parsePanePrompt(screen);
     NodeAssert.deepEqual(
       prompt.options.map((o) => [o.label, o.keys]),
       [
@@ -1116,6 +1211,20 @@ NodeTest.test(
       ],
     );
     NodeAssert.match(prompt.details, /Something new[^]*Do you want to proceed\?/);
+    NodeAssert.doesNotMatch(prompt.details, /Thinking/, "a spinner never enters the key");
     NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["esc"], text: null });
   },
 );
+
+NodeTest.test("a dialog that is not a permission prompt never gets Allow pressed for it", () => {
+  const screen = [
+    "● Do you want to proceed? I asked this earlier in the conversation.",
+    "─".repeat(40),
+    " Select model",
+    "   Default (recommended)",
+    "   Opus",
+    "",
+    " Esc to cancel",
+  ].join("\n");
+  NodeAssert.equal(parsePanePrompt(screen), null);
+});

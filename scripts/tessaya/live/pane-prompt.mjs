@@ -106,8 +106,16 @@ export function parsePanePrompt(screen) {
 function unreadPermission(screen) {
   const lines = screen.replace(/\r/g, "").split("\n").slice(-40);
   const footer = lines.findLastIndex((l) => /Esc to cancel/.test(l));
-  if (footer < 0 || !lines.slice(0, footer).some((l) => /Do you want to .*\?/.test(l))) return null;
-  const details = screenTail(lines.slice(0, footer).join("\n"), 20);
+  if (footer < 0) return null;
+  // Only the dialog itself counts: from its top rule to its footer, never the transcript or a spinner above it.
+  const top = lines.slice(0, footer).findLastIndex((l) => SOLID.test(l));
+  const dialog = lines.slice(top + 1, footer);
+  if (
+    !dialog.some((l) => /Do you want to .*\?/.test(l)) ||
+    !dialog.some((l) => /^\s*(❯\s*)?\d+\.\s+\S/.test(l))
+  )
+    return null;
+  const details = screenTail(dialog.join("\n"), 20);
   return {
     question: "Claude Code is asking for permission in its terminal. Allow?",
     header: null,
@@ -317,16 +325,55 @@ function parseScreen(screen) {
 const shorten = (text, max) =>
   text.length <= max ? text : `${text.slice(0, max).replace(/\s+\S*$/, "")}…`;
 /** The last few folders of a path: enough to recognise it, short enough to read. */
-const shortPath = (path) => path.replace(/\/+$/, "").split("/").slice(-4).join("/");
+const shortPath = (path) => {
+  const trimmed = path.replace(/(.)\/+$/, "$1");
+  const parts = trimmed.split("/");
+  return parts.length <= 5 ? trimmed : parts.slice(-4).join("/");
+};
 const ALLOW = "Allow";
 const ALWAYS = "Allow always for this";
 const DENY = "Deny";
+const unquote = (word) => word.replace(/^["']|["']$/g, "");
+/** Commands that delete or overwrite: rm, find -delete, shred, dd, a `>` truncation, mv into /dev/null, git's own. */
+const DESTRUCTIVE =
+  /(^|[\s;&|(])(rm|shred)\s|\sfind\s.*\s-delete\b|^find\s.*\s-delete\b|(^|[\s;&|])dd\s.*\bof=|(^|[^>&\d])>\s*(?![&>]|\/dev\/null)[^\s|&;]|(^|[\s;&|])mv\s.*\/dev\/null|\bgit\s+(clean\s+-\S*f|reset\s+--hard|checkout\s+--\s|restore\s)/;
+
+/** What an `rm` deletes, from the command alone: its first path, resolved against a leading `cd`. */
+const rmTarget = (command, cd) => {
+  const word = /(?:^|[\s;&|(])rm\s+(?:-\S+\s+)*("[^"]+"|'[^']+'|\S+)/.exec(command)?.[1];
+  if (word === undefined) return undefined;
+  const path = unquote(word);
+  return /^[/~]/.test(path) || cd === undefined ? path : `${cd.replace(/\/+$/, "")}/${path}`;
+};
+
+/** A Bash dialog said plainly. The command itself is always shown: a description may follow it, never replace it. */
+const bashAction = (body, desc, said, agent) => {
+  const command = `\`${shorten(body.replace(/`/g, "'"), 120)}\``;
+  const cd = /^cd\s+("[^"]+"|'[^']+'|\S+)/.exec(body)?.[1];
+  const folder = cd === undefined ? undefined : unquote(cd);
+  const flagged = /dangerous/i.test(said);
+  const target = flagged ? /target:\s*(\S+)/.exec(said)?.[1] : rmTarget(body, folder);
+  if (flagged || DESTRUCTIVE.test(body)) {
+    const where =
+      target !== undefined
+        ? ` in ${flagged ? shorten(target, 100) : shortPath(target)}`
+        : folder === undefined
+          ? ""
+          : ` in ${shortPath(folder)}`;
+    const verb =
+      /(^|[\s;&|(])rm\s/.test(body) || target !== undefined
+        ? "deletes files"
+        : "deletes or overwrites files";
+    return { warn: flagged, action: `run ${command}, which ${verb}${where}` };
+  }
+  const why = agent === null && desc.length > 0 ? ` (${shorten(desc, 80)})` : "";
+  return { warn: false, action: `run ${command}${why}` };
+};
 
 /**
- * Claude Code's permission dialog said plainly: who asks (the session or a background agent), what the tool would do,
- * and plain choices. The dialog's own words stay as `details`, and each relabelled choice keeps its words as its
- * description. Null when the screen is not a permission dialog. `block` is the screen between the dialog's top rule
- * and its question; a dashed rule boxes the command, diff or address.
+ * A permission dialog said plainly: who asks, what it acts on (so one card's answer never fits the next) and plain
+ * choices; the dialog's words stay as `details`. Null for any other screen. `block` runs from the top rule to the
+ * question; a dashed rule boxes the command, diff or address.
  */
 function plainPermission(block, question, options) {
   if (!/^Do you want to\b/i.test(question) || !options.some((o) => /^No\b/i.test(o.label)))
@@ -344,55 +391,53 @@ function plainPermission(block, question, options) {
   const desc = about.join(" ");
   const body = boxed.join(" ");
   const said = rest.flat().join(" ");
+  const mcp =
+    /^(.+?)\s+-\s+([\w.-]+)\s*\(.*\(MCP\)\s*$/.exec(body) ??
+    /^(.+?)\s+-\s+([\w.-]+)\s*\(/.exec(desc);
   let action;
-  if (/^Bash\b/i.test(title)) {
-    const cd = /^cd\s+("[^"]+"|'[^']+'|\S+)/.exec(body)?.[1]?.replace(/^["']|["']$/g, "");
-    const target = /target:\s*(\S+)/.exec(said)?.[1];
-    const where = cd ?? (target === undefined ? undefined : target.replace(/\/[^/]*$/, ""));
-    action = /(^|[;&|]\s*|\s)rm\s/.test(` ${body}`)
-      ? `run a command that deletes files${where === undefined ? "" : ` in ${shortPath(where)}`}`
-      : "run a command";
-  } else if (/^(Edit|Create|Write)\b/i.test(title)) {
+  let warn = /dangerous/i.test(said);
+  if (/^Bash\b/i.test(title)) ({ action, warn } = bashAction(body, desc, said, agent));
+  else if (/^(Edit|Create|Write)\b/i.test(title)) {
     const file =
-      /(?:edit to|create|write to)\s+(.+?)\?$/i.exec(question)?.[1] ?? boxed[0] ?? head[1];
+      (boxed[0]?.includes("/") ? boxed[0] : undefined) ??
+      /(?:edit to|create|write to)\s+(.+?)\?$/i.exec(question)?.[1] ??
+      boxed[0] ??
+      head[1];
     const verb = /^Create|create/.test(`${title} ${question}`) ? "create" : "edit";
     action = file === undefined ? `${verb} a file` : `${verb} ${shortPath(file)}`;
-  } else if (/fetch/i.test(`${title} ${question}`)) {
-    const host =
-      /https?:\/\/([^/\s]+)/.exec(`${body} ${desc}`)?.[1] ??
-      /\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i.exec(body)?.[1];
-    action = host === undefined ? "fetch a web page" : `fetch a web page from ${host}`;
+  } else if (mcp !== null) {
+    action = `use the ${mcp[2]} tool from ${mcp[1]} (${shorten(body || desc, 100)})`;
+  } else if (/^(Fetch|Web ?fetch)\b/i.test(title)) {
+    const url = /https?:\/\/\S+/.exec(`${body} ${desc}`)?.[0];
+    action = url === undefined ? "fetch a web page" : `fetch ${shorten(url, 100)}`;
   } else {
-    const mcp =
-      /^(.+?)\s+-\s+([\w.-]+)\s*\(.*\(MCP\)\s*$/.exec(body) ??
-      /^(.+?)\s+-\s+([\w.-]+)\s*\(/.exec(desc);
-    action =
-      mcp !== null
-        ? `use the ${mcp[2]} tool from ${mcp[1]}`
-        : `use ${title.length > 0 ? title.replace(/\s+(command|use)$/i, "") : "a tool"}`;
+    const tool = title.length > 0 ? title.replace(/\s+(command|use)$/i, "") : "a tool";
+    action = `use ${tool}${body.length > 0 ? ` (${shorten(body, 100)})` : ""}`;
   }
   const who =
     agent === null
       ? "Claude"
       : `A background agent${desc.length > 0 ? ` (${shorten(desc, 40)})` : ""}`;
-  const why =
-    agent === null && desc.length > 0 && /^Bash\b/i.test(title) ? `: ${shorten(desc, 80)}` : "";
+  let always = false;
   return {
-    question: `${who} wants to ${action}${why}. Allow?`,
+    question: `${warn ? "Claude Code flags this as dangerous: " : ""}${who} wants to ${action}. Allow?`,
     details: [...head, ...boxed, ...rest.flat(), question].join("\n").slice(0, 2_000),
     options: options.map((o) => {
+      // Only the first "Yes, …" is "always"; a second keeps its own words so no two choices read the same.
       const plain = /^Yes$/i.test(o.label)
         ? ALLOW
-        : /^Yes\b/i.test(o.label)
+        : /^Yes\b/i.test(o.label) && !always
           ? ALWAYS
           : /^No\b/i.test(o.label)
             ? DENY
             : o.label;
+      if (plain === ALWAYS) always = true;
       return {
         ...o,
         label: plain,
         // "Yes, and don't ask again for rm commands in …" says what "always" covers.
-        description: o.description || (/^(Yes|No)$/i.test(o.label) ? "" : o.label),
+        description:
+          o.description || (/^(Yes|No)$/i.test(o.label) || plain === o.label ? "" : o.label),
       };
     }),
   };
