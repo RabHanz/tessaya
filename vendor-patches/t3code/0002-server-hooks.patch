@@ -974,7 +974,7 @@ index ec8809d895f6d3fa4f3b73588cf112b177cfa6d3..382195a6bddde471eb30182adcbb772b
    "GitVcsDriver detects a repository whose path contains a newline",
    () =>
 diff --git a/apps/server/src/vcs/GitVcsDriver.ts b/apps/server/src/vcs/GitVcsDriver.ts
-index d120605d6961fca572aae1050a5f2c5bcc497e03..6aaf54da47328041b5297e5f2461b06e9c2bc07d 100644
+index 0d97d43c3e9d6292b37a937518fa0f94e56990c4..b1982878ffcaee158db65a47f8714dc880a322e4 100644
 --- a/apps/server/src/vcs/GitVcsDriver.ts
 +++ b/apps/server/src/vcs/GitVcsDriver.ts
 @@ -44,6 +44,7 @@ import {
@@ -985,7 +985,7 @@ index d120605d6961fca572aae1050a5f2c5bcc497e03..6aaf54da47328041b5297e5f2461b06e
  
  export interface ExecuteGitInput {
    readonly operation: string;
-@@ -601,6 +602,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
+@@ -606,6 +607,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
    const detectRepository: VcsDriver.VcsDriver["Service"]["detectRepository"] = Effect.fn(
      "detectRepository",
    )(function* (cwd) {

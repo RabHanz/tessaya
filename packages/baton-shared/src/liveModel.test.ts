@@ -85,10 +85,17 @@ describe("setLiveModel", () => {
     expect(sent).toEqual([]);
   });
 
-  it("waits for a busy session, and refuses a bad model or effort before typing anything", async () => {
+  it("waits for a busy session or an open question, and refuses a bad model or effort before typing anything", async () => {
     expect(
       (await setLiveModel(deps({ session: { herdrPane: "p", status: "busy" } }), { effort: "low" }))
         .state,
+    ).toBe("busy");
+    expect(
+      (
+        await setLiveModel(deps({ session: { herdrPane: "p", status: "waiting" } }), {
+          effort: "low",
+        })
+      ).state,
     ).toBe("busy");
     expect((await setLiveModel(deps({}), { model: "x; y" })).state).toBe("refused");
     expect((await setLiveModel(deps({}), { effort: "ultra" })).state).toBe("refused");

@@ -1,22 +1,18 @@
-/* oxlint-disable shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /**
- * The model and reasoning effort of a Claude Code session running in a terminal, changed from the
- * thread. The session is told with its own `/model` and `/effort` commands in its Herdr pane, and
- * the toast says what the session itself answered, never what was only typed. A session that is not
- * in Herdr offers to be brought in first.
+ * Changing the model and effort of a Claude Code session running in a terminal from T3's own composer picker (the
+ * header menu is gone, P1). The session is told with its own `/model` and `/effort` in its Herdr pane, and the toast
+ * says what the session itself answered, never what was only typed. A session not in Herdr offers to be brought in.
  */
-import { LIVE_EFFORT_CHOICES, LIVE_MODEL_CHOICES } from "@t3tools/baton-shared/liveModel";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { ChevronDownIcon, SlidersHorizontalIcon } from "lucide-react";
+import { effortCommand } from "@t3tools/baton-shared/liveModel";
+import type { EnvironmentId, ProviderOptionSelection, ScopedThreadRef } from "@t3tools/contracts";
 import { useState } from "react";
 
+import { useComposerDraftStore } from "../../composerDraftStore";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { Button } from "../ui/button";
-import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { toastManager } from "../ui/toast";
+import type { TraitsSelectionInput } from "./TraitsPicker";
 
-const HEADER_CONTROL = "shrink-0 [-webkit-app-region:no-drag]";
 // baton-live4: is the current namespace; the older ones were retired but the id shape is the same.
 export const liveSessionIdOf = (threadId: string): string | null =>
   /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;
@@ -29,7 +25,7 @@ export function useLiveSessionChange(threadRef: ScopedThreadRef | null) {
   const [busy, setBusy] = useState(false);
   const environmentId: EnvironmentId | null = threadRef?.environmentId ?? null;
 
-  const apply = (wanted: { model?: string; effort?: string }) => {
+  const apply = (wanted: { model?: string; effort?: string }, onApplied?: () => void) => {
     if (environmentId === null || sessionId === null) return;
     setBusy(true);
     void setModel({ environmentId, input: { sessionId, ...wanted } }).then((result) => {
@@ -40,6 +36,7 @@ export function useLiveSessionChange(threadRef: ScopedThreadRef | null) {
       }
       const { state, detail, confirmed } = result.value;
       if (state === "applied") {
+        onApplied?.();
         toastManager.add({
           type: "success",
           title: "The session confirmed it",
@@ -79,49 +76,30 @@ export function useLiveSessionChange(threadRef: ScopedThreadRef | null) {
   return { sessionId, busy, apply };
 }
 
-export function BatonLiveModel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+/**
+ * On a live thread, T3's own effort control applies inside the session at once, with the session's answer as a toast,
+ * and only a confirmed pick is kept on the thread. Model picks go the same way through useComposerSelection.
+ */
+export function useLiveTraits(
+  threadRef: ScopedThreadRef | null,
+  traits: TraitsSelectionInput | null,
+): TraitsSelectionInput | null {
   const { sessionId, busy, apply } = useLiveSessionChange(threadRef);
-  if (sessionId === null) return null;
-
-  return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            size="xs"
-            variant="ghost"
-            className={HEADER_CONTROL}
-            disabled={busy}
-            data-testid="live-model"
-            aria-label="Model and effort for this session"
-          />
-        }
-      >
-        <SlidersHorizontalIcon />
-        Model
-        <ChevronDownIcon />
-      </MenuTrigger>
-      <MenuPopup align="end">
-        <MenuGroup>
-          <MenuGroupLabel>Model</MenuGroupLabel>
-          {LIVE_MODEL_CHOICES.map((choice) => (
-            <MenuItem key={choice.id} onClick={() => apply({ model: choice.id })}>
-              {choice.label}
-            </MenuItem>
-          ))}
-        </MenuGroup>
-        <span className="block px-2 pb-1 text-2xs text-muted-foreground">
-          Claude Code also keeps the model as your default for new sessions.
-        </span>
-        <MenuGroup>
-          <MenuGroupLabel>Effort</MenuGroupLabel>
-          {LIVE_EFFORT_CHOICES.map((effort) => (
-            <MenuItem key={effort} onClick={() => apply({ effort })}>
-              {effort}
-            </MenuItem>
-          ))}
-        </MenuGroup>
-      </MenuPopup>
-    </Menu>
-  );
+  if (sessionId === null || traits === null || traits.threadRef === undefined) return traits;
+  const { threadRef: target, draftId: _draftId, ...rest } = traits;
+  return {
+    ...rest,
+    onModelOptionsChange: (options: ReadonlyArray<ProviderOptionSelection> | undefined) => {
+      const effort = options?.find((option) => option.id === "effort")?.value;
+      // One change at a time, as the header menu was; the thread keeps a confirmed pick so the label is not stale.
+      if (busy || typeof effort !== "string" || effortCommand(effort) === null) return;
+      apply({ effort }, () =>
+        useComposerDraftStore.getState().setProviderModelOptions(target, traits.provider, options, {
+          ...(traits.instanceId ? { instanceId: traits.instanceId } : {}),
+          model: traits.model,
+          persistSticky: true,
+        }),
+      );
+    },
+  };
 }

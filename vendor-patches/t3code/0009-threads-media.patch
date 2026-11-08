@@ -244,6 +244,54 @@ index c810890ebf96b1c7112c721575303c5f7ed7a435..e59f34cb462f6a4ce5aeaed355d4a1c1
    return (
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
+diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
+index 0002beeaf9fef7dd2c9920799430367027b4c23b..8ffac92187d94bc5d11de7b29abd03f4a89d13d0 100644
+--- a/apps/web/src/components/chat/ComposerControlsBar.tsx
++++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
+@@ -27,6 +27,7 @@ import {
+   ComposerPickerFooter,
+   describeComposerEffort,
+ } from "./ComposerModelEffort";
++import { useLiveTraits } from "./BatonLiveModel";
+ import type { useComposerProviderModel } from "./useComposerProviderModel";
+ import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
+ 
+@@ -152,19 +153,22 @@ export function ComposerControlsBar(props: {
+     measuredHiddenBlockCount,
+   });
+   const controlSize = composerControlsCollapsed ? "xs" : "sm";
+-  const traitsInput = resolveComposerTraitsInput({
+-    provider: selectedProvider,
+-    instanceId: selectedInstanceId,
+-    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
+-    ...(routeKind === "draft" && draftId ? { draftId } : {}),
+-    model: selectedModel,
+-    models: selectedProviderModels,
+-    modelOptions: composerModelOptions?.[selectedInstanceId],
+-    reportedModelSelection,
+-    promptUltrathink,
+-    onPromptEdit,
+-    planModeEnabled,
+-  });
++  const traitsInput = useLiveTraits(
++    routeKind === "server" ? routeThreadRef : null,
++    resolveComposerTraitsInput({
++      provider: selectedProvider,
++      instanceId: selectedInstanceId,
++      ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
++      ...(routeKind === "draft" && draftId ? { draftId } : {}),
++      model: selectedModel,
++      models: selectedProviderModels,
++      modelOptions: composerModelOptions?.[selectedInstanceId],
++      reportedModelSelection,
++      promptUltrathink,
++      onPromptEdit,
++      planModeEnabled,
++    }),
++  );
+   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
+   const restingBlockDefs = showModeBlock
+     ? [
 diff --git a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts b/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
 index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70b5b38b89 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts

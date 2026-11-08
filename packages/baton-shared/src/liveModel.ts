@@ -7,12 +7,6 @@
  * until that line is there.
  */
 
-export const LIVE_MODEL_CHOICES: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
-  { id: "claude-opus-5-5", label: "Opus 5.5" },
-  { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-  { id: "claude-haiku-5-5", label: "Haiku 5.5" },
-];
-
 export const LIVE_EFFORT_CHOICES = ["low", "medium", "high", "xhigh", "max"] as const;
 export type LiveEffort = (typeof LIVE_EFFORT_CHOICES)[number];
 
@@ -101,8 +95,13 @@ export const setLiveModel = async (
       confirmed: [],
     };
   }
-  if (session.status === "busy") {
-    return { state: "busy", detail: "It is working. Change it when it is idle.", confirmed: [] };
+  // A question or approval on screen would take the typed command as its answer.
+  if (session.status === "busy" || session.status === "waiting") {
+    const detail =
+      session.status === "busy"
+        ? "It is working. Change it when it is idle."
+        : "It is waiting on a question. Answer it first.";
+    return { state: "busy", detail, confirmed: [] };
   }
   const confirmed: string[] = [];
   for (const step of steps) {
