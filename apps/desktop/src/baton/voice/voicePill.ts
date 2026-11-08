@@ -130,7 +130,13 @@ html.motion-reduced #mk,html.motion-off #mk{animation:none!important}
 @media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
 html.motion-reduced #p,html.motion-reduced #w i,html.motion-off #p,html.motion-off #w i{transition:none}html.motion-reduced #d b,html.motion-off #d b{animation:none;opacity:.7}
 html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
-</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
+.db{display:none;position:relative;box-sizing:border-box;width:18px;height:18px;padding:0;margin:0 -2px;border-radius:50%;border:0;background:transparent;color:var(--soft);cursor:pointer;align-items:center;justify-content:center;flex:none}
+.db::before{content:"";position:absolute;inset:-5px;border-radius:50%}
+.db:hover{background:rgba(255,255,255,.12);color:var(--text)}
+#dv{color:var(--green)}
+.db:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+#p[data-phase=dictating][data-voice=on] .db{display:flex}
+</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><span id="w"></span><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
 <script>
 const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
@@ -160,6 +166,8 @@ grab.addEventListener('pointermove',e=>{if(down===null||drag||!moving())return;i
 grab.addEventListener('pointerup',e=>{const d=down;down=null;ipcRenderer.send('baton-pill:press',false);if(drag)return endDrag('up');if(d===null||moving()||grab.classList.contains('rest'))return;
  ipcRenderer.send('baton-pill:click',e.screenX-d.x,e.screenY-d.y,performance.now()-d.t);});
 $('ok').addEventListener('click',()=>ipcRenderer.send('baton-pill:moving',false));
+// Spoken dictation's own ends: kept off the capsule's press, so they are never a drag or a dismiss.
+for(const[id,insert]of[['dv',true],['dx',false]]){const b=$(id);b.addEventListener('pointerdown',e=>e.stopPropagation());b.addEventListener('pointerup',e=>e.stopPropagation());b.addEventListener('click',e=>{e.stopPropagation();ipcRenderer.send('baton-pill:dictation',insert);});}
 addEventListener('keydown',e=>{if(e.key==='Escape'&&moving())ipcRenderer.send('baton-pill:moving',false);});
 grab.addEventListener('pointercancel',()=>{down=null;ipcRenderer.send('baton-pill:press',false);endDrag('cancel');});
 grab.addEventListener('lostpointercapture',()=>{down=null;ipcRenderer.send('baton-pill:press',false);endDrag('lost');});
@@ -177,7 +185,8 @@ window.pill={
   live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
-  $('c').textContent=v.phase==='ended'?'Say the wake word':(v.caption&&/^to /.test(v.caption)?v.caption:'');},
+  p.dataset.voice=v.voice?'on':'off';
+  $('c').textContent=v.phase==='ended'?'Say the wake word':v.phase==='dictating'&&v.voice?(v.caption||''):(v.caption&&/^to /.test(v.caption)?v.caption:'');},
  rest(why){const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
  level(n){if(live&&!isCalm())draw(Math.min(1,n));},
  hide(){$('p').className='';$('p').dataset.mark='off';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},
@@ -276,6 +285,9 @@ export const createVoicePill = (input: {
   readonly focusWindow?: (window: number) => void;
   /** Esc while it is up. */
   readonly onDismiss: () => void;
+  /** Spoken dictation's ✓ (true: insert) or ✕ (false: throw away), shown while `voiceDictating`. */
+  readonly onDictation?: (insert: boolean) => void;
+  readonly voiceDictating?: () => boolean;
   /** Each wake, from the event to the window on screen. */
   readonly onShown?: (ms: number) => void;
   /** How each drag ended, for the turn log: a drag that fails shows up there. */
@@ -663,7 +675,9 @@ export const createVoicePill = (input: {
     } else {
       raise();
       setEscape(turnHoldsEscape(state));
-      call(`window.pill.show(${JSON.stringify({ ...view, phase: state.phase })})`);
+      call(
+        `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true })})`,
+      );
       if (event.type === "wake") {
         call("window.pill.sting()");
         loudest = 0;
@@ -802,6 +816,9 @@ export const createVoicePill = (input: {
       ms: Number(ms) || 0,
     });
     input.onDismiss();
+  });
+  Electron.ipcMain.on("baton-pill:dictation", (event, insert: unknown) => {
+    if (mine(event)) input.onDictation?.(insert === true);
   });
   Electron.ipcMain.on("baton-pill:bypass", (event, on: unknown) => {
     if (mine(event)) bypassSnap = on === true;

@@ -96,7 +96,26 @@ const settle = (state: TurnState): TurnState => {
   return state.open ? { ...IDLE_TURN, phase: "listening", heard: true, open: true } : IDLE_TURN;
 };
 
+/** What may change a spoken dictation's pill: only dictation itself, his mute, or trouble with the microphone. */
+const MOVES_DICTATION = new Set<TurnEvent["type"]>([
+  "dictating",
+  "done",
+  "muted",
+  "trouble",
+  "target",
+]);
+
+/** Where his words will go and the last of them, so he can see it is hearing him; the stop phrase before he speaks. */
+export const dictationCaption = (into: string | null, said: string): string => {
+  const words = said.trim().split(/\s+/).filter(Boolean);
+  const tail = words.length > 5 ? `…${words.slice(-5).join(" ")}` : words.join(" ");
+  if (into === null) return tail === "" ? 'Say "stop dictation" to insert' : tail;
+  return `Into ${into} · ${tail === "" ? 'say "stop dictation"' : tail}`;
+};
+
 export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
+  // Spoken dictation stays on screen for as long as it is on: her closing line or a stray click must not hide it.
+  if (state.phase === "dictating" && state.open && !MOVES_DICTATION.has(event.type)) return state;
   switch (event.type) {
     case "wake":
       // A wake word changes nothing in spoken dictation, so "Alfred, stop dictating" stays Dictating.

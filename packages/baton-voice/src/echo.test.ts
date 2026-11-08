@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
+import { createVoiceCore, trimQuietTail, type VoiceCoreEvent } from "./core.ts";
 import type { EchoGuard } from "./echoGuard.ts";
 import { SET_ASIDE, type SttProvider } from "./types.ts";
 
@@ -87,7 +87,12 @@ describe("Baton hearing itself", () => {
 
 describe("silence after a wake word", () => {
   /** The rig, with the VAD and the recogniser under the test's control. */
-  const scripted = (transcript = "Yeah.", stopStt?: SttProvider, echo?: EchoGuard) => {
+  const scripted = (
+    transcript = "Yeah.",
+    stopStt?: SttProvider,
+    echo?: EchoGuard,
+    peak?: number,
+  ) => {
     let failing = false;
     let holding: Array<() => void> | null = null;
     let fire = false;
@@ -106,7 +111,12 @@ describe("silence after a wake word", () => {
           return score;
         },
       },
-      vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+      vad: {
+        name: "fake",
+        reset: () => {},
+        isSpeech: () => speech,
+        ...(peak === undefined ? {} : { probability: () => (speech ? peak : 0) }),
+      },
       stt: {
         name: "fake",
         transcribe: async (pcm) => {
@@ -457,6 +467,39 @@ describe("silence after a wake word", () => {
       expect(await answering(said, question, options)).toMatch(new RegExp(`^${want}`));
     });
 
+    it("types what he says over her closing line once dictation is on, without her words (LIVE-2240)", async () => {
+      const r = scripted("say stop dictation when you're done. a test of dictation.");
+      await r.core.setDictation(true);
+      r.core.noteSpoken("Dictation's on. Say stop dictation when you're done.");
+      r.core.setSpeaking(true);
+      r.push(0.5);
+      r.speech(true);
+      r.push(0.5);
+      r.speech(false);
+      r.push(0.6);
+      await r.core.idle();
+      expect(r.routed).toEqual(["dictate:a test of dictation."]);
+    });
+
+    it("keeps every clip over her voice in a dictation, in order, however busy the recogniser", async () => {
+      const r = scripted("one.");
+      await r.core.setDictation(true);
+      r.core.noteSpoken("A long closing line of hers.");
+      r.hold();
+      r.core.setSpeaking(true);
+      for (const word of ["one.", "two.", "three."]) {
+        r.says(word);
+        r.speech(true);
+        r.push(0.3);
+        r.speech(false);
+        r.push(0.4);
+      }
+      r.release();
+      await r.core.idle();
+      expect(r.events.some((e) => e.type === "dropped")).toBe(false);
+      expect(r.routed).toHaveLength(3);
+    });
+
     it("logs what it heard over her voice and did not act on", async () => {
       const r = await talking("Can you hear me", "A sentence about reports.");
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({
@@ -487,6 +530,77 @@ describe("silence after a wake word", () => {
       await settled();
       expect(r.heard.length).toBe(1);
     });
+  });
+
+  /** A dictation of `clips`, each [what is heard, seconds of speech, detector peak], then `end`. */
+  const dictating = async (
+    clips: ReadonlyArray<readonly [string, number, number]>,
+    end: "check" | "none" = "check",
+  ) => {
+    let r: ReturnType<typeof scripted> | null = null;
+    const routed: string[] = [];
+    const events: VoiceCoreEvent[] = [];
+    for (const [i, [text, seconds, peak]] of clips.entries()) {
+      // One core for the whole dictation, so the detector's peak is the first clip's for all of them.
+      if (r === null) {
+        r = scripted(text, undefined, undefined, peak);
+        await r.core.setDictation(true);
+      }
+      r.says(text);
+      r.speech(true);
+      r.push(seconds);
+      r.speech(false);
+      r.push(1.2);
+      await r.core.idle();
+      if (i === clips.length - 1 && end === "check") await r.core.setDictation(false);
+    }
+    routed.push(...(r?.routed ?? []));
+    events.push(...(r?.events ?? []));
+    return { routed, dropped: events.filter((e) => e.type === "dropped").map((e) => e.text) };
+  };
+
+  it.each([
+    // [clips: what is heard, seconds of speech, detector peak], [what goes in], [what is dropped]
+    // 0.1.73: a breath after he stops, heard as "Yeah.", at the very end: dropped (logged with its peak).
+    [
+      [
+        ["Dear Sam.", 0.6, 0.05],
+        ["Yeah.", 0.26, 0.05],
+      ],
+      ["Dear Sam."],
+      ["Yeah."],
+    ],
+    // The same "yeah" mid-dictation was his: it goes in, before what followed it.
+    [
+      [
+        ["Yeah.", 0.26, 0.05],
+        ["See you then.", 0.6, 0.05],
+      ],
+      ["Yeah.", "See you then."],
+      [],
+    ],
+    // His real peaks run near 0.06: a long "Okay." and a short "Yes." are words, kept.
+    [[["Okay.", 0.6, 0.05]], ["Okay."], []],
+    [[["Yes.", 0.26, 0.05]], ["Yes."], []],
+    // Heard surely, even short: kept.
+    [[["Yeah.", 0.26, 0.9]], ["Yeah."], []],
+  ] as const)("dictation %j types %j and drops %j", async (clips, typed, dropped) => {
+    const r = await dictating(clips);
+    expect(r.routed).toEqual(typed.map((t) => `dictate:${t}`));
+    expect(r.dropped).toEqual(dropped);
+  });
+
+  it("drops a weak filler before 'stop dictation', which ends it", async () => {
+    const r = await dictating(
+      [
+        ["Dear Sam.", 0.6, 0.05],
+        ["Yeah.", 0.26, 0.05],
+        ["Stop dictation.", 0.6, 0.05],
+      ],
+      "none",
+    );
+    expect(r.routed).toEqual(["dictate:Dear Sam."]);
+    expect(r.dropped).toEqual(["Yeah."]);
   });
 });
 
@@ -725,5 +839,16 @@ describe("cutting in by voice (docs/baton/BARGE_IN.md)", () => {
     r.spoken.value = true;
     r.push(0.5);
     expect(kinds(r.events)).toEqual(expect.arrayContaining(["duck:true", "barge_in"]));
+  });
+});
+
+describe("a dictation clip's quiet tail", () => {
+  it("is cut to a fifth of a second after his last loud frame, before recognition", () => {
+    // Half a second of speech, then 800 ms of room noise the segmenter waited out.
+    const pcm = Int16Array.from({ length: 16_000 * 1.3 }, (_, i) =>
+      i < 8_000 ? Math.round(6_000 * Math.sin(i / 3)) : i % 2 === 0 ? 40 : -40,
+    );
+    expect(trimQuietTail(pcm).length).toBe(8_000 + 3_200);
+    expect(trimQuietTail(new Int16Array(16_000)).length).toBe(16_000);
   });
 });
