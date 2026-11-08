@@ -31,6 +31,19 @@ export const PARAKEET_FAST_MODEL = {
 } as const;
 
 /**
+ * Voice match (VOICE-ID): 3D-Speaker CAM++ trained on VoxCeleb, the sherpa-onnx export (Apache-2.0, code and weights).
+ * 30 MB, about 30 ms of one CPU core per second of speech; chosen by the voice-match benchmark of 2026-11-08.
+ */
+export const SPEAKER_MODEL = {
+  file: "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+  url: "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/0743f301363dec56491a490f6d6cbc9d67f9a3bf/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+  size: 29_596_978,
+  sha256: "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+  /** Stamped on every profile made with it, so a profile from another model is never compared. */
+  id: "campplus-voxceleb-357a834f",
+} as const;
+
+/**
  * The model of its own the wake path asks for (what he says to Tessaya; dictation keeps his choice), or null for
  * dictation's. Only ever the fast English one, when every language he speaks is English and dictation is not already
  * on it: 3.4 times faster at the same accuracy. Never the other way: a fast dictation choice is kept for Tessaya too.
