@@ -69,7 +69,7 @@ describe("a terminal permission prompt's card", () => {
     expect(found).not.toBeNull();
     const card = decodeQuestion(askQuestion(found!, ""));
     expect(card.question).toMatch(
-      /^Claude Code flags this as dangerous: A background agent \(Record all variants in both themes plus…\) wants to run `cd .+ && rm -rf stills\/\* src\/raw;.+`, which deletes files in \/srv\/work\/projects-00001\/t3code\/stills\/\*\. Allow\?$/,
+      /^Claude Code flags this as dangerous: A background agent \(Record all variants in both themes plus…\) wants to run `cd .+ && rm -rf stills\/\* src\/raw;.+`, which deletes files in \/srv\/work\/projects-00001\/t3code\/stills\/\*\. Allow\? \(ref [0-9a-f]{6}\)$/,
     );
     expect(card.options.map((o) => o.label)).toEqual(["Allow", "Deny"]);
     expect(card.details).toContain("rm -rf stills/* src/raw");

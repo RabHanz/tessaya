@@ -3,6 +3,19 @@
  * so T3 can show it with its options and answer it with keystrokes. Pure, Node built-ins only: the live agent
  * (`baton-live-acp.mjs`, installed beside this file) and the server's mirror both parse with it.
  */
+import * as NodeCrypto from "node:crypto";
+
+/**
+ * A permission card's question ends with a short id of the prompt it was read from. T3 sends the question back with
+ * the answer, so an answer meant for one dialog never matches another that reads the same.
+ */
+const withRef = (prompt) => ({
+  ...prompt,
+  question: `${prompt.question} (ref ${NodeCrypto.createHash("sha256").update(prompt.key).digest("hex").slice(0, 6)})`,
+});
+/** The id `withRef` adds: its presence marks a message as a permission card's answer. */
+export const CARD_REF = /\(ref [0-9a-f]{6}\)$/;
+
 /** The last lines on a pane's screen, for a question Tessaya could not read as options. */
 export const screenTail = (screen, lines = 12) =>
   screen
@@ -116,7 +129,7 @@ function unreadPermission(screen) {
   )
     return null;
   const details = screenTail(dialog.join("\n"), 20);
-  return {
+  return withRef({
     question: "Claude Code is asking for permission in its terminal. Allow?",
     header: null,
     context: "",
@@ -128,7 +141,7 @@ function unreadPermission(screen) {
     selected: 0,
     customIndex: null,
     key: `unread\u0000${details}`,
-  };
+  });
 }
 
 function parseScreen(screen) {
@@ -302,14 +315,14 @@ function parseScreen(screen) {
   }));
   const plain = plainPermission(lines.slice(top + 1, qTop), question, shown);
   if (plain !== null)
-    return {
+    return withRef({
       ...plain,
       header,
       context: "",
       selected: options.findIndex((o) => o.selected),
       customIndex: null,
       key: [question, ...options.map((o) => o.label), plain.details].join("\u0000"),
-    };
+    });
   return {
     question,
     header,

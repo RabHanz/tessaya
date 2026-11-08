@@ -27,6 +27,7 @@ import {
   answerKeys,
   answerFrom,
   isCardAnswer,
+  isRefAnswer,
   enqueue,
   readQueue,
   drainSession,
@@ -57,6 +58,9 @@ const AGENT = NodePath.join(
   "baton-live-acp.mjs",
 );
 
+/** A permission card's question without the ref that ties it to its prompt. */
+const plain = (question) => question.replace(/ \(ref [0-9a-f]{6}\)$/, "");
+
 const fixture = (name) =>
   NodeFS.readFileSync(
     NodePath.join(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "__fixtures__", name),
@@ -66,7 +70,7 @@ const fixture = (name) =>
 NodeTest.test("a permission dialog on the screen is read with its options (D88)", () => {
   const prompt = parsePanePrompt(fixture("pane-permission.txt"));
   NodeAssert.equal(
-    prompt.question,
+    plain(prompt.question),
     "Claude wants to run `echo PERM-TEST` (Print a test string). Allow?",
   );
   NodeAssert.match(prompt.details, /echo PERM-TEST\n[^]*Do you want to proceed\?$/);
@@ -1000,7 +1004,8 @@ const SUBAGENT_QUESTION =
 NodeTest.test("a background agent's permission prompt is a card a person can read", () => {
   const screen = fixture("pane-subagent-permission.txt");
   const prompt = parsePanePrompt(screen);
-  NodeAssert.equal(prompt.question, SUBAGENT_QUESTION);
+  NodeAssert.equal(plain(prompt.question), SUBAGENT_QUESTION);
+  NodeAssert.match(prompt.question, / \(ref [0-9a-f]{6}\)$/);
   NodeAssert.deepEqual(
     prompt.options.map((o) => o.label),
     ["Allow", "Deny"],
@@ -1047,6 +1052,44 @@ const bash = (command, description = "Run it", warning = []) =>
     ["Yes", "No"],
     warning,
   );
+
+NodeTest.test("an answer to one permission card never answers another that reads the same", () => {
+  const unread = (n) =>
+    [
+      "─".repeat(40),
+      ` Something new ${n}`,
+      " Do you want to proceed?",
+      "   1. Yes",
+      "   2. No",
+      "",
+      " Esc to cancel",
+    ].join("\n");
+  const edit = (change) =>
+    dialog(
+      ["Edit file"],
+      ["/repo/src/main.ts", change],
+      "Do you want to make this edit to main.ts?",
+      ["Yes", "No"],
+    );
+  const longBash = (tail) => bash(`echo ${"x".repeat(130)} ${tail}`);
+  for (const [first, second] of [
+    [unread(1), unread(2)],
+    [edit("+ one"), edit("+ two")],
+    [longBash("one"), longBash("two")],
+  ]) {
+    const a = parsePanePrompt(first);
+    const b = parsePanePrompt(second);
+    NodeAssert.equal(plain(a.question), plain(b.question), "the words alone read the same");
+    NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, b), false);
+    NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, a), true);
+    NodeAssert.equal(
+      isRefAnswer(`${a.question}\nAllow`),
+      true,
+      "it is still known as a card's answer",
+    );
+  }
+  NodeAssert.equal(isRefAnswer("Please run the tests\nthen push"), false);
+});
 
 NodeTest.test("an answer to one permission card never answers the next one on the screen", () => {
   const a = parsePanePrompt(bash("ls"));
@@ -1103,7 +1146,7 @@ NodeTest.test("a plain permission question never hides what the command does", (
     ],
   ];
   for (const [screen, question] of rows)
-    NodeAssert.equal(parsePanePrompt(screen).question, question);
+    NodeAssert.equal(plain(parsePanePrompt(screen).question), question);
 });
 
 NodeTest.test("every tool's permission prompt reads plainly, with two or three choices", () => {
@@ -1174,7 +1217,7 @@ NodeTest.test("every tool's permission prompt reads plainly, with two or three c
   ];
   for (const [screen, question, labels] of cases) {
     const prompt = parsePanePrompt(screen);
-    NodeAssert.equal(prompt.question, question);
+    NodeAssert.equal(plain(prompt.question), question);
     NodeAssert.deepEqual(
       prompt.options.map((o) => o.label),
       labels,

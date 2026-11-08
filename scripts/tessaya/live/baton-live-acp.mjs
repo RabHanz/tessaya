@@ -22,7 +22,7 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 
-import { parsePanePrompt } from "./pane-prompt.mjs";
+import { CARD_REF, parsePanePrompt } from "./pane-prompt.mjs";
 
 const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
@@ -637,13 +637,25 @@ export function answerPrompt(sessionId, paneRef, text) {
   return done;
 }
 
+/** Said when a card's answer reaches a dialog other than the one it was for. */
+export const STALE_ANSWER_NOTE =
+  "That answer was for a question that is no longer on the screen, so nothing was pressed. The question showing now has its own card.";
+
+/** True when the text's first line is a permission card's question, which ends with its prompt's ref. */
+export const isRefAnswer = (text) => {
+  const body = String(text ?? "").trim();
+  const at = body.indexOf("\n");
+  return at > 0 && CARD_REF.test(body.slice(0, at).trim());
+};
+
 async function answerNow(sessionId, paneRef, text) {
   const shown = await readPanePrompt(paneRef);
-  if (shown === null) return null;
-  // A plain message is never an answer: only the question card's own "<question>\n<answer>" presses keys.
-  if (!isCardAnswer(text, shown)) return null;
+  const forThis = shown !== null && isCardAnswer(text, shown);
+  // A permission card's answer for another dialog presses nothing and is never typed as a message.
+  const stale = !forThis && isRefAnswer(text);
+  if (!forThis && !stale) return null;
   try {
-    return await pressAnswer(sessionId, paneRef, text, shown);
+    return stale ? STALE_ANSWER_NOTE : await pressAnswer(sessionId, paneRef, text, shown);
   } finally {
     try {
       NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
@@ -652,15 +664,23 @@ async function answerNow(sessionId, paneRef, text) {
   }
 }
 
+/** True while the pane still shows the dialog `shown` was read from. */
+const stillShows = async (paneRef, shown) => (await readPanePrompt(paneRef))?.key === shown.key;
+
 async function pressAnswer(sessionId, paneRef, text, shown) {
   const answer = answerFrom(text, shown);
   const plan = answerKeys(shown, answer);
   if (plan === null) return null;
-  if (plan.keys.length > 0) await run(HERDR, herdrArgs(paneRef, "send-keys", plan.keys));
+  // The last key commits: the pane is read again just before it, so a dialog that changed meanwhile is never confirmed.
+  const commit = plan.text === null ? plan.keys.slice(-1) : [];
+  const moves = plan.text === null ? plan.keys.slice(0, -1) : plan.keys;
+  if (moves.length > 0) await run(HERDR, herdrArgs(paneRef, "send-keys", moves));
+  if (plan.text !== null) await sleep(300);
+  if (!(await stillShows(paneRef, shown))) return STALE_ANSWER_NOTE;
+  if (commit.length > 0) await run(HERDR, herdrArgs(paneRef, "send-keys", commit));
   if (plan.text !== null) {
     const at = paneRef.indexOf("~");
     const session = at < 0 ? [] : ["--session", paneRef.slice(0, at)];
-    await sleep(300);
     await run(HERDR, [
       ...session,
       "pane",
@@ -987,8 +1007,8 @@ async function prompt(params) {
   const turn = { cancelled: false, pane: live.pane };
   turns.set(sessionId, turn);
   try {
-    // A question or approval on the screen takes the message as its answer (D88).
-    if (live.status === "waiting") {
+    // A question or approval on the screen takes the message as its answer (D88); a card's answer is never typed.
+    if (live.status === "waiting" || isRefAnswer(promptText(params.prompt))) {
       const answered = await answerPrompt(sessionId, live.pane, promptText(params.prompt));
       if (answered !== null) {
         say(sessionId, answered);
