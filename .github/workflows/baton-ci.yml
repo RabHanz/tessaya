@@ -68,8 +68,9 @@ jobs:
           changed=$(git diff --name-only --diff-filter=d "$base"...HEAD 2>/dev/null || git diff --name-only --diff-filter=d "$base" HEAD)
           # An upstream sync changes hundreds of upstream test files; those are upstream's to run (they need browsers and
           # tools this runner does not have), so past this many only Baton's own tests are run.
+          # A sync is known by its moved pin; a small one changes too few test files to be told apart by count.
           upstream_wave=0
-          if [ "$(echo "$changed" | grep -cE '\.test\.tsx?$' || true)" -gt 150 ]; then upstream_wave=1; echo "upstream sync: running Baton's own tests only"; fi
+          if echo "$changed" | grep -qx 'vendor-patches/t3code/PIN' || [ "$(echo "$changed" | grep -cE '\.test\.tsx?$' || true)" -gt 150 ]; then upstream_wave=1; echo "upstream sync: running Baton's own tests only"; fi
           for ws in apps/server apps/desktop packages/baton-shared packages/baton-voice packages/baton-contracts; do
             pattern="^$ws/.*(baton|Baton).*\.test\.tsx?$|^$ws/.*\.test\.ts$"
             [ "$upstream_wave" -eq 1 ] && pattern="^$ws/.*(baton|Baton|Tessaya|Phone|Intent|WorkSession|Fleet).*\.test\.tsx?$"
