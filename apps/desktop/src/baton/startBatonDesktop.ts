@@ -525,7 +525,9 @@ export const startBatonDesktop = Effect.gen(function* () {
         onOpenTab: () => voice?.openHome(),
       });
     } catch (cause) {
-      Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
+      Effect.runForkWith(context)(
+        Effect.logWarning("Tessaya screen companion did not start", cause),
+      );
     }
     markPhase("screen-companion:end");
     if (screen !== null) {
@@ -703,5 +705,5 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
     });
     markPhase("voice-start:end");
-  }).pipe(Effect.catchDefect((cause) => Effect.logWarning("baton voice did not start", cause)));
+  }).pipe(Effect.catchDefect((cause) => Effect.logWarning("Tessaya voice did not start", cause)));
 });

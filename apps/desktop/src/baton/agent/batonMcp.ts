@@ -85,7 +85,7 @@ export const startBatonMcp = async (input: {
     });
     const verdict = await input
       .gate({ tool: `${BATON_TOOL_PREFIX}${name}`, input: args })
-      .catch(() => ({ allow: false as const, reason: "Baton could not check that." }));
+      .catch(() => ({ allow: false as const, reason: "Tessaya could not check that." }));
     if (!verdict.allow) {
       input.onResult?.({
         tool: name,
@@ -95,7 +95,7 @@ export const startBatonMcp = async (input: {
       });
       return {
         isError: true,
-        content: [{ type: "text", text: `Baton refused: ${verdict.reason}` }],
+        content: [{ type: "text", text: `Tessaya refused: ${verdict.reason}` }],
       };
     }
     try {

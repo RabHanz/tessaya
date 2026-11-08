@@ -12,7 +12,7 @@ export interface AgentTask {
 export const TASKS: ReadonlyArray<AgentTask> = [
   {
     id: "notepad",
-    goal: "Open Notepad, type the line 'Baton task one', and save it in Documents as baton-task-one.txt.",
+    goal: "Open Notepad, type the line 'Tessaya task one', and save it in Documents as tessaya-task-one.txt.",
   },
   {
     id: "explorer",

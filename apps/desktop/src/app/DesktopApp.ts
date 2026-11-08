@@ -188,7 +188,7 @@ const bootstrap = Effect.gen(function* () {
   yield* installDesktopIpcHandlers();
   // Baton (vendor-patches/t3code/0007-desktop.patch): a Baton failure never stops T3 starting.
   yield* startBatonDesktop.pipe(
-    Effect.catchCause((cause) => Effect.logError("Baton desktop did not start", cause)),
+    Effect.catchCause((cause) => Effect.logError("Tessaya desktop did not start", cause)),
   );
   yield* logBootstrapInfo("bootstrap ipc handlers registered");
   // Before any window: the preload merges these items before the app reads storage.
