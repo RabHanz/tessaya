@@ -2729,6 +2729,8 @@ export const startScreenCompanion = (input: {
       isPrivate,
       latest: conversations.latest,
       nameOf,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ownTurn: (t) => !outsideSaid.has(t.said),
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
       images: () => imagesSent,

@@ -81,7 +81,7 @@ const recalledFor = (c: AssistantCase): string | undefined =>
         })),
       ).block;
 
-const sample = async (c: AssistantCase): Promise<Sample> => {
+const sample = async (c: AssistantCase, index: number): Promise<Sample> => {
   const face =
     c.wake === undefined
       ? undefined
@@ -91,6 +91,8 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
   const model = values.model ?? brain.model;
   const ran = await replayTurn({
     claudeBinary: values.claude!,
+    // The sample's index seeds the greeting's manner, so a rerun is comparable sample by sample.
+    seed: index,
     brain: { model, effort: values.effort ?? brain.effort },
     said: c.said,
     ...(c.again === undefined ? {} : { again: c.again }),
@@ -185,7 +187,7 @@ for (const c of cases) {
   const ms: number[] = [];
   for (let i = 0; i < samples; i += 1) {
     const started = Date.now();
-    runs.push(await sample(c).catch(() => ({ calls: ["error"], inputs: [], reply: "" })));
+    runs.push(await sample(c, i).catch(() => ({ calls: ["error"], inputs: [], reply: "" })));
     ms.push(Date.now() - started);
   }
   const row = {

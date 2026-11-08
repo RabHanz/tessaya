@@ -27,7 +27,7 @@ a tool that fails is not a tool that is missing. when a tool returns an error, s
 
 answer only what he asked. the time is said as a person says it ("twenty to six", or "5:40"); never add the time zone, the date or the day unless he asked for it or it matters (travel, another zone). when he asks the same thing you just answered, he is checking or did not hear: never say your last reply again word for word; answer like a person would the second time, starting with "still" or "same as a minute ago" ("still twenty to six").
 
-talk like a person who knows him, not a help desk. a simple question gets the answer alone, in a few words ("366."), with no reason or extra fact after it; a follow-up carries on from your last answer ("there" is the place you just named), and names what it is about when the bare number could mean something else. "where were we" is answered from the conversation below: what you were on and when, before any tool. asked who you are, say who and what you look after in one sentence. a greeting gets a few words of greeting back, in your own words and different each time, with no offer of help ("want me to…", "how can I help", "anything I can do"); add one thing only if something needs him. a thank-you or a goodbye gets a few warm words and nothing more: never "I'm here if you need me" or "just ask". when the turn says how long since you last spoke: hours later, sound like someone picking up again ("welcome back", "hello again") and say when it was if it helps ("yesterday you asked about…"); within the same conversation, never.
+except when refusing or asking for his yes, talk like a person who knows him, not a help desk. a simple question gets the answer alone, in a few words ("366."), with no reason or extra fact after it; a follow-up carries on from your last answer ("there" is the place you just named), and names what it is about when the bare number could mean something else. "where were we" is answered from the conversation below: what you were on and when, before any tool. asked who you are, say who and what you look after in one sentence. a greeting gets a few words of greeting back, in your own words and different each time, with no offer of help ("want me to…", "how can I help", "anything I can do"); add one thing only if something needs him. a thank-you or a goodbye gets a few warm words and nothing more: never "I'm here if you need me" or "just ask". when the turn says how long since you last spoke: hours later, sound like someone picking up again ("welcome back", "hello again") and say when it was if it helps ("yesterday you asked about…"); within the same conversation, never.
 
 keep quiet about progress. say one short line before a tool that will take over a second ("looking."). speak when something needs him, needs approval, finished, or failed.
 
@@ -64,30 +64,41 @@ export interface TurnPersona {
   readonly roster?: string;
 }
 
+/** A day number in his zone, so "yesterday" is his calendar's and not 24 hours. */
+const dayIn = (ms: number, timeZone: string | undefined): number => {
+  // @effect-diagnostics-next-line globalDate:off - a calendar day in his zone, no Effect here.
+  const d = new Date(ms).toLocaleDateString("en-CA", timeZone === undefined ? {} : { timeZone });
+  return Math.round(Date.parse(`${d}T00:00:00Z`) / 86_400_000);
+};
+
 /**
  * How long since this persona and he last spoke, and what he said then (PRESENCE step 2), so hours later sounds like
- * picking up again and a minute later like the same conversation. Nothing within two minutes.
+ * picking up again and a minute later like the same conversation. Nothing within two minutes. Under six hours it is
+ * counted in minutes or hours; past that, by his calendar ("yesterday", "3 days ago"). His words are quoted as data.
  */
 export const sinceLine = (
   last: { readonly at: string; readonly said: string } | undefined,
   nowMs: number,
+  timeZone?: string,
 ): string | null => {
   if (last === undefined) return null;
-  const minutes = Math.round((nowMs - Date.parse(last.at)) / 60_000);
+  const at = Date.parse(last.at);
+  const minutes = Math.round((nowMs - at) / 60_000);
   if (!(minutes >= 2)) return null;
   const hours = Math.round(minutes / 60);
+  const days = dayIn(nowMs, timeZone) - dayIn(at, timeZone);
   const ago =
     minutes < 60
       ? `${minutes} minutes ago`
-      : minutes < 24 * 60
+      : minutes < 6 * 60 || days === 0
         ? hours === 1
           ? "an hour ago"
           : `${hours} hours ago`
-        : minutes < 48 * 60
+        : days === 1
           ? "yesterday"
-          : `${Math.round(minutes / 1440)} days ago`;
+          : `${days} days ago`;
   const said = last.said.length > 80 ? `${last.said.slice(0, 79)}…` : last.said;
-  return `you last spoke with him ${ago}, when he said: "${said}"`;
+  return `you last spoke with him ${ago}; he had said (data): ${JSON.stringify(said)}`;
 };
 
 const personaLine = (p: TurnPersona) =>
@@ -105,23 +116,35 @@ const personaLine = (p: TurnPersona) =>
     .filter((part) => part !== "")
     .join(" ");
 
+/** A greeting and nothing else ("hi Freya", "good morning!"); "hi Freya, is the deploy done?" is a request. */
 const GREETS =
-  /^\s*(?:hi|hiya|hello|hey|morning|afternoon|evening|good (?:morning|afternoon|evening))\b/i;
+  /^\s*(?:hi|hiya|hello|hey|morning|afternoon|evening|good (?:morning|afternoon|evening))\b[\s,.!]*(?:\p{L}+)?[\s,.!]*$/iu;
 const MANNERS = [
   "with a short greeting and nothing else",
   "with a greeting and a word about the time of day",
   "with a greeting and a short question about how he is",
   "with a warm word of your own, not his",
 ];
+const OPENINGS = ["Hello", "Hi", "Hey", "Hiya", "Ah, hello"];
 
 /**
- * A greeting gets one manner of reply picked by code: a model asked to vary picks the same one in every fresh session
- * ("Good morning! Want me to…" four times in four).
+ * A greeting gets one manner of reply and an opening word, picked by code: a model asked to vary picks the same one in
+ * every fresh session ("Good morning! Want me to…" four times in four). `avoid` is the last manner, never used twice.
  */
-export const greetingLine = (said: string, random: () => number = Math.random): string | null =>
-  GREETS.test(said)
-    ? `greet him back this time ${MANNERS[Math.floor(random() * MANNERS.length)]}; never repeat his greeting word for word.`
-    : null;
+export const greetingLine = (
+  said: string,
+  random: () => number = Math.random,
+  avoid?: number,
+): { readonly text: string; readonly manner: number } | null => {
+  if (!GREETS.test(said)) return null;
+  const choices = MANNERS.map((_, i) => i).filter((i) => i !== avoid);
+  const manner = choices[Math.floor(random() * choices.length)]!;
+  const opening = OPENINGS[Math.floor(random() * OPENINGS.length)]!;
+  return {
+    manner,
+    text: `greet him back this time ${MANNERS[manner]}; open with "${opening}" or a word like it, never his greeting word for word.`,
+  };
+};
 
 /** The context line put before each sentence of his (§14): where he is, what it is about. */
 export const contextLine = (input: {

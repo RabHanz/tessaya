@@ -61,6 +61,8 @@ export interface Persona {
   readonly projects: ReadonlyArray<string>;
   /** The projects it leads (`leads:`): it hands out their work and is on their team. */
   readonly leads: ReadonlyArray<string>;
+  /** P5's `private:` (not read from the pack yet): its conversation and memory are its own, and the roster leaves it out. */
+  readonly private?: boolean;
 }
 
 /** The pack's files as they ship: front-matter for the face, then the brief. */
@@ -190,9 +192,7 @@ export const DEFAULT_OS_PACK: OsPack = mergePack({});
  * A private persona (P5) is left out.
  */
 export const rosterLine = (
-  personas: ReadonlyArray<
-    Pick<Persona, "id" | "name" | "role" | "lead"> & { readonly private?: boolean }
-  >,
+  personas: ReadonlyArray<Pick<Persona, "id" | "name" | "role" | "lead" | "private">>,
   self: string,
 ): string =>
   personas

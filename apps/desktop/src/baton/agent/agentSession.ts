@@ -5,7 +5,11 @@
  * is recycled, and puts every turn back into that file. A new session loses nothing.
  */
 import { cutInLine, type CutIn } from "@t3tools/baton-shared/endOfTurn";
-import { RECENT_TURNS, conversationBlock } from "@t3tools/baton-shared/conversation";
+import {
+  RECENT_TURNS,
+  conversationBlock,
+  type ConversationTurn,
+} from "@t3tools/baton-shared/conversation";
 import type { Brain } from "@t3tools/baton-shared/osPack";
 
 import type { ConversationLog } from "../conversation/conversationLog.ts";
@@ -125,6 +129,12 @@ export const createAssistantAgent = (input: {
   /** Called at the start of a turn: a new sentence has not read anything yet. */
   /** `outside`: the words are a device's or an agent's, not his. */
   readonly beginTurn: (said: string, outside: boolean) => void;
+  /** His zone, so "yesterday" in the time since is his calendar's. */
+  readonly timeZone?: string;
+  /** False for a turn that was not his own talk with this persona (a device's), left out of the time since. */
+  readonly ownTurn?: (turn: ConversationTurn) => boolean;
+  /** For the greeting's manner; seeded in the eval so a run can be repeated. */
+  readonly random?: () => number;
   /** Whether this turn read outside content (D127), kept on the turn for its episode. */
   readonly tainted?: () => boolean;
   /** His state right now (awareness), empty when he has turned it all off. */
@@ -162,6 +172,8 @@ export const createAssistantAgent = (input: {
     readonly persona: string | undefined;
   }> = [];
   let lastStart: SessionStart | null = null;
+  /** The last greeting's manner, so the next one differs. */
+  let lastManner: number | undefined;
   /** The launch's fast tiers (`warmEach`): a default or deep tier is evicted before one of these (0.1.79). */
   let pinned = new Set<string>();
   /** The persona whose tiers are `kept`: the one woken, until a turn by another says the wake named the wrong one. */
@@ -306,10 +318,18 @@ export const createAssistantAgent = (input: {
       input.presence?.().catch(() => "") ?? "",
       input.recall?.(text, project).catch(() => "") ?? "",
     ]);
+    const recent = log.recent(8);
+    const last = recent.at(-1);
+    // His own last exchange with this persona: a device's turn, a refusal or a note is not one.
+    const lastOwn = recent.findLast(
+      (t) => (t.route === "answer" || t.route === "look") && input.ownTurn?.(t) !== false,
+    );
+    const greeting = greetingLine(text, input.random, lastManner);
+    if (greeting !== null) lastManner = greeting.manner;
     const header = contextLine({
       now: input.clockLine(),
-      since: sinceLine(log.recent(1)[0], now()),
-      greeting: greetingLine(text),
+      since: sinceLine(lastOwn, now(), input.timeZone),
+      greeting: greeting?.text ?? null,
       window: where.window,
       session: where.session,
       target: target?.label ?? null,
@@ -317,7 +337,6 @@ export const createAssistantAgent = (input: {
       ...(where.persona === undefined ? {} : { persona: where.persona }),
     });
     // A rule in the system prompt alone did not stop a fast model repeating itself; the note beside his sentence does.
-    const last = log.recent(1)[0];
     const words = (s: string) =>
       s
         .toLowerCase()
