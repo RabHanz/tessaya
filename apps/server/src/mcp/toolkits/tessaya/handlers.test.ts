@@ -16,6 +16,7 @@ import { layerMemory as SqlitePersistenceMemory } from "../../../baton/BatonData
 import { BatonMemoryService, MemoryViewer } from "../../../baton/BatonMemoryService.ts";
 import { BatonPhoneInbox, layer as inboxLayer } from "../../../baton/BatonPhoneInbox.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { BatonSessionCatalogService } from "../../../baton/BatonSessionCatalogService.ts";
 import { BatonWeaveService } from "../../../baton/BatonWeaveService.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -97,6 +98,25 @@ it.effect(
       );
       expect(result.isFailure).toBe(false);
       expect(asked).toEqual([[{ text: "deploy key", limit: 10 }, "client"]]);
+    }),
+);
+
+it.effect(
+  "an outside agent can ask whether anything is mid-turn before it updates or installs (SESS-SURVIVE)",
+  () =>
+    Effect.gen(function* () {
+      const found = { threads: [{ threadId: "t1", title: "Fix the build" }], live: [] };
+      const catalog = BatonSessionCatalogService.of({
+        inFlight: () => Effect.succeed(found),
+      } as never);
+      const result = yield* callTool(
+        "read-only",
+        Context.make(BatonSessionCatalogService, catalog) as never,
+        "tessaya_in_flight",
+        {},
+      );
+      expect(result.isFailure).toBe(false);
+      expect(result.result).toEqual(found);
     }),
 );
 

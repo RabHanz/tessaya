@@ -57,11 +57,16 @@ export const shouldDownload = (state: DesktopUpdateState): boolean =>
   offeredVersion(state) !== null &&
   state.downloadedVersion === null;
 
-/** Never in the middle of a turn: speaking, listening for a command, dictating, or driving. */
-export const canInstallNow = (busy: {
+export interface UpdateBusy {
   readonly voiceBusy: boolean;
   readonly assistantBusy: boolean;
-}): boolean => !busy.voiceBusy && !busy.assistantBusy;
+  /** A session turn running on this machine, which the restart would cut off (SESS-SURVIVE); null when none. */
+  readonly inFlight: string | null;
+}
+
+/** Never in the middle of a turn: speaking, listening for a command, dictating, driving, or a session's turn. */
+export const canInstallNow = (busy: UpdateBusy): boolean =>
+  !busy.voiceBusy && !busy.assistantBusy && busy.inFlight === null;
 
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -70,7 +75,12 @@ const clock = (iso: string) =>
 export const updateControls = (
   state: DesktopUpdateState,
   pending: boolean,
-  countdown: { readonly restartAt: number; readonly waiting: boolean } | null = null,
+  countdown: {
+    readonly restartAt: number;
+    readonly waiting: boolean;
+    /** What it waits for, when a session is mid-turn. */
+    readonly inFlight?: string | null;
+  } | null = null,
   backAfter: string | null = null,
 ): ReadonlyArray<HomeControl> => {
   const base = { id: "u.act", section: "Updates", label: "Tessaya updates" } as const;
@@ -96,7 +106,7 @@ export const updateControls = (
       {
         ...base,
         hint: countdown.waiting
-          ? `Tessaya is updating to ${state.downloadedVersion}. It restarts as soon as this conversation ends.`
+          ? `Tessaya is updating to ${state.downloadedVersion}. It restarts as soon as the current turns finish.${countdown.inFlight == null ? "" : ` ${countdown.inFlight}`}`
           : `Tessaya is updating to ${state.downloadedVersion} and restarts at ${at}. It reopens this window.`,
         kind: "action",
         button: "Restart now",

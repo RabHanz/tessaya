@@ -12,6 +12,7 @@ import {
   BatonMemoryHistoryResult,
   BatonRecordListInput,
   BatonRecordListResult,
+  BatonTurnsInFlightResult,
   BatonWeaveListResult,
   BatonWeaveSendInput,
   BatonWeaveSendResult,
@@ -124,6 +125,17 @@ const FleetTool = Tool.make("tessaya_fleet", {
     "What is live on this computer right now: each piece of work with its state, every Herdr pane and every running Claude Code process. Use it to see what is running or waiting; `tessaya_sessions` lists past and present sessions to find one.",
   // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
   success: BatonFleetResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const InFlightTool = Tool.make("tessaya_in_flight", {
+  ...shared,
+  description:
+    "Is anything mid-turn on this computer: T3 threads whose turn is running, and Claude Code processes that say they are busy. Ask it before an update, an install or a restart, which would cut those turns off; wait while it lists any.",
+  success: BatonTurnsInFlightResult,
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, true)
@@ -251,6 +263,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryHistoryTool,
   RulesTool,
   SessionsTool,
+  InFlightTool,
   FleetTool,
   AskTool,
   AskStatusTool,

@@ -20,6 +20,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   kept: "baton.sessions.kept",
   waiting: "baton.sessions.waiting",
   across: "baton.sessions.across",
+  inFlight: "baton.sessions.inflight",
 } as const;
 
 /** One live session as Baton's own window lists it (D138), built from the sidebar's project rows (baton-shared). */
@@ -173,6 +174,18 @@ export const BatonCatalogWaitingResult = Schema.Struct({
   messages: Schema.Array(Schema.String),
   /** They are being sent right now, so nothing can be discarded until that ends. */
   sending: Schema.Boolean,
+});
+
+/** What an update, an install or a restart of this machine would cut off mid-turn (SESS-SURVIVE). */
+export const BatonTurnsInFlightResult = Schema.Struct({
+  threads: Schema.Array(Schema.Struct({ threadId: Schema.String, title: Schema.String })),
+  live: Schema.Array(
+    Schema.Struct({
+      sessionId: Schema.String,
+      name: Schema.NullOr(Schema.String),
+      cwd: Schema.String,
+    }),
+  ),
 });
 
 /** Archives (reversibly) the threads that only mirror Tessaya's own helper sessions; without `apply` it only lists them. */

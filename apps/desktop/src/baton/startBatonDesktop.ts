@@ -32,7 +32,9 @@ import {
   isBad,
   markHealthy,
 } from "@t3tools/baton-shared/startGuard";
+import { BATON_SESSIONS_WS_METHODS } from "@t3tools/baton-contracts";
 import { approvalRecord } from "@t3tools/baton-shared/approvals";
+import { inFlightLine } from "@t3tools/baton-shared/turnsInFlight";
 import { releasesUrl } from "@t3tools/baton-shared/repo";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
@@ -65,6 +67,8 @@ const VOICE_LOG_MAX_FILES = 5;
 
 /** After launch work has settled, so the sessions' start does not compete with it. */
 const LAUNCH_WARM_MS = 5_000;
+/** How often, while an update waits, this machine's server is asked whether a session is mid-turn. */
+const IN_FLIGHT_MS = 5_000;
 
 export const startBatonDesktop = Effect.gen(function* () {
   adoptTessayaEnv(process.env);
@@ -221,6 +225,9 @@ export const startBatonDesktop = Effect.gen(function* () {
       if (onClick !== undefined) toast.on("click", onClick);
       toast.show();
     };
+    /** A session turn running on this machine that a restart would cut off; set once the server is reachable. */
+    let inFlight: string | null = null;
+    let readInFlight = async (): Promise<void> => {};
     // The release feed is this repository's (D137); the restart is announced, then waits for quiet.
     const batonUpdates = createBatonUpdater({
       skip: (version) => isBad(guard, version),
@@ -257,6 +264,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       busy: () => ({
         voiceBusy: voice?.busy() ?? false,
         assistantBusy: screen?.active() ?? false,
+        inFlight,
       }),
       headsUp: (version, restartAt) => {
         voice?.openHome();
@@ -270,7 +278,10 @@ export const startBatonDesktop = Effect.gen(function* () {
           () => batonUpdates.install(),
         );
       },
-      onChange: () => voice?.refresh(),
+      onChange: () => {
+        if (batonUpdates.ready()) void readInFlight();
+        voice?.refresh();
+      },
     });
     if (afterUpdate !== null) {
       setTimeout(() => {
@@ -417,6 +428,25 @@ export const startBatonDesktop = Effect.gen(function* () {
       if (!response.ok) throw new Error(json.message ?? "That could not be done. Nothing changed.");
       return json.value;
     };
+    // While an update waits, what a restart would cut off here (SESS-SURVIVE): it restarts only when nothing is mid-turn.
+    readInFlight = async () => {
+      try {
+        const found = (await direct(BATON_SESSIONS_WS_METHODS.inFlight, {})) as {
+          readonly threads?: unknown;
+          readonly live?: unknown;
+        };
+        inFlight = inFlightLine({
+          threads: Array.isArray(found?.threads) ? found.threads : [],
+          live: Array.isArray(found?.live) ? found.live : [],
+        });
+      } catch {
+        // A server that does not answer has no turn of its own running to cut off.
+        inFlight = null;
+      }
+    };
+    setInterval(() => {
+      if (batonUpdates.ready()) void readInFlight();
+    }, IN_FLIGHT_MS).unref();
     // Each assistant turn goes to the Record on this machine's server, so "what happened?" has what she was asked and did.
     const noteTurn = (kind: string, fields: Readonly<Record<string, unknown>>) => {
       turnLog.note(kind, fields);

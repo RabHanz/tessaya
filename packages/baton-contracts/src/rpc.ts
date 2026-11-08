@@ -153,6 +153,7 @@ import {
   BatonCatalogSendResult,
   BatonCatalogWaitingInput,
   BatonCatalogWaitingResult,
+  BatonTurnsInFlightResult,
   BatonSessionsAcrossInput,
   BatonSessionsAcrossResult,
 } from "./sessionCatalog.ts";
@@ -490,6 +491,11 @@ const WsBatonSessionsKeptRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.kept, {
 const WsBatonSessionsWaitingRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.waiting, {
   payload: BatonCatalogWaitingInput,
   success: BatonCatalogWaitingResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsInFlightRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.inFlight, {
+  payload: Schema.Struct({}),
+  success: BatonTurnsInFlightResult,
   error: CatalogErrors,
 });
 const WsBatonSessionsAcrossRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.across, {
@@ -859,6 +865,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonSessionsReattachRpc,
   WsBatonSessionsKeptRpc,
   WsBatonSessionsWaitingRpc,
+  WsBatonSessionsInFlightRpc,
   WsBatonSessionsAcrossRpc,
   WsBatonSessionsResumeRpc,
   WsBatonSessionsCreateRpc,
