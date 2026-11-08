@@ -29,7 +29,15 @@ export interface AssistantCase {
     readonly wake: string;
     readonly said: string;
     readonly reply: string;
+    /** How long before this turn it was said; a minute when left out. */
+    readonly minutesAgo?: number;
   }>;
+  /** What a judge model must find true of the replies (naturalness, PRESENCE); a sample fails when it does not. */
+  readonly rubric?: string;
+  /** The most words any reply may have: a bare ack or a simple answer is not explained at length. */
+  readonly maxWords?: number;
+  /** Fails when every sample's reply opens with the same four words: the same question gets a fresh sentence. */
+  readonly variesAcross?: boolean;
   /** His clock for the turn (an ISO time and his zone); a fixed Wednesday morning when left out. */
   readonly now?: { readonly at: string; readonly timeZone: string };
   /** Tools that run in this case, each answering with this text; every other call is refused. */
@@ -733,5 +741,183 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
         "2026-11-07 18:02\nhe said: what should I tell the venue about Saturday?\nFreya replied: Tell them we need the room from six, not seven.",
     },
     says: "six",
+  },
+  // PRESENCE (INTEGRATION.md 3.2): does she sound like someone who was there, not a template.
+  {
+    id: "presence-repeat-answered-afresh",
+    source:
+      "INTEGRATION.md 3.2 repeat guard: the same question twice must not get the same sentence",
+    wake: "Freya",
+    said: "how long do I boil an egg for?",
+    again: ["how long do I boil an egg for?"],
+    varies: true,
+    first: ["none"],
+    rubric:
+      "The second reply does not repeat the first one's sentence. It either notices he asked again (and perhaps asks what was missing) or answers in different words. It still gives the answer.",
+  },
+  {
+    id: "presence-greeting-thrice",
+    source: 'Voice test 2026-11-08: "hi" three times got "Hi! How can I help?" three times',
+    wake: "Freya",
+    said: "hi Freya",
+    again: ["hi", "hello?"],
+    varies: true,
+    first: ["none"],
+    maxWords: 25,
+    rubric:
+      "Each reply is short and sounds like a person, not a help desk. None is a stock line such as 'How can I help you today?'. By the third, she reacts to being greeted again (for example asks whether he can hear her or what he needs).",
+  },
+  {
+    id: "presence-follow-up-pronoun",
+    source: "INTEGRATION.md 3.2 follow-ups: 'its' refers to what was just said",
+    wake: "Freya",
+    said: "what's the capital of Peru?",
+    again: ["and roughly how many people live there?"],
+    first: ["none"],
+    says: "million",
+    rubric:
+      "The second reply answers for Lima (or Peru, if it says so) without asking what 'there' means, and does not restate the first answer at length.",
+  },
+  {
+    id: "presence-follow-up-carries-on",
+    source: "INTEGRATION.md 3.2 follow-ups: a short follow-up continues the thread",
+    wake: "Alfred",
+    said: "what does a failing CI check usually mean?",
+    again: ["and the most common one?"],
+    first: ["none"],
+    rubric:
+      "The second reply names the most common cause of a failing CI check, continuing the first answer, and does not ask him to clarify.",
+  },
+  {
+    id: "presence-welcome-back-after-hours",
+    source: "INTEGRATION.md 3.2 step 2: hours after the last exchange she notices the gap",
+    wake: "Freya",
+    said: "hi Freya",
+    before: [
+      {
+        wake: "Freya",
+        said: "remind me to call the printer about the banner proofs",
+        reply: "Done, I'll remind you this afternoon to call the printer about the banner proofs.",
+        minutesAgo: 300,
+      },
+    ],
+    first: ["none"],
+    rubric:
+      "The reply shows she knows some hours have passed since they last spoke (for example 'welcome back' or 'good to hear from you again') and may mention the printer or the banner proofs. It does not sound as if they were talking a minute ago.",
+  },
+  {
+    id: "presence-no-welcome-back-after-a-minute",
+    source:
+      "Control for presence-welcome-back-after-hours: a minute later is the same conversation",
+    wake: "Freya",
+    said: "hi Freya",
+    before: [
+      {
+        wake: "Freya",
+        said: "remind me to call the printer about the banner proofs",
+        reply: "Done, I'll remind you this afternoon to call the printer about the banner proofs.",
+        minutesAgo: 1,
+      },
+    ],
+    first: ["none"],
+    notSays: ["welcome back", "Welcome back", "been a while", "long time", "again so soon"],
+    rubric:
+      "The reply treats this as the same conversation they were just having: no 'welcome back', no fresh introduction.",
+  },
+  {
+    id: "presence-where-were-we-next-day",
+    source: "INTEGRATION.md 3.2 step 2: 'you last spoke with him ... about the shop deploy'",
+    wake: "Alfred",
+    said: "where were we?",
+    before: [
+      {
+        wake: "Alfred",
+        said: "is the shop deploy ready to go out?",
+        reply:
+          "Not yet: the checkout test still fails on the coupon page. I'll rerun it once the fix lands.",
+        minutesAgo: 26 * 60,
+      },
+    ],
+    first: ["none", "conversation_search"],
+    says: "coupon",
+    rubric:
+      "The reply picks up the shop deploy and the failing coupon test, and shows it knows that was yesterday or a day ago, not just now.",
+  },
+  {
+    id: "presence-knows-own-role",
+    source: "INTEGRATION.md 3.2 step 4: a persona can say who it is and what it does",
+    wake: "Freya",
+    said: "who are you again, and what do you look after?",
+    first: ["none"],
+    says: "Freya",
+    maxWords: 60,
+    rubric:
+      "She says she is Freya and that she looks after his day, messages and reminders, in a sentence or two. She does not claim to handle code, builds or research.",
+  },
+  {
+    id: "presence-knows-the-roster",
+    source: "INTEGRATION.md 3.2 step 4: 'you are Freya; Alfred handles sessions and builds'",
+    wake: "Freya",
+    said: "who should I ask about a broken build?",
+    first: ["none"],
+    says: "Alfred",
+    rubric:
+      "She points him to Alfred for builds, by name, briefly, and does not offer to fix the build herself.",
+  },
+  {
+    id: "presence-tone-fits-persona",
+    source: "INTEGRATION.md 3.2: tone fits the persona's role line in the pack",
+    wake: "Alfred",
+    said: "morning Alfred, anything I should know?",
+    first: ["none", "needs_me", "sessions_list", "what_happened", "activity_today"],
+    // So a look at his work has something to report, rather than a refused call.
+    answers: {
+      needs_me: "Nothing needs him.",
+      sessions_list: "2 sessions: shop-api (build passing), site (deploy waiting for his review).",
+      what_happened: "Overnight: the shop-api build passed; the site deploy is waiting for review.",
+      activity_today: "Nothing ran yet today.",
+      watch_report: "Nothing new on the sessions he watches.",
+    },
+    rubric:
+      "The reply sounds like Alfred as the pack describes him: precise and unflappable, about sessions, builds and releases. It is not bubbly, has no exclamation-mark small talk, and does not take on Freya's role (his day, messages, reminders).",
+  },
+  {
+    id: "presence-time-no-clock-dump",
+    source: "Voice test 2026-11-08: the time came with the zone, the date and the year",
+    wake: "Freya",
+    said: "what time is it?",
+    now: { at: "2026-11-08T13:05:00Z", timeZone: "Europe/London" },
+    first: ["none"],
+    notSays: ["GMT", "UTC", "BST", "zone", "2026", "November", "Sunday", "London"],
+    maxWords: 15,
+    rubric:
+      "It says the time once, the way a person would ('five past one'), not the same time two ways.",
+  },
+  {
+    id: "presence-varies-across-samples",
+    source: "INTEGRATION.md 3.2: the same greeting on different days should not be one fixed line",
+    wake: "Freya",
+    said: "good morning Freya",
+    first: ["none", "needs_me", "activity_today"],
+    variesAcross: true,
+    maxWords: 40,
+  },
+  {
+    id: "presence-thanks-is-short",
+    source: "INTEGRATION.md 3.2: not over-explaining; a thank-you needs a few words",
+    wake: "Freya",
+    said: "thanks, that's all for now",
+    first: ["none"],
+    maxWords: 12,
+    rubric: "A brief, warm sign-off. No summary of what was done and no offer of more help.",
+  },
+  {
+    id: "presence-simple-answer-is-short",
+    source: "INTEGRATION.md 3.2: not over-explaining; a simple question gets the answer",
+    wake: "Alfred",
+    said: "how many days are there in a leap year?",
+    first: ["none"],
+    says: "366",
+    maxWords: 15,
   },
 ];

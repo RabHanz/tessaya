@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { AssistantCase } from "./cases.ts";
-import { casePasses, firstTool, passes } from "./grade.ts";
+import { casePasses, firstTool, judgePrompt, passes, verdictOf } from "./grade.ts";
 
 const c: AssistantCase = {
   id: "t",
@@ -77,6 +77,41 @@ describe("the assistant eval's grader", () => {
     expect(passes(split, call("engineering"))).toBe(false);
     const words = { ...split, goalArgs: [], notGoalArgs: ['"parts":'] };
     expect(passes(words, call("alfred"))).toBe(false);
+  });
+
+  it("fails a reply that runs past the words a case allows, or that the judge did not pass", () => {
+    const short = { ...c, first: ["none"], maxWords: 4 };
+    expect(passes(short, { calls: [], reply: "Any time, see you." })).toBe(true);
+    expect(passes(short, { calls: [], reply: "You are welcome, and here is a summary." })).toBe(
+      false,
+    );
+    const judged = { ...c, first: ["none"], rubric: "sounds warm" };
+    expect(passes(judged, { calls: [], reply: "Hi.", judged: true })).toBe(true);
+    expect(passes(judged, { calls: [], reply: "Hi.", judged: false })).toBe(false);
+    expect(passes(judged, { calls: [], reply: "Hi." })).toBe(false);
+  });
+
+  it("fails a case whose samples all open the same way when it asks for variety", () => {
+    const fresh = { ...c, first: ["none"], variesAcross: true };
+    const r = (reply: string) => ({ calls: [], reply });
+    expect(
+      casePasses(fresh, [r("Morning! Quiet so far."), r("Good morning, nothing needs you.")]),
+    ).toBe(true);
+    expect(
+      casePasses(fresh, [r("Good morning! All quiet here."), r("Good morning! All quiet now.")]),
+    ).toBe(false);
+  });
+
+  it("gives the judge the gap since the last exchange, and reads its verdict", () => {
+    const gap = {
+      ...c,
+      first: ["none"],
+      rubric: "notices the gap",
+      before: [{ wake: "Freya", said: "remind me", reply: "Done.", minutesAgo: 300 }],
+    };
+    expect(judgePrompt(gap, { name: "Freya", role: "his day" }, ["Hi."])).toContain("5 hours ago");
+    expect(verdictOf('{"pass": true, "why": "ok"}')).toBe(true);
+    expect(verdictOf("pass")).toBe(false);
   });
 
   it("fails a case when half or more of its samples fail", () => {
