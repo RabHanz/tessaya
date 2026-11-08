@@ -28,7 +28,7 @@ describe("what the mouse hook is told", () => {
     expect(parseInputBindings(JSON.parse(JSON.stringify(config))).bindings).toHaveLength(4);
     expect(mouseHookConfig([]).bindings).toEqual([]);
   });
-  it("maps every action a mouse button can be given, so the middle button can start dictation (0.1.79)", () => {
+  it("maps every action a mouse button can be given, so the middle button can start dictation", () => {
     const config = mouseHookConfig(
       ACTIONS.map((def) => ({ def, inputs: [{ type: "mouse", button: "middle" } as const] })),
     );

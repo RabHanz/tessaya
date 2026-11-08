@@ -1252,7 +1252,12 @@ fn serve() {
                 for out in taps.step(pressed, at, config.latch) {
                     match out {
                         Out::Start => match dictation_press(recording.is_some(), voice_on) {
-                            Press::ToDesktop => emit(json!({"ev": "binding", "id": "toggle"})),
+                            // Handed to the desktop as ✓: nothing is held here, so this hold's release starts nothing.
+                            Press::ToDesktop => {
+                                held = false;
+                                taps = PushToTalk::default();
+                                emit(json!({"ev": "binding", "id": "toggle"}));
+                            }
                             _ => {
                                 held = true;
                                 begin(&config, &mut recording, &tx, &job_tx);

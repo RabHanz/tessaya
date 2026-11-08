@@ -131,7 +131,9 @@ pub fn configure(path: Option<&std::path::Path>) {
             let running = THREAD.lock().map(|t| t.is_some()).unwrap_or(false);
             if let Ok(mut live) = LIVE.lock() {
                 let started = live.as_ref().map(|l| l.started).unwrap_or_else(Instant::now);
-                *live = Some(Live { cfg, state: State::default(), started });
+                // A button held across a reconfigure still has its release swallowed and reported, so a hold ends.
+                let state = live.take().map(|l| l.state).unwrap_or_default();
+                *live = Some(Live { cfg, state, started });
             }
             if !running {
                 start();
