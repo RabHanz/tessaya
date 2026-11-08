@@ -1202,6 +1202,9 @@ fn serve() {
                         if recording.is_some() {
                             finish(&mut recording, &job_tx, true);
                         }
+                        // A ✓ on a latched hold also ends the latch, so the next press starts afresh.
+                        held = false;
+                        taps = PushToTalk::default();
                     }
                     "voice" => voice_on = value["on"].as_bool().unwrap_or(false),
                     "cancel" => {

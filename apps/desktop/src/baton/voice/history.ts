@@ -114,6 +114,7 @@ export interface History {
         | "fixed"
         | "seconds"
         | "versions"
+        | "cleanup"
       >
     >,
   ) => void;

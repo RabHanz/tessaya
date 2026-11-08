@@ -1482,7 +1482,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
     const safe = redactForHistory(turn.raw, turn.cleaned);
     if (safe.secret !== null) {
-      pendingSecret.set(turn.raw, Date.now());
+      // The vault is offered the words as written, not as heard.
+      pendingSecret.set(turn.cleaned ?? turn.raw, Date.now());
       input.extras?.notice(
         `That looked like ${safe.secret}, so I kept it out of History. Say "put that in the vault" to keep it safely.`,
       );
@@ -1702,7 +1703,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
     };
   };
-  let flushApp: FocusedApp = { exe: "", title: "" };
   const restored = ((): Array<string> => {
     try {
       return JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
@@ -1718,7 +1718,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     }, 0);
   }
-  const oneShot = createOneShot({
+  const oneShot = createOneShot<FocusedApp>({
     save: (chunks) => {
       try {
         NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
@@ -1726,11 +1726,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         else NodeFS.writeFileSync(pendingFile, JSON.stringify(chunks));
       } catch {}
     },
-    clean: (raw) => writeClean(raw, flushApp),
-    fit: (text) => fitToCaret(text, flushApp),
+    // With no window of its own nothing is sent to clean it: the words go to the clipboard as heard.
+    clean: (raw, app) => (app.window === undefined ? Promise.resolve(null) : writeClean(raw, app)),
+    fit: (text, app) => (app.window === undefined ? Promise.resolve(text) : fitToCaret(text, app)),
     preview: (raw, text) =>
       showCleanup({ anchor: pill.anchor(), raw, clean: text, motion: settings.motion }),
-    paste: (text) =>
+    paste: (text, app) =>
       noteNext
         ? Promise.resolve(
             (() => {
@@ -1744,7 +1745,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               }
             })(),
           )
-        : sidecar === null || flushApp.window === undefined
+        : sidecar === null || app.window === undefined
           ? // Never into whatever has the keyboard now: with no window of its own the words are kept.
             Promise.resolve(false)
           : ((side: NonNullable<typeof sidecar>, target: number, title: string) =>
@@ -1758,7 +1759,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                   return ((keptWhy = "changed"), false);
                 if (await side.pasteInto(text, target).catch(() => false)) return true;
                 return ((keptWhy = "refused"), false);
-              }))(sidecar, flushApp.window, flushApp.title),
+              }))(sidecar, app.window, app.title),
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
@@ -1772,26 +1773,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
-  /** `target` is the window that dictation started in, read when it ended: never one a newer dictation started in. */
-  const flushDictation = async (target: Promise<FocusedApp | null> | null) => {
+  /**
+   * `target` is the window that dictation started in, read when it ended: never one a newer dictation started in.
+   * Flushes run in turn inside `oneShot`, each with its own window. A key flush shows no preview card (`preview`).
+   */
+  const flushDictation = async (
+    target: Promise<FocusedApp | null> | null,
+    options: { readonly preview?: boolean } = {},
+  ) => {
     if (!dictatingByVoice) collecting = false;
     if (oneShot.pending().length === 0 || sidecar === null) return;
     // The window it was started in, never wherever the keyboard went since (LIVE-2240).
-    flushApp = (await target) ?? { exe: "", title: "" };
+    const app = (await target) ?? { exe: "", title: "" };
     const turnId = openTurn;
     openTurn = null;
-    if (flushApp.window === undefined) {
-      // Nowhere to paste: what he said goes on the clipboard as heard, with nothing sent to clean it.
-      const taken = oneShot.pending().length;
-      return toClipboard(oneShot.pending().join(" "), taken, "There was no window to paste into");
-    }
-    showDictation("Tidying…");
-    const raw = oneShot.pending().join(" ");
-    const result = await oneShot.flush();
+    if (app.window !== undefined) showDictation("Tidying…");
+    const result = await oneShot.flush(app, options);
     if (result.status === "empty") return showDictation(null);
     lastDictation = result.text;
     history?.update(turnId ?? "", {
-      raw,
+      // The level its clean-up used (a bank or sign-in page by its title): a retry never goes above it.
+      cleanup: result.level === "claude" ? "claude" : "local",
+      raw: result.raw,
       cleaned: result.text,
       status: result.failed ? "raw" : "ok",
       model: result.failed ? null : settings.cleanupModel,
@@ -1809,15 +1812,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
       } else offerSmarterCleanup();
     } else {
-      const name = flushApp.title.trim() || flushApp.exe || "Its window";
+      const name = app.title.trim() || app.exe || "Its window";
       toClipboard(
         result.text,
         result.taken,
-        keptWhy === "gone"
-          ? `${name} has closed`
-          : keptWhy === "changed"
-            ? `${name} changed while you spoke`
-            : `${name} did not take it`,
+        app.window === undefined
+          ? "There was no window to paste into"
+          : keptWhy === "gone"
+            ? `${name} has closed`
+            : keptWhy === "changed"
+              ? `${name} changed while you spoke`
+              : `${name} did not take it`,
       );
     }
   };
@@ -1876,6 +1881,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             cleaned: null,
             status: "none",
             delivery: "oneshot",
+            cleanup: "local",
             seconds: (lastPcm?.length ?? 0) / 16_000,
           });
         } else {
@@ -2759,6 +2765,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .find((row) => row.def.id === action)
       ?.inputs.flatMap((i) => (i.type === "key" ? [i.accelerator] : [])) ?? [];
   let bindingsNote: string | null = null;
+  /** Keys Windows or another app would not give up: said on the page, never a binding that silently does nothing. */
+  let takenNote: string | null = null;
   /** The provider's own HTTPS API on his key; plain fetch, as the adapters are pure and take any fetch. */
   // @effect-diagnostics-next-line globalFetch:off
   const cloudFetch = (url: string, init: RequestInit) => fetch(url, init);
@@ -3087,7 +3095,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (next) void duck.start(settings.duckWhileDictating);
     else void duck.stop();
     if (!next) heldByButton = false;
-    if (next) releaseRecordingEscape = input.holdEscape(() => sidecar?.cancel(), "recording");
+    if (next) releaseRecordingEscape = input.holdEscape(() => keyEsc(), "recording");
     else {
       releaseRecordingEscape?.();
       releaseRecordingEscape = null;
@@ -3105,40 +3113,70 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
-  /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
-  /** `app` is the window it was spoken in, captured when it was queued: a later dictation may have moved focus. */
-  const deliver = async (raw: string, target: number | null | undefined, app: FocusedApp) => {
-    const cleaned = await writeClean(raw, app).catch(() => null);
-    const { text, failed } = settleOneShot(raw, cleaned);
-    const fitted = text.length === 0 ? text : await fitToCaret(text, app);
-    lastDictation = fitted;
-    const turnId = record({
+  /** Esc twice (or ✕) during a key dictation: its words are held for undo when they come, not pasted. */
+  let discardKeyText = false;
+  /** Each helper recording's window, oldest first: its words take the first one when they arrive. */
+  const recordingApps: FocusedApp[] = [];
+  /** A text event with its recording's window and discard on it, taken once, as it arrives. */
+  const withRecording = <E extends { readonly app?: FocusedApp; readonly discarded?: boolean }>(
+    event: E,
+  ): E & { readonly app?: FocusedApp; readonly discarded?: boolean } => {
+    if (event.app !== undefined) return event;
+    const app = recordingApps.shift();
+    const discarded = discardKeyText;
+    discardKeyText = false;
+    return { ...event, ...(app === undefined ? {} : { app }), discarded };
+  };
+  const discardKeyDictation = () => {
+    discardKeyText = true;
+    sidecar?.finish();
+  };
+  /** One stray Esc must not lose his words, as in spoken dictation: the first asks, the second discards. */
+  const keyEsc = () => {
+    if (Date.now() < escArmedUntil) return discardKeyDictation();
+    escArmedUntil = Date.now() + ESC_AGAIN_MS;
+    showDictation("Press Esc again to discard");
+  };
+  /**
+   * A key or button dictation's words take the spoken one's path: one buffer, the window and title check, the
+   * clipboard when it cannot paste, History with the app, learning and the Scratchpad.
+   */
+  const keyToBuffer = (
+    text: string,
+    target: number | null | undefined,
+    spokenIn: FocusedApp,
+    discarded: boolean,
+  ) => {
+    const app: FocusedApp = {
+      exe: spokenIn.exe,
+      title: spokenIn.title,
+      ...(typeof target === "number" ? { window: target } : {}),
+    };
+    if (discarded) {
+      if (text === "") return showDictation(null);
+      undo = { text, target: Promise.resolve(app) };
+      showDictation("Discarded · click to undo");
+      if (keptTimer !== null) clearTimeout(keptTimer);
+      keptTimer = setTimeout(() => {
+        undo = null;
+        showDictation(null);
+      }, UNDO_MS);
+      return;
+    }
+    if (text === "") return showDictation(null);
+    // Words that land while a spoken dictation is collecting join it, and go with its one paste.
+    if (collecting) return oneShot.push(text);
+    openTurn = record({
       kind: "dictation",
       app: app.exe,
-      raw,
-      cleaned: fitted,
-      status: failed ? "raw" : "ok",
-      model: failed ? null : settings.cleanupModel,
-      cleanup: cleaned === null ? "local" : cleaned.level === "claude" ? "claude" : "local",
+      raw: text,
+      cleaned: null,
+      status: "none",
       delivery: "hold key",
-      error: failed ? "Clean-up failed, inserted what was heard" : null,
+      cleanup: "local",
     });
-    if (fitted.length > 0) {
-      learnWording(fitted);
-      learnFromEdits(fitted, turnId);
-    }
-    const pasted =
-      target === null || target === undefined || text.length === 0
-        ? false
-        : await sidecar?.pasteInto(fitted, target).catch((error: Error) => {
-            note = error.message;
-            return false;
-          });
-    if (pasted === true || text.length === 0) {
-      showDictation(null);
-      if (failed && pasted === true) pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
-      else if (pasted === true) offerSmarterCleanup();
-    } else keepText("Not pasted", fitted);
+    oneShot.push(text);
+    void flushDictation(Promise.resolve(app), { preview: false });
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
   const offerSmarterCleanup = () => {
@@ -3206,13 +3244,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     sidecarBusy = busyAfter(event.ev, sidecarBusy);
     if (event.ev === "recording") {
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
+      // Each recording's window goes with its own words, however soon the next starts.
+      recordingApps.push(focusedApp);
+      discardKeyText = false;
+      escArmedUntil = 0;
       if (settings.dictationCleanup === "claude") rewriter.warm();
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
-      showDictation("Esc cancels");
+      showDictation("Esc twice discards");
     } else if (event.ev === "transcribing") showDictation("Writing it out");
-    else if (event.ev === "idle") showDictation(null);
-    else if (event.ev === "error") {
+    else if (event.ev === "idle") {
+      // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
+      recordingApps.shift();
+      discardKeyText = false;
+      showDictation(null);
+    } else if (event.ev === "error") {
+      recordingApps.shift();
+      discardKeyText = false;
       note = event.message;
       showDictation(null);
       pill.on({ type: "trouble", message: event.message });
@@ -3226,13 +3274,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       );
     } else if (event.ev === "text" && typeof event.wav === "string") {
       const wav = event.wav;
+      // Its window and its discard are taken now, as it arrives, not when the cloud has recognised it.
+      const carried = withRecording(event);
       // One at a time, so dictations arrive in the order he spoke them; the paste re-checks its window (pasteInto).
       cloudDictations = cloudDictations.then(() =>
         recogniseWav(wav, event.audioMs ?? 0).then(
-          (text) => onDictation({ ...event, wav: null, text }),
+          (text) => onDictation({ ...carried, wav: null, text }),
           (error: unknown) =>
             onDictation({
-              ...event,
+              ...carried,
               wav: null,
               error: error instanceof Error ? error.message : String(error),
             }),
@@ -3249,10 +3299,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         keepText(`Heard as ${languageName(outside)}, so not pasted`, text);
         return void heardOutside(outside);
       }
-      if (event.dictated === true && event.error === undefined)
-        return void pasteInOrder(() => deliver(text, event.target, focusedApp)).catch(
-          (error: unknown) => keepText(error instanceof Error ? error.message : "Not pasted", text),
-        );
+      if (event.dictated === true && event.error === undefined) {
+        const own = withRecording(event);
+        return keyToBuffer(text, event.target, own.app ?? focusedApp, own.discarded === true);
+      }
       if (text.length > 0) lastDictation = text;
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
@@ -3401,8 +3451,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     edge: () => settings.pillEdge,
     stateDir: input.stateDir,
     holdEscape: input.holdEscape,
-    onDictation: (insert) => endVoiceDictation(insert),
-    voiceDictating: () => dictatingByVoice,
+    onDictation: (insert) =>
+      dictatingByVoice
+        ? endVoiceDictation(insert)
+        : keyRecording()
+          ? insert
+            ? sidecar?.finish()
+            : discardKeyDictation()
+          : undefined,
+    // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
+    voiceDictating: () => dictatingByVoice || keyRecording(),
     workArea: () => workRect,
     onDismiss: () => {
       // Spoken dictation ends only by its ✓, ✕, Esc or "stop dictation", never a stray click on the pill.
@@ -4822,8 +4880,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           with: c.with,
         })),
       })),
-      bindingsNote,
+      bindingsNote: bindingsNote ?? takenNote,
       mouseReady: mouseHookReady,
+      mouseButtons: input.platform === "win32",
       usage: input.sessions?.usage() ?? [],
       lifecycle,
       paths: [
@@ -6761,6 +6820,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
       {
+        // The same dictation as the keys, buttons and words: it starts, or ends and pastes, whichever is running.
+        label: dictatingByVoice || keyRecording() ? "Stop dictation" : "Start dictation",
+        enabled: settings.dictation === "baton" && binary !== null,
+        click: () => void moveDictation("toggle"),
+      },
+      {
         label: "Copy last transcript or reply",
         enabled: (lastReply ?? lastDictation) !== null,
         click: () => {
@@ -6866,6 +6931,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const applyBindings = () => {
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
     registered = [];
+    const taken: string[] = [];
     // The mouse side: the hook in the dictation sidecar reads this file; an empty list is no hook.
     try {
       NodeFS.mkdirSync(NodePath.join(input.stateDir, "voice"), { recursive: true });
@@ -6882,12 +6948,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (row.def.id === "hold" || row.def.id === "toggle") continue;
       const handler = row.def.id === "ask" ? handlers["ask"] : handlers[row.def.id];
       for (const accelerator of row.def.id === "ask" ? keys.slice(1) : keys) {
-        // A chord another app already owns is skipped, not fatal; the tray still works.
-        if (handler !== undefined && Electron.globalShortcut.register(accelerator, handler)) {
-          registered.push(accelerator);
-        }
+        // A chord another app already owns is skipped, not fatal; the tray still works, and the page says so.
+        if (handler === undefined) continue;
+        if (Electron.globalShortcut.register(accelerator, handler)) registered.push(accelerator);
+        else taken.push(accelerator);
       }
     }
+    takenNote =
+      taken.length === 0
+        ? null
+        : `${taken.join(", ")} ${taken.length === 1 ? "is" : "are"} held by Windows or another app, so ${taken.length === 1 ? "it does" : "they do"} nothing here. Choose another key, or remap that button to F13 in its own software.`;
     const first = (action: string) => keysOf(action)[0];
     const holdKey = first("hold") ?? settings.holdKey;
     const toggleKey = first("toggle") ?? settings.toggleKey;

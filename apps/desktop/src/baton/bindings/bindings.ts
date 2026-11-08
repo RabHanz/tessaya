@@ -238,7 +238,9 @@ const RESERVED: Readonly<Record<string, string>> = {
   "Alt+Tab": "Alt+Tab switches windows.",
   "Meta+Tab": "Win+Tab shows your open windows.",
   "Meta+L": "Win+L locks the computer.",
-  "Meta+D": "Win+D shows the desktop.",
+  // A mouse's "Show Desktop" button sends Win+D, which Windows' shell keeps: remapped to F13, it can be bound.
+  "Meta+D":
+    "Win+D belongs to Windows, which will not give it up. Remap that mouse button to F13 in its software, then bind F13.",
   "Ctrl+Escape": "Ctrl+Esc opens the Start menu.",
   "Ctrl+C": "Every app uses Ctrl+C to copy.",
   "Ctrl+V": "Every app uses Ctrl+V to paste.",

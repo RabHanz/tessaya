@@ -65,6 +65,7 @@ export const proofExtra: HomeExtra = {
   bindings: [],
   bindingsNote: null,
   mouseReady: false,
+  mouseButtons: true,
   lifecycle: [],
   paths: [],
   about: { version: "0.1.99", source: "github.com/RabHanz/tessaya", licence: "MIT", notices: "" },
