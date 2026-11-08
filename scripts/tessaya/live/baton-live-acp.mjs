@@ -50,6 +50,23 @@ export function promptText(blocks) {
   return (at < 0 ? text : text.slice(at + marker.length)).trim();
 }
 
+/** The efforts `/effort` takes; the same list as LIVE_EFFORT_CHOICES in baton-shared's liveModel.ts (the test pins it). */
+export const LIVE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const EFFORT_AS_IS = "session";
+
+/** The effort control T3's own composer shows for a live thread; the session itself keeps the real value. */
+export const effortConfigOption = (current = EFFORT_AS_IS) => ({
+  id: "effort",
+  name: "Effort",
+  category: "thought_level",
+  type: "select",
+  currentValue: current,
+  options: [
+    { value: EFFORT_AS_IS, name: "As the session has it" },
+    ...LIVE_EFFORTS.map((effort) => ({ value: effort, name: effort })),
+  ],
+});
+
 /** The explicit request to move a plain-terminal session into Herdr. */
 export const isAdoptRequest = (text) => /(?:^|\n)\s*bring (it )?into herdr\s*\.?\s*$/i.test(text);
 
@@ -999,6 +1016,60 @@ async function prompt(params) {
   }
 }
 
+/** The last effort typed into each session, so T3 re-applying a saved option on every activation types nothing. */
+const efforts = new Map();
+
+/**
+ * An effort picked on a client without the web hook (mobile, a keybinding), before its next send. Typed only into an
+ * idle session with nothing waiting; otherwise queued behind what waits, in order, as a message would be. A question
+ * or approval on screen would take it as its answer. Returns what the control should show; never refuses the send.
+ */
+async function setEffort(params) {
+  const sessionId = params.sessionId;
+  const value = String(params.value ?? "");
+  if (
+    params.configId !== "effort" ||
+    !LIVE_EFFORTS.includes(value) ||
+    typeof sessionId !== "string"
+  ) {
+    return efforts.get(sessionId) ?? EFFORT_AS_IS;
+  }
+  if (efforts.get(sessionId) === value) return value;
+  const live = findLiveSession(sessionId);
+  if (live === null || live.pane === null) {
+    say(
+      sessionId,
+      `Effort not changed to ${value}: this session is not in Herdr, so it cannot be told.`,
+    );
+    return efforts.get(sessionId) ?? EFFORT_AS_IS;
+  }
+  const command = `/effort ${value}`;
+  if (
+    live.status === "busy" ||
+    live.status === "waiting" ||
+    serverWaiting(QUEUE_DIR, sessionId) > 0 ||
+    readQueue(QUEUE_DIR, sessionId).some((item) => item.kind !== "note")
+  ) {
+    const count = queueForServer(QUEUE_DIR, sessionId, {
+      text: command,
+      label: NodePath.basename(live.cwd),
+    });
+    say(
+      sessionId,
+      `Effort ${value} goes in once the session is free (${count} waiting, this included).`,
+    );
+    efforts.set(sessionId, value);
+    return value;
+  }
+  const failure = await typeInto(live.pane, command);
+  if (failure !== null) {
+    say(sessionId, `Effort not changed to ${value}: ${failure}`);
+    return efforts.get(sessionId) ?? EFFORT_AS_IS;
+  }
+  efforts.set(sessionId, value);
+  return value;
+}
+
 const resumesInFlight = new Set();
 const resumeDeps = {
   cwdOf: cwdFromTranscript,
@@ -1058,13 +1129,15 @@ async function handle(message) {
       };
     case "session/new": {
       const bound = sessionOfLiveThread(process.env.T3CODE_THREAD_ID);
-      if (bound !== null) return { sessionId: bound };
+      if (bound !== null) return { sessionId: bound, configOptions: [effortConfigOption()] };
       const unbound = `${UNBOUND}-${process.pid}-${id}`;
       if (typeof params.cwd === "string") newSessionCwd.set(unbound, params.cwd);
-      return { sessionId: unbound };
+      return { sessionId: unbound, configOptions: [effortConfigOption()] };
     }
     case "session/resume":
-      return {};
+      return { configOptions: [effortConfigOption()] };
+    case "session/set_config_option":
+      return { configOptions: [effortConfigOption(await setEffort(params))] };
     case "session/prompt":
       return prompt(params);
     case "session/cancel": {

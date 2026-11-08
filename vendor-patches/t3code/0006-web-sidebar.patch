@@ -8065,23 +8065,21 @@ index ea49b01665b645c778731a375295672d00e700bb..0964589173c30b63818b55b112bd39ff
    compact = false,
  }: {
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..160c117c0f93546303a7acf9814396d21e0ea111 100644
+index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..f39014ea8ec23238d211529a14e7e2f0f3b59131 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
-@@ -20,6 +20,8 @@ import {
+@@ -20,6 +20,7 @@ import {
    type MouseEvent as ReactMouseEvent,
  } from "react";
  import { isTrailingDoubleClick } from "../Sidebar.logic";
-+import { BatonLiveModel } from "./BatonLiveModel";
 +import { BatonThreadAccount } from "./BatonThreadAccount";
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { toastManager } from "../ui/toast";
-@@ -430,6 +432,8 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -430,6 +431,7 @@ export const ChatHeader = memo(function ChatHeader({
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
-+      {isServerThread ? <BatonLiveModel threadRef={activeThreadRef} /> : null}
 +      {isServerThread ? <BatonThreadAccount threadRef={activeThreadRef} /> : null}
        {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
      </div>

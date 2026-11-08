@@ -8,7 +8,10 @@ import * as NodeReadline from "node:readline";
 import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
+import { LIVE_EFFORT_CHOICES } from "../../../packages/baton-shared/src/liveModel.ts";
 import {
+  effortConfigOption,
+  LIVE_EFFORTS,
   isAdoptRequest,
   isAnswerInTerminal,
   notSentNote,
@@ -254,7 +257,7 @@ NodeTest.test(
       );
       NodeAssert.deepEqual(
         (await call(3, "session/resume", { sessionId: sid, cwd, mcpServers: [] })).result,
-        {},
+        { configOptions: [effortConfigOption()] },
       );
 
       // Busy the whole time: the send must not wait for idle, or T3 queues the next message.
@@ -319,6 +322,38 @@ NodeTest.test(
         NodeFS.readFileSync(NodePath.join(dir, "queue", "inbound.ndjson"), "utf8"),
         new RegExp(`"sessionId":"${near}".*"text":"say BETA"`),
       );
+
+      // An effort picked on another client: typed into an idle session with nothing waiting, once per value.
+      const effort = async (id, value, sessionId = sid) =>
+        (await call(id, "session/set_config_option", { sessionId, configId: "effort", value }))
+          .result;
+      const typedEffort = () => NodeFS.readFileSync(log, "utf8").match(/\/effort \w+/g) ?? [];
+      const queuedEffort = () =>
+        NodeFS.readFileSync(NodePath.join(dir, "queue", "inbound.ndjson"), "utf8").match(
+          /\/effort \w+/g,
+        ) ?? [];
+      descriptor("idle");
+      NodeAssert.deepEqual(await effort(20, "high"), {
+        configOptions: [effortConfigOption("high")],
+      });
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      // T3 re-applies a saved option on every activation: the same value is not typed again.
+      await effort(21, "high");
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      // A question on screen would take it as its answer, and a working session as a message: it queues in order.
+      descriptor("waiting");
+      NodeAssert.deepEqual(await effort(22, "max"), { configOptions: [effortConfigOption("max")] });
+      descriptor("busy");
+      await effort(23, "low");
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      NodeAssert.deepEqual(queuedEffort(), ["/effort max", "/effort low"]);
+      // Not running in Herdr here, or anything but a known level: nothing is typed or queued.
+      NodeAssert.deepEqual(await effort(24, "high", "no-such-session"), {
+        configOptions: [effortConfigOption()],
+      });
+      await effort(25, "; rm");
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      NodeAssert.deepEqual(queuedEffort(), ["/effort max", "/effort low"]);
     } finally {
       child.kill();
       NodeFS.rmSync(dir, { recursive: true, force: true });
@@ -952,3 +987,7 @@ NodeTest.test(
     }
   },
 );
+
+NodeTest.test("the live effort list is the one the server types", () => {
+  NodeAssert.deepEqual(LIVE_EFFORTS, [...LIVE_EFFORT_CHOICES]);
+});

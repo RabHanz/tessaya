@@ -27,6 +27,7 @@ import {
   ComposerPickerFooter,
   describeComposerEffort,
 } from "./ComposerModelEffort";
+import { useLiveTraits } from "./BatonLiveModel";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
@@ -152,19 +153,22 @@ export function ComposerControlsBar(props: {
     measuredHiddenBlockCount,
   });
   const controlSize = composerControlsCollapsed ? "xs" : "sm";
-  const traitsInput = resolveComposerTraitsInput({
-    provider: selectedProvider,
-    instanceId: selectedInstanceId,
-    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
-    ...(routeKind === "draft" && draftId ? { draftId } : {}),
-    model: selectedModel,
-    models: selectedProviderModels,
-    modelOptions: composerModelOptions?.[selectedInstanceId],
-    reportedModelSelection,
-    promptUltrathink,
-    onPromptEdit,
-    planModeEnabled,
-  });
+  const traitsInput = useLiveTraits(
+    routeKind === "server" ? routeThreadRef : null,
+    resolveComposerTraitsInput({
+      provider: selectedProvider,
+      instanceId: selectedInstanceId,
+      ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
+      ...(routeKind === "draft" && draftId ? { draftId } : {}),
+      model: selectedModel,
+      models: selectedProviderModels,
+      modelOptions: composerModelOptions?.[selectedInstanceId],
+      reportedModelSelection,
+      promptUltrathink,
+      onPromptEdit,
+      planModeEnabled,
+    }),
+  );
   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
   const restingBlockDefs = showModeBlock
     ? [
