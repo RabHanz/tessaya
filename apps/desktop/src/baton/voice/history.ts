@@ -8,6 +8,10 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 
+import { REDACTED, detectSecret } from "@t3tools/baton-shared/memory";
+
+import { redactForHistory } from "../vault/redact.ts";
+
 export type TurnKind = "dictation" | "spoken";
 /** ok: tidied. raw: inserted as heard (tidy-up off or failed). none: spoken turn, nothing tidied. */
 export type TidyStatus = "ok" | "raw" | "failed" | "none";
@@ -43,6 +47,42 @@ export interface HistoryTurn {
   /** Empty until the first retry; then v1 (as first heard) and each retry, in order. */
   readonly versions: ReadonlyArray<HistoryVersion>;
 }
+
+/**
+ * A row's words as History may keep them (VAULT.md section 6): a secret in the heard or the written words marks both,
+ * and the fixed text and every version are checked too. Every write goes through this, so no path keeps one in plain
+ * text, however late its words arrive (voice dictation fills its row chunk by chunk).
+ */
+const safeWords = <
+  T extends {
+    readonly raw?: string;
+    readonly cleaned?: string | null;
+    readonly fixed?: string | null;
+    readonly versions?: ReadonlyArray<HistoryVersion>;
+  },
+>(
+  change: T,
+): T => {
+  const secret = [change.raw, change.cleaned].some(
+    (text) => typeof text === "string" && detectSecret(text) !== null,
+  );
+  return {
+    ...change,
+    ...(secret && change.raw !== undefined ? { raw: REDACTED } : {}),
+    ...(secret && typeof change.cleaned === "string" ? { cleaned: REDACTED } : {}),
+    ...(typeof change.fixed === "string" && detectSecret(change.fixed) !== null
+      ? { fixed: REDACTED }
+      : {}),
+    ...(change.versions === undefined
+      ? {}
+      : {
+          versions: change.versions.map((v) => {
+            const safe = redactForHistory(v.raw, v.cleaned);
+            return { ...v, raw: safe.raw, cleaned: safe.cleaned };
+          }),
+        }),
+  };
+};
 
 export interface History {
   readonly add: (
@@ -150,7 +190,8 @@ export const openHistory = (
     return row === undefined ? null : toTurn(row);
   };
   return {
-    add: (turn) => {
+    add: (written) => {
+      const turn = safeWords(written);
       const id = newId();
       db.prepare(
         `insert into turns (id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, seconds) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
@@ -170,8 +211,8 @@ export const openHistory = (
       );
       return id;
     },
-    update: (id, change) => {
-      const entries = Object.entries(change).filter(([, v]) => v !== undefined);
+    update: (id, written) => {
+      const entries = Object.entries(safeWords(written)).filter(([, v]) => v !== undefined);
       if (entries.length === 0) return;
       const sets = entries.map(([key]) => `${key} = ?`).join(", ");
       const values = entries.map(([, v]) =>

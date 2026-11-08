@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { REDACTED } from "@t3tools/baton-shared/memory";
+
 import { openHistory } from "./history.ts";
 
 describe("history", () => {
@@ -47,6 +49,36 @@ describe("history", () => {
     expect(history.get(a)?.corrected).toBe(true);
     expect(history.remove(a)?.id).toBe(a);
     expect(history.get(a)).toBeNull();
+    history.close();
+  });
+
+  it("never keeps a dictated secret in plain text, however the row is written or changed later (VAULT.md 6)", () => {
+    const history = openHistory(":memory:", () => "t1");
+    const id = history.add({
+      at: "2026-11-08T10:00:00.000Z",
+      kind: "dictation",
+      app: "",
+      raw: "dear sam",
+      cleaned: null,
+      status: "none",
+      model: null,
+      delivery: "oneshot",
+      error: null,
+    });
+    // Voice dictation fills its row as the chunks come in: the later words carry the password.
+    history.update(id, { raw: "dear sam my password is hunter-fake-77" });
+    expect(history.get(id)).toMatchObject({ raw: REDACTED });
+    history.update(id, { cleaned: "My password is hunter-fake-77." });
+    expect(history.get(id)?.cleaned).toBe(REDACTED);
+    history.update(id, { fixed: "the password is hunter-fake-77 now" });
+    expect(history.get(id)?.fixed).toBe(REDACTED);
+    history.update(id, {
+      versions: [{ at: "x", raw: "password is hunter-fake-77", cleaned: null, model: null }],
+    });
+    expect(history.get(id)?.versions[0]).toMatchObject({ raw: REDACTED });
+    // Ordinary words are kept as they are.
+    history.update(id, { raw: "see you at five", cleaned: "See you at five." });
+    expect(history.get(id)).toMatchObject({ raw: "see you at five", cleaned: "See you at five." });
     history.close();
   });
 });

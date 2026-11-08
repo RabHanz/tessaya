@@ -430,6 +430,7 @@ import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import {
   hasRecording,
   NO_RECORDING,
+  retryCleanupLevel,
   retryPlan,
   rowMenu,
   useVersion,
@@ -1609,7 +1610,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             .clean({
               raw: biasTranscript(heard, dictionary),
               mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
-              level: settings.dictationCleanup === "off" ? "local" : "claude",
+              level: retryCleanupLevel(settings.dictationCleanup, turn.app),
             })
             .catch(() => null);
           const settled = settleOneShot(heard, tidy);
@@ -1630,7 +1631,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         .clean({
           raw: biasTranscript(turn.raw, dictionary),
           mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
-          level: settings.dictationCleanup === "off" ? "local" : "claude",
+          level: retryCleanupLevel(settings.dictationCleanup, turn.app),
         })
         .catch(() => null);
       const { text, failed } = settleOneShot(turn.raw, cleaned);
