@@ -203,20 +203,20 @@ index 1dd273dbe64ce41e473ec144e0b8cb754dc3bb9a..baa4f5acb50c7fd5afbf8009468d7eb4
            Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
              failEnvironmentInternal("pairing_credential_issuance_failed", error),
 diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
-index 5ea04dfff18dd9f4d39587bee4ad9a4d601e11a4..34adeacffdf1e5ec4e7a43a6cc05a526c1ad4dc6 100644
+index ee3ef9402f86a07d3a9d601957c81438a5b7a2a6..809a94f394cdd5d15039d062042c2395ad7bf1d0 100644
 --- a/apps/server/src/binCli.ts
 +++ b/apps/server/src/binCli.ts
 @@ -27,6 +27,7 @@ import { uninstallCommand } from "./cli/uninstall.ts";
- import { serviceLauncherCommand } from "./cli/serviceLauncher.ts";
+ import { runServiceLauncherCli } from "./cli/serviceLauncher.ts";
  import { speechWorkerCommand } from "./cli/speechWorker.ts";
  import { claudeHistoryCommand } from "./cli/claudeHistory.ts";
 +import { memoryEmbedCommand } from "./cli/memoryEmbed.ts";
  import { sshHelperCommand } from "./cli/sshHelper.ts";
  import { serviceCommand } from "./cli/service.ts";
  import { servicePreflightCommand } from "./cli/servicePreflight.ts";
-@@ -92,6 +93,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
-       uninstallCommand,
-       serviceLauncherCommand,
+@@ -97,6 +98,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
+         Command.withHandler(() => Effect.sync(() => void runServiceLauncherCli())),
+       ),
        claudeHistoryCommand,
 +      memoryEmbedCommand,
        speechWorkerCommand,
@@ -332,7 +332,7 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index bcec0a13cf20a6572335497ea0482405ca7abf88..107672a1455cb4e68b5331b156aed88ed929c221 100644
+index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..31648015536759037642975928860098f5e21b5c 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,4 @@
@@ -412,7 +412,7 @@ index bcec0a13cf20a6572335497ea0482405ca7abf88..107672a1455cb4e68b5331b156aed88e
      let dispatchMode = resolveMessageDispatchIntent(
        projection,
        command.dispatchMode,
-@@ -6572,6 +6618,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6575,6 +6621,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
@@ -510,6 +510,30 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..d066123ab5e95cf75ac1fb3396840dc0
      );
  
    const assertDispatchTargetEnabled = (command: OrchestrationV2ServerCommand) => {
+diff --git a/apps/server/src/peer/RemoteDelegation.test.ts b/apps/server/src/peer/RemoteDelegation.test.ts
+index 00b7b5d6f696378289518117804f4554a5ff7d6d..29364365cb47d0b00349c596806d666ecde70433 100644
+--- a/apps/server/src/peer/RemoteDelegation.test.ts
++++ b/apps/server/src/peer/RemoteDelegation.test.ts
+@@ -64,6 +64,7 @@ import * as PeerForwarding from "./PeerForwarding.ts";
+ import * as PeerLinks from "./PeerLinks.ts";
+ import { descriptorOf, layerLinkingEnvironment, linkTo, servePeer } from "./PeerLinks.testkit.ts";
+ import * as RemoteDelegation from "./RemoteDelegation.ts";
++import { clientMessageFrom } from "../baton/AgentMessageFrom.ts";
+ import * as PeerLinkRequests from "./PeerLinkRequests.ts";
+ 
+ // The laptop's agent delegates a task to the box through a link. The box is
+@@ -1695,7 +1696,10 @@ it.effect("stopping the parent stops follow-up work on a task there that has its
+         message: "Now run the slow suite too.",
+       });
+       expect(sent.isError, JSON.stringify(sent.content)).toBe(false);
+-      expect(yield* Ref.get(thread.sent)).toEqual(["Now run the slow suite too."]);
++      // Forwarded from another machine, so it carries the from-line even inside one tree.
++      expect(yield* Ref.get(thread.sent)).toEqual([
++        `${clientMessageFrom({ label: "T3 Code · Laptop", linked: true })}\n\nNow run the slow suite too.`,
++      ]);
+       expect(yield* Ref.get(thread.interrupted)).toBe(0);
+ 
+       yield* a.threads.stopDelegatedTasks({
 diff --git a/apps/server/src/project/AgentSessionImporter.ts b/apps/server/src/project/AgentSessionImporter.ts
 index 211ad06fc267a4c4730c159db166d25651be3e77..e22f3d6edf48d6e1fad98d7bd5f8e71c5f141aef 100644
 --- a/apps/server/src/project/AgentSessionImporter.ts
@@ -834,7 +858,7 @@ index dc67bd9387e04b91fa61d34ea47929c056256796..93263b7b064ba3389f92c2f5935bd6a2
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3cc3f526e25fdec86271f8d6fdda3a822d57017d 100644
+index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5363b44db 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -845,7 +869,7 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3cc3f526e25fdec86271f8d6fdda3a82
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
-@@ -77,6 +78,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
+@@ -78,6 +79,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
  import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
  import * as TerminalManager from "./terminal/Manager.ts";
  import * as McpHttpServer from "./mcp/McpHttpServer.ts";
@@ -855,7 +879,7 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3cc3f526e25fdec86271f8d6fdda3a82
  import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
  import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
 @@ -667,7 +670,14 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
-   layerProviderInstallationRefresh,
+   ProviderInstallation.layer,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 +  BatonServerLayer.workers,
@@ -890,7 +914,7 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3cc3f526e25fdec86271f8d6fdda3a82
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
    ),
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..52a48d55b3a64d3fcc3a61d707336d2739f6511f 100644
+index 1fa81ddc7026e9b22c94fb79227f5db6ae444725..bbed69f1bd61759adda7980c4d29d7b5466c0547 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -232,6 +232,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -939,7 +963,7 @@ index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..52a48d55b3a64d3fcc3a61d707336d27
          [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
            Effect.annotateCurrentSpan({
              "orchestration_v2.command_id": command.commandId,
-@@ -3480,8 +3485,11 @@ export const layerWsRpc = (
+@@ -3481,8 +3486,11 @@ export const layerWsRpc = (
        const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
          handlers;
        return Context.merge(
@@ -953,7 +977,7 @@ index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..52a48d55b3a64d3fcc3a61d707336d27
        );
      }),
    );
-@@ -3556,7 +3564,7 @@ export const layer = Layer.unwrap(
+@@ -3557,7 +3565,7 @@ export const layer = Layer.unwrap(
                          })
                          .pipe(Effect.ignore);
                  }),
@@ -1038,10 +1062,10 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 8a4b25589121ce74893c305583f54286cad24d32..b18926c4c71b2fffb2846f04cbd5ca47e4583bc0 100644
+index f6409a87074fda1cc83a97b39a484abaa519ed02..71d732ade26768b62e0d7c256d54604bc28ed1d4 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1244,8 +1244,9 @@ export const ServerSettings = Schema.Struct({
+@@ -1267,8 +1267,9 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),

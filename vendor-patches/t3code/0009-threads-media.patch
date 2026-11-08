@@ -1161,10 +1161,10 @@ index d22b1d9cf6c4fdca3fa41ca0ccaf49dde08ebe59..1c3a981cdc4bad8760f5d583f0f99e84
            const project = projects.find(
              (candidate) =>
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 25095b70f1c3db33b1eaa5d7f7d32ee98cf5855d..0b0c5413e690fbd0cdf00e459dd59dc47d0a85e9 100644
+index 8de252f90c35ef98108d22206cecdda064a33398..2d8e85b25edd8c6f25a8d3bcfd4875d73275c762 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -335,3 +335,11 @@ A snoozed thread keeps working and stays hidden until its wake time, even while
+@@ -336,3 +336,11 @@ A snoozed thread keeps working and stays hidden until its wake time, even while
  its agent wakes itself for background work. It comes back early for an approval,
  a new question, a failed run, or a message or answer you send. You can snooze an existing
  question and answer when the thread wakes; the question stays unanswered.

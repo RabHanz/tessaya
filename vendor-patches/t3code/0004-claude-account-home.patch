@@ -3,7 +3,7 @@ Subject: providers: a second Claude account home shares the primary's (D52)
 One call when the Claude adapter is created; the work is in provider/Drivers/ClaudeAccountHome.ts.
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 10edb77c5011a7586e53d654de8768f6e2d2937b..1ec63ece9e6732aeaab468328c1c618cbfe781a2 100644
+index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e239d4f086747821a6069935cf0133aaf249f7c2 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -182,6 +182,7 @@ import {
@@ -14,7 +14,7 @@ index 10edb77c5011a7586e53d654de8768f6e2d2937b..1ec63ece9e6732aeaab468328c1c618c
  import {
    BUNDLED_CLAUDE_MODEL_CATALOG,
    resolveClaudeCatalogContextWindowTokens,
-@@ -12369,6 +12370,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -12368,6 +12369,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
        hostEnvironment,
      );
      const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
