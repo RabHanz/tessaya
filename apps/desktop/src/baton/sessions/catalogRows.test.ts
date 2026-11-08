@@ -354,6 +354,7 @@ describe("a row's real binding and Reattach", () => {
       { ...base, id: "p", pane: "fab~w1:p2", answeredBy: "baton-live" },
       { ...base, id: "h", pane: "fab~w1:p3", answeredBy: "claudeAgent" },
       { ...base, id: "t", pane: null, threadId: "import:claudeAgent:t" },
+      { ...base, id: "w", pane: null, threadId: "import:claudeAgent:w", turnRunning: true },
     ];
     const service: CatalogService = {
       list: async () => list,
@@ -377,6 +378,12 @@ describe("a row's real binding and Reattach", () => {
     expect(row("p")).toEqual(["Herdr pane fab~w1:p2", null]);
     expect(row("h")).toEqual(["T3-hosted handoff session", "Reattach"]);
     expect(row("t")).toEqual(["T3 thread", null]);
+    // A resumed thread can be stopped only while a turn runs in it.
+    const stop = (id: string) => {
+      const c = catalog.controls().find((x) => x.id === `c:${id}`);
+      return c?.kind === "catalogRow" ? c.stopLabel : undefined;
+    };
+    expect([stop("p"), stop("t"), stop("w")]).toEqual(["Stop", null, "Stop"]);
     catalog.apply("c:h", "reattach");
     await vi.waitFor(() => expect(row("h")[1]).toBe("Reattach to w1:p9?"));
     catalog.apply("c:h", "reattach");

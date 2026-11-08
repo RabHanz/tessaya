@@ -152,6 +152,16 @@ export class BatonSessionCatalogService extends Context.Service<
   }
 >()("t3/baton/BatonSessionCatalogService") {}
 
+/** A resumed session's thread: gone once archived or deleted, working while a turn runs. */
+export const resumedThreadState = Effect.fn("BatonSessionCatalogService.resumedThreadState")(
+  function* (engine: BatonEngineShape, threadId: ThreadId) {
+    const shell = yield* engine.threadShell(threadId);
+    if (shell === null || shell.archivedAt != null || shell.deletedAt != null)
+      return "gone" as const;
+    return shell.activeRunId != null ? ("working" as const) : ("idle" as const);
+  },
+);
+
 /**
  * Whether a resumed session's thread exists, unarchived so it shows: the importer leaves a thread it already has as it
  * was, and the live mirror archives an import nobody continued.
@@ -160,8 +170,15 @@ export const openResumedThread = Effect.fn("BatonSessionCatalogService.openResum
   function* (engine: BatonEngineShape, threadId: ThreadId) {
     const shell = yield* engine.threadShell(threadId);
     if (shell === null) return false;
-    if (shell.archivedAt !== null && shell.archivedAt !== undefined)
-      return yield* engine.unarchiveThread({ tag: "resume", threadId });
+    // A thread that stays archived still exists: the resume says so, and the failure is logged on its own.
+    if (
+      shell.archivedAt !== null &&
+      shell.archivedAt !== undefined &&
+      !(yield* engine.unarchiveThread({ tag: "resume", threadId }))
+    )
+      yield* Effect.logWarning("Tessaya resume: the thread exists but stays archived", {
+        threadId,
+      });
     return true;
   },
 );
@@ -422,6 +439,10 @@ export const layer = Layer.effect(
                   threadId: ThreadId.make(threadId),
                   text,
                 }),
+              ),
+            threadState: (threadId: string) =>
+              Effect.runPromiseWith(services)(
+                resumedThreadState(engine.value, ThreadId.make(threadId)),
               ),
           }),
       autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
@@ -774,6 +795,13 @@ export const layer = Layer.effect(
               } catch {
                 // already gone
               }
+            }
+            // A session resumed as a thread (no Herdr): its turn ends and the row goes back to stopped.
+            const resumedThread = catalog.forgetResumed(input.sessionId);
+            if (resumedThread !== undefined && Option.isSome(engine)) {
+              const threadId = ThreadId.make(resumedThread);
+              if ((yield* resumedThreadState(engine.value, threadId)) === "working")
+                yield* engine.value.interruptThread({ tag: "catalog-stop", threadId });
             }
           }
         }

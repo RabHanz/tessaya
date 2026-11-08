@@ -33,6 +33,8 @@ export interface CatalogRow {
   readonly local?: boolean;
   /** Where a resumed session lives, when the server has made the thread. */
   readonly threadId?: string;
+  /** A turn runs in the thread a resume brought back. */
+  readonly turnRunning?: boolean;
   /** The Herdr pane a running session is in. */
   readonly pane?: string | null;
   /** The provider instance answering its thread; not `baton-live` means a handoff session. */
@@ -280,7 +282,11 @@ export const catalogControls = (input: {
     resumeLabel:
       r.state === "stopped" || r.state === "failed" ? (r.canResume ? "Resume" : null) : null,
     note: (r.state === "stopped" || r.state === "failed") && r.canResume ? WORDS.resumeHint : "",
-    stopLabel: r.state === "running" ? WORDS.stop : null,
+    // A resumed thread with no turn running has nothing to stop.
+    stopLabel:
+      r.state === "running" && (r.threadId === undefined || !!r.pane || r.turnRunning === true)
+        ? WORDS.stop
+        : null,
     source: r.detail ?? (r.source === "history" ? "From history" : ""),
     // A stopped row says "Stopped" already.
     // A session resumed as a T3 thread (no Herdr) is that thread, not a plain terminal.
