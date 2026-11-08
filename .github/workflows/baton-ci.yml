@@ -71,6 +71,8 @@ jobs:
           # A sync is known by its moved pin; a small one changes too few test files to be told apart by count.
           upstream_wave=0
           if echo "$changed" | grep -qx 'vendor-patches/t3code/PIN' || [ "$(echo "$changed" | grep -cE '\.test\.tsx?$' || true)" -gt 150 ]; then upstream_wave=1; echo "upstream sync: running Baton's own tests only"; fi
+          # On main every Tessaya test runs, so a test a PR never touched cannot go stale until the nightly sync finds it.
+          if [ "${{ github.event_name }}" = push ]; then changed="$(git ls-files)"; upstream_wave=1; echo "main: running every Tessaya test"; fi
           for ws in apps/server apps/desktop packages/baton-shared packages/baton-voice packages/baton-contracts; do
             pattern="^$ws/.*(baton|Baton).*\.test\.tsx?$|^$ws/.*\.test\.ts$"
             [ "$upstream_wave" -eq 1 ] && pattern="^$ws/.*(baton|Baton|Tessaya|Phone|Intent|WorkSession|Fleet).*\.test\.tsx?$"

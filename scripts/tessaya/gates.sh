@@ -68,7 +68,20 @@ if [ "$tests" -eq 1 ]; then
       extra+=(--retry 2 --maxWorkers 1)
       [ -n "$heavy_lock" ] && lock=(flock -w 3600 "$heavy_lock")
     fi
-    (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test "${extra[@]}")
+    if [ "$pkg" != apps/web ]; then
+      (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test "${extra[@]}")
+      continue
+    fi
+    # --retry reruns a failed test, not a file Chromium failed to import under load; such files get one rerun of
+    # their own, so a file that fails twice still fails the gate.
+    web_log="$(mktemp)"
+    if ! (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test "${extra[@]}") 2>&1 | tee "$web_log"; then
+      mapfile -t again < <(sed -n 's/\x1b\[[0-9;]*m//g; s/^ *FAIL  *|browser ([a-z]*)| \(src\/[^ ]*\.test\.tsx\{0,1\}\).*/\1/p' "$web_log" | sort -u)
+      [ "${#again[@]}" -gt 0 ] && [ "${#again[@]}" -le 10 ] || { echo "gates: apps/web failed"; exit 1; }
+      echo "gates: rerunning ${#again[@]} failed web file(s) once: ${again[*]}"
+      (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test --maxWorkers 1 "${again[@]}")
+    fi
+    rm -f "$web_log"
   done
 fi
 
