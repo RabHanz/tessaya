@@ -8,7 +8,7 @@
  * to become one. Each session in the registry (`~/.claude/sessions/<pid>.json`, D68) gets a thread
  * under the T3 project its directory belongs to, written with the same events upstream's own
  * agent-session import writes, and its transcript is followed so new messages arrive as they are
- * written. The thread's provider is the "Live session" instance: T3's own ACP Registry driver
+ * written. The thread's provider is the "Terminal session" instance: T3's own ACP Registry driver
  * running `scripts/tessaya/live/baton-live-acp.mjs`, so the composer's send becomes a turn that
  * types into the session's Herdr pane (adopting it first when needed).
  *
@@ -886,9 +886,15 @@ const make = Effect.gen(function* () {
     }
     const wanted = {
       driver: DRIVER,
-      displayName: "Live session",
+      // Named for what is there: a Claude Code session in a terminal, never the internal slug.
+      displayName: "Terminal session",
       enabled: true,
-      config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
+      config: {
+        source: "local",
+        commandPath: node,
+        commandArgs: [script],
+        customModels: [{ slug: MODEL, name: "Claude Code" }],
+      },
     };
     const current = (yield* settings.getSettings).providerInstances[LIVE_INSTANCE_ID];
     // @effect-diagnostics-next-line globalJsonInEffect:off - settings values, always serialisable.
