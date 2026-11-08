@@ -60,7 +60,7 @@ describe("live facts", () => {
   it("gives plain answers the clock in the machine's zone, and keeps clock and web questions off the screen", async () => {
     const { clockLine, ASSISTANT_PROMPT_INTRO } = await import("./brain.ts");
     expect(clockLine(new Date("2026-11-01T10:07:00Z"), "Asia/Karachi")).toBe(
-      "(now: Sunday, 1 November 2026 at 15:07 GMT+5)",
+      "(his clock, for your reference: Sunday, 1 November 2026 at 15:07 GMT+5)",
     );
     expect(ASSISTANT_PROMPT_INTRO).toMatch(/never read a clock off the screen/);
   });

@@ -107,9 +107,9 @@ export const makeSentenceStream = () => {
   };
 };
 
-/** The clock, as the model should read it: his own zone, never a time read off a screen. */
+/** The clock, as the model should read it: his own zone, never a time read off a screen; background, not words to say. */
 export const clockLine = (now: Date, timeZone?: string): string =>
-  `(now: ${new Intl.DateTimeFormat("en-GB", {
+  `(his clock, for your reference: ${new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",

@@ -55,7 +55,7 @@ describe("the one assistant's session", () => {
     await agent.say("what time is it", {
       window: null,
       session: null,
-      persona: { name: "Freya", role: "his day; warm." },
+      persona: { id: "assistant", name: "Freya", role: "his day; warm." },
     });
     expect(prompts).toHaveLength(1);
     expect(asked[1]).toContain("you answer this turn as Freya: his day; warm.");
@@ -63,6 +63,15 @@ describe("the one assistant's session", () => {
     // over the speakers is what dropped his next "Freya, …" as her own voice (0.1.63).
     expect(asked[1]).not.toContain("saying you are");
     expect(asked[1]).toContain('never open with your name ("Freya here")');
+    expect(conversation.recent(1)[0]).toMatchObject({
+      said: "what time is it",
+      persona: "assistant",
+      personaName: "Freya",
+    });
+    // The same question again: the turn says what she just replied, so she does not say it again.
+    await agent.say("What time is it?", { window: null, session: null });
+    expect(asked[2]).toContain("he asked the same a moment ago and you replied:");
+    expect(asked[1]).not.toContain("he asked the same");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

@@ -42,6 +42,22 @@ describe("the shared conversation", () => {
     });
     expect(block).toContain("you replied (answer): It's ten past four.");
     expect(block).not.toContain("Freya here");
+    // Who answered survives a new session: "what did Freya tell me" has a turn to find.
+    const saved = parseTurn(
+      JSON.stringify({
+        ...turn(2, "and the weather", "Dry."),
+        persona: "assistant",
+        personaName: "Freya",
+        speaker: "saved:sam",
+      }),
+    );
+    expect(saved).toMatchObject({ persona: "assistant", speaker: "saved:sam" });
+    expect(
+      parseTurn(JSON.stringify({ ...turn(3, "hi", "Hello."), speaker: "boss" }))?.speaker,
+    ).toBe(undefined);
+    expect(conversationBlock({ recent: [saved!], earlier: [] })).toContain(
+      "you replied as Freya (answer): Dry.",
+    );
   });
   it("finds an older turn by its words, and not one already in the recent window", () => {
     const turns = [

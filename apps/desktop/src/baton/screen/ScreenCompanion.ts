@@ -2929,6 +2929,7 @@ export const startScreenCompanion = (input: {
           session: focusedSession,
           project,
           persona: {
+            id: face.id,
             name: face.name,
             role: face.role,
             ...(face.lead ||

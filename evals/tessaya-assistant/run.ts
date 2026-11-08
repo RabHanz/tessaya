@@ -81,6 +81,8 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     claudeBinary: values.claude!,
     brain: { model, effort: values.effort ?? brain.effort },
     said: c.said,
+    ...(c.again === undefined ? {} : { again: c.again }),
+    ...(c.now === undefined ? {} : { now: { at: new Date(c.now.at), timeZone: c.now.timeZone } }),
     where: {
       window: c.window ?? "Notepad",
       session: null,
@@ -90,6 +92,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
         ? {}
         : {
             persona: {
+              id: face.id,
               name: face.name,
               role: face.role,
               ...(face.lead ? {} : { lead: "Tessaya" }),
@@ -132,7 +135,7 @@ for (const c of cases) {
     id: c.id,
     said: c.said,
     firsts: runs.map((r) => firstTool(r.calls)),
-    replies: runs.map((r) => r.reply),
+    replies: runs.map((r) => (r.replies ?? [r.reply]).join(" | ")),
     pass: casePasses(c, runs),
     ms,
   };

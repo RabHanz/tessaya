@@ -21,6 +21,11 @@ export interface AssistantCase {
   readonly says?: string;
   /** Text the spoken reply must not contain, such as a path or a file's extension. */
   readonly notSays?: ReadonlyArray<string>;
+  /** Sentences he says next in the same session; with `varies`, no reply may open as the one before did. */
+  readonly again?: ReadonlyArray<string>;
+  readonly varies?: boolean;
+  /** His clock for the turn (an ISO time and his zone); a fixed Wednesday morning when left out. */
+  readonly now?: { readonly at: string; readonly timeZone: string };
   /** Tools that run in this case, each answering with this text; every other call is refused. */
   readonly answers?: Readonly<Record<string, string>>;
   /** The window he is using; Notepad when left out. */
@@ -591,5 +596,34 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     said: "how long does it take to boil an egg?",
     first: ["none"],
     not: ["assistant_model"],
+  },
+  {
+    id: "time-no-zone",
+    source: 'Voice test 2026-11-08: every reply read out the zone, "on GMT+5"',
+    wake: "Freya",
+    said: "what time is it?",
+    now: { at: "2026-11-08T00:40:00Z", timeZone: "Asia/Karachi" },
+    first: ["none"],
+    notSays: ["GMT", "UTC", "zone", "PKT", "Karachi", "Pakistan"],
+  },
+  {
+    id: "time-asked-again",
+    source:
+      "Voice test 2026-11-08: the same question asked about 12 times got the same sentence each time",
+    wake: "Freya",
+    said: "what time is it?",
+    again: ["what time is it?"],
+    varies: true,
+    now: { at: "2026-11-08T00:40:00Z", timeZone: "Asia/Karachi" },
+    first: ["none"],
+  },
+  {
+    id: "date-when-asked",
+    source: "Control for time-no-zone: the date is still said when he asks for it",
+    wake: "Freya",
+    said: "what's the date today?",
+    now: { at: "2026-11-08T00:40:00Z", timeZone: "Asia/Karachi" },
+    first: ["none"],
+    says: "November",
   },
 ];
