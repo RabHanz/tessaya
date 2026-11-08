@@ -87,7 +87,7 @@ const WAVE_PHASES = ["listening", "speaking", "dictating"];
  * icon, no button, no shadow beyond a hairline. The bars are a canvas that animates only while a live waveform is up.
  */
 export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-:root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
+:root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--woad:#5FB3B3;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
 body{display:flex;align-items:center;justify-content:center}
@@ -100,7 +100,7 @@ body.moving #ok{display:flex}
 #ok:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p.drag::before{content:"";position:absolute;inset:-10px}
 #p.rest{height:6px;width:36px;padding:0;gap:0;border-color:rgba(255,255,255,.4);background:rgba(13,13,17,.78)}
-#p.rest[data-rest=muted]{border-color:var(--red)}
+#p.rest[data-rest=muted]{border-color:var(--amber)}
 #p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
 #p.rest>*{display:none}
 #mk{display:none;width:20px;height:20px;flex:none}
@@ -124,11 +124,12 @@ html.motion-reduced #mk,html.motion-off #mk{animation:none!important}
 #t{white-space:nowrap}
 #t:empty,#c:empty{display:none}
 #c{color:var(--soft);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-#p[data-tone=voice]{--bar:var(--blue)}
-#p[data-tone=write],#p[data-tone=good]{--bar:var(--green)}
+/* Dictation's bars are neutral; Woad, Tessaya's accent, is only for a conversation the wake word started; red only for an error. */
+#p[data-phase=dictating]{--bar:#ececef}
+#p[data-phase=listening],#p[data-phase=thinking],#p[data-phase=speaking],#p[data-phase=working]{--bar:var(--woad)}
 #p[data-tone=good] #t{color:var(--green)}
-#p[data-tone=off] #t{color:var(--red)}
-#p[data-tone=warn]{border-color:var(--amber)}
+#p[data-tone=off] #t{color:var(--soft)}
+#p[data-phase=error]{border-color:var(--red)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){#p{transition:none}#d b{animation:none;opacity:.7}}
 html.motion-reduced #p,html.motion-off #p{transition:none}html.motion-reduced #d b,html.motion-off #d b{animation:none;opacity:.7}
@@ -136,7 +137,7 @@ html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
 .db{display:none;position:relative;box-sizing:border-box;width:18px;height:18px;padding:0;margin:0 -2px;border-radius:50%;border:0;background:transparent;color:var(--soft);cursor:pointer;align-items:center;justify-content:center;flex:none}
 .db::before{content:"";position:absolute;inset:-5px;border-radius:50%}
 .db:hover{background:rgba(255,255,255,.12);color:var(--text)}
-#dv{color:var(--green)}
+#dv{color:var(--text)}
 .db:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p[data-phase=dictating][data-voice=on] .db{display:flex}
 </style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><canvas id="w" width="54" height="16" aria-hidden="true"></canvas><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
@@ -145,7 +146,8 @@ const $=i=>document.getElementById(i),N=${PILL_BANDS},SOUNDS=${JSON.stringify(PI
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
 const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
 const ART={sting:'data:image/webp;base64,${STING_WEBP}',listening:'data:image/webp;base64,${LISTENING_WEBP}',still:'data:image/png;base64,${TRAY_PNG["white-40"]}'};
-const MARKED=['listening','thinking','speaking','working','dictating'];
+// The mark only in a conversation the wake word started, never while he dictates.
+const MARKED=['listening','thinking','speaking','working'];
 let shown='none',stinging=false,want='still',stingTimer=0;
 // One image at a time, swapped for a new element so an animation starts from its first frame; gone when nothing is up.
 const setMark=name=>{if(name===shown)return;shown=name;const m=$('mk'),n=m.cloneNode();if(name==='none')n.removeAttribute('src');else n.src=ART[name];m.replaceWith(n);};
