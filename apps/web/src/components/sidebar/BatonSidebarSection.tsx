@@ -375,7 +375,8 @@ export function BatonSidebarSection(props: {
       request.op === "read" ? cloudRead : request.op === "approve" ? cloudApprove : cloudAct
     )({ environmentId: target, input: request.args as never });
     if (result._tag === "Success") return result.value;
-    const refused = JSON.stringify(result).includes("baton:cloud-approve");
+    // Either spelling: the server names the scope it wants, under its own build's name.
+    const refused = /(baton|tessaya):cloud-approve/.test(JSON.stringify(result));
     return {
       ok: false,
       error: refused

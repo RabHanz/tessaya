@@ -73,16 +73,24 @@ index add1c7990f13c7d123ed0975004a8f24dfaac596..362cbd2deaece592488ab0e4728da254
            expiresAt: DateTime.add(now, {
              milliseconds: DESKTOP_BOOTSTRAP_TOKEN_WINDOW_MS,
 diff --git a/apps/server/src/cli/authScopes.ts b/apps/server/src/cli/authScopes.ts
-index 9294cc1a12ba7b4f84940632177d42110fc3231c..276734a1922edf023385541da4f4d30dfdf1147a 100644
+index 9294cc1a12ba7b4f84940632177d42110fc3231c..0356d7a985d24e5f4732167c3e8089b58837f572 100644
 --- a/apps/server/src/cli/authScopes.ts
 +++ b/apps/server/src/cli/authScopes.ts
-@@ -1,4 +1,4 @@
+@@ -1,11 +1,20 @@
 -import { AuthGrantScope } from "@t3tools/contracts";
-+import { AuthBatonMemorySyncScope, AuthGrantScope, mixesMemorySync } from "@t3tools/contracts";
++import {
++  AuthBatonMemorySyncScope,
++  type AuthGrantScope,
++  AuthGrantScopeNames,
++  mixesMemorySync,
++} from "@t3tools/contracts";
  import { Flag } from "effect/cli";
  
  export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
-@@ -8,4 +8,8 @@ export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
+-  Flag.Literals("scope", AuthGrantScope.literals).pipe(
++  Flag.Literals("scope", AuthGrantScopeNames).pipe(
+     Flag.withDescription(
+       `Authorization scope to grant. Repeat for multiple scopes; replaces the default set: ${defaults.join(", ")}.`,
      ),
      Flag.atLeast(0),
      Flag.map((scopes) => [...new Set(scopes.length > 0 ? scopes : defaults)]),
@@ -92,7 +100,7 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..276734a1922edf023385541da4f4d30d
 +    ),
    );
 diff --git a/packages/contracts/src/auth.test.ts b/packages/contracts/src/auth.test.ts
-index d18a827c14228c32d19c9fbef9511422fc1e706f..f349a56a9a1572dc64ecf56fa0136c029c4649b1 100644
+index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15a3aedb1d 100644
 --- a/packages/contracts/src/auth.test.ts
 +++ b/packages/contracts/src/auth.test.ts
 @@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
@@ -104,7 +112,19 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..f349a56a9a1572dc64ecf56fa0136c02
    AuthEnvironmentScopes,
    AuthEnvironmentScope,
    authScopeRequiredResponse,
-@@ -23,6 +25,13 @@ describe("authorization grants", () => {
+@@ -12,6 +14,11 @@ import {
+   sessionGrantsScope,
+ } from "./auth.ts";
+ 
++const StoredScopes = Schema.fromJsonString(AuthEnvironmentScopes);
++const decodeStoredScopes = Schema.decodeUnknownSync(StoredScopes);
++const encodeStoredScopes = Schema.encodeSync(StoredScopes);
++const decodeGrantScopes = Schema.decodeUnknownSync(AuthGrantScopes);
++
+ describe("authorization grants", () => {
+   it("decodes legacy review credentials without offering them in new grants", () => {
+     const decodeAuthEnvironmentScopes = Schema.decodeSync(AuthEnvironmentScopes);
+@@ -23,6 +30,41 @@ describe("authorization grants", () => {
      expect(AuthStandardClientScopes).not.toContain("review:write");
    });
  
@@ -112,13 +132,50 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..f349a56a9a1572dc64ecf56fa0136c02
 +    const decodeAuthGrantScopes = Schema.decodeUnknownSync(AuthGrantScopes);
 +
 +    expect(() => decodeAuthGrantScopes(["baton:hands-host"])).toThrow();
++    expect(() => decodeAuthGrantScopes(["tessaya:hands-host"])).toThrow();
 +    expect(decodeAuthGrantScopes(["baton:hands"])).toEqual(["baton:hands"]);
++  });
++
++  it("reads a session the next build wrote under the Tessaya scope names, and still writes the old ones", () => {
++    const written = JSON.stringify([
++      "orchestration:read",
++      "tessaya:hands",
++      "tessaya:hands-host",
++      "tessaya:cloud-approve",
++    ]);
++    const scopes = decodeStoredScopes(written);
++
++    expect(scopes).toEqual([
++      "orchestration:read",
++      "baton:hands",
++      "baton:hands-host",
++      "baton:cloud-approve",
++    ]);
++    expect(encodeStoredScopes(scopes)).toBe(
++      JSON.stringify([
++        "orchestration:read",
++        "baton:hands",
++        "baton:hands-host",
++        "baton:cloud-approve",
++      ]),
++    );
++    expect(decodeGrantScopes(["tessaya:memory-sync"])).toEqual(["baton:memory-sync"]);
++    expect(() => decodeGrantScopes(["tessaya:memory-sync", "orchestration:read"])).toThrow();
 +  });
 +
    // Keep the pre-granular vocabulary frozen to expose compatibility regressions.
    const oldScopes = Schema.Array(
      Schema.Literals([
-@@ -48,6 +57,32 @@ describe("authorization grants", () => {
+@@ -39,7 +81,7 @@ describe("authorization grants", () => {
+ 
+   const decodeOldScopes = Schema.decodeUnknownSync(oldScopes);
+ 
+-  it.each(AuthEnvironmentScope.literals)(
++  it.each(AuthEnvironmentScope.to.literals)(
+     "keeps %s permission errors decodable by old clients",
+     (scope) => {
+       const response = authScopeRequiredResponse(scope);
+@@ -48,6 +90,32 @@ describe("authorization grants", () => {
      },
    );
  
@@ -152,13 +209,20 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..f349a56a9a1572dc64ecf56fa0136c02
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..1d48535a23d749062b46ff737c99f6580600365a 100644
+index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bf96f15249e405cb4d9754265640f5fef2dcb3ba 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
-@@ -46,6 +46,26 @@ export const AuthAccessReadScope = "access:read" as const;
+@@ -1,4 +1,5 @@
+ import * as Schema from "effect/Schema";
++import * as SchemaTransformation from "effect/SchemaTransformation";
+ import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
+ 
+ import {
+@@ -46,7 +47,27 @@ export const AuthAccessReadScope = "access:read" as const;
  export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
+-export const AuthEnvironmentScope = Schema.Literals([
 +/**
 + * Approving or denying a cloud task. Never part of the standard client scopes: only the desktop app's own
 + * session and a client the Director paired on purpose with this scope hold it, so no assistant, tool or
@@ -179,10 +243,11 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..1d48535a23d749062b46ff737c99f658
 + * can do only these; it is minted on the server it reads.
 + */
 +export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
- export const AuthEnvironmentScope = Schema.Literals([
++const AuthEnvironmentScopeName = Schema.Literals([
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
-@@ -64,16 +84,30 @@ export const AuthEnvironmentScope = Schema.Literals([
+   AuthSettingsWriteScope,
+@@ -64,16 +85,75 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthAccessWriteScope,
    AuthRelayReadScope,
    AuthRelayWriteScope,
@@ -191,17 +256,64 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..1d48535a23d749062b46ff737c99f658
 +  AuthBatonHandsHostScope,
 +  AuthBatonMemorySyncScope,
  ]);
- export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
+-export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
++/**
++ * Baton was renamed Tessaya. Each `baton:` scope also decodes from its `tessaya:` spelling, and this build still
++ * writes the old one, so a session, token or grant written by the next build (or read after a rollback) still works.
++ */
++const RENAMED_SCOPES = [
++  [AuthBatonCloudApproveScope, "tessaya:cloud-approve"],
++  [AuthBatonHandsScope, "tessaya:hands"],
++  [AuthBatonHandsHostScope, "tessaya:hands-host"],
++  [AuthBatonMemorySyncScope, "tessaya:memory-sync"],
++] as const;
++const SCOPE_OF_RENAMED = new Map<string, string>(
++  RENAMED_SCOPES.map(([current, renamed]) => [renamed, current]),
++);
++const RENAMED_SPELLINGS = RENAMED_SCOPES.map(([, renamed]) => renamed);
++type RenamedSpelling = (typeof RENAMED_SPELLINGS)[number];
++const fromRenamed = <S extends string>(scope: S | RenamedSpelling): S =>
++  (SCOPE_OF_RENAMED.get(scope) ?? scope) as S;
++export type AuthEnvironmentScope = typeof AuthEnvironmentScopeName.Type;
++export const AuthEnvironmentScope = Schema.Literals([
++  ...AuthEnvironmentScopeName.literals,
++  ...RENAMED_SPELLINGS,
++]).pipe(
++  Schema.decodeTo(
++    AuthEnvironmentScopeName,
++    SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
++      decode: fromRenamed,
++      encode: (scope) => scope,
++    }),
++  ),
++);
  export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
  export type AuthEnvironmentScopes = typeof AuthEnvironmentScopes.Type;
  
-+// Only the desktop's own session holds hands-host, so no grant can hand it to another device.
- export const AuthGrantScope = Schema.Literals(
+-export const AuthGrantScope = Schema.Literals(
 -  AuthEnvironmentScope.literals.filter((scope) => scope !== AuthReviewWriteScope),
-+  AuthEnvironmentScope.literals.filter(
++// Only the desktop's own session holds hands-host, so no grant can hand it to another device.
++const AuthGrantScopeName = Schema.Literals(
++  AuthEnvironmentScopeName.literals.filter(
 +    (scope) => scope !== AuthReviewWriteScope && scope !== AuthBatonHandsHostScope,
 +  ),
++);
++type AuthGrantScopeName = typeof AuthGrantScopeName.Type;
++export const AuthGrantScope = Schema.Literals([
++  ...AuthGrantScopeName.literals,
++  ...RENAMED_SPELLINGS,
++]).pipe(
++  Schema.decodeTo(
++    AuthGrantScopeName,
++    // A renamed hands-host still decodes to a scope no grant may carry, so the target rejects it.
++    SchemaTransformation.transform<AuthGrantScopeName, AuthGrantScopeName | RenamedSpelling>({
++      decode: fromRenamed,
++      encode: (scope) => scope,
++    }),
++  ),
  );
++/** The grantable scopes under the names this build writes. */
++export const AuthGrantScopeNames = AuthGrantScopeName.literals;
  export type AuthGrantScope = typeof AuthGrantScope.Type;
 -export const AuthGrantScopes = Schema.Array(AuthGrantScope);
 +/** A memory-sync credential carries that scope alone: it must never double as a client token. */
@@ -215,7 +327,7 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..1d48535a23d749062b46ff737c99f658
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
  
  const legacyScopes = new Set<AuthEnvironmentScope>([
-@@ -109,10 +143,20 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -109,10 +189,20 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
