@@ -20,8 +20,9 @@ pub struct ChunkParams {
 impl ChunkParams {
     /// BATON_CHUNK=min_ms,max_ms,context_ms is for measuring, like BATON_THREADS.
     pub fn from_env() -> Self {
-        // Short pieces, so at release at most the 4 s after the last pause is left to decode (v3: about 0.18 s per s).
-        let mut ms = [1_500, 4_000, 1_000];
+        // Measured on 80 of his clips against Wispr (PR #649): 1 s of context cost 16.5% WER, 3 s with these lengths 5.0%
+        // (whole-clip 3.4%). A pause before release still leaves nothing to decode (`pending_is_quiet`).
+        let mut ms = [6_000, 15_000, 3_000];
         if let Ok(text) = std::env::var("BATON_CHUNK") {
             for (slot, value) in ms.iter_mut().zip(text.split(',')) {
                 *slot = value.trim().parse().unwrap_or(*slot);
