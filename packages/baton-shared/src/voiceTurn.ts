@@ -29,6 +29,8 @@ export interface TurnState {
   readonly open: boolean;
   /** The window closed under something else: the end shows when that finishes. */
   readonly closing: boolean;
+  /** Dictation is being written out or tidied: the waveform sweeps instead of hearing him. */
+  readonly tidying?: boolean;
 }
 
 export type TurnEvent =
@@ -40,7 +42,7 @@ export type TurnEvent =
   | { readonly type: "target"; readonly name: string | null }
   /** The assistant is looking, driving or teaching; null when it stops. */
   | { readonly type: "activity"; readonly label: string | null; readonly caption?: string }
-  | { readonly type: "dictating"; readonly caption: string | null }
+  | { readonly type: "dictating"; readonly caption: string | null; readonly tidying?: boolean }
   | { readonly type: "muted"; readonly on: boolean }
   /** A brief confirmation: "Pasted", "Sent". */
   | { readonly type: "done"; readonly label: string }
@@ -168,6 +170,7 @@ export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
         caption: event.caption,
         open: state.open,
         closing: state.closing,
+        tidying: event.tidying === true,
       };
     case "muted":
       if (event.on) return { ...IDLE_TURN, phase: "muted" };
@@ -252,6 +255,7 @@ export const turnView = (state: TurnState): TurnView | null => {
   const parts = [state.caption, state.detail].filter((part) => part !== null);
   return {
     ...view,
+    ...(state.phase === "dictating" && state.tidying === true ? { wave: "sweep" as const } : {}),
     label: state.label ?? view.label,
     caption: parts.length > 0 ? parts[0]! : null,
   };

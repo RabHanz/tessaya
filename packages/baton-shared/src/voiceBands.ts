@@ -18,6 +18,8 @@ const ONSET_FRAMES = 8;
 const PAUSE_FRAMES = 10;
 /** Below this a band is not adapted up to full height: a silent band stays short. */
 const MIN_PEAK = 0.002;
+/** Nor below this share of the frame's loudest band, so hiss in a band his voice leaves empty stays short too. */
+const TOP_SHARE = 0.05;
 /** Every bar keeps this share of the overall level, so a quiet band still shows he is talking. */
 const BASE = 0.15;
 
@@ -88,8 +90,8 @@ export const frameBands = (frame: Int16Array, rate = 16000, count = PILL_BANDS):
   for (let band = 0; band < count; band += 1) {
     let power = 0;
     for (let k = edges[band]!; k < edges[band + 1]!; k += 1) power += re[k]! ** 2 + im[k]! ** 2;
-    // Hann's coherent gain is 0.5, so a full-scale sine in one bin reads about 1.
-    out[band] = Math.sqrt(power / (edges[band + 1]! - edges[band]!)) / (FFT_SIZE / 4);
+    // Summed, so a wide band holds all its energy; a full-scale sine reads about 1 (Hann's power gain is 0.375).
+    out[band] = Math.sqrt(power) / (FFT_SIZE * Math.sqrt(0.375 / 4));
   }
   return out;
 };
@@ -105,17 +107,19 @@ export const createBandGain = (count = PILL_BANDS) => {
   let quiet = PAUSE_FRAMES;
   return (bands: Float32Array, gate: number): Float32Array => {
     const out = new Float32Array(count);
-    if (gate <= 0) {
+    if (!(gate > 0)) {
       quiet += 1;
       if (quiet >= PAUSE_FRAMES) open = 0;
       return out;
     }
     quiet = 0;
     open += 1;
-    const onset = Math.min(1, Math.max(0, 2 - open / ONSET_FRAMES)) * Math.max(...bands);
+    let top = 0;
+    for (let i = 0; i < count; i += 1) top = Math.max(top, bands[i] ?? 0);
+    const onset = Math.min(1, Math.max(0, 2 - open / ONSET_FRAMES)) * top;
     for (let i = 0; i < count; i += 1) {
       const value = bands[i] ?? 0;
-      peaks[i] = Math.max(value, peaks[i]! * PEAK_FALL, MIN_PEAK);
+      peaks[i] = Math.max(value, peaks[i]! * PEAK_FALL, MIN_PEAK, top * TOP_SHARE);
       out[i] = Math.min(1, gate * (BASE + (1 - BASE) * (value / Math.max(peaks[i]!, onset))));
     }
     return out;

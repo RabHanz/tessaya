@@ -53,6 +53,7 @@ import {
   turnView,
   type TurnEvent,
   type TurnState,
+  type WaveMode,
 } from "@t3tools/baton-shared/voiceTurn";
 import { PILL_BANDS, createBandGain, frameBands } from "@t3tools/baton-shared/voiceBands";
 
@@ -72,6 +73,8 @@ const NEAR_PX = 120;
 const BEAT_TIMEOUT_MS = 700;
 /** Below this the microphone is dead rather than quiet. */
 const DEAD_LEVEL = 0.03;
+/** Baton's own voice level reaches the bars at most this often. */
+const SPEECH_MS = 20;
 /** The closing sound plays out before the window hides. */
 const CLOSE_MS = 280;
 
@@ -148,28 +151,34 @@ let shown='none',stinging=false,want='still',stingTimer=0;
 const setMark=name=>{if(name===shown)return;shown=name;const m=$('mk'),n=m.cloneNode();if(name==='none')n.removeAttribute('src');else n.src=ART[name];m.replaceWith(n);};
 // The waveform: one bar per band, low bands at the centre. A message only raises a bar's target; the frame loop
 // rises to it fast and falls back slowly, and runs only while a live waveform is up and motion is allowed.
-const cv=$('w'),g=cv.getContext('2d'),W=54,H=16,dpr=Math.max(1,Math.round(devicePixelRatio||1));cv.width=W*dpr;cv.height=H*dpr;g.scale(dpr,dpr);
+const cv=$('w'),g=cv.getContext('2d'),W=54,H=16,RIPPLE_MS=2000,SWEEP_MS=8000;
+// Sharp at any scale, fractional ones too; refitted when the window moves to a display of another scale.
+const fit=()=>{const r=devicePixelRatio||1;cv.width=Math.round(W*r);cv.height=Math.round(H*r);g.setTransform(r,0,0,r,0,0);if(mode!=='off'&&!raf)drawBars(null,0);matchMedia('(resolution: '+r+'dppx)').addEventListener('change',fit,{once:true});};
 const slot=Array.from({length:N},(_,b)=>Math.round((N-1)/2+(b%2?1:-1)*(Math.floor(b/2)+.5)));
 const taper=slot.map(x=>{const d=Math.abs(x-(N-1)/2)/((N-1)/2);return 1-.35*d*d;});
 const tgt=new Float32Array(N),lvl=new Float32Array(N);
-let ctx=null,mode='off',raf=0,last=0,color='#fff',bw=2.5;
+let ctx=null,mode='off',raf=0,last=0,since=0,color='#fff',bw=2.5,look='';
 const take=v=>{if(mode!=='live'||isCalm())return;const t=performance.now();for(let i=0;i<N;i++){const x=v.length===1?v[0]/255*(.45+.55*Math.abs(Math.sin(t/90+i*1.9))):v[i]/255;if(x>tgt[i])tgt[i]=x;}kick();};
-const paint=t=>{raf=0;if(mode==='off'||isCalm())return;const dt=last?Math.min(64,t-last):16;let e=0;for(let i=0;i<N;i++)e+=lvl[i]+tgt[i];
- // About 60 fps while he talks, 30 while only the listening ripple moves, whatever the display's rate.
- if(last&&dt<(e>.02?15:30)){raf=requestAnimationFrame(paint);return;}last=t;e=0;
- const up=1-Math.exp(-dt/22),down=1-Math.exp(-dt/170);
- for(let i=0;i<N;i++){lvl[i]+=(tgt[i]-lvl[i])*(tgt[i]>lvl[i]?up:down);tgt[i]=0;e+=lvl[i];}
+// Up to 60 fps while something moves: a ripple for the first 2 s, his voice, or the tidy sweep (bounded). Settled, it draws the rest once and stops.
+const paint=t=>{raf=0;if(mode==='off')return;if(isCalm()){lvl.fill(0);drawBars(null,0);return;}
+ const dt=last?Math.min(64,t-last):16;if(last&&dt<15){raf=requestAnimationFrame(paint);return;}last=t;
+ const up=1-Math.exp(-dt/22),down=1-Math.exp(-dt/170);let e=0,pending=0;
+ for(let i=0;i<N;i++){pending+=tgt[i];lvl[i]+=(tgt[i]-lvl[i])*(tgt[i]>lvl[i]?up:down);tgt[i]=0;e+=lvl[i];}
+ const age=t-since;
+ if(mode==='sweep'?age>SWEEP_MS:age>RIPPLE_MS&&pending===0&&e<.005*N){lvl.fill(0);drawBars(null,0);return;}
  drawBars(t,e/N);raf=requestAnimationFrame(paint);};
-const drawBars=(t,e)=>{g.clearRect(0,0,W,H);g.fillStyle=color;g.shadowColor=color;g.shadowBlur=mode==='live'&&e>.04?Math.min(8,14*e):0;const step=W/N;
+const drawBars=(t,e)=>{g.clearRect(0,0,W,H);g.fillStyle=color;g.shadowColor=color;g.shadowBlur=mode==='live'&&e>.04?Math.min(8,14*e):0;const step=W/N,fade=t===null?0:Math.max(0,1-(t-since)/RIPPLE_MS);
  for(let b=0;b<N;b++){const x=slot[b];let rest=.16,alpha=1;
-  if(t!==null&&mode==='live')rest=.16+.07*Math.sin(t/240-x*.6);
+  if(mode==='live'&&fade>0)rest=.16+.07*fade*Math.sin(t/240-x*.6);
   // Tidying: the bars lie low and a slow light runs across them, left to right.
   if(mode==='sweep'){rest=.2;alpha=t===null?.6:.3+.7*Math.max(0,Math.cos(Math.PI*(x/(N-1)-(t%1500)/1500*1.6+.3)))**3;}
   const h=Math.max(2,(rest+(1-rest)*lvl[b]*taper[b])*H);g.globalAlpha=alpha;g.beginPath();g.roundRect(x*step+(step-bw)/2,(H-h)/2,bw,h,bw/2);g.fill();}
  g.globalAlpha=1;};
 const kick=()=>{if(!raf&&mode!=='off'&&!isCalm()){last=0;raf=requestAnimationFrame(paint);}};
 // Reduced motion: drawn once, still, and no loop.
-const setMode=m=>{mode=m;color=getComputedStyle($('p')).getPropertyValue('--bar').trim()||'#fff';bw=$('p').dataset.phase==='speaking'?3:2.5;if(m==='off'){lvl.fill(0);tgt.fill(0);cancelAnimationFrame(raf);raf=0;return;}if(isCalm())drawBars(null,0);else kick();};
+const setMode=m=>{const p=$('p'),key=p.dataset.phase+'/'+p.dataset.tone;if(key!==look){look=key;color=getComputedStyle(p).getPropertyValue('--bar').trim()||'#fff';bw=p.dataset.phase==='speaking'?3:2.5;}
+ if(m!==mode)since=performance.now();mode=m;if(m==='off'){lvl.fill(0);tgt.fill(0);cancelAnimationFrame(raf);raf=0;return;}if(isCalm()){lvl.fill(0);drawBars(null,0);}else kick();};
+fit();
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 const ipcRenderer=window.pillIpc||{send(){}};
 ipcRenderer.onBands?.(take);
@@ -203,8 +212,7 @@ let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass)
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
  show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':isCalm()||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
-  // shortcut: tidying is told by the caption DesktopBatonVoice shows for it; a phase of its own would be firmer.
-  setMode(!wave?'off':v.phase==='dictating'&&/^(Tidying|Writing it out)/.test(v.caption||'')?'sweep':v.wave==='live'?'live':'off');
+  setMode(!wave||v.wave==='flat'?'off':v.wave);
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
   p.dataset.voice=v.voice?'on':'off';
@@ -331,6 +339,9 @@ export const createVoicePill = (input: {
   let silentTimer: ReturnType<typeof setTimeout> | null = null;
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
   let loudest = 0;
+  /** The view's waveform: bands are worked out and sent only while it is live. */
+  let wave: WaveMode = "flat";
+  let lastSpeech = 0;
   let releaseEscape: (() => void) | null = null;
   let why: "sleeping" | "muted" | "off" = "sleeping";
   const spotsFile = NodePath.join(input.stateDir, "baton-pill.json");
@@ -695,6 +706,7 @@ export const createVoicePill = (input: {
     if (silentTimer !== null) clearTimeout(silentTimer);
     silentTimer = null;
     const view = turnView(state);
+    wave = view?.wave ?? "flat";
     if (view === null) {
       setEscape(false);
       if (previous.phase !== "idle") {
@@ -747,14 +759,22 @@ export const createVoicePill = (input: {
   };
 
   const bandGain = createBandGain();
-  /** Bars as bytes over IPC, one message a microphone frame (50 a second); a single value is a level without bands. */
+  const bandBytes = new Uint8Array(PILL_BANDS);
+  const levelByte = new Uint8Array(1);
+  /** The bars are wanted: a live waveform on a visible pill, with motion on (the page draws them still otherwise). */
+  const barsWanted = () =>
+    wave === "live" &&
+    window !== null &&
+    !window.isDestroyed() &&
+    window.isVisible() &&
+    !window.webContents.isLoading() &&
+    (input.look?.().motion ?? "full") === "full";
+  /** Bars as bytes over IPC, one message a microphone frame (50 a second); one byte is a level without bands. */
   const sendBars = (bars: ArrayLike<number>) => {
-    const target = window;
-    if (target === null || target.isDestroyed() || target.webContents.isLoading()) return;
-    target.webContents.send(
-      "baton-pill:bands",
-      Uint8Array.from(bars, (v) => Math.round(Math.max(0, Math.min(1, v)) * 255)),
-    );
+    const out = bars.length === 1 ? levelByte : bandBytes;
+    for (let i = 0; i < out.length; i += 1)
+      out[i] = Math.round(Math.max(0, Math.min(1, bars[i] ?? 0)) * 255);
+    window?.webContents.send("baton-pill:bands", out);
   };
 
   const closeIfLast = () => {
@@ -896,11 +916,14 @@ export const createVoicePill = (input: {
     cue: (name) => sound(name),
     micLevel: (value, shown = value, frame) => {
       loudest = Math.max(loudest, value);
-      if (state.phase !== "listening" && state.phase !== "dictating") return;
+      if ((state.phase !== "listening" && state.phase !== "dictating") || !barsWanted()) return;
       sendBars(frame === undefined ? [shown] : bandGain(frameBands(frame), shown));
     },
     speechLevel: (value) => {
-      if (state.phase === "speaking") sendBars([value]);
+      const now = performance.now();
+      if (state.phase !== "speaking" || now - lastSpeech < SPEECH_MS || !barsWanted()) return;
+      lastSpeech = now;
+      sendBars([value]);
     },
     warm: build,
     setRest: (next) => {
@@ -920,7 +943,10 @@ export const createVoicePill = (input: {
         const display = Electron.screen.getDisplayMatching(window.getBounds());
         return window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
       }
-      if (window !== null && !window.isDestroyed()) window.hide();
+      if (window !== null && !window.isDestroyed()) {
+        call("window.pill.hide()");
+        window.hide();
+      }
       stopHitTest();
       if (input.rest() && state.phase === "idle") {
         raise();

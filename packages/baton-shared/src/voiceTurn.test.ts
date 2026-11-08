@@ -147,6 +147,13 @@ describe("the pill while a window is open", () => {
 
   it("holds Dictating through each chunk, and leaves after", () => {
     let state = play([...open, { type: "dictating", caption: "Say stop dictating" }]);
+    expect(turnView(state)?.wave).toBe("live");
+    // Writing it out or tidying sweeps, so the main process stops reading bands from the microphone.
+    const tidying = reduceTurn(state, { type: "dictating", caption: "Tidying…", tidying: true });
+    expect(turnView(tidying)?.wave).toBe("sweep");
+    expect(turnView(reduceTurn(tidying, { type: "dictating", caption: "Pasted" }))?.wave).toBe(
+      "live",
+    );
     state = play(
       [
         { type: "heard", text: "Dear Sam" },
