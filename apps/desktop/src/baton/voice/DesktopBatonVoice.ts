@@ -1789,7 +1789,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const app = (await target) ?? { exe: "", title: "" };
     const turnId = openTurn;
     openTurn = null;
-    if (app.window !== undefined) showDictation("Tidying…");
+    if (app.window !== undefined) showDictation("Tidying…", true);
     const result = await oneShot.flush(app, options);
     if (result.status === "empty") return showDictation(null);
     lastDictation = result.text;
@@ -3037,8 +3037,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
   };
 
-  const showDictation = (caption: string | null) => {
-    pill.on({ type: "dictating", caption }, { silent: !settings.holdKeyCues });
+  const showDictation = (caption: string | null, tidying = false) => {
+    pill.on({ type: "dictating", caption, tidying }, { silent: !settings.holdKeyCues });
     render();
   };
   // Esc is taken only while the microphone is open, so it stays his the rest of the time.
@@ -3304,7 +3304,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       showDictation("Esc twice discards");
-    } else if (event.ev === "transcribing") showDictation("Writing it out");
+    } else if (event.ev === "transcribing") showDictation("Writing it out", true);
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       recordings.shift();
@@ -4058,7 +4058,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       onLevel: (frame) => {
         const level = frameLevel(frame);
         micNow = level;
-        pill.micLevel(level, pillGain(level));
+        pill.micLevel(level, pillGain(level), frame);
         silence.feed(level, Date.now());
         // The voice core hears nothing while the helper records: a spoken stop or cancel is heard here instead.
         if (keyRecording()) hearKeyCommand(frame, level);

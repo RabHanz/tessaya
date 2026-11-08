@@ -53,7 +53,9 @@ import {
   turnView,
   type TurnEvent,
   type TurnState,
+  type WaveMode,
 } from "@t3tools/baton-shared/voiceTurn";
+import { PILL_BANDS, createBandGain, frameBands } from "@t3tools/baton-shared/voiceBands";
 
 const WIDTH = 420;
 // Room above the capsule for the Move pill check mark; the margins take it back, so the capsule sits where it did.
@@ -69,9 +71,10 @@ const FAR_HIT_MS = 250;
 const NEAR_PX = 120;
 /** No heartbeat from the page for this long means the release was lost. */
 const BEAT_TIMEOUT_MS = 700;
-const LEVEL_MS = 80;
 /** Below this the microphone is dead rather than quiet. */
 const DEAD_LEVEL = 0.03;
+/** Baton's own voice level reaches the bars at most this often. */
+const SPEECH_MS = 20;
 /** The closing sound plays out before the window hides. */
 const CLOSE_MS = 280;
 
@@ -81,7 +84,7 @@ const WAVE_PHASES = ["listening", "speaking", "dictating"];
 /**
  * The pill: black in every theme, 24 px tall, nothing it does not need. A live waveform while he or
  * Baton is speaking; otherwise one short word; soft text only for an error or where words go. No
- * icon, no button, no shadow beyond a hairline. The bars move when a level arrives, not on a timer.
+ * icon, no button, no shadow beyond a hairline. The bars are a canvas that animates only while a live waveform is up.
  */
 export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
 :root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
@@ -106,17 +109,14 @@ body.moving #ok{display:flex}
 #p:hover #mk[src]{animation:br 2.6s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){#mk{animation:none!important}}
 html.motion-reduced #mk,html.motion-off #mk{animation:none!important}
-#w{display:none;align-items:center;gap:2px;height:14px;flex:none}
-#w i{display:block;width:2px;height:12px;border-radius:1px;background:var(--bar,#fff);transform:scaleY(.17);transition:transform .09s linear;will-change:transform}
-#p[data-wave=on] #w{display:flex}
+#w{display:none;width:54px;height:16px;flex:none}
+#p[data-wave=on] #w{display:block}
 #d{display:none;align-items:center;gap:4px;height:14px;flex:none}
 #d b{display:block;width:4px;height:4px;border-radius:50%;background:#fff;opacity:.25;animation:step 1350ms steps(1,end) infinite}
 #d b:nth-child(2){animation-delay:450ms}
 #d b:nth-child(3){animation-delay:900ms}
 @keyframes step{0%{opacity:1}33.33%{opacity:.25}100%{opacity:.25}}
 #p[data-dots=on] #d{display:flex}
-#p[data-phase=speaking] #w{gap:3px}
-#p[data-phase=speaking] #w i{width:3px;border-radius:2px}
 #st{display:none;color:var(--soft);font-weight:500;padding-left:2px;border-left:1px solid var(--line);padding-left:7px}
 #p[data-phase=speaking] #st,#p[data-phase=working] #st{display:block}
 /* While Tessaya works the pill is its only sign on screen, and a click on it stops the work. */
@@ -130,8 +130,8 @@ html.motion-reduced #mk,html.motion-off #mk{animation:none!important}
 #p[data-tone=off] #t{color:var(--red)}
 #p[data-tone=warn]{border-color:var(--amber)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-@media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
-html.motion-reduced #p,html.motion-reduced #w i,html.motion-off #p,html.motion-off #w i{transition:none}html.motion-reduced #d b,html.motion-off #d b{animation:none;opacity:.7}
+@media (prefers-reduced-motion:reduce){#p{transition:none}#d b{animation:none;opacity:.7}}
+html.motion-reduced #p,html.motion-off #p{transition:none}html.motion-reduced #d b,html.motion-off #d b{animation:none;opacity:.7}
 html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
 .db{display:none;position:relative;box-sizing:border-box;width:18px;height:18px;padding:0;margin:0 -2px;border-radius:50%;border:0;background:transparent;color:var(--soft);cursor:pointer;align-items:center;justify-content:center;flex:none}
 .db::before{content:"";position:absolute;inset:-5px;border-radius:50%}
@@ -139,9 +139,9 @@ html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
 #dv{color:var(--green)}
 .db:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p[data-phase=dictating][data-voice=on] .db{display:flex}
-</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><span id="w"></span><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
+</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><canvas id="w" width="54" height="16" aria-hidden="true"></canvas><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
 <script>
-const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
+const $=i=>document.getElementById(i),N=${PILL_BANDS},SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
 const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
 const ART={sting:'data:image/webp;base64,${STING_WEBP}',listening:'data:image/webp;base64,${LISTENING_WEBP}',still:'data:image/png;base64,${TRAY_PNG["white-40"]}'};
@@ -149,12 +149,39 @@ const MARKED=['listening','thinking','speaking','working','dictating'];
 let shown='none',stinging=false,want='still',stingTimer=0;
 // One image at a time, swapped for a new element so an animation starts from its first frame; gone when nothing is up.
 const setMark=name=>{if(name===shown)return;shown=name;const m=$('mk'),n=m.cloneNode();if(name==='none')n.removeAttribute('src');else n.src=ART[name];m.replaceWith(n);};
-const bars=Array.from({length:BARS},()=>{const b=document.createElement('i');$('w').appendChild(b);return b;});
-const shape=bars.map((_,i)=>{const h=Math.abs((BARS-1)/2-i);return Math.max(.25,1-h*h/18);});
-let ctx=null,live=false,tick=0;
-const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=isCalm()?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.transform='scaleY('+((2+10*shape[i]*n*wobble)/12).toFixed(3)+')';});};
+// The waveform: one bar per band, low bands at the centre. A message only raises a bar's target; the frame loop
+// rises to it fast and falls back slowly, and runs only while a live waveform is up and motion is allowed.
+const cv=$('w'),g=cv.getContext('2d'),W=54,H=16,RIPPLE_MS=2000,SWEEP_MS=8000;
+// Sharp at any scale, fractional ones too; refitted when the window moves to a display of another scale.
+const fit=()=>{const r=devicePixelRatio||1;cv.width=Math.round(W*r);cv.height=Math.round(H*r);g.setTransform(r,0,0,r,0,0);if(mode!=='off'&&!raf)drawBars(null,0);matchMedia('(resolution: '+r+'dppx)').addEventListener('change',fit,{once:true});};
+const slot=Array.from({length:N},(_,b)=>Math.round((N-1)/2+(b%2?1:-1)*(Math.floor(b/2)+.5)));
+const taper=slot.map(x=>{const d=Math.abs(x-(N-1)/2)/((N-1)/2);return 1-.35*d*d;});
+const tgt=new Float32Array(N),lvl=new Float32Array(N);
+let ctx=null,mode='off',raf=0,last=0,since=0,color='#fff',bw=2.5,look='';
+const take=v=>{if(mode!=='live'||isCalm())return;const t=performance.now();for(let i=0;i<N;i++){const x=v.length===1?v[0]/255*(.45+.55*Math.abs(Math.sin(t/90+i*1.9))):v[i]/255;if(x>tgt[i])tgt[i]=x;}kick();};
+// Up to 60 fps while something moves: a ripple for the first 2 s, his voice, or the tidy sweep (bounded). Settled, it draws the rest once and stops.
+const paint=t=>{raf=0;if(mode==='off')return;if(isCalm()){lvl.fill(0);drawBars(null,0);return;}
+ const dt=last?Math.min(64,t-last):16;if(last&&dt<15){raf=requestAnimationFrame(paint);return;}last=t;
+ const up=1-Math.exp(-dt/22),down=1-Math.exp(-dt/170);let e=0,pending=0;
+ for(let i=0;i<N;i++){pending+=tgt[i];lvl[i]+=(tgt[i]-lvl[i])*(tgt[i]>lvl[i]?up:down);tgt[i]=0;e+=lvl[i];}
+ const age=t-since;
+ if(mode==='sweep'?age>SWEEP_MS:age>RIPPLE_MS&&pending===0&&e<.005*N){lvl.fill(0);drawBars(null,0);return;}
+ drawBars(t,e/N);raf=requestAnimationFrame(paint);};
+const drawBars=(t,e)=>{g.clearRect(0,0,W,H);g.fillStyle=color;g.shadowColor=color;g.shadowBlur=mode==='live'&&e>.04?Math.min(8,14*e):0;const step=W/N,fade=t===null?0:Math.max(0,1-(t-since)/RIPPLE_MS);
+ for(let b=0;b<N;b++){const x=slot[b];let rest=.16,alpha=1;
+  if(mode==='live'&&fade>0)rest=.16+.07*fade*Math.sin(t/240-x*.6);
+  // Tidying: the bars lie low and a slow light runs across them, left to right.
+  if(mode==='sweep'){rest=.2;alpha=t===null?.6:.3+.7*Math.max(0,Math.cos(Math.PI*(x/(N-1)-(t%1500)/1500*1.6+.3)))**3;}
+  const h=Math.max(2,(rest+(1-rest)*lvl[b]*taper[b])*H);g.globalAlpha=alpha;g.beginPath();g.roundRect(x*step+(step-bw)/2,(H-h)/2,bw,h,bw/2);g.fill();}
+ g.globalAlpha=1;};
+const kick=()=>{if(!raf&&mode!=='off'&&!isCalm()){last=0;raf=requestAnimationFrame(paint);}};
+// Reduced motion: drawn once, still, and no loop.
+const setMode=m=>{const p=$('p'),key=p.dataset.phase+'/'+p.dataset.tone;if(key!==look){look=key;color=getComputedStyle(p).getPropertyValue('--bar').trim()||'#fff';bw=p.dataset.phase==='speaking'?3:2.5;}
+ if(m!==mode)since=performance.now();mode=m;if(m==='off'){lvl.fill(0);tgt.fill(0);cancelAnimationFrame(raf);raf=0;return;}if(isCalm()){lvl.fill(0);drawBars(null,0);}else kick();};
+fit();
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 const ipcRenderer=window.pillIpc||{send(){}};
+ipcRenderer.onBands?.(take);
 const isClick=${isPillClick.toString()};
 let drag=false,beat=0,down=null;
 const grab=$('p'),moving=()=>document.body.classList.contains('moving');
@@ -185,16 +212,15 @@ let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass)
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
  show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':isCalm()||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
-  live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
+  setMode(!wave||v.wave==='flat'?'off':v.wave);
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
   p.dataset.voice=v.voice?'on':'off';
   $('c').textContent=v.phase==='ended'?'Say the wake word':v.phase==='dictating'?(v.caption||''):(v.caption&&/^to /.test(v.caption)?v.caption:'');},
- rest(why){const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
- level(n){if(live&&!isCalm())draw(Math.min(1,n));},
- hide(){$('p').className='';$('p').dataset.mark='off';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},
+ rest(why){const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';setMode('off');},
+ hide(){$('p').className='';$('p').dataset.mark='off';setMode('off');clearTimeout(stingTimer);stinging=false;setMark('none');},
  sting(){if(isCalm())return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
- move(){const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
+ move(){const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';setMode('off');p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
  moving(on){document.body.classList.toggle('moving',on);if(on)$('ok').focus();sendRect();},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);return ctx.state+':'+SOUNDS[name].length;},
@@ -222,7 +248,7 @@ export interface VoicePill {
   readonly on: (event: TurnEvent, options?: { readonly silent?: boolean }) => void;
   /** His microphone, while listening or dictating. */
   /** `value` is the raw level (a dead mic is told by it); `shown`, what the bars draw (`createSpeechGain`). */
-  readonly micLevel: (value: number, shown?: number) => void;
+  readonly micLevel: (value: number, shown?: number, frame?: Int16Array) => void;
   /** A short sound for a lesson or a drive (start, a step done, waiting, an error, finished); honours the cues setting. */
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** Baton's own voice, while it speaks. */
@@ -312,8 +338,10 @@ export const createVoicePill = (input: {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let silentTimer: ReturnType<typeof setTimeout> | null = null;
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastLevel = 0;
   let loudest = 0;
+  /** The view's waveform: bands are worked out and sent only while it is live. */
+  let wave: WaveMode = "flat";
+  let lastSpeech = 0;
   let releaseEscape: (() => void) | null = null;
   let why: "sleeping" | "muted" | "off" = "sleeping";
   const spotsFile = NodePath.join(input.stateDir, "baton-pill.json");
@@ -678,6 +706,7 @@ export const createVoicePill = (input: {
     if (silentTimer !== null) clearTimeout(silentTimer);
     silentTimer = null;
     const view = turnView(state);
+    wave = view?.wave ?? "flat";
     if (view === null) {
       setEscape(false);
       if (previous.phase !== "idle") {
@@ -729,11 +758,23 @@ export const createVoicePill = (input: {
     }
   };
 
-  const push = (value: number) => {
-    const now = performance.now();
-    if (now - lastLevel < LEVEL_MS) return;
-    lastLevel = now;
-    call(`window.pill.level(${value.toFixed(2)})`);
+  const bandGain = createBandGain();
+  const bandBytes = new Uint8Array(PILL_BANDS);
+  const levelByte = new Uint8Array(1);
+  /** The bars are wanted: a live waveform on a visible pill, with motion on (the page draws them still otherwise). */
+  const barsWanted = () =>
+    wave === "live" &&
+    window !== null &&
+    !window.isDestroyed() &&
+    window.isVisible() &&
+    !window.webContents.isLoading() &&
+    (input.look?.().motion ?? "full") === "full";
+  /** Bars as bytes over IPC, one message a microphone frame (50 a second); one byte is a level without bands. */
+  const sendBars = (bars: ArrayLike<number>) => {
+    const out = bars.length === 1 ? levelByte : bandBytes;
+    for (let i = 0; i < out.length; i += 1)
+      out[i] = Math.round(Math.max(0, Math.min(1, bars[i] ?? 0)) * 255);
+    window?.webContents.send("baton-pill:bands", out);
   };
 
   const closeIfLast = () => {
@@ -873,12 +914,16 @@ export const createVoicePill = (input: {
   return {
     on,
     cue: (name) => sound(name),
-    micLevel: (value, shown = value) => {
+    micLevel: (value, shown = value, frame) => {
       loudest = Math.max(loudest, value);
-      if (state.phase === "listening" || state.phase === "dictating") push(shown);
+      if ((state.phase !== "listening" && state.phase !== "dictating") || !barsWanted()) return;
+      sendBars(frame === undefined ? [shown] : bandGain(frameBands(frame), shown));
     },
     speechLevel: (value) => {
-      if (state.phase === "speaking") push(value);
+      const now = performance.now();
+      if (state.phase !== "speaking" || now - lastSpeech < SPEECH_MS || !barsWanted()) return;
+      lastSpeech = now;
+      sendBars([value]);
     },
     warm: build,
     setRest: (next) => {
@@ -898,7 +943,10 @@ export const createVoicePill = (input: {
         const display = Electron.screen.getDisplayMatching(window.getBounds());
         return window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
       }
-      if (window !== null && !window.isDestroyed()) window.hide();
+      if (window !== null && !window.isDestroyed()) {
+        call("window.pill.hide()");
+        window.hide();
+      }
       stopHitTest();
       if (input.rest() && state.phase === "idle") {
         raise();
