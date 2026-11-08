@@ -14,6 +14,11 @@ const ACTION: Readonly<Record<string, BindableAction>> = {
   dictation: "dictate",
   ask: "ask",
   clear: "clear_screen",
+  // Every row of the page: a button bound to any of these used to save and then do nothing (0.1.79).
+  direct: "direct_session",
+  hold: "dictate_hold",
+  toggle: "dictate_toggle",
+  pasteLast: "paste_last",
 };
 
 const trigger = (input: BindingInput): Trigger | null => {

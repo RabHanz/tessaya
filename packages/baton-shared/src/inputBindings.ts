@@ -18,6 +18,10 @@ export const BINDABLE_ACTIONS = [
   "dictate",
   "ask",
   "clear_screen",
+  "direct_session",
+  "dictate_hold",
+  "dictate_toggle",
+  "paste_last",
 ] as const;
 export type BindableAction = (typeof BINDABLE_ACTIONS)[number];
 

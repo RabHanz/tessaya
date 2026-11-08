@@ -2497,6 +2497,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         requestDictation();
         return "The speech model is not downloaded yet; I started fetching it.";
       }
+      // A key or button dictation is the same dictation: the tool ends it too, and says so truthfully.
+      if (!on && keyRecording()) {
+        sidecar.finish();
+        return "Dictation has stopped; what he said is being written out and pasted now.";
+      }
+      if (!on && !dictatingByVoice) return "No dictation is running.";
       // The same dictating mode as "Tessaya, dictate": his next words are typed, not answered.
       if (core === null) return "Dictation needs the voice to be on.";
       const dictating = await core.setDictation(on);
@@ -3109,22 +3115,45 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   let mouseHookReady = false;
   /** A mouse binding fired in the sidecar: the same things the keys do. */
-  const onBinding = (id: string) => {
-    const tray = (label: string) =>
-      (
-        input.extras?.menuItems().find((item) => item.label === label)?.click as
-          | (() => void)
-          | undefined
-      )?.();
-    if (id === "wake") loop?.activate("wake");
-    else if (id === "mute") toggleMute();
-    else if (id === "stop") {
-      pill.on({ type: "dismissed" });
-      input.onDismiss?.();
-    } else if (id === "dictation") sidecar?.toggle();
-    else if (id === "ask") tray("Ask Tessaya…");
-    else if (id === "clear") tray("Clear the screen");
+  /** The keys' handlers, set where they are built below; a mouse binding runs the same one. */
+  let bindingHandlers: Readonly<Record<string, () => void>> | null = null;
+  /**
+   * A mouse button bound on the Keyboard and mouse page: the same action as its key, through the same handler, so a
+   * button never saves and then does nothing (the middle button for hands-free, 0.1.79). Hold ends on release.
+   */
+  const onBinding = (id: string, up = false) => {
+    if (id === "hold") return up ? holdDictationUp() : holdDictationDown();
+    if (up) return;
+    if (id === "toggle") return toggleDictation();
+    if (id === "stop") pill.on({ type: "dismissed" });
+    bindingHandlers?.[id]?.();
   };
+  /** The key dictation is set up here: his choice of Tessaya's dictation and the speech model on disk. */
+  const keyDictationReady = (): boolean => {
+    if (settings.dictation !== "baton" || binary === null) return false;
+    // The first press is the opt-in: it fetches the model, and the next one records.
+    if (parakeetPath === null) {
+      requestDictation();
+      return false;
+    }
+    return true;
+  };
+  /** The helper is recording a key or button dictation (its Esc is held while it does). */
+  const keyRecording = () => releaseRecordingEscape !== null;
+  /**
+   * One dictation, whichever key, button or word started it: a second press, while "Tessaya, dictate" holds its words,
+   * is that dictation's ✓, never a second recording beside it.
+   */
+  const toggleDictation = () => {
+    if (dictatingByVoice) return endVoiceDictation(true);
+    if (keyRecording()) return sidecar?.finish();
+    if (keyDictationReady()) sidecar?.start();
+  };
+  const holdDictationDown = () => {
+    if (dictatingByVoice) return endVoiceDictation(true);
+    if (!keyRecording() && keyDictationReady()) sidecar?.start();
+  };
+  const holdDictationUp = () => sidecar?.finish();
   /** How long the sidecar has been reading the speech model, from its "loading" lines (0 when it is not). */
   let speechLoadMs = 0;
   /** What Tessaya plays, against what the microphone hears, so his voice over hers can be told apart. */
@@ -3135,7 +3164,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       speechLoadMs = event.elapsedMs;
       return;
     }
-    if (event.ev === "binding") return onBinding(event.id);
+    if (event.ev === "binding") return onBinding(event.id, event.up === true);
     if (event.ev === "configured") mouseHookReady = event.mouse === true;
     setRecording(recordingAfter(event.ev, releaseRecordingEscape !== null));
     sidecarBusy = busyAfter(event.ev, sidecarBusy);
@@ -3334,6 +3363,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     onDismiss: () => {
       // Spoken dictation ends only by its ✓, ✕, Esc or "stop dictation", never a stray click on the pill.
       if (dictatingByVoice || undoDiscard()) return;
+      // A click on the pill while a key dictation records ends it, written out: never the pill gone and the mic on.
+      if (keyRecording()) return void sidecar?.finish();
       pill.on({ type: "dismissed" });
       loop?.activate("dismiss");
       input.onDismiss?.();
@@ -3399,6 +3430,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const stateTurn = (next: VoiceState, target: string | null): TurnEvent | null => {
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
+    if (dictatingByVoice !== wasDictating) {
+      // The helper hands its key presses to this dictation while it runs, and a key recording ends as it starts.
+      sidecar?.voice(dictatingByVoice);
+      if (dictatingByVoice && keyRecording()) sidecar?.finish();
+    }
     if (dictatingByVoice) {
       // Where he is as dictation starts; the turn that started it may have used the wake's.
       if (!wasDictating) {
@@ -6746,16 +6782,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     pill.on({ type: "muted", on: loop?.isMuted() ?? false });
   };
   let registered: string[] = [];
-  const handlers: Readonly<Record<string, () => void>> = {
+  const handlers: Readonly<Record<string, () => void>> = (bindingHandlers = {
     wake: () => loop?.activate("wake"),
     direct: () => loop?.activate("toggle_direct_session"),
     mute: () => toggleMute(),
-    dictation: () => {
-      if (settings.dictation !== "baton" || binary === null) return;
-      // The first press is the opt-in: it fetches the model, and the next one records.
-      if (parakeetPath === null) requestDictation();
-      else sidecar?.toggle();
-    },
+    dictation: () => toggleDictation(),
     stop: () => {
       input.onDismiss?.();
       const stop = input.extras
@@ -6774,7 +6805,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const ask = input.extras?.menuItems().find((i) => i.label === "Ask Tessaya…");
       (ask?.click as (() => void) | undefined)?.();
     },
-  };
+  });
   /** Puts every key he has set in place, and takes the old ones away. Mouse buttons go to the hook. */
   const applyBindings = () => {
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);

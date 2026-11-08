@@ -99,6 +99,7 @@ unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRE
                     match action {
                         Action::ReplayDown(b) => send(*b, true),
                         Action::Fire(id) => emit(json!({"ev": "binding", "id": id})),
+                        Action::Release(id) => emit(json!({"ev": "binding", "id": id, "up": true})),
                         _ => {}
                     }
                 }

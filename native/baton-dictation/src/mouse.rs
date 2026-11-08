@@ -110,6 +110,8 @@ pub enum Action {
     Consume,
     /// A binding fired.
     Fire(String),
+    /// A single-button binding's button came back up, so "hold to dictate" can end when he lets go.
+    Release(String),
     /// Send a press the hook held back, now.
     ReplayDown(Button),
 }
@@ -167,6 +169,9 @@ pub fn reduce(state: &mut State, ev: Ev, cfg: &Config) -> Vec<Action> {
         Ev::Up(button, _) => {
             if let Some(i) = state.swallow_up.iter().position(|b| *b == button) {
                 state.swallow_up.remove(i);
+                if let Some(single) = cfg.bindings.iter().find(|b| matches!(&b.trigger, Trigger::Button(x) if *x == button)) {
+                    actions.push(Action::Release(single.id.clone()));
+                }
                 actions.push(Action::Consume);
                 return actions;
             }
@@ -212,8 +217,23 @@ mod tests {
         assert_eq!(run(&config(json!([])), &events), vec![vec![Pass], vec![Pass]]);
         assert_eq!(
             run(&middle(), &events),
-            vec![vec![Fire("m".into()), Consume], vec![Consume]]
+            vec![vec![Fire("m".into()), Consume], vec![Release("m".into()), Consume]]
         );
+    }
+
+    #[test]
+    fn a_bound_back_or_forward_button_fires_and_releases_and_others_pass() {
+        let cfg = config(json!([
+            {"id": "hold", "trigger": {"kind": "button", "button": "x1"}},
+            {"id": "toggle", "trigger": {"kind": "button", "button": "x2"}}
+        ]));
+        assert_eq!(
+            run(&cfg, &[Down(X1, 0), Up(X1, 400)]),
+            vec![vec![Fire("hold".into()), Consume], vec![Release("hold".into()), Consume]]
+        );
+        assert_eq!(run(&cfg, &[Down(X2, 0)]), vec![vec![Fire("toggle".into()), Consume]]);
+        // Middle-click is not bound here, so it reaches the app untouched.
+        assert_eq!(run(&cfg, &[Down(Middle, 0), Up(Middle, 30)]), vec![vec![Pass], vec![Pass]]);
     }
 
     #[test]

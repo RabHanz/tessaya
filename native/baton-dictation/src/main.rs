@@ -934,6 +934,25 @@ fn focus_state_event(id: Option<u64>, _window: Option<&str>) -> Value {
     json!({"ev": "focus_state", "id": id, "error": "not on this platform yet"})
 }
 
+/// What a press of the dictation key does. While the desktop's voice dictation runs, the press is its ✓, so it is
+/// handed to the desktop: starting a second, separate recording here is what left the two unable to stop each other.
+#[derive(Debug, PartialEq, Eq)]
+enum Press {
+    Begin,
+    Finish,
+    ToDesktop,
+}
+
+fn dictation_press(recording: bool, voice_on: bool) -> Press {
+    if recording {
+        Press::Finish
+    } else if voice_on {
+        Press::ToDesktop
+    } else {
+        Press::Begin
+    }
+}
+
 /// Text goes only into the window it was spoken for. Windows reports 0 mid-switch, which is not it.
 fn should_paste(target: Option<isize>, now: isize) -> bool {
     matches!(target, Some(window) if window != 0 && window == now)
@@ -969,6 +988,8 @@ fn serve() {
     let mut taps = PushToTalk::default();
     let clock = Instant::now();
     let mut toggle_down = false;
+    // The desktop's voice dictation is running (it says so with `voice`): a key press is its ✓.
+    let mut voice_on = false;
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
     let begin = |config: &Config, recording: &mut Option<Recording>, tx: &Sender<Msg>, job_tx: &Sender<Work>| {
@@ -1169,6 +1190,18 @@ fn serve() {
                             begin(&config, &mut recording, &tx, &job_tx);
                         }
                     }
+                    // A mouse button held to dictate, and the desktop ending a recording from any of its entry points.
+                    "start" => {
+                        if recording.is_none() {
+                            begin(&config, &mut recording, &tx, &job_tx);
+                        }
+                    }
+                    "finish" => {
+                        if recording.is_some() {
+                            finish(&mut recording, &job_tx, true);
+                        }
+                    }
+                    "voice" => voice_on = value["on"].as_bool().unwrap_or(false),
                     "cancel" => {
                         recording = None;
                         let _ = job_tx.send(Work::Abort);
@@ -1218,10 +1251,13 @@ fn serve() {
                 let at = clock.elapsed().as_secs_f64() * 1000.0;
                 for out in taps.step(pressed, at, config.latch) {
                     match out {
-                        Out::Start => {
-                            held = true;
-                            begin(&config, &mut recording, &tx, &job_tx);
-                        }
+                        Out::Start => match dictation_press(recording.is_some(), voice_on) {
+                            Press::ToDesktop => emit(json!({"ev": "binding", "id": "toggle"})),
+                            _ => {
+                                held = true;
+                                begin(&config, &mut recording, &tx, &job_tx);
+                            }
+                        },
                         Out::Stop => {
                             held = false;
                             finish(&mut recording, &job_tx, true);
@@ -1240,10 +1276,10 @@ fn serve() {
             Msg::Key { hold: false, pressed: true } => {
                 if !toggle_down {
                     toggle_down = true;
-                    if recording.is_some() {
-                        finish(&mut recording, &job_tx, true);
-                    } else {
-                        begin(&config, &mut recording, &tx, &job_tx);
+                    match dictation_press(recording.is_some(), voice_on) {
+                        Press::Finish => finish(&mut recording, &job_tx, true),
+                        Press::Begin => begin(&config, &mut recording, &tx, &job_tx),
+                        Press::ToDesktop => emit(json!({"ev": "binding", "id": "toggle"})),
                     }
                 }
             }
@@ -1521,6 +1557,16 @@ mod tests {
         assert_eq!(old.hold, vec!["Ctrl+Alt+Space".to_string()]);
         let many: Config = serde_json::from_value(json!({"toggle": ["F9", "Ctrl+Alt+D"]})).unwrap();
         assert_eq!(many.toggle, vec!["F9".to_string(), "Ctrl+Alt+D".to_string()]);
+    }
+
+    #[test]
+    fn the_hands_free_key_starts_ends_and_during_voice_dictation_is_its_check_mark() {
+        // First press starts, second ends: his own recording.
+        assert_eq!(dictation_press(false, false), Press::Begin);
+        assert_eq!(dictation_press(true, false), Press::Finish);
+        // While "Tessaya, dictate" runs, the press goes to the desktop as ✓, never a second recording.
+        assert_eq!(dictation_press(false, true), Press::ToDesktop);
+        assert_eq!(dictation_press(true, true), Press::Finish);
     }
 
     #[test]
