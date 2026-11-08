@@ -29,7 +29,7 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
   raw: "Raw, exactly as heard",
 };
 
-import { promptTerms, withOwnWords } from "./vocabulary.ts";
+import { joinSplitTerms, promptTerms, withOwnWords } from "./vocabulary.ts";
 
 export interface DictionaryEntry {
   readonly phrase: string;
@@ -580,7 +580,8 @@ export const cleanDictation = async (input: {
   if (level === "local" || local.length === 0) return { text: local, stage: "local" };
   if (input.always !== true && !needsModel(local, mode)) return { text: local, stage: "local" };
   try {
-    const answer = await input.ask(local, mode);
+    // The model's own split spelling of his word ("Venture OS") is his word, not a lost name.
+    const answer = joinSplitTerms(await input.ask(local, mode), dictionary);
     const verdict = checkRewrite(local, answer, dictionary);
     return verdict.ok
       ? { text: answer, stage: "model" }

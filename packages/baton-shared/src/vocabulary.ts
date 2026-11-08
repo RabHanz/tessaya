@@ -421,11 +421,85 @@ export const withOwnWords = (
  * is put right in the transcript before clean-up. Only for names and terms (a capital or a digit
  * inside), so ordinary words are never swapped.
  */
+/**
+ * His words written split or joined ("Wispr flow" or "WisprFlow" for Wispr Flow, "T 3" for T3) put back as he spells
+ * them: a split form of his own term is never an ordinary word. Two or three words in a row, nothing between.
+ */
+export const joinSplitTerms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+  const terms = new Map<string, string>();
+  for (const e of withOwnWords(entries)) {
+    const term = e.replacement ?? e.phrase;
+    const key = term.replace(/\s+/g, "").toLowerCase();
+    if ((key.length >= 3 || /\p{N}/u.test(key)) && /^[\p{L}\p{N}]+$/u.test(key))
+      terms.set(key, term);
+  }
+  if (terms.size === 0) return text;
+  const words = [...text.matchAll(new RegExp(`${WORD_START}[\\p{L}\\p{N}]+${WORD_END}`, "gu"))];
+  let out = "";
+  let from = 0;
+  for (let i = 0; i < words.length; i += 1) {
+    // Longest first, and only words with one space between: "T 3 code" never loses "code".
+    for (const size of [3, 2]) {
+      const run = words.slice(i, i + size);
+      if (run.length < size) continue;
+      const start = run[0]!.index;
+      const end = run.at(-1)!.index + run.at(-1)![0].length;
+      const found = text.slice(start, end);
+      if (found !== run.map((w) => w[0]).join(" ")) continue;
+      const term = terms.get(found.replace(/ /g, "").toLowerCase());
+      if (term === undefined) continue;
+      out += text.slice(from, start) + term;
+      from = end;
+      i += size - 1;
+      break;
+    }
+  }
+  return out + text.slice(from);
+};
+
+/** Before these the bare word is his name ("to button on the laptop"); after an article it is the thing. */
+const NAME_SLOT_BEFORE = new Set(
+  "to of with without using in on from into about via through".split(" "),
+);
+const NAME_SLOT_AFTER = new Set(
+  "and or but is was are were has have will can should so then because on in to for with at from as".split(
+    " ",
+  ),
+);
+
+/**
+ * A form he taught (from Wispr or a correction) that is an everyday word ("button" for Baton) changes only in the
+ * bare slot after a preposition, with no article, and only when what follows is not more of a noun phrase.
+ */
+const applyTaughtForms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+  let out = text;
+  for (const e of entries)
+    for (const form of e.heard ?? []) {
+      if (!/^\p{L}+$/u.test(form)) continue;
+      const term = e.replacement ?? e.phrase;
+      out = out.replace(
+        new RegExp(`${WORD_START}${escapeRegExp(form)}${WORD_END}`, "giu"),
+        (found: string, at: number, whole: string) => {
+          const before = /([\p{L}']+)[^\p{L}\n]*$/u.exec(whole.slice(0, at))?.[1]?.toLowerCase();
+          const rest = whole.slice(at + found.length);
+          const after = /^ ([\p{L}']+)/u.exec(rest)?.[1]?.toLowerCase();
+          const ends = after === undefined && /^(?:[,.;:!?]|\s*$)/.test(rest);
+          return before !== undefined &&
+            NAME_SLOT_BEFORE.has(before) &&
+            (ends || (after !== undefined && NAME_SLOT_AFTER.has(after)))
+            ? term
+            : found;
+        },
+      );
+    }
+  return out;
+};
+
 export const biasTranscript = (
   heardText: string,
   entries: ReadonlyArray<VocabularyEntry>,
 ): string => {
-  const text = applyOwnNames(heardText);
+  const text = joinSplitTerms(applyTaughtForms(applyOwnNames(heardText), entries), entries);
   const terms = entries
     .map((entry) => entry.replacement ?? entry.phrase)
     .filter(

@@ -176,6 +176,8 @@ describe("checkRewrite", () => {
     expect(
       checkRewrite("Move it to Netties tonight.", "Move it to Kubernetes tonight.", k8s).ok,
     ).toBe(true);
+    // His word written split by the model is still his word.
+    expect(checkRewrite("Ask Kubernetes now.", "Ask Kubernetes now.", k8s).ok).toBe(true);
     // Her own names' strict forms need no entry.
     expect(checkRewrite("Ask Tisia to ship it.", "Ask Tessaya to ship it.").ok).toBe(true);
     // A real name, an everyday word, a form nobody taught, or an invented name is refused.
@@ -246,6 +248,17 @@ describe("the prompt", () => {
 describe("cleanDictation", () => {
   const messy = "Do it tomorrow, no, actually next week.";
   const base = { dictionary: [], mode: "default", level: "claude" } as const;
+
+  it("keeps an answer that wrote his word split, spelt his way", async () => {
+    const raw = "Can you ask Kubernetes to check the results first and send them over by tomorrow";
+    const ask = async () =>
+      "Can you ask Kuber Netes to check the results first and send them over by tomorrow?";
+    const dictionary = [{ phrase: "Kubernetes", replacement: null }];
+    expect(await cleanDictation({ ...base, dictionary, raw, ask })).toEqual({
+      text: "Can you ask Kubernetes to check the results first and send them over by tomorrow?",
+      stage: "model",
+    });
+  });
 
   it("pastes the local text when the model fails", async () => {
     const ask = () => Promise.reject(new Error("timed out"));

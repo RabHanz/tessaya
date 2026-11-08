@@ -84,6 +84,28 @@ describe("her own names", () => {
   });
 });
 
+describe("his taught words", () => {
+  it("joins a split spelling, and puts an everyday heard form back only in the bare slot after a preposition", () => {
+    const his = parseVocabulary([
+      { phrase: "Kubernetes", replacement: null },
+      { phrase: "Baton", replacement: null, heard: ["button"] },
+      { phrase: "Wispr Flow", replacement: null },
+    ]);
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["Ask Kuber Netes to check, on T 3 code.", "Ask Kubernetes to check, on T3 code."],
+      ["WisprFlow and wispr flow", "Wispr Flow and Wispr Flow"],
+      ["Add the accounts to button on the laptop.", "Add the accounts to Baton on the laptop."],
+      ["Update it from button.", "Update it from Baton."],
+      // Controls: the thing itself.
+      ["Put a like button there.", "Put a like button there."],
+      ["Fix the button UI.", "Fix the button UI."],
+      ["Click the button.", "Click the button."],
+      ["Play with button presses.", "Play with button presses."],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
+  });
+});
+
 describe("Wispr's dictionary", () => {
   const rows = [
     {
