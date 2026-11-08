@@ -26,7 +26,7 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -245,6 +245,8 @@ enum Work {
     Audio(Vec<f32>),
     End { target: Option<isize>, released: Instant, timing: Value },
     Abort,
+    /// Dictation is bound to a key and heard here: the dictation model stays loaded, so a press never waits on a reload.
+    Keep(bool),
 }
 
 /// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
@@ -476,16 +478,18 @@ fn path_of(slot: &Loaded) -> Option<&Path> {
 }
 
 /// One thread owns the models. Each slot loads on first use and leaves after ten idle minutes of its own, because
-/// 16 GB is shared with everything else on the laptop.
+/// 16 GB is shared with everything else on the laptop; the dictation slot stays while dictation is bound (`Keep`).
+/// v3 held is about 1.2 GB.
 fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
     let mut loaded: Loaded = None;
     let mut other: Loaded = None;
     let mut loaded_at = Instant::now();
     let mut other_at = Instant::now();
     let mut live: Option<Live> = None;
+    let mut keep = false;
     loop {
         let message = work.recv_timeout(IDLE_TICK);
-        if live.is_none() && loaded_at.elapsed() >= IDLE_UNLOAD {
+        if live.is_none() && !keep && loaded_at.elapsed() >= IDLE_UNLOAD {
             loaded = None;
         }
         if other_at.elapsed() >= IDLE_UNLOAD {
@@ -568,6 +572,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 let _ = out.send(Msg::Finished { id: None, dictated: true, target, result });
             }
             Ok(Work::Abort) => live = None,
+            Ok(Work::Keep(on)) => {
+                keep = on;
+                loaded_at = Instant::now();
+            }
         }
     }
 }
@@ -585,6 +593,7 @@ fn read_wav(path: &Path) -> Result<Vec<f32>, String> {
 }
 
 fn devices_json() -> Value {
+    *DEVICE_ID.lock().unwrap_or_else(|e| e.into_inner()) = None;
     match list_input_devices() {
         Ok(devices) => devices
             .iter()
@@ -594,15 +603,27 @@ fn devices_json() -> Value {
     }
 }
 
-fn recorder_config(device: Option<&str>, channel: Option<u16>) -> Result<RecorderConfig, String> {
+/// The chosen microphone's id by its name. Listing every input on each press costs time on Windows, so the id is
+/// kept; a press whose open fails with it, and a device change (`devices`), look it up again.
+static DEVICE_ID: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+fn recorder_config(device: Option<&str>, channel: Option<u16>, fresh: bool) -> Result<RecorderConfig, String> {
     let mut config = RecorderConfig::speech();
     if let Some(wanted) = device {
-        let devices = list_input_devices().map_err(|e| e.to_string())?;
-        let found = devices
-            .iter()
-            .find(|d| d.name == wanted)
-            .ok_or_else(|| format!("{wanted} is not connected"))?;
-        config.device = Some(found.id.clone());
+        let mut kept = DEVICE_ID.lock().unwrap_or_else(|e| e.into_inner());
+        let id = match kept.as_ref() {
+            Some((name, id)) if !fresh && name == wanted => id.clone(),
+            _ => {
+                let devices = list_input_devices().map_err(|e| e.to_string())?;
+                let found = devices
+                    .iter()
+                    .find(|d| d.name == wanted)
+                    .ok_or_else(|| format!("{wanted} is not connected"))?;
+                *kept = Some((wanted.to_string(), found.id.clone()));
+                found.id.clone()
+            }
+        };
+        config.device = Some(id);
     }
     if let Some(index) = channel {
         config.channels = Channels::Only(index);
@@ -1038,16 +1059,20 @@ fn serve() {
                     .map(|()| Source::Fake(stop))
             }
             None => {
-                let tx = tx.clone();
-                let sink = LiveSink { work: job_tx.clone(), samples: samples.clone(), first_audio: first_audio.clone() };
-                recorder_config(config.device.as_deref(), config.channel).and_then(|cfg| {
-                    let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
-                        let _ = tx.send(Msg::MicFailed(e.to_string()));
+                let open = |fresh: bool| {
+                    let sink = LiveSink { work: job_tx.clone(), samples: samples.clone(), first_audio: first_audio.clone() };
+                    let tx = tx.clone();
+                    recorder_config(config.device.as_deref(), config.channel, fresh).and_then(|cfg| {
+                        let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
+                            let _ = tx.send(Msg::MicFailed(e.to_string()));
+                        })
+                        .map_err(|e| e.to_string())?;
+                        recorder.start(sink).map_err(|e| e.to_string())?;
+                        Ok(Source::Mic(recorder))
                     })
-                    .map_err(|e| e.to_string())?;
-                    recorder.start(sink).map_err(|e| e.to_string())?;
-                    Ok(Source::Mic(recorder))
-                })
+                };
+                // A kept id can be stale after a replug: one fresh look before saying the microphone failed.
+                open(false).or_else(|_| open(true))
             }
         };
         match opened {
@@ -1120,6 +1145,9 @@ fn serve() {
                             Ok(next) => {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
+                                let bound = !config.hold.is_empty() || !config.toggle.is_empty();
+                                let local = config.model.is_some() && config.external.is_none();
+                                let _ = job_tx.send(Work::Keep(bound && local));
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
@@ -1454,7 +1482,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
 
 fn cli_record(args: &[String]) -> Result<(), String> {
     let channel = flag(args, "--channel").and_then(|c| c.parse().ok());
-    let config = recorder_config(flag(args, "--device").as_deref(), channel)?;
+    let config = recorder_config(flag(args, "--device").as_deref(), channel, true)?;
     let seconds: u64 = flag(args, "--seconds").and_then(|s| s.parse().ok()).unwrap_or(0);
     // Exit on a dead stream: the desktop only learns of it from this process ending.
     let recorder = Recorder::open_with_failure_handler(config, |e| {

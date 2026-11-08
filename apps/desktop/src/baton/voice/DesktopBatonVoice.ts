@@ -367,6 +367,7 @@ import {
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
+import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { dictationStep, type DictationEntry, type DictationStep } from "./dictationEntry.ts";
 import {
   importWisprDictionary,
@@ -1719,6 +1720,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     }, 0);
   }
+  // shortcut: one key dictation timed at a time; a second that ends before the first is pasted takes over its line.
+  let dictationTimer: DictationTimer | null = null;
+  const noteTiming = () => {
+    const line = dictationTimer?.line(true);
+    dictationTimer = null;
+    if (line != null) input.onNote?.("dictation_timing", { ...line });
+  };
   const oneShot = createOneShot<FocusedApp>({
     save: (chunks) => {
       try {
@@ -1728,8 +1736,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       } catch {}
     },
     // With no window of its own nothing is sent to clean it: the words go to the clipboard as heard.
-    clean: (raw, app) => (app.window === undefined ? Promise.resolve(null) : writeClean(raw, app)),
-    fit: (text, app) => (app.window === undefined ? Promise.resolve(text) : fitToCaret(text, app)),
+    clean: (raw, app) =>
+      app.window === undefined
+        ? Promise.resolve(null)
+        : writeClean(raw, app).then((c) => (dictationTimer?.cleaned(c.stage), c)),
+    fit: (text, app) =>
+      app.window === undefined
+        ? Promise.resolve(text)
+        : fitToCaret(text, app).then((t) => (dictationTimer?.fitted(), t)),
     preview: (raw, text) =>
       showCleanup({ anchor: pill.anchor(), raw, clean: text, motion: settings.motion }),
     paste: (text, app) =>
@@ -1790,6 +1804,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     openTurn = null;
     if (app.window !== undefined) showDictation("Tidying…", true);
     const result = await oneShot.flush(app, options);
+    if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     lastDictation = result.text;
     history?.update(turnId ?? "", {
@@ -1812,6 +1827,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         showDictation(null);
         pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
       } else offerSmarterCleanup();
+      dictationTimer?.pillGone();
     } else {
       const name = app.title.trim() || app.exe || "Its window";
       toClipboard(
@@ -1826,6 +1842,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               : `${name} did not take it`,
       );
     }
+    noteTiming();
   };
   /** ✓ (or "stop dictation") inserts what was said; ✕ or Esc throws it away. Nothing else ends spoken dictation. */
   const endVoiceDictation = (insert: boolean) => {
@@ -1899,8 +1916,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         (await dictationHold.target()) ??
         (await sidecar.foreground().catch(() => null)) ??
         focusedApp;
-      const { text } = await writeClean(request.text, app);
+      const timer = startDictationTiming({ ev: "text", id: null, text: request.text }, "voice");
+      const { text, stage } = await writeClean(request.text, app);
+      timer.cleaned(stage);
       const fitted = await fitToCaret(text, app);
+      timer.fitted();
       const target = app.window;
       const side = sidecar;
       const pasted = await pasteInOrder(async () =>
@@ -1908,7 +1928,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? (await side.paste(fitted), true)
           : side.pasteInto(fitted, target).catch(() => false),
       );
-      if (pasted) return;
+      if (pasted) {
+        timer.pasted();
+        input.onNote?.("dictation_timing", { ...timer.line(true) });
+        return;
+      }
       // The router hears inserted: false, and the outcome keeps the words on the pill and in the tray.
       throw new Error("Not pasted");
     },
@@ -3352,6 +3376,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       if (event.dictated === true && event.error === undefined) {
         const own = withRecording(event);
+        dictationTimer = startDictationTiming(event);
         return keyToBuffer(
           text,
           event.target,
@@ -5458,6 +5483,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         disabled: loop === null,
       },
       {
+        id: "v.cleanup",
+        section: "Dictation",
+        label: "Clean up with AI",
+        hint: "Claude fixes misheard words, grammar and false starts, through your Claude plan. On this computer fixes punctuation and filler words only. Off types exactly what was heard.",
+        kind: "choice",
+        value: settings.dictationCleanup,
+        options: [
+          { value: "claude", label: "Claude (smarter, ~1–2 s)" },
+          { value: "local", label: "On this computer (instant)" },
+          { value: "off", label: "Off" },
+        ],
+      },
+      {
         id: "v.dictation",
         section: "Dictation",
         label: "Dictate with",
@@ -5483,20 +5521,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             },
           ]
         : []),
-      {
-        id: "v.cleanup",
-        section: "Dictation",
-        label: "Tidy what I said",
-        hint: "Fixes punctuation and filler words.",
-        kind: "choice",
-        value: settings.dictationCleanup,
-        options: [
-          { value: "claude", label: "Local, then Claude" },
-          { value: "local", label: "Local only" },
-          { value: "off", label: "Off" },
-        ],
-        more: true,
-      },
       {
         id: "v.appMode",
         section: "Dictation",
