@@ -42,6 +42,8 @@ export const replayTurn = async (input: {
     readonly persona: TurnPersona;
     readonly said: string;
     readonly reply: string;
+    /** How long before this turn it was said; a minute when left out. */
+    readonly minutesAgo?: number;
   }>;
   /** The clock the turn is given; the shipped line for a fixed Wednesday morning when left out. */
   readonly now?: { readonly at: Date; readonly timeZone: string };
@@ -77,19 +79,25 @@ export const replayTurn = async (input: {
     return text === undefined ? t : { ...t, run: async () => ({ text }) };
   });
   const mcp = await startBatonMcp({ tools, gate: refuse });
+  const turnAt = input.now?.at ?? new Date("2026-11-04T10:00:00Z");
+  let clock = turnAt;
   const conversations = createPersonaConversations({
     dir: NodePath.join(dir, "conversation"),
     legacy: NodePath.join(dir, "conversation.ndjson"),
     lead: "executive",
+    now: () => clock,
   });
-  // As after a restart: the turns are on disk and the agent learns who answered last from them.
-  for (const earlier of input.before ?? [])
+  // As after a restart: the turns are on disk, each at its own time, and the agent learns who answered last from them.
+  for (const earlier of input.before ?? []) {
+    clock = new Date(turnAt.getTime() - (earlier.minutesAgo ?? 1) * 60_000);
     conversations.of(earlier.persona.id).add({
       route: "answer",
       said: earlier.said,
       reply: earlier.reply,
       persona: earlier.persona.id,
     });
+  }
+  clock = turnAt;
   const names = new Map((input.before ?? []).map((b) => [b.persona.id, b.persona.name]));
   const agent = createAssistantAgent({
     start: async (systemPrompt, brain = input.brain) =>
@@ -114,11 +122,7 @@ export const replayTurn = async (input: {
     conversationOf: conversations.of,
     latest: conversations.latest,
     nameOf: (id) => names.get(id),
-    clockLine: () =>
-      clockLine(
-        input.now?.at ?? new Date("2026-11-04T10:00:00Z"),
-        input.now?.timeZone ?? "Europe/London",
-      ),
+    clockLine: () => clockLine(turnAt, input.now?.timeZone ?? "Europe/London"),
     beginTurn: () => undefined,
     ...(input.extra === undefined ? {} : { recall: async () => input.extra! }),
     ...(input.notes === undefined ? {} : { notes: () => input.notes! }),

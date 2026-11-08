@@ -7,10 +7,12 @@
  * for first.
  */
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
 import { replayTurn } from "../../apps/desktop/src/baton/agent/replay.ts";
+import { startVisionSession } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
 import {
   assistantFrame,
   DEFAULT_OS_PACK,
@@ -20,7 +22,14 @@ import {
 import { memoryBlock } from "../../packages/baton-shared/src/memory.ts";
 import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
-import { casePasses, firstTool, type Sample } from "./grade.ts";
+import {
+  casePasses,
+  firstTool,
+  JUDGE_SYSTEM,
+  judgePrompt,
+  verdictOf,
+  type Sample,
+} from "./grade.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -33,6 +42,8 @@ const { values } = NodeUtil.parseArgs({
     claude: { type: "string", default: "claude" },
     // A file added to every turn the way a matched skill is, to test a skill against the suite.
     "extra-notes": { type: "string" },
+    // The model that grades a case's rubric.
+    judge: { type: "string", default: "sonnet" },
   },
 });
 if (values.out === undefined) throw new Error("Use --out <directory>.");
@@ -91,6 +102,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
               persona: { id: by.id, name: by.name, role: by.role },
               said: b.said,
               reply: b.reply,
+              ...(b.minutesAgo === undefined ? {} : { minutesAgo: b.minutesAgo }),
             };
           }),
         }),
@@ -123,7 +135,36 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
     platform: process.platform,
   });
-  return { ...ran, model };
+  if (c.rubric === undefined) return { ...ran, model };
+  const verdict = await judge(c, face, ran.replies);
+  return { ...ran, model, judged: verdictOf(verdict), judgeNote: verdict };
+};
+
+/** A fresh session with no tools reads the replies against the case's rubric. */
+const judge = async (
+  c: AssistantCase,
+  face: { readonly name: string; readonly role: string } | undefined,
+  replies: ReadonlyArray<string>,
+): Promise<string> => {
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-judge-"));
+  const session = startVisionSession({
+    claudeBinary: values.claude!,
+    model: values.judge!,
+    systemPrompt: JUDGE_SYSTEM,
+    workDir: dir,
+    env: process.env,
+    // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
+    platform: process.platform,
+    timeoutMs: 120_000,
+  });
+  try {
+    return await session.ask([{ type: "text", text: judgePrompt(c, face, replies) }]);
+  } catch (error) {
+    return `judge failed: ${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    session.dispose();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  }
 };
 
 NodeFS.mkdirSync(out, { recursive: true });
@@ -131,7 +172,9 @@ const rows: Array<{
   id: string;
   said: string;
   firsts: string[];
+  calls: string[];
   replies: string[];
+  judged: Array<string | boolean | undefined>;
   pass: boolean;
   ms: number[];
 }> = [];
@@ -147,7 +190,9 @@ for (const c of cases) {
     id: c.id,
     said: c.said,
     firsts: runs.map((r) => firstTool(r.calls)),
+    calls: runs.map((r) => r.calls.map((t) => t.replace(/^mcp__baton__/, "")).join(" > ")),
     replies: runs.map((r) => (r.replies ?? [r.reply]).join(" | ")),
+    judged: runs.map((r) => r.judgeNote ?? r.judged),
     pass: casePasses(c, runs),
     ms,
   };
