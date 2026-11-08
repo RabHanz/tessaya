@@ -7,7 +7,12 @@ export interface CleanupCase {
   readonly keep: ReadonlyArray<string>;
   readonly gone?: ReadonlyArray<string>;
   /** His words for this case; without it the lab's own dictionary is used. */
-  readonly dictionary?: ReadonlyArray<{ readonly phrase: string; readonly replacement: null }>;
+  readonly dictionary?: ReadonlyArray<{
+    readonly phrase: string;
+    readonly replacement: null;
+    /** Forms it was mis-heard as, as Wispr's import or his corrections teach them. */
+    readonly heard?: ReadonlyArray<string>;
+  }>;
 }
 
 export const DEFAULT_CASES: ReadonlyArray<CleanupCase> = [
@@ -231,10 +236,10 @@ export const DICTIONARY_CASES: ReadonlyArray<CleanupCase> = [
     dictionary: OWN_NAMES,
   },
   {
-    raw: "I want the Tesiah dictation to feel instant, so warm the session before he speaks.",
-    keep: ["Tessaya dictation"],
-    gone: ["Tesiah"],
-    dictionary: OWN_NAMES,
+    raw: "Deploy it to the Cooper Netties cluster tonight and tell me when it is up.",
+    keep: ["Kubernetes cluster"],
+    gone: ["Cooper Netties"],
+    dictionary: [{ phrase: "Kubernetes", replacement: null, heard: ["Cooper Netties"] }],
   },
   {
     raw: "Will you book the room for Friday? And also order lunch for the six of us.",
@@ -247,6 +252,18 @@ export const DICTIONARY_CASES: ReadonlyArray<CleanupCase> = [
     raw: "Ask Tessa from accounts whether the invoice went out, and copy Tasha in.",
     keep: ["Tessa from accounts", "Tasha"],
     gone: ["Tessaya"],
+    dictionary: OWN_NAMES,
+  },
+  {
+    raw: "Put a like button under each post and open the Tesla app to check the charge.",
+    keep: ["like button", "Tesla app"],
+    gone: ["Baton", "Tessaya"],
+    dictionary: [{ phrase: "Baton", replacement: null }, ...OWN_NAMES],
+  },
+  {
+    raw: "I wrote a note about Tessa, so pass the baton to her on Monday.",
+    keep: ["about Tessa", "pass the baton"],
+    gone: ["Tessaya", "Baton"],
     dictionary: OWN_NAMES,
   },
   {
