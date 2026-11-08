@@ -124,8 +124,6 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.micTest": "advanced",
   "v.file": "advanced",
   "setup.hold": "setup",
-  "n.empty": "sessions",
-  "n.note": "sessions",
 };
 
 export const tabOf = (id: string): TabId => {

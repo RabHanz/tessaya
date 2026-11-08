@@ -305,7 +305,7 @@ import {
   orderSessions,
   sessionControls,
 } from "../sessions/sessionRows.ts";
-import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
+import { showLiveWhenReady, type SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, WAKE_DEFAULTS, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
@@ -797,7 +797,6 @@ const ESC_AGAIN_MS = 2_000;
 const UNDO_MS = 6_000;
 /** Long enough to read one line once. */
 const OFFER_MS = 6_000;
-const SESSIONS_NOTE_MS = 8_000;
 /** Jobs change slowly; a local read every so often once he has loaded them. */
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
@@ -4334,7 +4333,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     harnessItems.reset();
     cachedPack.reset();
   };
-  let sessionsNote: string | null = null;
   /** The job cards as the window last read them; null until the Jobs or Approvals tab has been opened once. */
   let jobsCache: ReadonlyArray<BatonJob> | null = null;
   let jobsError: string | null = null;
@@ -5402,44 +5400,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               },
             ]
           : jobControls(jobsCache)),
-      ...at("catalog"),
-      ...(input.catalog?.controls() ?? []),
-      ...(input.sessions?.notes() ?? []).map((detail, i) => ({
-        id: `n.warn.${i}`,
-        section: "Sessions",
-        label: "Not shown",
-        kind: "check" as const,
-        status: "warn" as const,
-        detail,
-      })),
-      ...(input.sessions === undefined
-        ? []
-        : input.sessions.rows().length > 0
-          ? [
-              ...sessionControls(input.sessions.rows()),
-              ...(sessionsNote === null
-                ? []
-                : [
-                    {
-                      id: "n.note",
-                      section: "Sessions",
-                      label: "Last action",
-                      kind: "check" as const,
-                      status: "ok" as const,
-                      detail: sessionsNote,
-                    },
-                  ]),
-            ]
-          : [
-              {
-                id: "n.empty",
-                section: "Sessions",
-                label: "No sessions loaded yet",
-                hint: "They appear here once this computer's server or T3's sessions view answers.",
-                kind: "action" as const,
-                button: "Open sessions",
-              },
-            ]),
+      // Sessions are T3's thread list (P5): only the rows Ctrl+K opens a session from are still sent.
+      ...sessionControls(input.sessions?.rows() ?? []),
       {
         id: "v.enabled",
         section: "Wake and listening",
@@ -6569,18 +6531,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         }
       } else if (act.approve) job("agree", { id: act.id });
       else input.openMainWindow();
-    } else if (id === "n.empty") input.openMainWindow();
-    else if (input.catalog?.apply(id, value) === true) {
+    } else if (input.catalog?.apply(id, value) === true) {
       // The catalog redraws itself through its own onChange.
     } else if (id.startsWith("n:")) {
-      void input.sessions?.act(id, typeof value === "string" ? value : null).then((line) => {
-        sessionsNote = line;
-        setTimeout(() => {
-          sessionsNote = null;
-          home.refresh();
-        }, SESSIONS_NOTE_MS).unref();
-        home.refresh();
-      });
+      void input.sessions?.act(id, typeof value === "string" ? value : null);
     } else if (id.startsWith("u.")) input.updates?.apply(id);
     else if (id.startsWith("s.")) {
       input.extras?.applySetting(id, value);
@@ -6809,7 +6763,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     stateDir: input.stateDir,
     state: homeState,
     apply: applyHome,
-    openSessions: input.openMainWindow,
+    // The Sessions tab is T3's own thread list, filtered to live sessions (P5).
+    openSessions: (liveOnly) => {
+      input.openMainWindow();
+      if (liveOnly) void showLiveWhenReady(input.sessions);
+    },
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
       if (tab === "memory") void memoryTab.load();

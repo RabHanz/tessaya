@@ -353,7 +353,7 @@ export interface BatonHomeInput {
   readonly stateDir: string;
   readonly state: () => HomeState;
   readonly apply: (id: string, value: string | boolean | null) => void;
-  readonly openSessions: () => void;
+  readonly openSessions: (liveOnly?: boolean) => void;
   /** The window moved to this tab. */
   readonly onTab?: (tab: string) => void;
   /** System, Light or Dark, as he chose it in Settings. */
@@ -435,7 +435,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   });
   Electron.ipcMain.handle(LEVEL, () => input.level?.() ?? 0);
   Electron.ipcMain.handle(STING, () => readArt(art, stingFile(look().palette, theme())));
-  Electron.ipcMain.on(SESSIONS, () => input.openSessions());
+  Electron.ipcMain.on(SESSIONS, (_event, filter: unknown) => input.openSessions(filter === "live"));
   // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
   let tabShots = 0;
   Electron.ipcMain.on("baton-home:tab", (_event, tab: unknown) => {

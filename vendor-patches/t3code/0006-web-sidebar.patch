@@ -8051,19 +8051,6 @@ index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff2
 +    { "src": "/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
    ]
  }
-diff --git a/apps/web/src/components/ThreadStatusIndicators.tsx b/apps/web/src/components/ThreadStatusIndicators.tsx
-index ea49b01665b645c778731a375295672d00e700bb..0964589173c30b63818b55b112bd39ffe7c37863 100644
---- a/apps/web/src/components/ThreadStatusIndicators.tsx
-+++ b/apps/web/src/components/ThreadStatusIndicators.tsx
-@@ -603,7 +603,7 @@ export function ThreadWorktreeIndicator({
-   );
- }
- 
--function ThreadStatusLabel({
-+export function ThreadStatusLabel({
-   status,
-   compact = false,
- }: {
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
 index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..f39014ea8ec23238d211529a14e7e2f0f3b59131 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
@@ -8144,6 +8131,43 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
          </span>
        ) : null}
      </span>
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+index 41cb733daff152035d24c8e88f39e72b2b711816..8df179be3821181be444d864ca67fc0de498933d 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+@@ -109,6 +109,7 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
+ import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
+ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+ import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
++import { BatonLiveBadge } from "./BatonLiveBadge";
+ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
+ import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
+ import { InlineButton } from "../ui/button";
+@@ -533,6 +534,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
+ 
+ type SidebarThreadRowProps = {
+   thread: SidebarThreadSummary;
++  /** Tessaya: a live session running now (P5), decided once for the whole list. */
++  batonLive?: boolean;
+   // "folder" is a one-line row inside a boring sidebar project folder;
+   // "folder-multiline" adds the card's branch and PR line under it.
+   variant: "card" | "slim" | "folder" | "folder-multiline";
+@@ -1175,6 +1178,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+         aria-hidden
+         className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+       >
++        <BatonLiveBadge live={props.batonLive === true} />
+         {remoteMachineIcon}
+         <SidebarProviderStack
+           thread={thread}
+@@ -1185,6 +1189,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+   );
+   const titleLineIcons = metaLineEmpty ? (
+     <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
++      <BatonLiveBadge live={props.batonLive === true} />
+       {remoteMachineIcon}
+       <SidebarProviderStack
+         thread={thread}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
 index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536a26b441b 100644
 --- a/apps/web/src/routes/__root.tsx

@@ -109,6 +109,7 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
+import { BatonLiveBadge } from "./BatonLiveBadge";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { InlineButton } from "../ui/button";
@@ -533,6 +534,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className: 
 
 type SidebarThreadRowProps = {
   thread: SidebarThreadSummary;
+  /** Tessaya: a live session running now (P5), decided once for the whole list. */
+  batonLive?: boolean;
   // "folder" is a one-line row inside a boring sidebar project folder;
   // "folder-multiline" adds the card's branch and PR line under it.
   variant: "card" | "slim" | "folder" | "folder-multiline";
@@ -1175,6 +1178,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         aria-hidden
         className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
       >
+        <BatonLiveBadge live={props.batonLive === true} />
         {remoteMachineIcon}
         <SidebarProviderStack
           thread={thread}
@@ -1185,6 +1189,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
   const titleLineIcons = metaLineEmpty ? (
     <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
+      <BatonLiveBadge live={props.batonLive === true} />
       {remoteMachineIcon}
       <SidebarProviderStack
         thread={thread}

@@ -27,7 +27,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
       "What needs you, what Tessaya is keeping track of and doing, what it learned today, and what it held back and why.",
     "intro.sessions.title": "Sessions",
     "intro.sessions.text":
-      "Every live session on every connected machine. Open one, or type to it.",
+      "Live sessions are threads in T3, marked Live. Show them there, on every linked computer.",
     "intro.approvals.title": "Approvals",
     "intro.approvals.text":
       "Everything waiting for your yes, with what it would do and what it would use. High-risk actions still ask you aloud when they happen.",

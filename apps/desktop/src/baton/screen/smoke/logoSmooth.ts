@@ -22,7 +22,26 @@ setTimeout(() => Electron.app.exit(3), 5 * 60_000).unref();
 const startClip = () => {
   const child = NodeChildProcess.spawn(
     "ffmpeg",
-    ["-y", "-f", "gdigrab", "-framerate", "15", "-i", "desktop", "-vf", "crop=360:140:0:0", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p", NodePath.join(out, "logo.mp4")],
+    [
+      "-y",
+      "-f",
+      "gdigrab",
+      "-framerate",
+      "15",
+      "-i",
+      "desktop",
+      "-vf",
+      "crop=360:140:0:0",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      NodePath.join(out, "logo.mp4"),
+    ],
     { stdio: ["pipe", "ignore", "ignore"], windowsHide: true },
   );
   child.on("error", () => undefined);
@@ -93,9 +112,12 @@ void Electron.app.whenReady().then(async () => {
     const frame = shot.toBitmap();
     if (elapsed < 200) {
       NodeFS.writeFileSync(NodePath.join(out, "first.png"), shot.toPNG());
-      console.log(`first frame ${shot.getSize().width}x${shot.getSize().height}, bytes set ${frame.filter((b) => b !== 0).length}, rect ${JSON.stringify(rect)}`);
+      console.log(
+        `first frame ${shot.getSize().width}x${shot.getSize().height}, bytes set ${frame.filter((b) => b !== 0).length}, rect ${JSON.stringify(rect)}`,
+      );
     }
-    if (elapsed > 9000 && elapsed < 9200) NodeFS.writeFileSync(NodePath.join(out, "mid.png"), shot.toPNG());
+    if (elapsed > 9000 && elapsed < 9200)
+      NodeFS.writeFileSync(NodePath.join(out, "mid.png"), shot.toPNG());
     if (previous !== null && previous.length === frame.length) {
       let sum = 0;
       for (let i = 0; i < frame.length; i += 1) sum += Math.abs(frame[i]! - previous[i]!);
@@ -108,7 +130,8 @@ void Electron.app.whenReady().then(async () => {
 
   const restarts = clocks.filter((t, i) => i > 0 && t < clocks[i - 1]!).length;
   const maxDiff = Math.max(0, ...diffs);
-  const moved = clocks.filter((t) => t >= 0).length > clocks.length / 2 && Math.max(0, ...clocks) > 5000;
+  const moved =
+    clocks.filter((t) => t >= 0).length > clocks.length / 2 && Math.max(0, ...clocks) > 5000;
   const changing = diffs.some((d) => d > 0);
   const verdict = live && same && moved && changing && restarts === 0 && maxDiff < 4;
   const lines = [

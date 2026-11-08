@@ -476,7 +476,7 @@ function home(p) {
   if (brainCtl && brainCtl.lead) p.appendChild(banner('', 'what Tessaya works through', 'Choose', 'Claude Code or Codex. You can change it later.', 'Choose', () => go('assistant')));
   else if (up && up.lead) p.appendChild(banner('', 'a quiet moment', 'Tessaya will restart in', up.hint, null));
   const need = (x.stats && x.stats.needYou) || 0;
-  if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Open Sessions to answer.', 'Open Sessions', () => go('sessions')));
+  if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Answer them in T3.', 'Show in T3', showLive));
   const sp = $('div', 'split'); const left = $('div'); const right = $('div', 'rail');
   const allItems = x.activity || [], items = allItems.slice(0, 5);
   left.appendChild($('div', 'day first', 'Today'));
@@ -719,6 +719,13 @@ function searchPage(p) {
   const by = new Map(); for (const c of hits) { const t = c.tab || 'advanced'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
   for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + (CATS.some(c => c[0] === t) ? 'Settings, ' : '') + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
 }
+// Sessions are T3's thread list (P5): counts here, the list filtered to live sessions there.
+const showLive = () => real && ipc.send('baton-home:sessions', 'live');
+function liveSessionsPage(p) {
+  const st = (S.extra && S.extra.stats) || {}; const g = $('div', 'stats tiles');
+  for (const [n, l] of [[st.needYou || 0, 'need you'], [st.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); g.appendChild(r); }
+  const b = $('button', 'btn primary gap-top', 'Show live sessions'); b.onclick = showLive; p.append(g, b);
+}
 function tabPage(p) {
   if (query.trim() && !modal) return searchPage(p);
   if (cur === 'home') return home(p);
@@ -726,8 +733,9 @@ function tabPage(p) {
   if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; p.appendChild(tb); }
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
+  if (cur === 'sessions') return liveSessionsPage(p);
   const items = tabControls(cur);
-  const EMPTY = { sessions: 'No sessions yet. Start one in Claude Code or T3 and it appears here.', approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
+  const EMPTY = { approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
@@ -1037,7 +1045,7 @@ function render(state) {
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', L('alerts.title')); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);
   if (bellOpen) { const pop = $('div', 'pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', L('alerts.title')); pop.appendChild($('b', null, L('alerts.title')));
-    if (need) { const b = $('button', 'btn', L(need === 1 ? 'alerts.one' : 'alerts.many', { n: need })); b.onclick = () => { bellOpen = false; go('sessions'); }; pop.appendChild(b); }
+    if (need) { const b = $('button', 'btn', L(need === 1 ? 'alerts.one' : 'alerts.many', { n: need })); b.onclick = () => { bellOpen = false; showLive(); }; pop.appendChild(b); }
     if (up && up.lead) { const b = $('button', 'btn', L('alerts.update', { name: up.button })); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
     if (!need && !(up && up.lead)) pop.appendChild($('p', null, L('alerts.none')));
     top.appendChild(pop); }

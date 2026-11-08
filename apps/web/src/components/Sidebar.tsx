@@ -2,6 +2,13 @@ import { attachSidebarTree } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
+import { BatonNoLiveSessions } from "./sidebar/BatonLiveBadge";
+import {
+  isRunningLive,
+  liveThreadsOnly,
+  useBatonLiveOnly,
+  useRunningLiveSessions,
+} from "./sidebar/batonLiveOnly";
 import { openThreadInSplit } from "./panes/batonPanesStore";
 import {
   BATON_DETACH_MENU_ITEM,
@@ -419,6 +426,7 @@ function routeThreadOnly(
 
 // Separate hooks cache maps independently of later Sidebar hooks and preserve dnd-kit inputs.
 function useSidebarThreads(input: {
+  readonly batonRunningLive: ReadonlySet<string>;
   readonly projectScopeKey: string | null;
   readonly scopedProjectKeys: ReadonlySet<string> | null;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
@@ -433,6 +441,7 @@ function useSidebarThreads(input: {
   readonly keepEmptyFolders: (group: SidebarProjectSnapshot) => boolean;
 }) {
   const {
+    batonRunningLive,
     projectScopeKey,
     scopedProjectKeys,
     serverConfigs,
@@ -482,8 +491,9 @@ function useSidebarThreads(input: {
   const settledVisibleCount =
     settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
 
+  const [batonLiveOnly] = useBatonLiveOnly();
   const partition = partitionSidebarThreads({
-    threads,
+    threads: liveThreadsOnly(threads, batonLiveOnly, batonRunningLive),
     scopedProjectKeys,
     delegatedUnderParent,
     serverConfigs,
@@ -498,7 +508,7 @@ function useSidebarThreads(input: {
     partition;
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const olderSettledShelf = useOlderSettledShelf({
-    scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
+    scopes: olderSettledScopes(batonLiveOnly ? [] : [...serverConfigs.keys()], scopedProjectKeys),
     expanded: settledShelfExpanded,
     visibleCount: settledVisibleCount,
   });
@@ -1299,6 +1309,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
 
+  const batonRunningLive = useRunningLiveSessions();
+  const [batonLiveOnly] = useBatonLiveOnly();
   const {
     workingShelfEnabled,
     pinnedThreads,
@@ -1336,6 +1348,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     pinnedKeysById,
     activeKeysById,
   } = useSidebarThreads({
+    batonRunningLive,
     projectScopeKey,
     scopedProjectKeys,
     serverConfigs,
@@ -3380,6 +3393,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               optimisticDrop !== null
                             }
                             thread={thread}
+                            batonLive={isRunningLive(batonRunningLive, thread)}
                             variant={rowVariant}
                             navigationParent={
                               folderRow ??
@@ -3676,6 +3690,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     Add project
                   </button>
                 </>
+              ) : batonLiveOnly ? (
+                <BatonNoLiveSessions />
               ) : scopedProjectGroups.length > 1 ? (
                 "No threads in these projects yet"
               ) : scopedProjectGroups[0] ? (
