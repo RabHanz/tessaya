@@ -176,6 +176,8 @@ interface PanePrompt {
   readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
   readonly customIndex: number | null;
   readonly key: string;
+  /** A permission dialog's own words, behind its plain question. */
+  readonly details?: string;
 }
 
 const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
@@ -244,6 +246,36 @@ export const unreadPrompt = (
         ],
         customIndex: null,
       };
+
+/** Longer than the live agent waits for an answered prompt to leave the screen (PROMPT_CLEAR_TRIES). */
+const ASK_REOPEN_MS = 20_000;
+
+/**
+ * Whether the card for the prompt still on screen stays. One T3 closed (an answer that pressed nothing, a dismiss)
+ * comes back once an answer has had time to clear the prompt, so a waiting session never shows no card.
+ */
+export const keepAsk = (ask: { closedAt: number | null }, pending: boolean, nowMs: number) => {
+  if (pending) return true;
+  ask.closedAt ??= nowMs;
+  return nowMs - ask.closedAt < ASK_REOPEN_MS;
+};
+
+/** The T3 question a terminal prompt becomes. T3 sends its answer back as "<question>\n<answer>". */
+export const askQuestion = (found: PanePrompt, overview: string) => ({
+  id: "answer",
+  header: (found.header ?? "Terminal").slice(0, 60),
+  question: [overview, found.context, found.question]
+    .filter((part) => part.length > 0)
+    .join(". ")
+    .replace(/[ \t]+/g, " ")
+    .slice(-1_400),
+  options: found.options.map((option) => ({
+    label: option.label,
+    description: option.description.length > 0 ? option.description : option.label,
+  })),
+  ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
+  ...(found.details === undefined ? {} : { details: found.details }),
+});
 
 const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolStep =>
   "kind" in entry;
@@ -760,6 +792,8 @@ interface Follow {
     readonly requestId: RuntimeRequestId;
     readonly itemId: TurnItemId;
     readonly request: OrchestrationV2RuntimeRequest;
+    /** When T3 closed it while the same prompt stayed on screen. */
+    closedAt: number | null;
   } | null;
   /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
   promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
@@ -1523,7 +1557,16 @@ const make = Effect.gen(function* () {
         readable: read !== null && read.options.length > 0,
         shown: found?.key ?? null,
       });
-      if (follow.ask !== null && follow.ask.key === found?.key) return;
+      if (
+        follow.ask !== null &&
+        follow.ask.key === found?.key &&
+        keepAsk(
+          follow.ask,
+          (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending",
+          nowMs,
+        )
+      )
+        return;
       const now = yield* DateTime.now;
       if (follow.ask !== null) {
         const open = follow.ask;
@@ -1570,7 +1613,6 @@ const make = Effect.gen(function* () {
       const requestId = RuntimeRequestId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       const itemId = TurnItemId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       const nodeId = NodeId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
-      // One line: T3 sends the answer back as "<question>\n<answer>".
       // A tabbed form shows its other questions too, from the transcript's exact text; the pane question stays last
       // because T3 sends the answer back keyed by it.
       const overview =
@@ -1588,11 +1630,6 @@ const make = Effect.gen(function* () {
               ),
             ).slice(0, 900)
           : "";
-      const question = [overview, found.context, found.question]
-        .filter((part) => part.length > 0)
-        .join(". ")
-        .replace(/[ \t]+/g, " ")
-        .slice(-1_400);
       const request = {
         id: requestId,
         nodeId,
@@ -1605,7 +1642,7 @@ const make = Effect.gen(function* () {
         resolvedAt: null,
       };
       yield* expireOtherAsks(follow, String(requestId));
-      follow.ask = { key: found.key, requestId, itemId, request };
+      follow.ask = { key: found.key, requestId, itemId, request, closedAt: null };
       const askRun = askRunId(follow.target, yield* engine.threadRuns(follow.threadId));
       yield* engine.writeEvents({
         events: [
@@ -1632,18 +1669,7 @@ const make = Effect.gen(function* () {
               type: "user_input_request",
               requestId,
               responseMode: "message",
-              questions: [
-                {
-                  id: "answer",
-                  header: (found.header ?? "Terminal").slice(0, 60),
-                  question,
-                  options: found.options.map((option) => ({
-                    label: option.label,
-                    description: option.description.length > 0 ? option.description : option.label,
-                  })),
-                  ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
-                },
-              ],
+              questions: [askQuestion(found, overview)],
             },
           },
           {

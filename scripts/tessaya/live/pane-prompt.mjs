@@ -19,6 +19,8 @@ const SOLID = /^\s*[─━]{8,}\s*$/;
 const NUMBERED = /^(\s*)(❯\s*)?(\d+)\.\s+(.+?)\s*$/;
 const CUSTOM = /^(?:type something|other)\.?$/i;
 const DROPPED = /^chat about this$/i;
+// A raw capture keeps its colour codes.
+const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*\u0007/g;
 const clean = (text) =>
   text
     .replace(/^[\s│┃|]+/, "")
@@ -94,7 +96,36 @@ export function parseReviewScreen(lines) {
  * order (`index`), so an answer is arrows from the highlighted one plus Enter.
  */
 export function parsePanePrompt(screen) {
+  return parseScreen(screen) ?? unreadPermission(String(screen ?? "").replace(ANSI, ""));
+}
+
+/**
+ * A permission dialog whose options could not be read still gets Allow and Deny, with the screen as its details:
+ * Enter takes the option a new dialog highlights (Yes), Esc declines.
+ */
+function unreadPermission(screen) {
+  const lines = screen.replace(/\r/g, "").split("\n").slice(-40);
+  const footer = lines.findLastIndex((l) => /Esc to cancel/.test(l));
+  if (footer < 0 || !lines.slice(0, footer).some((l) => /Do you want to .*\?/.test(l))) return null;
+  const details = screenTail(lines.slice(0, footer).join("\n"), 20);
+  return {
+    question: "Claude Code is asking for permission in its terminal. Allow?",
+    header: null,
+    context: "",
+    details,
+    options: [
+      { index: 0, label: "Allow", description: "", keys: ["enter"] },
+      { index: 1, label: "Deny", description: "", keys: ["esc"] },
+    ],
+    selected: 0,
+    customIndex: null,
+    key: `unread\u0000${details}`,
+  };
+}
+
+function parseScreen(screen) {
   const lines = String(screen ?? "")
+    .replace(ANSI, "")
     .replace(/\r/g, "")
     .split("\n");
   const review = parseReviewScreen(lines);
@@ -207,7 +238,7 @@ export function parsePanePrompt(screen) {
       if (above.length === 0) return null;
       const about = [...above.slice(1), ...box].join(" ").replace(/\s+/g, " ");
       lines.splice(solid + 1, q - solid, about, "", above[0], "");
-      return parsePanePrompt(lines.join("\n"));
+      return parseScreen(lines.join("\n"));
     }
     const question = box.slice(0, asks + 1).join(" ");
     // A link wrapped at the box edge continues on a line with no spaces.
@@ -219,7 +250,7 @@ export function parsePanePrompt(screen) {
       )
       .trim();
     lines.splice(boxTop, q - boxTop + 1, about, "", question, "");
-    return parsePanePrompt(lines.join("\n"));
+    return parseScreen(lines.join("\n"));
   }
   // A long question wraps over several lines with no blank between them: they are one question.
   let qTop = q;
@@ -256,18 +287,113 @@ export function parsePanePrompt(screen) {
       : tabbed;
   const visible = options.filter((o) => !CUSTOM.test(o.label) && !DROPPED.test(o.label));
   const custom = options.find((o) => CUSTOM.test(o.label));
+  const shown = visible.map((o) => ({
+    index: o.number - 1,
+    label: o.label,
+    description: o.description,
+  }));
+  const plain = plainPermission(lines.slice(top + 1, qTop), question, shown);
+  if (plain !== null)
+    return {
+      ...plain,
+      header,
+      context: "",
+      selected: options.findIndex((o) => o.selected),
+      customIndex: null,
+      key: [question, ...options.map((o) => o.label), plain.details].join("\u0000"),
+    };
   return {
     question,
     header,
     ...(tabs === null ? {} : { tabs }),
     context: context.join(" · ").slice(0, 600),
-    options: visible.map((o) => ({
-      index: o.number - 1,
-      label: o.label,
-      description: o.description,
-    })),
+    options: shown,
     selected: options.findIndex((o) => o.selected),
     customIndex: custom === undefined ? null : custom.number - 1,
     key: [question, ...options.map((o) => o.label)].join("\u0000"),
+  };
+}
+
+const shorten = (text, max) =>
+  text.length <= max ? text : `${text.slice(0, max).replace(/\s+\S*$/, "")}…`;
+/** The last few folders of a path: enough to recognise it, short enough to read. */
+const shortPath = (path) => path.replace(/\/+$/, "").split("/").slice(-4).join("/");
+const ALLOW = "Allow";
+const ALWAYS = "Allow always for this";
+const DENY = "Deny";
+
+/**
+ * Claude Code's permission dialog said plainly: who asks (the session or a background agent), what the tool would do,
+ * and plain choices. The dialog's own words stay as `details`, and each relabelled choice keeps its words as its
+ * description. Null when the screen is not a permission dialog. `block` is the screen between the dialog's top rule
+ * and its question; a dashed rule boxes the command, diff or address.
+ */
+function plainPermission(block, question, options) {
+  if (!/^Do you want to\b/i.test(question) || !options.some((o) => /^No\b/i.test(o.label)))
+    return null;
+  const parts = [[]];
+  for (const line of block) {
+    if (RULE.test(line)) parts.push([]);
+    else if (clean(line).length > 0) parts.at(-1).push(clean(line));
+  }
+  const [head = [], boxed = [], ...rest] = parts;
+  if (head.length === 0) return null;
+  const from = /\s*·?\s*from the (.+?) agent\b\s*·?/i;
+  const agent = head.map((l) => from.exec(l)?.[1]).find((a) => a !== undefined) ?? null;
+  const [title = "", ...about] = head.map((l) => l.replace(from, " ").trim()).filter(Boolean);
+  const desc = about.join(" ");
+  const body = boxed.join(" ");
+  const said = rest.flat().join(" ");
+  let action;
+  if (/^Bash\b/i.test(title)) {
+    const cd = /^cd\s+("[^"]+"|'[^']+'|\S+)/.exec(body)?.[1]?.replace(/^["']|["']$/g, "");
+    const target = /target:\s*(\S+)/.exec(said)?.[1];
+    const where = cd ?? (target === undefined ? undefined : target.replace(/\/[^/]*$/, ""));
+    action = /(^|[;&|]\s*|\s)rm\s/.test(` ${body}`)
+      ? `run a command that deletes files${where === undefined ? "" : ` in ${shortPath(where)}`}`
+      : "run a command";
+  } else if (/^(Edit|Create|Write)\b/i.test(title)) {
+    const file =
+      /(?:edit to|create|write to)\s+(.+?)\?$/i.exec(question)?.[1] ?? boxed[0] ?? head[1];
+    const verb = /^Create|create/.test(`${title} ${question}`) ? "create" : "edit";
+    action = file === undefined ? `${verb} a file` : `${verb} ${shortPath(file)}`;
+  } else if (/fetch/i.test(`${title} ${question}`)) {
+    const host =
+      /https?:\/\/([^/\s]+)/.exec(`${body} ${desc}`)?.[1] ??
+      /\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i.exec(body)?.[1];
+    action = host === undefined ? "fetch a web page" : `fetch a web page from ${host}`;
+  } else {
+    const mcp =
+      /^(.+?)\s+-\s+([\w.-]+)\s*\(.*\(MCP\)\s*$/.exec(body) ??
+      /^(.+?)\s+-\s+([\w.-]+)\s*\(/.exec(desc);
+    action =
+      mcp !== null
+        ? `use the ${mcp[2]} tool from ${mcp[1]}`
+        : `use ${title.length > 0 ? title.replace(/\s+(command|use)$/i, "") : "a tool"}`;
+  }
+  const who =
+    agent === null
+      ? "Claude"
+      : `A background agent${desc.length > 0 ? ` (${shorten(desc, 40)})` : ""}`;
+  const why =
+    agent === null && desc.length > 0 && /^Bash\b/i.test(title) ? `: ${shorten(desc, 80)}` : "";
+  return {
+    question: `${who} wants to ${action}${why}. Allow?`,
+    details: [...head, ...boxed, ...rest.flat(), question].join("\n").slice(0, 2_000),
+    options: options.map((o) => {
+      const plain = /^Yes$/i.test(o.label)
+        ? ALLOW
+        : /^Yes\b/i.test(o.label)
+          ? ALWAYS
+          : /^No\b/i.test(o.label)
+            ? DENY
+            : o.label;
+      return {
+        ...o,
+        label: plain,
+        // "Yes, and don't ask again for rm commands in …" says what "always" covers.
+        description: o.description || (/^(Yes|No)$/i.test(o.label) ? "" : o.label),
+      };
+    }),
   };
 }

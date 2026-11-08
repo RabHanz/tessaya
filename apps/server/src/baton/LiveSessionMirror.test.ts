@@ -3,12 +3,21 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { MessageId, ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  MessageId,
+  OrchestrationV2UserInputQuestion,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
+import * as panePrompt from "../../../../scripts/tessaya/live/pane-prompt.mjs";
 import {
+  askQuestion,
   askRunId,
+  keepAsk,
   endedMirrorThreads,
   forgetUnarchived,
   liveMedia,
@@ -43,6 +52,35 @@ describe("a question card's run", () => {
     expect(askRunId("open" as never, runs)).toBe("open");
     expect(askRunId(null, runs)).toBe("r2");
     expect(askRunId(null, [])).toBeNull();
+  });
+});
+
+const decodeQuestion = Schema.decodeUnknownSync(OrchestrationV2UserInputQuestion);
+
+describe("a terminal permission prompt's card", () => {
+  const screen = (name: string) =>
+    NodeFS.readFileSync(
+      NodePath.join(import.meta.dirname, "../../../../scripts/tessaya/live/__fixtures__", name),
+      "utf8",
+    );
+
+  it("a background agent's prompt becomes a card in plain words, its raw text behind Details", () => {
+    const found = panePrompt.parsePanePrompt(screen("pane-subagent-permission.txt"));
+    expect(found).not.toBeNull();
+    const card = decodeQuestion(askQuestion(found!, ""));
+    expect(card.question).toBe(
+      "A background agent (Record all variants in both themes plus…) wants to run a command that deletes files in drafts/pill/v2/proto. Allow?",
+    );
+    expect(card.options.map((o) => o.label)).toEqual(["Allow", "Deny"]);
+    expect(card.details).toContain("rm -rf stills/* src/raw");
+  });
+
+  it("a card T3 closed while its prompt is still on screen comes back once an answer could have landed", () => {
+    const ask = { closedAt: null };
+    expect(keepAsk(ask, true, 0)).toBe(true);
+    expect(keepAsk(ask, false, 1_000)).toBe(true);
+    expect(keepAsk(ask, false, 15_000)).toBe(true);
+    expect(keepAsk(ask, false, 21_001)).toBe(false);
   });
 });
 

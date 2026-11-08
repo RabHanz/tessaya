@@ -26,6 +26,7 @@ import {
   readableInboxName,
   answerKeys,
   answerFrom,
+  isCardAnswer,
   enqueue,
   readQueue,
   drainSession,
@@ -64,13 +65,13 @@ const fixture = (name) =>
 
 NodeTest.test("a permission dialog on the screen is read with its options (D88)", () => {
   const prompt = parsePanePrompt(fixture("pane-permission.txt"));
-  NodeAssert.equal(prompt.question, "Do you want to proceed?");
-  NodeAssert.match(prompt.context, /echo PERM-TEST/);
+  NodeAssert.equal(prompt.question, "Claude wants to run a command: Print a test string. Allow?");
+  NodeAssert.match(prompt.details, /echo PERM-TEST\n[^]*Do you want to proceed\?$/);
   NodeAssert.deepEqual(
     prompt.options.map((o) => o.label),
-    ["Yes", "No"],
+    ["Allow", "Deny"],
   );
-  NodeAssert.deepEqual(answerKeys(prompt, "No"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["down", "enter"], text: null });
   NodeAssert.deepEqual(answerKeys(prompt, "1"), { keys: ["enter"], text: null });
   NodeAssert.equal(answerKeys(prompt, "maybe"), null, "no free text where none is offered");
 });
@@ -585,11 +586,7 @@ NodeTest.test("a free-text option called Other is the custom slot too", () => {
   NodeAssert.equal(parsePanePrompt(screen).customIndex, 2);
 });
 
-NodeTest.test("the permission dialog and the single question still read as before", () => {
-  NodeAssert.equal(
-    parsePanePrompt(fixture("pane-permission.txt")).question,
-    "Do you want to proceed?",
-  );
+NodeTest.test("the single question still reads as before", () => {
   NodeAssert.equal(
     parsePanePrompt(fixture("pane-question.txt")).question,
     "Which colour do you prefer?",
@@ -991,3 +988,134 @@ NodeTest.test(
 NodeTest.test("the live effort list is the one the server types", () => {
   NodeAssert.deepEqual(LIVE_EFFORTS, [...LIVE_EFFORT_CHOICES]);
 });
+
+NodeTest.test("a background agent's permission prompt is a card a person can read", () => {
+  const screen = fixture("pane-subagent-permission.txt");
+  const prompt = parsePanePrompt(screen);
+  NodeAssert.equal(
+    prompt.question,
+    "A background agent (Record all variants in both themes plus…) wants to run a command that deletes files in drafts/pill/v2/proto. Allow?",
+  );
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Allow", "Deny"],
+  );
+  NodeAssert.equal(prompt.context, "");
+  NodeAssert.match(prompt.details, /^Bash command · from the general-purpose agent\n/);
+  NodeAssert.match(prompt.details, /rm -rf stills\/\* src\/raw/);
+  NodeAssert.match(prompt.details, /statically-unresolvable target/);
+  // Herdr's colour codes and the box's border characters do not change what is read.
+  const coloured = screen
+    .replace(" Bash command", " \u001b[1;36mBash command\u001b[0m")
+    .replace("❯ 1. Yes", "\u001b[38;5;153m❯ 1. Yes\u001b[39m");
+  NodeAssert.deepEqual(parsePanePrompt(coloured), prompt);
+  // The card's answer presses the key, even with a pasted picture's note under it.
+  const answer = `${prompt.question}\nAllow\n\nAttached image "image.png": "/tmp/image.png"`;
+  NodeAssert.equal(isCardAnswer(answer, prompt), true);
+  NodeAssert.deepEqual(answerKeys(prompt, answerFrom(answer, prompt)), {
+    keys: ["enter"],
+    text: null,
+  });
+  NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["down", "enter"], text: null });
+});
+
+/** A Claude Code permission dialog as a pane shows it. */
+const dialog = (head, boxed, question, options) =>
+  [
+    "─".repeat(60),
+    ...head.map((l) => ` ${l}`),
+    "╌".repeat(60),
+    ...boxed.map((l) => ` ${l}`),
+    "╌".repeat(60),
+    "",
+    ` ${question}`,
+    ...options.map((o, i) => `${i === 0 ? " ❯" : "  "} ${i + 1}. ${o}`),
+    "",
+    " Esc to cancel · Tab to amend",
+  ].join("\n");
+
+NodeTest.test("every tool's permission prompt reads plainly, with two or three choices", () => {
+  const cases = [
+    [
+      dialog(
+        ["Edit file"],
+        ["apps/web/src/main.ts", "- old", "+ new"],
+        "Do you want to make this edit to main.ts?",
+        ["Yes", "Yes, allow all edits during this session (shift+tab)", "No"],
+      ),
+      "Claude wants to edit main.ts. Allow?",
+      ["Allow", "Allow always for this", "Deny"],
+    ],
+    [
+      dialog(
+        ["Fetch · from the Explore agent"],
+        ["https://docs.example.com/guide"],
+        "Do you want to allow Claude to fetch this content?",
+        [
+          "Yes",
+          "Yes, and don't ask again for docs.example.com",
+          "No, and tell Claude what to do differently (esc)",
+        ],
+      ),
+      "A background agent wants to fetch a web page from docs.example.com. Allow?",
+      ["Allow", "Allow always for this", "Deny"],
+    ],
+    [
+      dialog(
+        ["Tool use"],
+        ['slack - send_message(channel: "#ops", text: "hi") (MCP)'],
+        "Do you want to proceed?",
+        ["Yes", "No"],
+      ),
+      "Claude wants to use the send_message tool from slack. Allow?",
+      ["Allow", "Deny"],
+    ],
+    [
+      dialog(["Bash command"], ["git status"], "Do you want to proceed?", [
+        "Yes",
+        "Yes, and don't ask again for git status commands in /repo",
+        "No",
+      ]),
+      "Claude wants to run a command. Allow?",
+      ["Allow", "Allow always for this", "Deny"],
+    ],
+  ];
+  for (const [screen, question, labels] of cases) {
+    const prompt = parsePanePrompt(screen);
+    NodeAssert.equal(prompt.question, question);
+    NodeAssert.deepEqual(
+      prompt.options.map((o) => o.label),
+      labels,
+    );
+    NodeAssert.deepEqual(answerKeys(prompt, labels.at(-1)), {
+      keys: [...labels.slice(1).map(() => "down"), "enter"],
+      text: null,
+    });
+  }
+  // "Always" says what it covers.
+  NodeAssert.match(parsePanePrompt(cases[3][0]).options[1].description, /git status commands/);
+});
+
+NodeTest.test(
+  "a permission prompt that cannot be read still offers Allow and Deny, with its text",
+  () => {
+    const prompt = parsePanePrompt(
+      [
+        "Something new · from a future agent",
+        "Do you want to proceed?",
+        "  (a layout not seen before)",
+        "",
+        " Esc to cancel",
+      ].join("\n"),
+    );
+    NodeAssert.deepEqual(
+      prompt.options.map((o) => [o.label, o.keys]),
+      [
+        ["Allow", ["enter"]],
+        ["Deny", ["esc"]],
+      ],
+    );
+    NodeAssert.match(prompt.details, /Something new[^]*Do you want to proceed\?/);
+    NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["esc"], text: null });
+  },
+);

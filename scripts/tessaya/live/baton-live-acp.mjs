@@ -207,9 +207,11 @@ export function herdrPaneRef(env) {
 /** The keys that answer `prompt` with `answer` (an option's label or number, or free text). */
 export function answerKeys(prompt, answer) {
   const wanted = String(answer ?? "").trim();
-  const byLabel = prompt.options.find((o) => o.label.toLowerCase() === wanted.toLowerCase());
-  const byNumber = /^\d+$/.test(wanted)
-    ? prompt.options.find((o) => o.index === Number(wanted) - 1)
+  // A choice is the answer's first line: T3 appends a pasted picture's note below it.
+  const chosen = wanted.split("\n")[0].trim();
+  const byLabel = prompt.options.find((o) => o.label.toLowerCase() === chosen.toLowerCase());
+  const byNumber = /^\d+$/.test(chosen)
+    ? prompt.options.find((o) => o.index === Number(chosen) - 1)
     : undefined;
   const option = byLabel ?? byNumber;
   if (option?.keys !== undefined) return { keys: option.keys, text: null };

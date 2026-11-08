@@ -264,6 +264,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               threadRef={threadRef}
               className={cn("pt-2 text-foreground/85", questionTextAlign)}
             />
+            {activeQuestion.details ? (
+              <details className="mt-1 text-secondary-label text-xs">
+                <summary className="cursor-pointer select-none">Details</summary>
+                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-2xs">
+                  {activeQuestion.details}
+                </pre>
+              </details>
+            ) : null}
             {/* Rows span the header row's width so the radios align with the question text and the shortcut column sits under the dismiss button. */}
             <div className="-ms-2 mt-1.5 sm:-ms-1.5">
               {activeQuestion.options.map((option, index) => {
