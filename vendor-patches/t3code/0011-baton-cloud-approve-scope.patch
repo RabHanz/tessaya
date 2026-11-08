@@ -1,5 +1,46 @@
 Approving a cloud task is its own permission (baton:cloud-approve): not in the standard client scopes, held by the desktop app session and by a client paired for it.
 
+diff --git a/apps/server/src/auth/McpOAuth.test.ts b/apps/server/src/auth/McpOAuth.test.ts
+index d2d6c1d3b9967189f8883b6d88f01431d4272a0b..2fb19054c57fabafc499f28d8746f1e0b4249cca 100644
+--- a/apps/server/src/auth/McpOAuth.test.ts
++++ b/apps/server/src/auth/McpOAuth.test.ts
+@@ -1,7 +1,10 @@
+ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+ import * as NodeServices from "@effect/platform-node/NodeServices";
+ import {
++  AuthAccessTokenType,
++  AuthEnvironmentBootstrapTokenType,
+   AuthMcpClientAccess,
++  AuthTokenExchangeGrantType,
+   AuthStandardClientScopes,
+   type AuthCreatePairingCredentialInput,
+   EnvironmentHttpApi,
+@@ -593,3 +596,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
+   expect(matches("https://bot.example/cb", "https://bot.example/cb?x=1")).toBe(false);
+   expect(matches("https://bot.example/cb", "https://evil.example/cb")).toBe(false);
+ });
++
++it.live("gives a token asked for under a scope's renamed spelling the scope its link granted", () =>
++  withRoutes((handler, auth) =>
++    Effect.gen(function* () {
++      const link = yield* auth.issuePairingCredential({ scopes: ["baton:hands"] });
++      const response = yield* handler(
++        at(
++          "/oauth/token",
++          form({
++            grant_type: AuthTokenExchangeGrantType,
++            subject_token: link.credential,
++            subject_token_type: AuthEnvironmentBootstrapTokenType,
++            requested_token_type: AuthAccessTokenType,
++            scope: "tessaya:hands",
++          }),
++        ),
++      );
++      expect(response.status).toBe(200);
++      expect(yield* json<{ scope: string }>(response)).toMatchObject({ scope: "baton:hands" });
++    }),
++  ),
++);
 diff --git a/apps/server/src/auth/PairingGrantStore.test.ts b/apps/server/src/auth/PairingGrantStore.test.ts
 index baa7f388f2bd4958aa179cc0984920b2e266df22..b5cbbecca0e2126d1c552115b3850856c408f122 100644
 --- a/apps/server/src/auth/PairingGrantStore.test.ts
