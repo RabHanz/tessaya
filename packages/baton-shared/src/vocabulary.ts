@@ -96,7 +96,12 @@ export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyAr
     .slice(0, PROMPT_TERMS)
     .map(({ entry }) => {
       const term = entry.replacement ?? entry.phrase;
-      const heard = (entry.heard ?? []).map((h) => `"${h}"`).join(", ");
+      // An everyday-looking form ("button", "venture OS") as a hint makes the model swap every "button" and "venture";
+      // those are put back in code, only where the name fits.
+      const heard = (entry.heard ?? [])
+        .filter((h) => /^\p{Lu}/u.test(h))
+        .map((h) => `"${h}"`)
+        .join(", ");
       return heard.length === 0 ? term : `${term} (heard as ${heard})`;
     });
 
