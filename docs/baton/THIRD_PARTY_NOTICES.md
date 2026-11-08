@@ -100,8 +100,15 @@ SOFTWARE.
 
 - Parakeet TDT 0.6B v3 (NVIDIA, CC BY 4.0), GGUF conversion `handy-computer/parakeet-tdt-0.6b-v3-gguf`,
   downloaded on first use.
-- Pocket TTS (Kyutai, MIT) binary, and its weights and VCTK-derived voices (CC-BY-4.0), downloaded on
-  first use from `kyutai/pocket-tts-without-voice-cloning`.
+- Pocket TTS (Kyutai, MIT) binary, and its weights and voice embeddings (CC-BY-4.0), downloaded on
+  first use from `kyutai/pocket-tts-without-voice-cloning`. Attribution: "Pocket TTS by Kyutai, CC BY 4.0".
+  The embeddings are made from recordings listed in `kyutai/tts-voices`: VCTK (CC BY 4.0: anna, azelma,
+  charles, eponine, eve, fantine, george, jane, mary, michael, paul, vera), Voice-Zero/LibriVox and the
+  Unmute voice donations (CC0: bill_boerst, caro_davy, peter_yearsley, stuart_bell, javert, marius),
+  Common Voice (CC0: giovanni, lola), Kyutai's Unmute recordings (CC0: estelle). alba, juergen and rafael
+  carry no licence line of their own there; check them as well before offering them. cosette
+  (Expresso) and jean (EARS) come from CC BY-NC 4.0 recordings: check them before offering either in a
+  commercial release. Only anna, vera, charles and paul are offered today; the voice lab can play all 27.
 - `melspectrogram.onnx`, `embedding_model.onnx` from openWakeWord v0.5.1, `silero_vad.onnx` from
   Silero VAD v6.2.3 (MIT), shipped in `native/baton-dictation/models`. See
   `docs/baton/research/voice-stack-2026-10-26.md` for their licence notes.

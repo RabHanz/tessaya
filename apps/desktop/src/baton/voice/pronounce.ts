@@ -4,10 +4,17 @@
  * The text on screen stays as written; only the voice hears this.
  */
 
+/**
+ * How her name is said: tess-AY-uh (tɛsˈeɪə), the middle syllable stressed and rhyming with "say". Change this one
+ * spelling to the one he picks by ear from voice-audition's pronounce/ folder; his own pronounce list still wins.
+ */
+const TESSAYA_SAID = "Tessaya";
+
 /** Built in. Acronyms match only in capitals ("PR", never "pr" in "print"); names match in any case. */
 const RESPELLINGS: Readonly<Record<string, string>> = {
-  // How he says it (British): FRAY-uh. Tessaya is said as written until the round trip picks a spelling.
+  // How he says it (British): FRAY-uh.
   Freya: "Fray-uh",
+  Tessaya: TESSAYA_SAID,
   Baton: "Batton",
   T3: "T three",
   // Pocket TTS already says VPN, CI, API, URL and SQL as letters (0.1.73 round trip); "C I" was heard as "See I".

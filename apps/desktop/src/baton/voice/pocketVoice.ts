@@ -15,9 +15,10 @@ import type { Synthesise } from "./voiceSpeaker.ts";
 import { ensureModel, hashFile, type DownloadableModel } from "./voiceModels.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
 
+/** The voices offered in Settings and the persona file. */
 export const POCKET_VOICES = ["anna", "vera", "charles", "paul"] as const;
 /** A chosen voice: the full model's four, or the small model for a tight machine. */
-export type PocketVoice = (typeof POCKET_VOICES)[number] | "quick";
+export type PocketVoice = (typeof POCKET_ALL_VOICES)[number] | "quick";
 
 const RELEASE = "https://github.com/kyutai-labs/pocket-tts/releases/download/v4.0.1";
 const HF = "https://huggingface.co/kyutai/pocket-tts-without-voice-cloning/resolve";
@@ -42,36 +43,47 @@ const model = (
   sha256: string,
 ): DownloadableModel => ({ file, url: `${HF}/${rev}/languages/${path}`, size, sha256 });
 
-const VOICE_FILES: Record<(typeof POCKET_VOICES)[number], DownloadableModel> = {
-  anna: model(
-    "anna.safetensors",
-    "english/embeddings/anna.safetensors",
-    VOICES,
-    7620408,
-    "4f1a928fc92ae04367324cc5d880745c1e6680bd56bf99e5d26a1e80c2cff421",
-  ),
-  vera: model(
-    "vera.safetensors",
-    "english/embeddings/vera.safetensors",
-    VOICES,
-    6686520,
-    "6deb7eb7606810edbba1c9639376d6750a8f441e464e279c43341debf5c29765",
-  ),
-  charles: model(
-    "charles.safetensors",
-    "english/embeddings/charles.safetensors",
-    VOICES,
-    6195000,
-    "21806203b56a8ee954b66a33fcdea636c67cd54760f20f12f7586062d9455337",
-  ),
-  paul: model(
-    "paul.safetensors",
-    "english/embeddings/paul.safetensors",
-    VOICES,
-    6833976,
-    "02b77e48b791c7ece818d7f85b98459bc8dc035104e6327635053ffb56898050",
-  ),
-};
+/**
+ * Every English voice at the pinned revision: name, bytes, sha256 (from the Hugging Face API). Source recordings and
+ * their terms: kyutai/tts-voices; cosette (Expresso) and jean (EARS) come from non-commercial recordings.
+ */
+const VOICE_TABLE = [
+  ["alba", 6244152, "4206b7194018c7e345e5cfd99f147caad36285df858ea153d0188c40d9f261e5"],
+  ["anna", 7620408, "4f1a928fc92ae04367324cc5d880745c1e6680bd56bf99e5d26a1e80c2cff421"],
+  ["azelma", 7178040, "cc09e106a1acf5fe0b4c5de61b2b7686080b7bab853f9c11bfef219801bf3126"],
+  ["bill_boerst", 6539064, "063b245f60f682a2403e4c61d2e8754e0a2916d75b2cd515cc97355a9e7a10a8"],
+  ["caro_davy", 5064504, "971a47f7e655e4e377915b2862f2b1242aa4f27659ed936c85387bc2dfe17595"],
+  ["charles", 6195000, "21806203b56a8ee954b66a33fcdea636c67cd54760f20f12f7586062d9455337"],
+  ["cosette", 6244152, "ee63b91d4614e939fa5eb24df8c43de367c552dfd60c1c6b61582a859e25298a"],
+  ["daan", 3884848, "2241724e629acd348f2c810b587441812f1412262b6244378db5f73af430c8ac"],
+  ["eponine", 6932280, "897d1d697e433f4ac1f0a8957fd2d69b073e316935c681fe488a7bf63a2b9a7b"],
+  ["estelle", 7571256, "c6d0487d2a3e3d830b5dc3595ee9804df4920d87beb6dca042d769474e34db75"],
+  ["eve", 6145848, "d31289743fdf306517925afb91e99c27b4d336c127013d2c4d1212791a41cf37"],
+  ["fantine", 6440760, "a1803e41334934b199f4c7a2a4cec1069a75c0b3cb100e3cc3b5e76f0b07dd9e"],
+  ["george", 5900088, "fc5ff4439cbbb532b69d2762524b55844e03352102f13376f2fa00443bc04090"],
+  ["giovanni", 4130608, "abe83e91cc6984dc7d8ae1362fe4282ec095198087db7c2519f7a42dae2d9630"],
+  ["jane", 7325496, "495ff63b1757ceb68a7a8e2d369b780e9d60dcd98a25ef784e246c65c9af4d90"],
+  ["javert", 6145848, "f60f4603404152370ae5ad4d01fa9ad3e1afd3a5df6122aa3dd88ed95fbfd6f8"],
+  ["jean", 6096696, "2d720746d3f2ec131b4dd67c0b101af7a7006798511bb975c707788e9a2467fc"],
+  ["juergen", 6096696, "1382e92abb0abf4cd531d33d1ad4e6db0c9ebd10ab1b1533421e151f14190450"],
+  ["lola", 5457720, "5be565a67bc85610d7b1d0a44fb7fb658d5d324504a4341a619ef1641f363503"],
+  ["marius", 6244152, "6fd2496993221be51edc027820fa465b67221d7e369b8caeab40076040d561dd"],
+  ["mary", 5949240, "f05824557190fe66e39837337d65c6c400aa54920bae316e1245eeb4cd447b8b"],
+  ["michael", 7128888, "188f29bf53aca645d77accd44455b494a28e17d94b1658fbaec80f679371ad13"],
+  ["paul", 6833976, "02b77e48b791c7ece818d7f85b98459bc8dc035104e6327635053ffb56898050"],
+  ["peter_yearsley", 3639088, "7410cc6531929ea0ea7daa3a3f083a78239701df31acc60583172585a9304c3e"],
+  ["rafael", 6244152, "ce295d539693b6ee3b4dc592e186661502392ceb5e403759a18c3c32acc38dd1"],
+  ["stuart_bell", 5064504, "6ccec2880941cd132a9997798c8b0350d3dd547c890e45024873a85b017e5b39"],
+  ["vera", 6686520, "6deb7eb7606810edbba1c9639376d6750a8f441e464e279c43341debf5c29765"],
+] as const;
+export const POCKET_ALL_VOICES = VOICE_TABLE.map(([name]) => name);
+
+const VOICE_FILES = Object.fromEntries(
+  VOICE_TABLE.map(([name, size, sha256]) => [
+    name,
+    model(`${name}.safetensors`, `english/embeddings/${name}.safetensors`, VOICES, size, sha256),
+  ]),
+) as Record<(typeof POCKET_ALL_VOICES)[number], DownloadableModel>;
 
 const FULL_FILES = [
   model(
@@ -157,6 +169,8 @@ export const createPocketEngine = (input: {
   readonly platform: string;
   readonly arch: string;
   readonly onProgress: (message: string | null) => void;
+  /** The engine exited: its code and the end of what it wrote to stderr, for the log. */
+  readonly onExit?: (exit: { readonly code: number | null; readonly stderr: string }) => void;
 }): PocketEngine => {
   const build = BINARIES[`${input.platform}-${input.arch}`];
   // The archive holds one folder named after itself.
@@ -277,7 +291,7 @@ export const createPocketEngine = (input: {
       ],
       {
         windowsHide: true,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
         cwd: plan.dir,
         // A downloaded binary gets what a process needs to start, and none of his variables.
         env: {
@@ -294,7 +308,7 @@ export const createPocketEngine = (input: {
     const up = (async () => {
       const deadline = Date.now() + READY_MS;
       for (;;) {
-        if (proc.exitCode !== null) throw new Error("The voice stopped.");
+        if (proc.exitCode !== null) throw new Error(`The voice stopped (exit ${proc.exitCode}).`);
         const ok = await fetch(`http://127.0.0.1:${port}/health`, {
           signal: AbortSignal.timeout(2_000),
         }).then(
@@ -307,8 +321,14 @@ export const createPocketEngine = (input: {
       }
     })();
     const entry = { proc, port, voice, up };
-    proc.on("exit", () => {
+    // Only the last few lines are kept: enough to say why it stopped.
+    let stderr = "";
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString("utf8")).slice(-2_000);
+    });
+    proc.on("exit", (code) => {
       if (server === entry) server = null;
+      input.onExit?.({ code, stderr });
     });
     proc.on("error", () => undefined);
     up.catch(() => undefined);
