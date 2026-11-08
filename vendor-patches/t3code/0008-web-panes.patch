@@ -4,7 +4,7 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 76ad543630fb2d324b51869990a3bf3f5c82d341..1f1571cba9f8a81ae884b0d3b7c305f72cf23d7c 100644
+index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..ab51a0a334d0a5867a582087d4ab7a6d954b3df7 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -1812,7 +1812,7 @@ export default function ChatView(props: ChatViewProps) {
@@ -44,7 +44,7 @@ index 76ad543630fb2d324b51869990a3bf3f5c82d341..1f1571cba9f8a81ae884b0d3b7c305f7
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3323,7 +3325,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3327,7 +3329,7 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -53,7 +53,7 @@ index 76ad543630fb2d324b51869990a3bf3f5c82d341..1f1571cba9f8a81ae884b0d3b7c305f7
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3356,7 +3358,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3360,7 +3362,9 @@ export default function ChatView(props: ChatViewProps) {
                  className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
                />
              ) : null}
@@ -65,7 +65,7 @@ index 76ad543630fb2d324b51869990a3bf3f5c82d341..1f1571cba9f8a81ae884b0d3b7c305f7
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 1ed3065a92c0d09b07ca67d9399df73d366f3358..148f26d25ce20b9debf0d4c6a1ce0fd571ca57d1 100644
+index d45ba6a3a368691b471340edcad80d3219524b26..e2b067fd4f731fff328d04ad5757e7500d754c7c 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -1,6 +1,14 @@
@@ -83,7 +83,7 @@ index 1ed3065a92c0d09b07ca67d9399df73d366f3358..148f26d25ce20b9debf0d4c6a1ce0fd5
  import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
  import {
    dropThreadContext,
-@@ -1554,6 +1562,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1559,6 +1567,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      const isMac = isMacPlatform(navigator.platform);
      const isModClick = isMac ? event.metaKey : event.ctrlKey;
      const threadKey = scopedThreadKey(threadRef);
@@ -95,7 +95,7 @@ index 1ed3065a92c0d09b07ca67d9399df73d366f3358..148f26d25ce20b9debf0d4c6a1ce0fd5
      if (isModClick) {
        event.preventDefault();
        toggleThreadSelection(threadKey);
-@@ -2599,7 +2612,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2614,7 +2627,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              ),
            ) ?? null;
          const clicked = await settlePromise(() =>
@@ -108,7 +108,7 @@ index 1ed3065a92c0d09b07ca67d9399df73d366f3358..148f26d25ce20b9debf0d4c6a1ce0fd5
              buildThreadActionMenuItems({
                canOperate: readEnvironmentScope(
                  threadRef.environmentId,
-@@ -2638,6 +2655,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2653,6 +2670,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            ),
          );
          if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -125,7 +125,7 @@ index 1ed3065a92c0d09b07ca67d9399df73d366f3358..148f26d25ce20b9debf0d4c6a1ce0fd5
          if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
          if (clicked.value?.startsWith("snooze:")) {
            const preset =
-@@ -3201,6 +3228,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3216,6 +3243,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            </SidebarGroup>
          }
        >

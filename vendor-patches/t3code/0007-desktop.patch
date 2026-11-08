@@ -193,7 +193,7 @@ index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca
    };
  }
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 800f1e744c9d1247541fb308ba8fede7c9a27f19..f21d66c62ce9b5b242d6c53052d1a1cb59861a17 100644
+index 7c44ec51337854e989c7506abcea8ec2eb4d0164..f9f524f8b4b71a2d8366e87bad31ba305f63c1f2 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
 @@ -12,6 +12,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -204,7 +204,7 @@ index 800f1e744c9d1247541fb308ba8fede7c9a27f19..f21d66c62ce9b5b242d6c53052d1a1cb
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
-@@ -451,3 +452,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -458,3 +459,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);

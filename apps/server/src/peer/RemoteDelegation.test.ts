@@ -64,6 +64,7 @@ import * as PeerForwarding from "./PeerForwarding.ts";
 import * as PeerLinks from "./PeerLinks.ts";
 import { descriptorOf, layerLinkingEnvironment, linkTo, servePeer } from "./PeerLinks.testkit.ts";
 import * as RemoteDelegation from "./RemoteDelegation.ts";
+import { clientMessageFrom } from "../baton/AgentMessageFrom.ts";
 import * as PeerLinkRequests from "./PeerLinkRequests.ts";
 
 // The laptop's agent delegates a task to the box through a link. The box is
@@ -1695,7 +1696,10 @@ it.effect("stopping the parent stops follow-up work on a task there that has its
         message: "Now run the slow suite too.",
       });
       expect(sent.isError, JSON.stringify(sent.content)).toBe(false);
-      expect(yield* Ref.get(thread.sent)).toEqual(["Now run the slow suite too."]);
+      // Forwarded from another machine, so it carries the from-line even inside one tree.
+      expect(yield* Ref.get(thread.sent)).toEqual([
+        `${clientMessageFrom({ label: "T3 Code · Laptop", linked: true })}\n\nNow run the slow suite too.`,
+      ]);
       expect(yield* Ref.get(thread.interrupted)).toBe(0);
 
       yield* a.threads.stopDelegatedTasks({

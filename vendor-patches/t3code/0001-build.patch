@@ -59,18 +59,10 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index d06efd4d9d7bbf43d8076d1f61e31b1857231a75..1c3a917f4fdf47b84e016920a50d00ba56644912 100644
+index ba375768150971d21761ca38f5afd3715a4f1c03..f139eebdaa4a60911dfb06e9fa6a9732d0d69237 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
-@@ -78,6 +78,7 @@ export default defineConfig({
-         "src/snapShot/GlobalShiftShortcutWorker.ts",
-         "src/snapShot/RegionSnapShotWorker.ts",
-         "src/snapShot/SnapShotAccessibilityWorker.ts",
-+        "src/baton/voice/onnxWorker.ts",
-       ],
-       clean: false,
-       deps: {
-@@ -143,6 +144,15 @@ export default defineConfig({
+@@ -149,6 +149,31 @@ export default defineConfig({
        outExtensions: () => ({ js: ".cjs" }),
        entry: ["src/mac-permission-preload.ts"],
      },
@@ -82,6 +74,22 @@ index d06efd4d9d7bbf43d8076d1f61e31b1857231a75..1c3a917f4fdf47b84e016920a50d00ba
 +      sourcemap: true,
 +      outExtensions: () => ({ js: ".cjs" }),
 +      entry: ["src/baton/voice/pillPreload.ts"],
++    },
++    {
++      // Baton's voice worker; its own block so upstream's worker list and its bundle test stay upstream's.
++      format: "cjs",
++      outDir: "dist-electron",
++      dts: false,
++      sourcemap: true,
++      outExtensions: () => ({ js: ".cjs" }),
++      define: publicConfigDefine,
++      entry: { "baton/voice/onnxWorker": "src/baton/voice/onnxWorker.ts" },
++      clean: false,
++      deps: {
++        alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),
++        neverBundle: isMainProcessExternal,
++        onlyBundle: false,
++      },
 +    },
    ],
    test: {
@@ -296,7 +304,7 @@ index f52115577f1084fd030cfb818f9624b82d086481..713e12b64e147e81fa5ef5b892cc1325
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 95d8b2d57e09faa9301be955e21e004cd64727e1..090ecfa67b3478d44621b1fce2f9375d07970868 100644
+index d64fc1a679f0c506a0897c29b81c6a625d4c8174..a47469445dce521d68c3dd4fa869bc16733a27d9 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -21,6 +21,8 @@ allowBuilds:
@@ -309,10 +317,10 @@ index 95d8b2d57e09faa9301be955e21e004cd64727e1..090ecfa67b3478d44621b1fce2f9375d
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-cli-archive.ts b/scripts/build-cli-archive.ts
-index 1244b9491fb73ebd1a000ee885d9a8a99b0786d5..914971e516d4150e77ff0c87e804db0f47faa36a 100644
+index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa02dfffc4 100644
 --- a/scripts/build-cli-archive.ts
 +++ b/scripts/build-cli-archive.ts
-@@ -28,6 +28,7 @@ import {
+@@ -29,6 +29,7 @@ import {
  } from "./build-desktop-artifact.ts";
  import { assertLinuxArm64PageCompatibility } from "./lib/linux-arm64-sea.ts";
  import { selectCliRuntimeExternalDependencies } from "./lib/cli-external-packages.ts";
@@ -320,7 +328,7 @@ index 1244b9491fb73ebd1a000ee885d9a8a99b0786d5..914971e516d4150e77ff0c87e804db0f
  import { signWithJsign } from "./lib/windows-jsign.ts";
  import { windowsSystemTar } from "./lib/windows-tar.ts";
  import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
-@@ -210,7 +211,21 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
+@@ -211,7 +212,21 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))).filter(
      (entry) => entry !== platformKey,
    );
@@ -342,7 +350,7 @@ index 1244b9491fb73ebd1a000ee885d9a8a99b0786d5..914971e516d4150e77ff0c87e804db0f
      "package.json",
      "pnpm-workspace.yaml",
      "pnpm-lock.yaml",
-@@ -521,6 +536,12 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
+@@ -626,6 +641,12 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
      resourceMonitorDir,
      "Build the resource monitor or pass --resource-monitor-dir.",
    );
@@ -355,7 +363,7 @@ index 1244b9491fb73ebd1a000ee885d9a8a99b0786d5..914971e516d4150e77ff0c87e804db0f
  
    const stem = cliArchiveStem(input.version, input.platform, input.arch);
    const stageRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cli-archive-" });
-@@ -531,6 +552,7 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
+@@ -636,6 +657,7 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
    yield* fs.copyFile(builtExecutable, path.join(contentDir, executableName));
    yield* stageWebClient(webClient, path.join(contentDir, "client"));
    yield* fs.copy(resourceMonitorDir, path.join(contentDir, "resource-monitor"));
@@ -867,7 +875,7 @@ index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26
  
  export function isDesktopRuntimeExternalDependency(id: string): boolean {
 diff --git a/scripts/smoke-cli-archive.ts b/scripts/smoke-cli-archive.ts
-index 1318aa3c0c6dd4be6186c4b4839c2f0dc390413a..29b12de81df193c6d28333fa0af9e057e8be789c 100644
+index e11d63c308185e15ece150dd9b73afa592ea9de2..cbac5b0ba41671c90b29f36807d5217f8a737c0b 100644
 --- a/scripts/smoke-cli-archive.ts
 +++ b/scripts/smoke-cli-archive.ts
 @@ -65,6 +65,7 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
