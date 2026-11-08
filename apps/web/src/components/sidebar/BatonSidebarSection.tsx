@@ -385,8 +385,10 @@ export function BatonSidebarSection(props: {
     };
   };
   const onPhone = async (request: BatonPhoneBridgeRequest): Promise<unknown> => {
+    // The phone inbox is this app's own server's; only the desktop's own session there may work it.
+    if (primaryEnvironmentId === null) throw new Error("This app's own server is not connected.");
     const result = await phoneCall({
-      environmentId: primary,
+      environmentId: primaryEnvironmentId,
       input: { op: request.op, args: request.args } as never,
     });
     if (result._tag === "Success") return (result.value as { value: unknown }).value;

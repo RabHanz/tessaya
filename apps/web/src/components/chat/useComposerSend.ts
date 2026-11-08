@@ -125,6 +125,7 @@ import {
   prepareTurnAttachments,
   restoreComposerDraft,
 } from "./chatViewSend";
+import { forgetStaleLiveSelection } from "./batonLiveSend";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -1413,6 +1414,11 @@ export function useComposerSend(input: ComposerSendInput) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        forgetStaleLiveSelection(
+          scopeThreadRef(activeThread.environmentId, threadIdForSend),
+          ctxSelectedModelSelection,
+          activeThread,
+        );
         setKeepFullHistory(routeThreadKey, false);
         if (freshArm !== undefined) disarmFreshSession(routeThreadKey, freshArm);
         clearUsageLimitsFor(routeThreadKey);

@@ -68,20 +68,15 @@ export const classifierStopReason = (lastReply: string | null): string | null =>
     : null;
 
 /**
- * A live thread's model is the terminal session's own. A turn that names another model on the live instance would
- * restart the provider thread as a "live -> live" handoff, which leaves it without its session, so the thread keeps
- * the selection it has. (Model changes go into the session itself.)
+ * A turn on a live thread still on its session goes to that session, whatever the composer remembered: another model
+ * would restart it as a "live -> live" handoff, and another instance is a stale picker, never a handoff the user chose
+ * (that is `provider.switch`, still refused). Model changes go into the session itself.
  */
 export const pinnedLiveSelection = <S extends { readonly instanceId: string }>(
   threadId: string,
   requested: S,
   current: S,
-): S =>
-  isLiveThreadId(threadId) &&
-  requested.instanceId === LIVE_INSTANCE &&
-  current.instanceId === LIVE_INSTANCE
-    ? current
-    : requested;
+): S => (isLiveThreadId(threadId) && current.instanceId === LIVE_INSTANCE ? current : requested);
 
 /**
  * The banner for a live thread whose session is not running: `null` while it runs or its state is unknown, "missing"

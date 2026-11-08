@@ -942,6 +942,81 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5
      Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
    ),
+diff --git a/apps/server/src/vcs/GitVcsDriver.test.ts b/apps/server/src/vcs/GitVcsDriver.test.ts
+index ec8809d895f6d3fa4f3b73588cf112b177cfa6d3..382195a6bddde471eb30182adcbb772b2352a038 100644
+--- a/apps/server/src/vcs/GitVcsDriver.test.ts
++++ b/apps/server/src/vcs/GitVcsDriver.test.ts
+@@ -1254,6 +1254,26 @@ it.effect("GitVcsDriver treats a missing git executable as outside any repositor
+   }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+ );
+ 
++it.effect("GitVcsDriver does not spawn git for a folder with no .git above it", () =>
++  Effect.gen(function* () {
++    const path = yield* Path.Path;
++    // The filesystem root, because a temp folder can sit inside a checkout (TMPDIR in a worktree).
++    const cwd = path.parse(path.resolve(".")).root;
++    let spawned = 0;
++    const driver = yield* GitVcsDriver.makeVcsDriverShape().pipe(
++      Effect.provideService(
++        VcsProcess.VcsProcess,
++        VcsProcess.VcsProcess.of({
++          run: () => Effect.sync(() => spawned++).pipe(Effect.andThen(Effect.die("git spawned"))),
++        }),
++      ),
++    );
++
++    assert.strictEqual(yield* driver.detectRepository(cwd), null);
++    assert.strictEqual(spawned, 0);
++  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
++);
++
+ it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
+   "GitVcsDriver detects a repository whose path contains a newline",
+   () =>
+diff --git a/apps/server/src/vcs/GitVcsDriver.ts b/apps/server/src/vcs/GitVcsDriver.ts
+index d120605d6961fca572aae1050a5f2c5bcc497e03..6aaf54da47328041b5297e5f2461b06e9c2bc07d 100644
+--- a/apps/server/src/vcs/GitVcsDriver.ts
++++ b/apps/server/src/vcs/GitVcsDriver.ts
+@@ -44,6 +44,7 @@ import {
+ } from "./GitVcsDriverCore.ts";
+ import * as VcsDriver from "./VcsDriver.ts";
+ import * as VcsProcess from "./VcsProcess.ts";
++import { mayBeInGitCheckout } from "../baton/gitCheckoutAbove.ts";
+ 
+ export interface ExecuteGitInput {
+   readonly operation: string;
+@@ -601,6 +602,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
+   const detectRepository: VcsDriver.VcsDriver["Service"]["detectRepository"] = Effect.fn(
+     "detectRepository",
+   )(function* (cwd) {
++    if (!(yield* mayBeInGitCheckout(fileSystem, path, cwd))) return null;
+     // One spawn answers all three; outside a work tree it exits non-zero or prints "false".
+     const result = yield* gitCommand(
+       vcsProcess,
+diff --git a/apps/server/src/vcs/VcsDriverRegistry.test.ts b/apps/server/src/vcs/VcsDriverRegistry.test.ts
+index c13d44f2d813a633a2cfebaf9e601ef24e7c2e5a..94ccd5145b2b0296a0ab918b1cca29dbd4a25d14 100644
+--- a/apps/server/src/vcs/VcsDriverRegistry.test.ts
++++ b/apps/server/src/vcs/VcsDriverRegistry.test.ts
+@@ -81,7 +81,8 @@ describe("VcsDriverRegistry", () => {
+         yield* fs.remove(path.join(repoDir, ".git"), { recursive: true });
+ 
+         assert.equal(yield* registry.detect({ cwd: repoDir }), null);
+-        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 2);
++        // With no .git left, detection answers without asking git.
++        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 1);
+       }).pipe(Effect.provide(makeDiskBackedLayer(repoDir, calls)));
+     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+   );
+@@ -124,7 +125,8 @@ describe("VcsDriverRegistry", () => {
+         yield* fs.makeDirectory(path.join(repoDir, ".git"));
+ 
+         assert.equal((yield* registry.detect({ cwd: repoDir }))?.repository.rootPath, repoDir);
+-        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 2);
++        // The negative lookup found no .git and did not ask git.
++        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 1);
+       }).pipe(Effect.provide(makeDiskBackedLayer(repoDir, calls)));
+     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+   );
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
 index 1fa81ddc7026e9b22c94fb79227f5db6ae444725..bbed69f1bd61759adda7980c4d29d7b5466c0547 100644
 --- a/apps/server/src/ws.ts

@@ -81,7 +81,8 @@ describe("VcsDriverRegistry", () => {
         yield* fs.remove(path.join(repoDir, ".git"), { recursive: true });
 
         assert.equal(yield* registry.detect({ cwd: repoDir }), null);
-        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 2);
+        // With no .git left, detection answers without asking git.
+        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 1);
       }).pipe(Effect.provide(makeDiskBackedLayer(repoDir, calls)));
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
@@ -124,7 +125,8 @@ describe("VcsDriverRegistry", () => {
         yield* fs.makeDirectory(path.join(repoDir, ".git"));
 
         assert.equal((yield* registry.detect({ cwd: repoDir }))?.repository.rootPath, repoDir);
-        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 2);
+        // The negative lookup found no .git and did not ask git.
+        assert.equal(calls.filter((call) => call === DETECT_COMMAND).length, 1);
       }).pipe(Effect.provide(makeDiskBackedLayer(repoDir, calls)));
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );

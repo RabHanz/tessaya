@@ -12,7 +12,7 @@ import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { peerFleets, summariesAcross } from "./BatonSessionsAcross.ts";
+import { peerFleets, sharedRun, summariesAcross } from "./BatonSessionsAcross.ts";
 
 const claude = (sessionId: string, pane: string | null): ClaudeLiveSession => ({
   pid: 1,
@@ -129,6 +129,28 @@ it.effect("reports a peer that fails, times out or has expired, and still lists 
     // An expired link is not called at all.
     assert.isFalse(fake.calls.some((call) => call.environmentId === "gone"));
   }),
+);
+
+it.effect(
+  "a listing its caller gave up on still finishes, and the next caller gets that answer",
+  () =>
+    Effect.gen(function* () {
+      let started = 0;
+      let finished = 0;
+      // Longer than the desktop door's 20 s wait.
+      const slowListing = Effect.sync(() => started++).pipe(
+        Effect.andThen(Effect.sleep("30 seconds")),
+        Effect.andThen(Effect.sync(() => ++finished)),
+      );
+      const listing = yield* sharedRun(slowListing, 5_000);
+      const caller = yield* Effect.forkChild(listing);
+      yield* TestClock.adjust("20 seconds");
+      yield* Fiber.interrupt(caller);
+      yield* TestClock.adjust("10 seconds");
+      assert.strictEqual(finished, 1);
+      assert.strictEqual(yield* listing, 1);
+      assert.strictEqual(started, 1);
+    }),
 );
 
 it.effect("shows a linked server's work under the project and account that server resolved", () =>
