@@ -78,16 +78,22 @@ describe("localClean", () => {
     ).toBe("Ask Google first.");
   });
 
-  it("drops an abandoned idea through the reversal, joining what replaced it", () => {
+  it("drops a swapped list item, and nothing else he said", () => {
+    for (const said of [
+      "He suggested we rewrite it in Rust. No, terrible idea. We should keep Go.",
+      "I spoke to Sam, and he wants to drop the prod database. No, terrible idea. We keep it.",
+      'He said "ship it". No, bad idea. We wait for the review.',
+      "Everything was considered. No bad idea. Everything counts.",
+      "Bring the tent and a stove. No, bad idea. The car can carry it.",
+    ])
+      expect(localClean(said, "default")).toBe(said);
+    // Only a list item swapped for a short one goes.
     expect(
       localClean(
-        "Give him medieval armour and a rocket launcher. No, terrible idea. A mustache comb, but bigger.",
+        "Give him medieval armour and a rocket launcher. No terrible idea. A mustache comb, but bigger.",
         "default",
       ),
     ).toBe("Give him medieval armour and a mustache comb, but bigger.");
-    expect(localClean("That's not a terrible idea at all, keep it.", "default")).toBe(
-      "That's not a terrible idea at all, keep it.",
-    );
   });
 
   it("drops a So or a Like, that only opens a sentence", () => {
@@ -114,6 +120,7 @@ describe("localClean", () => {
     expect(localClean(raw, "raw")).toBe(raw);
     expect(localClean("Sounds good to me.", "chat")).toBe("Sounds good to me");
     expect(localClean("git status.", "code")).toBe("git status");
+    expect(localClean("git push origin main.", "code")).toBe("git push origin main");
     // To a coding agent he speaks sentences, which keep their stop.
     expect(localClean("Run the tests again before you push.", "code")).toBe(
       "Run the tests again before you push.",
@@ -200,6 +207,9 @@ describe("checkRewrite", () => {
   });
 
   it("lets a number go only where he took it back", () => {
+    expect(checkRewrite("Meet on the fifth, no, actually the sixth.", "Meet on the 6th.").ok).toBe(
+      true,
+    );
     expect(checkRewrite("Use 6, no wait, 7 agents.", "Use 7 agents.").ok).toBe(true);
     expect(checkRewrite("Use 6 agents and 7 boxes.", "Use 7 boxes and agents.").ok).toBe(false);
   });

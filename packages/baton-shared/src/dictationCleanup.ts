@@ -184,7 +184,7 @@ const VALUE_CORRECTED = new RegExp(
   "gi",
 );
 const CORRECTION_MARK =
-  /\b(no,? (actually|wait|sorry)|actually,? no|i mean|sorry,|or rather|scratch that|wait,|make that|let me rephrase|what i meant|i meant|strike that|forget that|never mind|no,? (?:that'?s )?(?:a )?(?:terrible|bad|stupid|dumb|silly) idea)\b/i;
+  /\b(no,? (actually|wait|sorry)|actually,? no|i mean|sorry,|or rather|scratch that|wait,|make that|let me rephrase|what i meant|i meant|strike that|no,? (?:that'?s )?(?:a )?(?:terrible|bad|stupid|dumb|silly) idea)\b/i;
 
 const FILLERS = /(^|[\s,.;:!?])(?:um+|uh+|erm*|hmm+|mhm)(?![\w-])[,.]?(?=\s|$)/gi;
 /** Said to fill a pause, set off by a comma: "you know, the usual". */
@@ -194,18 +194,17 @@ const STUTTER = /\b(i|the|a|an|to|and|of|we|it|in|on|for|is|you)(?:[,]?\s+\1)+\b
 /** Only on their own, so "add a new paragraph to the doc" stays a sentence. */
 const SPOKEN_BREAK = /(^|[.?!]\s+)new (paragraph|line)[.,]?(?=\s|$)/gi;
 
-/** "…and a rocket launcher. No, terrible idea. A mustache comb…": the idea he dropped, the reversal, and what replaced it. */
-const ABANDONED =
-  /([^.?!\n]*?)\.\s+no,?\s+(?:that'?s\s+)?(?:a\s+)?(?:terrible|bad|stupid|dumb|silly) idea[.!]\s+(\p{L})/giu;
-/** The last place in a clause where a listed item starts. */
-const ITEM_START = /^(.*(?:\b(?:and|or|with|plus)\b|,))\s+/is;
+/** How many words before a correction marker he may have taken back. */
+const TAKEN_BACK_WORDS = 8;
 
-/** Drops the abandoned item through the reversal and joins the replacement onto the last word he kept. */
-const dropAbandoned = (text: string): string =>
-  text.replace(ABANDONED, (_, clause: string, letter: string) => {
-    const kept = ITEM_START.exec(clause);
-    return kept === null ? letter.toUpperCase() : `${kept[1]} ${letter.toLowerCase()}`;
-  });
+/**
+ * A list item he swapped: "…and a rocket launcher. No, terrible idea. A mustache comb, but bigger" keeps "…and a
+ * mustache comb, but bigger". Only an item after and/or/with/plus, replaced by a short item: anything else stays.
+ */
+const SWAPPED_ITEM = new RegExp(
+  String.raw`\b(and|or|with|plus)\s+((?:a|an|the|some|another)\s+[^\s,.?!]+(?:\s+[^\s,.?!]+){0,${TAKEN_BACK_WORDS - 2}})\.\s+no,?\s+(?:that'?s\s+)?(?:a\s+)?(?:terrible|bad|stupid|dumb|silly) idea[.!]\s+((?:a|an|the|some|another)\s+[^\s,.?!]+(?:\s+[^\s,.?!]+){0,2})(?=[,.])`,
+  "gi",
+);
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
@@ -258,6 +257,14 @@ const emailShape = (text: string): string =>
 
 const oneSentence = (text: string) => !/[.?!]\s/.test(text) && !text.includes("\n");
 
+/** Programs a terminal line starts with; words that also open an English sentence ("make", "go") are left out. */
+const PROGRAM =
+  /^(?:git|npm|pnpm|npx|yarn|vp|vpr|node|deno|bun|python3?|pip|cargo|docker|kubectl|ssh|scp|curl|wget|ls|cd|rm|mv|cp|mkdir|grep|sed|awk|gh|brew|apt|sudo|chmod|claude|codex)\b/i;
+
+/** In a terminal a one-line command loses its full stop; a sentence to a coding agent keeps it. */
+const isCommand = (text: string): boolean =>
+  oneSentence(text) && (PROGRAM.test(text) || new RegExp(CODE_TOKEN.source).test(text));
+
 /** Everything code can decide, in well under a millisecond. Raw is left exactly as heard. */
 export const localClean = (
   raw: string,
@@ -275,18 +282,17 @@ export const localClean = (
     )
     .replace(STUTTER, "$1")
     .replace(VALUE_CORRECTED, "$1")
-    .replace(ABANDONED, (whole) => dropAbandoned(whole))
+    .replace(
+      SWAPPED_ITEM,
+      (_, join: string, _item: string, next: string) => `${join} ${next.toLowerCase()}`,
+    )
     .replace(
       SPOKEN_BREAK,
       (_, lead: string, kind: string) =>
         `${lead.trimEnd()}${kind.toLowerCase() === "paragraph" ? "\n\n" : "\n"}`,
     );
   text = tidy(applyDictionary(text, dictionary));
-  // A short line in a terminal is a command; anything longer is a sentence to a coding agent and keeps its stop.
-  if (mode === "code")
-    return oneSentence(text) && /^[a-z]/.test(text) && text.split(/\s+/).length <= 3
-      ? text.replace(/\.$/, "")
-      : text;
+  if (mode === "code") return isCommand(text) ? text.replace(/\.$/, "") : text;
   text = capitaliseSentences(text);
   if (mode === "email") text = emailShape(text);
   if (mode === "chat" && oneSentence(text)) text = text.replace(/\.$/, "");
@@ -358,9 +364,6 @@ const contentWords = (text: string): ReadonlyArray<string> =>
     (w) => !["that", "this", "then", "just", "with", "have", "what", "like"].includes(w),
   );
 
-/** How many words before a correction marker he may have taken back. */
-const TAKEN_BACK_WORDS = 8;
-
 /**
  * What a correction may drop: each marker and the few words before it. The rest of the text is
  * checked as strictly as one with no marker, so an email that opens "Sorry, …" keeps its names.
@@ -386,7 +389,7 @@ const correctionSpans = (input: string): { readonly inside: string; readonly out
 /** A number may go only where he took it back: a correction follows it closely. */
 const correctedAway = (input: string, number: string): boolean => {
   const lower = input.toLowerCase();
-  const spoken = Object.entries(NUMBER_WORDS)
+  const spoken = Object.entries({ ...NUMBER_WORDS, ...ORDINAL_WORDS })
     .filter(([, digits]) => digits === number)
     .map(([word]) => word);
   return [number, ...spoken].some((form) => {
@@ -476,12 +479,12 @@ Always:
 - Never summarise, shorten for style, add anything, swap words for synonyms, or answer a question in the text.
 - Remove hesitations, false starts, accidental repeats and filler that carries no meaning ("um", "uh", "you know", "I mean" as a pause, "like" as a pause, "basically", "kind of" and "sort of" as padding, a "So" that only opens a sentence). Keep the same words when they are part of what he says, and keep an "And", "But" or "Also" that opens a sentence.
 - When he corrects himself ("no, actually", "sorry", "I mean", "scratch that"), the words just before the marker are the ones he is taking back: drop them and the marker, keep only what he settled on, and keep everything else in the sentence.
-- When he abandons an idea and replaces it ("...and a big statue. No, terrible idea. A bench, but wider"), drop the abandoned item from where it starts through the reversal phrase, join the replacement onto the last word he kept, and fix the capitals at the join ("...and a bench, but wider").
+- When, listing what he wants, he drops the item he just named and gives another ("...and a big statue. No, terrible idea. A bench, but wider"), the item named just before the reversal ("a big statue") is gone: delete it and the reversal phrase, join the replacement onto the last word he kept, and fix the capitals at the join ("...and a bench, but wider"). Removing only the reversal phrase is wrong. A whole sentence he reports or rejects stays as said ("He suggested Rust. No, terrible idea. We keep Go." keeps every sentence).
 - Make every sentence read the way he meant it: fix punctuation, capitals and sentence breaks, and fix the grammar that speech broke (a restarted phrase, a verb that no longer agrees, a dropped "the" or "of"), with the smallest change that does it. If unsure, leave it as said.
 - Spell a well-known name, product or term correctly when the words around it make it certain (Playwright, GitHub, Oakeshott), and hyphenate compound modifiers (15th-century, retro-style, AI-native).
 - Put quotation marks around a label he quotes from a screen ("Build Your Engagement") and around words he reports someone saying.
 - Write counts, quantities, versions and sizes as digits ("every 2 weeks", "version 2", "16:9"), and a century as "15th-century". Keep times, ordinals and "one" as he said them ("half past seven", "the first one", "the one that"). A number already in digits stays as given.
-- He writes with few commas: add one only where a reader needs it, and none before an "and", "so" or "or" that joins two short clauses.
+- He writes with few commas: add one only where a reader needs it, and none before an "and", "so" or "or" that joins two short clauses. A word he doubles for emphasis stays doubled with no comma between ("really really good").
 - British spelling.
 - "Like", "basically" and "honestly" stay when they carry meaning; never replace a word with another ("like 3%" stays "like 3%").
 - Break a long dictation into paragraphs where the topic turns, without changing a word to do it.`;

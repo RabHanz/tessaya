@@ -111,7 +111,7 @@ export const DEFAULT_CASES: ReadonlyArray<CleanupCase> = [
   // DICT-FID: the self-correction in the Googlebook promo (research/googlebook-cavill-2026-11-07, t067.8-t069.0).
   {
     raw: "Turn these into a retro style video game character with medieval armor and a rocket launcher. No terrible idea. A mustache comb, but bigger. Like a late fifteenth century Oakeshott greatsword with an extended grip and a single edge.",
-    keep: ["mustache comb", "Oakeshott", "15th-century", "extended grip"],
+    keep: ["comb, but bigger", "Oakeshott", "15th-century", "extended grip"],
     gone: ["rocket launcher", "terrible idea"],
   },
   // Controls: a "terrible idea" that is not a reversal, and a "So" that means something.
@@ -120,6 +120,19 @@ export const DEFAULT_CASES: ReadonlyArray<CleanupCase> = [
     keep: ["not a terrible idea", "rocket launcher"],
   },
   { raw: "So far the tests pass on both machines.", keep: ["So far", "both machines"] },
+  // Controls: a reversal of a reported idea, or of a whole sentence, keeps everything he said.
+  {
+    raw: "He suggested we rewrite it in Rust. No, terrible idea. We should keep Go.",
+    keep: ["Rust", "keep Go"],
+  },
+  {
+    raw: "I spoke to Sam, and he wants to drop the prod database. No, terrible idea. We keep it.",
+    keep: ["Sam", "prod database", "keep it"],
+  },
+  {
+    raw: "Everything was considered. No bad idea. Everything counts.",
+    keep: ["considered", "Everything counts"],
+  },
   {
     raw: "Leave the Wispr settings alone and don't touch his microphone.",
     keep: ["Wispr", "microphone", "don't touch"],
