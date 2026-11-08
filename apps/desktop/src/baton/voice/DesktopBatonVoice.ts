@@ -455,6 +455,7 @@ import {
   contextFromLastInsert,
   fitInsertion,
   fitWithoutContext,
+  closeLastSentence,
 } from "@t3tools/baton-shared/dictationFit";
 import { createLoginItemState, setLoginItem } from "./loginItem.ts";
 import {
@@ -1705,7 +1706,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       } catch {}
     },
     clean: (raw) => writeClean(raw, flushApp),
-    fit: (text) => fitToCaret(text, flushApp),
+    // Prose only: a chat line, code or raw words keep the ending he gave them.
+    fit: (text) =>
+      fitToCaret(
+        ["chat", "code", "raw"].includes(chooseMode(flushApp, settings.appModes))
+          ? text
+          : closeLastSentence(text),
+        flushApp,
+      ),
     preview: (raw, text) =>
       showCleanup({ anchor: pill.anchor(), raw, clean: text, motion: settings.motion }),
     paste: (text) =>

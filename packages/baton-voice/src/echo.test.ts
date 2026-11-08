@@ -843,12 +843,12 @@ describe("cutting in by voice (docs/baton/BARGE_IN.md)", () => {
 });
 
 describe("a dictation clip's quiet tail", () => {
-  it("is cut to a fifth of a second after his last loud frame, before recognition", () => {
+  it("keeps two fifths of a second after his last loud frame, before recognition", () => {
     // Half a second of speech, then 800 ms of room noise the segmenter waited out.
     const pcm = Int16Array.from({ length: 16_000 * 1.3 }, (_, i) =>
       i < 8_000 ? Math.round(6_000 * Math.sin(i / 3)) : i % 2 === 0 ? 40 : -40,
     );
-    expect(trimQuietTail(pcm).length).toBe(8_000 + 3_200);
+    expect(trimQuietTail(pcm).length).toBe(8_000 + 6_400);
     expect(trimQuietTail(new Int16Array(16_000)).length).toBe(16_000);
   });
 });

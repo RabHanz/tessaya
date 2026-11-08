@@ -253,9 +253,10 @@ export const withoutHerEcho = (text: string, hers: ReadonlyArray<string>): strin
 
 /**
  * The clip without its quiet tail (the segmenter waits out his pause, which is what Parakeet hallucinates on), keeping
- * `keepMs` after the last frame louder than a twentieth of the clip's loudest.
+ * `keepMs` after the last frame louder than a twentieth of the clip's loudest: enough pause that it still closes the
+ * sentence with its full stop (0.1.77, "…her own name here" came back without one at 200 ms).
  */
-export const trimQuietTail = (pcm: Int16Array, keepMs = 200, frameMs = 20): Int16Array => {
+export const trimQuietTail = (pcm: Int16Array, keepMs = 400, frameMs = 20): Int16Array => {
   const samplesOf = (ms: number) => Math.round((ms * VOICE_SAMPLE_RATE) / 1000);
   const frame = samplesOf(frameMs);
   const rms: number[] = [];

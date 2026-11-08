@@ -97,11 +97,22 @@ export const fitInsertion = (context: CaretContext, inserted: string): string =>
 };
 
 /**
- * With the words around the caret unknown (the app did not say in time), a finished sentence ends with a space, so
- * text already after the caret does not run into it ("…name here.Hello World", 0.1.75).
+ * With the words around the caret unknown (the app did not say in time), the insertion ends with a space, so text
+ * already after the caret never runs into it ("…name here.Hello World", 0.1.75; "…name hereHello World", 0.1.77).
  */
 export const fitWithoutContext = (inserted: string): string =>
-  /[.!?…]["'”’)\]]*$/.test(inserted) ? `${inserted} ` : inserted;
+  /\s$/.test(inserted) || inserted === "" ? inserted : `${inserted} `;
+
+/**
+ * A dictation of sentences whose last one the recogniser left open (it punctuates on the pause after it, which the end
+ * of a dictation does not always give it) gets its full stop. A single phrase, or one ending on a comma, is left alone.
+ */
+export const closeLastSentence = (text: string): string => {
+  const trimmed = text.trimEnd();
+  return /[.!?…]\s+\S/.test(trimmed) && /[\p{L}\p{N}]$/u.test(trimmed)
+    ? `${trimmed}.${text.slice(trimmed.length)}`
+    : text;
+};
 
 /** What Baton last inserted, as the fallback when an app does not expose its text. */
 export const contextFromLastInsert = (

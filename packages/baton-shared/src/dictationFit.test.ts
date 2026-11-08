@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { contextFromLastInsert, fitInsertion, fitWithoutContext } from "./dictationFit.ts";
+import {
+  closeLastSentence,
+  contextFromLastInsert,
+  fitInsertion,
+  fitWithoutContext,
+} from "./dictationFit.ts";
 
 describe("fitInsertion", () => {
   const rows: ReadonlyArray<readonly [string, string, string, string]> = [
@@ -33,15 +38,24 @@ describe("fitInsertion", () => {
 });
 
 describe("contextFromLastInsert", () => {
-  it("ends a finished sentence with a space when the words around the caret are unknown (0.1.75 H2)", () => {
-    // Pasted before "Hello World", unseen: "…name here.Hello World".
+  it("ends with a space when the words around the caret are unknown, so text after it never runs in (0.1.75 H2, 0.1.77 H2b)", () => {
+    // Pasted before "Hello World", unseen: "…name here.Hello World", then "…name hereHello World".
     expect(fitWithoutContext("Should type her own name here.")).toBe(
       "Should type her own name here. ",
     );
     expect(fitWithoutContext("Done?")).toBe("Done? ");
-    // Mid-sentence words are left as they are: no guess at what follows.
-    expect(fitWithoutContext("and then")).toBe("and then");
+    expect(fitWithoutContext("her own name here")).toBe("her own name here ");
     expect(fitWithoutContext("Done. ")).toBe("Done. ");
+  });
+
+  it("closes the last sentence of a dictation that has sentences, when the recogniser left it open (0.1.77 H2b)", () => {
+    expect(closeLastSentence("This is a test. Tessaya should type her own name here")).toBe(
+      "This is a test. Tessaya should type her own name here.",
+    );
+    // One phrase is not prose to close, and a sentence already closed stays as it is.
+    expect(closeLastSentence("see you then")).toBe("see you then");
+    expect(closeLastSentence("This is a test. Done?")).toBe("This is a test. Done?");
+    expect(closeLastSentence("First line. and then,")).toBe("First line. and then,");
   });
 
   it("uses the last insertion only for the same window and while it is fresh", () => {
