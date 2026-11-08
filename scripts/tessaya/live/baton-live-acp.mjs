@@ -62,7 +62,7 @@ export const notSentNote = (live) =>
   [
     "Not sent. This session runs in a plain terminal" +
       (live.remoteControl ? " with Remote Control on" : "") +
-      ", and Baton can only type into sessions inside Herdr.",
+      ", and Tessaya can only type into sessions inside Herdr.",
     "Moving it into Herdr restarts it with the same conversation" +
       (live.remoteControl
         ? " (Remote Control on claude.ai disconnects until you turn it on again)"
@@ -753,7 +753,7 @@ async function adopt(sessionId, live) {
   if (live.status === "busy") {
     return {
       error:
-        "It is working in a plain terminal right now. Send again when it is idle and Baton will move it into Herdr.",
+        "It is working in a plain terminal right now. Send again when it is idle and Tessaya will move it into Herdr.",
     };
   }
   process.kill(live.pid, "SIGTERM");
@@ -1048,7 +1048,7 @@ async function handle(message) {
     case "initialize":
       return {
         protocolVersion: 1,
-        agentInfo: { name: "baton-live", title: "Baton live session", version: "1" },
+        agentInfo: { name: "baton-live", title: "Tessaya live session", version: "1" },
         agentCapabilities: {
           loadSession: false,
           promptCapabilities: { image: true, audio: false, embeddedContext: false },

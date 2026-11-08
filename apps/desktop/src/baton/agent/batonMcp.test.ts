@@ -84,7 +84,7 @@ describe("Baton's tool server", () => {
     const { mcp, ran, call } = await rig({ yes: false });
     const out = await call("type_text", { text: "git push --force origin main", why: "type it" });
     expect(out.body?.result.isError).toBe(true);
-    expect(out.body?.result.content[0]?.text).toContain("Baton refused");
+    expect(out.body?.result.content[0]?.text).toContain("Tessaya refused");
     expect(ran).toEqual([]);
     await mcp.close();
   });

@@ -4,7 +4,7 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 3c5f499a1cb3c2f90be617821076f69fa6633a73..fbb6cf943dd260a025343d72eaf84562832debee 100644
+index 3c5f499a1cb3c2f90be617821076f69fa6633a73..271f8582663a11587751d5ae2f98a5814df82313 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -38,6 +38,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
@@ -21,7 +21,7 @@ index 3c5f499a1cb3c2f90be617821076f69fa6633a73..fbb6cf943dd260a025343d72eaf84562
    yield* installDesktopIpcHandlers();
 +  // Baton (vendor-patches/t3code/0007-desktop.patch): a Baton failure never stops T3 starting.
 +  yield* startBatonDesktop.pipe(
-+    Effect.catchCause((cause) => Effect.logError("Baton desktop did not start", cause)),
++    Effect.catchCause((cause) => Effect.logError("Tessaya desktop did not start", cause)),
 +  );
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
    // Before any window: the preload merges these items before the app reads storage.

@@ -156,7 +156,7 @@ cmd_rebase() {
     <(git diff --no-renames --name-only --diff-filter=A "$pin" HEAD | sort) \
     <(git diff --no-renames --name-only --diff-filter=A "$pin" "$new" | sort) || true)"
   if [ -n "$collide" ]; then
-    echo "patches: upstream now adds paths Baton also added. Rename or drop Baton's first:" >&2
+    echo "patches: upstream now adds paths Tessaya also added. Rename or drop Tessaya's first:" >&2
     printf '  %s\n' $collide >&2
     exit 1
   fi
