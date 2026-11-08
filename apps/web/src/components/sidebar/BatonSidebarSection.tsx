@@ -195,6 +195,23 @@ export function BatonSidebarSection(props: {
       id: id as string,
       label: fleet.resolveEnvironmentLabel(id) ?? (id as string),
     }));
+    /** Every connected server's jobs, each marked with where it runs; also where later calls about each one go. */
+    const listAll = async () => {
+      const all = await Promise.all(
+        fleet.environmentIds.map(async (id) => {
+          const result = await jobList({ environmentId: id, input: {} });
+          if (result._tag !== "Success") return [];
+          const label = fleet.resolveEnvironmentLabel(id) ?? (id as string);
+          return (result.value as { jobs: ReadonlyArray<{ workSessionId: string }> }).jobs.map(
+            (job) => {
+              jobHomes.current.set(job.workSessionId, id as string);
+              return { ...job, runOn: label };
+            },
+          );
+        }),
+      );
+      return all.flat();
+    };
     // "Run on": a job starts on the server he names; later calls about it go to the server that holds it.
     let target: string = ownServer ?? "";
     if (op === "start") {
@@ -202,6 +219,10 @@ export function BatonSidebarSection(props: {
       if (!choice.ok) throw new Error(choice.why);
       target = choice.id;
     } else if (typeof args["id"] === "string") {
+      // After a reload the homes are empty: find the job on its server rather than guess this one.
+      if (!jobHomes.current.has(args["id"])) await listAll();
+      if (!jobHomes.current.has(args["id"]))
+        throw new Error("That job is not on any connected server. Nothing changed.");
       target = homeOf(args["id"], jobHomes.current, target);
     }
     // "Here" with this app's own server not connected names no server; a listing asks every one.
@@ -213,23 +234,8 @@ export function BatonSidebarSection(props: {
       return result.value as V;
     };
     switch (op) {
-      case "list": {
-        // Every connected server's jobs, each marked with where it runs.
-        const all = await Promise.all(
-          fleet.environmentIds.map(async (id) => {
-            const result = await jobList({ environmentId: id, input: {} });
-            if (result._tag !== "Success") return [];
-            const label = fleet.resolveEnvironmentLabel(id) ?? (id as string);
-            return (result.value as { jobs: ReadonlyArray<{ workSessionId: string }> }).jobs.map(
-              (job) => {
-                jobHomes.current.set(job.workSessionId, id as string);
-                return { ...job, runOn: label };
-              },
-            );
-          }),
-        );
-        return { jobs: all.flat() };
-      }
+      case "list":
+        return { jobs: await listAll() };
       case "watch":
         return done(await watchGet({ ...env, input: {} }));
       // His own server's team; the persona asking is checked there, and walls apply to it.
@@ -435,7 +441,8 @@ export function BatonSidebarSection(props: {
     >;
     const home = deskHome();
     if (request.op === "list")
-      await copyCommitmentsOnce({
+      // Not awaited: the list answers from this server now, and the next sync brings what the copy adds.
+      void copyCommitmentsOnce({
         linked: primary,
         own: home,
         list: async (environmentId) => {
@@ -455,7 +462,9 @@ export function BatonSidebarSection(props: {
         },
         done: commitmentsCopied.has,
         markDone: commitmentsCopied.add,
-      }).catch(() => undefined);
+      }).catch((cause) =>
+        console.warn("Commitments copy from the linked server did not finish", cause),
+      );
     const result = await run({ environmentId: home, input: request.args as never });
     if (result._tag === "Success") return result.value;
     const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
