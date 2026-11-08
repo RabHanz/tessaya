@@ -132,7 +132,7 @@ export type DictationEvent =
   | { readonly ev: "ready" }
   | { readonly ev: "configured"; readonly mouse?: boolean }
   /** A mouse binding fired; `id` is the action of the Keyboard and mouse page. */
-  | { readonly ev: "binding"; readonly id: string }
+  | { readonly ev: "binding"; readonly id: string; readonly up?: boolean }
   | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
   | { readonly ev: "transcribing" }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
@@ -180,6 +180,12 @@ export interface SidecarDevice {
 export interface DictationSidecar {
   readonly configure: (config: DictationConfig) => void;
   readonly toggle: () => void;
+  /** Starts a recording unless one is running (a mouse button held to dictate). */
+  readonly start: () => void;
+  /** Ends the running recording, if any, and writes it out. */
+  readonly finish: () => void;
+  /** The desktop's voice dictation is on: a dictation key press is its ✓, not a second recording. */
+  readonly voice: (on: boolean) => void;
   readonly cancel: () => void;
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
   /** `model`: a model file of its own (the wake path's); dictation's when absent or null. */
@@ -469,6 +475,9 @@ export const startDictationSidecar = (input: {
       send({ cmd: "configure", ...config });
     },
     toggle: () => send({ cmd: "toggle" }),
+    start: () => send({ cmd: "start" }),
+    finish: () => send({ cmd: "finish" }),
+    voice: (on) => send({ cmd: "voice", on }),
     cancel: () => send({ cmd: "cancel" }),
     devices: () =>
       new Promise((resolve) => {
