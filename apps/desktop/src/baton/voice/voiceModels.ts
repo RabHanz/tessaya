@@ -34,13 +34,14 @@ export const PARAKEET_FAST_MODEL = {
  * Voice match (VOICE-ID): 3D-Speaker CAM++ trained on VoxCeleb, the sherpa-onnx export (Apache-2.0, code and weights).
  * 30 MB, about 30 ms of one CPU core per second of speech; chosen by the voice-match benchmark of 2026-11-08.
  */
+const SPEAKER_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b";
 export const SPEAKER_MODEL = {
   file: "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
   url: "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/0743f301363dec56491a490f6d6cbc9d67f9a3bf/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
   size: 29_596_978,
-  sha256: "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
-  /** Stamped on every profile made with it, so a profile from another model is never compared. */
-  id: "campplus-voxceleb-357a834f",
+  sha256: SPEAKER_SHA256,
+  /** Stamped on every profile made with it, so a profile from another model file is never compared. */
+  id: `campplus-voxceleb-${SPEAKER_SHA256.slice(0, 8)}`,
 } as const;
 
 /**

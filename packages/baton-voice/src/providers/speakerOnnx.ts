@@ -8,6 +8,10 @@
 import type * as Ort from "onnxruntime-node";
 
 import { fbank } from "../fbank.ts";
+import { unitOrNull } from "../speaker.ts";
+
+/** A longer clip says no more about whose voice it is, and would hold the worker's queue. */
+const MAX_SAMPLES = 30 * 16_000;
 
 let ortModule: Promise<typeof Ort> | undefined;
 const loadOrt = () => (ortModule ??= import("onnxruntime-node"));
@@ -15,7 +19,7 @@ const loadOrt = () => (ortModule ??= import("onnxruntime-node"));
 export interface SpeakerEmbedder {
   /** The model's id, as stamped on profiles made with it. */
   readonly model: string;
-  /** One unit vector for the clip, or null when it is under one frame. */
+  /** One unit vector for the clip (its first 30 s), or null when it is under one frame or the output is broken. */
   readonly embed: (pcm: Int16Array) => Promise<Float32Array | null>;
 }
 
@@ -33,12 +37,11 @@ export const createSpeakerEmbedder = async (
   return {
     model,
     embed: async (pcm) => {
-      const { frames, data } = fbank(pcm);
+      const { frames, data } = fbank(pcm.subarray(0, MAX_SAMPLES));
       if (frames === 0) return null;
       const out = await session.run({ [input]: new ort.Tensor("float32", data, [1, frames, 80]) });
-      const v = Object.values(out)[0]!.data as Float32Array;
-      const n = Math.hypot(...v) || 1;
-      return Float32Array.from(v, (x) => x / n);
+      // A non-finite or empty output is no vector at all, so the turn is unverified rather than a wrong match.
+      return unitOrNull(Float32Array.from(Object.values(out)[0]!.data as Float32Array));
     },
   };
 };

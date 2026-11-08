@@ -34,6 +34,7 @@ export interface SpeakerPolicy {
   /** The mean of 3 consecutive clips' scores. */
   readonly averaged: Readonly<Record<SpeakerUse, number>>;
   /** The winner must beat the next profile by this much, or it is nobody's. */
+  // shortcut: the margin is a guess (the benchmark enrolled one person); derive it once two saved people are measured.
   readonly margin: number;
 }
 
@@ -60,30 +61,41 @@ export type SpeakerVerdict =
       readonly why: "no-model" | "no-profile" | "too-short" | "failed";
     };
 
+/** NaN when the lengths differ or either is empty or zero: a score that cannot be trusted is never a number. */
 export const cosine = (a: Float32Array, b: Float32Array): number => {
+  if (a.length !== b.length || a.length === 0) return Number.NaN;
   let dot = 0;
   let na = 0;
   let nb = 0;
-  for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
+  for (let i = 0; i < a.length; i += 1) {
     dot += a[i]! * b[i]!;
     na += a[i]! * a[i]!;
     nb += b[i]! * b[i]!;
   }
-  return na === 0 || nb === 0 ? 0 : dot / Math.sqrt(na * nb);
+  return na === 0 || nb === 0 ? Number.NaN : dot / Math.sqrt(na * nb);
 };
 
-const unit = (v: Float32Array): Float32Array => {
-  const n = Math.hypot(...v) || 1;
-  return v.map((x) => x / n);
+/** Length 1, or null when the vector has a non-finite value or no length at all. */
+export const unitOrNull = (v: Float32Array): Float32Array | null => {
+  if (v.length === 0 || !v.every(Number.isFinite)) return null;
+  const n = Math.hypot(...v);
+  return n > 0 && Number.isFinite(n) ? v.map((x) => x / n) : null;
 };
+
+/** One clip of speech from this turn and how long it was. */
+export interface SpeakerClip {
+  readonly vector: Float32Array;
+  readonly ms: number;
+}
 
 /**
- * Whose voice, for one use. `scored` holds the clip's score (or, averaged, the mean of up to 3 consecutive clips'
- * scores) per profile; the caller averages, so a verdict reads the same from one clip or from three.
+ * Whose voice, for one use, from this turn's clips (the caller starts a fresh list each turn). Only clips of 2 s or
+ * more count. Three or more: the mean of the last three clips' scores, at the averaged cut-offs. Fewer: the last
+ * clip alone, at the one-clip cut-off; "act" then needs that clip to be 4 s long. Every score must be a finite
+ * number, or the verdict is unverified: a broken score must never pass as him.
  */
 export const decideSpeaker = (input: {
-  readonly vectors: ReadonlyArray<Float32Array>;
-  readonly speechMs: number;
+  readonly clips: ReadonlyArray<SpeakerClip>;
   readonly profiles: ReadonlyArray<SpeakerProfile>;
   readonly policy: SpeakerPolicy | null;
   readonly use: SpeakerUse;
@@ -92,22 +104,20 @@ export const decideSpeaker = (input: {
   if (policy === null) return { kind: "unverified", why: "no-model" };
   const mine = input.profiles.filter((p) => p.model === policy.model);
   if (!mine.some((p) => p.kind === "owner")) return { kind: "unverified", why: "no-profile" };
-  if (input.vectors.length === 0) return { kind: "unverified", why: "failed" };
-  if (input.speechMs < policy.minSpeechMs) return { kind: "unverified", why: "too-short" };
-  const averaged = input.vectors.length >= 3;
-  const cut = averaged
-    ? policy.averaged[input.use]
-    : input.use === "act" && input.speechMs < ACT_SINGLE_MS
-      ? Number.POSITIVE_INFINITY
-      : policy.single[input.use];
-  const recent = input.vectors.slice(-3);
-  const scores = mine
-    .map((p) => ({
-      p,
-      score: recent.reduce((n, v) => n + cosine(v, p.centroid), 0) / recent.length,
-    }))
-    .toSorted((a, b) => b.score - a.score);
-  const [best, next] = scores;
+  if (input.clips.length === 0) return { kind: "unverified", why: "failed" };
+  const long = input.clips.filter((c) => c.ms >= policy.minSpeechMs);
+  if (long.length === 0) return { kind: "unverified", why: "too-short" };
+  const averaged = long.length >= 3;
+  const used = averaged ? long.slice(-3) : long.slice(-1);
+  if (!averaged && input.use === "act" && used[0]!.ms < ACT_SINGLE_MS)
+    return { kind: "unverified", why: "too-short" };
+  const cut = averaged ? policy.averaged[input.use] : policy.single[input.use];
+  const scores = mine.map((p) => ({
+    p,
+    score: used.reduce((n, c) => n + cosine(c.vector, p.centroid), 0) / used.length,
+  }));
+  if (!scores.every((s) => Number.isFinite(s.score))) return { kind: "unverified", why: "failed" };
+  const [best, next] = scores.toSorted((a, b) => b.score - a.score);
   if (best === undefined) return { kind: "unverified", why: "no-profile" };
   if (best.score < cut || (next !== undefined && best.score - next.score < policy.margin))
     return { kind: "guest", best: best.score };
@@ -118,22 +128,24 @@ export const decideSpeaker = (input: {
 
 /**
  * A profile's centroid from enrolment vectors. A vector far from the rest (another voice in one of his Wispr
- * clips) is dropped: kept are those within `spread` of the median vector's cosine to the first pass's mean.
+ * clips) is dropped: kept are those whose cosine to the first mean is within 3 median deviations of the median.
  */
 export const enrol = (
-  vectors: ReadonlyArray<Float32Array>,
+  input: ReadonlyArray<Float32Array>,
   minSamples = 3,
 ): { readonly centroid: Float32Array; readonly kept: number; readonly dropped: number } | null => {
-  if (vectors.length < minSamples) return null;
+  if (input.length < minSamples) return null;
+  const units = input.map(unitOrNull);
+  // One broken or odd-length vector means the model misbehaved: make no profile from it.
+  if (units.some((u) => u === null || u.length !== units[0]!.length)) return null;
   const mean = (vs: ReadonlyArray<Float32Array>) => {
     const out = new Float32Array(vs[0]!.length);
-    for (const v of vs) {
-      const u = unit(v);
-      for (let i = 0; i < out.length; i += 1) out[i] = out[i]! + u[i]!;
-    }
-    return unit(out);
+    for (const u of vs) for (let i = 0; i < out.length; i += 1) out[i] = out[i]! + u[i]!;
+    return unitOrNull(out);
   };
+  const vectors = units as Float32Array[];
   const first = mean(vectors);
+  if (first === null) return null;
   const scores = vectors.map((v) => cosine(v, first));
   const sorted = scores.toSorted((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)]!;
@@ -141,6 +153,8 @@ export const enrol = (
     Math.floor(sorted.length / 2)
   ]!;
   const kept = vectors.filter((_, i) => scores[i]! >= median - 3 * Math.max(mad, 0.02));
-  if (kept.length < minSamples) return null;
-  return { centroid: mean(kept), kept: kept.length, dropped: vectors.length - kept.length };
+  const centroid = kept.length < minSamples ? null : mean(kept);
+  return centroid === null
+    ? null
+    : { centroid, kept: kept.length, dropped: vectors.length - kept.length };
 };
