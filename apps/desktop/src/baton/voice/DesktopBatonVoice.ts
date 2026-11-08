@@ -139,6 +139,7 @@ import {
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createInOrder } from "./inOrder.ts";
+import { createCommandClips, keyCommandOf, withoutTrailingCommand } from "./keyCommands.ts";
 import { createVolumeDuck } from "./volumeDuck.ts";
 import { pronounceFrom } from "./pronounce.ts";
 import {
@@ -3113,6 +3114,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
+  /** Short utterances cut from the mic while the helper records, each heard for a whole stop or cancel. */
+  const commandClips = createCommandClips();
+  const hearKeyCommand = (frame: Int16Array, level: number) => {
+    const clip = commandClips.feed({ level, pcm: frame });
+    if (clip === null || sidecar === null) return;
+    void makeSidecarStt(sidecar, undefined, undefined, recognise)
+      .transcribe(clip)
+      .then((heard) => {
+        if (!keyRecording()) return;
+        const command = keyCommandOf(heard);
+        if (command === "stop") void moveDictation("toggle");
+        else if (command === "cancel") discardKeyDictation();
+      })
+      .catch(() => undefined);
+  };
   /** Esc twice (or ✕) during a key dictation: its words are held for undo when they come, not pasted. */
   let discardKeyText = false;
   /** Each helper recording's window, oldest first: its words take the first one when they arrive. */
@@ -3164,18 +3180,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     if (text === "") return showDictation(null);
+    // "stop dictation" ended it, and the helper wrote that down too: it is not his words.
+    const words = withoutTrailingCommand(text);
+    if (words === "") return showDictation(null);
     // Words that land while a spoken dictation is collecting join it, and go with its one paste.
-    if (collecting) return oneShot.push(text);
+    if (collecting) return oneShot.push(words);
     openTurn = record({
       kind: "dictation",
       app: app.exe,
-      raw: text,
+      raw: words,
       cleaned: null,
       status: "none",
       delivery: "hold key",
       cleanup: "local",
     });
-    oneShot.push(text);
+    oneShot.push(words);
     void flushDictation(Promise.resolve(app), { preview: false });
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
@@ -4002,6 +4021,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         micNow = level;
         pill.micLevel(level, pillGain(level));
         silence.feed(level, Date.now());
+        // The voice core hears nothing while the helper records: a spoken stop or cancel is heard here instead.
+        if (keyRecording()) hearKeyCommand(frame, level);
+        else commandClips.reset();
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
       },
       // The core's router has already sent the words on; this is the HUD's line.
