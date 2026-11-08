@@ -139,6 +139,8 @@ import {
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createInOrder } from "./inOrder.ts";
+import { createCommandClips } from "./keyCommands.ts";
+import { beforeSpokenStop, keyDictationCommand } from "@t3tools/baton-shared/dictation";
 import { createVolumeDuck } from "./volumeDuck.ts";
 import { pronounceFrom } from "./pronounce.ts";
 import {
@@ -3113,19 +3115,64 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
+  /** Short utterances cut from the mic while the helper records, each heard for a whole stop or cancel. */
+  const commandClips = createCommandClips();
+  /** One command clip is heard at a time; another cut meanwhile is let go. */
+  let hearingCommand = false;
+  const hearKeyCommand = (frame: Int16Array, level: number) => {
+    const clip = commandClips.feed({ level, pcm: frame });
+    if (clip === null || sidecar === null || hearingCommand) return;
+    // The recording it was cut from: a late answer never acts on the next one.
+    const id = recordingSeq;
+    hearingCommand = true;
+    // Always the local model: no upload per phrase, and nothing reconfigured mid-recording.
+    void makeSidecarStt(sidecar)
+      .transcribe(clip)
+      .then((said) => {
+        if (id !== recordingSeq || !keyRecording()) return;
+        // The one spoken command: a whole "stop dictation". Discarding is only ever ✕ or Esc twice.
+        if (keyDictationCommand(said) !== "stop") return;
+        const recording = recordings.find((r) => r.id === id);
+        if (recording !== undefined) recording.heard = "stop";
+        // Only ever an end: a stale state can never start a recording from here.
+        void moveDictation("stop_tool");
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        hearingCommand = false;
+      });
+  };
   /** Esc twice (or ✕) during a key dictation: its words are held for undo when they come, not pasted. */
   let discardKeyText = false;
-  /** Each helper recording's window, oldest first: its words take the first one when they arrive. */
-  const recordingApps: FocusedApp[] = [];
-  /** A text event with its recording's window and discard on it, taken once, as it arrives. */
-  const withRecording = <E extends { readonly app?: FocusedApp; readonly discarded?: boolean }>(
+  /**
+   * Each helper recording, oldest first: its id, its window, and a command heard while it recorded. Its words take
+   * the first one when they arrive, however soon the next recording starts.
+   */
+  const recordings: Array<{ id: number; app: FocusedApp; heard: "stop" | null }> = [];
+  let recordingSeq = 0;
+  /** A text event with its recording's window, discard and heard command on it, taken once, as it arrives. */
+  const withRecording = <
+    E extends {
+      readonly app?: FocusedApp;
+      readonly discarded?: boolean;
+      readonly heard?: "stop" | null;
+    },
+  >(
     event: E,
-  ): E & { readonly app?: FocusedApp; readonly discarded?: boolean } => {
+  ): E & {
+    readonly app?: FocusedApp;
+    readonly discarded?: boolean;
+    readonly heard?: "stop" | null;
+  } => {
     if (event.app !== undefined) return event;
-    const app = recordingApps.shift();
+    const recording = recordings.shift();
     const discarded = discardKeyText;
     discardKeyText = false;
-    return { ...event, ...(app === undefined ? {} : { app }), discarded };
+    return {
+      ...event,
+      ...(recording === undefined ? {} : { app: recording.app, heard: recording.heard }),
+      discarded,
+    };
   };
   const discardKeyDictation = () => {
     discardKeyText = true;
@@ -3146,6 +3193,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     target: number | null | undefined,
     spokenIn: FocusedApp,
     discarded: boolean,
+    heard: "stop" | null,
   ) => {
     const app: FocusedApp = {
       exe: spokenIn.exe,
@@ -3164,18 +3212,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     if (text === "") return showDictation(null);
+    // A heard "stop dictation" ended it, and the helper wrote that down too (and what came after): not his words.
+    const words = heard === "stop" ? beforeSpokenStop(text) : text;
+    if (words === "") return showDictation(null);
     // Words that land while a spoken dictation is collecting join it, and go with its one paste.
-    if (collecting) return oneShot.push(text);
+    if (collecting) return oneShot.push(words);
     openTurn = record({
       kind: "dictation",
       app: app.exe,
-      raw: text,
+      raw: words,
       cleaned: null,
       status: "none",
       delivery: "hold key",
       cleanup: "local",
     });
-    oneShot.push(text);
+    oneShot.push(words);
     void flushDictation(Promise.resolve(app), { preview: false });
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
@@ -3245,7 +3296,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "recording") {
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
       // Each recording's window goes with its own words, however soon the next starts.
-      recordingApps.push(focusedApp);
+      recordingSeq += 1;
+      recordings.push({ id: recordingSeq, app: focusedApp, heard: null });
       discardKeyText = false;
       escArmedUntil = 0;
       if (settings.dictationCleanup === "claude") rewriter.warm();
@@ -3255,11 +3307,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (event.ev === "transcribing") showDictation("Writing it out");
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
-      recordingApps.shift();
+      recordings.shift();
       discardKeyText = false;
       showDictation(null);
     } else if (event.ev === "error") {
-      recordingApps.shift();
+      recordings.shift();
       discardKeyText = false;
       note = event.message;
       showDictation(null);
@@ -3301,7 +3353,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       if (event.dictated === true && event.error === undefined) {
         const own = withRecording(event);
-        return keyToBuffer(text, event.target, own.app ?? focusedApp, own.discarded === true);
+        return keyToBuffer(
+          text,
+          event.target,
+          own.app ?? focusedApp,
+          own.discarded === true,
+          own.heard ?? null,
+        );
       }
       if (text.length > 0) lastDictation = text;
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
@@ -4002,6 +4060,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         micNow = level;
         pill.micLevel(level, pillGain(level));
         silence.feed(level, Date.now());
+        // The voice core hears nothing while the helper records: a spoken stop or cancel is heard here instead.
+        if (keyRecording()) hearKeyCommand(frame, level);
+        else commandClips.reset();
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
       },
       // The core's router has already sent the words on; this is the HUD's line.
