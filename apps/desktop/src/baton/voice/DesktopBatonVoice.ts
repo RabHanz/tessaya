@@ -37,7 +37,9 @@ import {
 import {
   createEchoGuard,
   createVoiceRouter,
+  decodeWav,
   encodeWav,
+  isLoneBreath,
   stripWake,
   type BatonVoiceCore,
   type EchoGuard,
@@ -1147,6 +1149,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The sidecar is recording or writing out a key dictation (`busyAfter`). */
   let sidecarBusy = false;
   let lastDictation: string | null = null;
+  /** The last words he dictated that landed (pasted, kept, or on the clipboard): paste-last's, never a command or discard. */
+  let lastInserted: string | null = null;
   /** Every paste of his words, one at a time in the order he spoke: the hold key's and the buffered flush's. */
   const pasteInOrder = createInOrder();
   /** The pill's bars follow his speech, not full scale. */
@@ -1476,6 +1480,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let lastPcm: Int16Array | null = null;
   const _tidyStatus = (stage: string | undefined, failed: boolean): TidyStatus =>
     failed ? "raw" : stage === "model" || stage === "local" ? "ok" : "raw";
+  /** A secret in his words: the vault is offered them as written, not as heard. Null when there is none. */
+  const offerVault = (raw: string, cleaned: string | null) => {
+    const safe = redactForHistory(raw, cleaned);
+    if (safe.secret === null) return null;
+    pendingSecret.set(cleaned ?? raw, Date.now());
+    input.extras?.notice(
+      `That looked like ${safe.secret}, so I kept it out of History. Say "put that in the vault" to keep it safely.`,
+    );
+    return safe;
+  };
   const record = (turn: {
     readonly kind: "dictation" | "spoken";
     readonly app: string;
@@ -1490,15 +1504,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   }): string | null => {
     if (history === null || testRun || turn.raw.trim().length === 0) return null;
     // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
-    const safe = redactForHistory(turn.raw, turn.cleaned);
-    if (safe.secret !== null) {
-      // The vault is offered the words as written, not as heard.
-      pendingSecret.set(turn.cleaned ?? turn.raw, Date.now());
-      input.extras?.notice(
-        `That looked like ${safe.secret}, so I kept it out of History. Say "put that in the vault" to keep it safely.`,
-      );
-      turn = { ...turn, raw: safe.raw, cleaned: safe.cleaned };
-    }
+    const safe = offerVault(turn.raw, turn.cleaned);
+    if (safe !== null) turn = { ...turn, raw: safe.raw, cleaned: safe.cleaned };
     try {
       return history.add({
         at: new Date().toISOString(),
@@ -1722,7 +1729,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   })();
   // Words a crash left behind are offered from the tray, never pasted with the next dictation.
   if (restored.length > 0) {
-    lastDictation = restored.join(" ");
+    lastDictation = lastInserted = restored.join(" ");
     setTimeout(() => {
       note = "A dictation was not inserted. Tray: Copy last transcript.";
       render();
@@ -1774,15 +1781,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             Promise.resolve(false)
           : ((side: NonNullable<typeof sidecar>, target: number, title: string) =>
               pasteInOrder(async () => {
-                keptWhy = "refused";
-                const focused = await side.focusWindow(target).catch(() => ({ error: "gone" }));
-                if (focused.error !== undefined) return ((keptWhy = "gone"), false);
-                // The same window but another page or document now: his words were not for that.
-                const now = await side.foreground().catch(() => null);
-                if (now === null || now.window !== target || now.title !== title)
-                  return ((keptWhy = "changed"), false);
-                if (await side.pasteInto(text, target).catch(() => false)) return true;
-                return ((keptWhy = "refused"), false);
+                // One helper call: its window forward, the same window and page checked (his words were not for
+                // another), then the paste.
+                const why = await side
+                  .pasteChecked(text, target, title)
+                  .catch(() => "refused" as const);
+                if (why === "ok") return true;
+                keptWhy = why;
+                return false;
               }))(sidecar, app.window, app.title),
   });
   let openTurn: string | null = null;
@@ -1792,7 +1798,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const toClipboard = (text: string, taken: number, why: string) => {
     Electron.clipboard.writeText(text);
     oneShot.release(taken);
-    lastDictation = text;
+    lastDictation = lastInserted = text;
     showDictation(`${why}, so it is on your clipboard`);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
@@ -1815,8 +1821,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const result = await oneShot.flush(app, options);
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
-    lastDictation = result.text;
+    lastDictation = lastInserted = result.text;
+    // A secret that came in a later chunk, or only in the cleaned words, is offered to the vault like one at the start.
+    if (turnId !== null && history?.get(turnId)?.raw !== REDACTED)
+      offerVault(result.raw, result.text);
     history?.update(turnId ?? "", {
+      // The window the words went to, for spoken dictation too (its row was opened before the window was known).
+      ...(app.exe === "" ? {} : { app: app.exe }),
       // The level its clean-up used (a bank or sign-in page by its title): a retry never goes above it.
       cleanup: result.level === "claude" ? "claude" : "local",
       raw: result.raw,
@@ -3069,6 +3080,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       paste: settings.paste,
       language: recogniserHint(settings.languages),
       external: cloudChoice() === null ? null : cloudTmpDir,
+      keepAudio: settings.keepVoice ? cloudTmpDir : null,
       cleanup: true,
       latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
@@ -3095,7 +3107,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         removed += 1;
       }
       if (scope === "history") {
-        lastDictation = null;
+        lastDictation = lastInserted = null;
         NodeFS.rmSync(NodePath.join(input.stateDir, "voice", "dictation-pending.json"), {
           force: true,
         });
@@ -3150,7 +3162,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
-    lastDictation = text;
+    lastDictation = lastInserted = text;
     showDictation(`${why}. Tray: Copy last transcript.`);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
@@ -3407,16 +3419,32 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       if (event.dictated === true && event.error === undefined) {
         const own = withRecording(event);
+        // The voice path drops a lone breath the same way (core.ts DICTATION_FILLER); here it never reaches the buffer.
+        if (isLoneBreath(text)) {
+          input.onNote?.("dictation_dropped", { reason: "breath", chars: text.length });
+          return showDictation(null);
+        }
         dictationTimer = startDictationTiming(event);
-        return keyToBuffer(
+        keyToBuffer(
           text,
           event.target,
           own.app ?? focusedApp,
           own.discarded === true,
           own.heard ?? null,
         );
+        const kept = event.audio ?? null;
+        if (kept !== null) {
+          // The key dictation's recording joins the row keyToBuffer just opened, as a spoken one's does, then goes.
+          const turnId = own.discarded === true ? null : openTurn;
+          void NodeFS.promises
+            .readFile(kept)
+            .then((bytes) => keepAudio(turnId, decodeWav(bytes)))
+            .catch(() => undefined)
+            .finally(() => void NodeFS.promises.rm(kept, { force: true }));
+        }
+        return;
       }
-      if (text.length > 0) lastDictation = text;
+      if (text.length > 0) lastDictation = lastInserted = text;
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
         showDictation(null);
@@ -3824,6 +3852,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
    * dictation keeps his choice. Null means dictation's, as it is until that model is on disk.
    */
   const wakeModelPath = (): string | null => {
+    // Dictated words go through his chosen model on every entry point, so the same words come out the same.
+    if (dictatingByVoice) return null;
     const model = wakeModelFor(settings.languages, settings.speechModel);
     if (model === null || wakeModelBroken) return null;
     if (modelPresent(modelsDir, model)) return NodePath.join(modelsDir, model.file);
@@ -6678,8 +6708,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.copyLast") {
       const last = lastReply ?? lastDictation;
       if (last !== null) void Electron.clipboard.writeText(last);
-    } else if (id === "v.keepVoice") save({ keepVoice: on });
-    else if (id === "v.keepDays" && typeof value === "string") {
+    } else if (id === "v.keepVoice") {
+      save({ keepVoice: on });
+      // The helper writes key dictations' recordings only while he keeps audio.
+      configureDictation();
+    } else if (id === "v.keepDays" && typeof value === "string") {
       save({ keepDays: Math.max(1, Number(value) || 30) });
       retention();
     } else if (id === "v.keepCap" && typeof value === "string") {
@@ -6991,7 +7024,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (clear?.click as (() => void) | undefined)?.();
     },
     pasteLast: () => {
-      const last = lastDictation;
+      const last = lastInserted;
       const side = sidecar;
       if (last !== null && last !== "" && side !== null)
         void pasteInOrder(() => side.paste(last)).catch(() => keepText("Not pasted", last));

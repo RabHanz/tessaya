@@ -152,6 +152,10 @@ const FILLER =
   /^(?:yeah|yep|yup|yeah yeah|um+|uh+|er+|erm+|hm+|mm+|mhm+|ah+|oh+|ok|okay|right|so|well|you|the|and|i)$/;
 export const isFiller = (text: string): boolean => FILLER.test(plainWords(text));
 
+/** A key dictation that heard only a breath or a hum: never typed. "Yeah" and "okay" can be his words, so they stay. */
+export const isLoneBreath = (text: string): boolean =>
+  /^(?:uh+|um+|er+|erm+|mm+|hm+)(?: (?:uh+|um+|er+|erm+|mm+|hm+))*$/.test(plainWords(text));
+
 const STOP_PHRASE =
   /^(?:(?:ok|okay|no|hey|please) )?(?:stop(?: it| that| talking)?|wait|quiet|be quiet|enough|that's enough|cancel|shut up)(?: please| now)?$/;
 /** A short command said over Baton's voice. Nothing else is acted on there. */

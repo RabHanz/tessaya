@@ -38,6 +38,8 @@ export interface DictationConfig {
   readonly latch?: boolean;
   /** The input-bindings file the sidecar's mouse hook reads; null or empty means no hook. */
   readonly mouse?: string | null;
+  /** He keeps the audio of dictations: each recording is also written here as a WAV for History, then removed. */
+  readonly keepAudio?: string | null;
   /** Keep the speech model loaded between dictations (about 1.2 GB for v3); off on a machine with under 10 GB. */
   readonly keepLoaded?: boolean;
 }
@@ -184,6 +186,8 @@ export type DictationEvent =
       /** How long the sidecar's own paste took (cleanup off); null when it did not paste. */
       readonly pasteMs?: number | null;
       readonly timing?: SidecarTiming | null;
+      /** The recording for History when he keeps the audio of dictations; the desktop removes it. */
+      readonly audio?: string | null;
     };
 
 /** A live dictation's stage times from its key press (`dictationTiming`). */
@@ -218,6 +222,12 @@ export interface DictationSidecar {
   readonly paste: (text: string) => Promise<void>;
   /** False when that window is no longer the focused one, and nothing was pasted. */
   readonly pasteInto: (text: string, target: number) => Promise<boolean>;
+  /** A dictation's paste in one call: that window brought forward, checked to be the same page, then pasted. */
+  readonly pasteChecked: (
+    text: string,
+    target: number,
+    title: string,
+  ) => Promise<"ok" | "gone" | "changed" | "refused">;
   readonly foreground: () => Promise<FocusedApp>;
   /** The top-level window under a physical point. */
   readonly windowAt: (point: {
@@ -432,6 +442,12 @@ export const startDictationSidecar = (input: {
           error === undefined ? { value: undefined } : { error },
         );
       }
+      if (event["ev"] === "paste_checked") {
+        const why = event["why"];
+        return settle(event["id"] as number, {
+          value: why === "ok" || why === "gone" || why === "changed" ? why : "refused",
+        });
+      }
       if (event["ev"] === "caret") {
         const { before, after } = event;
         return settle(event["id"] as number, {
@@ -530,6 +546,8 @@ export const startDictationSidecar = (input: {
     preload: () => call<number>({ cmd: "load" }, true),
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
+    pasteChecked: (text, target, title) =>
+      call<"ok" | "gone" | "changed" | "refused">({ cmd: "paste_checked", text, target, title }),
     foreground: () => call<FocusedApp>({ cmd: "foreground" }),
     windowAt: ({ x, y }) =>
       call<{ window: number; label: string } | null>({ cmd: "window_at", x, y }),
