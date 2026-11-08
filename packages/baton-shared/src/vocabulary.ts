@@ -185,7 +185,21 @@ export const correctionsBetween = (
 ): ReadonlyArray<{ readonly heard: string; readonly meant: string }> => {
   const a = tokens(inserted);
   const b = tokens(readBack);
-  if (a.length === 0 || Math.abs(a.length - b.length) > 0) return [];
+  if (a.length === 0) return [];
+  if (a.length !== b.length) {
+    // One span he typed over as one word ("git hub" became "GitHub"): the words around it must not change.
+    let start = 0;
+    while (start < Math.min(a.length, b.length) && a[start] === b[start]) start += 1;
+    let end = 0;
+    while (end < Math.min(a.length, b.length) - start && a.at(-1 - end) === b.at(-1 - end))
+      end += 1;
+    const span = a.slice(start, a.length - end);
+    const word = b.slice(start, b.length - end);
+    if (span.length < 2 || span.length > 3 || word.length !== 1) return [];
+    return similar(span.join(""), word[0]!) >= 0.4
+      ? [{ heard: span.join(" "), meant: word[0]! }]
+      : [];
+  }
   const pairs: Array<{ heard: string; meant: string }> = [];
   for (let i = 0; i < a.length; i += 1) {
     if (a[i] === b[i]) continue;
@@ -201,6 +215,40 @@ const COMMON = new Set(
     " ",
   ),
 );
+
+/** Grammar, not a name: "Their" for "There" or "in to" for "into" is never taught, whatever its capitals. */
+const EVERYDAY = new Set(
+  "there they're theirs its it's you're too two than were where wear into onto maybe cannot already anyway everyday altogether whatever whoever because about after before over under up down out off all any some no not yes".split(
+    " ",
+  ),
+);
+const everyday = (text: string): boolean =>
+  text
+    .toLowerCase()
+    .split(/\s+/)
+    .some((w) => COMMON.has(w) || EVERYDAY.has(w));
+
+/**
+ * The corrections in the words just before the caret, aligned word by word: the dictation's own length, or up to
+ * two words shorter or longer for a span he typed over ("git hub" became "GitHub"), so text before it never counts.
+ */
+export const correctionsAtCaret = (
+  written: string,
+  before: string,
+): {
+  readonly fixes: ReadonlyArray<{ readonly heard: string; readonly meant: string }>;
+  readonly fixed: string;
+} => {
+  const n = tokens(written).length;
+  const starts = [...before.matchAll(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu)].map((m) => m.index);
+  for (const k of [n, n - 1, n - 2, n + 1, n + 2]) {
+    if (k < 1 || k > starts.length) continue;
+    const fixed = before.slice(starts[starts.length - k]).trim();
+    const fixes = correctionsBetween(written, fixed);
+    if (fixes.length > 0) return { fixes, fixed };
+  }
+  return { fixes: [], fixed: "" };
+};
 
 /** Words that look like names or terms: capitalised mid-sentence, camelCase, or with digits. */
 export const candidateWords = (text: string): ReadonlyArray<string> => {
@@ -267,6 +315,8 @@ export interface Learned {
   readonly entries: ReadonlyArray<VocabularyEntry>;
   /** What entered the vocabulary in this call, for the toast. */
   readonly added: ReadonlyArray<VocabularyEntry>;
+  /** Forms one correction taught to the word he meant, for the toast and its Undo. */
+  readonly taught?: ReadonlyArray<{ readonly heard: string; readonly meant: string }>;
 }
 
 export const observeWording = (
@@ -302,8 +352,9 @@ export const observeWording = (
 };
 
 /**
- * A learned correction: counted in `seen` until he has made it CORRECTION_THRESHOLD times, then it
- * enters as `heard -> meant`.
+ * A correction he made. Once is enough to teach the form it was heard as, on the word he meant (as Wispr learns):
+ * a hint for the clean-up, announced so he can undo it. Made CORRECTION_THRESHOLD times it also enters as
+ * `heard -> meant`, which applies with no model. A capital-only fix teaches nothing until then.
  */
 export const learnCorrection = (
   seen: SeenWords,
@@ -312,15 +363,48 @@ export const learnCorrection = (
   now: string,
   never: NeverList = [],
 ): Learned => {
-  if (isNever(never, fix.meant) || isNever(never, fix.heard) || skipsCorrection(fix.meant)) {
-    return { seen, entries, added: [] };
+  if (
+    isNever(never, fix.meant) ||
+    isNever(never, fix.heard) ||
+    skipsCorrection(fix.meant) ||
+    everyday(fix.heard) ||
+    everyday(fix.meant)
+  ) {
+    return { seen, entries, added: [], taught: [] };
   }
   const key = `${fix.heard.toLowerCase()}>${fix.meant}`;
   const count = (seen[key] ?? 0) + 1;
-  if (count < CORRECTION_THRESHOLD) return { seen: { ...seen, [key]: count }, entries, added: [] };
+  let next = entries;
+  const taught: Array<{ heard: string; meant: string }> = [];
+  if (!sameWord(fix.heard, fix.meant)) {
+    const word = next.find((e) => e.replacement === null && sameWord(e.phrase, fix.meant));
+    if (word === undefined) {
+      next = [
+        ...next,
+        {
+          phrase: fix.meant,
+          replacement: null,
+          source: "learned",
+          count: 1,
+          lastSeen: now,
+          heard: [fix.heard],
+        },
+      ];
+      taught.push(fix);
+    } else if (!(word.heard ?? []).some((h) => sameWord(h, fix.heard))) {
+      next = next.map((e) =>
+        e === word
+          ? { ...e, lastSeen: now, ...withHeard(e.phrase, [...(e.heard ?? []), fix.heard]) }
+          : e,
+      );
+      taught.push(fix);
+    }
+  }
+  if (count < CORRECTION_THRESHOLD)
+    return { seen: { ...seen, [key]: count }, entries: next, added: [], taught };
   const { [key]: _gone, ...rest } = seen;
-  const next = upsertEntry(
-    entries,
+  next = upsertEntry(
+    next,
     { phrase: fix.heard, replacement: fix.meant, source: "learned" },
     now,
     count,
@@ -329,8 +413,27 @@ export const learnCorrection = (
     seen: rest,
     entries: next,
     added: next.filter((e) => sameWord(e.phrase, fix.heard) && e.replacement === fix.meant),
+    taught,
   };
 };
+
+/** Undoes one taught form: off the word, and the word too when that form was all it had learned. */
+export const unteach = (
+  entries: ReadonlyArray<VocabularyEntry>,
+  fix: { readonly heard: string; readonly meant: string },
+): ReadonlyArray<VocabularyEntry> =>
+  removeHeard(entries, fix.meant, fix.heard).filter(
+    (e) =>
+      // The literal rule a second correction added goes with it.
+      !(sameWord(e.phrase, fix.heard) && e.replacement === fix.meant) &&
+      !(
+        sameWord(e.phrase, fix.meant) &&
+        e.replacement === null &&
+        e.source === "learned" &&
+        (e.count ?? 1) <= 1 &&
+        e.heard === undefined
+      ),
+  );
 
 /**
  * Tessaya's own names as Parakeet writes them, mined from the training split of his Wispr clips (DICT-WISPR). Only
