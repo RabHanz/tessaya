@@ -71,11 +71,19 @@ jobs:
           # A sync is known by its moved pin; a small one changes too few test files to be told apart by count.
           upstream_wave=0
           if echo "$changed" | grep -qx 'vendor-patches/t3code/PIN' || [ "$(echo "$changed" | grep -cE '\.test\.tsx?$' || true)" -gt 150 ]; then upstream_wave=1; echo "upstream sync: running Baton's own tests only"; fi
-          # On main every Tessaya test runs, so a test a PR never touched cannot go stale until the nightly sync finds it.
-          if [ "${{ github.event_name }}" = push ]; then changed="$(git ls-files)"; upstream_wave=1; echo "main: running every Tessaya test"; fi
-          for ws in apps/server apps/desktop packages/baton-shared packages/baton-voice packages/baton-contracts; do
+          # On main every test Tessaya added since the pin runs (web's too, not its browser ones), so a test no PR
+          # touched cannot go stale until the nightly sync finds it. The pin's tree is fetched blobless to know which.
+          all=0 workspaces="apps/server apps/desktop packages/baton-shared packages/baton-voice packages/baton-contracts"
+          if [ "${{ github.event_name }}" = push ]; then
+            pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
+            git fetch -q --no-tags --filter=blob:none https://github.com/pingdotgg/t3code.git "$pin"
+            changed="$(git diff --no-renames --name-only --diff-filter=A "$pin" HEAD)" all=1 workspaces="$workspaces apps/web"
+            echo "main: running every test Tessaya added since $pin"
+          fi
+          for ws in $workspaces; do
             pattern="^$ws/.*(baton|Baton).*\.test\.tsx?$|^$ws/.*\.test\.ts$"
             [ "$upstream_wave" -eq 1 ] && pattern="^$ws/.*(baton|Baton|Tessaya|Phone|Intent|WorkSession|Fleet).*\.test\.tsx?$"
+            [ "$all" -eq 1 ] && pattern="^$ws/.*\.test\.tsx?$"
             files=$(echo "$changed" | grep -E "$pattern" | grep -vE '\.browser\.test\.' | sed "s|^$ws/||" || true)
             if [[ "$ws" == packages/baton-* ]]; then files=$(echo "$changed" | grep -E "^$ws/.*\.test\.ts$" | sed "s|^$ws/||" || true); fi
             [[ -z "$files" ]] && continue

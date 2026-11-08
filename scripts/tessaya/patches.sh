@@ -191,7 +191,8 @@ cmd_rebase() {
     if [ -f "$dir/OURS" ] && [ "$applied" -eq "$n" ] && [ -n "$conflicted" ] &&
       ! printf '%s\n' "$conflicted" | grep -vxF -f <(grep -vE '^\s*(#|$)' "$dir/OURS") | grep -q .; then
       while read -r f; do
-        git show "HEAD:$f" > "$f" && git add -- "$f"
+        git show "HEAD:$f" > "$f" || die "could not restore Tessaya's $f"
+        git add -- "$f"
         echo "  OURS      $p  kept Tessaya's $f (upstream changed it)"
       done <<< "$conflicted"
       rm -f "$dir/.$p.log"
