@@ -9,6 +9,11 @@ import { createConversationLog } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
 import { createAssistantAgent, shouldRecycle } from "./agentSession.ts";
 
+/** The pool's starts and the turn's follow-ups run a few promise turns behind the call. */
+const settled = async () => {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+};
+
 const fakeSession = (log: string[]): VisionSession => {
   let alive = true;
   return {
@@ -277,7 +282,7 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("keeps a warm session per model on one conversation, at most three", async () => {
+  it("keeps a warm session per model on one conversation, at most four", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
     const started: string[] = [];
@@ -318,6 +323,146 @@ describe("the one assistant's session", () => {
     await agent.say("hello", { window: null, session: null, brain: { model: "x", effort: "low" } });
     await agent.say("hello", { window: null, session: null, brain: { model: "y", effort: "low" } });
     await vi.waitFor(() => expect(disposed).toEqual(["x"]));
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps each persona's sessions apart in one pool of four, and warms only the one he woke (P1)", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    const disposed: string[] = [];
+    let tick = 0;
+    let n = 0;
+    const agent = createAssistantAgent({
+      now: () => (tick += 1),
+      start: async (prompt, brain) => {
+        const name = `${brain?.model ?? "none"}#${(n += 1)}`;
+        started.push(name);
+        return {
+          ask: async () => `${name} answer`,
+          alive: () => true,
+          dispose: () => void disposed.push(name),
+        };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const sonnet = { model: "sonnet", effort: "medium" };
+    const haiku = { model: "haiku", effort: "low" };
+    const persona = (id: string) => ({ id, name: id, role: "" });
+    // Freya's wake warms Freya's tiers only; her session has started by the time she is asked.
+    agent.warm([sonnet, haiku], "freya");
+    await settled();
+    await agent.say("hello", {
+      window: null,
+      session: null,
+      brain: sonnet,
+      persona: persona("freya"),
+    });
+    expect(agent.lastStart()).toBe("warm");
+    await vi.waitFor(() => expect(started).toEqual(["sonnet#1", "haiku#2"]));
+    // Alfred on the same model gets a session of his own, cold because his wake did not come first.
+    await agent.say("hello", {
+      window: null,
+      session: null,
+      brain: sonnet,
+      persona: persona("alfred"),
+    });
+    expect(agent.lastStart()).toBe("cold");
+    expect(started).toEqual(["sonnet#1", "haiku#2", "sonnet#3"]);
+    // Alfred's wake: his tiers are kept, and making room takes Freya's, never his.
+    agent.warm([sonnet, haiku], "alfred");
+    await agent.say("again", {
+      window: null,
+      session: null,
+      brain: haiku,
+      persona: persona("alfred"),
+    });
+    expect(agent.lastStart()).toBe("cold");
+    // Four sessions now, two personas' tiers each, and none given back: the cap is four, not three.
+    await settled();
+    expect(disposed).toEqual([]);
+    await agent.say("more", {
+      window: null,
+      session: null,
+      brain: { model: "opus", effort: "high" },
+      persona: persona("alfred"),
+    });
+    await vi.waitFor(() => expect(disposed).toHaveLength(1));
+    expect(["sonnet#1", "haiku#2"]).toContain(disposed[0]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("after a wake that named the wrong persona, warms nothing more of it and evicts nothing of the one who answered", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    const disposed: string[] = [];
+    const agent = createAssistantAgent({
+      start: async (_prompt, brain) => {
+        started.push(brain?.model ?? "none");
+        return {
+          ask: async (_content, onDelta) => (onDelta?.("Hi."), "Hi."),
+          alive: () => true,
+          dispose: () => void disposed.push(brain?.model ?? "none"),
+        };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const sonnet = { model: "sonnet", effort: "medium" };
+    const persona = (id: string) => ({ id, name: id, role: "" });
+    // A false "Alfred" wake warms his likeliest tier; Freya answers.
+    agent.warm(
+      [sonnet, { model: "haiku", effort: "low" }, { model: "opus", effort: "high" }],
+      "alfred",
+    );
+    await agent.say("hello", {
+      window: null,
+      session: null,
+      brain: sonnet,
+      persona: persona("freya"),
+    });
+    await settled();
+    // Alfred's other tiers are never started, and Freya's session is never given back for them.
+    expect(started).toEqual(["sonnet", "sonnet"]);
+    expect(disposed).toEqual([]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("starts nothing on a second wake of a persona whose session is live, and says it was starting", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    let starts = 0;
+    let release: () => void = () => undefined;
+    const ready = new Promise<void>((resolve) => (release = resolve));
+    const agent = createAssistantAgent({
+      start: async () => {
+        starts += 1;
+        await ready;
+        return { ask: async () => "Hi.", alive: () => true, dispose: () => undefined };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const sonnet = { model: "sonnet", effort: "medium" };
+    agent.warm([sonnet], "freya", true);
+    agent.warm([sonnet], "freya", true);
+    const turn = agent.say("hello", {
+      window: null,
+      session: null,
+      brain: sonnet,
+      persona: { id: "freya", name: "Freya", role: "" },
+    });
+    await settled();
+    release();
+    await turn;
+    expect(starts).toBe(1);
+    // Found, but still starting when the turn came: neither warm nor cold.
+    expect(agent.lastStart()).toBe("starting");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

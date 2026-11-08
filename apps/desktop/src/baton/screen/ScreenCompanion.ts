@@ -37,7 +37,7 @@ import { standingGate } from "../agent/standingGate.ts";
 import { runOnceItsTurn } from "../agent/standingRun.ts";
 import {
   chooseTurnBrain,
-  createTierMemory,
+  createTierMemories,
   manualLabel,
   modelCommand,
   tierBrains,
@@ -513,8 +513,8 @@ export interface ScreenCompanion {
   readonly setTransformHotkeys: (on: boolean) => void;
   /** The tray's Clear the screen, also what a spoken stop does. */
   readonly dismiss: () => void;
-  /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
-  readonly warm: () => void;
+  /** He has woken Baton: starts the sessions a turn will need, for the persona his wake word names. No quota. */
+  readonly warm: (wake?: string | null) => void;
   /** Only the assistant's sessions, with no first-run checks: for the warm-up at launch. */
   readonly warmAssistant: () => void;
   /** A turn or dictation began from this wake word: its persona answers from here, in its own voice. */
@@ -995,15 +995,28 @@ export const startScreenCompanion = (input: {
   let faceModel: Brain = modelOf(DEFAULT_OS_PACK, "executive");
   const leadBrain = () =>
     modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), "executive");
-  /** The last chat turn's tier, so a bare "go ahead" right after it is carried out on the same model. */
-  const tierMemory = createTierMemory();
+  /** Each persona's last chat turn tier, so a bare "go ahead" is carried out on the model that turn used (P1). */
+  const tierMemories = createTierMemories();
   const manual = (): ManualBrain => ({
     model: settings.assistantModel === "auto" ? null : settings.assistantModel,
     effort: settings.assistantEffort === "auto" ? null : settings.assistantEffort,
   });
   let disposed = false;
-  const warmTiers = () =>
-    agentOf().warm(tierBrains(leadBrain(), manual(), tierMemory.previous() ?? "default"));
+  /** The tiers of the persona he is talking to (the one his wake word names), and only that persona's (P1). */
+  /** The persona whose tiers were warmed last, so a sentence that names another ("ask Alfred…") warms that one. */
+  let warmedFor: string | null = null;
+  const warmTiers = (persona: Persona = face, wake = false) => {
+    warmedFor = persona.id;
+    agentOf().warm(
+      tierBrains(
+        modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), persona.id),
+        manual(),
+        tierMemories.of(persona.id).previous() ?? "default",
+      ),
+      persona.id,
+      wake,
+    );
+  };
   /** Voice, tray, settings and the assistant_model tool all land here; the next turn uses it, and its session is warmed now. */
   const chooseModel = (choice: ManualBrain): string => {
     save({ assistantModel: choice.model ?? "auto", assistantEffort: choice.effort ?? "auto" });
@@ -2865,7 +2878,8 @@ export const startScreenCompanion = (input: {
     } = {},
   ) => {
     answering += 1;
-    const brain = chooseTurnBrain(text, faceModel, tierMemory.previous(), manual());
+    const speaker = face.id;
+    const brain = chooseTurnBrain(text, faceModel, tierMemories.of(speaker).previous(), manual());
     const mine = turns.ask();
     const record = mine.record;
     let firstTokenAt: number | null = null;
@@ -2959,6 +2973,9 @@ export const startScreenCompanion = (input: {
         decisions: [...record().decisions],
         routes: [...record().routes],
         firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
+        // P1's measure: whether the persona's session was already warm, against first-token times.
+        session: outside ? null : agentOf().lastStart(),
+        personaId: speaker,
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
         tools: [...record().tools],
@@ -2991,7 +3008,7 @@ export const startScreenCompanion = (input: {
       // A device's turn failing never speaks over him or ends his lesson, drive or look.
       if (!outside) fail(error);
     } finally {
-      tierMemory.settled(brain.tier, outside);
+      tierMemories.of(speaker).settled(brain.tier, outside);
       answering -= 1;
       mine.done();
       turn.onEnd?.();
@@ -3022,6 +3039,8 @@ export const startScreenCompanion = (input: {
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
     leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
+    // The wake named one persona and the words another ("Tessaya, ask Alfred…"): his tiers, before the turn runs.
+    if (!outside && warmedFor !== null && face.id !== warmedFor) warmTiers(face);
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
     const secret = redactForHistory(text, null).secret;
     // A device's words are never held for his vault or offered to it.
@@ -3303,7 +3322,7 @@ export const startScreenCompanion = (input: {
         text: "",
       });
     },
-    warm: () => {
+    warm: (wake) => {
       // First run: a Chrome that is already connected turns this on, once; otherwise it stays off and asks again next time.
       if (!settings.browserChromeSet) {
         void refreshChrome().then((check) => {
@@ -3316,7 +3335,15 @@ export const startScreenCompanion = (input: {
           );
         });
       }
-      warmTiers();
+      warmTiers(
+        wake == null
+          ? face
+          : personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
+              wake,
+              text: "",
+            }),
+        wake != null,
+      );
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
         spareLook = visionFor("look");
