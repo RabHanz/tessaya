@@ -108,7 +108,8 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
 import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
 import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
 import { AdvancedSettings } from "./AdvancedSettings";
-import { BatonVoiceSettingsNotice, tessayaDictation } from "../../speech/batonDictation";
+import { tessayaDictation } from "../../speech/batonDictation";
+import { BatonVoiceSettingsNotice } from "./BatonVoiceSettingsNotice";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingResetButton,

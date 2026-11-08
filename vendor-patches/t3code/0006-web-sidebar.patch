@@ -8145,18 +8145,19 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
        ) : null}
      </span>
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..7abac06c395903b583949156149c55715d7f7bf6 100644
+index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..aabe7b8f2f3dc857a28473033a12ab5d7b3ff425 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-@@ -108,6 +108,7 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
+@@ -108,6 +108,8 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
  import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
  import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
  import { AdvancedSettings } from "./AdvancedSettings";
-+import { BatonVoiceSettingsNotice, tessayaDictation } from "../../speech/batonDictation";
++import { tessayaDictation } from "../../speech/batonDictation";
++import { BatonVoiceSettingsNotice } from "./BatonVoiceSettingsNotice";
  import {
    SETTINGS_PICKER_TRIGGER_CLASSNAME,
    SettingResetButton,
-@@ -1172,6 +1173,8 @@ export function VoiceSettingsPanel() {
+@@ -1172,6 +1174,8 @@ export function VoiceSettingsPanel() {
      chosenEnvironment?.serverConfig != null &&
      chosenEnvironment.serverConfig.environment.capabilities.voiceTranscription !== true;
    const model = prepared && modelStatus?.supported ? modelStatus : null;

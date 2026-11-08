@@ -316,6 +316,13 @@ export interface BatonDesktopBridge {
     readonly start: () => void;
     readonly stop: () => void;
     readonly openSettings: () => void;
+    /**
+     * The words as they are heard (`partial`), then the cleaned text (`clean`), so T3's own live-transcription line can
+     * show them as Tessaya types. Rendered once the pill lane's motion spec lands (word-level diff, at most ~500 ms).
+     */
+    readonly onText?: (
+      handler: (event: { readonly kind: "partial" | "clean"; readonly text: string }) => void,
+    ) => () => void;
   };
 }
 

@@ -1,13 +1,6 @@
 import { batonDesktopBridge } from "@t3tools/baton-contracts";
 
-import { Button } from "../components/ui/button";
-import {
-  SettingsPageContainer,
-  SettingsRow,
-  SettingsSection,
-} from "../components/settings/settingsLayout";
-
-type TessayaDictation = NonNullable<
+export type TessayaDictation = NonNullable<
   NonNullable<ReturnType<typeof batonDesktopBridge>>["tessayaDictation"]
 >;
 
@@ -35,23 +28,4 @@ export function withTessayaDictation<
     stop: async () => dictation.stop(),
     cancel: () => dictation.stop(),
   };
-}
-
-/** Settings → Voice on a desktop where Tessaya's voice runs: one place for dictation settings, Tessaya's. */
-export function BatonVoiceSettingsNotice({ dictation }: { readonly dictation: TessayaDictation }) {
-  return (
-    <SettingsPageContainer>
-      <SettingsSection id="voice-input" title="Input">
-        <SettingsRow
-          title="Dictation on this computer is Tessaya's"
-          description="T3's microphone buttons dictate through Tessaya: its pill, its engine, its words and keys."
-          control={
-            <Button size="sm" variant="outline" onClick={dictation.openSettings}>
-              Open Dictation settings
-            </Button>
-          }
-        />
-      </SettingsSection>
-    </SettingsPageContainer>
-  );
 }
