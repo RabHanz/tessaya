@@ -30,9 +30,15 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
   message to the **focused** session (only a focused one; "most recent" is not enough).
   A wake still opens a command window.
 - **dictation**: "dictate" or "I want to dictate" (optionally with text in the same breath)
-  enters it, and only "stop dictating" or a near form leaves it, back into the conversation
-  with no wake word (D125). While it is on, everything said is text for the focused field,
-  including words that sound like commands. Dictated text never reaches the environment.
+  enters it, bound to the window that has the keyboard then. Everything said is text, the wake words and
+  "Tessaya, stop" included, and it waits in a buffer (on disk too) rather than being typed as it comes. Only
+  "stop dictation" (or "stop dictating"), the pill's ✓, ✕ or Esc ends it, back into the conversation with no
+  wake word (D125). The stop phrase and ✓ paste the buffer in one go into that window, brought forward first;
+  ✕ and Esc throw it away. Before the paste, a card above the pill shows what was said in grey, the words the
+  clean-up kept turning white and the rest blurring away (`cleanupCard.ts`, 1.6 s; the clean text alone when motion
+  is reduced). If the window is gone, the text goes on the clipboard and the pill says so. The pill
+  stays up the whole time, naming the window and showing the last few words. Dictated text never reaches the
+  environment. The hold key works the same way: release is ✓, Esc is ✕.
 
 While Tessaya speaks, a short stop phrase (stop, quiet, enough, that's enough, cancel, shut up)
 is heard with no wake word (D122). Nothing else said over its voice is acted on.

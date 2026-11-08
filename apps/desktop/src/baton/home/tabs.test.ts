@@ -74,7 +74,6 @@ const PLACES: Readonly<Record<string, ReadonlyArray<string>>> = {
   cloud: ["setup.cloud.github", "setup.cloud.always"],
   dictation: [
     "v.dictation",
-    "v.delivery",
     "v.cleanup",
     "v.appMode",
     "v.speechModel",

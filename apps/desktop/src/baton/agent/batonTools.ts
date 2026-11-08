@@ -666,7 +666,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "dictation_start",
       description:
-        "Start dictation into the focused field: from then on every word he says goes there, not to you, until he says stop dictation. When he plainly asks to dictate now, or to select a box so he can dictate into it: put the keyboard there, then call this in the same turn. Never say dictation is on, or tell him to start dictating, unless this returned that it is on. A sentence cut off ('…can you'), a test or question about dictation, or no clear window: ask what he wants first, and do not move windows.",
+        'Start dictation into the focused field: from then on every word he says is held for that window, not heard by you, and pasted there only when he says "stop dictation" or clicks ✓ on the pill (✕, or Esc twice, throws it away). Say that it is listening, never that his words are in. When he plainly asks to dictate now, or to select a box so he can dictate into it: put the keyboard there, then call this in the same turn. Never say dictation is on unless this returned that it is. A sentence cut off ("…can you"), a test or question about dictation, or no clear window: ask what he wants first, and do not move windows.',
       inputSchema: object({}),
       run: async () => ({ text: await host.dictation(true) }),
     },

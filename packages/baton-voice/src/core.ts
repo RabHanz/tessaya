@@ -25,6 +25,7 @@ import {
 } from "@t3tools/baton-shared/endOfTurn";
 import { isAddressedFollowUp } from "@t3tools/baton-shared/followUp";
 import { answerOf, isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
+import { classifyDictation } from "@t3tools/baton-shared/dictation";
 
 import {
   DEFAULT_TIMINGS,
@@ -124,6 +125,8 @@ export type VoiceCoreEvent =
        */
       readonly vadPeak?: number;
       readonly vadMean?: number;
+      /** For a dictation filler: how long the detector heard speech in it. */
+      readonly voicedMs?: number;
     }
   /** He said only a dismissal ("never mind"): the window ended at once, no model was asked. */
   | { readonly type: "dismissed"; readonly text: string; readonly at: number }
@@ -222,6 +225,44 @@ const NEAR_RUN_MS = 60;
 
 const NOISE = /^(?:\[[^\]]*\]|\([^)]*\)|\s|[.,!?…-])*$/;
 
+/**
+ * What Parakeet makes of a breath or the near-silent tail after he stops ("Yeah.", 0.1.73). "Yes", "yep" and "okay"
+ * are real words he dictates, so they are never dropped.
+ */
+const DICTATION_FILLER = /^(?:yeah|uh+|um+|mm+|hm+)$/;
+/** Weakly heard: the detector unsure of it AND too short for a word. His real peaks run near 0.06, so neither alone. */
+const WEAK_PEAK = 0.7;
+const WEAK_VOICED_MS = 300;
+
+/** The clip without the words at its start that are her own line heard back ("…say stop dictation. A test of…"). */
+export const withoutHerEcho = (text: string, hers: ReadonlyArray<string>): string => {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  for (let k = words.length; k > 0; k -= 1)
+    if (echoesSpeech(words.slice(0, k).join(" "), hers)) return words.slice(k).join(" ");
+  return words.join(" ");
+};
+
+/**
+ * The clip without its quiet tail (the segmenter waits out his pause, which is what Parakeet hallucinates on), keeping
+ * `keepMs` after the last frame louder than a twentieth of the clip's loudest.
+ */
+export const trimQuietTail = (pcm: Int16Array, keepMs = 200, frameMs = 20): Int16Array => {
+  const samplesOf = (ms: number) => Math.round((ms * VOICE_SAMPLE_RATE) / 1000);
+  const frame = samplesOf(frameMs);
+  const rms: number[] = [];
+  for (let at = 0; at < pcm.length; at += frame) {
+    let sum = 0;
+    const end = Math.min(pcm.length, at + frame);
+    for (let i = at; i < end; i += 1) sum += (pcm[i] ?? 0) ** 2;
+    rms.push(Math.sqrt(sum / Math.max(1, end - at)));
+  }
+  const floor = Math.max(150, Math.max(0, ...rms) / 20);
+  let last = rms.length - 1;
+  while (last >= 0 && (rms[last] ?? 0) < floor) last -= 1;
+  if (last < 0) return pcm;
+  return pcm.subarray(0, Math.min(pcm.length, (last + 1) * frame + samplesOf(keepMs)));
+};
+
 export const createVoiceCore = (input: {
   readonly wake: WakeProvider;
   readonly vad: VadProvider;
@@ -298,6 +339,8 @@ export const createVoiceCore = (input: {
   let addressee: string | null = null;
   let segment: Int16Array[] | null = null;
   let speechSamples = 0;
+  /** The detector's highest probability in the segment being heard, when it reports one. */
+  let segmentPeak: number | null = null;
   let silenceSamples = 0;
   let segmentSamples = 0;
   let work: Promise<void> = Promise.resolve();
@@ -541,6 +584,8 @@ export const createVoiceCore = (input: {
   const finishSegment = () => {
     const parts = segment;
     const spoken = speechSamples;
+    const peak = segmentPeak;
+    segmentPeak = null;
     const overItself = barged;
     // The cut-in belongs to the words said over her, and to nothing after them.
     const note = overItself ? cutIn : null;
@@ -600,7 +645,9 @@ export const createVoiceCore = (input: {
     let recogniseMs = 0;
     const recognise = () => {
       const began = Date.now();
-      return input.stt.transcribe(pcm).finally(() => (recogniseMs = Date.now() - began));
+      return input.stt
+        .transcribe(machine.mode === "dictation" ? trimQuietTail(pcm) : pcm)
+        .finally(() => (recogniseMs = Date.now() - began));
     };
     const heard = (
       waitFor === null ? recognise() : waitFor.then((ok) => (ok ? recognise() : ""))
@@ -618,6 +665,19 @@ export const createVoiceCore = (input: {
       const dictating = machine.mode === "dictation";
       if (text === SET_ASIDE) return;
       if (NOISE.test(cleaned)) return dictating ? undefined : emit({ type: "nothing" });
+      const voicedMs = Math.round((spoken * 1000) / VOICE_SAMPLE_RATE);
+      // A weak filler is held: if more follows it was his and goes in, in order; if dictation ends on it, it goes.
+      if (
+        dictating &&
+        DICTATION_FILLER.test(plainWords(cleaned)) &&
+        peak !== null &&
+        peak < WEAK_PEAK &&
+        voicedMs < WEAK_VOICED_MS
+      ) {
+        await releaseFiller();
+        heldFiller = { text: cleaned, peak, voicedMs };
+        return;
+      }
       if (turn.consumed) return;
       if (
         !dictating &&
@@ -668,10 +728,46 @@ export const createVoiceCore = (input: {
       // Begun while the window was open: a slow recogniser (right after launch) must not let it close under these words.
       if (machine.deadline !== null && turn.startAt <= machine.deadline)
         await dispatch({ type: "keep_open", at: now() });
-      await dispatch({ type: "utterance", text: said, at: now() });
+      if (machine.mode === "dictation") await dictateNext(said);
+      else await dispatch({ type: "utterance", text: said, at: now() });
       ahead = null;
     });
     show();
+  };
+
+  /** A weak filler waiting to see whether dictation goes on after it (`DICTATION_FILLER`). */
+  let heldFiller: {
+    readonly text: string;
+    readonly peak: number;
+    readonly voicedMs: number;
+  } | null = null;
+  /** Dictation ended on it: a breath, never typed. Logged so it can be checked against his audio. */
+  const dropFiller = () => {
+    if (heldFiller === null) return;
+    const { text, peak, voicedMs } = heldFiller;
+    heldFiller = null;
+    emit({
+      type: "dropped",
+      text,
+      reason: "dictation_dropped_filler",
+      voicedMs,
+      vadPeak: Math.round(peak * 1000) / 1000,
+    });
+  };
+  /** More came after it, so it was his: it goes in first, in the order he spoke. */
+  const releaseFiller = async () => {
+    if (heldFiller === null) return;
+    if (machine.mode !== "dictation") return dropFiller();
+    const { text } = heldFiller;
+    heldFiller = null;
+    await dispatch({ type: "utterance", text, at: now() });
+  };
+  /** One utterance into a dictation: a held filler goes in before it, or goes if this one ends the dictation. */
+  const dictateNext = async (text: string) => {
+    if (classifyDictation(stripWake(text, timings.wakeWords), { dictating: true }).kind === "stop")
+      dropFiller();
+    else await releaseFiller();
+    await dispatch({ type: "utterance", text, at: now() });
   };
 
   const readEarly = (
@@ -772,6 +868,18 @@ export const createVoiceCore = (input: {
     const startedAt = samples - stopSamples + stopPreRoll;
     clearStop();
     if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
+    // Dictation is on: every clip over her closing line is his words. None is dropped as busy, each takes its place in
+    // the queue as it ends (so the buffer stays in the order he spoke), and only her own line heard back is cut off.
+    if (machine.mode === "dictation") {
+      const heard = (input.stopStt ?? input.stt).transcribe(joined(parts)).catch(() => "");
+      const hers = spokenLately.slice(-2);
+      enqueue(async () => {
+        const rest = withoutHerEcho(await heard, hers);
+        if (rest === "" || NOISE.test(rest) || disposed || machine.mode !== "dictation") return;
+        await dictateNext(rest);
+      });
+      return;
+    }
     // Busy: the newest clip waits its turn, so his latest words are heard; only an older waiting one goes.
     if (stopBusy) {
       if (stopWaiting !== null) emit({ type: "dropped", text: "", reason: "recogniser busy" });
@@ -1282,7 +1390,9 @@ export const createVoiceCore = (input: {
 
     if (listening() && !hearingItself()) {
       const speech = input.vad.isSpeech(frame);
-      const probability = lone === null ? undefined : input.vad.probability?.();
+      const probability = lone === null && segment === null ? undefined : input.vad.probability?.();
+      if (segment !== null && probability !== undefined)
+        segmentPeak = Math.max(segmentPeak ?? 0, probability);
       if (lone !== null && probability !== undefined) {
         lone.vadPeak = Math.max(lone.vadPeak, probability);
         lone.vadSum += probability;
@@ -1294,6 +1404,7 @@ export const createVoiceCore = (input: {
       const freshSpeech = scored === undefined ? 0 : scored.speech - scoredSpeech;
       if (scored !== undefined) scoredSpeech = scored.speech;
       if (segment === null && speech) {
+        segmentPeak = null;
         segment = [...preRoll];
         segmentSamples = preRollSamples;
       }
@@ -1397,7 +1508,11 @@ export const createVoiceCore = (input: {
     setDictation: async (on) => {
       // A dictation started over a lone wake is his: the wake must not end it.
       lone = null;
-      enqueue(() => dispatch({ type: "set_dictation", on, at: now() }));
+      enqueue(() => {
+        // ✓ or ✕: a weak filler at the very end was a breath.
+        if (!on) dropFiller();
+        return dispatch({ type: "set_dictation", on, at: now() });
+      });
       await work;
       return machine.mode === "dictation";
     },

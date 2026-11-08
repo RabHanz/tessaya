@@ -90,10 +90,6 @@ const extras: ReadonlyArray<HomeControl> = [
     "Top",
   ]),
   t("v.dictation", "Dictation", "Hold a key to dictate", "Words land in the app you are in.", true),
-  c("v.delivery", "Dictation", "Deliver words by", "How the text reaches the page.", "paste", [
-    "Paste",
-    "Type",
-  ]),
   a(
     "v.download",
     "Dictation",

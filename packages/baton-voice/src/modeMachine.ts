@@ -7,7 +7,7 @@
  *        ▲                    │ timeout                 │ timeout / "that's all"
  *        └────────────────────┴─────────────────────────┘
  *   (base) direct_session when enabled: plain speech goes to the focused session
- *   dictation: entered by "dictate", left only by "stop dictating"
+ *   dictation: entered by "dictate", left only by "stop dictation" (or the pill's ✓ and ✕)
  *
  * Rules this enforces:
  *   - Without a wake (or an explicit activation) nothing said is acted on,
@@ -22,7 +22,7 @@
  *
  * @module baton-voice/modeMachine
  */
-import { classifyDictation, isBareStop } from "@t3tools/baton-shared/dictation";
+import { classifyDictation } from "@t3tools/baton-shared/dictation";
 import { wakeWordLead } from "@t3tools/baton-shared/wakeVerify";
 import { answerOf, isCancelPhrase } from "@t3tools/baton-shared/voiceTurn";
 
@@ -341,13 +341,12 @@ const utterance = (
 
   if (s.mode === "dictation") {
     const d = classifyDictation(words, { dictating: true });
+    // Only "stop dictation" ends it (and the pill's ✓ and ✕): "Tessaya, stop" is words he dictates.
     // Back in the conversation, not asleep: he carries on with no wake word.
-    // A bare "stop" is a command only with the wake word; on its own it may be a word he dictates.
-    if (d.kind === "stop" || (words !== raw && isBareStop(words)))
+    if (d.kind === "stop")
       return step({ ...s, mode: "conversation", deadline: at + timings.conversationMs }, [
         ...carry,
-        ...(d.kind === "stop" && d.text ? [{ kind: "dictate", text: d.text } as const] : []),
-        { kind: "speak", text: "Stopped dictating." },
+        ...(d.text ? [{ kind: "dictate", text: d.text } as const] : []),
       ]);
     // Dictation owns every word: the name said mid-dictation is typed like any other.
     if (d.kind === "text" && raw.length > 0)

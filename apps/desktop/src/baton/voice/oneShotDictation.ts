@@ -12,6 +12,8 @@ export interface OneShotIo {
   ) => Promise<{ readonly text: string; readonly stage: string } | null>;
   readonly fit: (text: string) => Promise<string>;
   readonly paste: (text: string) => Promise<boolean>;
+  /** Shows what the tidy-up kept of what he said, and resolves when it is time to paste. */
+  readonly preview?: (raw: string, text: string) => Promise<void>;
 }
 
 export interface OneShotResult {
@@ -22,31 +24,37 @@ export interface OneShotResult {
   readonly failed: boolean;
 }
 
-export const createOneShot = (io: OneShotIo, restored: ReadonlyArray<string> = []) => {
-  let chunks: Array<string> = [...restored];
+export const createOneShot = (io: OneShotIo) => {
+  const chunks: Array<string> = [];
+  /** Takes the first `n` chunks out: a flush owns only what was there when it began. */
+  const release = (n: number) => {
+    chunks.splice(0, n);
+    io.save(chunks);
+  };
   return {
     push: (text: string) => {
       chunks.push(text);
       io.save(chunks);
     },
     pending: (): ReadonlyArray<string> => chunks,
-    flush: async (): Promise<OneShotResult> => {
-      const raw = chunks.join(" ").trim();
+    discard: () => release(chunks.length),
+    release,
+    /** `taken` is how many chunks this flush owns; on "kept" they stay until the caller releases them. */
+    flush: async (): Promise<OneShotResult & { readonly taken: number }> => {
+      const taken = chunks.length;
+      const raw = chunks.slice(0, taken).join(" ").trim();
       if (raw.length === 0) {
-        chunks = [];
-        io.save(chunks);
-        return { status: "empty", text: "", failed: false };
+        release(taken);
+        return { status: "empty", text: "", failed: false, taken };
       }
       const cleaned = await io.clean(raw).catch(() => null);
       const { text, failed } = settleOneShot(raw, cleaned);
       const fitted = await io.fit(text).catch(() => text);
+      await io.preview?.(raw, fitted).catch(() => undefined);
       const pasted = await io.paste(fitted).catch(() => false);
-      // The chunks stay on disk until the paste has landed.
-      if (pasted) {
-        chunks = [];
-        io.save(chunks);
-      }
-      return { status: pasted ? "pasted" : "kept", text: fitted, failed };
+      // The chunks stay on disk until the paste has landed; words of a newer dictation stay after them.
+      if (pasted) release(taken);
+      return { status: pasted ? "pasted" : "kept", text: fitted, failed, taken };
     },
   };
 };

@@ -4,7 +4,7 @@ Turn speech into text in any app.
 
 ## Start
 
-Hold **Ctrl+Alt+Space**, speak, release. The text is typed where your cursor is. **Ctrl+Alt+Shift+Space** toggles it on and off instead of holding. The keys appear after the speech model has downloaded (Voice page, or tick Always listening). **Double-tap** the hold key (two quick taps) and Tessaya keeps listening after you let go; press the key once more to finish. Turn it off on the Dictation page (Double-tap to keep talking). Say "dictate" to dictate by voice and "stop dictating" to end it.
+Hold **Ctrl+Alt+Space**, speak, release. The text is typed where your cursor is. **Ctrl+Alt+Shift+Space** toggles it on and off instead of holding. The keys appear after the speech model has downloaded (Voice page, or tick Always listening). **Double-tap** the hold key (two quick taps) and Tessaya keeps listening after you let go; press the key once more to finish. Turn it off on the Dictation page (Double-tap to keep talking). To dictate by voice, say "dictate". The pill stays up while you speak, names the window your words are for and shows the last few of them; nothing is typed yet. Say "stop dictation" or click ✓ on the pill to insert it all into that window, or click ✕ or press Esc to throw it away. Her name and "stop" on their own are just words while you dictate. If that window has closed, the text goes on your clipboard instead.
 
 ## Good to know
 

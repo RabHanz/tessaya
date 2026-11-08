@@ -66,4 +66,31 @@ describe("a twelve-minute dictation, all at once", () => {
     expect(saved.at(-1)).toHaveLength(48);
     expect(oneShot.pending()).toHaveLength(48);
   });
+
+  it("throws the words away on ✕, from disk too, and pastes nothing", async () => {
+    const { oneShot, saved, pasted } = harness(async (raw) => ({ text: raw, stage: "model" }));
+    oneShot.discard();
+    expect(saved.at(-1)).toEqual([]);
+    expect(await oneShot.flush()).toMatchObject({ status: "empty" });
+    expect(pasted).toEqual([]);
+  });
+
+  it("pastes only what it began with: words of a newer dictation, arriving meanwhile, wait for their own", async () => {
+    const pasted: string[] = [];
+    let late: (() => void) | null = null;
+    const oneShot = createOneShot({
+      save: () => {},
+      clean: async (raw) => {
+        late?.();
+        return { text: raw, stage: "model" };
+      },
+      fit: async (text) => text,
+      paste: async (text) => (pasted.push(text), true),
+    });
+    oneShot.push("first dictation");
+    late = () => oneShot.push("second dictation");
+    await oneShot.flush();
+    expect(pasted).toEqual(["first dictation"]);
+    expect(oneShot.pending()).toEqual(["second dictation"]);
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  dictationCaption,
   frameLevel,
   IDLE_TURN,
   isCancelPhrase,
@@ -158,6 +159,31 @@ describe("the pill while a window is open", () => {
     expect(reduceTurn(state, { type: "wake", word: "Alfred" }).phase).toBe("dictating");
     state = reduceTurn(state, { type: "dictating", caption: null });
     expect(state.phase).toBe("listening");
+  });
+
+  it("stays Dictating through her voice, her work, a dismissal or a failure, until dictation itself ends (LIVE-2240)", () => {
+    const start = play([...open, { type: "dictating", caption: "Into Notepad" }]);
+    for (const event of [
+      { type: "speaking", active: true },
+      { type: "speaking", active: false },
+      { type: "activity", label: "Looking" },
+      { type: "dismissed" },
+      { type: "failed", message: "Didn't catch that" },
+      { type: "window_closed" },
+      { type: "finished" },
+    ] as const)
+      expect(reduceTurn(start, event).phase).toBe("dictating");
+    expect(reduceTurn(start, { type: "trouble", message: "Mic gone" }).phase).toBe("error");
+    expect(reduceTurn(start, { type: "dictating", caption: null }).phase).toBe("listening");
+  });
+
+  it.each([
+    ["Notepad", "", 'Into Notepad · say "stop dictation"'],
+    [null, "", 'Say "stop dictation" to insert'],
+    ["Notepad", "Dear Sam", "Into Notepad · Dear Sam"],
+    ["Notepad", "one two three four five six seven", "Into Notepad · …three four five six seven"],
+  ] as const)("captions dictation into %s with %j", (into, said, caption) => {
+    expect(dictationCaption(into, said)).toBe(caption);
   });
 
   it("leaves when a dismissal ends a spoken turn", () => {
