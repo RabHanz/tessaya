@@ -236,6 +236,12 @@ export const DICTIONARY_CASES: ReadonlyArray<CleanupCase> = [
     gone: ["Tesiah"],
     dictionary: OWN_NAMES,
   },
+  {
+    raw: "Will you book the room for Friday? And also order lunch for the six of us.",
+    keep: ["Friday and also order", "us?"],
+    gone: ["Friday?"],
+    dictionary: OWN_NAMES,
+  },
   // Controls: a real name near his word, and two questions he asked as two.
   {
     raw: "Ask Tessa from accounts whether the invoice went out, and copy Tasha in.",
