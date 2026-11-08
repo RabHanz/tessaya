@@ -267,6 +267,11 @@ export const DICTIONARY_CASES: ReadonlyArray<CleanupCase> = [
     dictionary: OWN_NAMES,
   },
   {
+    raw: "Fix the button UI, click the button twice, and play with button presses after the update to button.",
+    keep: ["button UI", "click the button", "with button presses", "update to Baton"],
+    dictionary: [{ phrase: "Baton", replacement: null, heard: ["button"] }],
+  },
+  {
     raw: "Did the build pass? And did anyone tell Sam it shipped?",
     keep: ["pass?", "shipped?"],
     dictionary: OWN_NAMES,
