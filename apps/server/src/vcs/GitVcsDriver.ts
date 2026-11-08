@@ -44,6 +44,7 @@ import {
 } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
+import { mayBeInGitCheckout } from "../baton/gitCheckoutAbove.ts";
 
 export interface ExecuteGitInput {
   readonly operation: string;
@@ -601,6 +602,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
   const detectRepository: VcsDriver.VcsDriver["Service"]["detectRepository"] = Effect.fn(
     "detectRepository",
   )(function* (cwd) {
+    if (!(yield* mayBeInGitCheckout(fileSystem, path, cwd))) return null;
     // One spawn answers all three; outside a work tree it exits non-zero or prints "false".
     const result = yield* gitCommand(
       vcsProcess,

@@ -1254,6 +1254,28 @@ it.effect("GitVcsDriver treats a missing git executable as outside any repositor
   }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
+it.effect("GitVcsDriver does not spawn git for a folder with no .git above it", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const cwd = path.join(yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-plain-" }), "a");
+    yield* fileSystem.makeDirectory(cwd);
+    let spawned = 0;
+    // On a busy Windows laptop one `git rev-parse` outside any repository took 4.5 s and timed out (2026-11-08).
+    const driver = yield* GitVcsDriver.makeVcsDriverShape().pipe(
+      Effect.provideService(
+        VcsProcess.VcsProcess,
+        VcsProcess.VcsProcess.of({
+          run: () => Effect.sync(() => spawned++).pipe(Effect.andThen(Effect.die("git spawned"))),
+        }),
+      ),
+    );
+
+    assert.strictEqual(yield* driver.detectRepository(cwd), null);
+    assert.strictEqual(spawned, 0);
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
 it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
   "GitVcsDriver detects a repository whose path contains a newline",
   () =>
