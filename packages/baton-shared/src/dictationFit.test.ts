@@ -43,19 +43,29 @@ describe("contextFromLastInsert", () => {
     expect(fitWithoutContext("Should type her own name here.")).toBe(
       "Should type her own name here. ",
     );
-    expect(fitWithoutContext("Done?")).toBe("Done? ");
+    expect(fitWithoutContext("Is it done?")).toBe("Is it done? ");
     expect(fitWithoutContext("her own name here")).toBe("her own name here ");
     expect(fitWithoutContext("Done. ")).toBe("Done. ");
+    // One token (a word, a number, a path) is not followed by a space it was not given.
+    expect(fitWithoutContext("hello")).toBe("hello");
+    expect(fitWithoutContext("src/app.ts")).toBe("src/app.ts");
   });
 
   it("closes the last sentence of a dictation that has sentences, when the recogniser left it open (0.1.77 H2b)", () => {
-    expect(closeLastSentence("This is a test. Tessaya should type her own name here")).toBe(
-      "This is a test. Tessaya should type her own name here.",
-    );
+    const said = "This is a test. Tessaya should type her own name here";
+    // The text after the caret unknown, empty, a new line or a new sentence: the dictation ends here.
+    for (const after of [null, "", "\nNext line", "Hello World"])
+      expect([after, closeLastSentence(said, after)]).toEqual([after, `${said}.`]);
+    // It carries on, or already has its own mark: "good. and more", "here.. Then back".
+    for (const after of [" and more", "and more", ". Then back", ", then"])
+      expect([after, closeLastSentence(said, after)]).toEqual([after, said]);
     // One phrase is not prose to close, and a sentence already closed stays as it is.
-    expect(closeLastSentence("see you then")).toBe("see you then");
-    expect(closeLastSentence("This is a test. Done?")).toBe("This is a test. Done?");
-    expect(closeLastSentence("First line. and then,")).toBe("First line. and then,");
+    expect(closeLastSentence("see you then", null)).toBe("see you then");
+    expect(closeLastSentence("This is a test. Done?", null)).toBe("This is a test. Done?");
+    expect(closeLastSentence("First line. and then,", null)).toBe("First line. and then,");
+    // A link, a path, an address or code at the end gets no stop that would become part of it.
+    for (const end of ["example.com/docs", "src/app.ts", "sam@example.com", "user_id", "run()"])
+      expect(closeLastSentence(`It is set. See ${end}`, null)).toBe(`It is set. See ${end}`);
   });
 
   it("uses the last insertion only for the same window and while it is fresh", () => {

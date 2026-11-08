@@ -1365,11 +1365,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         lastInsert === null ? null : { ...lastInsert, sameWindow: lastInsert.key === key },
         Date.now(),
       );
-    // Code and raw mode take the words exactly as said: no space added after them.
-    const plain =
-      chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw";
+    const mode = chooseMode(app, settings.appModes);
+    // Code and raw mode take the words exactly as said: no stop and no space added; chat keeps his ending too.
+    const plain = mode === "code" || mode === "raw";
+    const closed = plain || mode === "chat" ? text : closeLastSentence(text, around?.after ?? null);
     const fitted =
-      around !== null ? fitInsertion(around, text) : plain ? text : fitWithoutContext(text);
+      around !== null ? fitInsertion(around, closed) : plain ? closed : fitWithoutContext(closed);
     lastInsert = { text: fitted, at: Date.now(), key };
     return fitted;
   };
@@ -1706,14 +1707,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       } catch {}
     },
     clean: (raw) => writeClean(raw, flushApp),
-    // Prose only: a chat line, code or raw words keep the ending he gave them.
-    fit: (text) =>
-      fitToCaret(
-        ["chat", "code", "raw"].includes(chooseMode(flushApp, settings.appModes))
-          ? text
-          : closeLastSentence(text),
-        flushApp,
-      ),
+    fit: (text) => fitToCaret(text, flushApp),
     preview: (raw, text) =>
       showCleanup({ anchor: pill.anchor(), raw, clean: text, motion: settings.motion }),
     paste: (text) =>
