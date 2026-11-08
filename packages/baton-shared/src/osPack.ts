@@ -185,6 +185,26 @@ export const mergePack = (
 export const DEFAULT_OS_PACK: OsPack = mergePack({});
 
 /**
+ * Who the other personas are, in one line ("Tessaya leads and hands out the work; Alfred handles sessions, builds and
+ * releases"), so a persona can say who to ask (PRESENCE). The part of a role before its first ";" is what it does.
+ * A private persona (P5) is left out.
+ */
+export const rosterLine = (
+  personas: ReadonlyArray<
+    Pick<Persona, "id" | "name" | "role" | "lead"> & { readonly private?: boolean }
+  >,
+  self: string,
+): string =>
+  personas
+    .filter((p) => p.id !== self && p.private !== true)
+    .map((p) =>
+      p.lead
+        ? `${p.name} leads and hands out the work`
+        : `${p.name} handles ${p.role.split(";")[0]!.trim().replace(/\.$/, "")}`,
+    )
+    .join("; ");
+
+/**
  * Who answers: the persona whose wake word woke him, else the one he named first in the sentence,
  * else the lead. Lower-case compares, since wake models report their words in either case.
  */

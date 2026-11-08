@@ -100,6 +100,8 @@ export const replayTurn = async (input: {
   clock = turnAt;
   const names = new Map((input.before ?? []).map((b) => [b.persona.id, b.persona.name]));
   const agent = createAssistantAgent({
+    // The case's clock, so the hand-off window and "you last spoke with him" measure from the turn, not from today.
+    now: () => clock.getTime(),
     start: async (systemPrompt, brain = input.brain) =>
       startVisionSession({
         claudeBinary: input.claudeBinary,

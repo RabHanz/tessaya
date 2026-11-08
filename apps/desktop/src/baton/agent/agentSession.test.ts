@@ -93,6 +93,50 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("says how long since this persona and he last spoke, and about what; nothing within two minutes (PRESENCE)", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    let clock = Date.parse("2026-11-08T10:00:00Z");
+    const conversation = createConversationLog({
+      file: NodePath.join(dir, "c.ndjson"),
+      now: () => new Date(clock),
+    });
+    const asked: string[] = [];
+    const agent = createAssistantAgent({
+      start: async () => fakeSession(asked),
+      conversation,
+      now: () => clock,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const freya = {
+      id: "operations",
+      name: "Freya",
+      role: "his day",
+      roster: "Alfred handles sessions, builds and releases",
+    };
+    const say = (text: string) => agent.say(text, { window: null, session: null, persona: freya });
+    await say("remind me to call the printer about the banner proofs");
+    expect(asked[0]).not.toContain("you last spoke with him");
+    // The roster is in the persona's line, so she can say who to ask.
+    expect(asked[0]).toContain("the others: Alfred handles sessions, builds and releases");
+    clock += 60_000;
+    await say("hi");
+    expect(asked[1]).not.toContain("you last spoke with him");
+    clock += 5 * 3_600_000;
+    await say("hi Freya");
+    expect(asked[2]).toContain('you last spoke with him 5 hours ago, when he said: "hi"');
+    clock += 26 * 3_600_000;
+    await say("where were we?");
+    expect(asked[3]).toContain("you last spoke with him yesterday");
+    clock += 3 * 86_400_000;
+    await say("hello");
+    expect(asked[4]).toContain("you last spoke with him 3 days ago");
+    // A greeting gets one manner of reply picked by code, so fresh sessions do not all open the same way.
+    expect(asked[4]).toMatch(/greet him back this time [a-z]/);
+    expect(asked[3]).not.toContain("greet him back");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("keeps a conversation per persona and hands the last few turns to the next one, never a private one's (P2)", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     let clock = Date.parse("2026-11-08T10:00:00Z");

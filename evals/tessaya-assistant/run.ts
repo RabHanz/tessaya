@@ -18,6 +18,7 @@ import {
   DEFAULT_OS_PACK,
   modelOf,
   personaFor,
+  rosterLine,
 } from "../../packages/baton-shared/src/osPack.ts";
 import { memoryBlock } from "../../packages/baton-shared/src/memory.ts";
 import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
@@ -120,6 +121,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
               name: face.name,
               role: face.role,
               ...(face.lead ? {} : { lead: "Tessaya" }),
+              roster: rosterLine(DEFAULT_OS_PACK.personas, face.id),
             },
           }),
     },

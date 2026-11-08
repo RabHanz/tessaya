@@ -10,7 +10,13 @@ import type { Brain } from "@t3tools/baton-shared/osPack";
 
 import type { ConversationLog } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
-import { agentSystemPrompt, contextLine, type TurnPersona } from "./agentPrompt.ts";
+import {
+  agentSystemPrompt,
+  contextLine,
+  greetingLine,
+  sinceLine,
+  type TurnPersona,
+} from "./agentPrompt.ts";
 
 /** About this many turns, and the session is replaced and re-seeded; a long one gets slow and costly. */
 export const RECYCLE_TURNS = 40;
@@ -302,6 +308,8 @@ export const createAssistantAgent = (input: {
     ]);
     const header = contextLine({
       now: input.clockLine(),
+      since: sinceLine(log.recent(1)[0], now()),
+      greeting: greetingLine(text),
       window: where.window,
       session: where.session,
       target: target?.label ?? null,
