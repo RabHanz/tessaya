@@ -155,6 +155,9 @@ export type DictationEvent =
   | {
       readonly ev: "text";
       readonly id: number | null;
+      /** Set by the desktop as the event arrives: its recording's window, and whether it was discarded. */
+      readonly app?: FocusedApp;
+      readonly discarded?: boolean;
       /** Cloud recognition: the recording for the desktop to recognise, deleted once it has; the text is then empty. */
       readonly wav?: string | null;
       readonly audioMs?: number;

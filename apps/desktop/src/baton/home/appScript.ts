@@ -750,7 +750,7 @@ function bindingsPage(b) {
   for (const r of rows) {
     const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); row.style.alignItems = 'flex-start';
     const t = $('div', 'text'); t.style.cssText = 'flex:1;min-width:0'; t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
-    if (r.inputs.some(i => i.type === 'mouse') && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya’s input helper.'));
+    if (x.mouseButtons && r.inputs.some(i => i.type === 'mouse') && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya’s input helper.'));
     // A Windows key chord (a mouse's "Show Desktop" button sends Win+D) works here, but Windows loses it while bound.
     for (const i of r.inputs) if (x.mouseButtons && i.type === 'key' && /^Meta\+/.test(i.accelerator)) { const f = $('div', 'fix', inputLabel(i) + ' is a Windows shortcut: while it is bound here, it stops doing its Windows job everywhere (Win+D no longer shows the desktop).'); f.style.color = 'var(--warn)'; t.appendChild(f); }
     for (const c of (r.conflicts || [])) { const i = r.inputs[c.index]; if (!i) continue; const f = $('div', 'fix', inputLabel(i) + ' is also used by ' + c.with.join(' and ') + '. Only one of them will work.'); f.style.color = 'var(--warn)'; t.appendChild(f); }
