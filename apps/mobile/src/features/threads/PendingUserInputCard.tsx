@@ -7,7 +7,7 @@ import {
   textDirection,
   type TextDirection,
 } from "@t3tools/shared/textDirection";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -64,6 +64,27 @@ function proseDirectionStyle(text: string, setDirection: TextDirection | undefin
     ...(direction ? { direction, writingDirection: direction } : null),
     textAlign: (direction === "rtl") === (setDirection === "rtl") ? "left" : "right",
   } as const;
+}
+
+/** The raw text behind a plainly worded question, folded until asked for. */
+function QuestionDetails(props: { readonly details: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View className="gap-1">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+      >
+        <Text className="text-xs text-foreground-muted">{open ? "Hide details" : "Details"}</Text>
+      </Pressable>
+      {open ? (
+        <Text selectable className="font-mono text-xs text-foreground-muted">
+          {props.details}
+        </Text>
+      ) : null}
+    </View>
+  );
 }
 
 function QuestionText(props: {
@@ -241,6 +262,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
                 environmentId={props.environmentId}
                 setDirection={setDirection}
               />
+              {question.details ? <QuestionDetails details={question.details} /> : null}
               <View className="gap-2">
                 {question.options.map((option) => {
                   const optionValue = option.value ?? option.label.trim();

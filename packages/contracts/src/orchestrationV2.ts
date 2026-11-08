@@ -1353,6 +1353,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
   allowCustomAnswer: Schema.optional(Schema.Boolean),
   initialAnswer: Schema.optional(Schema.String),
   required: Schema.optional(Schema.Boolean),
+  /** The raw text behind a plainly worded question, shown on request. */
+  details: Schema.optional(Schema.String),
 });
 export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
 

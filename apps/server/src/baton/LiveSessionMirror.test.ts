@@ -3,12 +3,21 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { MessageId, ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  MessageId,
+  OrchestrationV2UserInputQuestion,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  askQuestion,
   askRunId,
+  keepAsk,
+  parsePanePrompt,
   endedMirrorThreads,
   forgetUnarchived,
   liveMedia,
@@ -43,6 +52,41 @@ describe("a question card's run", () => {
     expect(askRunId("open" as never, runs)).toBe("open");
     expect(askRunId(null, runs)).toBe("r2");
     expect(askRunId(null, [])).toBeNull();
+  });
+});
+
+const decodeQuestion = Schema.decodeUnknownSync(OrchestrationV2UserInputQuestion);
+
+describe("a terminal permission prompt's card", () => {
+  const screen = (name: string) =>
+    NodeFS.readFileSync(
+      NodePath.join(import.meta.dirname, "../../../../scripts/tessaya/live/__fixtures__", name),
+      "utf8",
+    );
+
+  it("a background agent's prompt becomes a card in plain words, its raw text behind Details", () => {
+    const found = parsePanePrompt(screen("pane-subagent-permission.txt"));
+    expect(found).not.toBeNull();
+    const card = decodeQuestion(askQuestion(found!, ""));
+    expect(card.question).toMatch(
+      /^Claude Code flags this as dangerous: A background agent \(Record all variants in both themes plus…\) wants to run `cd .+ && rm -rf stills\/\* src\/raw;.+`, which deletes files in \/srv\/work\/projects-00001\/t3code\/stills\/\*\. Allow\? \(ref [0-9a-f]{6}\)$/,
+    );
+    expect(card.options.map((o) => o.label)).toEqual(["Allow", "Deny"]);
+    expect(card.details).toContain("rm -rf stills/* src/raw");
+  });
+
+  it("a card closed while its prompt still shows comes back only after an answer that pressed nothing, once", () => {
+    const first = { at: 1_000, again: false };
+    const answered = { pending: false, answered: true, answeredAt: 5_000 };
+    expect(keepAsk(first, { ...answered, pending: true })).toBe(true);
+    // Dismissed or expired: no answer, so it stays closed.
+    expect(keepAsk(first, { ...answered, answered: false })).toBe(true);
+    // Answered, but the bridge has not finished with it yet (or finished with an older card).
+    expect(keepAsk(first, { ...answered, answeredAt: null })).toBe(true);
+    expect(keepAsk(first, { ...answered, answeredAt: 500 })).toBe(true);
+    expect(keepAsk(first, answered)).toBe(false);
+    // The card raised again is not raised a third time.
+    expect(keepAsk({ at: 6_000, again: true }, { ...answered, answeredAt: 9_000 })).toBe(true);
   });
 });
 
