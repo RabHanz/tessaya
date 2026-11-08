@@ -97,11 +97,32 @@ export const fitInsertion = (context: CaretContext, inserted: string): string =>
 };
 
 /**
- * With the words around the caret unknown (the app did not say in time), a finished sentence ends with a space, so
- * text already after the caret does not run into it ("…name here.Hello World", 0.1.75).
+ * With the words around the caret unknown (the app did not say in time), the insertion ends with a space, so text
+ * already after the caret never runs into it ("…name here.Hello World", 0.1.75; "…name hereHello World", 0.1.77).
  */
 export const fitWithoutContext = (inserted: string): string =>
-  /[.!?…]["'”’)\]]*$/.test(inserted) ? `${inserted} ` : inserted;
+  /\s$/.test(inserted) || !/\S\s+\S/.test(inserted) ? inserted : `${inserted} `;
+
+/**
+ * A dictation of sentences whose last one the recogniser left open (it punctuates on the pause after it, which the end
+ * of a dictation does not always give it) gets its full stop. A single phrase, or one ending on a comma, is left alone.
+ */
+export const closeLastSentence = (
+  text: string,
+  /** What follows the caret, or null when the app did not say: the stop is added only where the dictation ends. */
+  after: string | null,
+): string => {
+  const trimmed = text.trimEnd();
+  const last = trimmed.split(/\s+/).at(-1) ?? "";
+  const ends = after === null || after === "" || /^\r?\n/.test(after) || /^\s*\p{Lu}/u.test(after);
+  return ends &&
+    /[.!?…]\s+\S/.test(trimmed) &&
+    /[\p{L}\p{N}]$/u.test(trimmed) &&
+    // A link, path, address or code: a stop would read as part of it.
+    !/[/\\@_`]|\.\w|\(\)/.test(last)
+    ? `${trimmed}.${text.slice(trimmed.length)}`
+    : text;
+};
 
 /** What Baton last inserted, as the fallback when an app does not expose its text. */
 export const contextFromLastInsert = (

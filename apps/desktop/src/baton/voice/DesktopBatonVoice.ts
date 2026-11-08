@@ -455,6 +455,7 @@ import {
   contextFromLastInsert,
   fitInsertion,
   fitWithoutContext,
+  closeLastSentence,
 } from "@t3tools/baton-shared/dictationFit";
 import { createLoginItemState, setLoginItem } from "./loginItem.ts";
 import {
@@ -1364,11 +1365,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         lastInsert === null ? null : { ...lastInsert, sameWindow: lastInsert.key === key },
         Date.now(),
       );
-    // Code and raw mode take the words exactly as said: no space added after them.
-    const plain =
-      chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw";
+    const mode = chooseMode(app, settings.appModes);
+    // Code and raw mode take the words exactly as said: no stop and no space added; chat keeps his ending too.
+    const plain = mode === "code" || mode === "raw";
+    const closed = plain || mode === "chat" ? text : closeLastSentence(text, around?.after ?? null);
     const fitted =
-      around !== null ? fitInsertion(around, text) : plain ? text : fitWithoutContext(text);
+      around !== null ? fitInsertion(around, closed) : plain ? closed : fitWithoutContext(closed);
     lastInsert = { text: fitted, at: Date.now(), key };
     return fitted;
   };
