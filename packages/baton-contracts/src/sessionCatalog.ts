@@ -79,6 +79,8 @@ export const BatonCatalogSession = Schema.Struct({
   waiting: Schema.Number,
   /** On a machine with no Herdr: the thread it was brought back as, once it exists. */
   threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** Set while a turn runs in the thread a resume brought back, so it can be stopped. */
+  turnRunning: Schema.optionalKey(Schema.Boolean),
   /** The Herdr pane a running session is in (`<herdr session>~<pane>`), if any. */
   pane: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The provider instance answering this session's live thread; not `baton-live` means a handoff session. */

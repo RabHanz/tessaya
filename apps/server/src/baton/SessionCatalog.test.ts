@@ -88,6 +88,27 @@ describe("sending to a stopped session", () => {
     expect(sent.detail).toContain("thread");
   });
 
+  it("a resumed thread's row is running while the thread is open, stoppable during a turn, and stopped once archived, deleted or stopped", async () => {
+    let state: "gone" | "idle" | "working" = "idle";
+    const { catalog } = machine({
+      thread: async (id) => ({ threadId: `import:claudeAgent:${id}` }),
+      threadState: async () => state,
+    });
+    const row = async () => (await catalog.list({})).sessions.find((r) => r.id === ID);
+    await catalog.resume({ sessionId: ID });
+    expect(await row()).toMatchObject({ state: "running", threadId: `import:claudeAgent:${ID}` });
+    expect((await row())?.turnRunning).toBeUndefined();
+    state = "working";
+    expect(await row()).toMatchObject({ state: "running", turnRunning: true });
+    state = "gone";
+    expect(await row()).toMatchObject({ state: "stopped" });
+    expect((await row())?.threadId).toBeUndefined();
+    state = "idle";
+    await catalog.resume({ sessionId: ID });
+    expect(catalog.forgetResumed(ID)).toBe(`import:claudeAgent:${ID}`);
+    expect(await row()).toMatchObject({ state: "stopped" });
+  });
+
   it("a new session on a machine with no Herdr is a thread with the model, effort and first message asked for, and no baton call", async () => {
     const launched: unknown[] = [];
     const { catalog, batonCalls } = machine({

@@ -54,6 +54,7 @@ export const rowsFromAnswer = (json: string): ReadonlyArray<CatalogRow> => {
       answeredBy: asString(raw["answeredBy"]),
       ...(typeof raw["waiting"] === "number" ? { waiting: raw["waiting"] } : {}),
       ...(raw["crashed"] === true ? { crashed: true } : {}),
+      ...(raw["turnRunning"] === true ? { turnRunning: true } : {}),
       ...(asString(raw["threadId"]) === null ? {} : { threadId: asString(raw["threadId"])! }),
     });
   }

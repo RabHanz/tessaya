@@ -71,6 +71,8 @@ export interface CatalogPorts {
   ) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
   /** Machines with no Herdr: sends a message into the thread a resume brought back; false if it was not taken. */
   readonly threadSend?: (threadId: string, text: string) => Promise<boolean>;
+  /** Machines with no Herdr: a resumed thread is gone once archived or deleted, working while a turn runs. */
+  readonly threadState?: (threadId: string) => Promise<"gone" | "idle" | "working">;
   /** Machines with no Herdr: starts a new session in a folder as a T3 thread, with a model, an effort and a first message. */
   readonly launch?: (input: {
     readonly cwd: string;
@@ -198,7 +200,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     pane: s.herdrPane,
   });
 
-  const stoppedRow = (t: TranscriptInfo): BatonCatalogSession => {
+  const stoppedRow = (t: TranscriptInfo, working: boolean): BatonCatalogSession => {
     const state: BatonCatalogState = resuming.has(t.sessionId)
       ? "resuming"
       : failed.has(t.sessionId)
@@ -237,6 +239,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       waiting: waiting.get(t.sessionId)?.length ?? 0,
       ...(crashed === null ? {} : { crashed: true }),
       ...(resumedThreads.has(t.sessionId) ? { threadId: resumedThreads.get(t.sessionId)! } : {}),
+      ...(working ? { turnRunning: true } : {}),
     };
   };
 
@@ -258,9 +261,17 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
           !ports.hasTranscript(id)
         )
           keep(id, []);
+    const working = new Set<string>();
+    if (ports.threadState !== undefined)
+      for (const [id, threadId] of resumedThreads) {
+        const now = await ports.threadState(threadId).catch(() => "idle" as const);
+        if (now === "gone") resumedThreads.delete(id);
+        else if (now === "working") working.add(id);
+      }
     const byId = new Map<string, BatonCatalogSession>();
     for (const t of transcripts)
-      if (t.background !== true || input.background === true) byId.set(t.sessionId, stoppedRow(t));
+      if (t.background !== true || input.background === true)
+        byId.set(t.sessionId, stoppedRow(t, working.has(t.sessionId)));
     for (const s of liveSessions)
       byId.set(s.sessionId, {
         ...liveRow(s),
@@ -611,6 +622,13 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     return { messages: [...(waiting.get(sessionId) ?? [])], sending };
   };
 
-  return { list, folders, resume, send, create, waitingFor };
+  /** Stop on a session resumed as a thread: its row is stopped again; the thread it was, if any. */
+  const forgetResumed = (sessionId: string): string | undefined => {
+    const threadId = resumedThreads.get(sessionId);
+    resumedThreads.delete(sessionId);
+    return threadId;
+  };
+
+  return { list, folders, resume, send, create, waitingFor, forgetResumed };
 };
 export type SessionCatalog = ReturnType<typeof createSessionCatalog>;
