@@ -19,6 +19,8 @@ mod input_windows;
 mod live;
 #[cfg(windows)]
 mod paste_windows;
+#[cfg(any(windows, test))]
+mod paste_tx;
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};

@@ -283,6 +283,22 @@ export const frameLevel = (frame: Int16Array): number => {
   return Math.min(1, Math.sqrt(peak / 32768) * 1.4);
 };
 
+/**
+ * The pill's bars, normalised to his speech like an AGC: a frame's level over a running peak of his recent speech,
+ * above a running noise floor. On a quiet mic his speech is 0.1 to 0.4 of full scale and the bars barely moved
+ * (0.1.79). The peak falls slowly (about 7 s to halve at 30 frames a second); the floor drops at once and creeps up.
+ * For the display only: silence detection and the mic test keep `frameLevel` as it is.
+ */
+export const createSpeechGain = () => {
+  let peak = 0.15;
+  let floor = 0.05;
+  return (level: number): number => {
+    peak = Math.max(level, peak * 0.997, 0.15);
+    floor = level < floor ? level : floor + (level - floor) * 0.002;
+    return Math.max(0, Math.min(1, (level - floor) / Math.max(peak - floor, 0.1)));
+  };
+};
+
 /** A spoken cancel, with any wake word already stripped: it dismisses the pill at once. */
 export const isCancelPhrase = (text: string): boolean =>
   /^(?:cancel(?: that)?|never ?mind|scratch that|forget it)[.!]?$/i.test(text.trim());

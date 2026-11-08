@@ -221,7 +221,8 @@ export const wantsMoving = (shown: unknown): boolean => shown !== "lock";
 export interface VoicePill {
   readonly on: (event: TurnEvent, options?: { readonly silent?: boolean }) => void;
   /** His microphone, while listening or dictating. */
-  readonly micLevel: (value: number) => void;
+  /** `value` is the raw level (a dead mic is told by it); `shown`, what the bars draw (`createSpeechGain`). */
+  readonly micLevel: (value: number, shown?: number) => void;
   /** A short sound for a lesson or a drive (start, a step done, waiting, an error, finished); honours the cues setting. */
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** Baton's own voice, while it speaks. */
@@ -872,9 +873,9 @@ export const createVoicePill = (input: {
   return {
     on,
     cue: (name) => sound(name),
-    micLevel: (value) => {
+    micLevel: (value, shown = value) => {
       loudest = Math.max(loudest, value);
-      if (state.phase === "listening" || state.phase === "dictating") push(value);
+      if (state.phase === "listening" || state.phase === "dictating") push(shown);
     },
     speechLevel: (value) => {
       if (state.phase === "speaking") push(value);

@@ -33,113 +33,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::keys::{send_chord, PasteMethod};
+use crate::paste_tx::{
+    evaluate, held_at_chord, may_take_over, Held, TxState, WaitDecision, RESTORE_TIMEOUT,
+};
 
 fn log(message: &str) {
     eprintln!("{message}");
-}
-
-/// How long after the *last* observed read the transcript stays on the
-/// clipboard before restoring. Covers applications that read the clipboard
-/// several times per paste (e.g. Chromium probe-then-read).
-const QUIET_PERIOD: Duration = Duration::from_millis(200);
-
-/// Upper bound on how long the transcript may occupy the clipboard before we
-/// restore regardless of receipts. Long enough that a realistically loaded
-/// target always gets to read first; short enough that a lost keystroke does
-/// not strand the transcript on the clipboard for long.
-const RESTORE_TIMEOUT: Duration = Duration::from_secs(8);
-
-/// When the chord could not be injected at all, no legitimate receipt can
-/// arrive, so restore quickly instead of waiting out the full timeout.
-const FAILED_INJECTION_TIMEOUT: Duration = Duration::from_millis(500);
-
-/// Shared, cross-thread record of one paste transaction.
-#[derive(Debug)]
-struct TxState {
-    /// When the transcript was published to the clipboard.
-    pub published_at: Instant,
-    /// When the paste chord was injected. Only receipts *after* this count as
-    /// evidence the target read the transcript — earlier reads are eager third
-    /// parties reacting to the clipboard change itself.
-    pub injected_at: Option<Instant>,
-    /// The chord could not be sent; short-circuit the wait.
-    pub injection_failed: bool,
-    /// Times at which a consumer requested the clipboard data.
-    pub receipts: Vec<Instant>,
-    /// Someone else took clipboard ownership (user copied elsewhere, ...).
-    pub ownership_lost: bool,
-    /// A newer paste transaction settled this one early (see flush logic in
-    /// the platform modules).
-    pub cancelled: bool,
-    /// First post-injection receipt has been logged.
-    pub logged_receipt: bool,
-}
-
-impl TxState {
-    pub fn new() -> Self {
-        Self {
-            published_at: Instant::now(),
-            injected_at: None,
-            injection_failed: false,
-            receipts: Vec::new(),
-            ownership_lost: false,
-            cancelled: false,
-            logged_receipt: false,
-        }
-    }
-
-    /// Records a read receipt, logging the first one that counts as evidence.
-    pub fn record_receipt(&mut self, at: Instant) {
-        self.receipts.push(at);
-        if !self.logged_receipt {
-            if let Some(injected) = self.injected_at {
-                if at >= injected {
-                    self.logged_receipt = true;
-                    log(&format!(
-                        "[reliable-paste] clipboard read {}ms after chord",
-                        at.duration_since(injected).as_millis()
-                    ));
-                }
-            }
-        }
-    }
-
-    pub fn last_receipt_after_injection(&self) -> Option<Instant> {
-        let injected = self.injected_at?;
-        self.receipts.iter().copied().rev().find(|t| *t >= injected)
-    }
-
-    pub fn any_receipt_after_injection(&self) -> bool {
-        self.last_receipt_after_injection().is_some()
-    }
-}
-
-enum WaitDecision {
-    KeepWaiting,
-    /// Stop waiting; settle the transaction (auto-submit + guarded restore).
-    Finish,
-}
-
-/// Pure decision: given the current transaction state, keep waiting for the
-/// target to read, or finish now. Both platform event loops call this.
-fn evaluate(state: &TxState, now: Instant) -> WaitDecision {
-    if state.ownership_lost || state.cancelled {
-        return WaitDecision::Finish;
-    }
-    if let Some(last) = state.last_receipt_after_injection() {
-        if now.duration_since(last) >= QUIET_PERIOD {
-            return WaitDecision::Finish;
-        }
-    }
-    let deadline = if state.injection_failed {
-        FAILED_INJECTION_TIMEOUT
-    } else {
-        RESTORE_TIMEOUT
-    };
-    if now.duration_since(state.published_at) >= deadline {
-        return WaitDecision::Finish;
-    }
-    WaitDecision::KeepWaiting
 }
 
 const CLASS_NAME: PCWSTR = w!("BatonPasteTxWindow");
@@ -163,6 +62,8 @@ pub(super) struct WinTxShared {
     /// Copied HBITMAP (as raw usize), restored via SetClipboardData.
     saved_bitmap: Mutex<Option<usize>>,
     sequence: Mutex<u32>,
+    /// The message window that owns the clipboard while the transcript is on it (as raw isize).
+    owner: Mutex<isize>,
 }
 
 /// The transaction currently holding the clipboard, if any. A new
@@ -226,7 +127,15 @@ unsafe extern "system" fn paste_wnd_proc(
             if !shared.is_null() {
                 let shared = &*shared;
                 if let Ok(mut st) = shared.state.lock() {
-                    st.record_receipt(Instant::now());
+                    let at = Instant::now();
+                    if st.record_receipt(at) {
+                        if let Some(injected) = st.injected_at {
+                            log(&format!(
+                                "[reliable-paste] clipboard read {}ms after chord",
+                                at.duration_since(injected).as_millis()
+                            ));
+                        }
+                    }
                 }
                 if wparam.0 as u32 == CF_UNICODETEXT.0 as u32 {
                     render_text(shared);
@@ -286,11 +195,40 @@ fn ensure_window_class(hinstance: HINSTANCE) {
     });
 }
 
-/// If a previous transaction is still holding the clipboard, settle it now so
-/// the snapshot below captures the user's original clipboard content. The
-/// previous worker observes `cancelled` on its next timer tick and tears down
-/// without restoring.
+/// If a previous transaction is still holding the clipboard, wait for its target to read it and for it to settle
+/// itself, so the snapshot below captures the user's original clipboard content; force it only past its own wait.
 fn flush_pending() {
+    let waiting = match PENDING.lock() {
+        Ok(slot) => slot.clone(),
+        Err(_) => None,
+    };
+    // Let the target read the previous transcript first: settling it under a Ctrl+V still on its way put his old
+    // clipboard there instead (0.1.79). Its own timer settles it; this waits no longer than it would have.
+    if let Some(previous) = waiting {
+        let started = Instant::now();
+        loop {
+            let ready = match previous.state.lock() {
+                Ok(st) => may_take_over(&st, Instant::now()),
+                Err(_) => true,
+            };
+            if ready || started.elapsed() >= RESTORE_TIMEOUT {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        // Its timer (every 25 ms) settles it now, restoring or leaving the words as it decides; forced only if not.
+        let settling = Instant::now();
+        while settling.elapsed() < Duration::from_millis(200) {
+            let still_pending = PENDING
+                .lock()
+                .map(|slot| slot.as_ref().map(|p| Arc::ptr_eq(p, &previous)).unwrap_or(false))
+                .unwrap_or(false);
+            if !still_pending {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
     let previous = match PENDING.lock() {
         Ok(mut slot) => slot.take(),
         Err(_) => None,
@@ -525,7 +463,15 @@ fn on_timer(_hwnd: HWND, shared: &WinTxShared) {
     } else {
         log(&format!("paste: clipboard changed externally; leaving it untouched"));
     }
-    if !receipt {
+    crate::emit(serde_json::json!({
+        "ev": "paste_check",
+        "phase": "settled",
+        "read": receipt,
+        "restored": still_ours && receipt,
+        "changedOutside": !still_ours,
+    }));
+    // "On your clipboard" only while it is: when something else wrote it, the desktop keeps the words from the error.
+    if !receipt && still_ours {
         crate::emit(serde_json::json!({"ev": "unread", "text": shared.text}));
     }
 
@@ -615,6 +561,7 @@ fn pump_thread(shared: Arc<WinTxShared>, ready: Sender<Result<(), String>>) {
             }
         };
         *shared.sequence.lock().unwrap() = sequence;
+        *shared.owner.lock().unwrap() = hwnd.0 as isize;
         shared.state.lock().unwrap().published_at = Instant::now();
         if let Ok(mut slot) = PENDING.lock() {
             *slot = Some(shared.clone());
@@ -638,11 +585,12 @@ pub fn run(
     enigo: &mut enigo::Enigo,
 ) -> Result<(), String> {
     let shared = Arc::new(WinTxShared {
-        state: Mutex::new(TxState::new()),
+        state: Mutex::new(TxState::new(Instant::now())),
         text: text.to_string(),
         snapshot: Mutex::new(Vec::new()),
         saved_bitmap: Mutex::new(None),
         sequence: Mutex::new(0),
+        owner: Mutex::new(0),
     });
 
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
@@ -657,6 +605,29 @@ pub fn run(
         Err(_) => return Err("reliable paste worker died before publishing".to_string()),
     }
     log(&format!("paste: published transcript (delayed render)"));
+
+    // Only our own, unchanged transcript is pasted: if anything wrote the clipboard since we published, the chord
+    // would paste that under his dictation's name.
+    let held = unsafe {
+        let owner = *shared.owner.lock().unwrap();
+        held_at_chord(
+            *shared.sequence.lock().unwrap(),
+            GetClipboardSequenceNumber(),
+            GetClipboardOwner().map(|h| h.0 as isize == owner).unwrap_or(false),
+        )
+    };
+    crate::emit(serde_json::json!({
+        "ev": "paste_check",
+        "phase": "chord",
+        "held": if held == Held::Ours { "ours" } else { "other" },
+        "chars": text.chars().count(),
+    }));
+    if held == Held::Other {
+        if let Ok(mut st) = shared.state.lock() {
+            st.injection_failed = true;
+        }
+        return Err("Something else was put on the clipboard before the paste, so nothing was pasted.".to_string());
+    }
 
     // Mark injection *before* sending: enigo holds the chord for ~100ms and a
     // fast target may legitimately read while the chord is still held.
