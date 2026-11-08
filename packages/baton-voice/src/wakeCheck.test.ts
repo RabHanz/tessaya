@@ -246,21 +246,6 @@ describe("the second check before a wake from sleep", () => {
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
   });
 
-  it("takes his name over her voice when she said it sentences ago, not now (0.1.75 H3)", async () => {
-    const r = rig(async () => true);
-    // Alfred quoted the name a reply ago; what she says now does not have it.
-    r.core.noteSpoken("Sebastian told you the build is done");
-    for (const line of ["It is 8:50.", "Sunday the eighth.", "In the morning.", "On GMT+5."])
-      r.core.noteSpoken(line);
-    r.core.setSpeaking(true);
-    r.push(1);
-    r.wake();
-    r.push(0.2);
-    await new Promise((resolve) => setImmediate(resolve));
-    r.push(0.2);
-    expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
-  });
-
   it("does not let its own voice barge in, and a fire over speech must be heard", async () => {
     const r = rig(async () => false);
     r.core.noteSpoken("Sebastian, your build is done");
@@ -969,5 +954,43 @@ describe("the words right after the name", () => {
     // One clip, from the name to the end of the command.
     expect(heard).toHaveLength(1);
     expect(heard[0]).toBeGreaterThan(1.5 * 16_000);
+  });
+});
+
+describe("whose name it is, over her voice (0.1.75 H3)", () => {
+  it("takes his name over her voice when she said it sentences ago, not now (0.1.75 H3)", async () => {
+    const r = rig(async () => true);
+    // Alfred quoted the name a reply ago; what she says now does not have it.
+    r.core.noteSpoken("Sebastian told you the build is done");
+    for (const line of ["It is 8:50.", "Sunday the eighth.", "In the morning.", "On GMT+5."])
+      r.core.noteSpoken(line);
+    r.core.setSpeaking(true);
+    r.push(1);
+    r.wake();
+    r.push(0.2);
+    await new Promise((resolve) => setImmediate(resolve));
+    r.push(0.2);
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
+  });
+
+  it("still knows her own name in the sentence that just finished, however far ahead the next ones were written", async () => {
+    const r = rig(async () => false);
+    r.core.playing("Sebastian, your build is done.");
+    r.core.noteSpoken("Sebastian, your build is done.");
+    for (const line of [
+      "It took four minutes.",
+      "Two tests were slow.",
+      "One was flaky.",
+      "Nothing failed.",
+      "That is all.",
+    ])
+      r.core.noteSpoken(line);
+    r.core.playing("It took four minutes.");
+    r.core.setSpeaking(true);
+    r.push(1);
+    // The model's fire on her "Sebastian" arrives late, as the next sentence plays.
+    r.wake();
+    r.push(0.2);
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(true);
   });
 });

@@ -1364,7 +1364,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         lastInsert === null ? null : { ...lastInsert, sameWindow: lastInsert.key === key },
         Date.now(),
       );
-    const fitted = around === null ? fitWithoutContext(text) : fitInsertion(around, text);
+    // Code and raw mode take the words exactly as said: no space added after them.
+    const plain =
+      chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw";
+    const fitted =
+      around !== null ? fitInsertion(around, text) : plain ? text : fitWithoutContext(text);
     lastInsert = { text: fitted, at: Date.now(), key };
     return fitted;
   };

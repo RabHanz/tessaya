@@ -854,8 +854,11 @@ describe("a dictation clip's quiet tail", () => {
 });
 
 describe("the start of what he says, when the speech detector is behind (0.1.75 H1, H4)", () => {
-  /** A detector `lagFrames` behind the microphone: it says speech only that many frames after it began. */
-  const lagging = (lagFrames: number, dictating: boolean) => {
+  /**
+   * A detector `lagFrames` behind the microphone: it says speech only that many frames after it began, and at that
+   * moment reports how far behind it is.
+   */
+  const lagging = (lagFrames: number) => {
     let speech = false;
     let run = 0;
     const heard: number[] = [];
@@ -866,7 +869,7 @@ describe("the start of what he says, when the speech detector is behind (0.1.75 
         name: "fake",
         reset: () => {},
         isSpeech: () => (speech ? (run += 1) > lagFrames : ((run = 0), false)),
-        behind: () => (speech && run <= lagFrames ? run * FRAME : 0),
+        behind: () => (speech ? Math.min(run, lagFrames) * FRAME : 0),
       },
       stt: { name: "fake", transcribe: async (pcm) => (heard.push(pcm.length), "words") },
     });
@@ -874,18 +877,34 @@ describe("the start of what he says, when the speech detector is behind (0.1.75 
       speech = on;
       for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
     };
-    return { core, heard, push, dictating };
+    return { core, heard, push };
   };
 
   it("keeps the words the detector had not reached yet, in a dictation", async () => {
-    const r = lagging(20, true);
+    const r = lagging(40);
     await r.core.setDictation(true);
     await r.core.idle();
-    // 1.5 s of speech; the detector says so only 20 frames (0.64 s) in, then 0.8 s of quiet ends it.
-    r.push(1.5, true);
+    // 2 s of speech; the detector says so only 40 frames (1.28 s) in, past the 0.8 s lead-in, then quiet ends it.
+    r.push(2, true);
     r.push(1.2, false);
     await r.core.idle();
     expect(r.heard).toHaveLength(1);
-    expect(r.heard[0]!).toBeGreaterThanOrEqual((frames(1.5) + frames(0.8)) * FRAME);
+    expect(r.heard[0]!).toBeGreaterThanOrEqual((frames(2) + frames(0.8)) * FRAME);
+  });
+
+  it("never reaches back into her voice, its echo, or the time before dictation began", async () => {
+    const r = lagging(40);
+    // She speaks her closing line; dictation begins as she ends.
+    r.core.setSpeaking(true);
+    r.push(1, false);
+    r.core.setSpeaking(false);
+    await r.core.setDictation(true);
+    await r.core.idle();
+    r.push(2, true);
+    r.push(1.2, false);
+    await r.core.idle();
+    // At most what he said, its quiet end, and a frame: nothing from before her echo tail ended.
+    expect(r.heard).toHaveLength(1);
+    expect(r.heard[0]!).toBeLessThanOrEqual((frames(2) + frames(0.8) + 1) * FRAME);
   });
 });
