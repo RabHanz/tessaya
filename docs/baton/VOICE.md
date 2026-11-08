@@ -176,6 +176,9 @@ room noise or the Director's own voice.
 
 The HUD is gone: at rest nothing is on screen. The pill (D112) shows the state, the wake word, the
 routing target and what was heard. It stays while a window is open and says so when the wake word
-is needed again (D124). Every turn is logged to `voice-turns.ndjson` in the app's log folder (D120).
+is needed again (D124). With several screens it shows on the screen where the work is: the target window's
+(the one he was in at the wake, or dictation's), else the cursor's, else the primary, picked as it appears and when
+that target changes, never as the cursor moves (`pickScreen`). His moved place is one fraction of the work area, so
+it lands in the same spot on whichever screen that is. Every turn is logged to `voice-turns.ndjson` in the app's log folder (D120).
 Speech plays from a hidden page (`voicePlayer.ts`), one path for
 every platform, and the pill follows the voice's real level.

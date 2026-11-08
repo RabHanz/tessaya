@@ -17,10 +17,13 @@ import {
   cursorOverCapsule,
   defaultPosition,
   parseSpots,
+  pickScreen,
   placePosition,
   positionOf,
+  sharedSpot,
   snapPosition,
   spotFrom,
+  type Area,
   type PlaceId,
   type Spot,
 } from "./pillPlacement.ts";
@@ -231,6 +234,8 @@ export interface VoicePill {
   readonly setReason: (reason: "sleeping" | "muted" | "off") => void;
   /** The edge setting changed (it is read live): put the pill where it now says. */
   readonly reposition: () => void;
+  /** The target window changed: if the pill is up on another screen, it moves to the target's. */
+  readonly retarget: () => void;
   /** Puts it on a named place of the display it is on and keeps it there. */
   readonly moveTo: (place: PlaceId) => void;
   /** Move pill: unlocked, the whole pill drags and its clicks do nothing; locked again by Esc or its check mark. */
@@ -288,6 +293,8 @@ export const createVoicePill = (input: {
   /** Spoken dictation's ✓ (true: insert) or ✕ (false: throw away), shown while `voiceDictating`. */
   readonly onDictation?: (insert: boolean) => void;
   readonly voiceDictating?: () => boolean;
+  /** The target window's rect in DIP (null when unknown): the pill goes on its screen. */
+  readonly workArea?: () => Area | null;
   /** Each wake, from the event to the window on screen. */
   readonly onShown?: (ms: number) => void;
   /** How each drag ended, for the turn log: a drag that fails shows up there. */
@@ -381,11 +388,16 @@ export const createVoicePill = (input: {
   };
   const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
 
-  const displayKey = (display: Electron.Display) => String(display.id);
-  /** Where it goes on this display: his place if he moved it, else the default. */
+  /** The screen where the work is (pickScreen), read as the pill appears or its target changes. */
+  const workScreen = (): Electron.Display =>
+    pickScreen(Electron.screen.getAllDisplays(), Electron.screen.getPrimaryDisplay(), {
+      window: input.workArea?.() ?? null,
+      cursor: Electron.screen.getCursorScreenPoint(),
+    });
+  /** Where it goes on this display: his one place if he moved it, else the default. */
   const placeFor = (display: Electron.Display) => {
     const size = { width: WIDTH, height: HEIGHT };
-    const spot = spots[displayKey(display)];
+    const spot = sharedSpot(spots);
     return spot === undefined
       ? defaultPosition(display.workArea, size, input.edge(), {
           top: TOP_MARGIN,
@@ -461,7 +473,7 @@ export const createVoicePill = (input: {
     }
     if (!save) return;
     const display = Electron.screen.getDisplayMatching(bounds);
-    spots = { ...spots, [displayKey(display)]: spotFrom(display.workArea, bounds, bounds) };
+    spots = { any: spotFrom(display.workArea, bounds, bounds) };
     saveSpots();
   };
 
@@ -509,8 +521,7 @@ export const createVoicePill = (input: {
 
   const this_anchor = () => {
     if (window !== null && !window.isDestroyed()) return window.getBounds();
-    const display = Electron.screen.getDisplayNearestPoint(Electron.screen.getCursorScreenPoint());
-    return { ...placeFor(display), width: WIDTH, height: HEIGHT };
+    return { ...placeFor(workScreen()), width: WIDTH, height: HEIGHT };
   };
 
   const call = (code: string, done?: (result: unknown) => void) => {
@@ -586,7 +597,7 @@ export const createVoicePill = (input: {
     if (hideTimer !== null) clearTimeout(hideTimer);
     hideTimer = null;
     const target = window;
-    const display = Electron.screen.getDisplayNearestPoint(Electron.screen.getCursorScreenPoint());
+    const display = workScreen();
     void ready.then(() => {
       if (target === null || target.isDestroyed()) return;
       if (target.isVisible()) return startHitTest();
@@ -832,7 +843,7 @@ export const createVoicePill = (input: {
     const display = Electron.screen.getDisplayMatching(target.getBounds());
     const size = { width: WIDTH, height: HEIGHT };
     const at = placePosition(display.workArea, size, id, margins());
-    spots = { ...spots, [displayKey(display)]: spotFrom(display.workArea, size, at) };
+    spots = { any: spotFrom(display.workArea, size, at) };
     saveSpots();
     target.setBounds({ ...at, ...size });
   };
@@ -853,8 +864,7 @@ export const createVoicePill = (input: {
   Electron.ipcMain.on("baton-pill:reset", (event) => {
     if (!mine(event) || window === null || window.isDestroyed()) return;
     const display = Electron.screen.getDisplayMatching(window.getBounds());
-    const { [displayKey(display)]: _gone, ...rest } = spots;
-    spots = rest;
+    spots = {};
     saveSpots();
     window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
   });
@@ -897,14 +907,10 @@ export const createVoicePill = (input: {
     moveTo,
     setMoving,
     moving: () => moving,
-    placed: () => {
-      const b = this_anchor();
-      return spots[displayKey(Electron.screen.getDisplayMatching(b))] !== undefined;
-    },
+    placed: () => sharedSpot(spots) !== undefined,
     putBack: () => {
       const display = Electron.screen.getDisplayMatching(this_anchor());
-      const { [displayKey(display)]: _gone, ...rest } = spots;
-      spots = rest;
+      spots = {};
       saveSpots();
       if (window !== null && !window.isDestroyed())
         window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
@@ -922,10 +928,20 @@ export const createVoicePill = (input: {
     },
     anchor: () => {
       if (window !== null && !window.isDestroyed()) return window.getBounds();
-      const display = Electron.screen.getDisplayNearestPoint(
-        Electron.screen.getCursorScreenPoint(),
-      );
-      return { ...placeFor(display), width: WIDTH, height: HEIGHT };
+      return { ...placeFor(workScreen()), width: WIDTH, height: HEIGHT };
+    },
+    retarget: () => {
+      if (
+        window === null ||
+        window.isDestroyed() ||
+        !window.isVisible() ||
+        moving ||
+        dragTimer !== null
+      )
+        return;
+      const display = workScreen();
+      if (display.id === Electron.screen.getDisplayMatching(window.getBounds()).id) return;
+      window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
     },
     state: () => state,
     dispose: () => {

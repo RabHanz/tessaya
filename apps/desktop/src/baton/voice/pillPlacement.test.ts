@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  pickScreen,
+  sharedSpot,
   PLACES,
   cursorOverCapsule,
   defaultPosition,
@@ -148,5 +150,48 @@ describe("dragging the pill twice", () => {
       { bypass: false, margins: m },
     );
     expect(up.y).toBeLessThan(down.y - 200);
+  });
+});
+
+describe("which screen the pill shows on", () => {
+  // A 1080p laptop at 150% (1280x720 in DIP) left of a 4K monitor at 200% (1920x1080 in DIP).
+  const laptop = {
+    id: 1,
+    bounds: { x: 0, y: 0, width: 1280, height: 720 },
+    workArea: { x: 0, y: 0, width: 1280, height: 672 },
+  };
+  const monitor = {
+    id: 2,
+    bounds: { x: 1280, y: 0, width: 1920, height: 1080 },
+    workArea: { x: 1280, y: 0, width: 1920, height: 1040 },
+  };
+  const screens = [laptop, monitor];
+
+  it.each([
+    // [what is known, the screen it picks]    // The target window, by where most of it is, over the cursor.
+    [{ window: { x: 1000, y: 100, width: 900, height: 500 }, cursor: { x: 10, y: 10 } }, 2],
+    [{ window: { x: 100, y: 100, width: 900, height: 500 }, cursor: { x: 2000, y: 10 } }, 1],
+    [{ cursor: { x: 2000, y: 500 } }, 2],
+    // Nothing known, or a window off every screen: the primary.
+    [{}, 1],
+    [{ window: { x: -5000, y: 0, width: 100, height: 100 } }, 1],
+  ] as const)("%j -> screen %i", (at, id) => {
+    expect(pickScreen(screens, laptop, at).id).toBe(id);
+  });
+
+  it("lands his saved place on whichever screen is active", () => {
+    const spot = { fx: 1, fy: 0 };
+    const size = { width: 300, height: 40 };
+    expect(positionOf(laptop.workArea, size, spot)).toEqual({ x: 980, y: 0 });
+    expect(positionOf(monitor.workArea, size, spot)).toEqual({ x: 2900, y: 0 });
+  });
+
+  it("keeps one place for every screen, taking an older per-screen one", () => {
+    expect(sharedSpot({ any: { fx: 0.2, fy: 0.3 }, "7": { fx: 1, fy: 1 } })).toEqual({
+      fx: 0.2,
+      fy: 0.3,
+    });
+    expect(sharedSpot({ "7": { fx: 1, fy: 1 } })).toEqual({ fx: 1, fy: 1 });
+    expect(sharedSpot({})).toBeUndefined();
   });
 });

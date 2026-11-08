@@ -63,6 +63,8 @@ vi.mock("electron", async () => {
       getCursorScreenPoint: () => fake.cursor,
       getDisplayNearestPoint: () => display,
       getDisplayMatching: () => display,
+      getAllDisplays: () => [display],
+      getPrimaryDisplay: () => display,
     },
   };
 });
@@ -85,7 +87,7 @@ const setup = () => {
   const dismissed = vi.fn();
   const moves: boolean[] = [];
   const focusedBack: number[] = [];
-  const make = () =>
+  const make = (more: Partial<Parameters<typeof createVoicePill>[0]> = {}) =>
     createVoicePill({
       cueGain: () => 0,
       rest: () => false,
@@ -99,6 +101,7 @@ const setup = () => {
       onMoving: (on) => moves.push(on),
       foreground: async () => 42,
       focusWindow: (window) => void focusedBack.push(window),
+      ...more,
     });
   return {
     stateDir,
@@ -225,10 +228,25 @@ describe("the pill is locked until Move pill is on", () => {
     pill.dispose();
     expect(
       JSON.parse(NodeFS.readFileSync(NodePath.join(stateDir, "baton-pill.json"), "utf8")),
-    ).toHaveProperty("1");
+      // One place for every screen, not one per display.
+    ).toHaveProperty("any");
     const again = make();
     expect(again.placed()).toBe(true);
     expect(again.anchor()).toMatchObject({ x: moved.x, y: moved.y });
     again.dispose();
+  });
+});
+
+describe("the pill at rest", () => {
+  it("is built and shown at once with the work area it is given (read before it was set crashed the start)", async () => {
+    using t = setup();
+    const pill = t.make({
+      rest: () => true,
+      workArea: () => ({ x: 0, y: 0, width: 800, height: 600 }),
+    });
+    pill.setRest(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(page().getBounds().width).toBeGreaterThan(0);
+    pill.dispose();
   });
 });
