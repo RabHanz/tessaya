@@ -43,6 +43,7 @@ import {
 import { useProjects } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { weaveAcross, weaveSessionsOf } from "./batonWeaveAcross";
+import { copyCommitmentsOnce } from "./batonCommitmentsCopy";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
@@ -56,6 +57,26 @@ import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonProjectsBlock } from "./BatonProjectsBlock";
 
+const COPIED_KEY = "t3:baton:commitments-copied";
+/** Which linked-to-own commitment copies have finished; a lost marker only repeats a copy that changes nothing. */
+const commitmentsCopied = {
+  has: (key: string): boolean => {
+    try {
+      return (JSON.parse(localStorage.getItem(COPIED_KEY) ?? "[]") as Array<string>).includes(key);
+    } catch {
+      return false;
+    }
+  },
+  add: (key: string): void => {
+    try {
+      const done = JSON.parse(localStorage.getItem(COPIED_KEY) ?? "[]") as Array<string>;
+      localStorage.setItem(COPIED_KEY, JSON.stringify([...new Set([...done, key])]));
+    } catch {
+      // Without storage the copy runs again next time; it writes nothing the second time.
+    }
+  },
+};
+
 export { batonProjectKey };
 
 export function BatonSidebarSection(props: {
@@ -68,10 +89,13 @@ export function BatonSidebarSection(props: {
   const projects = useProjects();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const primary = fleet.environmentIds[0];
-  // His memory lives on this app's own server, not on whichever connection registered first.
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const memoryHome =
-    fleet.environmentIds.find((id) => id === primaryEnvironmentId) ?? fleet.environmentIds[0];
+  // What the desktop owns lives on this app's own server, never on whichever connection registered first.
+  const ownServer = fleet.environmentIds.find((id) => id === primaryEnvironmentId);
+  const deskHome = (): EnvironmentId => {
+    if (ownServer === undefined) throw new Error("This app's own server is not connected.");
+    return ownServer;
+  };
   // Where each job was started, so a later stop or agree asks the server that holds it.
   const jobHomes = useRef(new Map<string, string>());
   const usage = JSON.stringify(
@@ -171,38 +195,47 @@ export function BatonSidebarSection(props: {
       id: id as string,
       label: fleet.resolveEnvironmentLabel(id) ?? (id as string),
     }));
+    /** Every connected server's jobs, each marked with where it runs; also where later calls about each one go. */
+    const listAll = async () => {
+      const all = await Promise.all(
+        fleet.environmentIds.map(async (id) => {
+          const result = await jobList({ environmentId: id, input: {} });
+          if (result._tag !== "Success") return [];
+          const label = fleet.resolveEnvironmentLabel(id) ?? (id as string);
+          return (result.value as { jobs: ReadonlyArray<{ workSessionId: string }> }).jobs.map(
+            (job) => {
+              jobHomes.current.set(job.workSessionId, id as string);
+              return { ...job, runOn: label };
+            },
+          );
+        }),
+      );
+      return all.flat();
+    };
     // "Run on": a job starts on the server he names; later calls about it go to the server that holds it.
-    let target = primary;
+    let target: string = ownServer ?? "";
     if (op === "start") {
-      const choice = resolveRunOn(text("runOn"), targets, primary as string);
+      const choice = resolveRunOn(text("runOn"), targets, target);
       if (!choice.ok) throw new Error(choice.why);
-      target = choice.id as typeof primary;
+      target = choice.id;
     } else if (typeof args["id"] === "string") {
-      target = homeOf(args["id"], jobHomes.current, primary as string) as typeof primary;
+      // After a reload the homes are empty: find the job on its server rather than guess this one.
+      if (!jobHomes.current.has(args["id"])) await listAll();
+      if (!jobHomes.current.has(args["id"]))
+        throw new Error("That job is not on any connected server. Nothing changed.");
+      target = homeOf(args["id"], jobHomes.current, target);
     }
-    const env = { environmentId: target };
+    // "Here" with this app's own server not connected names no server; a listing asks every one.
+    const env = {
+      environmentId: target === "" && op !== "list" ? deskHome() : (target as EnvironmentId),
+    };
     const done = <V,>(result: { _tag: string; value?: V }): V => {
       if (result._tag !== "Success") throw new Error("That job request failed. Nothing changed.");
       return result.value as V;
     };
     switch (op) {
-      case "list": {
-        // Every connected server's jobs, each marked with where it runs.
-        const all = await Promise.all(
-          fleet.environmentIds.map(async (id) => {
-            const result = await jobList({ environmentId: id, input: {} });
-            if (result._tag !== "Success") return [];
-            const label = fleet.resolveEnvironmentLabel(id) ?? (id as string);
-            return (result.value as { jobs: ReadonlyArray<{ workSessionId: string }> }).jobs.map(
-              (job) => {
-                jobHomes.current.set(job.workSessionId, id as string);
-                return { ...job, runOn: label };
-              },
-            );
-          }),
-        );
-        return { jobs: all.flat() };
-      }
+      case "list":
+        return { jobs: await listAll() };
       case "watch":
         return done(await watchGet({ ...env, input: {} }));
       // His own server's team; the persona asking is checked there, and walls apply to it.
@@ -317,13 +350,12 @@ export function BatonSidebarSection(props: {
   };
   const onWeave = async (request: BatonWeaveBridgeRequest): Promise<unknown> => {
     const commands = { send: weaveSend, list: weaveList, tick: weaveTick };
-    const environments = [memoryHome, ...fleet.environmentIds.filter((id) => id !== memoryHome)]
-      .filter((id) => id !== undefined)
-      .map((id) => ({
-        id: id as string,
-        label: fleet.resolveEnvironmentLabel(id) ?? id,
-        sessions: weaveSessionsOf(fleets.find((f) => f.environmentId === id)?.fleet ?? null),
-      }));
+    const home = deskHome();
+    const environments = [home, ...fleet.environmentIds.filter((id) => id !== home)].map((id) => ({
+      id: id as string,
+      label: fleet.resolveEnvironmentLabel(id) ?? id,
+      sessions: weaveSessionsOf(fleets.find((f) => f.environmentId === id)?.fleet ?? null),
+    }));
     return weaveAcross(request, environments, async (environmentId, op, args) => {
       const run = commands[op] as unknown as (call: {
         readonly environmentId: EnvironmentId;
@@ -370,7 +402,12 @@ export function BatonSidebarSection(props: {
       });
     }
     // Only an environment this window is actually connected to can be asked.
-    const target = fleet.environmentIds.find((id) => id === request.environmentId) ?? primary;
+    // Unnamed is this app's own server; a named one that is not connected is said, never swapped for another.
+    const target =
+      request.environmentId === undefined || request.environmentId === ""
+        ? deskHome()
+        : fleet.environmentIds.find((id) => id === request.environmentId);
+    if (target === undefined) throw new Error("That computer is not connected.");
     const result = await (
       request.op === "read" ? cloudRead : request.op === "approve" ? cloudApprove : cloudAct
     )({ environmentId: target, input: request.args as never });
@@ -386,9 +423,8 @@ export function BatonSidebarSection(props: {
   };
   const onPhone = async (request: BatonPhoneBridgeRequest): Promise<unknown> => {
     // The phone inbox is this app's own server's; only the desktop's own session there may work it.
-    if (primaryEnvironmentId === null) throw new Error("This app's own server is not connected.");
     const result = await phoneCall({
-      environmentId: primaryEnvironmentId,
+      environmentId: deskHome(),
       input: { op: request.op, args: request.args } as never,
     });
     if (result._tag === "Success") return (result.value as { value: unknown }).value;
@@ -403,7 +439,33 @@ export function BatonSidebarSection(props: {
       | { readonly _tag: "Success"; readonly value: unknown }
       | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0])
     >;
-    const result = await run({ environmentId: primary, input: request.args as never });
+    const home = deskHome();
+    if (request.op === "list")
+      // Not awaited: the list answers from this server now, and the next sync brings what the copy adds.
+      void copyCommitmentsOnce({
+        linked: primary,
+        own: home,
+        list: async (environmentId) => {
+          const listed = await commitmentsList({
+            environmentId: environmentId as EnvironmentId,
+            input: {},
+          });
+          if (listed._tag !== "Success") throw new Error("The linked server did not answer.");
+          return listed.value.items;
+        },
+        upsert: async (environmentId, items) => {
+          const put = await commitmentsUpsert({
+            environmentId: environmentId as EnvironmentId,
+            input: { items },
+          });
+          if (put._tag !== "Success") throw new Error("The commitments copy did not finish.");
+        },
+        done: commitmentsCopied.has,
+        markDone: commitmentsCopied.add,
+      }).catch((cause) =>
+        console.warn("Commitments copy from the linked server did not finish", cause),
+      );
+    const result = await run({ environmentId: home, input: request.args as never });
     if (result._tag === "Success") return result.value;
     const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
     throw new Error(
@@ -424,10 +486,9 @@ export function BatonSidebarSection(props: {
         };
       });
     if (request.op === "syncPair") {
-      if (memoryHome === undefined) throw new Error("This app's own server is not connected.");
       // A one-time code that another machine trades for a credential which can only sync this server's memory.
       const made = await createPairingCredential({
-        environmentId: memoryHome,
+        environmentId: deskHome(),
         input: { label: "Tessaya memory sync", scopes: [AuthBatonMemorySyncScope] },
       });
       if (made._tag !== "Success") throw new Error("Could not make a pairing code here.");
@@ -495,23 +556,26 @@ export function BatonSidebarSection(props: {
       readonly environmentId: typeof primary;
       readonly input: never;
     }) => Promise<Settled>;
-    const result = await run({ environmentId: memoryHome, input: request.args as never });
+    const result = await run({ environmentId: deskHome(), input: request.args as never });
     if (result._tag === "Success") return result.value;
     const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
     throw new Error(
       typeof reason === "string" ? reason : "Memory did not answer. Nothing changed.",
     );
   };
-  const primaryEntries = fleets.find((entry) => entry.environmentId === primary)?.fleet?.entries;
+  // Typed sentences ask this app's own server, or the first connection where there is none (app.t3.codes).
+  const barHome = ownServer ?? primary;
+  const barEntries = fleets.find((entry) => entry.environmentId === barHome)?.fleet?.entries;
 
   return (
     <div className="flex flex-col gap-1 pt-1">
       <BatonIntentBar
-        environmentId={primary}
+        environmentId={barHome}
+        deskEnvironmentId={ownServer}
         // §14 rung 3: the work the open thread belongs to.
         focusedWorkSessionId={focusedWorkSessionFromThreads(
-          primaryEntries ?? [],
-          primary,
+          barEntries ?? [],
+          barHome,
           props.activeThreadKey,
         )}
         onRan={() => undefined}
