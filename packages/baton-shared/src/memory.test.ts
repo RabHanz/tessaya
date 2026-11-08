@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyDecision,
+  asksAboutThePast,
+  datedQuery,
   effectiveConfidence,
   exportMarkdown,
   memoryBlock,
@@ -329,5 +331,32 @@ describe("whyRemembered", () => {
     expect(model).toContain("65% sure");
     expect(model).toContain("last used it in an answer on 2026-02-03");
     expect(model).toContain("forgotten after 2026-03-01");
+  });
+});
+
+describe("a question about a day (MEM-18)", () => {
+  it("adds the day's name and date for yesterday and today, as episodes write it, and leaves the rest", () => {
+    const sun = Date.parse("2026-11-08T10:00:00Z");
+    expect(datedQuery("what did Freya tell me yesterday", sun)).toBe(
+      "what did Freya tell me yesterday Saturday 7 November",
+    );
+    expect(datedQuery("what did we do this morning", sun)).toBe(
+      "what did we do this morning Sunday 8 November",
+    );
+    expect(datedQuery("what did the shop job do on Tuesday", sun)).toBe(
+      "what did the shop job do on Tuesday",
+    );
+    expect(datedQuery("who is my accountant", sun)).toBe("who is my accountant");
+    // In his zone: at 02:00 in Karachi on Monday it is still Sunday in UTC.
+    expect(
+      datedQuery("what did we say yesterday", Date.parse("2026-11-08T21:00:00Z"), "Asia/Karachi"),
+    ).toBe("what did we say yesterday Sunday 8 November");
+  });
+  it("says which questions are about what happened, so only they get many episodes", () => {
+    expect(asksAboutThePast("what did Freya tell me about the venue")).toBe(true);
+    expect(asksAboutThePast("where are we having dinner on Saturday")).toBe(true);
+    expect(asksAboutThePast("what happened last week")).toBe(true);
+    expect(asksAboutThePast("where does the staging server run")).toBe(false);
+    expect(asksAboutThePast("what spelling do I use")).toBe(false);
   });
 });

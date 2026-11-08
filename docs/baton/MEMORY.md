@@ -106,13 +106,28 @@ like any other. Exports are plain markdown the user owns; they leave the machine
    session's latest summary. It makes no model call unless more than a handful of items need merging by meaning.
 5. Job learnings: when a job ends, the extractor is asked specifically "what worked, what failed, what should the next
    attempt do differently", and writes `learning` items scoped to that project.
+6. Episodes (MEM-18): the cheap model writes two or three sentences on what was asked, what was done and how it ended,
+   as one `episode` item, when a job reports, when a work session leaves "active" (a job's session is left to the
+   job), and when a persona's conversation has been quiet for 30 minutes. For the last, the desktop sends that
+   persona's turns since its last episode to `learn` with `origin: "conversation"`, one stretch per project in a row,
+   so a walled project's talk is scoped to that project and never folded into another episode. A stretch with a turn
+   that read outside content waits for his yes. Its first run starts at the end of each file, so there is no backlog.
+   The text starts with the day in his zone ("Tuesday, 3 November 2026, with Freya: ..."), dated from the last turn;
+   the desktop sends his zone with learn and recall, and the server keeps the last one for job and session episodes.
+   A conversation episode's `sourceRef` is `conversation:<persona id>:<first>-<last turn>`, built by the desktop and
+   checked by the server against the persona that sends it: whose it was, until the persona column (P5) holds it. A
+   job's or session's text is framed to the model as an agent's, which may quote pages. `learn` answers "kept",
+   "skip" (never worth one, already written) or "retry" (the model or store failed), and the desktop moves on only on
+   the first two. Every cheap call is counted per day in the memory meta and logged.
 
 ## 5. Retrieval
 
 - The first prompt of the one assistant gets a memory block with a token budget (default 600 tokens): pinned items first,
   then by relevance to the opening context (project, target, current words) times effective confidence, highest first,
   until the budget is spent. Items are one line each and marked as his data, not instructions.
-- Each spoken sentence then gets its own small block (300 tokens) of what matches that sentence only. The standing notes
+- Each spoken sentence then gets its own small block (300 tokens) of what matches that sentence only. A question that
+  is not about what happened gets at most two episodes, after every other match, so a stale episode never outranks the
+  fact that replaced it; "yesterday" and "today" add that day's name to the search for episodes only. The standing notes
   are already in the session, so they are not repeated, weak one-word hits are left out, and when he is focused on a
   session, other projects' items stay out. Only these items are recorded as used by the turn.
 - On demand, `memory_search` returns ranked hits by FTS5 (bm25) on `text`, filtered by scope and kind, with each item's
@@ -124,8 +139,8 @@ like any other. Exports are plain markdown the user owns; they leave the machine
   (his own view), so a new caller that forgets the persona fails closed. Only the desktop app's own session may name a
   persona or ask for `admin`: for any other token (a phone, a browser, an agent, a linked server's sync) every read
   (list, search, recall, used, export, sync pull) hides walled items, and a walled item is "no such memory" to its
-  writes. The server's own upkeep sees everything (`MemoryViewer`). The standing block is shared by every persona in
-  a session, so it carries nothing walled; walled items reach a persona only through its own sentence's block. The
+  writes. The server's own upkeep sees everything (`MemoryViewer`). The standing block is read as the persona whose
+  session it is (each persona has its own sessions, P1), so its team's walled items can sit there and no one else's. The
   extractor is shown only what the turn's persona may recall, and what a turn in a walled project learns is kept in that
   project whatever scope the model chose. His Memory page lists everything.
 - "Show what you used" opens a card listing those items, from the per-turn record in `memory_uses` (turn id, item ids).

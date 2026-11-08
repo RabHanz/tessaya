@@ -30,6 +30,8 @@ export interface ConversationLog {
     readonly note?: string;
     readonly target?: ConversationTarget;
     readonly persona?: string;
+    readonly project?: string;
+    readonly tainted?: true;
   }) => ConversationTurn;
   /** Older turns that share words with the query, most relevant first (the agent's memory search). */
   readonly search: (query: string, limit?: number) => ReadonlyArray<ConversationTurn>;
