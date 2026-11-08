@@ -70,10 +70,14 @@ describe("a live thread's own selection", () => {
     const stale = sel("baton-live", "claude-opus-5-5");
     expect(pinnedLiveSelection("baton-live4:abc", stale, current)).toBe(current);
   });
-  it("leaves other threads, other instances and an unchanged selection alone", () => {
+  it("sends to the live instance when a stale picker names another instance", () => {
     const current = sel("baton-live", "live");
+    expect(pinnedLiveSelection("baton-live4:abc", sel("claudeAgent", "x"), current)).toBe(current);
+  });
+  it("leaves other threads, a handed-off thread and an unchanged selection alone", () => {
     const other = sel("claudeAgent", "x");
-    expect(pinnedLiveSelection("baton-live4:abc", other, current)).toBe(other);
+    expect(pinnedLiveSelection("baton-live4:abc", other, sel("codex", "y"))).toBe(other);
+    const current = sel("baton-live", "live");
     expect(
       pinnedLiveSelection("import:claudeAgent:abc", sel("baton-live", "m"), current).model,
     ).toBe("m");
