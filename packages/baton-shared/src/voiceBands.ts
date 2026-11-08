@@ -9,6 +9,13 @@ const LOW_HZ = 120;
 const HIGH_HZ = 5000;
 /** A band's own peak falls by this per frame (half-life about 2.8 s at 50 frames a second). */
 const PEAK_FALL = 0.995;
+/**
+ * For this many frames (about 150 ms) after a pause the bars show the frame's own shape, since every band beats its
+ * peak at once on a first syllable, then hand over to the per-band peaks across as many again.
+ */
+const ONSET_FRAMES = 8;
+/** This many gated frames (200 ms) in a row is a pause, not a gap between syllables. */
+const PAUSE_FRAMES = 10;
 /** Below this a band is not adapted up to full height: a silent band stays short. */
 const MIN_PEAK = 0.002;
 /** Every bar keeps this share of the overall level, so a quiet band still shows he is talking. */
@@ -94,13 +101,22 @@ export const frameBands = (frame: Int16Array, rate = 16000, count = PILL_BANDS):
  */
 export const createBandGain = (count = PILL_BANDS) => {
   const peaks = new Float32Array(count).fill(MIN_PEAK);
+  let open = 0;
+  let quiet = PAUSE_FRAMES;
   return (bands: Float32Array, gate: number): Float32Array => {
     const out = new Float32Array(count);
-    if (gate <= 0) return out;
+    if (gate <= 0) {
+      quiet += 1;
+      if (quiet >= PAUSE_FRAMES) open = 0;
+      return out;
+    }
+    quiet = 0;
+    open += 1;
+    const onset = Math.min(1, Math.max(0, 2 - open / ONSET_FRAMES)) * Math.max(...bands);
     for (let i = 0; i < count; i += 1) {
       const value = bands[i] ?? 0;
       peaks[i] = Math.max(value, peaks[i]! * PEAK_FALL, MIN_PEAK);
-      out[i] = Math.min(1, gate * (BASE + (1 - BASE) * (value / peaks[i]!)));
+      out[i] = Math.min(1, gate * (BASE + (1 - BASE) * (value / Math.max(peaks[i]!, onset))));
     }
     return out;
   };

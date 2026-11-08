@@ -36,6 +36,11 @@ describe("createBandGain", () => {
   });
   it("lifts his quiet high bands to move as much as the loud low ones, never past the gate", () => {
     const gain = createBandGain();
+    // His first syllable after a pause shows its own shape, not all twelve bars at full height.
+    const mixed = Int16Array.from(tone(250, 0.5), (v, i) => v + tone(3500, 0.05)[i]!);
+    const first = createBandGain()(frameBands(mixed), 0.8);
+    expect(first[loudest(frameBands(mixed))]).toBeGreaterThan(0.7);
+    expect(first[loudest(frameBands(tone(3500)))]).toBeLessThan(0.4);
     // A voice tilted 10 to 1, low over high, alternating which part is sounding.
     const lowPart = frameBands(tone(250, 0.5));
     const highPart = frameBands(tone(3500, 0.05));
