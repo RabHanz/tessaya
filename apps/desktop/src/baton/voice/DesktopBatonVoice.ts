@@ -409,6 +409,7 @@ import {
   type NeverList,
   parseAddToDictionary,
   removeHeard,
+  unteach,
   upsertEntry,
   type SeenWords,
   type VocabularyEntry,
@@ -721,6 +722,8 @@ const STATE_REFRESH_MS = 5 * 60_000;
 const CONTEXT_REFRESH_MS = 10_000;
 /** Long enough for him to fix a word in the field before it is read back. */
 const LEARN_READBACK_MS = 8_000;
+/** Joins a taught form to its word in the toast, and splits it back on Discard. */
+const TAUGHT = " \u2192 ";
 /** How soon a plugged or unplugged mic is noticed; listing devices costs a few milliseconds. */
 const MIC_POLL_MS = 5_000;
 /** The pointer does not wait on a slow accessibility tree. */
@@ -1185,8 +1188,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const toast = createVocabToast({
     anchor: () => pill.anchor(),
-    onDiscard: (words) => {
-      rememberNever(words);
+    onDiscard: (all) => {
+      // "heard → meant" undoes one taught form; any other is a whole word.
+      const taught = all.flatMap((w) => {
+        const [heard, meant] = w.split(TAUGHT);
+        return heard !== undefined && meant !== undefined ? [{ heard, meant }] : [];
+      });
+      const words = all.filter((w) => !w.includes(TAUGHT));
+      rememberNever([...words, ...taught.map((t) => t.heard)]);
       void changeVocabulary((entries) =>
         words.reduce(
           (all, word) =>
@@ -1195,7 +1204,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 e.phrase.toLowerCase() !== word.toLowerCase() &&
                 (e.replacement ?? "").toLowerCase() !== word.toLowerCase(),
             ),
-          entries,
+          taught.reduce(unteach, entries),
         ),
       );
     },
@@ -1236,6 +1245,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             const next = learnCorrection(seenWords, all, fix, now, never);
             seenWords = next.seen;
             announce(next.added);
+            for (const t of next.taught ?? []) toast.add(`${t.heard}${TAUGHT}${t.meant}`);
             return next.entries;
           }, entries),
         ).then(saveSeen);

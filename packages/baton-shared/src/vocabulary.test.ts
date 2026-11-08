@@ -10,6 +10,7 @@ import {
   mergeWispr,
   removeHeard,
   skipWord,
+  unteach,
   observeWording,
   parseAddToDictionary,
   parseVocabulary,
@@ -180,24 +181,53 @@ describe("the voice command", () => {
 });
 
 describe("learning from his corrections", () => {
-  it("learns a mis-heard word only after he fixes it twice, and ignores rewrites", () => {
-    const fix = correctionsBetween(
-      "Ask Sam about the Cooper Netties cluster",
-      "Ask Sam about the Kubernetes cluster",
-    );
-    expect(fix).toEqual([]); // two words became one: a rewrite, not a swap
-    const swap = correctionsBetween(
-      "Deploy it to Cooper Nettie today",
-      "Deploy it to Cooper Kubernetes today",
-    );
-    expect(swap).toEqual([]);
+  it("learns a heard form from one fix, the rule from two, and ignores rewrites", () => {
+    // A span he typed over as one word is a correction; a swap that keeps the old words is not.
+    expect(
+      correctionsBetween(
+        "Ask Sam about the Cooper Netties cluster",
+        "Ask Sam about the Kubernetes cluster",
+      ),
+    ).toEqual([{ heard: "Cooper Netties", meant: "Kubernetes" }]);
+    expect(correctionsBetween("Ask the git hub team", "Ask the GitHub team")).toEqual([
+      { heard: "git hub", meant: "GitHub" },
+    ]);
+    expect(
+      correctionsBetween(
+        "Deploy it to Cooper Nettie today",
+        "Deploy it to Cooper Kubernetes today",
+      ),
+    ).toEqual([]);
+    expect(
+      correctionsBetween("Send the deck to Sam", "Email it to the whole team instead"),
+    ).toEqual([]);
     const one = correctionsBetween("Please call Tomas about it", "Please call Thomas about it");
     expect(one).toEqual([{ heard: "Tomas", meant: "Thomas" }]);
     let state = learnCorrection({}, [], one[0]!, NOW);
-    expect(state.entries).toEqual([]);
+    expect(state.entries).toEqual([
+      {
+        phrase: "Thomas",
+        replacement: null,
+        source: "learned",
+        count: 1,
+        lastSeen: NOW,
+        heard: ["Tomas"],
+      },
+    ]);
+    expect(state.taught).toEqual(one);
     state = learnCorrection(state.seen, state.entries, one[0]!, NOW);
+    expect(state.taught).toEqual([]);
     expect(state.entries).toMatchObject([
+      { phrase: "Thomas", heard: ["Tomas"] },
       { phrase: "Tomas", replacement: "Thomas", source: "learned", count: 2 },
+    ]);
+    // Undo takes the form off, and the word with it when that form was all it had learned.
+    expect(unteach(learnCorrection({}, [], one[0]!, NOW).entries, one[0]!)).toEqual([]);
+    const his = [{ phrase: "Tessaya", replacement: null, source: "added" as const, count: 4 }];
+    const taught = learnCorrection({}, his, { heard: "Tisia", meant: "Tessaya" }, NOW);
+    expect(taught.entries[0]?.heard).toEqual(["Tisia"]);
+    expect(unteach(taught.entries, { heard: "Tisia", meant: "Tessaya" })).toEqual([
+      { ...his[0], lastSeen: NOW },
     ]);
   });
 });
