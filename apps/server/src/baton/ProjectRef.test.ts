@@ -12,7 +12,7 @@ const printer: RepositoryIdentity = {
   locator: {
     source: "git-remote",
     remoteName: "origin",
-    remoteUrl: "git@github.com:someone/printer",
+    remoteUrl: "https://github.com/someone/printer.git",
   },
   rootPath: "/work/3D-Printer",
   name: "printer",
