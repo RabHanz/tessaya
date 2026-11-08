@@ -182,15 +182,35 @@ const matches = (
 
 const MAX_WORDS = 3;
 
+/** A wake the model is at least this sure of may be heard in the forms below. */
+const SURE_SCORE = 1.0;
+/** His own name as the recogniser writes it at the start of a wake clip (G1, 0.1.73-74). */
+const OWN_FORMS: Readonly<Record<string, RegExp>> = {
+  tessaya: /^(?:to|tuh) (?:say|see her)(?: (?:here|yeah|ya|a|uh))?$/,
+};
+
 /**
  * True when the clip ends on `word` or a close spelling of it: the clip stops where the model fired, just
  * after the name, so a name earlier in it ("Tessa, you there?") is not this wake. Three words count only
  * as the whole clip, so "I was going to say yeah" is not "to say yeah".
  */
-export const wakeWordHeard = (transcript: string, word: string): boolean => {
+export const wakeWordHeard = (
+  transcript: string,
+  word: string,
+  /** The wake model's score (output over threshold); his real wakes score 1.02-1.05. */
+  score?: number,
+): boolean => {
   const target = letters(word).replace(/ /g, "");
   if (target === "") return true;
   const spoken = letters(transcript).split(/\s+/).filter(Boolean);
+  // How Parakeet writes his own "Tessaya" ("To say.", "To see her.", the clip he says is right: "To say here"):
+  // only as the whole clip, nothing before and at most the name's tail after, and only with the model sure.
+  if (
+    score !== undefined &&
+    score >= SURE_SCORE &&
+    (OWN_FORMS[target]?.test(spoken.join(" ")) ?? false)
+  )
+    return true;
   return [1, 2, 3].some(
     (n) =>
       n <= spoken.length &&
