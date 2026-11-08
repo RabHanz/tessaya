@@ -4,6 +4,7 @@ import type { HistoryTurn } from "./history.ts";
 import {
   NO_HOLD_KEY_RECORDING,
   NO_RECORDING,
+  retryCleanupLevel,
   retryPlan,
   rowMenu,
   useVersion,
@@ -120,5 +121,20 @@ describe("Undo AI edit", () => {
     expect(ids("ths is it", "This is it.")).toContain("undo_ai");
     expect(ids("same", "same")).not.toContain("undo_ai");
     expect(ids("same", null)).not.toContain("undo_ai");
+  });
+});
+
+describe("a History retry's clean-up level", () => {
+  it("never sends to Claude what his setting or the app keeps local", () => {
+    expect(retryCleanupLevel("claude", "notepad.exe")).toBe("claude");
+    // His setting is local: a retry stays local (it used to go to Claude for anything not "off").
+    expect(retryCleanupLevel("local", "notepad.exe")).toBe("local");
+    expect(retryCleanupLevel("off", "notepad.exe")).toBe("local");
+    // A password manager, or a row with no app (voice dictation), counts as secret.
+    expect(retryCleanupLevel("claude", "1password.exe")).toBe("local");
+    expect(retryCleanupLevel("claude", "")).toBe("local");
+    // Decided local when he dictated (a bank or sign-in page, known only by its title then): a retry stays local.
+    expect(retryCleanupLevel("claude", "chrome.exe", "local")).toBe("local");
+    expect(retryCleanupLevel("claude", "chrome.exe", "claude")).toBe("claude");
   });
 });

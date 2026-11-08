@@ -3,6 +3,8 @@
  * them, until he picks it. Pure, so the menu, the no-recording path and the versions are tested
  * without Electron.
  */
+import { strictestCleanup } from "@t3tools/baton-shared/dictationCleanup";
+
 import type { HistoryTurn, HistoryVersion } from "./history.ts";
 
 export const NO_RECORDING = "No recording was kept for this one";
@@ -99,3 +101,18 @@ export const useVersion = (
   turn: Pick<HistoryTurn, "versions">,
   index: number,
 ): HistoryVersion | null => turn.versions[index] ?? null;
+
+/**
+ * A retry's clean-up level: never above his setting or what was decided when he dictated (a bank or sign-in page is
+ * known then by its title, which the row does not keep), and local for a secret app or a row with no app.
+ */
+export const retryCleanupLevel = (
+  setting: "off" | "local" | "claude",
+  app: string,
+  decided: "local" | "claude" | null = null,
+): "local" | "claude" =>
+  decided === "local"
+    ? "local"
+    : strictestCleanup<"claude">(setting === "claude" ? "claude" : "local", [
+        { exe: app, title: "" },
+      ]);
