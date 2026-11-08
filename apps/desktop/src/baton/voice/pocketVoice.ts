@@ -169,6 +169,8 @@ export const createPocketEngine = (input: {
   readonly platform: string;
   readonly arch: string;
   readonly onProgress: (message: string | null) => void;
+  /** The engine exited: its code and the end of what it wrote to stderr, for the log. */
+  readonly onExit?: (exit: { readonly code: number | null; readonly stderr: string }) => void;
 }): PocketEngine => {
   const build = BINARIES[`${input.platform}-${input.arch}`];
   // The archive holds one folder named after itself.
@@ -289,7 +291,7 @@ export const createPocketEngine = (input: {
       ],
       {
         windowsHide: true,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
         cwd: plan.dir,
         // A downloaded binary gets what a process needs to start, and none of his variables.
         env: {
@@ -306,7 +308,7 @@ export const createPocketEngine = (input: {
     const up = (async () => {
       const deadline = Date.now() + READY_MS;
       for (;;) {
-        if (proc.exitCode !== null) throw new Error("The voice stopped.");
+        if (proc.exitCode !== null) throw new Error(`The voice stopped (exit ${proc.exitCode}).`);
         const ok = await fetch(`http://127.0.0.1:${port}/health`, {
           signal: AbortSignal.timeout(2_000),
         }).then(
@@ -319,8 +321,14 @@ export const createPocketEngine = (input: {
       }
     })();
     const entry = { proc, port, voice, up };
-    proc.on("exit", () => {
+    // Only the last few lines are kept: enough to say why it stopped.
+    let stderr = "";
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString("utf8")).slice(-2_000);
+    });
+    proc.on("exit", (code) => {
       if (server === entry) server = null;
+      input.onExit?.({ code, stderr });
     });
     proc.on("error", () => undefined);
     up.catch(() => undefined);

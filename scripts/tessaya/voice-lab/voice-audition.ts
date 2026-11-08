@@ -64,21 +64,37 @@ const main = async () => {
     .filter(Boolean) ?? [...TESSAYA_CANDIDATES];
   NodeFS.mkdirSync(NodePath.join(out, "voices"), { recursive: true });
   NodeFS.mkdirSync(NodePath.join(out, "pronounce"), { recursive: true });
-  const engine = createPocketEngine({
-    root,
-    // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
-    platform: process.platform,
-    // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
-    arch: process.arch,
-    onProgress: (message) => message !== null && console.error(message),
-  });
-  /** Pocket's own WAV for one line, as it would play. */
+  const makeEngine = () =>
+    createPocketEngine({
+      root,
+      // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
+      platform: process.platform,
+      // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
+      arch: process.arch,
+      onProgress: (message) => message !== null && console.error(message),
+      onExit: ({ code, stderr }) =>
+        code !== 0 && code !== null && console.error(`Pocket exited with ${code}:\n${stderr}`),
+    });
+  let engine = makeEngine();
+  /** Pocket's own WAV for one line, as it would play; a crashed engine is started afresh, twice at most. */
   const say = async (voice: PocketVoice, text: string): Promise<Buffer> => {
-    const synth = engine.synthesise(voice);
-    if (synth === null) throw new Error(`Pocket TTS did not start with ${voice}.`);
-    const chunks: Buffer[] = [];
-    for await (const chunk of synth(speakableText(pronounce(text))).stream) chunks.push(chunk);
-    return Buffer.concat(chunks);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const synth = engine.synthesise(voice);
+        if (synth === null) throw new Error(`Pocket TTS did not start with ${voice}.`);
+        const chunks: Buffer[] = [];
+        for await (const chunk of synth(speakableText(pronounce(text))).stream) chunks.push(chunk);
+        return Buffer.concat(chunks);
+      } catch (error) {
+        if (attempt >= 2) throw error;
+        console.error(
+          `${voice}: ${error instanceof Error ? error.message : String(error)}; restarting Pocket`,
+        );
+        engine.dispose();
+        engine = makeEngine();
+        await engine.ensure(voice);
+      }
+    }
   };
   try {
     const cards: string[] = [];
@@ -90,8 +106,9 @@ const main = async () => {
       const files: string[] = [];
       const pitches: number[] = [];
       for (const [i, line] of LINES.entries()) {
-        const wav = await say(voice, line);
         const file = NodePath.join(out, "voices", `${voice}-${i + 1}.wav`);
+        // A rerun keeps what an earlier run made and carries on from the first missing line.
+        const wav = NodeFS.existsSync(file) ? NodeFS.readFileSync(file) : await say(voice, line);
         NodeFS.writeFileSync(file, wav);
         files.push(file);
         const hz = pitchOfWav(wav);
@@ -114,11 +131,13 @@ const main = async () => {
     const spellings: string[] = [];
     if (await engine.ensure(nameVoice))
       for (const [i, candidate] of candidates.entries()) {
-        const clips: Buffer[] = [];
-        for (const line of NAME_LINES)
-          clips.push(await say(nameVoice, line.replaceAll("Tessaya", candidate)));
         const file = NodePath.join(out, "pronounce", candidateFile(i, candidate));
-        NodeFS.writeFileSync(file, joinWavs(clips));
+        if (!NodeFS.existsSync(file)) {
+          const clips: Buffer[] = [];
+          for (const line of NAME_LINES)
+            clips.push(await say(nameVoice, line.replaceAll("Tessaya", candidate)));
+          NodeFS.writeFileSync(file, joinWavs(clips));
+        }
         spellings.push(
           `<p><b>${escapeHtml(candidate)}</b><br><audio controls preload="none" src="pronounce/${NodePath.basename(file)}"></audio> <small>${kb(file)}</small></p>`,
         );
