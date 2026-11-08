@@ -65,15 +65,21 @@ index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..ab51a0a334d0a5867a582087d4ab7a6d
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index d45ba6a3a368691b471340edcad80d3219524b26..20d8572b98a15a39729c7cffdb1338f4224f3018 100644
+index d45ba6a3a368691b471340edcad80d3219524b26..111a71221cb1cd95e8ade821331e0536f7423111 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -1,6 +1,15 @@
+@@ -1,6 +1,21 @@
  import { attachSidebarTree } from "../lib/sidebarTree";
  import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
  import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 +import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
-+import { liveThreadsOnly, useBatonLiveOnly } from "./sidebar/batonLiveOnly";
++import { BatonNoLiveSessions } from "./sidebar/BatonLiveBadge";
++import {
++  isRunningLive,
++  liveThreadsOnly,
++  useBatonLiveOnly,
++  useRunningLiveSessions,
++} from "./sidebar/batonLiveOnly";
 +import { openThreadInSplit } from "./panes/batonPanesStore";
 +import {
 +  BATON_DETACH_MENU_ITEM,
@@ -84,18 +90,60 @@ index d45ba6a3a368691b471340edcad80d3219524b26..20d8572b98a15a39729c7cffdb1338f4
  import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
  import {
    dropThreadContext,
-@@ -474,8 +483,9 @@ function useSidebarThreads(input: {
+@@ -411,6 +426,7 @@ function routeThreadOnly(
+ 
+ // Separate hooks cache maps independently of later Sidebar hooks and preserve dnd-kit inputs.
+ function useSidebarThreads(input: {
++  readonly batonRunningLive: ReadonlySet<string>;
+   readonly projectScopeKey: string | null;
+   readonly scopedProjectKeys: ReadonlySet<string> | null;
+   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
+@@ -425,6 +441,7 @@ function useSidebarThreads(input: {
+   readonly keepEmptyFolders: (group: SidebarProjectSnapshot) => boolean;
+ }) {
+   const {
++    batonRunningLive,
+     projectScopeKey,
+     scopedProjectKeys,
+     serverConfigs,
+@@ -474,8 +491,9 @@ function useSidebarThreads(input: {
    const settledVisibleCount =
      settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
  
 +  const [batonLiveOnly] = useBatonLiveOnly();
    const partition = partitionSidebarThreads({
 -    threads,
-+    threads: liveThreadsOnly(threads, batonLiveOnly),
++    threads: liveThreadsOnly(threads, batonLiveOnly, batonRunningLive),
      scopedProjectKeys,
      delegatedUnderParent,
      serverConfigs,
-@@ -1559,6 +1569,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -490,7 +508,7 @@ function useSidebarThreads(input: {
+     partition;
+   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
+   const olderSettledShelf = useOlderSettledShelf({
+-    scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
++    scopes: olderSettledScopes(batonLiveOnly ? [] : [...serverConfigs.keys()], scopedProjectKeys),
+     expanded: settledShelfExpanded,
+     visibleCount: settledVisibleCount,
+   });
+@@ -1291,6 +1309,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     },
+   );
+ 
++  const batonRunningLive = useRunningLiveSessions();
++  const [batonLiveOnly] = useBatonLiveOnly();
+   const {
+     workingShelfEnabled,
+     pinnedThreads,
+@@ -1328,6 +1348,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     pinnedKeysById,
+     activeKeysById,
+   } = useSidebarThreads({
++    batonRunningLive,
+     projectScopeKey,
+     scopedProjectKeys,
+     serverConfigs,
+@@ -1559,6 +1580,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      const isMac = isMacPlatform(navigator.platform);
      const isModClick = isMac ? event.metaKey : event.ctrlKey;
      const threadKey = scopedThreadKey(threadRef);
@@ -107,7 +155,7 @@ index d45ba6a3a368691b471340edcad80d3219524b26..20d8572b98a15a39729c7cffdb1338f4
      if (isModClick) {
        event.preventDefault();
        toggleThreadSelection(threadKey);
-@@ -2614,7 +2629,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2614,7 +2640,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              ),
            ) ?? null;
          const clicked = await settlePromise(() =>
@@ -120,7 +168,7 @@ index d45ba6a3a368691b471340edcad80d3219524b26..20d8572b98a15a39729c7cffdb1338f4
              buildThreadActionMenuItems({
                canOperate: readEnvironmentScope(
                  threadRef.environmentId,
-@@ -2653,6 +2672,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2653,6 +2683,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            ),
          );
          if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -137,7 +185,7 @@ index d45ba6a3a368691b471340edcad80d3219524b26..20d8572b98a15a39729c7cffdb1338f4
          if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
          if (clicked.value?.startsWith("snooze:")) {
            const preset =
-@@ -3216,6 +3245,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3216,6 +3256,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            </SidebarGroup>
          }
        >
@@ -148,6 +196,23 @@ index d45ba6a3a368691b471340edcad80d3219524b26..20d8572b98a15a39729c7cffdb1338f4
          <SidebarGroup className="flex-1" role="presentation">
            {isSearchingThreads ? (
              threadSearchResults.length > 0 ? (
+@@ -3349,6 +3393,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                               optimisticDrop !== null
+                             }
+                             thread={thread}
++                            batonLive={isRunningLive(batonRunningLive, thread)}
+                             variant={rowVariant}
+                             navigationParent={
+                               folderRow ??
+@@ -3645,6 +3690,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                     Add project
+                   </button>
+                 </>
++              ) : batonLiveOnly ? (
++                <BatonNoLiveSessions />
+               ) : scopedProjectGroups.length > 1 ? (
+                 "No threads in these projects yet"
+               ) : scopedProjectGroups[0] ? (
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
 index 30ab2465a9dec7bb0184c9488a3b3bb1aa8e686f..47e70cb42223609586ceeb3b5ed3e587471184ce 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx

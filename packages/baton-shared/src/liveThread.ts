@@ -10,6 +10,24 @@ export const LIVE_INSTANCE = "baton-live";
 export const isLiveThreadId = (threadId: string): boolean =>
   threadId.startsWith(LIVE_THREAD_PREFIX);
 
+/** `<environment>:<claude session id>` for a live thread (any `baton-live<n>:` namespace), or null for any other thread. */
+export const liveSessionKey = (environmentId: string, threadId: string): string | null => {
+  const match = /^baton-live\d*:(.+)$/.exec(threadId);
+  return match === null ? null : `${environmentId}:${match[1]}`;
+};
+
+/**
+ * The live sessions running now, keyed like liveSessionKey. A live thread whose session ended or was handed on keeps its
+ * id, so "Live" is read from what each computer reports running, never from the id alone.
+ */
+export const runningLiveSessionKeys = (
+  environments: ReadonlyArray<{
+    readonly environmentId: string;
+    readonly sessions: ReadonlyArray<{ readonly sessionId: string }>;
+  }>,
+): ReadonlySet<string> =>
+  new Set(environments.flatMap((e) => e.sessions.map((s) => `${e.environmentId}:${s.sessionId}`)));
+
 /**
  * The reason a turn on this thread may not run: a live thread answers only on the live instance, so a turn that names
  * another one is refused whether the thread is still on the live instance or was already moved off it (a handoff

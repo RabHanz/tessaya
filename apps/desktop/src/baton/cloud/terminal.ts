@@ -17,8 +17,19 @@ export const terminalPlan = (platform: string, command: string): TerminalPlan | 
       // start opens a new window; cmd /k keeps it open after the command ends so the result can be read.
       return { file: "cmd.exe", args: ["/d", "/c", "start", "", "cmd.exe", "/d", "/k", command] };
     case "darwin":
-      return { file: "osascript", args: ["-e", `tell application "Terminal" to do script "${command}"`, "-e", 'tell application "Terminal" to activate'] };
+      return {
+        file: "osascript",
+        args: [
+          "-e",
+          `tell application "Terminal" to do script "${command}"`,
+          "-e",
+          'tell application "Terminal" to activate',
+        ],
+      };
     default:
-      return { file: "x-terminal-emulator", args: ["-e", "sh", "-c", `${command}; echo; echo Press Enter to close; read _`] };
+      return {
+        file: "x-terminal-emulator",
+        args: ["-e", "sh", "-c", `${command}; echo; echo Press Enter to close; read _`],
+      };
   }
 };

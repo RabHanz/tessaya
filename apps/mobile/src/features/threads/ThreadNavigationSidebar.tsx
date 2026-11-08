@@ -41,7 +41,12 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
 import { requestThreadMessageJump } from "./threadMessageJump";
 import { useThreadListSearchMatches } from "./useThreadListSearchMatches";
 import { useHomeListOptions } from "../home/home-list-options";
-import { liveThreadsOnly, useBatonLiveOnly } from "./batonLiveOnly";
+import {
+  isRunningLive,
+  liveThreadsOnly,
+  runningLiveThreads,
+  useBatonLiveOnly,
+} from "./batonLiveOnly";
 import { buildHomeListFilterMenuItems } from "../home/home-list-filter-menu";
 import { buildHomeProjectScopes } from "../home/homeThreadList";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
@@ -261,6 +266,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   } = listEnvironments;
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
   const pendingOrder = usePendingThreadOrder();
+  const batonRunningLive = useMemo(() => runningLiveThreads(threads), [threads]);
   const {
     layout: threadListV2Layout,
     items: threadListV2Items,
@@ -409,6 +415,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
         const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
         return (
           <ThreadListV2Row
+            batonLive={isRunningLive(batonRunningLive, thread)}
             onNewThreadOnBranch={props.onNewThreadOnBranch}
             thread={thread}
             variant={item.item.variant}
@@ -546,6 +553,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
           selectedProjectKey,
           onEnvironmentChange: setSelectedEnvironmentId,
           onProjectChange: setSelectedProjectKey,
+          liveOnly: batonLiveOnly,
         }),
       }}
       sidebar={{

@@ -30,8 +30,14 @@ describe("a key kept in the vault", () => {
   it("says plainly when the vault is locked, the key is missing or Hello was declined, and writes nothing", async () => {
     const p = ports();
     const before = NodeFS.readdirSync(p.tmpDir!).length;
-    expect(await useVaultKey("approver", "x", { ...p, unlocked: () => false })).toEqual({ ok: false, error: "The vault is locked. Unlock it in the Vault page, then try again." });
-    expect(await useVaultKey("nope", "x", p)).toEqual({ ok: false, error: "There is no key by that name in the vault." });
+    expect(await useVaultKey("approver", "x", { ...p, unlocked: () => false })).toEqual({
+      ok: false,
+      error: "The vault is locked. Unlock it in the Vault page, then try again.",
+    });
+    expect(await useVaultKey("nope", "x", p)).toEqual({
+      ok: false,
+      error: "There is no key by that name in the vault.",
+    });
     const declined = await useVaultKey("approver", "x", { ...p, hello: async () => "declined" });
     expect(declined).toEqual({ ok: false, error: "The key was not used: it was not confirmed." });
     expect(JSON.stringify(declined)).not.toContain("PRIVATE");

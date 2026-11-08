@@ -6,7 +6,9 @@ import {
   pinnedLiveSelection,
   classifierStopReason,
   describeAnswerer,
+  liveSessionKey,
   liveThreadSwitchRefusal,
+  runningLiveSessionKeys,
 } from "./liveThread.ts";
 
 describe("a mirrored live thread", () => {
@@ -118,5 +120,22 @@ describe("what the thread is bound to", () => {
     expect(bindingOf({ state: "stopped", source: "transcript" })?.kind).toBe("stopped");
     expect(bindingOf("missing")?.kind).toBe("stopped");
     expect(bindingOf(null)).toBeNull();
+  });
+});
+
+describe("which live threads are Live", () => {
+  it("is what each computer reports running: a live thread whose session ended, or another computer's, is not", () => {
+    const running = runningLiveSessionKeys([
+      { environmentId: "office", sessions: [{ sessionId: "s1" }] },
+      { environmentId: "laptop", sessions: [] },
+    ]);
+    const live = (environmentId: string, threadId: string) => {
+      const key = liveSessionKey(environmentId, threadId);
+      return key !== null && running.has(key);
+    };
+    expect(live("office", "baton-live4:s1")).toBe(true);
+    expect(live("office", "baton-live4:s2")).toBe(false);
+    expect(live("laptop", "baton-live4:s1")).toBe(false);
+    expect(live("office", "thread-s1")).toBe(false);
   });
 });

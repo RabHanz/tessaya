@@ -624,6 +624,8 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 
 export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly thread: EnvironmentThreadShell;
+  /** Tessaya: a live session running now (P5), decided once for the whole list. */
+  readonly batonLive?: boolean;
   readonly variant: "card" | "slim";
   readonly hasQueuedMessages?: boolean;
   readonly snoozed?: boolean;
@@ -1257,22 +1259,25 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ) : null}
       <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
         {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
-          <Text
-            className={cn(
-              "flex-1 text-xs",
-              selected
-                ? selectedThreadRowColors.mutedForegroundClassName
-                : status === "limited"
-                  ? "text-warning-foreground"
-                  : "text-danger-foreground",
-            )}
-            numberOfLines={1}
-          >
-            {thread.runtime.lastError}
-          </Text>
+          <>
+            <BatonLiveTag live={props.batonLive === true} />
+            <Text
+              className={cn(
+                "flex-1 text-xs",
+                selected
+                  ? selectedThreadRowColors.mutedForegroundClassName
+                  : status === "limited"
+                    ? "text-warning-foreground"
+                    : "text-danger-foreground",
+              )}
+              numberOfLines={1}
+            >
+              {thread.runtime.lastError}
+            </Text>
+          </>
         ) : props.environmentLabel ? (
           <View className="min-w-0 flex-1 flex-row items-center gap-1">
-            <BatonLiveTag threadId={thread.id} />
+            <BatonLiveTag live={props.batonLive === true} />
             {props.environmentMachine ? (
               <EnvironmentMachineSymbol
                 kind={props.environmentMachine}
@@ -1298,7 +1303,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </View>
         ) : (
           <View className="flex-1 flex-row">
-            <BatonLiveTag threadId={thread.id} />
+            <BatonLiveTag live={props.batonLive === true} />
           </View>
         )}
         {pr ? (

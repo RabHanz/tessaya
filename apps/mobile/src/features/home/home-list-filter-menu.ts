@@ -2,7 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 
-import { getBatonLiveOnly, setBatonLiveOnly } from "../threads/batonLiveOnly";
+import { setBatonLiveOnly } from "../threads/batonLiveOnly";
 
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
@@ -21,6 +21,7 @@ export function buildHomeListFilterMenuItems(props: {
   readonly selectedProjectKey: string | null;
   readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
   readonly onProjectChange: (projectKey: string | null) => void;
+  readonly liveOnly: boolean;
 }): AppBarMenuItem[] {
   const items: AppBarMenuItem[] = [
     {
@@ -66,7 +67,7 @@ export function buildHomeListFilterMenuItems(props: {
     });
   }
 
-  // Tessaya: live sessions only (P5); the caller re-renders through useBatonLiveOnly.
+  // Tessaya: live sessions only (P5).
   items.push({
     id: "live",
     title: "Sessions",
@@ -74,14 +75,14 @@ export function buildHomeListFilterMenuItems(props: {
       {
         id: "live:all",
         title: "All threads",
-        selected: !getBatonLiveOnly(),
+        selected: !props.liveOnly,
         onPress: () => setBatonLiveOnly(false),
       },
       {
         id: "live:only",
         title: "Live only",
         subtitle: "Claude Code sessions running in a terminal",
-        selected: getBatonLiveOnly(),
+        selected: props.liveOnly,
         onPress: () => setBatonLiveOnly(true),
       },
     ],

@@ -7,7 +7,7 @@ vi.mock("electron", () => ({
 }));
 
 import { BATON_SESSION_RESPONSE_CHANNEL } from "../channels.ts";
-import { createSessionsBridge } from "./sessionsBridge.ts";
+import { createSessionsBridge, showLiveWhenReady } from "./sessionsBridge.ts";
 
 const summary = (key: string, over: Partial<BatonSessionSummary>): BatonSessionSummary => ({
   key,
@@ -181,4 +181,15 @@ it("with T3's window closed, opening a thread still goes to the window, which it
   const open = { kind: "open", environmentId: "env-box", threadId: "t1" } as const;
   expect(await bridge.request(open)).toEqual({ ok: true, detail: "Opened." });
   expect(sent).toEqual([open]);
+});
+
+it("asks a cold window to show live sessions again until its sidebar answers, and gives up after a few tries", async () => {
+  const answers = [null, null, { ok: true, detail: "Showing live sessions." }];
+  const request = vi.fn(async () => answers.shift() ?? null);
+  expect(await showLiveWhenReady({ request })).toBe(true);
+  expect(request).toHaveBeenCalledTimes(3);
+  const never = vi.fn(async () => null);
+  expect(await showLiveWhenReady({ request: never }, 4)).toBe(false);
+  expect(never).toHaveBeenCalledTimes(4);
+  expect(await showLiveWhenReady(undefined)).toBe(false);
 });

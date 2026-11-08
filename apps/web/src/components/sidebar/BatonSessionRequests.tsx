@@ -10,11 +10,7 @@ import {
   type ThreadId,
   type BatonProjectRef,
 } from "@t3tools/baton-contracts";
-import {
-  buildBatonProjects,
-  paneWaiting,
-  type BatonProjectGroup,
-} from "@t3tools/baton-shared/batonProjects";
+import { buildBatonProjects, paneWaiting } from "@t3tools/baton-shared/batonProjects";
 import { answerCatalogRequest } from "@t3tools/baton-shared/catalogRequests";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useEffect, useRef } from "react";
@@ -38,23 +34,24 @@ export function BatonSessionRequests(props: {
   readonly onShowLive: () => void;
 }): null {
   const fleets = useBatonFleets(props.environmentIds);
+  const groupsOf = (current: typeof fleets, p: typeof props) =>
+    buildBatonProjects({
+      environments: current.flatMap(({ environmentId, fleet }) =>
+        fleet === null
+          ? []
+          : [
+              {
+                environmentId,
+                environmentLabel: p.resolveEnvironmentLabel(environmentId) ?? environmentId,
+                entries: fleet.entries,
+                herdr: fleet.herdr ?? [],
+                claude: fleet.claudeSessions ?? [],
+              },
+            ],
+      ),
+      resolveWorkProject: p.resolveWorkProject,
+    });
 
-  const groups = buildBatonProjects({
-    environments: fleets.flatMap(({ environmentId, fleet }) =>
-      fleet === null
-        ? []
-        : [
-            {
-              environmentId,
-              environmentLabel: props.resolveEnvironmentLabel(environmentId) ?? environmentId,
-              entries: fleet.entries,
-              herdr: fleet.herdr ?? [],
-              claude: fleet.claudeSessions ?? [],
-            },
-          ],
-    ),
-    resolveWorkProject: props.resolveWorkProject,
-  });
   const sendToPane = useAtomCommand(batonWorkSessions.herdrSend, { reportFailure: false });
   const catalogList = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
   const catalogResume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
@@ -95,7 +92,8 @@ export function BatonSessionRequests(props: {
     send: sendToPane,
     showLive: props.onShowLive,
   });
-  const liveGroups = useRef<ReadonlyArray<BatonProjectGroup>>([]);
+  // Built only when a send needs it: which pane is waiting on a question.
+  const latest = useRef({ fleets, props });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the shell's handler on the latest callbacks
   useEffect(() => {
     answerWindow.current = {
@@ -103,7 +101,7 @@ export function BatonSessionRequests(props: {
       send: sendToPane,
       showLive: props.onShowLive,
     };
-    liveGroups.current = groups;
+    latest.current = { fleets, props };
     catalogDeps.current = {
       localEnvironmentId: localEnvironmentId as string | null,
       commands: {
@@ -150,7 +148,13 @@ export function BatonSessionRequests(props: {
         return { ok: true, detail: "Showing live sessions." };
       }
       // Read from this window's live fleets: Tessaya's list can be seconds old, and keys typed at a question answer it.
-      if (paneWaiting(liveGroups.current, request.environmentId, request.pane))
+      if (
+        paneWaiting(
+          groupsOf(latest.current.fleets, latest.current.props),
+          request.environmentId,
+          request.pane,
+        )
+      )
         return {
           ok: false,
           detail:
@@ -168,6 +172,7 @@ export function BatonSessionRequests(props: {
       unsubscribe();
       sessionListenerClaimed = false;
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- subscribes once; the latest fleets come through refs
   }, []);
   return null;
 }

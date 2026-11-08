@@ -89,7 +89,12 @@ import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-sw
 import { useFabScroll } from "./FabScrollContext";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ThreadListFilters } from "./ThreadListFilters";
-import { liveThreadsOnly, useBatonLiveOnly } from "../threads/batonLiveOnly";
+import {
+  isRunningLive,
+  liveThreadsOnly,
+  runningLiveThreads,
+  useBatonLiveOnly,
+} from "../threads/batonLiveOnly";
 
 interface HomeScreenProps {
   readonly projects: ReadonlyArray<EnvironmentProject>;
@@ -458,6 +463,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
   const pendingOrder = usePendingThreadOrder();
   const batonLiveOnly = useBatonLiveOnly();
+  const batonRunningLive = useMemo(() => runningLiveThreads(props.threads), [props.threads]);
   const {
     layout: threadListV2Layout,
     items: threadListV2Items,
@@ -576,6 +582,7 @@ export function HomeScreen(props: HomeScreenProps) {
     const thread = item.item.thread;
     return (
       <ThreadListV2Row
+        batonLive={isRunningLive(batonRunningLive, thread)}
         pane={sidebarSurface ? "sidebar" : "screen"}
         selected={scopedThreadKey(thread.environmentId, thread.id) === selectedThreadKey}
         fullSwipeWidth={fullSwipeWidth}

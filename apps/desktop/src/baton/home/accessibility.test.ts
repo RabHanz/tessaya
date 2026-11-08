@@ -123,7 +123,6 @@ describe("the Sessions tab", () => {
     expect(text).toContain("2need you");
     expect(text).toContain("5live sessions");
     expect(text).toContain("Show live sessions");
-    expect(APP_SCRIPT).toContain("ipc.send('baton-home:sessions', 'live')");
     expect(page.errors).toEqual([]);
   });
 });

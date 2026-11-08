@@ -96,6 +96,7 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 #app.collapsed .nav .n{position:absolute;top:2px;right:4px;min-width:16px;padding:0 4px;font-size:10px}
 #railtip{position:fixed;z-index:60;transform:translateY(-50%);background:var(--ink);color:var(--on-ink);padding:4px 9px;border-radius:8px;font:500 12px/1.4 var(--sans);white-space:nowrap;pointer-events:none;box-shadow:var(--card-shadow)}
 #railtip[hidden]{display:none}
+.gap-top{margin-top:14px}
 .brand{display:flex;align-items:center;gap:12px;padding:0 6px 20px}
 .brand #mark{width:56px;height:56px;display:block;flex:none;color:var(--ink)}
 .brand #mark svg,.aboutmark svg{width:100%;height:100%;display:block}
