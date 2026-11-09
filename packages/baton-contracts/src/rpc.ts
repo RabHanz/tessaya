@@ -88,6 +88,8 @@ import {
   BatonLiveAdoptInput,
   BatonLiveSetModelInput,
   BatonLiveSetModelResult,
+  BatonLiveSetAccountInput,
+  BatonLiveSetAccountResult,
   BatonLiveAdoptResult,
   BatonLiveAttachInput,
   BatonLiveAttachResult,
@@ -337,6 +339,12 @@ const WsBatonLiveAdoptRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAdopt, {
 const WsBatonLiveSetModelRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetModel, {
   payload: BatonLiveSetModelInput,
   success: BatonLiveSetModelResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonLiveSetAccountRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetAccount, {
+  payload: BatonLiveSetAccountInput,
+  success: BatonLiveSetAccountResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -839,6 +847,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonLiveAttachRpc,
   WsBatonLiveAdoptRpc,
   WsBatonLiveSetModelRpc,
+  WsBatonLiveSetAccountRpc,
   WsBatonWorkSessionSettleRpc,
   WsBatonWorkSessionUnsettleRpc,
   WsBatonWorkSessionArchiveRpc,

@@ -19,9 +19,10 @@ import { useNavigate } from "@tanstack/react-router";
 import { toastManager } from "../ui/toast";
 import { livePick } from "@t3tools/baton-shared/liveThread";
 import {
-  runsAsLiveLogin,
+  liveLoginOf,
   useContinueInNewThread,
   useLiveAccounts,
+  useLiveAccountSwitch,
   useLiveSessionChange,
 } from "./BatonLiveModel";
 import { resolveAppModelSelectionForInstance } from "../../modelSelection";
@@ -151,6 +152,9 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
   const continueInNewThread = useContinueInNewThread();
+  const switchLiveAccount = useLiveAccountSwitch(
+    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
+  );
   const liveAccounts = useLiveAccounts(
     activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
@@ -162,14 +166,18 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     if (!activeThread) return;
     const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
     if (liveSession.sessionId !== null) {
+      const liveLogin = liveLoginOf(instanceId, liveAccounts);
       const route = livePick({
         pickedInstance: instanceId,
         pickedDriver: entry?.driver ?? null,
         currentInstance: activeThread.modelSelection.instanceId,
-        sameAccount: runsAsLiveLogin(instanceId, liveAccounts),
+        account: liveLogin.relation,
       });
       if (route === "session-model") liveSession.apply({ model });
-      else if (route === "switch-back")
+      else if (route === "session-account") {
+        const account = liveAccounts.find((entry) => entry.key === liveLogin.key);
+        if (account !== undefined) switchLiveAccount(account);
+      } else if (route === "switch-back")
         setComposerDraftModelSelection(
           scopeThreadRef(activeThread.environmentId, activeThread.id),
           { instanceId, model },

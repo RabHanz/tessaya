@@ -23,6 +23,8 @@ import {
   type BatonLiveAdoptResult,
   type BatonLiveAttachInput,
   type BatonLiveAttachResult,
+  type BatonLiveSetAccountInput,
+  type BatonLiveSetAccountResult,
   type BatonLiveSetModelInput,
   type BatonLiveSetModelResult,
 } from "@t3tools/baton-contracts";
@@ -32,7 +34,8 @@ import { setLiveModel } from "@t3tools/baton-shared/liveModel";
 import { herdrSend } from "./HerdrSend.ts";
 
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
-import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
+import { isThreadConfigDir, readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
+import { respawnClaudeInPane, TESSAYA_CLAUDE } from "./HerdrRespawn.ts";
 
 /** A file name that cannot leave the inbox or hide. */
 export const safeInboxName = (fileName: string, stamp: string): string => {
@@ -58,7 +61,7 @@ export const liveAttach = (
       const found = yield* adopted.discover;
       cwd = found.candidates.find((c) => c.location.pane === input.target.pane)?.cwd ?? null;
     } else if (input.target.sessionId !== undefined) {
-      const live = yield* readClaudeLiveSessions({ account: null });
+      const live = yield* readAllProfileLiveSessions();
       cwd = live.find((s) => s.sessionId === input.target.sessionId)?.cwd ?? null;
     }
     if (cwd === null)
@@ -102,7 +105,7 @@ const BATON = NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
 
 export const liveAdopt = (input: BatonLiveAdoptInput): Effect.Effect<BatonLiveAdoptResult> =>
   Effect.gen(function* () {
-    const live = yield* readClaudeLiveSessions({ account: null });
+    const live = yield* readAllProfileLiveSessions();
     const session = live.find((s) => s.sessionId === input.sessionId);
     if (session === undefined)
       return { adopted: false, pane: null, detail: "That session is not running here now." };
@@ -145,7 +148,7 @@ export const liveSetModel = (
   claudeModels: ReadonlyArray<string>,
 ): Effect.Effect<BatonLiveSetModelResult> =>
   Effect.gen(function* () {
-    const live = yield* readClaudeLiveSessions({ account: null });
+    const live = yield* readAllProfileLiveSessions();
     const found = live.find((s) => s.sessionId === input.sessionId) ?? null;
     const path =
       found === null
@@ -197,6 +200,118 @@ export const liveSetModel = (
         state: "not_confirmed" as const,
         detail: `Not changed: ${String(cause)}`.slice(0, 300),
         confirmed: [],
+      }),
+    ),
+  );
+
+/** Whether the machine's own login (~/.claude) refreshes in place; its token never leaves this process. */
+const machineLoginRefreshes = (): boolean => {
+  try {
+    return NodeFS.readFileSync(
+      NodePath.join(NodeOS.homedir(), ".claude", ".credentials.json"),
+      "utf8",
+    ).includes('"refreshToken"');
+  } catch {
+    return false;
+  }
+};
+
+/** tessaya-claude --switch: the slot's credential renamed into the thread's own dir (cswap's store, never echoed). */
+const switchThreadDir = (dir: string, slot: string): Promise<{ ok: boolean; detail: string }> =>
+  new Promise((resolve) =>
+    NodeChildProcess.execFile(
+      TESSAYA_CLAUDE,
+      ["--switch", dir, slot],
+      { timeout: 30_000 },
+      (error, _stdout, stderr) =>
+        resolve({
+          ok: error === null,
+          detail: String(stderr ?? "")
+            .trim()
+            .slice(0, 200),
+        }),
+    ),
+  );
+
+/**
+ * Move one live Claude session to another account while it runs (LIVE-ACCOUNT). In its own config dir the running
+ * claude re-reads the credential on its next request, sub-agents included, so nothing restarts. A session on the
+ * machine's shared login first gets its own dir: one restart in its pane, between turns, only when asked.
+ */
+export const liveSetAccount = (
+  input: BatonLiveSetAccountInput,
+  accounts: ReadonlyArray<{ readonly key: string; readonly email: string | null }>,
+): Effect.Effect<BatonLiveSetAccountResult> =>
+  Effect.gen(function* () {
+    const slot = input.accountKey;
+    const target = accounts.find((account) => account.key === slot);
+    if (!/^\d{1,4}$/.test(slot) || target === undefined)
+      return { state: "refused" as const, detail: "That account is not in cswap's list here." };
+    const targetName = target.email?.split("@")[0] ?? `slot ${slot}`;
+    const services = yield* Effect.context<never>();
+    const run = Effect.runPromiseWith(services);
+    const find = () =>
+      run(readAllProfileLiveSessions()).then(
+        (live) => live.find((s) => s.sessionId === input.sessionId) ?? null,
+      );
+    return yield* Effect.promise(async (): Promise<BatonLiveSetAccountResult> => {
+      let session = await find();
+      if (session === null)
+        return { state: "not_running", detail: "That session is not running here now." };
+      if (session.account !== null && session.account === targetName)
+        return { state: "unchanged", detail: `It already runs as ${targetName}.` };
+      if (!isThreadConfigDir(session.configDir)) {
+        if (!NodeFS.existsSync(TESSAYA_CLAUDE))
+          return { state: "refused", detail: "tessaya-claude is not installed on this machine." };
+        if (machineLoginRefreshes())
+          return {
+            state: "refused",
+            detail:
+              "The machine's login signs in with a refresh token, which cannot be copied into one thread. Switch it machine-wide, or re-add it as a setup token.",
+          };
+        if (input.restart !== true)
+          return {
+            state: "needs_restart",
+            detail:
+              "This session shares the machine's login. To switch it on its own, it restarts once in its pane, same conversation; after that it switches live.",
+          };
+        if (session.herdrPane === null)
+          return {
+            state: "not_in_herdr",
+            detail: "Bring it into Herdr first; then it can restart in its pane.",
+          };
+        if (session.status === "busy" || session.status === "waiting")
+          return { state: "busy", detail: "It is working. Ask again when this turn ends." };
+        const respawned = await run(
+          respawnClaudeInPane({ paneRef: session.herdrPane, sessionId: session.sessionId }),
+        );
+        if (!respawned.respawned)
+          return { state: "refused", detail: `Not restarted: ${respawned.detail}` };
+        for (let i = 0; i < 40 && !isThreadConfigDir(session?.configDir); i += 1) {
+          await sleep(500);
+          session = await find();
+        }
+        if (session === null || !isThreadConfigDir(session.configDir))
+          return {
+            state: "refused",
+            detail: "It restarted but not in its own dir. Its thread still works as before.",
+          };
+      }
+      const dir = session.configDir;
+      if (!isThreadConfigDir(dir)) return { state: "refused", detail: "It has no dir of its own." };
+      const switched = await switchThreadDir(dir, slot);
+      return switched.ok
+        ? { state: "switched", detail: `Now on ${targetName}; its next request runs there.` }
+        : {
+            state: "refused",
+            detail: `Not switched: ${switched.detail || "tessaya-claude refused."}`,
+          };
+    });
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.succeed({
+        state: "refused" as const,
+        detail: `Not switched: ${String(cause)}`.slice(0, 300),
       }),
     ),
   );

@@ -35,20 +35,21 @@ describe("a mirrored live thread", () => {
 
 describe("a model picked on a live thread", () => {
   it.each([
-    // picked instance, driver, thread's instance, same login, route
-    ["claudeAgent", "claudeAgent", "baton-live", true, "session-model"],
-    ["claude-work", "claudeAgent", "baton-live", false, "continue-in"],
-    ["codex", "codex", "baton-live", true, "continue-in"],
-    ["gone", null, "baton-live", false, "continue-in"],
-    ["baton-live", "acpRegistry", "baton-live", true, "unchanged"],
+    // picked instance, driver, thread's instance, login, route
+    ["claudeAgent", "claudeAgent", "baton-live", "same", "session-model"],
+    ["claude-work", "claudeAgent", "baton-live", "other", "session-account"],
+    ["claude-token", "claudeAgent", "baton-live", "unknown", "continue-in"],
+    ["codex", "codex", "baton-live", "same", "continue-in"],
+    ["gone", null, "baton-live", "unknown", "continue-in"],
+    ["baton-live", "acpRegistry", "baton-live", "same", "unchanged"],
     // Handed off: ordinary, and the Terminal session entry takes it back.
-    ["baton-live", "acpRegistry", "codex", false, "switch-back"],
-    ["claudeAgent", "claudeAgent", "codex", true, "normal"],
-    ["codex", "codex", "claudeAgent", false, "normal"],
+    ["baton-live", "acpRegistry", "codex", "unknown", "switch-back"],
+    ["claudeAgent", "claudeAgent", "codex", "same", "normal"],
+    ["codex", "codex", "claudeAgent", "unknown", "normal"],
   ] as const)(
-    "%s (%s) on %s, same login %s: %s",
-    (pickedInstance, pickedDriver, currentInstance, sameAccount, route) => {
-      expect(livePick({ pickedInstance, pickedDriver, currentInstance, sameAccount })).toBe(route);
+    "%s (%s) on %s, login %s: %s",
+    (pickedInstance, pickedDriver, currentInstance, account, route) => {
+      expect(livePick({ pickedInstance, pickedDriver, currentInstance, account })).toBe(route);
     },
   );
 });

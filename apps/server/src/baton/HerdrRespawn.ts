@@ -11,6 +11,9 @@
  * control path is the pane, not the account.
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 
@@ -25,8 +28,12 @@ const run = (args: ReadonlyArray<string>): Promise<{ ok: boolean; stdout: string
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** tessaya-claude (LIVE-ACCOUNT): the conversation keeps, or gets, its own config dir, so its login can move live. */
+export const TESSAYA_CLAUDE = NodePath.join(NodeOS.homedir(), ".local", "bin", "tessaya-claude");
+const claudeCommand = () => (NodeFS.existsSync(TESSAYA_CLAUDE) ? "tessaya-claude" : "claude");
+
 /** The argv sequence, separate so it is testable without Herdr. */
-export const respawnPlan = (paneRef: string, sessionId: string) => {
+export const respawnPlan = (paneRef: string, sessionId: string, claude = claudeCommand()) => {
   const { session, pane } = splitPaneRef(paneRef);
   const prefix = session === null || session === "default" ? [] : ["--session", session];
   return {
@@ -37,7 +44,7 @@ export const respawnPlan = (paneRef: string, sessionId: string) => {
       [...prefix, "pane", "send-keys", pane, "enter"],
     ],
     probe: [...prefix, "pane", "process-info", "--pane", pane],
-    resume: [...prefix, "pane", "run", pane, `claude --resume ${sessionId}`],
+    resume: [...prefix, "pane", "run", pane, `${claude} --resume ${sessionId}`],
   };
 };
 

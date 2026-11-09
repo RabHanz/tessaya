@@ -23,18 +23,21 @@ resolve_dir() {
   exit 2
 }
 
+# Each conversation in its own config dir, so its login can move while it runs (LIVE-ACCOUNT).
+claude_cmd=claude
+command -v tessaya-claude > /dev/null 2>&1 && claude_cmd=tessaya-claude
 agent=()
 if [[ "${1:-}" == "--resume" ]]; then
   [[ -n "${2:-}" ]] || { echo "usage: tessaya --resume <session-id> [dir]" >&2; exit 2; }
   dir="$(resolve_dir "${3:-$PWD}")"
-  agent=(claude --resume "$2")
+  agent=("$claude_cmd" --resume "$2")
 elif [[ $# -eq 0 ]]; then
   dir="$PWD"
 else
   dir="$(resolve_dir "$1")"
   shift
   case "${1:-claude}" in
-    claude) agent=(claude) ;;
+    claude) agent=("$claude_cmd") ;;
     codex) agent=(codex) ;;
     *) agent=("$@") ;;
   esac
@@ -48,7 +51,8 @@ running() { herdr session list 2>/dev/null | awk -v n="$name" '$1 == n && $2 == 
 holder() {
   local f
   for f in "$HOME"/.claude/sessions/*.json "$HOME"/.claude-*/sessions/*.json \
-    "$HOME"/.local/share/claude-swap/sessions/*/sessions/*.json; do
+    "$HOME"/.local/share/claude-swap/sessions/*/sessions/*.json \
+    "${TESSAYA_CLAUDE_THREADS:-$HOME/.local/share/tessaya/claude-threads}"/*/sessions/*.json; do
     [[ -f "$f" ]] && grep -q "\"sessionId\":\"$1\"" "$f" && kill -0 "$(basename "$f" .json)" 2> /dev/null &&
       holder_pid="$(basename "$f" .json)" && return 0
   done
@@ -102,14 +106,14 @@ if ((restored)); then
 elif ((${#agent[@]} > 0)); then
   cmd="$(printf '%q ' "${agent[@]}")"
   if herdr --session "$name" workspace list 2>/dev/null | grep -q '"workspace_id"'; then
-    herdr --session "$name" tab create --cwd "$dir" --label "${agent[0]}" --focus >/dev/null
+    herdr --session "$name" tab create --cwd "$dir" --label "${agent[0]#tessaya-}" --focus >/dev/null
   else
     herdr --session "$name" workspace create --cwd "$dir" --label "$(basename "$dir")" --focus >/dev/null
   fi
   # The newest pane is the one just created.
   pane="$(herdr --session "$name" pane list | grep -o '"pane_id":"[^"]*"' | tail -1 | cut -d'"' -f4)"
   herdr --session "$name" pane run "$pane" "$cmd" >/dev/null
-  echo "tessaya: ${agent[0]} running in $name pane $pane"
+  echo "tessaya: ${agent[0]#tessaya-} running in $name pane $pane"
   [[ "${agent[1]:-}" == "--resume" ]] && { wait_holder "${agent[2]}" || true; }
 fi
 

@@ -141,6 +141,69 @@ export const accountOfConfigDir = (dir: string): string | null => {
   }
 };
 
+/** Where tessaya-claude keeps each conversation's own config dir (LIVE-ACCOUNT). */
+export const THREAD_DIRS_ROOT =
+  process.env.TESSAYA_CLAUDE_THREADS ??
+  NodePath.join(NodeOS.homedir(), ".local", "share", "tessaya", "claude-threads");
+
+/** A conversation's own config dir: one tessaya-claude made, so its login can be switched while it runs. */
+export const isThreadConfigDir = (dir: string | null | undefined): dir is string =>
+  dir !== null && dir !== undefined && dir.startsWith(`${THREAD_DIRS_ROOT}${NodePath.sep}`);
+
+/** The thread dirs, each once (the `s-<id>` names that link to a dir are skipped). */
+const threadConfigDirs = (): ReadonlyArray<string> => {
+  try {
+    return NodeFS.readdirSync(THREAD_DIRS_ROOT, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => NodePath.join(THREAD_DIRS_ROOT, entry.name));
+  } catch {
+    return [];
+  }
+};
+
+const CSWAP_SEQUENCE = NodePath.join(
+  NodeOS.homedir(),
+  ".local",
+  "share",
+  "claude-swap",
+  "sequence.json",
+);
+
+/** The cswap slot a thread dir holds (written by tessaya-claude), or null when it is not known. */
+export const threadDirSlot = (dir: string): string | null => {
+  try {
+    const slot = NodeFS.readFileSync(NodePath.join(dir, ".tessaya-account"), "utf8").trim();
+    return /^\d{1,4}$/.test(slot) ? slot : null;
+  } catch {
+    return null;
+  }
+};
+
+/** A thread dir's account: its slot's address before the `@`, from cswap's registry. */
+const threadDirAccount = (dir: string): string | null => {
+  const slot = threadDirSlot(dir);
+  if (slot === null) return accountOfConfigDir(dir);
+  try {
+    const parsed = JSON.parse(NodeFS.readFileSync(CSWAP_SEQUENCE, "utf8")) as {
+      accounts?: Record<string, { email?: unknown }>;
+    };
+    const email = parsed.accounts?.[slot]?.email;
+    return typeof email === "string" && email.includes("@") ? email.split("@")[0]! : null;
+  } catch {
+    return null;
+  }
+};
+
+/** A resume of `sessionId` finds the dir that hosted it (tessaya-claude looks for `s-<id>`). */
+const linkSessionDir = (dir: string, sessionId: string): void => {
+  if (!/^[A-Za-z0-9-]{1,80}$/.test(sessionId)) return;
+  const link = NodePath.join(THREAD_DIRS_ROOT, `s-${sessionId}`);
+  if (NodePath.resolve(dir) === link) return;
+  try {
+    NodeFS.symlinkSync(dir, link);
+  } catch {}
+};
+
 /**
  * Tessaya's own helper sessions (the assistant, rewrites, an account's login) run Claude in a folder under the app's
  * data directory (.t3). They are not the user's work: they must not become threads or catalog rows.
@@ -153,13 +216,15 @@ export const readAllProfileLiveSessions = (): Effect.Effect<ReadonlyArray<Claude
   Effect.gen(function* () {
     const home = NodePath.join(NodeOS.homedir(), ".claude");
     const all: Array<ClaudeLiveSession> = [];
-    for (const dir of claudeConfigDirs()) {
+    for (const dir of [...claudeConfigDirs(), ...threadConfigDirs()]) {
+      const thread = isThreadConfigDir(dir);
       const found = yield* readClaudeLiveSessions({
-        account: accountOfConfigDir(dir),
+        account: thread ? threadDirAccount(dir) : accountOfConfigDir(dir),
         dir: NodePath.join(dir, "sessions"),
       });
       for (const session of found) {
         if (isTessayaOwnFolder(session.cwd)) continue;
+        if (thread) linkSessionDir(dir, session.sessionId);
         all.push(dir === home ? session : { ...session, configDir: dir });
       }
     }

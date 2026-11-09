@@ -21,7 +21,7 @@ import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { runsAsLiveLogin, useLiveAccounts } from "./BatonLiveModel";
+import { liveLoginOf, useLiveAccounts } from "./BatonLiveModel";
 
 /** An instance's account, when it reports a login or limits; null for one that reports neither. */
 const accountOf = (entry: ProviderInstanceEntry): BatonAccount | null =>
@@ -82,20 +82,30 @@ function ContinueInNote({ name }: { readonly name: string }) {
 
 function LiveSessionAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const account = useLiveAccount(threadRef);
-  return account === undefined ? null : <AccountLine account={account} email="" />;
+  return account === undefined ? null : (
+    <AccountLine account={account} email="">
+      <KeepToggle threadRef={threadRef} />
+    </AccountLine>
+  );
 }
 
-/** A Claude instance on a live thread: /model into the session only when it runs as the session's own login. */
+/** A Claude instance on a live thread: /model on the session's own login, a live move to another known one. */
 function LiveClaudeNote(props: {
   readonly entry: ProviderInstanceEntry;
   readonly threadRef: ScopedThreadRef;
 }) {
-  const accounts = useLiveAccounts(props.threadRef);
-  return runsAsLiveLogin(props.entry.instanceId, accounts) ? (
-    <Note>A model picked here changes the terminal session's own model.</Note>
-  ) : (
-    <ContinueInNote name={props.entry.displayName} />
-  );
+  const relation = liveLoginOf(props.entry.instanceId, useLiveAccounts(props.threadRef)).relation;
+  if (relation === "same")
+    return <Note>A model picked here changes the terminal session's own model.</Note>;
+  if (relation === "other")
+    return (
+      <Note>
+        <span className="font-medium text-foreground/80">Move to {props.entry.displayName}</span>: a
+        model picked here moves the terminal session to this account while it runs. Its sub-agents
+        keep working.
+      </Note>
+    );
+  return <ContinueInNote name={props.entry.displayName} />;
 }
 
 /** The row under the model list for the instance being browsed (or the thread's own, under Favorites). */

@@ -10,7 +10,8 @@ import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
-import { liveSessionIdOf } from "./BatonLiveModel";
+import { useAtomSet } from "@effect/atom-react";
+import { liveLoginAtom, liveSessionIdOf } from "./BatonLiveModel";
 
 const CHECK_MS = 30_000;
 type Found =
@@ -28,6 +29,7 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
   const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
   const resume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
   const [found, setFound] = useState<Found>(null);
+  const setLogin = useAtomSet(liveLoginAtom(sessionId ?? ""));
   const reattach = useAtomCommand(batonWorkSessions.sessionsReattach, { reportFailure: false });
   const kept = useAtomCommand(batonWorkSessions.sessionsKept, { reportFailure: false });
   const [messages, setMessages] = useState<ReadonlyArray<{ id: string; text: string }>>([]);
@@ -44,6 +46,7 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
       void list({ environmentId, input: { query: sessionId, limit: 10 } }).then((result) => {
         if (cancelled || result._tag !== "Success") return;
         const row = result.value.sessions.find((entry) => entry.id === sessionId);
+        setLogin(row?.account ?? null);
         setFound(
           row === undefined
             ? "missing"
@@ -69,7 +72,7 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
       cancelled = true;
       clearInterval(timer);
     };
-  }, [environmentId, kept, list, sessionId, threadRef.threadId]);
+  }, [environmentId, kept, list, sessionId, setLogin, threadRef.threadId]);
 
   const banner = bindingBanner(found);
   const binding = bindingOf(found);
