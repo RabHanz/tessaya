@@ -136,6 +136,24 @@ describe("reopening a window", () => {
     expect(resolvePaneRestore(empty, allGone)).toEqual({ kind: "stay" });
   });
 
+  it("resumes the focused pane at boot, but skips one whose environment was removed", () => {
+    const restoreWith = (focusedPhase: "available" | null) =>
+      resolvePaneRestore(layout, (target) =>
+        paneRestoreState({
+          heldElsewhere: false,
+          environment: paneEnvironmentState({
+            catalogReady: true,
+            localListed: true,
+            phase: target === t2 ? focusedPhase : "connected",
+            shellLive: true,
+          }),
+          exists: target !== t2,
+        }),
+      );
+    expect(restoreWith("available")).toEqual({ kind: "go", target: t2 });
+    expect(restoreWith(null)).toEqual({ kind: "go", target: t1 });
+  });
+
   it("waits only for an environment that is on its way", () => {
     const state = (phase: Parameters<typeof paneEnvironmentState>[0]["phase"], shellLive = false) =>
       paneEnvironmentState({ catalogReady: true, localListed: true, phase, shellLive });
@@ -156,6 +174,8 @@ describe("reopening a window", () => {
     expect(state(null)).toBe("unreachable");
     expect(state("offline")).toBe("unreachable");
     expect(state("error")).toBe("unreachable");
+    expect(state("unsupported")).toBe("unreachable");
+    expect(state("available")).toBe("idle");
   });
 
   it("resumes a pane only when no other window holds it and its environment has it", () => {
@@ -164,6 +184,8 @@ describe("reopening a window", () => {
     expect(paneRestoreState({ ...ready, heldElsewhere: true })).toBe("gone");
     expect(paneRestoreState({ ...ready, environment: "connecting" })).toBe("waiting");
     expect(paneRestoreState({ ...ready, environment: "unreachable" })).toBe("gone");
+    // At boot a saved environment is idle until it connects; its pane must still resume.
+    expect(paneRestoreState({ ...ready, environment: "idle", exists: false })).toBe("ready");
     // A draft whose session is gone has no environment to wait for.
     expect(paneRestoreState({ ...ready, environment: null })).toBe("gone");
     expect(paneRestoreState({ ...ready, exists: false })).toBe("gone");
