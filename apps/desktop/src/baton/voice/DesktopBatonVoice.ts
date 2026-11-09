@@ -425,6 +425,7 @@ import {
   type KeepSettings,
 } from "./audioKeep.ts";
 import { createVocabToast } from "./vocabToast.ts";
+import { createPillGhost } from "./pillGhost.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
@@ -492,6 +493,8 @@ import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
+/** The longest the paste waits for the ghost in his field. */
+const GHOST_WAIT_MS = 3_000;
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: BatonFocusTarget = {
   producer: "desktop",
@@ -535,6 +538,8 @@ interface VoiceSettings {
   readonly holdKeyCues: boolean;
   /** His words in the pill as he dictates, and their cleanup after the paste. */
   readonly showWords: boolean;
+  /** "field": his words at the caret of the field they go into when it says where; "pill": always in the pill. */
+  readonly pillStyle: "pill" | "field";
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
   /** How long it listens after the wake word with nothing said, in ms. */
@@ -660,6 +665,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cues: "normal",
   holdKeyCues: false,
   showWords: true,
+  // The pill until D has been tried on Windows; the text box is opt-in under Settings → Dictation → Pill style.
+  pillStyle: "pill",
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
   conversationOpenMs: 30_000,
@@ -764,6 +771,7 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       showWords: saved["showWords"] !== false,
+      pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
       pronounce: pronounceFrom(saved["pronounce"]),
@@ -1757,7 +1765,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     dictationTimer = null;
     if (line != null) input.onNote?.("dictation_timing", { ...line });
   };
+  const ghost = createPillGhost({
+    look: () => ({ motion: settings.motion, glass: settings.glass }),
+    lastInput: () => sidecar?.lastInput().catch(() => null) ?? Promise.resolve(null),
+    windows: input.platform === "win32",
+  });
+  /** The ghost played this flush's cleanup in his field, so the pill does not play it again. */
+  let ghostPlayed = false;
+  /** As a dictation starts: the words go at the caret when the field says where it is, else in the pill. */
+  const startGhost = () => {
+    ghost.stop();
+    if (settings.pillStyle !== "field" || !settings.showWords || sidecar === null) return;
+    void sidecar
+      .caretAt()
+      .catch(() => null)
+      .then((at) => {
+        if (at !== null && (keyRecording() || dictatingByVoice)) ghost.start(at);
+      });
+  };
+  const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
   const oneShot = createOneShot<FocusedApp>({
+    // A hung ghost page never stops the paste: past GHOST_WAIT_MS the words land anyway.
+    beforePaste: (raw, text) =>
+      Promise.race([
+        ghost.play(raw, text),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), GHOST_WAIT_MS).unref()),
+      ]).then((played) => {
+        ghostPlayed = played;
+        if (!played) ghost.stop();
+      }),
     save: (chunks) => {
       try {
         NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
@@ -1827,7 +1863,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turnId = openTurn;
     openTurn = null;
     if (app.window !== undefined) showDictation("Tidying…", true);
+    ghostPlayed = false;
     const result = await oneShot.flush(app);
+    if (result.status !== "pasted") ghost.stop();
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     lastDictation = result.text;
@@ -1846,7 +1884,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
     if (result.status === "pasted") {
       // Pasted already: the pill plays the cleanup over his words afterwards, so it never holds the paste up.
-      pill.cleanup(result.raw, result.text);
+      if (!ghostPlayed) pill.cleanup(result.raw, result.text);
       learnWording(result.text);
       learnFromEdits(result.text, turnId, app);
       if (result.failed) {
@@ -1880,6 +1918,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         "voice",
       );
     if (!insert) {
+      ghost.stop();
       discarding = true;
       const text = oneShot.pending().join(" ");
       if (text !== "") {
@@ -1923,7 +1962,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const joined = oneShot.pending().join(" ");
         if (dictatingByVoice) {
           pill.on({ type: "dictating", caption: dictationCaption(dictatingInto, joined) });
-          pill.words(joined);
+          dictationWords(joined);
         }
         if (openTurn === null) {
           openTurn = record({
@@ -3111,6 +3150,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let dictationMessage = false;
   const showDictation = (caption: string | null, tidying = false, message = false) => {
     dictationMessage = message;
+    if (tidying) ghost.release();
     pill.on({ type: "dictating", caption, tidying }, { silent: !settings.holdKeyCues });
     render();
   };
@@ -3273,6 +3313,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...(typeof target === "number" ? { window: target } : {}),
     };
     if (discarded) {
+      ghost.stop();
       if (text === "") return showDictation(null);
       undo = { text, target: Promise.resolve(app) };
       showDictation("Discarded · click to undo", false, true);
@@ -3362,7 +3403,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
-      pill.words(event.text);
+      dictationWords(event.text);
       const app = focusedApp;
       if (settings.dictationCleanup === "claude" && event.pause !== false)
         void levelNow(app).then((level) =>
@@ -3390,13 +3431,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       showDictation("Esc twice discards");
+      startGhost();
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
+      ghost.stop();
       recordings.shift();
       discardKeyText = false;
       showDictation(null);
     } else if (event.ev === "error") {
+      ghost.stop();
       recordings.shift();
       discardKeyText = false;
       note = event.message;
@@ -3614,7 +3658,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : undefined,
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
-    showWords: () => settings.showWords,
+    showWords: () => settings.showWords && !ghost.active(),
     dictationMessage: () => dictationMessage,
     workArea: () => workRect,
     onDismiss: () => {
@@ -3708,6 +3752,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         // A line left from the last dictation (kept text, the offer, an undo) must not end on this one.
         if (keptTimer !== null) clearTimeout(keptTimer);
         keptTimer = null;
+        startGhost();
         void target?.then((app) => {
           if (!dictatingByVoice || app == null || app.exe === "") return;
           dictatingInto = app.title.trim() || app.exe;
@@ -5676,6 +5721,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.showWords,
       },
       {
+        id: "v.pillStyle",
+        section: "Dictation",
+        label: "Pill style",
+        hint: "Where your words appear as you speak: in the pill, or in the text box itself when it says where its caret is (never in a password box).",
+        kind: "choice",
+        value: settings.pillStyle,
+        options: [
+          { value: "pill", label: "Pill" },
+          { value: "field", label: "In the text box when possible" },
+        ],
+      },
+      {
         id: "v.copyLast",
         section: "Dictation",
         label: "Last transcript",
@@ -6809,6 +6866,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       setHideFromCapture(on);
     } else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.showWords") save({ showWords: on });
+    else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
+      save({ pillStyle: value });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });
       configureDictation();

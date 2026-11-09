@@ -35,25 +35,30 @@ html.glass-reduced #p.isl,html.glass-off #p.isl{background:var(--glass-solid)}
 export const ISLAND_HTML = `<div id="vp" aria-hidden="true"></div>`;
 export const ISLAND_MEASURE = `<div id="mE" aria-hidden="true"></div>`;
 
-/** Needs the page's `$`, `isCalm`, `setMode`, `drawBars` and `sendRect`. */
-export const ISLAND_SCRIPT = `
+/**
+ * "E" draws the words in the pill's capsule (needs the page's `$` and `isCalm`, and #p, #dx, #dv, #w); "D" draws
+ * them where they will land, in a ghost window over his field (`setField` gives its font, line and width).
+ */
+export const wordsScript = (variant: "E" | "D"): string => `
 const {clamp,prog,EMPH,DECEL,ACCEL,MD,FLOW,EXPAND_MS,SMOOTH,springAt,align,cleanupTimes,stepWidth}=(${pillEngine.toString()})();
-const PH=34,PBASE=124,LIVE_LINES=5,PAD=12,LINE=20,MAXW=${ISLAND_WIDTH},TMAX=MAXW-32,FLOW01=[{at:0,to:0},{at:0,to:1}];
-let ALL_LINES=7,I=null,iraf=0;
+const D=${variant === "D"},PH=34,PBASE=124,LIVE_LINES=D?99:5,PAD=12,MAXW=${ISLAND_WIDTH},TMAX=MAXW-32,FLOW01=[{at:0,to:0},{at:0,to:1}];
+let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0;
+// D: the field's own font, line height, text width and where the caret sits on its line.
+const setField=(fontPx,linePx,width,indent)=>{LINE=linePx;FW=width;INDENT=indent;for(const el of[vp,mE])el.style.font='400 '+fontPx+'px/'+linePx+'px var(--sans)';};
 const vp=$('vp'),mE=$('mE');
-const measure=(words,width)=>{mE.textContent='';mE.style.width=width===null?'auto':width+'px';mE.style.whiteSpace=width===null?'nowrap':'normal';
+const measure=(words,width)=>{mE.textContent='';mE.style.width=width===null?'auto':width+'px';mE.style.whiteSpace=width===null?'nowrap':'normal';mE.style.textIndent=width===null?'0':INDENT+'px';
  return words.map((w,i)=>{if(i)mE.appendChild(document.createTextNode(' '));const s=document.createElement('span');s.textContent=w;mE.appendChild(s);return s;});};
 const lay=(words,width)=>measure(words,width).map(s=>({x:s.offsetLeft,y:s.offsetTop}));
 const layLine=words=>measure(words,null).map(s=>s.offsetLeft);
 const oneLine=words=>{measure(words,null);return mE.offsetWidth;};
 const linesOf=pos=>pos.length?Math.round(pos[pos.length-1].y/LINE)+1:0;
 // The lines the window has room for (a short screen gives the island less).
-const roomLines=()=>Math.max(1,Math.floor((innerHeight-28-PH-PAD-6)/LINE));
+const roomLines=()=>D?99:Math.max(1,Math.floor((innerHeight-28-PH-PAD-6)/LINE));
 const hOf=lines=>lines>0?Math.min(ALL_LINES,lines)*LINE+PAD:0;
 const wOf=t=>Math.max(PBASE,t+32);
 const mk=t=>{const s=document.createElement('span');s.textContent=t;vp.appendChild(s);return s;};
-const textC='var(--text)',greyC='var(--grey)';
-const mixC=p=>p>=1?textC:p<=0?greyC:'color-mix(in srgb,'+textC+' '+Math.round(p*100)+'%,'+greyC+')';
+const textC=D?'var(--field-ink)':'var(--text)',greyC=D?'var(--ghost-drop)':'var(--grey)',liveC=D?'var(--ghost)':textC;
+const mix=a=>p=>p>=1?a:p<=0?greyC:'color-mix(in srgb,'+a+' '+Math.round(p*100)+'%,'+greyC+')',mixC=mix(textC),mixL=mix(liveC);
 const place=(s,x,y,o,blur=0,extra='')=>{s.style.transform='translate('+x.toFixed(2)+'px,'+y.toFixed(2)+'px)'+extra;s.style.opacity=o.toFixed(3);s.style.filter=blur>.05?'blur('+blur.toFixed(2)+'px)':'';};
 const hide=s=>{if(s)s.style.opacity='0';};
 const kickI=until=>{if(!I)return;I.until=Math.max(I.until,until);if(!iraf)iraf=requestAnimationFrame(tickI);};
@@ -63,14 +68,14 @@ const setWords=(next,now)=>{let k=0;while(k<next.length&&k<I.raw.length&&next[k]
  if(k===next.length&&k===I.raw.length)return;
  for(const s of I.rawS.splice(k))s.remove();I.appear.length=k;
  for(let i=k;i<next.length;i++){I.rawS.push(mk(next[i]));I.appear.push(now);}
- I.raw=next;I.tw=stepWidth(I.tw,oneLine(next),TMAX);const pos=lay(next,I.tw),lines=linesOf(pos);
+ I.raw=next;I.tw=D?FW:stepWidth(I.tw,oneLine(next),TMAX);const pos=lay(next,I.tw),lines=linesOf(pos);
  I.steps.push({t:now,n:next.length,width:I.tw,pos,lines});
  I.W.push({at:now,to:wOf(I.tw)});I.Hh.push({at:now,to:Math.min(LIVE_LINES,lines)*LINE+PAD});I.Sc.push({at:now,to:Math.max(0,lines-LIVE_LINES)*LINE});
  kickI(now+1200);};
 const island={
  on:()=>I!==null,
  start(){island.stop();I={raw:[],appear:[],rawS:[],steps:[],tw:0,W:[{at:0,to:PBASE}],Hh:[{at:0,to:0}],Sc:[{at:0,to:0}],R:null,C:null,P:Infinity,rawLines:0,until:0};kickI(performance.now()+50);},
- stop(){I=null;cancelAnimationFrame(iraf);iraf=0;vp.textContent='';const p=$('p');for(const k of['left','width','height','borderRadius'])p.style[k]='';
+ stop(){I=null;cancelAnimationFrame(iraf);iraf=0;vp.textContent='';if(D)return;const p=$('p');for(const k of['left','width','height','borderRadius'])p.style[k]='';
   for(const id of['dx','dv','w']){const s=$(id).style;s.opacity='';s.transform='';s.color='';}},
  words(text){if(!I||I.R!==null)return;setWords(text.split(/\\s+/).filter(Boolean),performance.now());},
  // His ✓ (or the key's release): the pill opens to every line and the view scrolls back to the top, 0.75 s.
@@ -120,7 +125,7 @@ const morphAt=(M,q)=>{M.slot.style.width=(M.wo+(M.wn-M.wo)*q).toFixed(2)+'px';
  if(M.end){M.o.style.transform='scale('+(1-.4*q).toFixed(3)+')';M.n.style.transform='scale('+(.6+.4*q).toFixed(3)+')';}
  else{M.o.style.transform='translateY('+(-.35*q).toFixed(3)+'em)';M.n.style.transform='translateY('+(.35*(1-q)).toFixed(3)+'em)';}
  M.o.style.opacity=String(1-q);M.n.style.opacity=String(q);};
-const drawI=t=>{const L=I,calm=isCalm(),p_=$('p'),C=L.C,R=L.R===null?Infinity:L.R,P=L.P;
+const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infinity:L.R,P=L.P;
  // The one progress: after the hold, a single curve from 0 to 1 that the words and the capsule all follow.
  const pc=C?t-R-C.MOVE_T:0,pp=!C?0:t>=P?1:pc<=0?0:pc>=C.MOVE_D||calm?1:clamp(springAt(FLOW01,pc,false,FLOW),0,1.02);
  const w=springAt(L.W,t,calm);let h,sc;
@@ -130,6 +135,7 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=$('p'),C=L.C,R=L.R===null?Infinity:L.
   // From ✓ the capsule opens and the scroll returns to the top on one curve from where they were.
   else{const qo=calm?1:SMOOTH(prog(t,R,EXPAND_MS)),hAtR=Math.max(0,springAt(L.HhLive,R,calm));h=hAtR+(hRaw-hAtR)*qo;sc=springAt(L.ScLive,R,calm)*(1-qo);}}
  const ww=w;
+ if(D){vp.style.width=FW+'px';vp.style.height='auto';}else{
  p_.style.left=((MAXW-ww)/2).toFixed(2)+'px';p_.style.width=ww.toFixed(2)+'px';p_.style.height=(PH+h).toFixed(2)+'px';p_.style.borderRadius=(PH/2-clamp(h/24))+'px';
  const tuck=t<R?0:t<P?(calm?1:EMPH(prog(t,R,MD.medium2))):(calm?0:1-EMPH(prog(t,P,MD.medium2)));
  for(const id of['dx','w','dv'])$(id).style.opacity=String(1-.65*tuck);
@@ -138,10 +144,10 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=$('p'),C=L.C,R=L.R===null?Infinity:L.
  const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(16px,'+(PH-4)+'px)';
  vp.style.clipPath='inset(0 '+Math.max(0,16+TMAX-(ww-14)).toFixed(2)+'px '+Math.max(0,vh-(h-PAD+4)).toFixed(2)+'px 0)';
  // The top edge fades while lines are scrolled out of view above it.
- const mkd=clamp(sc/LINE);vp.style.maskImage=vp.style.webkitMaskImage=mkd>.01?'linear-gradient(180deg,rgba(0,0,0,'+(1-.75*mkd).toFixed(3)+') 0,#000 14px)':'';
+ const mkd=clamp(sc/LINE);vp.style.maskImage=vp.style.webkitMaskImage=mkd>.01?'linear-gradient(180deg,rgba(0,0,0,'+(1-.75*mkd).toFixed(3)+') 0,#000 14px)':'';}
  if(!C){// While he talks, and after ✓ until the clean text: the newest partial's layout, each word arriving with a decelerated fade, rise and unblur.
   let s=L.steps[0];for(const x of L.steps)if(x.t<=t)s=x;if(!s)return;
-  L.rawS.forEach((sp,i)=>{if(t<L.appear[i]||i>=s.n){hide(sp);return;}const p=calm?1:DECEL(prog(t,L.appear[i],MD.medium4));sp.style.color=textC;sp.style.backgroundImage='';place(sp,s.pos[i].x,s.pos[i].y-sc+6*(1-p),p,3*(1-p));});
+  L.rawS.forEach((sp,i)=>{if(t<L.appear[i]||i>=s.n){hide(sp);return;}const p=calm?1:DECEL(prog(t,L.appear[i],MD.medium4));sp.style.color=liveC;sp.style.backgroundImage='';place(sp,s.pos[i].x,s.pos[i].y-sc+6*(1-p),p,3*(1-p));});
   return;}
  const c=t-R,fade=t<P?1:calm?0:1-ACCEL(prog(t,P,C.OUT_D));
  // Reduced motion: his raw words until the cut, then the clean paragraph, with no movement between.
@@ -153,7 +159,7 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=$('p'),C=L.C,R=L.R===null?Infinity:L.
  const grey=EMPH(prog(c,C.X,C.GREY)),subLit=EMPH(prog(c,C.HOLD_END-150,MD.medium2));
  // Once the grey has settled a strike draws across each cut word (250 ms); the cut fades them 240 ms before the motion.
  for(const i of L.drops){const sp=L.rawS[i],st=EMPH(prog(c,C.X+C.GREY,C.STRIKE)),q=ACCEL(prog(c,C.CUT,C.CUT_D));
-  sp.style.backgroundImage=st>0?'linear-gradient(currentColor,currentColor)':'';sp.style.backgroundRepeat='no-repeat';sp.style.backgroundPosition='0 58%';sp.style.backgroundSize=(st*100).toFixed(1)+'% 1.5px';sp.style.color=mixC(1-grey);
+  sp.style.backgroundImage=st>0?'linear-gradient(currentColor,currentColor)':'';sp.style.backgroundRepeat='no-repeat';sp.style.backgroundPosition='0 58%';sp.style.backgroundSize=(st*100).toFixed(1)+'% 1.5px';sp.style.color=mixL(1-grey);
   place(sp,L.rawP[i].x,L.rawP[i].y-sc-5*q,(1-q)*fade,6*q,' scale('+(1-.14*q).toFixed(3)+')');}
  // A word changing lines leaves its old spot with the cut and arrives at its new one over the second half of the motion.
  const p=pp,out_=EMPH(prog(c,C.CUT,C.CUT_D)),inOf=k=>clamp((p-k.inP)/Math.max(.15,1-k.inP));
@@ -164,8 +170,8 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=$('p'),C=L.C,R=L.R===null?Infinity:L.
   const swAt=k.sub?C.SWAP:C.LIT,so=EMPH(prog(c,swAt+100,MD.medium2-100)),si=DECEL(prog(c,swAt,MD.short4));
   const morphQ=k.morph?EMPH(prog(c,C.MOVE_T+C.P02,380)):0;
   if(k.morph&&!k.change){const x=k.from.x+(k.B.x-k.from.x)*p,y=k.from.y+(k.B.y-k.from.y)*p-sc;
-   sp.style.opacity='0';hide(k.subS);k.morph.el.style.color=textC;place(k.morph.el,x,y,fade);morphAt(k.morph,morphQ);continue;}
-  const vis=k.sub?[[sp,1-so,mixC(1-grey)],[k.subS,si,mixC(subLit)]]:[[sp,1,textC]];
+   sp.style.opacity='0';hide(k.subS);k.morph.el.style.color=liveC;place(k.morph.el,x,y,fade);morphAt(k.morph,morphQ);continue;}
+  const vis=k.sub?[[sp,1-so,mixC(1-grey)],[k.subS,si,mixC(subLit)]]:[[sp,1,liveC]];
   if(k.change){const dir=k.B.y<k.from.y?-1:1;
    for(const [s,op,cl] of vis){s.style.color=cl;place(s,k.from.x+dir*10*out_,k.from.y-sc,op*(1-out_)*fade,3*out_);}
    const in_=inOf(k);
@@ -174,3 +180,5 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=$('p'),C=L.C,R=L.R===null?Infinity:L.
   const x=k.from.x+(k.B.x-k.from.x)*p,y=k.from.y+(k.B.y-k.from.y)*p-sc;
   for(const [s,op,cl] of vis){s.style.color=cl;place(s,x,y,op*fade);}}};
 `;
+
+export const ISLAND_SCRIPT = wordsScript("E");
