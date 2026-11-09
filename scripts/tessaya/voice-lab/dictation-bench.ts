@@ -129,7 +129,7 @@ export const scoreOne = (
     if (b[i]!.mark !== "" && b[i]!.mark === a[j]!.mark) punctHit += 1;
     if (b[i]!.cap === a[j]!.cap) capsSame += 1;
   }
-  // Spaced apart still counts ("Venture OS" for VentureOS), as Wispr writes some of his names.
+  // Spaced apart still counts ("Git Hub" for GitHub), as Wispr writes some names.
   const has = (text: string, term: string) =>
     new RegExp(
       String.raw`(?<![\p{L}\p{N}])${[...term].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s?`)}(?![\p{L}\p{N}])`,
