@@ -1,5 +1,5 @@
 import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
-import { providerChangeRefusal } from "@t3tools/baton-shared/providerChange";
+import { providerChangeRefusal, providerIdentity } from "@t3tools/baton-shared/providerChange";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -1130,6 +1130,61 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const providerAdapters = yield* ProviderAdapterRegistryV2;
+  // The driver, or an ACP agent's continuation key; from the thread's provider threads once the instance is gone.
+  const providerIdentityOf = (
+    instanceId: ProviderInstanceId,
+    providerThreads: ReadonlyArray<OrchestrationV2ProviderThread>,
+  ) =>
+    providerAdapters.get(instanceId).pipe(
+      Effect.flatMap((adapter) =>
+        (providerAdapters.getMetadata === undefined
+          ? Effect.succeed(`${adapter.driver}:instance:${instanceId}`)
+          : providerAdapters
+              .getMetadata(instanceId)
+              .pipe(Effect.map((metadata) => metadata.continuationKey))
+        ).pipe(Effect.map((key): string | null => providerIdentity(adapter.driver, key))),
+      ),
+      Effect.orElseSucceed(() => {
+        const driver = providerThreads.find(
+          (thread) => thread.providerInstanceId === instanceId,
+        )?.driver;
+        return driver === undefined
+          ? null
+          : providerIdentity(driver, `${driver}:instance:${instanceId}`);
+      }),
+    );
+  const refuseProviderChange = Effect.fn("Orchestrator.refuseProviderChange")(function* (input: {
+    readonly command: { readonly commandId: CommandId; readonly type: string };
+    readonly currentInstanceId: ProviderInstanceId;
+    readonly targetInstanceId: ProviderInstanceId;
+    readonly providerThreads: ReadonlyArray<OrchestrationV2ProviderThread>;
+    readonly approved: boolean;
+  }) {
+    if (input.targetInstanceId === input.currentInstanceId) return;
+    const refusal = providerChangeRefusal({
+      started: input.providerThreads.length > 0,
+      approved: input.approved,
+      current: {
+        instance: input.currentInstanceId,
+        provider: yield* providerIdentityOf(input.currentInstanceId, input.providerThreads),
+      },
+      target: {
+        instance: input.targetInstanceId,
+        provider: yield* providerIdentityOf(input.targetInstanceId, input.providerThreads),
+      },
+    });
+    if (refusal === null) return;
+    yield* Effect.logWarning("provider-change-blocked", {
+      command: input.command.type,
+      from: input.currentInstanceId,
+      to: input.targetInstanceId,
+    });
+    return yield* new OrchestratorDispatchError({
+      commandId: input.command.commandId,
+      commandType: input.command.type,
+      cause: refusal,
+    });
+  });
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const providerSessions = yield* ProviderSessionManagerV2;
   const providerSwitchService = yield* ProviderSwitchServiceV2;
@@ -3586,6 +3641,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const providerSwitchPlan =
       command.type === "thread.model-selection.set" || command.type === "provider.switch"
         ? yield* Effect.gen(function* () {
+            yield* refuseProviderChange({
+              command,
+              currentInstanceId: thread.providerInstanceId,
+              targetInstanceId: command.modelSelection.instanceId,
+              providerThreads: providerContext!.providerThreads,
+              approved: command.providerChangeApproved === true,
+            });
             yield* providerAdapters.get(command.modelSelection.instanceId).pipe(
               Effect.mapError(
                 (cause) =>
@@ -5873,40 +5935,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: liveRefusal,
       });
     }
-    if (modelSelection.instanceId !== projection.thread.providerInstanceId) {
-      const providerThreads = projection.providerThreads;
-      const driverOf = (instanceId: ProviderInstanceId) =>
-        providerAdapters.get(instanceId).pipe(
-          Effect.map((adapter): string | null => adapter.driver),
-          Effect.orElseSucceed(
-            () =>
-              providerThreads.find((thread) => thread.providerInstanceId === instanceId)?.driver ??
-              null,
-          ),
-        );
-      const targetDriver = yield* driverOf(modelSelection.instanceId);
-      const changeRefusal =
-        targetDriver === null
-          ? null
-          : providerChangeRefusal({
-              started: providerThreads.length > 0,
-              currentDriver: yield* driverOf(projection.thread.providerInstanceId),
-              targetDriver,
-              approved: command.providerChangeApproved === true,
-            });
-      if (changeRefusal !== null) {
-        yield* Effect.logWarning("provider-change-blocked", {
-          threadId: command.threadId,
-          from: projection.thread.providerInstanceId,
-          to: modelSelection.instanceId,
-        });
-        return yield* new OrchestratorDispatchError({
-          commandId: command.commandId,
-          commandType: command.type,
-          cause: changeRefusal,
-        });
-      }
-    }
+    yield* refuseProviderChange({
+      command,
+      currentInstanceId: projection.thread.providerInstanceId,
+      targetInstanceId: modelSelection.instanceId,
+      providerThreads: projection.providerThreads,
+      approved: command.providerChangeApproved === true,
+    });
     let dispatchMode = resolveMessageDispatchIntent(
       projection,
       command.dispatchMode,

@@ -2234,6 +2234,35 @@ describe("orchestration v2 provider switching", () => {
             })
             .pipe(Effect.flip);
           assert.include(String("cause" in refused ? refused.cause : refused), "will not move it");
+          for (const command of [
+            {
+              type: "thread.model-selection.set" as const,
+              commandId: CommandId.make("command:queued-account-switch:select-other-driver"),
+              threadId: queuedThreadId,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+            },
+            {
+              type: "message.dispatch" as const,
+              createdBy: "user" as const,
+              creationSource: "web" as const,
+              commandId: CommandId.make("command:queued-account-switch:unknown-provider"),
+              threadId: queuedThreadId,
+              messageId: MessageId.make("message:queued-account-switch:unknown-provider"),
+              text: "A provider this server does not have",
+              attachments: [],
+              modelSelection: {
+                ...CLAUDE_MODEL_SELECTION,
+                instanceId: ProviderInstanceId.make("gone"),
+              },
+              dispatchMode: { type: "queue_after_active" as const },
+            },
+          ]) {
+            const refusedCommand = yield* orchestrator.dispatch(command).pipe(Effect.flip);
+            assert.include(
+              String("cause" in refusedCommand ? refusedCommand.cause : refusedCommand),
+              "will not move it",
+            );
+          }
           yield* orchestrator.dispatch({
             type: "message.dispatch",
             createdBy: "user",

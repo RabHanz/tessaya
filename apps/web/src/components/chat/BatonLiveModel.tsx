@@ -236,7 +236,7 @@ export function useContinueInNewThread() {
     // On the thread itself, so the choice holds on every device, not only in this composer's draft.
     const set = await setMetadata({
       environmentId: thread.environmentId,
-      input: { threadId: targetThreadId, modelSelection: selection },
+      input: { threadId: targetThreadId, modelSelection: selection, providerChangeApproved: true },
     });
     if (set._tag !== "Success")
       useComposerDraftStore.getState().setModelSelection(target, selection, { explicit: true });

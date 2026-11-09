@@ -1799,7 +1799,7 @@ index fd0dca831e06dc2631771913901aebc90f1b1863..ca3206bb572903486d5efb75011e53b1
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 5c430ef75581a165d94ce16c7369c0245bdef5d8..5271119e0e8eafa2192e91ca2929256ac1190757 100644
+index 5c430ef75581a165d94ce16c7369c0245bdef5d8..a6fa8210135da3efe7d614692a29568bc1835f47 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -1353,6 +1353,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
@@ -1811,7 +1811,18 @@ index 5c430ef75581a165d94ce16c7369c0245bdef5d8..5271119e0e8eafa2192e91ca2929256a
  });
  export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
  
-@@ -3176,6 +3178,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3148,7 +3150,9 @@ export const OrchestrationV2Command = Schema.Union([
+     type: Schema.Literal("thread.model-selection.set"),
+     commandId: CommandId,
+     threadId: ThreadId,
+-    modelSelection: ModelSelection,
++    modelSelection:
++      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+   }),
+   Schema.Struct({
+     type: Schema.Literal("provider-session.detach"),
+@@ -3176,6 +3180,8 @@ export const OrchestrationV2Command = Schema.Union([
      attachments: Schema.Array(ChatAttachment),
      titleSeed: Schema.optional(TrimmedNonEmptyString),
      modelSelection: Schema.optional(ModelSelection),
@@ -1820,6 +1831,17 @@ index 5c430ef75581a165d94ce16c7369c0245bdef5d8..5271119e0e8eafa2192e91ca2929256a
      sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
      restartContinuationOfRunId: Schema.optional(RunId),
      usageLimitContinuationOfRunId: Schema.optional(RunId),
+@@ -3383,7 +3389,9 @@ export const OrchestrationV2Command = Schema.Union([
+     type: Schema.Literal("provider.switch"),
+     commandId: CommandId,
+     threadId: ThreadId,
+-    modelSelection: ModelSelection,
++    modelSelection:
++      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+   }),
+ ]);
+ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
 diff --git a/packages/shared/package.json b/packages/shared/package.json
 index 5d9a87ac7719dbf0e6a24460bdd4a2e8e790c10c..ed8bda7978989717f3ec382d9fb19586212ba9ae 100644
 --- a/packages/shared/package.json

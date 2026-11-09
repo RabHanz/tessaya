@@ -92,6 +92,8 @@ export interface BatonEngineShape {
     readonly tag: string;
     readonly threadId: ThreadId;
     readonly modelSelection: ModelSelection;
+    /** The user chose this provider; without it the orchestrator refuses another one. */
+    readonly approved?: boolean;
   }) => Effect.Effect<void, BatonEngineError>;
   /**
    * Upstream's `thread.model-selection.set`: the next turn starts on this selection. It releases
@@ -371,6 +373,7 @@ export const make = Effect.gen(function* () {
         commandId: yield* commandId(`${input.tag}:switch`),
         threadId: input.threadId,
         modelSelection: input.modelSelection,
+        ...(input.approved === true ? { providerChangeApproved: true } : {}),
       });
     }).pipe(
       Effect.mapError(

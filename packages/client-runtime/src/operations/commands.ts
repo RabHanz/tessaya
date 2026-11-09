@@ -130,6 +130,8 @@ export interface UpdateThreadMetadataInput extends ThreadCommandInput {
   readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecoveryUpdate | null;
   readonly title?: string;
   readonly modelSelection?: ModelSelection;
+  /** The user picked `modelSelection`; another provider is refused without it. */
+  readonly providerChangeApproved?: boolean;
   readonly branch?: string | null;
   readonly worktreePath?: string | null;
   readonly regenerateTitle?: boolean;
@@ -643,6 +645,7 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
         commandId: result === null ? commandId : CommandId.make(`${commandId}:model-selection`),
         threadId: input.threadId,
         modelSelection: input.modelSelection,
+        ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
       });
     }
     return result ?? { sequence: 0 };

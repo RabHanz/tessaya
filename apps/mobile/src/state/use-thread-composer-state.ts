@@ -780,6 +780,7 @@ export function useThreadComposerState(input: {
       attachments,
       context: draft.context,
       modelSelection,
+      ...(draft.modelSelection !== undefined ? { providerChangeApproved: true } : {}),
       runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
       interactionMode: resolveProviderInteractionMode(
         provider,
@@ -904,6 +905,7 @@ export function useThreadComposerState(input: {
     cancelQueuedRunEdit,
     onRemoveQueuedEditAttachment,
     modelSelection,
+    providerChangeApproved: selectedDraft.modelSelection !== undefined,
     pendingHandoff,
     canSwitchThreadProvider,
     runtimeMode,

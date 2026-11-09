@@ -154,7 +154,12 @@ const handoff = Effect.fn("fabric.workSession.handoff")(function* (input: WorkSe
     return yield* refuse(`provider instance ${targetId} is not signed in or available.`);
   }
   yield* engine
-    .switchProvider({ tag: "handoff", threadId, modelSelection: input.modelSelection })
+    .switchProvider({
+      tag: "handoff",
+      threadId,
+      modelSelection: input.modelSelection,
+      approved: true,
+    })
     .pipe(Effect.mapError((error) => refuse(error.detail)));
   if (input.note !== undefined && input.note.trim().length > 0) {
     yield* engine.sendMessage({ tag: "handoff", threadId, text: input.note });

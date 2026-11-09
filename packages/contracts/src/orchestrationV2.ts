@@ -3150,7 +3150,9 @@ export const OrchestrationV2Command = Schema.Union([
     type: Schema.Literal("thread.model-selection.set"),
     commandId: CommandId,
     threadId: ThreadId,
-    modelSelection: ModelSelection,
+    modelSelection:
+      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
+    providerChangeApproved: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-session.detach"),
@@ -3387,7 +3389,9 @@ export const OrchestrationV2Command = Schema.Union([
     type: Schema.Literal("provider.switch"),
     commandId: CommandId,
     threadId: ThreadId,
-    modelSelection: ModelSelection,
+    modelSelection:
+      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
+    providerChangeApproved: Schema.optional(Schema.Boolean),
   }),
 ]);
 export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
