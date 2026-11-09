@@ -8052,7 +8052,7 @@ index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff2
    ]
  }
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..d95786bec1268436873c6330358bec2f3b6792ec 100644
+index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc44911852 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -20,6 +20,8 @@ import {
@@ -8060,7 +8060,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..d95786bec1268436873c6330358bec2f
  } from "react";
  import { isTrailingDoubleClick } from "../Sidebar.logic";
 +import { BatonLiveStatus } from "./BatonLiveStatus";
-+import { displayThreadTitle } from "@t3tools/baton-shared/liveThread";
++import { useDisplayThreadTitle } from "./BatonThreadTitle";
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { toastManager } from "../ui/toast";
@@ -8073,15 +8073,19 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..d95786bec1268436873c6330358bec2f
    activeThreadLinkOrigin,
    isServerThread,
    activeProject,
-@@ -84,6 +86,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -84,6 +86,11 @@ export const ChatHeader = memo(function ChatHeader({
    onOpenProjectSettings,
    onFindInThread,
  }: ChatHeaderProps) {
-+  const activeThreadTitle = displayThreadTitle(activeThreadId, storedThreadTitle);
++  const activeThreadTitle = useDisplayThreadTitle(
++    activeThreadEnvironmentId,
++    activeThreadId,
++    storedThreadTitle,
++  );
    const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
    const activeProjectCwd = activeProject?.workspaceRoot ?? null;
    const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
-@@ -169,7 +172,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -169,7 +176,7 @@ export const ChatHeader = memo(function ChatHeader({
      setRenaming({
        environmentId: activeThreadEnvironmentId,
        threadId: activeThreadId,
@@ -8090,7 +8094,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..d95786bec1268436873c6330358bec2f
      });
    };
    const commitRename = (title: string) => {
-@@ -177,7 +180,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -177,7 +184,7 @@ export const ChatHeader = memo(function ChatHeader({
      if (!readEnvironmentScope(activeThreadEnvironmentId, AuthOrchestrationOperateScope)) return;
      const resolution = resolveRenameCommit({
        title,
@@ -8099,7 +8103,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..d95786bec1268436873c6330358bec2f
      });
      if (resolution.action === "reject-empty") {
        toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
-@@ -430,6 +433,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -430,6 +437,7 @@ export const ChatHeader = memo(function ChatHeader({
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
@@ -8243,7 +8247,7 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
        ) : null}
      </span>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 41cb733daff152035d24c8e88f39e72b2b711816..33cae5c0e9a24c7417a3a62ab05b036dd8217e37 100644
+index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f20b7d47a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -109,6 +109,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
@@ -8251,7 +8255,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..33cae5c0e9a24c7417a3a62ab05b036d
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
 +import { BatonLiveBadge } from "./BatonLiveBadge";
-+import { displayThreadTitle } from "@t3tools/baton-shared/liveThread";
++import { BatonThreadTitleText } from "../chat/BatonThreadTitle";
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
  import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
  import { InlineButton } from "../ui/button";
@@ -8264,16 +8268,20 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..33cae5c0e9a24c7417a3a62ab05b036d
    // "folder" is a one-line row inside a boring sidebar project folder;
    // "folder-multiline" adds the card's branch and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
-@@ -1044,7 +1048,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1044,7 +1048,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        )}
        dir={textDirection(thread.title)}
      >
 -      {thread.title}
-+      {displayThreadTitle(thread.id, thread.title)}
++      <BatonThreadTitleText
++        environmentId={thread.environmentId}
++        threadId={thread.id}
++        title={thread.title}
++      />
      </span>
    );
    const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
-@@ -1175,6 +1179,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1175,6 +1183,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          aria-hidden
          className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
        >
@@ -8281,7 +8289,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..33cae5c0e9a24c7417a3a62ab05b036d
          {remoteMachineIcon}
          <SidebarProviderStack
            thread={thread}
-@@ -1185,6 +1190,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1185,6 +1194,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    );
    const titleLineIcons = metaLineEmpty ? (
      <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
