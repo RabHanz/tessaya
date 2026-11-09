@@ -212,13 +212,14 @@ const readPane = (paneRef: string, lines: number): Effect.Effect<string | null> 
 
 /**
  * The card a waiting session's screen raises (D88): its prompt, or Enter and Esc for a screen Tessaya has no reader
- * for. Null once the pane is back at its input box or cannot be read, so the card raised earlier expires. A session
- * outside Herdr cannot be read or pressed, so its card offers bringing it into Herdr.
+ * for. Null once a read shows the pane back at its input box, so the card raised earlier expires; undefined when the
+ * read failed, which says nothing about the screen, so the card stays. A session outside Herdr cannot be read or
+ * pressed, so its card offers bringing it into Herdr.
  */
 export const waitingPrompt = (
   session: { sessionId: string; herdrPane: string | null },
   screen: string | null,
-): PanePrompt | null =>
+): PanePrompt | null | undefined =>
   session.herdrPane === null
     ? {
         key: `plain:${session.sessionId}`,
@@ -236,7 +237,7 @@ export const waitingPrompt = (
         customIndex: null,
       }
     : screen === null
-      ? null
+      ? undefined
       : parseWaitingScreen(screen);
 
 /**
@@ -1552,6 +1553,7 @@ const make = Effect.gen(function* () {
               session,
               session.herdrPane === null ? null : yield* readPane(session.herdrPane, 80),
             );
+      if (found === undefined) return;
       mirrorLog(`prompt:${session.sessionId}`, {
         event: "prompt",
         sessionId: session.sessionId,

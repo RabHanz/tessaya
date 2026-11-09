@@ -556,10 +556,10 @@ describe("media that only appears in text is not shown", () => {
       "Enter",
       "Esc",
     ]);
-    // Back at its input box, or unreadable: no card, so the one raised earlier expires.
+    // Back at its input box: no card, so the one raised earlier expires. A failed read keeps it.
     const inputBox = "● Done.\n\n────────────\n❯ \n────────────\n  ? for shortcuts";
     expect(waitingPrompt(pane, inputBox)).toBeNull();
-    expect(waitingPrompt(pane, null)).toBeNull();
+    expect(waitingPrompt(pane, null)).toBeUndefined();
   });
 });
 

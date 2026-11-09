@@ -168,7 +168,7 @@ NodeTest.test(
     NodeAssert.deepEqual(
       draft.options.map((o) => [o.label, o.description]),
       [
-        ["Review & send (Enter)", ""],
+        ["Review & send (Enter)", "This may approve or confirm."],
         ["Discard and exit (Esc)", "Warning: this may end the session."],
       ],
     );
@@ -192,6 +192,39 @@ NodeTest.test(
       parseWaitingScreen("● Done.\n\n──────────\n❯ \n──────────\n  ? for shortcuts"),
       null,
     );
+  },
+);
+
+NodeTest.test(
+  "a dialog the readers miss never gets Enter, which would take its highlighted Yes",
+  () => {
+    const rule = "─".repeat(60);
+    const screens = {
+      wrapped: [
+        rule,
+        " Do you want to proceed with",
+        " this command?",
+        "   1. Yes",
+        "   2. No",
+        "",
+      ],
+      scrolled: [
+        "   2. Yes, and don't ask again",
+        " ❯ 3. No",
+        "",
+        " Enter to confirm · Esc to cancel",
+      ],
+    };
+    for (const [name, lines] of Object.entries(screens))
+      NodeAssert.deepEqual(
+        parseWaitingScreen(lines.join("\n")).options.map((o) => o.keys),
+        [["esc"]],
+        name,
+      );
+    // A timer ticking on screen does not make a new card.
+    const at = (s) =>
+      parseWaitingScreen(`Working on it\n✻ Baking… (${s}s · 1.2k tokens)\nPress on`).key;
+    NodeAssert.equal(at(3), at(4));
   },
 );
 

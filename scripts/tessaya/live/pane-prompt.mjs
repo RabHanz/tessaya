@@ -114,8 +114,9 @@ export function parsePanePrompt(screen) {
 }
 
 /**
- * The prompt a waiting session shows: one Tessaya knows, else Enter and Esc over the screen's last lines. Null when
- * the pane is back at its input box or shows nothing, so a card raised from an earlier screen can expire.
+ * The prompt a waiting session shows: one Tessaya knows, else Esc (and Enter only when no option list shows, since
+ * Enter would take a dialog's highlighted "Yes") over the screen's last lines. Null when the pane is back at its input
+ * box or shows nothing, so a card raised from an earlier screen can expire.
  */
 export function parseWaitingScreen(screen) {
   const found = parsePanePrompt(screen);
@@ -126,30 +127,45 @@ export function parseWaitingScreen(screen) {
     .split("\n");
   const details = screenTail(lines.join("\n"), 20);
   if (details === "" || inputBoxAt(lines) >= 0) return null;
+  const note = "Tessaya didn't recognise this screen";
+  const keys = hasOptionList(lines)
+    ? [["Esc", "esc"]]
+    : [
+        ["Enter", "enter"],
+        ["Esc", "esc"],
+      ];
   return withRef({
-    question: "Claude Code is waiting on a screen Tessaya didn't recognise. Press a key?",
+    question: `Claude Code is waiting on a screen Tessaya didn't recognise. Press ${keys.length > 1 ? "a key" : "Esc to cancel"}?`,
     header: "In the terminal",
     context: "",
     details,
-    options: [
-      {
-        index: 0,
-        label: "Enter",
-        description: "Tessaya didn't recognise this screen",
-        keys: ["enter"],
-      },
-      {
-        index: 1,
-        label: "Esc",
-        description: "Tessaya didn't recognise this screen",
-        keys: ["esc"],
-      },
-    ],
+    options: keys.map(([label, key], index) => ({
+      index,
+      label,
+      description: key === "enter" ? `${note}. This may approve or confirm.` : note,
+      keys: [key],
+    })),
     selected: 0,
     customIndex: null,
-    key: `unknown\u0000${details}`,
+    key: `unknown\u0000${steadyKey(details)}`,
   });
 }
+
+/** An option list among the last lines (numbered, or a highlighted `❯` line): Enter would choose its highlighted one. */
+const hasOptionList = (lines) =>
+  lines
+    .slice(-20)
+    .some(
+      (l, i, tail) => NUMBERED.test(l) || (/^\s*❯\s+\S/.test(l) && !RULE.test(tail[i - 1] ?? "")),
+    );
+
+/** A screen's text without what changes on every redraw (spinners, timers, token counts), so its card does not flap. */
+const steadyKey = (text) =>
+  text
+    .split("\n")
+    .filter((l) => !/esc to interrupt|^\s*[✻✶✢✳✽✺✷✸✹·*]\s/i.test(l))
+    .join("\n")
+    .replace(/\d+/g, "#");
 
 /** The line of Claude Code's input box (a rule, then `❯`/`>`, a rule below) among the last lines, or -1. */
 function inputBoxAt(lines) {
@@ -194,12 +210,18 @@ function keyHintPrompt(screen) {
       .split(/\s+·\s+/)
       .filter((p) => !/^[↑↓←→/]+\s+to\s/.test(p));
     const read = parts.map(hintOf);
-    if (parts.length > 0 && read.every((h) => h !== null)) {
+    // A lone "2. No" is an option list's line, not a hint line.
+    const lone = parts.length === 1 && NUMBERED_HINT.test(parts[0]);
+    if (parts.length > 0 && !lone && read.every((h) => h !== null)) {
       hints = { line: i, read };
       break;
     }
   }
   if (hints === null || inputBoxAt(lines) > hints.line) return null;
+  // Over an option list, Enter takes its highlighted choice (a dialog's "Yes"): never offered there.
+  if (hasOptionList(lines.slice(0, hints.line)))
+    hints.read = hints.read.filter((h) => !h.keys.includes("enter"));
+  if (hints.read.length === 0) return null;
   const above = [];
   for (let i = hints.line - 1; i >= 0 && above.length < 4; i -= 1) {
     const text = clean(lines[i]);
@@ -216,12 +238,19 @@ function keyHintPrompt(screen) {
     options: hints.read.map((h, index) => ({
       index,
       label: `${h.action[0].toUpperCase()}${h.action.slice(1)} (${h.key})`,
-      description: ENDS_SESSION.test(h.action) ? "Warning: this may end the session." : "",
+      description: [
+        ENDS_SESSION.test(h.action) ? "Warning: this may end the session." : "",
+        h.keys.includes("enter") || /\bconfirm/i.test(h.action)
+          ? "This may approve or confirm."
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
       keys: h.keys,
     })),
     selected: 0,
     customIndex: null,
-    key: `hints\u0000${details}`,
+    key: `hints\u0000${steadyKey(details)}`,
   });
 }
 
