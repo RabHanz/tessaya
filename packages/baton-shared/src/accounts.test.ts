@@ -2,7 +2,7 @@ import type { BatonAccount } from "@t3tools/baton-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveSwitchRefusal, oneEntryPerProvider, unifyAccounts } from "./accounts.ts";
+import { liveSwitchRefusal, oneEntryPerProvider, pickModelFor, unifyAccounts } from "./accounts.ts";
 
 const provider = (
   instanceId: string,
@@ -168,5 +168,18 @@ describe("two people's logins", () => {
     expect(accounts[0]?.liveSwitchKey).toBeNull();
     expect(liveSwitchRefusal(accounts, "6")).toBeNull();
     expect(liveSwitchRefusal(accounts, "7")).toContain("browser");
+  });
+});
+
+describe("pickModelFor", () => {
+  it("keeps the thread's model on its own provider and takes the default on another", () => {
+    const codex = {
+      driverKind: "codex",
+      models: [{ slug: "gpt-a" }, { slug: "gpt-b", isDefault: true }],
+    };
+    expect(pickModelFor({ ...codex, driverKind: "claudeAgent" }, "claudeAgent", "opus")).toBe(
+      "opus",
+    );
+    expect(pickModelFor(codex, "claudeAgent", "opus")).toBe("gpt-b");
   });
 });

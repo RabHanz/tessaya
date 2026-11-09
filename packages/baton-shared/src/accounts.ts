@@ -240,3 +240,20 @@ export const liveSwitchRefusal = (
   accounts.some((account) => account.liveSwitchKey === key)
     ? null
     : "That account signs in through a browser, which cannot be moved into a running session. Add it as a setup token to switch to it live.";
+
+/** The model an account pick lands on: the thread's own on the same provider, else the target's default. */
+export const pickModelFor = (
+  target: {
+    readonly driverKind: string;
+    readonly models: ReadonlyArray<{
+      readonly slug: string;
+      readonly isDefault?: boolean | undefined;
+    }>;
+  },
+  threadDriver: string,
+  threadModel: string,
+): string =>
+  target.driverKind === threadDriver
+    ? threadModel
+    : ((target.models.find((model) => model.isDefault === true) ?? target.models[0])?.slug ??
+      threadModel);

@@ -56,7 +56,13 @@ export function useLiveState(threadRef: ScopedThreadRef | null) {
       refresh,
     );
   };
-  return { effort: state?.effort ?? null, queued: state?.queued ?? null, refresh, cancel };
+  return {
+    effort: state?.effort ?? null,
+    queued: state?.queued ?? null,
+    failure: state?.failure ?? null,
+    refresh,
+    cancel,
+  };
 }
 
 /** The login each live session runs as, from the session catalog the header's binding reads (by session id). */

@@ -392,8 +392,10 @@ export const makeHandlers = Effect.gen(function* () {
           const effort = yield* liveEffort(input.sessionId, (model) =>
             defaultEffortOf(providers, model),
           );
-          const queued = yield* (yield* ThreadAccountMoves).liveQueued(input.sessionId);
-          return { effort, queued };
+          const { queued, failure } = yield* (yield* ThreadAccountMoves).liveQueued(
+            input.sessionId,
+          );
+          return { effort, queued, failure };
         }),
       ),
     [BATON_LIVE_WS_METHODS.liveCancelQueued]: (input) =>

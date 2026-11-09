@@ -176,12 +176,20 @@ const readText = (path: string): string | null => {
   }
 };
 
+/** The last TAIL_BYTES of a transcript, read without loading the whole file (they run to hundreds of MB). */
 const readTail = (path: string): string => {
+  let fd: number | null = null;
   try {
-    const bytes = NodeFS.readFileSync(path);
-    return bytes.subarray(Math.max(0, bytes.length - TAIL_BYTES)).toString("utf8");
+    fd = NodeFS.openSync(path, "r");
+    const size = NodeFS.fstatSync(fd).size;
+    const length = Math.min(size, TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    NodeFS.readSync(fd, buffer, 0, length, size - length);
+    return buffer.toString("utf8");
   } catch {
     return "";
+  } finally {
+    if (fd !== null) NodeFS.closeSync(fd);
   }
 };
 
@@ -405,7 +413,8 @@ export const makeApplyLive = Effect.gen(function* () {
           },
           claudeModels,
         );
-        if (result.state === "busy") return "busy" as const;
+        if (result.state === "busy") return { state: "busy" as const };
+        if (result.state !== "applied") return { state: "failed" as const, detail: result.detail };
       }
       if (change.accountKey !== undefined) {
         const accounts = yield* pool.read(ProviderDriverKind.make("claudeAgent")).pipe(
@@ -420,8 +429,10 @@ export const makeApplyLive = Effect.gen(function* () {
           },
           accounts,
         );
-        if (result.state === "busy") return "busy" as const;
+        if (result.state === "busy") return { state: "busy" as const };
+        if (result.state !== "switched" && result.state !== "unchanged")
+          return { state: "failed" as const, detail: result.detail };
       }
-      return "done" as const;
+      return { state: "done" as const };
     });
 });

@@ -128,6 +128,8 @@ export const BatonLiveStateResult = Schema.Struct({
   /** The session's own effort: its last /effort, its config dir's setting, else its model's default. */
   effort: Schema.NullOr(Schema.String),
   queued: Schema.NullOr(BatonLiveQueued),
+  /** Why the last queued change was not applied, until the next one is queued. */
+  failure: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonLiveStateResult = typeof BatonLiveStateResult.Type;
 export const BatonLiveCancelQueuedResult = Schema.Struct({ cancelled: Schema.Boolean });
