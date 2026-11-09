@@ -104,6 +104,9 @@ struct Config {
     /// handed back, not run through the local model.
     #[serde(default)]
     external: Option<PathBuf>,
+    /// He keeps the audio of dictations: each recording is also written as a WAV into this private folder for History.
+    #[serde(default, rename = "keepAudio")]
+    keep_audio: Option<PathBuf>,
     /// The desktop says this machine has the memory to keep the dictation model loaded between dictations.
     #[serde(default, rename = "keepLoaded")]
     keep_loaded: bool,
@@ -116,6 +119,8 @@ enum Msg {
     /// A fake microphone ran out of file, which stands in for releasing the key.
     FakeEnded,
     Finished { id: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
+    /// A dictation paste's checks are back from their worker (`paste_checked`).
+    PasteChecked { id: Option<u64>, text: String, why: &'static str, started: Instant },
 }
 
 struct Done {
@@ -132,6 +137,8 @@ struct Done {
     model: Option<String>,
     /// A dictation's stage times from its key press, for the desktop's `dictation_timing`; None for a clip.
     timing: Option<Value>,
+    /// The recording as a WAV for History, when he keeps the audio of dictations.
+    audio: Option<String>,
 }
 
 struct Job {
@@ -246,7 +253,7 @@ enum Work {
     Clip(Job),
     /// Load the model now, so the first real phrase does not wait behind it.
     Load { id: Option<u64>, model: PathBuf },
-    Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf> },
+    Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf>, keep: Option<PathBuf> },
     Audio(Vec<f32>),
     End { target: Option<isize>, released: Instant, timing: Value },
     Abort,
@@ -325,12 +332,15 @@ struct Live {
     failed: Option<String>,
     /// Kept whole for the desktop's recogniser in this folder; nothing is decoded here.
     external: Option<PathBuf>,
+    /// He keeps the audio of dictations: the recording is also written here for History, beside its text.
+    keep: Option<PathBuf>,
 }
 
 impl Live {
     fn new(language: Option<String>, load_ms: u64, failed: Option<String>) -> Self {
         Self {
             external: None,
+            keep: None,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -373,6 +383,7 @@ impl Live {
                 wav: Some(wav),
                 model: None,
                 timing: None,
+                audio: None,
             });
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
@@ -386,6 +397,7 @@ impl Live {
         } else {
             self.text.join(" ")
         };
+        let audio = self.keep.as_deref().and_then(|dir| write_wav(dir, &self.heard).ok());
         Ok(Done {
             text,
             audio_ms,
@@ -396,6 +408,7 @@ impl Live {
             wav: None,
             model: None,
             timing: None,
+            audio,
         })
     }
 }
@@ -534,6 +547,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                         wav: None,
                         model,
                         timing: None,
+                        audio: None,
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
@@ -552,18 +566,19 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
             Ok(Work::Begin { external: Some(dir), language, .. }) => {
                 live = Some(Live { external: Some(dir), ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { model, language, external: None }) => {
+            Ok(Work::Begin { model, language, external: None, keep }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
                 }
                 loaded_at = Instant::now();
-                live = Some(match ensure_loaded(&mut loaded, &model) {
+                let fresh = match ensure_loaded(&mut loaded, &model) {
                     Ok(load_ms) => Live::new(language, load_ms, None),
                     Err(e) => {
                         loaded = None;
                         Live::new(language, 0, Some(e))
                     }
-                });
+                };
+                live = Some(Live { keep, ..fresh });
             }
             Ok(Work::Audio(pcm)) => {
                 loaded_at = Instant::now();
@@ -905,6 +920,43 @@ fn focus_window_event(id: Option<u64>, window: isize, title: Option<&str>) -> Va
     v
 }
 
+/// The desktop waits this long for a checked paste (`pasteChecked`); a verdict after it is never pasted.
+const PASTE_DEADLINE: Duration = Duration::from_millis(1_500);
+
+/// Which step stops a dictation paste, in the order they are checked.
+fn paste_verdict(focused: bool, same_window: bool, same_title: bool, secret: bool) -> &'static str {
+    if !focused {
+        "gone"
+    } else if !same_window || !same_title {
+        "changed"
+    } else if secret {
+        "secret"
+    } else {
+        "ok"
+    }
+}
+
+#[cfg(windows)]
+fn focus_for_paste(window: isize) -> Result<(), String> {
+    capture::focus_window(window).map(drop)
+}
+
+/// Bringing a window forward is the Windows helper's; elsewhere the words go to the clipboard, as before.
+#[cfg(not(windows))]
+fn focus_for_paste(_window: isize) -> Result<(), String> {
+    Err("not on this platform yet".to_string())
+}
+
+#[cfg(windows)]
+fn focused_is_secret() -> bool {
+    uia::focused_is_secret()
+}
+
+#[cfg(not(windows))]
+fn focused_is_secret() -> bool {
+    false
+}
+
 #[cfg(not(windows))]
 fn focus_window_event(id: Option<u64>, _window: isize, _title: Option<&str>) -> Value {
     json!({"ev": "focused", "id": id, "error": "not on this platform yet"})
@@ -1103,7 +1155,12 @@ fn serve() {
             emit(json!({"ev": "error", "message": "no model configured"}));
             return;
         };
-        let _ = job_tx.send(Work::Begin { model, language: config.language.clone(), external: config.external.clone() });
+        let _ = job_tx.send(Work::Begin {
+            model,
+            language: config.language.clone(),
+            external: config.external.clone(),
+            keep: config.keep_audio.clone(),
+        });
         let samples = Arc::new(AtomicUsize::new(0));
         let first_audio = Arc::new(OnceLock::new());
         let opened = match fake_mic() {
@@ -1380,6 +1437,24 @@ fn serve() {
                             emit(json!({"ev": "pasted", "id": id, "error": result.err(), "pasteMs": paste_ms}));
                         }
                     }
+                    // The dictation paste in one call: bring its window forward, check it is the same window and page and
+                    // not a password box, then paste. The checks run on a worker (focusing can stall for seconds); only the
+                    // paste, which needs enigo, comes back to this loop, and only inside the deadline the desktop waits.
+                    "paste_checked" => {
+                        let id = value["id"].as_u64();
+                        let text = value["text"].as_str().unwrap_or("").to_string();
+                        let target = value["target"].as_i64().unwrap_or(0) as isize;
+                        let title = value["title"].as_str().unwrap_or("").to_string();
+                        let started = Instant::now();
+                        let tx = tx.clone();
+                        thread::spawn(move || {
+                            let focused = focus_for_paste(target).is_ok();
+                            let now = foreground_window();
+                            let title_now = window_app(target).1;
+                            let why = paste_verdict(focused, now == target, title_now == title, focused_is_secret());
+                            let _ = tx.send(Msg::PasteChecked { id, text, why, started });
+                        });
+                    }
                     "quit" => return,
                     _ => {}
                 }
@@ -1427,6 +1502,21 @@ fn serve() {
             }
             Msg::Key { hold: false, pressed: false } => toggle_down = false,
             Msg::FakeEnded => finish(&mut recording, &job_tx, true),
+            Msg::PasteChecked { id, text, why, started } => {
+                // Past the deadline the desktop has kept the words already; pasting them now would type them twice.
+                let why = if why == "ok" && started.elapsed() >= PASTE_DEADLINE { "late" } else { why };
+                let mut line = json!({"ev": "paste_checked", "id": id, "why": why});
+                if why == "ok" {
+                    if let Err(e) = paste_text(&mut enigo, &text, config.paste) {
+                        line = json!({"ev": "paste_checked", "id": id, "why": "refused", "error": e});
+                    }
+                }
+                line["pasteMs"] = json!(started.elapsed().as_millis() as u64);
+                if why == "secret" {
+                    line["secret"] = json!(true);
+                }
+                emit(line);
+            }
             Msg::MicFailed(message) => {
                 recording = None;
                 let _ = job_tx.send(Work::Abort);
@@ -1449,7 +1539,7 @@ fn serve() {
                         "inferMs": done.infer_ms, "loadMs": done.load_ms, "pasteError": pasted_error,
                         "dictated": dictated, "pasted": paste, "target": target,
                         "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav, "model": done.model,
-                        "timing": done.timing, "pasteMs": paste_ms,
+                        "timing": done.timing, "pasteMs": paste_ms, "audio": done.audio,
                     }));
                 }
                 Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": dictated})),
@@ -1620,6 +1710,22 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_paste_stops_at_the_first_failed_check() {
+        let rows = [
+            ((false, true, true, false), "gone"),
+            ((false, false, false, true), "gone"),
+            ((true, false, true, false), "changed"),
+            ((true, true, false, false), "changed"),
+            ((true, false, false, true), "changed"),
+            ((true, true, true, true), "secret"),
+            ((true, true, true, false), "ok"),
+        ];
+        for ((focused, same_window, same_title, secret), want) in rows {
+            assert_eq!(paste_verdict(focused, same_window, same_title, secret), want);
+        }
+    }
 
     #[test]
     fn the_wake_path_and_dictation_keep_their_own_models_and_never_load_one_twice() {

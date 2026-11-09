@@ -39,6 +39,8 @@ export interface DictationConfig {
   readonly latch?: boolean;
   /** The input-bindings file the sidecar's mouse hook reads; null or empty means no hook. */
   readonly mouse?: string | null;
+  /** He keeps the audio of dictations: each recording is also written here as a WAV for History, then removed. */
+  readonly keepAudio?: string | null;
   /** Keep the speech model loaded between dictations (about 1.2 GB for v3); off on a machine with under 10 GB. */
   readonly keepLoaded?: boolean;
 }
@@ -202,6 +204,10 @@ export type DictationEvent =
       /** How long the sidecar's own paste took (cleanup off); null when it did not paste. */
       readonly pasteMs?: number | null;
       readonly timing?: SidecarTiming | null;
+      /** The recording for History when he keeps the audio of dictations; the desktop removes it. */
+      readonly audio?: string | null;
+      /** Set by the desktop: a cloud dictation's recording, read before the cloud heard it, for History. */
+      readonly keptPcm?: Int16Array;
     };
 
 /** A live dictation's stage times from its key press (`dictationTiming`). */
@@ -211,6 +217,13 @@ export interface SidecarTiming {
   readonly firstAudioMs: number | null;
   readonly releasedMs: number;
 }
+
+export type PasteVerdict = "ok" | "gone" | "changed" | "secret" | "refused";
+/** The helper checks and pastes within this (its own deadline is the same); after it nothing is pasted. */
+export const PASTE_CHECK_MS = 1_500;
+/** What the helper said stopped a checked paste; anything else, a late answer included, is "refused". */
+export const pasteVerdictOf = (why: unknown): PasteVerdict =>
+  why === "ok" || why === "gone" || why === "changed" || why === "secret" ? why : "refused";
 
 export interface SidecarDevice {
   readonly name: string;
@@ -236,6 +249,11 @@ export interface DictationSidecar {
   readonly paste: (text: string) => Promise<void>;
   /** False when that window is no longer the focused one, and nothing was pasted. */
   readonly pasteInto: (text: string, target: number) => Promise<boolean>;
+  /**
+   * A dictation's paste in one call: that window brought forward, checked to be the same page and not a password box,
+   * then pasted. Past `PASTE_CHECK_MS` (or from a helper that does not know the call) it is "refused", nothing pasted.
+   */
+  readonly pasteChecked: (text: string, target: number, title: string) => Promise<PasteVerdict>;
   readonly foreground: () => Promise<FocusedApp>;
   /** The top-level window under a physical point. */
   readonly windowAt: (point: {
@@ -454,6 +472,9 @@ export const startDictationSidecar = (input: {
           error === undefined ? { value: undefined } : { error },
         );
       }
+      if (event["ev"] === "paste_checked") {
+        return settle(event["id"] as number, { value: pasteVerdictOf(event["why"]) });
+      }
       if (event["ev"] === "caret_at") {
         return settle(event["id"] as number, { value: caretGeometry(event) });
       }
@@ -561,6 +582,15 @@ export const startDictationSidecar = (input: {
     preload: () => call<number>({ cmd: "load" }, true),
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
+    pasteChecked: (text, target, title) =>
+      Promise.race([
+        call<PasteVerdict>({ cmd: "paste_checked", text, target, title }).catch(
+          () => "refused" as const,
+        ),
+        new Promise<PasteVerdict>((resolve) =>
+          setTimeout(() => resolve("refused"), PASTE_CHECK_MS),
+        ),
+      ]),
     foreground: () => call<FocusedApp>({ cmd: "foreground" }),
     windowAt: ({ x, y }) =>
       call<{ window: number; label: string } | null>({ cmd: "window_at", x, y }),
