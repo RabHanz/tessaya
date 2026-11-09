@@ -74,6 +74,7 @@ import * as DateTime from "effect/DateTime";
 import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 
@@ -106,6 +107,8 @@ import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
 import { stateFile } from "@t3tools/baton-shared/stateDir";
+import { wentIdle } from "@t3tools/baton-shared/liveModel";
+import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);
 const DRIVER = ProviderDriverKind.make("acpRegistry");
@@ -799,6 +802,8 @@ interface Follow {
   turn: boolean;
   /** What the thread last showed: working or not (null until read). */
   shown: boolean | null;
+  /** The session's status at the last tick, to see it go idle without a T3 turn. */
+  lastStatus?: string | null;
   checkedAt: number;
   /** The terminal prompt shown in T3 as a question (D88), until it leaves the screen. */
   ask: {
@@ -898,6 +903,7 @@ export const askRunId = (
 
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
+  const moves = yield* Effect.serviceOption(ThreadAccountMoves);
   const weave = yield* BatonWeaveService;
   const settings = yield* ServerSettingsService;
   const { attachmentsDir, stateDir, logsDir } = yield* ServerConfig.ServerConfig;
@@ -1435,6 +1441,11 @@ const make = Effect.gen(function* () {
    */
   const working = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
+      // A queued model, effort or account change goes in when the session stops working, turn or not.
+      const before = follow.lastStatus;
+      follow.lastStatus = session.status;
+      if (wentIdle(before, session.status) && Option.isSome(moves))
+        yield* moves.value.settleLive(session.sessionId);
       // A question waiting on its answer is part of the turn, not the end of it (D88).
       const busy = session.status === "busy" || session.status === "waiting";
       if (busy) follow.idleSince = null;

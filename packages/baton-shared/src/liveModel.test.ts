@@ -5,6 +5,7 @@ import {
   modelCommand,
   readBack,
   sessionEffort,
+  wentIdle,
   withRealEffort,
   setLiveModel,
   setModelResumingStopped,
@@ -84,6 +85,17 @@ describe("reading the session's answer back", () => {
     expect(withRealEffort(models, [{ id: "effort", value: "max" }], "high").options).toEqual([
       { id: "effort", value: "max" },
     ]);
+  });
+});
+
+describe("wentIdle", () => {
+  it("fires once when a working session reads idle, typed in the terminal or not", () => {
+    expect(wentIdle("busy", "idle")).toBe(true);
+    expect(wentIdle("waiting", "idle")).toBe(true);
+    expect(wentIdle("idle", "idle")).toBe(false);
+    expect(wentIdle("busy", "busy")).toBe(false);
+    expect(wentIdle(undefined, "idle")).toBe(false);
+    expect(wentIdle("busy", null)).toBe(false);
   });
 });
 
