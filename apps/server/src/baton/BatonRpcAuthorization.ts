@@ -34,6 +34,7 @@ import {
   BatonRpcScopeAuthorization,
   type AuthEnvironmentScope,
   type BatonRpcGroup,
+  BATON_METHOD_OF,
 } from "@t3tools/baton-contracts";
 import { authScopeRequiredResponse, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -45,7 +46,7 @@ import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 
-type BatonRpcMethod = RpcGroup.Rpcs<typeof BatonRpcGroup>["_tag"];
+type BatonRpcMethod = Exclude<RpcGroup.Rpcs<typeof BatonRpcGroup>["_tag"], `tessaya.${string}`>;
 
 /** Every Baton method, or this does not compile. */
 export const BATON_RPC_REQUIRED_SCOPES = {
@@ -286,10 +287,12 @@ const PHONE_CLIENT_OPS: ReadonlySet<string> = new Set(["ask", "askGet"]);
 
 /** The scope a caller lacks for this method and payload, or null when it may call it. */
 export const missingBatonScope = (
-  tag: string,
+  calledAs: string,
   scopes: ReadonlyArray<AuthEnvironmentScope>,
   payload?: unknown,
 ): AuthEnvironmentScope | null => {
+  // A tessaya.* alias is judged exactly as the method it stands for.
+  const tag = BATON_METHOD_OF.get(calledAs) ?? calledAs;
   const required = (
     BATON_RPC_REQUIRED_SCOPES as Record<
       string,
@@ -349,13 +352,16 @@ export const HIS_OWN_METHODS: ReadonlySet<string> = new Set([
 export const refusedAsDevice = (
   tag: string,
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
-): boolean => HIS_OWN_METHODS.has(tag) && askSourceOf(session) !== "phone";
+): boolean =>
+  HIS_OWN_METHODS.has(BATON_METHOD_OF.get(tag) ?? tag) && askSourceOf(session) !== "phone";
 
 export const layer = (
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject" | "sessionId">,
 ) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
-    if (refusedAsDevice(rpc._tag, session)) {
+    // A tessaya.* alias passes every check as the method it stands for.
+    const tag = BATON_METHOD_OF.get(rpc._tag) ?? rpc._tag;
+    if (refusedAsDevice(tag, session)) {
       return Effect.fail(
         new EnvironmentAuthorizationError({
           message:
@@ -364,7 +370,7 @@ export const layer = (
         }),
       );
     }
-    const missing = missingBatonScope(rpc._tag, session.scopes, payload);
+    const missing = missingBatonScope(tag, session.scopes, payload);
     return missing === null
       ? effect.pipe(
           Effect.provideService(AskSource, askSourceOf(session)),

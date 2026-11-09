@@ -109,7 +109,7 @@ import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts
 import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
 import { detectBrains } from "./brainDetect.ts";
 import { textIsFromConversation, type ConversationRoute } from "@t3tools/baton-shared/conversation";
-import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
+import { BATON_TOOL_PREFIX, isOwnTool } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import {
   createAgentGate,
@@ -2660,8 +2660,7 @@ export const startScreenCompanion = (input: {
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
           gate: stopsOnCutIn(
-            async (call) =>
-              call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call),
+            async (call) => (isOwnTool(call.tool) ? { allow: true as const } : agentGate(call)),
             cutIns.since,
           ),
           mcp: { url: mcp.url, token: mcp.token },
@@ -2702,8 +2701,7 @@ export const startScreenCompanion = (input: {
       env: claudeEnv(),
       platform: input.platform,
       timeoutMs: OPERATOR_TURN_MS,
-      gate: async (call) =>
-        call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : slot.gate(call),
+      gate: async (call) => (isOwnTool(call.tool) ? { allow: true as const } : slot.gate(call)),
       mcp: { url: mcp.url, token: mcp.token },
       chrome: settings.browserChrome,
       onTool: (call) => turns.current().tools.push(call.tool),

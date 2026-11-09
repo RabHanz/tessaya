@@ -91,8 +91,11 @@ export interface JudgeContext {
 
 /** Baton's own tools, served to the one assistant (D143). Claude names them `mcp__baton__<name>`. */
 export const BATON_TOOL_PREFIX = "mcp__baton__";
-export const batonToolName = (tool: string): string =>
-  tool.startsWith(BATON_TOOL_PREFIX) ? tool.slice(BATON_TOOL_PREFIX.length) : tool;
+// Rename R1: the server is still registered as baton, and the next build's tessaya name is read as the same tools.
+const OWN_TOOL_PREFIXES = [BATON_TOOL_PREFIX, "mcp__tessaya__"];
+const ownPrefix = (tool: string) => OWN_TOOL_PREFIXES.find((prefix) => tool.startsWith(prefix));
+export const isOwnTool = (tool: string): boolean => ownPrefix(tool) !== undefined;
+export const batonToolName = (tool: string): string => tool.slice(ownPrefix(tool)?.length ?? 0);
 
 /** Look at state, or reversible and local: nothing leaves, nothing is changed. */
 const BATON_QUIET = new Set([
@@ -474,8 +477,7 @@ export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdic
       verdict: "ask",
       why: "It would drive an app through a command; the hands tools (ui_tree, click_element, type_text, press_keys) do that without one.",
     };
-  if (baton === "act_batch" && call.tool.startsWith(BATON_TOOL_PREFIX))
-    return judgeBatch(call, context);
+  if (baton === "act_batch" && isOwnTool(call.tool)) return judgeBatch(call, context);
   if (isChromeTool(call.tool)) {
     return judgeChrome(call.tool, call.input, {
       tainted: context.tainted,

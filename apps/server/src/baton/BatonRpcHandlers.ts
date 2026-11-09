@@ -36,6 +36,8 @@ import {
   ProviderDriverKind,
   WorkSessionHandoffRefusedError,
   type WorkSessionHandoffInput,
+  tessayaSpelling,
+  type TessayaSpelling,
 } from "@t3tools/baton-contracts";
 import { fleetForOutside } from "@t3tools/baton-shared/fleetForOutside";
 import { batonProjectKey, handoffTarget } from "@t3tools/baton-shared/jobPlacement";
@@ -767,7 +769,23 @@ export const makeHandlers = Effect.gen(function* () {
       context === null
         ? Stream.die(unavailable())
         : workSessionStream(Context.get(context, WorkSessionService)),
-  } satisfies RpcGroup.HandlersFrom<RpcGroup.Rpcs<typeof BatonRpcGroup>>;
+  } satisfies RpcGroup.HandlersFrom<LegacyRpcs>;
 });
 
-export const make = Effect.flatMap(makeHandlers, (handlers) => BatonRpcGroup.toHandlers(handlers));
+type LegacyRpcs = Exclude<
+  RpcGroup.Rpcs<typeof BatonRpcGroup>,
+  { readonly _tag: `tessaya.${string}` }
+>;
+
+// Rename R1: each tessaya.* alias runs its old-named handler.
+const withTessayaAliases = <H extends RpcGroup.HandlersFrom<LegacyRpcs>>(handlers: H) =>
+  ({
+    ...handlers,
+    ...Object.fromEntries(
+      Object.entries(handlers).map(([tag, handler]) => [tessayaSpelling(tag), handler]),
+    ),
+  }) as H & { readonly [K in keyof H & string as TessayaSpelling<K>]: H[K] };
+
+export const make = Effect.flatMap(makeHandlers, (handlers) =>
+  BatonRpcGroup.toHandlers(withTessayaAliases(handlers)),
+);

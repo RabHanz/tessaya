@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "@t3tools/contracts";
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
+import { alsoReads } from "./renamed.ts";
 
 /**
  * The accounts one config directory can run as (§6.1, corrected).
@@ -90,7 +91,10 @@ export type BatonAccount = typeof BatonAccount.Type;
 
 /** Where the pool comes from, so a surface can say what it is driving. */
 // Legacy name (D71): "fabric" is a stored source value, so it is kept.
-export const BatonAccountPoolSource = Schema.Literals(["cswap", "fabric", "instances"]);
+export const BatonAccountPoolSource = Schema.Union([
+  Schema.Literals(["cswap", "instances"]),
+  alsoReads("fabric", "tessaya"),
+]);
 export type BatonAccountPoolSource = typeof BatonAccountPoolSource.Type;
 
 export const BatonAccountPool = Schema.Struct({

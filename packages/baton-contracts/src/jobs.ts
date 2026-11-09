@@ -16,6 +16,7 @@ import {
 
 import { BatonSessionState } from "./sessionState.ts";
 import { WorkSessionId } from "./workSession.ts";
+import { alsoReads } from "./renamed.ts";
 
 export const JOB_GROUPS = ["running", "needs_you", "done", "failed"] as const;
 export const BatonJobGroup = Schema.Literals(JOB_GROUPS);
@@ -88,7 +89,7 @@ export type BatonJobPhase = typeof BatonJobPhase.Type;
 
 /** Every word he or Baton added to the job's context after it began: who said what, when, and how. */
 export const BatonJobRevision = Schema.Struct({
-  by: Schema.Literals(["him", "baton"]),
+  by: Schema.Union([Schema.Literal("him"), alsoReads("baton", "tessaya")]),
   at: IsoDateTime,
   via: Schema.Literals(["voice", "text", "thread"]),
   text: TrimmedNonEmptyString,
