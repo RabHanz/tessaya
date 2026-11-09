@@ -47,6 +47,8 @@ const lay=(words,width)=>measure(words,width).map(s=>({x:s.offsetLeft,y:s.offset
 const layLine=words=>measure(words,null).map(s=>s.offsetLeft);
 const oneLine=words=>{measure(words,null);return mE.offsetWidth;};
 const linesOf=pos=>pos.length?Math.round(pos[pos.length-1].y/LINE)+1:0;
+// The lines the window has room for (a short screen gives the island less).
+const roomLines=()=>Math.max(1,Math.floor((innerHeight-28-PH-PAD-6)/LINE));
 const hOf=lines=>lines>0?Math.min(ALL_LINES,lines)*LINE+PAD:0;
 const wOf=t=>Math.max(PBASE,t+32);
 const mk=t=>{const s=document.createElement('span');s.textContent=t;vp.appendChild(s);return s;};
@@ -73,7 +75,7 @@ const island={
  words(text){if(!I||I.R!==null)return;setWords(text.split(/\\s+/).filter(Boolean),performance.now());},
  // His ✓ (or the key's release): the pill opens to every line and the view scrolls back to the top, 0.75 s.
  release(){if(!I||I.R!==null)return;const now=performance.now();I.R=now;I.rawLines=I.steps.length?I.steps[I.steps.length-1].lines:0;
-  ALL_LINES=Math.max(7,Math.min(12,I.rawLines));I.HhLive=I.Hh.slice();I.ScLive=I.Sc.slice();kickI(now+EXPAND_MS+100);},
+  ALL_LINES=Math.min(roomLines(),Math.max(7,Math.min(12,I.rawLines)));I.HhLive=I.Hh.slice();I.ScLive=I.Sc.slice();kickI(now+EXPAND_MS+100);},
  // The pasted text: the cleanup plays from here. Returns how long it will be on screen, in ms (0: nothing to show).
  cleanup(rawText,cleanText){if(!I||I.raw.length===0)return 0;if(I.R===null)island.release();
   const raw=rawText.split(/\\s+/).filter(Boolean),clean=cleanText.split(/\\s+/).filter(Boolean);if(raw.length===0||clean.length===0)return 0;
@@ -100,7 +102,7 @@ const island={
     const dx=o.from.x-o.B.x;if(lineOf(o.from.y)!==lineOf(o.B.y)||dx<=0)continue;
     p0=Math.max(p0,1-(k.B.x-4-o.B.x-wOf2(o))/dx);}
    k.inP=Math.min(.85,p0);});
-  ALL_LINES=Math.max(7,Math.min(12,Math.max(rawLines,usedA.length,linesB)));
+  ALL_LINES=Math.min(roomLines(),Math.max(7,Math.min(12,Math.max(rawLines,usedA.length,linesB))));
   const C=cleanupTimes(Math.max(rawLines>LIVE_LINES?EXPAND_MS:0,now-I.R));
   Object.assign(I,{C,P:I.R+C.PASTE,toks,rawP,linesB,clean,drops:ops.filter(o=>o.op==='drop').map(o=>o.i)});
   // One span per new spelling, one landing copy per wrapped or inserted word; a punctuation or case change morphs

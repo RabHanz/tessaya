@@ -16,6 +16,9 @@ import {
   PLACES,
   cursorOverCapsule,
   defaultPosition,
+  baseOf,
+  createLowerHold,
+  grownBounds,
   parseSpots,
   pickScreen,
   placePosition,
@@ -149,6 +152,11 @@ html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
 #dv{color:var(--text)}
 .db:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p[data-phase=dictating][data-voice=on] .db{display:flex}
+/* The tall window grew downward (no room above it): everything hangs from the top, at the same place. */
+body.down{align-items:flex-start;padding-bottom:0;padding-top:28px}
+body.down #ok{bottom:auto;top:2px}
+body.down #p.rest{margin-bottom:0;margin-top:9px}
+body.down #p.isl{bottom:auto;top:18px}
 ${ISLAND_CSS}</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><canvas id="w" width="54" height="16" aria-hidden="true"></canvas><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span>${ISLAND_HTML}</div>${ISLAND_MEASURE}
 <script>
 const $=i=>document.getElementById(i),N=${PILL_BANDS},SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
@@ -341,6 +349,8 @@ export const createVoicePill = (input: {
   /** Spoken dictation's ✓ (true: insert) or ✕ (false: throw away), shown while `voiceDictating`. */
   readonly onDictation?: (insert: boolean) => void;
   readonly voiceDictating?: () => boolean;
+  /** The dictation pill is saying something after the words (Discarded, an offer): the plain pill, not the island. */
+  readonly dictationMessage?: () => boolean;
   /** Settings → Dictation → Show words as you speak (on unless he turns it off). */
   readonly showWords?: () => boolean;
   /** The target window's rect in DIP (null when unknown): the pill goes on its screen. */
@@ -386,22 +396,48 @@ export const createVoicePill = (input: {
   let movedFrom: Promise<number | null> = Promise.resolve(null);
   /** A press on the capsule is held: the window keeps the mouse even if the cursor slides off its edge. */
   let pressing = false;
-  /** Dictation's island is up: the window is ISLAND_HEIGHT tall, grown upward from where it sits. */
+  /** Dictation's island is up: the window is ISLAND_HEIGHT tall, grown from where it sits (`grownBounds`). */
   let tall = false;
-  /** The cleanup plays until then (ms since epoch): the pill goes only after it. */
-  let holdUntil = 0;
-  let holdTimer: ReturnType<typeof setTimeout> | null = null;
-  let lowerWanted = false;
-  /** Where the window goes for a spot of the 80 px pill: grown upward when tall, so the capsule never moves. */
-  const boundsAt = (at: { readonly x: number; readonly y: number }): Electron.Rectangle =>
-    tall
-      ? { x: at.x, y: at.y - (ISLAND_HEIGHT - HEIGHT), width: WIDTH, height: ISLAND_HEIGHT }
-      : { x: at.x, y: at.y, width: WIDTH, height: HEIGHT };
-  /** The 80 px pill's bounds, whatever the window's height: what places, saves and anchors use. */
-  const baseBounds = (target: Electron.BrowserWindow): Electron.Rectangle => {
-    const b = target.getBounds();
-    return { ...b, y: b.y + b.height - HEIGHT, height: HEIGHT };
+  /** The tall window grew downward (no room above): the page anchors its capsule at the top. */
+  let down = false;
+  /** The cleanup plays until its hold ends: the pill goes only after it, unless ✕ or Esc ends it first. */
+  const hold = createLowerHold({
+    now: () => Date.now(),
+    after: (ms, run) => {
+      const t = setTimeout(run, ms);
+      return () => clearTimeout(t);
+    },
+    lower: () => lower(),
+  });
+  let releaseHoldEscape: (() => void) | null = null;
+  const dropHoldEscape = () => {
+    releaseHoldEscape?.();
+    releaseHoldEscape = null;
   };
+  /** ✕, ✓ or Esc during the cleanup: it is pasted already, so the pill just goes. */
+  const endCleanup = () => {
+    dropHoldEscape();
+    hold.holdUntil(0);
+    if (turnView(state) === null) lower();
+  };
+  /** Where the window goes for a spot of the 80 px pill; tall, it grows without moving the capsule. */
+  const boundsAt = (at: { readonly x: number; readonly y: number }): Electron.Rectangle => {
+    const base = { x: at.x, y: at.y, width: WIDTH, height: HEIGHT };
+    if (!tall) return base;
+    const grown = grownBounds(
+      base,
+      ISLAND_HEIGHT,
+      Electron.screen.getDisplayMatching(base).workArea,
+    );
+    if (grown.down !== down) {
+      down = grown.down;
+      call(`document.body.classList.toggle('down',${down})`);
+    }
+    return grown.bounds;
+  };
+  /** The 80 px pill's bounds, whatever the window's height: what places, saves and anchors use. */
+  const baseBounds = (target: Electron.BrowserWindow): Electron.Rectangle =>
+    baseOf(target.getBounds(), HEIGHT, tall && down);
   const setTall = (on: boolean) => {
     if (on && (moving || dragTimer !== null)) return;
     if (on === tall) return;
@@ -409,19 +445,6 @@ export const createVoicePill = (input: {
     const base = target === null || target.isDestroyed() ? null : baseBounds(target);
     tall = on;
     if (base !== null && target!.isVisible()) target!.setBounds(boundsAt(base));
-  };
-  /** Lowers once the cleanup has played, if nothing raised it meanwhile. */
-  const armHold = () => {
-    if (holdTimer !== null) clearTimeout(holdTimer);
-    holdTimer = null;
-    if (!lowerWanted) return;
-    const wait = holdUntil - Date.now();
-    if (wait > 0) {
-      holdTimer = setTimeout(armHold, wait);
-      return;
-    }
-    lowerWanted = false;
-    lower();
   };
   const trace = (record: Record<string, unknown>) => {
     if (input.captureDir === undefined) return;
@@ -683,8 +706,7 @@ export const createVoicePill = (input: {
   };
 
   const raise = () => {
-    lowerWanted = false;
-    armHold();
+    hold.raised();
     build();
     if (hideTimer !== null) clearTimeout(hideTimer);
     hideTimer = null;
@@ -704,10 +726,8 @@ export const createVoicePill = (input: {
 
   const lower = () => {
     if (window === null || window.isDestroyed()) return;
-    if (Date.now() < holdUntil) {
-      lowerWanted = true;
-      return armHold();
-    }
+    if (hold.defer()) return;
+    dropHoldEscape();
     if (moving) return call("window.pill.move()");
     if (input.rest()) {
       raise();
@@ -720,6 +740,7 @@ export const createVoicePill = (input: {
     hideTimer = setTimeout(() => {
       if (!closing.isDestroyed()) closing.hide();
       tall = false;
+      down = false;
       stopHitTest();
     }, CLOSE_MS);
   };
@@ -785,16 +806,20 @@ export const createVoicePill = (input: {
     } else {
       // Dictation's island while he records and until it is pasted; any other phase ends a cleanup still playing.
       // Tidying continues the island it follows (spoken dictation lowers the pill between ✓ and its flush).
-      const island =
-        state.phase === "dictating" && (input.voiceDictating?.() === true || view.wave === "sweep");
+      const island = state.phase === "dictating" && input.dictationMessage?.() !== true;
+      const fresh = island && previous.phase !== "dictating" && view.wave !== "sweep";
       const words = island && input.showWords?.() !== false;
-      if (!island) holdUntil = 0;
+      // A new dictation or any other phase ends a cleanup still playing.
+      if (!island || fresh) {
+        dropHoldEscape();
+        hold.holdUntil(0);
+      }
       if (words) setTall(true);
       raise();
       if (!words) setTall(false);
       setEscape(turnHoldsEscape(state));
       call(
-        `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true, island, fresh: island && previous.phase !== "dictating" && view.wave !== "sweep" })})`,
+        `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true, island, fresh })})`,
       );
       if (event.type === "wake") {
         call("window.pill.sting()");
@@ -948,7 +973,9 @@ export const createVoicePill = (input: {
     input.onDismiss();
   });
   Electron.ipcMain.on("baton-pill:dictation", (event, insert: unknown) => {
-    if (mine(event)) input.onDictation?.(insert === true);
+    if (!mine(event)) return;
+    if (hold.holding()) return endCleanup();
+    input.onDictation?.(insert === true);
   });
   Electron.ipcMain.on("baton-pill:bypass", (event, on: unknown) => {
     if (mine(event)) bypassSnap = on === true;
@@ -1009,10 +1036,11 @@ export const createVoicePill = (input: {
     cleanup: (raw, clean) => {
       if (input.showWords?.() === false || !tall) return;
       // Held a little past the longest cleanup until the page says how long this one plays.
-      holdUntil = Date.now() + PROVISIONAL_HOLD_MS;
+      hold.holdUntil(Date.now() + PROVISIONAL_HOLD_MS);
+      releaseHoldEscape ??= input.holdEscape(endCleanup);
       call(`window.pill.cleanup(${JSON.stringify(raw)},${JSON.stringify(clean)})`, (ms) => {
-        holdUntil = typeof ms === "number" && ms > 0 ? Date.now() + ms : 0;
-        armHold();
+        if (typeof ms === "number" && ms > 0) hold.holdUntil(Date.now() + ms);
+        else endCleanup();
       });
     },
     warm: build,

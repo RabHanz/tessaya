@@ -1813,7 +1813,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     Electron.clipboard.writeText(text);
     oneShot.release(taken);
     lastDictation = text;
-    showDictation(`${why}, so it is on your clipboard`);
+    showDictation(`${why}, so it is on your clipboard`, false, true);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
@@ -1894,7 +1894,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     void core?.setDictation(false).then(() => {
       if (insert || undo === null) return;
-      showDictation("Discarded · click to undo");
+      showDictation("Discarded · click to undo", false, true);
       if (keptTimer !== null) clearTimeout(keptTimer);
       keptTimer = setTimeout(() => {
         undo = null;
@@ -3109,7 +3109,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (row) => (row.def.id === "hold" || row.def.id === "toggle") && row.inputs.length > 0,
     );
 
-  const showDictation = (caption: string | null, tidying = false) => {
+  /** The dictation pill's line is a message after the words (Discarded, an offer), not a dictation in progress. */
+  let dictationMessage = false;
+  const showDictation = (caption: string | null, tidying = false, message = false) => {
+    dictationMessage = message;
     pill.on({ type: "dictating", caption, tidying }, { silent: !settings.holdKeyCues });
     render();
   };
@@ -3183,7 +3186,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
     lastDictation = text;
-    showDictation(`${why}. Tray: Copy last transcript.`);
+    showDictation(`${why}. Tray: Copy last transcript.`, false, true);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
@@ -3275,7 +3278,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (discarded) {
       if (text === "") return showDictation(null);
       undo = { text, target: Promise.resolve(app) };
-      showDictation("Discarded · click to undo");
+      showDictation("Discarded · click to undo", false, true);
       if (keptTimer !== null) clearTimeout(keptTimer);
       keptTimer = setTimeout(() => {
         undo = null;
@@ -3308,7 +3311,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     save({ cleanupOffered: true });
-    showDictation("Smarter cleanup with Claude? Settings → Dictation");
+    showDictation("Smarter cleanup with Claude? Settings → Dictation", false, true);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), OFFER_MS);
   };
@@ -3615,6 +3618,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
     showWords: () => settings.showWords,
+    dictationMessage: () => dictationMessage,
     workArea: () => workRect,
     onDismiss: () => {
       // Spoken dictation ends only by its ✓, ✕, Esc or "stop dictation", never a stray click on the pill.
@@ -3700,6 +3704,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         void duck.start(settings.duckWhileDictating);
         collecting = true;
         discarding = false;
+        dictationMessage = false;
         dictatingInto = null;
         undo = null;
         escArmedUntil = 0;
