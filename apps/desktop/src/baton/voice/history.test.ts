@@ -115,6 +115,74 @@ describe("history", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("a password box or private app keeps that it happened, never the words or the recording, even from a late write", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "history-"));
+    const clip = NodePath.join(dir, "clip.webm");
+    NodeFS.writeFileSync(clip, "audio");
+    const history = openHistory(":memory:", () => "t1");
+    const id = history.add({
+      at: "2026-11-08T10:00:00.000Z",
+      kind: "dictation",
+      app: "1password.exe",
+      raw: "correct horse battery",
+      cleaned: null,
+      status: "none",
+      model: null,
+      delivery: "hold key",
+      error: null,
+      audio: clip,
+    });
+    history.hide(id, "password field");
+    history.update(id, {
+      raw: "correct horse",
+      cleaned: "Correct horse.",
+      status: "ok",
+      fixed: "x",
+    });
+    expect(history.get(id)).toMatchObject({
+      hidden: "password field",
+      raw: "",
+      cleaned: null,
+      fixed: null,
+      audio: null,
+      status: "ok",
+      app: "1password.exe",
+    });
+    expect(NodeFS.existsSync(clip)).toBe(false);
+    expect(history.list({ query: "horse" })).toEqual([]);
+    history.close();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("delete removes the words and the recording; a flag can be taken back", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "history-"));
+    const clips = [NodePath.join(dir, "a.webm"), NodePath.join(dir, "b.webm")];
+    for (const clip of clips) NodeFS.writeFileSync(clip, "audio");
+    const history = openHistory(":memory:", () => "t1");
+    const id = history.add({
+      at: "2026-11-08T10:00:00.000Z",
+      kind: "dictation",
+      app: "slack.exe",
+      raw: "hello there",
+      cleaned: "Hello there.",
+      status: "ok",
+      model: null,
+      delivery: "oneshot",
+      error: null,
+      audio: clips.join("\n"),
+    });
+    history.flag(id, true);
+    expect(history.get(id)?.flagged).toBe(true);
+    history.flag(id, false);
+    expect(history.get(id)?.flagged).toBe(false);
+    history.remove(id);
+    expect(history.get(id)).toBeNull();
+    expect(history.list({ query: "hello" })).toEqual([]);
+    expect(clips.filter((clip) => NodeFS.existsSync(clip))).toEqual([]);
+    history.close();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("scrubs rows kept before redaction covered every write, once", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "history-"));
     const file = NodePath.join(dir, "history.sqlite");

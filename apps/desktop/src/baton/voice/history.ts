@@ -48,7 +48,13 @@ export interface HistoryTurn {
   readonly versions: ReadonlyArray<HistoryVersion>;
   /** The clean-up level decided when he dictated (his setting, the app and its window title): a retry stays at or below it. */
   readonly cleanup: "local" | "claude" | null;
+  /** Said into a password box or a private app: no words, no recording, only that it happened. */
+  readonly hidden: HiddenReason | null;
+  /** He marked it "this went wrong". */
+  readonly flagged: boolean;
 }
+
+export type HiddenReason = "password field" | "private app";
 
 /**
  * A row's words as History may keep them (VAULT.md section 6): a secret in the heard or the written words marks both,
@@ -94,7 +100,15 @@ export interface History {
   readonly add: (
     turn: Omit<
       HistoryTurn,
-      "id" | "corrected" | "audio" | "fixed" | "seconds" | "versions" | "cleanup"
+      | "id"
+      | "corrected"
+      | "audio"
+      | "fixed"
+      | "seconds"
+      | "versions"
+      | "cleanup"
+      | "hidden"
+      | "flagged"
     > & {
       readonly seconds?: number | null;
     } & { readonly audio?: string | null; readonly cleanup?: "local" | "claude" | null },
@@ -126,12 +140,18 @@ export interface History {
     readonly before?: string;
     readonly limit?: number;
   }) => ReadonlyArray<HistoryTurn>;
+  /** Removes the row and its recording. */
   readonly remove: (id: string) => HistoryTurn | null;
+  /** Keeps that the row happened and where, and nothing of what was said; later updates cannot put words back. */
+  readonly hide: (id: string, reason: HiddenReason) => void;
+  readonly flag: (id: string, flagged: boolean) => void;
   readonly close: () => void;
 }
 
+const WORDS = new Set(["raw", "cleaned", "fixed", "versions", "audio", "corrected"]);
+
 const COLUMNS =
-  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed, seconds, versions, cleanup";
+  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed, seconds, versions, cleanup, hidden, flagged";
 
 type Row = Record<string, string | number | null>;
 const toTurn = (row: Row): HistoryTurn => ({
@@ -153,6 +173,9 @@ const toTurn = (row: Row): HistoryTurn => ({
   error: row["error"] === null ? null : String(row["error"]),
   versions: parseVersions(row["versions"]),
   cleanup: row["cleanup"] === "claude" ? "claude" : row["cleanup"] === "local" ? "local" : null,
+  hidden:
+    row["hidden"] === "password field" || row["hidden"] === "private app" ? row["hidden"] : null,
+  flagged: row["flagged"] === 1,
 });
 
 const parseVersions = (value: unknown): ReadonlyArray<HistoryVersion> => {
@@ -203,6 +226,17 @@ export const openHistory = (
     )
   ) {
     db.exec("alter table turns add column cleanup text");
+  }
+  for (const [column, type] of [
+    ["hidden", "text"],
+    ["flagged", "integer not null default 0"],
+  ] as const) {
+    if (
+      !(db.prepare("pragma table_info(turns)").all() as Array<{ name: string }>).some(
+        (c) => c.name === column,
+      )
+    )
+      db.exec(`alter table turns add column ${column} ${type}`);
   }
   /** A redacted row keeps no recording of the words it hides. */
   const dropAudio = (audio: unknown) => {
@@ -269,7 +303,12 @@ export const openHistory = (
       );
       return id;
     },
-    update: (id, written) => {
+    update: (id, asked) => {
+      // A hidden row takes no words or recording, however late they arrive.
+      const written: typeof asked =
+        get(id)?.hidden == null
+          ? asked
+          : Object.fromEntries(Object.entries(asked).filter(([key]) => !WORDS.has(key)));
       // A secret in the new words hides the stored ones too, and the recording of them.
       const marked = hasSecret(written);
       const stored = marked ? get(id) : null;
@@ -324,8 +363,20 @@ export const openHistory = (
     },
     remove: (id) => {
       const turn = get(id);
-      if (turn !== null) db.prepare("delete from turns where id = ?").run(id);
+      if (turn !== null) {
+        db.prepare("delete from turns where id = ?").run(id);
+        dropAudio(turn.audio);
+      }
       return turn;
+    },
+    hide: (id, reason) => {
+      dropAudio(get(id)?.audio);
+      db.prepare(
+        "update turns set raw = '', cleaned = null, fixed = null, versions = null, audio = null, error = null, corrected = 0, hidden = ? where id = ?",
+      ).run(reason, id);
+    },
+    flag: (id, flagged) => {
+      db.prepare("update turns set flagged = ? where id = ?").run(flagged ? 1 : 0, id);
     },
     close: () => db.close(),
   };

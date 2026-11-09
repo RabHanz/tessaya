@@ -16,7 +16,7 @@ export type RetryPlan =
   | { readonly kind: "none"; readonly why: string };
 
 type Row = Pick<HistoryTurn, "kind" | "status" | "audio" | "delivery"> &
-  Partial<Pick<HistoryTurn, "raw" | "cleaned">>;
+  Partial<Pick<HistoryTurn, "raw" | "cleaned" | "hidden">>;
 
 export const hasRecording = (turn: Pick<HistoryTurn, "audio">): boolean =>
   turn.audio !== null && turn.audio.trim() !== "";
@@ -33,12 +33,13 @@ export const retryPlan = (turn: Row): RetryPlan => {
 export interface MenuItem {
   readonly id:
     | "copy"
-    | "copy_raw"
     | "undo_ai"
     | "play"
     | "retry_transcript"
     | "retry"
-    | "report"
+    | "paste"
+    | "teach"
+    | "extract"
     | "delete";
   readonly label: string;
   readonly enabled: boolean;
@@ -46,19 +47,18 @@ export interface MenuItem {
   readonly note?: string;
 }
 
-/** The row's three-dot menu. Copy takes the reply for a spoken turn, the written words for a dictation. */
+/** Play and Copy sit on the row; the rest is the row's three-dot menu. A hidden row offers only Delete. */
 export const rowMenu = (turn: Row, busy: boolean): ReadonlyArray<MenuItem> => {
+  if (turn.hidden != null) return [{ id: "delete", label: "Delete", enabled: true }];
   const plan = retryPlan(turn);
+  const kept = hasRecording(turn);
+  const why = plan.kind === "transcript" ? NO_RECORDING : plan.why;
   const items: MenuItem[] = [
-    { id: "copy", label: "Copy", enabled: true },
-    { id: "copy_raw", label: "Copy as heard", enabled: true },
     // Hearing it again is how he judges whether the words are wrong or the recording was.
-    hasRecording(turn)
+    kept
       ? { id: "play", label: "Play the recording", enabled: true }
-      : { id: "play", label: "Play the recording", enabled: false, note: NO_RECORDING },
-    plan.kind === "transcript"
-      ? { id: "retry_transcript", label: "Retry transcript", enabled: !busy }
-      : { id: "retry_transcript", label: "Retry transcript", enabled: false, note: plan.why },
+      : { id: "play", label: "Play the recording", enabled: false, note: why },
+    { id: "copy", label: "Copy", enabled: true },
   ];
   // Wispr's "Undo AI edit": the words as heard replace the written ones, and are copied to paste back.
   if (
@@ -67,13 +67,40 @@ export const rowMenu = (turn: Row, busy: boolean): ReadonlyArray<MenuItem> => {
     typeof turn.raw === "string" &&
     turn.cleaned.trim() !== turn.raw.trim()
   ) {
-    items.splice(2, 0, { id: "undo_ai", label: "Undo AI edit", enabled: true });
+    items.push({ id: "undo_ai", label: "Undo AI edit", enabled: true });
   }
+  items.push(
+    plan.kind === "transcript"
+      ? { id: "retry_transcript", label: "Retry transcript", enabled: !busy }
+      : { id: "retry_transcript", label: "Retry transcript", enabled: false, note: plan.why },
+  );
   if (plan.kind === "cleanup") items.push({ id: "retry", label: "Retry clean-up", enabled: !busy });
-  items.push({ id: "report", label: "Report this transcript", enabled: true });
+  items.push({ id: "paste", label: "Paste again", enabled: true });
+  if (turn.kind === "dictation")
+    items.push({ id: "teach", label: "Edit and teach", enabled: true });
+  items.push(
+    kept
+      ? { id: "extract", label: "Extract audio (.wav)", enabled: true }
+      : { id: "extract", label: "Extract audio (.wav)", enabled: false, note: why },
+  );
   items.push({ id: "delete", label: "Delete", enabled: true });
   return items;
 };
+
+/** The row's words as he would paste them: his own fix first, then the written words, then the heard ones. */
+export const rowText = (turn: Pick<HistoryTurn, "raw" | "cleaned" | "fixed">): string =>
+  turn.fixed ?? turn.cleaned ?? turn.raw;
+
+/** Undo AI edit: the heard words become the row's words, and the written ones stay as a version to go back to. */
+export const undoAiEdit = (
+  turn: Pick<HistoryTurn, "at" | "raw" | "cleaned" | "model" | "versions">,
+  at: string,
+) => ({
+  versions: withRetry(turn, { at, raw: turn.raw, cleaned: turn.raw, model: null }),
+  cleaned: turn.raw,
+  fixed: null,
+  status: "raw" as const,
+});
 
 export interface Retried {
   readonly at: string;

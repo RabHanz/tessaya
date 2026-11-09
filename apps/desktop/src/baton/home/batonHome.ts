@@ -240,11 +240,16 @@ export type HomeControl =
       readonly revealed: string;
     });
 
+/** One thing on Home's Today card: a History row or a command or action from the turn log. */
 export interface HomeActivity {
+  readonly id: string;
   readonly at: string;
+  readonly kind: "dictation" | "spoken" | "command" | "assistant";
+  /** The words, or what was done as a sentence. Empty for a hidden row. */
   readonly text: string;
-  readonly kind: string;
-  readonly dim?: boolean;
+  readonly detail: string | null;
+  readonly app?: string;
+  readonly hidden?: string | null;
 }
 
 /** What the tabs show beyond the controls: all data, nothing the page decides. */
@@ -274,6 +279,8 @@ export interface HomeExtra {
   };
   readonly insights: {
     readonly wordsToday: number;
+    readonly dictationsToday: number;
+    readonly minutesSaved: number;
     readonly wpm: number | null;
     readonly streak: number;
     readonly topApps: ReadonlyArray<{ readonly app: string; readonly count: number }>;

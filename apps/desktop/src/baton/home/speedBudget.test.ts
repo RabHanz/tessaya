@@ -15,9 +15,9 @@ import { TABS, tabOf } from "./tabs.ts";
 describe("the window's speed budget", () => {
   it("keeps the page small: script, stylesheet apart from fonts, and the whole document", () => {
     const cssWithoutFonts = APP_CSS.replace(/url\(data:[^)]*\)/g, "url()");
-    // 118,000 until the icon rail (main was at 118,369 from the dictation work), 120,000 until Sessions became T3's list.
-    expect(APP_SCRIPT.length).toBeLessThan(121_000);
-    expect(cssWithoutFonts.length).toBeLessThan(43_000); // 42,500 until the icon rail
+    // 121,000 until History's redesign (about 6,500 for its rows, actions and day summary).
+    expect(APP_SCRIPT.length).toBeLessThan(128_500);
+    expect(cssWithoutFonts.length).toBeLessThan(45_000); // 43,000 until History's redesign
     expect(HOME_DOCUMENT.length).toBeLessThan(420_000);
   });
 
