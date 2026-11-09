@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * Move into Tessaya: a Terminal thread's Claude session ends in its terminal and the same session id continues as a
  * Tessaya (claudeAgent) thread, resumed through the Agent SDK. The thread keeps its id and history. Opt-in and
@@ -106,12 +107,13 @@ export interface MovePorts {
   readonly endTerminal: (sessionId: string) => Effect.Effect<boolean>;
   /** Any verified process still holds the session (one this did not end, or one no scan lists as interactive). */
   readonly held: (sessionId: string) => Effect.Effect<boolean>;
+  /** True once the thread is on the session; false when it could not be switched. */
   readonly point: (input: {
     readonly threadId: string;
     readonly instanceId: string;
     readonly model: string;
     readonly sessionId: string;
-  }) => Effect.Effect<void, unknown>;
+  }) => Effect.Effect<boolean>;
 }
 
 export interface MoveResult {
@@ -160,15 +162,13 @@ export const moveIntoTessaya = Effect.fn("MoveIntoTessaya.move")(function* (
         ? "Not moved: another process holds this session."
         : "The terminal session ended, but another process still holds the session, so the thread was not switched.",
     );
-  const pointed = yield* Effect.exit(
-    ports.point({
-      threadId: input.threadId,
-      instanceId: target.instanceId,
-      model: target.model,
-      sessionId,
-    }),
-  );
-  if (pointed._tag === "Failure")
+  const pointed = yield* ports.point({
+    threadId: input.threadId,
+    instanceId: target.instanceId,
+    model: target.model,
+    sessionId,
+  });
+  if (!pointed)
     return no(
       "refused",
       session === null
