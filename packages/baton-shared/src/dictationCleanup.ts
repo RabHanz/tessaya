@@ -268,13 +268,18 @@ const isCommand = (text: string): boolean =>
   oneSentence(text) && (PROGRAM.test(text) || new RegExp(CODE_TOKEN.source).test(text));
 
 /** Everything code can decide, in well under a millisecond. Raw is left exactly as heard. */
+/** Verbs a run-on request goes on with ("first? And also send me..."); anything else after the "and" stays split. */
+const RUN_ON_VERBS =
+  "send|check|tell|ask|book|order|make|add|put|get|give|call|email|text|ping|let|show|bring|take|fix|update|move|copy|share|sort|set|write|find|look|grab|forward|remind|schedule|review|run|push|pull|merge|deploy|start|stop|open|close|save|delete|remove|change|read|reply|post|pay|print|buy|pick|drop|fill|sign|confirm|prepare|draft|finish|clean|tidy|test|build|keep|include|mention|attach|upload|download|follow|chase|loop";
 /**
- * A question the recogniser ended at a pause and that runs on with "and", "and also" or "or" into more of the same
- * request ("first? And also send me the report. The one with the charts."), as the prompt's rule joins it. Not when
- * the run-on asks again or is his own statement ("And did...", "And also I..."): those stay two.
+ * A question the recogniser ended at a pause that runs on with "and", "and also" or "or" into more of the same
+ * request ("first? And also send me the report. The one with the charts."), as the prompt's rule joins it. Only when
+ * what follows is a request (a verb, after an optional "also"); a statement or "!" stays as said.
  */
-const RUN_ON_QUESTION =
-  /\?\s+(and also|and(?! also\b)|or)\s+(?!(?:can|could|did|do|does|is|are|was|were|will|would|should|shall|have|has|may|might|what|when|where|why|how|who|which|i|i'm|i've|i'll|we|we're|he|she|they|it|it's|there|that's|thanks|thank)\b)([^.?!\n]+)(?:\.\s+(the ones?\b[^.?!\n]*))?[.?!]/gi;
+const RUN_ON_QUESTION = new RegExp(
+  `\\?\\s+(and|or)\\s+((?:also\\s+)?(?:${RUN_ON_VERBS})\\b[^.?!\\n]*)(?:\\.\\s+(the ones?\\b[^.?!\\n]*))?(?:[.?]|$)`,
+  "gi",
+);
 
 export const localClean = (
   raw: string,

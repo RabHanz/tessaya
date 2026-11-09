@@ -369,7 +369,7 @@ import {
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
-import { watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
+import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createLastLanded } from "./lastLanded.ts";
 import { dictationStep, type DictationEntry, type DictationStep } from "./dictationEntry.ts";
@@ -1282,14 +1282,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       stillThere: async () => {
         const now = sidecar === null ? null : await within(sidecar.foreground());
         if (now === null || cleanupLevelFor("claude", now) !== "claude") return false;
+        // A paste whose window and app are both unknown is never watched: any field could be in front.
         return app.window !== undefined
           ? now.window === app.window
-          : app.exe === "" || now.exe === app.exe;
+          : app.exe !== "" && now.exe === app.exe;
       },
+      // A read that times out comes back null, which ends the watch.
       read: async () => {
         const around = sidecar === null ? null : await within(sidecar.caret());
         return around === null || detectSecret(around.before) !== null ? null : around.before;
       },
+      ours: (before) => stillOurs(written, before),
       learn: (before) => {
         const { fixes, fixed } = correctionsAtCaret(written.trim(), before);
         if (fixes.length === 0) return false;

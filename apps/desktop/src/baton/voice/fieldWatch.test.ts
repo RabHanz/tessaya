@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { watchField } from "./fieldWatch.ts";
+import { stillOurs, watchField } from "./fieldWatch.ts";
 
 /** The field read by read, then what the watch did and which settled texts it tried to learn from. */
 const watch = async (reads: ReadonlyArray<string | null>, focus: ReadonlyArray<boolean> = []) => {
@@ -11,6 +11,7 @@ const watch = async (reads: ReadonlyArray<string | null>, focus: ReadonlyArray<b
     wait: async () => true,
     stillThere: async () => focus[at] ?? true,
     read: async () => reads[at++] ?? null,
+    ours: (before) => before.startsWith("Hi"),
     learn: (before) => (tried.push(before), before.includes("Tessaya")),
   });
   return { outcome, tried, readsTaken: at };
@@ -34,5 +35,19 @@ describe("watching the field after a paste", () => {
       tried: [],
       readsTaken: 2,
     });
+    // He went on to write something else: the paste is no longer what is before the caret.
+    expect(await watch(["Hi Tisia", "Dear Sam", "Dear Sam"])).toEqual({
+      outcome: "moved on",
+      tried: [],
+      readsTaken: 2,
+    });
+  });
+
+  it("knows the pasted words, as said or as he fixed them, and nothing else", () => {
+    const pasted = "Ask Tisia to check the wake word results first";
+    expect(stillOurs(pasted, "Notes: Ask Tisia to check the wake word results first")).toBe(true);
+    expect(stillOurs(pasted, "Notes: Ask Tessaya to check the wake-word results first")).toBe(true);
+    expect(stillOurs(pasted, "Something else he started writing on the next line")).toBe(false);
+    expect(stillOurs(pasted, "")).toBe(false);
   });
 });

@@ -126,6 +126,10 @@ describe("localClean", () => {
       "Did the deploy finish? And did anyone tell Priya?",
       "Is it ready? Or should we wait?",
       "Can you call me? And also I am running late.",
+      "Can you call me? And my flight lands at six.",
+      "Are you free tonight? And the meeting got cancelled.",
+      "Can you check it? And then we ship.",
+      "Will you send it? And send the invoice too!",
     ])
       expect(localClean(kept, "default")).toBe(kept);
   });
