@@ -14,6 +14,7 @@ import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -152,8 +153,26 @@ function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: s
         {isLiveThreadId(props.threadRef.threadId) ? (
           <MenuItem onClick={() => void moveIntoTessaya()}>Move into Tessaya…</MenuItem>
         ) : null}
+        <MainSessionItem threadRef={props.threadRef} />
       </MenuPopup>
     </Menu>
+  );
+}
+
+/** The main session's thread stays pinned wherever its session runs; one thread at a time, and the way back out. */
+function MainSessionItem(props: { readonly threadRef: ScopedThreadRef }) {
+  const main = useEnvironmentSettings(
+    props.threadRef.environmentId,
+    (settings) => settings.mainThreadId,
+  );
+  const updateSettings = useUpdateEnvironmentSettings(props.threadRef.environmentId);
+  const isMain = main === props.threadRef.threadId;
+  return (
+    <MenuItem
+      onClick={() => updateSettings({ mainThreadId: isMain ? null : props.threadRef.threadId })}
+    >
+      {isMain ? "Stop being the main session" : "Make this the main session"}
+    </MenuItem>
   );
 }
 
@@ -191,6 +210,7 @@ function OpenInTerminalMenu(props: { readonly threadRef: ScopedThreadRef }) {
       </MenuTrigger>
       <MenuPopup align="end">
         <MenuItem onClick={() => void openInTerminal()}>Open in terminal</MenuItem>
+        <MainSessionItem threadRef={props.threadRef} />
       </MenuPopup>
     </Menu>
   );
@@ -219,9 +239,7 @@ export function BatonThreadHeader(props: {
       ) : null}
       <LimitChip threadRef={props.threadRef} shell={props.shell} terminal={terminal} />
       {terminal ? (
-        props.pane !== null || isLiveThreadId(props.threadRef.threadId) ? (
-          <PaneMenu threadRef={props.threadRef} pane={props.pane} />
-        ) : null
+        <PaneMenu threadRef={props.threadRef} pane={props.pane} />
       ) : claude ? (
         <OpenInTerminalMenu threadRef={props.threadRef} />
       ) : null}

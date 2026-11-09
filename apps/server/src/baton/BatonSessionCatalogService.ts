@@ -352,13 +352,24 @@ export const layer = Layer.effect(
                   .slice(0, 160)}`,
               };
             });
-    // A new session on a machine with no Herdr: a T3 thread in that folder's project, on the Claude provider, with the
-    // model, effort and first message asked for. The project is found by its exact folder, so no other project is touched.
+    // A new session as a Tessaya thread (Where new sessions run, and always with no Herdr): a thread in that folder's
+    // project, on the Claude provider, with the model, effort and first message asked for. The project is found by its
+    // exact folder, so no other project is touched.
     const claudeInstance = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));
-    const launch: CatalogPorts["launch"] = !noHerdr
-      ? undefined
-      : Option.isNone(projects) || Option.isNone(engine)
-        ? async () => ({ detail: MISSING })
+    const newSessionsInTerminal: CatalogPorts["newSessionsInTerminal"] = () =>
+      noHerdr || Option.isNone(serverSettings)
+        ? Promise.resolve(false)
+        : Effect.runPromise(
+            serverSettings.value.getSettings.pipe(
+              Effect.map((current) => current.newSessionsRun === "terminal"),
+              Effect.orElseSucceed(() => false),
+            ),
+          );
+    const launch: CatalogPorts["launch"] =
+      Option.isNone(projects) || Option.isNone(engine)
+        ? noHerdr
+          ? async () => ({ detail: MISSING })
+          : undefined
         : (input) =>
             Effect.runPromiseWith(services)(
               Effect.gen(function* () {
@@ -457,7 +468,7 @@ export const layer = Layer.effect(
     const ports: CatalogPorts = {
       ...real,
       ...(thread === undefined ? {} : { thread }),
-      ...(launch === undefined ? {} : { launch }),
+      ...(launch === undefined ? {} : { launch, newSessionsInTerminal }),
       ...(thread === undefined || Option.isNone(engine)
         ? {}
         : {

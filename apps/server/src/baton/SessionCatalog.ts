@@ -73,13 +73,15 @@ export interface CatalogPorts {
   readonly threadSend?: (threadId: string, text: string) => Promise<boolean>;
   /** Machines with no Herdr: a resumed thread is gone once archived or deleted, working while a turn runs. */
   readonly threadState?: (threadId: string) => Promise<"gone" | "idle" | "working">;
-  /** Machines with no Herdr: starts a new session in a folder as a T3 thread, with a model, an effort and a first message. */
+  /** Starts a new session in a folder as a Tessaya thread, with a model, an effort and a first message. */
   readonly launch?: (input: {
     readonly cwd: string;
     readonly model?: string;
     readonly effort?: string;
     readonly message?: string;
   }) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
+  /** "Where new sessions run" says a terminal: a new session goes to Herdr even though `launch` could start it. */
+  readonly newSessionsInTerminal?: () => Promise<boolean>;
   /** The last part of a transcript file, for the auto-resume watchdog. */
   readonly readTail?: (file: string) => Promise<string>;
   /** Resumed by the watchdog in the last two hours: shown on the row. */
@@ -564,7 +566,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
         pane: null,
         detail: `The folder ${input.cwd} is not on this machine.`,
       };
-    if (ports.launch !== undefined) {
+    if (ports.launch !== undefined && (await ports.newSessionsInTerminal?.()) !== true) {
       const launched = await ports.launch(input);
       return "threadId" in launched
         ? {

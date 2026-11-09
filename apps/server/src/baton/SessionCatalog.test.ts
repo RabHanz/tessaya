@@ -129,6 +129,17 @@ describe("sending to a stopped session", () => {
     expect(missing.state).toBe("failed");
   });
 
+  it("a new session goes to a Herdr pane when Where new sessions run says a terminal", async () => {
+    const launched: unknown[] = [];
+    const { catalog, batonCalls } = machine({
+      launch: async (input) => (launched.push(input), { threadId: "thread-1" }),
+      newSessionsInTerminal: async () => true,
+    });
+    expect(await catalog.create({ cwd: "/work/new" })).toMatchObject({ pane: "fab-new~p9" });
+    expect(launched).toEqual([]);
+    expect(batonCalls).toEqual([["/work/new", "claude"]]);
+  });
+
   it("a long import answers 'resuming' at once, the kept message goes into the thread when it is done, or the reason it failed", async () => {
     let finish: (v: { threadId: string } | { detail: string }) => void = () => undefined;
     const intoThread: Array<[string, string]> = [];

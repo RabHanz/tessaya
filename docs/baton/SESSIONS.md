@@ -17,3 +17,13 @@ environment (the same connection the hub uses; nothing tmux, no new transport) a
 
 State is in memory on the server (resuming, waiting messages); a restart forgets a resume in flight, and the next
 tap starts it again.
+
+## Tessaya and terminal sessions
+
+- **Where new sessions run** (Settings → Accounts & providers, default In Tessaya): a new session from the sessions
+  list starts as a Tessaya thread on Claude; In a terminal keeps the Herdr pane. No Herdr always means a thread.
+- **Move into Tessaya** (⋯ on a Terminal thread): the terminal exits and the same conversation continues in Tessaya on
+  the session's own login. Refused while it works.
+- **Open in terminal** (⋯ on a Claude thread), or `tessaya resume <thread>` from any shell, even with Tessaya down: the
+  session opens in a Herdr pane on the thread's login and the thread follows it there; closing the pane hands it back.
+- **Make this the main session** (⋯): that thread stays pinned and is never archived when its session ends.

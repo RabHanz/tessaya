@@ -20,6 +20,7 @@ import { useEnvironmentProviders } from "../../state/environments";
 import { useBatonAccounts } from "../chat/BatonPickerAccount";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Radio, RadioGroup } from "../ui/radio-group";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
@@ -164,6 +165,7 @@ function NewThreadDefaults(props: {
     (settings) => settings.defaultModelSelection,
   );
   const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
+  const where = useEnvironmentSettings(props.environmentId, (settings) => settings.newSessionsRun);
   const providers = useEnvironmentProviders().get(props.environmentId) ?? [];
   const usable = props.accounts.filter(
     (account) => account.instanceIds.length > 0 && account.health !== "paused",
@@ -222,7 +224,25 @@ function NewThreadDefaults(props: {
         />
         <SettingsRow
           title="Where new sessions run"
-          description="In Tessaya. A session started in a Herdr pane shows up under Terminal by itself."
+          description="A new session from the sessions list. One started in a Herdr pane shows up under Terminal either way."
+          control={
+            <RadioGroup
+              value={where ?? "tessaya"}
+              onValueChange={(value) =>
+                updateSettings({ newSessionsRun: value === "terminal" ? "terminal" : "tessaya" })
+              }
+              aria-label="Where new sessions run"
+            >
+              <label className="flex items-center gap-2 text-sm">
+                <Radio value="tessaya" />
+                In Tessaya (recommended)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Radio value="terminal" />
+                In a terminal
+              </label>
+            </RadioGroup>
+          }
         />
       </SettingsGroup>
     </SettingsSection>

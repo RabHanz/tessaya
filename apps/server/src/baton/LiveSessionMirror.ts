@@ -578,11 +578,14 @@ export const endedMirrorThreads = (
   liveSessionIds: ReadonlySet<string>,
   missingSince: Map<ThreadId, number>,
   nowMs: number,
+  /** The main session's thread: it stays in the list whether or not its session runs. */
+  mainThreadId: string | null = null,
 ): ReadonlyArray<ThreadId> => {
   // A thread moved into Tessaya is off the live instance and continues without a terminal.
   const missing = shells.filter(
     (t) =>
       String(t.id).startsWith(`${PREFIX}:`) &&
+      String(t.id) !== mainThreadId &&
       t.providerInstanceId === LIVE_INSTANCE_ID &&
       !liveSessionIds.has(String(t.id).slice(PREFIX.length + 1)),
   );
@@ -934,6 +937,21 @@ const make = Effect.gen(function* () {
     log: (record) => mirrorLog(null, record),
     live: { driver: DRIVER, model: MODEL },
   });
+
+  /** The main session's thread, wherever its session runs, stays pinned while it is the main one. */
+  const keepMainPinned = (mainThreadId: string | null) =>
+    Effect.gen(function* () {
+      if (mainThreadId === null) return;
+      const shell = yield* engine.threadShell(ThreadId.make(mainThreadId));
+      if (
+        shell === null ||
+        (shell.pinnedAt ?? null) !== null ||
+        (shell.archivedAt ?? null) !== null
+      )
+        return;
+      if (yield* engine.pinThread({ tag: "main-session", threadId: shell.id }))
+        mirrorLog(null, { event: "main-pinned", thread: mainThreadId });
+    });
 
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
@@ -1973,7 +1991,12 @@ const make = Effect.gen(function* () {
     const liveIds = new Set(live.map((s) => s.sessionId));
     const open = yield* engine.threadShells;
     forgetUnarchived(endedArchived, open);
-    for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now())) {
+    const mainThreadId = yield* settings.getSettings.pipe(
+      Effect.map((current) => current.mainThreadId),
+      Effect.orElseSucceed(() => null),
+    );
+    yield* keepMainPinned(mainThreadId);
+    for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now(), mainThreadId)) {
       if (continued.has(id)) continue;
       if (sentFromT3(yield* threadMessages(id))) continued.add(id);
       else if (yield* engine.archiveThread({ tag: "live", threadId: id })) {
