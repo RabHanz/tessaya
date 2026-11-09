@@ -380,3 +380,32 @@ it.effect(
       });
     }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );
+
+it.effect(
+  "an agent's move only files a request he answers: it cannot approve itself, and nothing moves",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      yield* inbox.take;
+      const moved: Array<unknown> = [];
+      const catalog = BatonSessionCatalogService.of({
+        moveIntoTessaya: (input: unknown) => Effect.sync(() => (moved.push(input), {})),
+      } as never);
+      const runtime = Context.mergeAll(
+        Context.make(BatonPhoneInbox, inbox),
+        Context.make(BatonSessionCatalogService, catalog),
+      ) as never;
+      const asked = yield* callTool("thread", runtime, "tessaya_move_into_tessaya", {
+        threadId: thread,
+        providerChangeApproved: true,
+      });
+      expect(asked.result).toMatchObject({ status: "queued" });
+      expect(moved).toEqual([]);
+      const waiting = yield* inbox.recent(10);
+      expect(waiting.map((ask) => ask.text)).toEqual([
+        expect.stringContaining(`Move the Terminal thread ${thread} into Tessaya`),
+      ]);
+      const tool = TessayaToolkit.tools.tessaya_move_into_tessaya;
+      expect(Object.keys(tool.parametersSchema.fields)).toEqual(["threadId"]);
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);

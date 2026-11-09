@@ -10,10 +10,15 @@ import {
   isLiveThreadId,
   LIVE_INSTANCE,
   liveSessionIdOf,
+  movedIntoTessaya,
 } from "@t3tools/baton-shared/liveThread";
 import { useAtomValue } from "@effect/atom-react";
 import { useComposerDraftStore } from "../../composerDraftStore";
-import { useQuietThreadShell, useThreadVisibleTurnItems } from "../../state/entities";
+import {
+  useQuietThreadProjection,
+  useQuietThreadShell,
+  useThreadVisibleTurnItems,
+} from "../../state/entities";
 import { Button } from "../ui/button";
 import { BatonLiveBinding } from "./BatonLiveBinding";
 import { livePaneAtom } from "./BatonLiveModel";
@@ -24,9 +29,15 @@ export function BatonLiveStatus({ threadRef }: { readonly threadRef: ScopedThrea
   const live = isLiveThreadId(threadRef.threadId);
   const items = useThreadVisibleTurnItems(live ? threadRef : null);
   const pane = useAtomValue(livePaneAtom(liveSessionIdOf(threadRef.threadId) ?? ""));
+  const projection = useQuietThreadProjection(live ? threadRef : null)?.projection ?? null;
   if (shell === null) return null;
   const header = <BatonThreadHeader threadRef={threadRef} shell={shell} pane={pane} />;
   if (!live) return header;
+  const activeNativeId =
+    projection?.providerThreads.find((p) => p.id === projection.thread.activeProviderThreadId)
+      ?.nativeThreadRef?.nativeId ?? null;
+  // Moved into Tessaya: an ordinary thread on the same session, with no terminal to report on.
+  if (movedIntoTessaya(threadRef.threadId, shell.providerInstanceId, activeNativeId)) return header;
   const lastItem = items.at(-1)?.item;
   const stopped = classifierStopReason(
     lastItem?.type === "assistant_message" ? lastItem.text : null,

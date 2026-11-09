@@ -21,7 +21,11 @@ import {
   OrchestrationRuleListResult,
   WatchResult,
 } from "@t3tools/baton-contracts";
-import { OrchestratorMcpEnvironmentTarget, OrchestratorMcpFailure } from "@t3tools/contracts";
+import {
+  OrchestratorMcpEnvironmentTarget,
+  OrchestratorMcpFailure,
+  ThreadId,
+} from "@t3tools/contracts";
 import { DESKTOP_STATE_SECTIONS } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
@@ -268,6 +272,19 @@ const StateTool = Tool.make("tessaya_state", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+// Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
+const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
+  ...shared,
+  description:
+    "Ask the Director to move a Terminal thread's Claude session into Tessaya: its terminal process ends and the same conversation continues as a Tessaya thread. It only files the request: he approves or refuses it on his own screen, and nothing moves before that. Returns an id; outside agents follow it with `tessaya_ask_status`.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: AskResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -284,4 +301,5 @@ export const TessayaToolkit = Toolkit.make(
   WeaveSendTool,
   WeaveListTool,
   StateTool,
+  MoveIntoTessayaTool,
 );

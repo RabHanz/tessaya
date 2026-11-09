@@ -19,8 +19,10 @@ import {
   ProviderDriverKind,
   ThreadId,
   defaultInstanceIdForDriver,
+  type ProviderInstanceConfig,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -33,16 +35,33 @@ import * as ServerConfig from "../config.ts";
 import { AgentSessionImporter } from "../project/AgentSessionImporter.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 
-import { LIVE_INSTANCE_ID, liveThreadId, rebindThread } from "./LiveSessionMirror.ts";
+import {
+  LIVE_INSTANCE_ID,
+  liveThreadId,
+  rebindThread,
+  supersedeLiveHandoffs,
+} from "./LiveSessionMirror.ts";
 import { decideReattach } from "./BindingHealth.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { resendKept, stampKept } from "./UnboundMessages.ts";
 import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
+import { BatonAccounts } from "./BatonAccounts.ts";
+import { endClaudeTerminal } from "./HerdrRespawn.ts";
+import {
+  claudeHomeOf,
+  instancesForLogin,
+  moveIntoTessaya,
+  resumeInstance,
+  pointAtSessionEvents,
+  type MoveResult,
+} from "./MoveIntoTessaya.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
-import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
+import { isTessayaOwnFolder, sessionHolderPid } from "./ClaudeLiveSessions.ts";
+import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   autoResumeAllowed,
   autoResumedWithin,
@@ -134,6 +153,10 @@ export class BatonSessionCatalogService extends Context.Service<
       cwd?: string;
       confirmPane?: string;
     }) => Effect.Effect<typeof BatonReattachResult.Type>;
+    readonly moveIntoTessaya: (input: {
+      threadId: string;
+      providerChangeApproved?: boolean;
+    }) => Effect.Effect<MoveResult>;
     readonly kept: (input: {
       threadId: string;
       retryId?: string;
@@ -206,6 +229,8 @@ export const layer = Layer.effect(
     const importer = yield* Effect.serviceOption(AgentSessionImporter);
     const engine = yield* Effect.serviceOption(BatonEngine);
     const record = yield* Effect.serviceOption(BatonRecordService);
+    const accounts = yield* Effect.serviceOption(BatonAccounts);
+    const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
     const registry = yield* Effect.serviceOption(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
@@ -756,6 +781,148 @@ export const layer = Layer.effect(
             state: "not-running" as const,
             pane: null,
             detail: "Could not reattach this thread.",
+          }),
+        ),
+      ),
+      moveIntoTessaya: Effect.fn("BatonSessionCatalogService.moveIntoTessaya")(
+        function* (input: { threadId: string; providerChangeApproved?: boolean }) {
+          if (Option.isNone(engine))
+            return {
+              state: "refused",
+              detail: "No thread engine here.",
+              instanceId: null,
+            } as const;
+          const e = engine.value;
+          const liveNow = (sessionId: string) =>
+            Effect.promise(() => ports.live()).pipe(
+              Effect.map((live) => live.find((s) => s.sessionId === sessionId) ?? null),
+            );
+          const result = yield* moveIntoTessaya(
+            {
+              shell: (threadId) =>
+                e.threadShell(ThreadId.make(threadId)).pipe(
+                  Effect.map((shell) =>
+                    shell === null
+                      ? null
+                      : {
+                          instanceId: String(shell.providerInstanceId),
+                          running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+                        },
+                  ),
+                ),
+              session: (sessionId) =>
+                liveNow(sessionId).pipe(
+                  Effect.map((s) =>
+                    s === null
+                      ? null
+                      : {
+                          status: s.status,
+                          pane: s.herdrPane,
+                          account: s.account,
+                          configDir: s.configDir ?? null,
+                        },
+                  ),
+                ),
+              target: Effect.fn("BatonSessionCatalogService.moveTarget")(function* (target) {
+                const id = ThreadId.make(target.threadId);
+                const shell = yield* e.threadShell(id);
+                const live = yield* liveNow(target.sessionId);
+                const cwd =
+                  live?.cwd ??
+                  shell?.worktreePath ??
+                  (yield* e.projects).find((p) => p.id === shell?.projectId)?.workspaceRoot ??
+                  null;
+                if (cwd === null) return { refused: "the session's folder is not known." };
+                const list = Option.isSome(accounts) ? (yield* accounts.value.list).accounts : [];
+                const instances: Readonly<Record<string, ProviderInstanceConfig>> = Option.isSome(
+                  serverSettings,
+                )
+                  ? yield* serverSettings.value.getSettings.pipe(
+                      Effect.map((current) => current.providerInstances),
+                      Effect.orElseSucceed(() => ({})),
+                    )
+                  : {};
+                const candidates = instancesForLogin(list, target.login);
+                if (candidates.length === 0)
+                  return {
+                    refused: "no Claude account in Tessaya signs in as this session's login.",
+                  };
+                const instanceId = resumeInstance({
+                  candidates: candidates.map((candidate) => ({
+                    instanceId: candidate,
+                    home: claudeHomeOf(instances[candidate]),
+                  })),
+                  sessionConfigDir: target.running
+                    ? (target.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"))
+                    : null,
+                  transcript: (home) =>
+                    NodePath.join(
+                      home,
+                      "projects",
+                      claudeProjectSlug(cwd),
+                      `${target.sessionId}.jsonl`,
+                    ),
+                  realpath: (path) => {
+                    try {
+                      return NodeFS.realpathSync(path);
+                    } catch {
+                      return null;
+                    }
+                  },
+                  exists: (path) => NodeFS.existsSync(path),
+                });
+                if (instanceId === null)
+                  return {
+                    refused:
+                      "no Claude account in Tessaya reaches this session's transcript, so it would start empty. The terminal was left running.",
+                  };
+                return {
+                  instanceId,
+                  model:
+                    DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] ?? "default",
+                };
+              }),
+              endTerminal: (sessionId) => endClaudeTerminal(sessionId),
+              held: (sessionId) => Effect.sync(() => sessionHolderPid(sessionId) !== null),
+              point: Effect.fn("BatonSessionCatalogService.movePoint")(
+                function* (target) {
+                  const threadId = ThreadId.make(target.threadId);
+                  const thread = yield* e.appThread(threadId);
+                  if (thread === null) return false;
+                  yield* e.writeEvents({
+                    events: pointAtSessionEvents({
+                      thread,
+                      driver: "claudeAgent",
+                      instanceId: target.instanceId,
+                      model: target.model,
+                      sessionId: target.sessionId,
+                      now: yield* DateTime.now,
+                      stamp: Date.now(),
+                    }),
+                  });
+                  // Handoffs a heal left ready would be pasted into the resumed session's first turn.
+                  yield* supersedeLiveHandoffs(e, threadId);
+                  return true;
+                },
+                Effect.orElseSucceed(() => false),
+              ),
+            },
+            input,
+          );
+          appendResumeLog(
+            NodePath.join(
+              Option.isSome(config) ? config.value.logsDir : NodeOS.tmpdir(),
+              "baton-mirror.ndjson",
+            ),
+            { event: "move-into-tessaya", thread: input.threadId, ...result },
+          );
+          return result;
+        },
+        Effect.catchCause((cause) =>
+          Effect.succeed({
+            state: "refused" as const,
+            detail: `Not moved: ${String(cause).slice(0, 200)}`,
+            instanceId: null,
           }),
         ),
       ),

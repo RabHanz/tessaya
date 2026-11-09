@@ -17,6 +17,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   autoResume: "baton.sessions.autoresume",
   retireHandoff: "baton.sessions.retirehandoff",
   reattach: "baton.sessions.reattach",
+  moveIntoTessaya: "baton.sessions.moveintotessaya",
   kept: "baton.sessions.kept",
   waiting: "baton.sessions.waiting",
   across: "baton.sessions.across",
@@ -251,6 +252,18 @@ export const BatonReattachResult = Schema.Struct({
   state: Schema.Literals(["reattached", "already-bound", "confirm", "not-running", "busy"]),
   pane: Schema.NullOr(Schema.String),
   detail: Schema.String,
+});
+
+/** End a Terminal thread's session in its terminal and continue the same session id in Tessaya (claudeAgent). */
+export const BatonMoveIntoTessayaInput = Schema.Struct({
+  threadId: Schema.String.check(Schema.isMaxLength(120)),
+  /** The person confirmed moving to another provider (the same flag as message.dispatch's). */
+  providerChangeApproved: Schema.optionalKey(Schema.Boolean),
+});
+export const BatonMoveIntoTessayaResult = Schema.Struct({
+  state: Schema.Literals(["moved", "refused", "busy"]),
+  detail: Schema.String,
+  instanceId: Schema.NullOr(Schema.String),
 });
 
 /** The messages a thread kept because it had no session, and a Retry that sends one (or the oldest) back through it. */

@@ -16,6 +16,7 @@ import {
   MessageId,
   type ModelSelection,
   type OrchestrationProjectShell,
+  type OrchestrationV2AppThread,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ContextHandoff,
   type OrchestrationV2ProviderThread,
@@ -139,6 +140,8 @@ export interface BatonEngineShape {
   readonly contextHandoffs: (
     threadId: ThreadId,
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2ContextHandoff>>;
+  /** The thread record itself (not the shell), for events that rewrite it. Null when unknown. */
+  readonly appThread: (threadId: ThreadId) => Effect.Effect<OrchestrationV2AppThread | null>;
   /** The thread's active provider thread, for live-session working state (D85). */
   readonly activeProviderThread: (
     threadId: ThreadId,
@@ -460,6 +463,12 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed([])),
     );
 
+  const appThread: BatonEngineShape["appThread"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, []).pipe(
+      Effect.map((records) => records.thread),
+      Effect.catchCause(() => Effect.succeed(null)),
+    );
+
   const activeProviderThread: BatonEngineShape["activeProviderThread"] = (threadId) =>
     // Not the snapshot window: it carries only provider threads whose status is active.
     orchestrator.getThreadRecords(threadId, ["providerThreads"]).pipe(
@@ -611,6 +620,7 @@ export const make = Effect.gen(function* () {
     runtimeRequestStatus,
     pendingRuntimeRequests,
     turnItem,
+    appThread,
     activeProviderThread,
     renameThread,
     resumeQueue,
@@ -688,6 +698,7 @@ export const layerStatic = (input: {
     runtimeRequestStatus: () => Effect.succeed(null),
     pendingRuntimeRequests: () => Effect.succeed([]),
     turnItem: () => Effect.succeed(null),
+    appThread: () => Effect.succeed(null),
     activeProviderThread: () => Effect.succeed(null),
     renameThread: () => Effect.succeed(true),
     resumeQueue: () => Effect.void,
