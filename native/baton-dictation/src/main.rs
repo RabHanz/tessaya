@@ -265,6 +265,27 @@ enum Work {
     Abort,
     /// Dictation is bound to a key and heard here: the dictation model stays loaded, so a press never waits on a reload.
     Keep(bool),
+    /// The model `warm_in_background` loaded for cloud dictation's live words; taken only into an empty slot.
+    Warmed(PathBuf, Session),
+}
+
+/// Cloud dictation's live words need the local model, but a recording must never wait for it: it is read here, on a
+/// low-priority thread of its own, and handed to the engine when ready. Until then the pill shows only its bars.
+fn warm_in_background(
+    model: PathBuf,
+    job_tx: Sender<Work>,
+    loader: impl FnOnce(&Path) -> Result<(Session, u64), String> + Send + 'static,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        #[cfg(windows)]
+        unsafe {
+            use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
+            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
+        }
+        if let Ok((session, _)) = loader(&model) {
+            let _ = job_tx.send(Work::Warmed(model, session));
+        }
+    })
 }
 
 /// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
@@ -642,6 +663,12 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 let _ = out.send(Msg::Finished { id: None, dictated: true, target, result });
             }
             Ok(Work::Abort) => live = None,
+            Ok(Work::Warmed(path, session)) => {
+                if loaded.is_none() {
+                    loaded = Some((path, session));
+                    loaded_at = Instant::now();
+                }
+            }
             Ok(Work::Keep(on)) => {
                 keep = on;
                 loaded_at = Instant::now();
@@ -1162,6 +1189,8 @@ fn over_limit(held: Duration) -> bool {
 fn serve() {
     let (tx, rx) = channel::<Msg>();
     let (job_tx, job_rx) = channel::<Work>();
+    // The model already read in the background for cloud live words, so a reconfigure does not read it again.
+    let mut warmed: Option<PathBuf> = None;
     {
         let tx = tx.clone();
         thread::spawn(move || engine_thread(job_rx, tx));
@@ -1304,6 +1333,16 @@ fn serve() {
                                 let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
                                 let local = config.model.is_some() && (config.external.is_none() || config.live_words);
                                 let _ = job_tx.send(Work::Keep(config.keep_loaded && bound && local));
+                                // Live words with the cloud: the local model, only if it is on disk (never downloaded
+                                // for this), read in the background once.
+                                if let (true, Some(_), Some(model)) =
+                                    (config.live_words, config.external.as_ref(), config.model.as_ref())
+                                {
+                                    if model.is_file() && warmed.as_ref() != Some(model) {
+                                        warmed = Some(model.clone());
+                                        warm_in_background(model.clone(), job_tx.clone(), |m| load(m));
+                                    }
+                                }
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
@@ -1832,6 +1871,30 @@ mod tests {
         let mut local = Live::new(None, 0, None);
         local.hear(None, &speech);
         assert_eq!(local.chunker.pending_len(), 16_000);
+    }
+
+    #[test]
+    fn a_cloud_dictation_never_waits_on_the_live_words_load() {
+        let (job_tx, job_rx) = channel::<Work>();
+        let (out_tx, out_rx) = channel::<Msg>();
+        thread::spawn(move || engine_thread(job_rx, out_tx));
+        // A load that takes as long as the test does: the recording must finish without it.
+        let (unblock, blocked) = channel::<()>();
+        let model = PathBuf::from("parakeet-test.gguf");
+        let warm = warm_in_background(model.clone(), job_tx.clone(), move |_| {
+            let _ = blocked.recv();
+            Err("stopped".to_string())
+        });
+        let dir = std::env::temp_dir().join(format!("tessaya-warm-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        job_tx.send(Work::Begin { model, language: None, external: Some(dir.clone()), keep: None, live: true }).unwrap();
+        job_tx.send(Work::Audio(vec![0.1; 16_000])).unwrap();
+        job_tx.send(Work::End { target: None, released: Instant::now(), timing: json!({}) }).unwrap();
+        let finished = out_rx.recv_timeout(Duration::from_secs(5)).expect("the release waited on the load");
+        assert!(matches!(finished, Msg::Finished { result: Ok(Done { wav: Some(_), .. }), .. }));
+        unblock.send(()).unwrap();
+        warm.join().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
