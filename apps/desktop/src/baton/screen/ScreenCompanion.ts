@@ -83,12 +83,10 @@ import {
 } from "@t3tools/baton-shared/screenCompanion";
 import {
   describeToolCall,
-  gatePrompt,
   spokenOutcome,
   announceTool,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
-import { decideTrust } from "@t3tools/baton-shared/trust";
 import * as Electron from "electron";
 
 import {
@@ -115,8 +113,10 @@ import {
   createAgentGate,
   createCutInMark,
   createTaint,
+  forOperator,
   stopsOnCutIn,
   type Gate,
+  type TurnTaint,
 } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
 import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
@@ -1344,8 +1344,10 @@ export const startScreenCompanion = (input: {
 
   let agent: AssistantAgent | null = null;
   let operator: { session: VisionSession; lastAt: number; home: string } | null = null;
-  /** The turn has run a tool, so what comes next may be following its output. */
-  let tainted = false;
+  /** The drive's or lesson's own taint: once it has run a tool, what comes next may be following its output. */
+  const operatorTaint = createTaint();
+  /** What he asked this drive or lesson for: typing it is typing his own words, until the drive has read something. */
+  let operatorGoal = "";
   /** A call is announced before its own request reaches the gate: only the next one is tainted. */
   let toolsThisTurn = 0;
   const dropOperator = () => {
@@ -1358,52 +1360,11 @@ export const startScreenCompanion = (input: {
     windows.closePrompt(true);
   };
 
-  const toolGate = async (call: ToolCall) => {
-    const judged = decideTrust({
-      call,
-      context: { actWithoutAsking: settings.actWithoutAsking, tainted },
-      agent: face,
-    });
-    const action = describeToolCall(call);
-    const record = (outcome: string) =>
-      input.onAction?.({
-        by: settings.operator,
-        persona: face.name,
-        tool: call.tool,
-        action,
-        outcome,
-        ...(judged.verdict === "allow" ? {} : { why: judged.why }),
-      });
-    if (judged.verdict === "deny") {
-      record("refused");
-      return { allow: false as const, reason: `${judged.why} Tell him why and stop.` };
-    }
-    if (judged.verdict === "allow") {
-      record("allowed");
-      return { allow: true as const };
-    }
-    const prompt = gatePrompt(judged, action, { agent: face.name });
-    const response = await askHandsFree(
-      {
-        title: prompt.title,
-        detail: prompt.detail,
-        buttons: ["Go ahead", "Not now"],
-        cancel: 1,
-        scoped: true,
-      },
-      prompt.spoken,
-      0,
-      prompt.noOnExpiry,
-    );
-    record(response === 0 ? "he said yes" : "he said no");
-    return response === 0
-      ? { allow: true as const }
-      : { allow: false as const, reason: "He said no. Stop and tell him." };
-  };
-
   const operatorSession = (home: string): VisionSession => {
     const onTool = (call: ToolCall) => {
-      ({ tainted, ran: toolsThisTurn } = announceTool(toolsThisTurn, call.tool));
+      const announced = announceTool(toolsThisTurn, call.tool);
+      toolsThisTurn = announced.ran;
+      if (announced.tainted) operatorTaint.mark();
       input.onAction?.({ by: settings.operator, tool: call.tool, action: describeToolCall(call) });
     };
     return settings.operator === "codex"
@@ -1413,7 +1374,7 @@ export const startScreenCompanion = (input: {
           systemPrompt: OPERATOR_PROMPT,
           env: input.env,
           platform: input.platform,
-          gate: toolGate,
+          gate: operatorGate,
           onTool,
         })
       : startVisionSession({
@@ -1425,7 +1386,7 @@ export const startScreenCompanion = (input: {
           env: claudeEnv(),
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
-          gate: toolGate,
+          gate: operatorGate,
           onTool,
         });
   };
@@ -1446,7 +1407,9 @@ export const startScreenCompanion = (input: {
       operator = { session: operatorSession(home), lastAt: Date.now(), home };
     }
     const current = operator;
-    tainted = false;
+    // His goal counts as his words through forOperator, which stops counting it once the drive is tainted.
+    operatorTaint.reset();
+    operatorGoal = goal;
     toolsThisTurn = 0;
     answering += 1;
     try {
@@ -1881,59 +1844,83 @@ export const startScreenCompanion = (input: {
   let chromeRelaunched = false;
   /** The last ui_tree's lines: a click on a text box there only moves the cursor. */
   let lastControls: ReadonlyArray<string> = [];
-  const agentGate = createAgentGate({
-    actWithoutAsking: () => settings.actWithoutAsking,
-    chrome: {
-      socialOn: () => settings.socialOn,
-      now: () => Date.now(),
-      log: (line) =>
-        NodeFS.appendFileSync(NodePath.join(input.stateDir, "social-actions.ndjson"), `${line}\n`),
-    },
-    taint: agentTaint,
-    textIsHis: (text) =>
-      textIsFromConversation(
-        text,
-        // "Alfred, type what Freya just said": her words are his too, unless she is private.
-        conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
-      ),
-    focusedWindow: gateWindow,
-    pointerField: (tool, call) => tool === "click_element" && clickTargetsField(lastControls, call),
-    confirm: async (p) =>
-      (await askHandsFree(
-        {
-          title: p.title,
-          detail: p.detail,
-          buttons: ["Go ahead", "Not now"],
-          cancel: 1,
-          scoped: true,
-        },
-        p.spoken,
-        0,
-        p.noOnExpiry,
-      )) === 0,
-    inPlan: () => planGrant?.steps ?? null,
-    agent: () => ({
-      ...face,
-      leadsProject: (p: ProjectRef) => leadsProject(face, p, actions?.projects?.() ?? []),
-    }),
-    jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
-    keysAllowed: (at) => {
-      const plan = planGrant;
-      // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
-      keysAllowed = { ...at, ...(plan === null ? {} : { clipboard: plan.clipboard }) };
-    },
-    record: (entry) => {
-      if (typeof entry["tool"] === "string") {
-        // The tool itself is listed once, by onTool.
-        turns
-          .current()
-          .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
-        // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
-        input.onActivity?.("Working");
-      }
-      input.onAction?.({ by: "assistant", persona: face.name, ...entry });
-    },
+  /** His gate (One Trust with everything it judges by), for the assistant's turns and for a drive's or lesson's. */
+  const gateFor = (
+    taint: TurnTaint,
+    record: (entry: Readonly<Record<string, unknown>>) => void,
+    own: Partial<Parameters<typeof createAgentGate>[0]> = {},
+  ): Gate =>
+    createAgentGate({
+      actWithoutAsking: () => settings.actWithoutAsking,
+      chrome: {
+        socialOn: () => settings.socialOn,
+        now: () => Date.now(),
+        log: (line) =>
+          NodeFS.appendFileSync(
+            NodePath.join(input.stateDir, "social-actions.ndjson"),
+            `${line}\n`,
+          ),
+      },
+      taint,
+      textIsHis: (text) =>
+        textIsFromConversation(
+          text,
+          // "Alfred, type what Freya just said": her words are his too, unless she is private.
+          conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
+        ),
+      focusedWindow: gateWindow,
+      pointerField: (tool, call) =>
+        tool === "click_element" && clickTargetsField(lastControls, call),
+      confirm: async (p) =>
+        (await askHandsFree(
+          {
+            title: p.title,
+            detail: p.detail,
+            buttons: ["Go ahead", "Not now"],
+            cancel: 1,
+            scoped: true,
+          },
+          p.spoken,
+          0,
+          p.noOnExpiry,
+        )) === 0,
+      inPlan: () => planGrant?.steps ?? null,
+      agent: () => ({
+        ...face,
+        leadsProject: (p: ProjectRef) => leadsProject(face, p, actions?.projects?.() ?? []),
+      }),
+      jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
+      keysAllowed: (at) => {
+        const plan = planGrant;
+        // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
+        keysAllowed = { ...at, ...(plan === null ? {} : { clipboard: plan.clipboard }) };
+      },
+      record,
+      ...own,
+    });
+  const agentGate = gateFor(agentTaint, (entry) => {
+    if (typeof entry["tool"] === "string") {
+      // The tool itself is listed once, by onTool.
+      turns
+        .current()
+        .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
+      // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
+      input.onActivity?.("Working");
+    }
+    input.onAction?.({ by: "assistant", persona: face.name, ...entry });
   });
+  const operatorGate = gateFor(
+    operatorTaint,
+    (entry) => input.onAction?.({ by: settings.operator, persona: face.name, ...entry }),
+    forOperator({
+      taint: operatorTaint,
+      textIsHis: (text) =>
+        textIsFromConversation(text, [
+          { said: operatorGoal, reply: "" },
+          ...conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
+        ]),
+    }),
+  );
 
   // Remote hands: its own gate and taint. The caller is a session the Director gave baton:hands, so what it read is not
   // carried from one call to the next; every rule One Trust has still applies to each call. Away, a question is a no.
