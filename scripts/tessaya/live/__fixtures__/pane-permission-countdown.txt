@@ -1,0 +1,20 @@
+● Redeploying on the box.
+
+  Redeploy tessaya on hetzner
+  ⎿  $ C=/srv/work/deploy-export; rm -rf $C && mkdir -p $C && bash -c "rm -rf /srv/work/tmp/archive"
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Redeploy tessaya on hetzner
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ C=/srv/work/deploy-export; rm -rf $C && mkdir -p $C && bash -c "rm -rf /srv/work/tmp/archive"
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+ This shell -c script runs rm and could not be checked
+ ⚠ Claude Code will automatically block this request in 1:58, to avoid holding up an unattended session
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No
+
+ Esc to cancel · Tab to amend

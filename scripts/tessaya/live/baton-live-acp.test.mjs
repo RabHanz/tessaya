@@ -89,6 +89,19 @@ NodeTest.test("a permission dialog on the screen is read with its options (D88)"
   NodeAssert.equal(answerKeys(prompt, "maybe"), null, "no free text where none is offered");
 });
 
+NodeTest.test("a permission dialog's countdown does not change its card while it ticks", () => {
+  const first = fixture("pane-permission-countdown.txt");
+  const redraw = first.replace("in 1:58,", "in 1:48,");
+  NodeAssert.notEqual(redraw, first);
+  for (const parse of [parsePanePrompt, parseWaitingScreen]) {
+    const [a, b] = [parse(first), parse(redraw)];
+    NodeAssert.equal(a.key, b.key);
+    NodeAssert.equal(a.question, b.question, "the same ref, so an answer still fits");
+    NodeAssert.ok(isCardAnswer(`${a.question}\nAllow`, b));
+    NodeAssert.match(a.details, /automatically block this request soon,/);
+  }
+});
+
 NodeTest.test("an AskUserQuestion is read with its header, descriptions and free-text slot", () => {
   const prompt = parsePanePrompt(fixture("pane-question.txt"));
   NodeAssert.equal(prompt.header, "Colour");

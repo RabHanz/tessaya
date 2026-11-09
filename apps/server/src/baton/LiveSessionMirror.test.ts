@@ -19,6 +19,7 @@ import {
   askQuestion,
   askRunId,
   keepAsk,
+  promptReadDue,
   parsePanePrompt,
   endedMirrorThreads,
   forgetUnarchived,
@@ -90,6 +91,17 @@ describe("a terminal permission prompt's card", () => {
     expect(keepAsk(first, answered)).toBe(false);
     // The card raised again is not raised a third time.
     expect(keepAsk({ at: 6_000, again: true }, { ...answered, answeredAt: 9_000 })).toBe(true);
+  });
+
+  it("an answer the bridge finished makes the next tick read the pane, so a card whose prompt is gone closes", () => {
+    const read = { updatedAt: "t1", at: 1_000 };
+    const none = () => null;
+    expect(promptReadDue(read, "t1", 2_000, none)).toBe(false);
+    expect(promptReadDue(read, "t1", 2_000, () => 500)).toBe(false);
+    expect(promptReadDue(read, "t1", 2_000, () => 1_500)).toBe(true);
+    expect(promptReadDue(read, "t2", 2_000, none)).toBe(true);
+    expect(promptReadDue(read, "t1", 11_000, none)).toBe(true);
+    expect(promptReadDue(null, "t1", 2_000, none)).toBe(true);
   });
 });
 

@@ -282,6 +282,21 @@ const answeredAt = (sessionId: string): number | null => {
   }
 };
 
+/**
+ * Whether a waiting session's card needs its pane read again: its descriptor changed, the last read is
+ * PROMPT_REREAD_MS old, or the bridge finished an answer since (a pressed or stale answer settles on the next tick).
+ */
+export const promptReadDue = (
+  read: { readonly updatedAt: string | null; readonly at: number } | null,
+  updatedAt: string | null,
+  nowMs: number,
+  answered: () => number | null,
+) =>
+  read === null ||
+  read.updatedAt !== updatedAt ||
+  nowMs - read.at >= PROMPT_REREAD_MS ||
+  (answered() ?? -Infinity) >= read.at;
+
 /** The T3 question a terminal prompt becomes. T3 sends its answer back as "<question>\n<answer>". */
 export const askQuestion = (found: PanePrompt, overview: string) => ({
   id: "answer",
@@ -1631,9 +1646,9 @@ const make = Effect.gen(function* () {
       if (
         session.status === "waiting" &&
         follow.ask !== null &&
-        follow.promptRead !== null &&
-        follow.promptRead.updatedAt === session.updatedAt &&
-        nowMs - follow.promptRead.at < PROMPT_REREAD_MS
+        !promptReadDue(follow.promptRead, session.updatedAt, nowMs, () =>
+          answeredAt(session.sessionId),
+        )
       )
         return;
       follow.promptRead =

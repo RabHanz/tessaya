@@ -109,9 +109,18 @@ export function parseReviewScreen(lines) {
  * order (`index`), so an answer is arrows from the highlighted one plus Enter.
  */
 export function parsePanePrompt(screen) {
-  const text = String(screen ?? "").replace(ANSI, "");
-  return parseScreen(screen) ?? unreadPermission(text) ?? keyHintPrompt(text);
+  const text = steadyScreen(screen);
+  return parseScreen(text) ?? unreadPermission(text) ?? keyHintPrompt(text);
 }
+
+/**
+ * The screen without its colour codes and with a dialog's countdown ("will automatically block this request in 1:58")
+ * said as "soon": it ticks every second, and a prompt's key (its card's ref) must not change while the prompt shows.
+ */
+const steadyScreen = (screen) =>
+  String(screen ?? "")
+    .replace(ANSI, "")
+    .replace(/(\bautomatically\b[^\n]*?) in \d+:\d{2}\b/gi, "$1 soon");
 
 /**
  * The prompt a waiting session shows: one Tessaya knows, else Esc (and Enter only when no option list shows, since
@@ -121,10 +130,7 @@ export function parsePanePrompt(screen) {
 export function parseWaitingScreen(screen) {
   const found = parsePanePrompt(screen);
   if (found !== null) return found;
-  const lines = String(screen ?? "")
-    .replace(ANSI, "")
-    .replace(/\r/g, "")
-    .split("\n");
+  const lines = steadyScreen(screen).replace(/\r/g, "").split("\n");
   const details = screenTail(lines.join("\n"), 20);
   if (details === "" || inputBoxAt(lines) >= 0) return null;
   const note = "Tessaya didn't recognise this screen";
