@@ -8,6 +8,7 @@ import {
   pickModelFor,
   sessionLoginKey,
   threadAccount,
+  accountTicks,
   unifyAccounts,
 } from "./accounts.ts";
 
@@ -206,5 +207,23 @@ describe("the account a thread runs as", () => {
     expect(threadAccount(accounts, "baton-live", sessionLoginKey(pool, "home"))?.id).toBe("home");
     expect(threadAccount(accounts, "baton-live", sessionLoginKey(pool, null))?.id).toBe("work");
     expect(threadAccount(accounts, "baton-live", sessionLoginKey(pool, "gone"))).toBeUndefined();
+  });
+
+  it("ticks the login a terminal session runs as, not a pick waiting in the composer, which it names apart", () => {
+    // He picked the home account in the composer; the session still runs on work, as the header chip says.
+    const ticks = accountTicks(accounts, {
+      storedInstanceId: "baton-live",
+      shownInstanceId: "claude_home",
+      loginKey: sessionLoginKey(pool, "work"),
+    });
+    expect(ticks.runsAs?.id).toBe("work");
+    expect(ticks.setTo?.id).toBe("home");
+    expect(
+      accountTicks(accounts, {
+        storedInstanceId: "baton-live",
+        shownInstanceId: "baton-live",
+        loginKey: "2",
+      }),
+    ).toEqual({ runsAs: accounts[1], setTo: undefined });
   });
 });

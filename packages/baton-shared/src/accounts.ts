@@ -277,3 +277,26 @@ export const threadAccount = <A extends Pick<BatonAccountRecord, "instanceIds" |
   instanceId === LIVE_INSTANCE
     ? accounts.find((account) => loginKey !== null && account.liveSwitchKey === loginKey)
     : accounts.find((account) => account.instanceIds.includes(instanceId));
+
+/**
+ * The picker's tick and the header chip agree: the tick is the account the thread runs as (its stored instance, and on
+ * a terminal thread the session's own login), never a pick still waiting in the composer. A waiting pick on another
+ * account comes back as `setTo`, for a "thread set to X" hint.
+ */
+export const accountTicks = <
+  A extends Pick<BatonAccountRecord, "id" | "instanceIds" | "liveSwitchKey">,
+>(
+  accounts: ReadonlyArray<A>,
+  input: {
+    readonly storedInstanceId: string;
+    readonly shownInstanceId: string;
+    readonly loginKey: string | null;
+  },
+): { readonly runsAs: A | undefined; readonly setTo: A | undefined } => {
+  const runsAs = threadAccount(accounts, input.storedInstanceId, input.loginKey);
+  const shown =
+    input.shownInstanceId === input.storedInstanceId
+      ? runsAs
+      : threadAccount(accounts, input.shownInstanceId, input.loginKey);
+  return { runsAs, setTo: shown !== undefined && shown.id !== runsAs?.id ? shown : undefined };
+};

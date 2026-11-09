@@ -9,7 +9,7 @@ import {
   type BatonAccount,
   type BatonAccountRecord,
 } from "@t3tools/baton-contracts";
-import { pickModelFor, oneEntryPerProvider } from "@t3tools/baton-shared/accounts";
+import { accountTicks, pickModelFor, oneEntryPerProvider } from "@t3tools/baton-shared/accounts";
 import {
   accountRow,
   maskedEmail,
@@ -44,6 +44,7 @@ import { useNowMinute } from "../../hooks/useNowMinute";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useQuietThreadShell } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -300,11 +301,19 @@ function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
 function LiveAccounts(props: {
   readonly threadRef: ScopedThreadRef;
   readonly accounts: ReadonlyArray<BatonAccountRecord>;
+  /** The instance the composer shows, which may be a pick not yet sent. */
+  readonly shownInstanceId: string;
 }) {
   const logins = useLiveAccounts(props.threadRef);
   const switchTo = useLiveAccountSwitch(props.threadRef);
   const { queued, failure, cancel } = useLiveState(props.threadRef);
   const active = logins.find((login) => login.active);
+  // The tick is the login the session runs as, as the header chip says (accountTicks).
+  const { runsAs, setTo } = accountTicks(props.accounts, {
+    storedInstanceId: LIVE_INSTANCE,
+    shownInstanceId: props.shownInstanceId,
+    loginKey: active?.key ?? null,
+  });
   const accounts = props.accounts.filter(
     (account) => account.driver === "claudeAgent" && account.liveSwitchKey !== null,
   );
@@ -313,7 +322,7 @@ function LiveAccounts(props: {
     <Section>
       {accounts.map((account) => {
         const login = logins.find((candidate) => candidate.key === account.liveSwitchKey);
-        const current = active !== undefined && active.key === account.liveSwitchKey;
+        const current = runsAs?.id === account.id;
         return (
           <AccountRow
             key={account.id}
@@ -324,6 +333,11 @@ function LiveAccounts(props: {
           />
         );
       })}
+      {setTo === undefined ? null : (
+        <p className="px-1.5 pt-1 text-2xs text-muted-foreground" data-testid="thread-set-to">
+          Thread set to {setTo.label}
+        </p>
+      )}
       {failure === null ? null : (
         <p
           className="px-1.5 pt-1 text-2xs text-destructive-foreground"
@@ -357,10 +371,12 @@ export function BatonPickerAccount(props: {
 }) {
   const { entry, threadRef } = props;
   const accounts = useBatonAccounts(props.environmentId);
+  // The thread's own instance decides, not a pick waiting in the composer: the header chip reads the same.
+  const storedInstanceId = useQuietThreadShell(threadRef)?.modelSelection.instanceId;
   const onLiveThread =
     threadRef !== null &&
     isLiveThreadId(threadRef.threadId) &&
-    props.threadInstanceId === LIVE_INSTANCE;
+    (storedInstanceId ?? props.threadInstanceId) === LIVE_INSTANCE;
   const terminal =
     entry.instanceId === LIVE_INSTANCE && props.environmentId !== null ? (
       <TerminalSessions environmentId={props.environmentId} />
@@ -370,7 +386,11 @@ export function BatonPickerAccount(props: {
       return (
         <>
           {terminal}
-          <LiveAccounts threadRef={threadRef} accounts={accounts} />
+          <LiveAccounts
+            threadRef={threadRef}
+            accounts={accounts}
+            shownInstanceId={props.threadInstanceId}
+          />
         </>
       );
     return <ContinueInNote name={entry.displayName} />;

@@ -6,6 +6,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccountRecord } from "@t3tools/baton-contracts";
 import { keepsDraft, liveChangeRoute } from "@t3tools/baton-shared/liveModel";
+import { accountTicks } from "@t3tools/baton-shared/accounts";
 import {
   maskedEmail,
   queuedText,
@@ -398,6 +399,8 @@ function LiveAccounts(props: {
   readonly sessionId: string;
   readonly loginKey: string | null;
   readonly accounts: ReadonlyArray<BatonAccountRecord>;
+  /** The instance the sheet shows, which may be a pick not yet saved. */
+  readonly shownInstanceId: string;
 }) {
   const stateAtom = batonWorkSessions.liveStateQuery({
     environmentId: props.environmentId,
@@ -417,11 +420,17 @@ function LiveAccounts(props: {
   const moveTo = useLiveAccountMove(props.environmentId, props.sessionId, setMovedTo);
   const queued = state?.queued ?? null;
   const failure = state?.failure ?? null;
+  // The tick is the login the session runs as, as the header chip says; a waiting pick is named apart.
+  const { runsAs, setTo } = accountTicks(props.accounts, {
+    storedInstanceId: LIVE_INSTANCE,
+    shownInstanceId: props.shownInstanceId,
+    loginKey,
+  });
   if (accounts.length === 0 && queued === null && failure === null) return null;
   return (
     <Card title="Account · % used">
       {accounts.map((account, index) => {
-        const current = loginKey !== null && account.liveSwitchKey === loginKey;
+        const current = runsAs?.id === account.id;
         return (
           <AccountRow
             key={account.id}
@@ -437,6 +446,11 @@ function LiveAccounts(props: {
           />
         );
       })}
+      {setTo === undefined ? null : (
+        <Text className="px-4 py-2 text-2xs text-foreground-muted">
+          Thread set to {setTo.label}
+        </Text>
+      )}
       {failure === null ? null : (
         <Text className="px-4 py-2 text-2xs text-danger-foreground">
           Last queued change not applied: {failure}
@@ -502,6 +516,7 @@ export function BatonAccountRow(props: {
           sessionId={sessionId}
           loginKey={loginKey}
           accounts={accounts}
+          shownInstanceId={props.displayed?.instanceId ?? LIVE_INSTANCE}
         />
       </>
     );
