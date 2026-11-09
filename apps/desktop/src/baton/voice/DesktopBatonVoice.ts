@@ -544,7 +544,7 @@ interface VoiceSettings {
   readonly showWords: boolean;
   /** "field": his words at the caret of the field they go into when it says where; "pill": always in the pill. */
   readonly pillStyle: "pill" | "field";
-  /** Windows 11's acrylic behind the cards beside the pill; off by default. */
+  /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
   readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
@@ -3726,6 +3726,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
     showWords: () => settings.showWords && !ghost.active(),
+    frosted: () => settings.frosted && acrylicSupported(input.platform, NodeOS.release()),
     dictationMessage: () => dictationMessage,
     workArea: () => workRect,
     onDismiss: () => {
@@ -6019,7 +6020,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.frosted",
         section: "On screen",
         label: "Frosted glass",
-        hint: "Windows 11 blurs what is behind the cards beside the pill. Off, or on Windows 10, they keep their tinted glass.",
+        hint: "Windows 11 blurs what is behind the pill's words and the cards beside it. Off, or on Windows 10, they keep their tinted glass.",
         kind: "toggle",
         on: settings.frosted,
         more: true,

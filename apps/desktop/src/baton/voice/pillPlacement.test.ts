@@ -14,6 +14,7 @@ import {
   baseOf,
   createLowerHold,
   grownBounds,
+  frostBounds,
 } from "./pillPlacement.ts";
 
 const size = { width: 420, height: 52 };
@@ -212,6 +213,19 @@ describe("the grown window and the cleanup's hold", () => {
     // A short screen: as tall as it has room for, never shorter than the pill.
     expect(grownBounds(top, 320, { ...hd, height: 200 }).bounds.height).toBe(190);
     expect(grownBounds(base, 80, hd)).toEqual({ bounds: base, down: false });
+  });
+  it("frosts the capsule inside the grown window, inset so the system corners stay hidden", () => {
+    const grown = grownBounds({ x: 750, y: 960, width: 420, height: 80 }, 320, hd).bounds;
+    expect(frostBounds(grown, { x: 98.4, y: 220.6, width: 224, height: 72 })).toEqual({
+      x: 851,
+      y: 944,
+      width: 218,
+      height: 66,
+    });
+    // Grown downward the capsule hangs from the top; the frost follows it, not the window.
+    const down = grownBounds({ x: 750, y: 10, width: 420, height: 80 }, 320, hd).bounds;
+    expect(frostBounds(down, { x: 148, y: 18, width: 124, height: 34 })?.y).toBe(31);
+    expect(frostBounds(grown, { x: 190, y: 250, width: 36, height: 6 })).toBeNull();
   });
   it("defers a lower to the end of the cleanup, and drops it when the pill is raised again", () => {
     let now = 0;

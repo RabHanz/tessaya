@@ -17,6 +17,7 @@ import {
   cursorOverCapsule,
   defaultPosition,
   baseOf,
+  frostBounds,
   createLowerHold,
   grownBounds,
   parseSpots,
@@ -89,6 +90,8 @@ const SPEECH_MS = 20;
 const PROVISIONAL_HOLD_MS = 4_500;
 /** The closing sound plays out before the window hides. */
 const CLOSE_MS = 280;
+// The frost waits for the island to hold still this long: resizing an acrylic window every frame jitters on Windows.
+const FROST_SETTLE_MS = 160;
 
 /** The phases that show a waveform and no word: his voice or Baton's, live. */
 const WAVE_PHASES = ["listening", "speaking", "dictating"];
@@ -353,6 +356,8 @@ export const createVoicePill = (input: {
   readonly dictationMessage?: () => boolean;
   /** Settings → Dictation → Show words as you speak (on unless he turns it off). */
   readonly showWords?: () => boolean;
+  /** Settings → On screen → Frosted glass, where Windows can draw it (`acrylicSupported`); else the island's tint. */
+  readonly frosted?: () => boolean;
   /** The target window's rect in DIP (null when unknown): the pill goes on its screen. */
   readonly workArea?: () => Area | null;
   /** Each wake, from the event to the window on screen. */
@@ -388,6 +393,9 @@ export const createVoicePill = (input: {
   let markers: Electron.BrowserWindow | null = null;
   let markerPlace: PlaceId | null = null;
   let capsule = { x: 302, y: 40, width: 132, height: 41 };
+  /** Acrylic under the island's capsule, a window of its own: the pill's is larger than the capsule. */
+  let frost: Electron.BrowserWindow | null = null;
+  let frostTimer: ReturnType<typeof setTimeout> | null = null;
   let takingMouse = false;
   let overTicks = 0;
   let hitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -445,6 +453,47 @@ export const createVoicePill = (input: {
     const base = target === null || target.isDestroyed() ? null : baseBounds(target);
     tall = on;
     if (base !== null && target!.isVisible()) target!.setBounds(boundsAt(base));
+    settleFrost();
+  };
+  const hideFrost = () => {
+    if (frostTimer !== null) clearTimeout(frostTimer);
+    frostTimer = null;
+    if (frost !== null && !frost.isDestroyed() && frost.isVisible()) frost.hide();
+  };
+  /** Hidden while the island moves, laid under the capsule once it holds still; the tint shows meanwhile. */
+  const settleFrost = () => {
+    hideFrost();
+    if (!tall || input.frosted?.() !== true || (input.look?.().glass ?? "on") !== "on") return;
+    frostTimer = setTimeout(() => {
+      frostTimer = null;
+      const target = window;
+      if (!tall || target === null || target.isDestroyed() || !target.isVisible()) return;
+      const bounds = frostBounds(target.getBounds(), capsule);
+      if (bounds === null) return;
+      if (frost === null || frost.isDestroyed()) {
+        frost = new Electron.BrowserWindow({
+          ...bounds,
+          backgroundMaterial: "acrylic",
+          roundedCorners: true,
+          frame: false,
+          transparent: true,
+          resizable: false,
+          focusable: false,
+          skipTaskbar: true,
+          alwaysOnTop: true,
+          hasShadow: false,
+          show: false,
+          webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+        });
+        frost.setAlwaysOnTop(true, "screen-saver");
+        frost.setIgnoreMouseEvents(true);
+        markCompanionWindow(frost);
+        protectFromCapture(frost);
+      } else frost.setBounds(bounds);
+      frost.showInactive();
+      target.moveTop();
+    }, FROST_SETTLE_MS);
+    frostTimer.unref();
   };
   const trace = (record: Record<string, unknown>) => {
     if (input.captureDir === undefined) return;
@@ -684,6 +733,13 @@ export const createVoicePill = (input: {
     protectFromCapture(created);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window = created;
+    // Dragged, placed again or moved to another screen: the frost follows once the window stops.
+    created.on("move", settleFrost);
+    created.on("closed", () => {
+      hideFrost();
+      if (frost !== null && !frost.isDestroyed()) frost.destroy();
+      frost = null;
+    });
     // Clicking into another app ends Move pill, so Esc is not kept from every app.
     created.on("blur", () => {
       if (moving && window === created) setMoving(false);
@@ -735,11 +791,13 @@ export const createVoicePill = (input: {
       setTall(false);
       return;
     }
+    hideFrost();
     call("window.pill.hide()");
     const closing = window;
     hideTimer = setTimeout(() => {
       if (!closing.isDestroyed()) closing.hide();
       tall = false;
+      hideFrost();
       down = false;
       stopHitTest();
     }, CLOSE_MS);
@@ -899,8 +957,10 @@ export const createVoicePill = (input: {
     (event, x: unknown, y: unknown, w: unknown, h: unknown) => {
       if (!mine(event) || ![x, y, w, h].every((n) => typeof n === "number" && Number.isFinite(n)))
         return;
-      if ((w as number) > 0 && (h as number) > 0)
+      if ((w as number) > 0 && (h as number) > 0) {
         capsule = { x: x as number, y: y as number, width: w as number, height: h as number };
+        settleFrost();
+      }
     },
   );
   Electron.ipcMain.on(
