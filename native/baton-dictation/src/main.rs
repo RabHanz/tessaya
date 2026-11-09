@@ -25,6 +25,7 @@ mod paste_windows;
 #[cfg(any(windows, test))]
 mod paste_tx;
 
+use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -36,7 +37,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use enigo::Enigo;
 #[cfg(not(target_os = "linux"))]
 use enigo::Settings;
-use handy_keys::{Hotkey, HotkeyManager, HotkeyState};
+use handy_keys::{Hotkey, HotkeyManager, HotkeyState, Key, KeyboardListener, Modifiers};
 use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
@@ -137,6 +138,8 @@ enum Msg {
     /// the loop for 100 to 250 ms) still times the hold he made, not when the loop got to it.
     Key { hold: bool, pressed: bool, at: f64 },
     MicFailed(String),
+    /// Another key joined the hold chord (Win+Ctrl+Shift+B): the dictation it started is dropped, never pasted.
+    ChordJoined,
     /// A block of the recording's audio for the pill's waveform, written out by the serve thread, never the audio's.
     Meter(Vec<f32>),
     /// A fake microphone ran out of file, which stands in for releasing the key.
@@ -512,9 +515,7 @@ impl Live {
             });
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
-        // A long quiet tail after the last cut (he waits a second or two before letting go) is nothing to decode too.
-        let quiet = self.chunker.pending_is_quiet(&self.heard) || self.chunker.quiet_after(0, &self.heard, REUSE_FLAT);
-        if self.failed.is_none() && !quiet {
+        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
             // Only quiet since the last preview: its words are the rest, and nothing is decoded at release.
             let reuse = self.preview.is_some() && self.chunker.quiet_after(self.previewed, &self.heard, REUSE_FLAT);
             if let (true, Some(text)) = (reuse, self.preview.take()) {
@@ -876,38 +877,141 @@ impl Drop for Keys {
     }
 }
 
+/// A hold key of modifiers alone (Ctrl+Shift+Win), read without blocking anything: blocking the key that completes it
+/// would eat Windows' own Win+Ctrl+Shift+B. It holds only while exactly those modifiers are down and no other key; a key
+/// joining the chord cancels it, and that key goes on to Windows untouched.
+struct ModChord {
+    want: Modifiers,
+    active: bool,
+    spoiled: bool,
+    /// Other keys down now: the chord never starts over one.
+    held: HashSet<Key>,
+}
+
+#[derive(Debug, PartialEq)]
+enum ChordOut {
+    Down,
+    Up,
+    /// Another key joined while it held: the dictation it started is dropped.
+    Cancel,
+}
+
+impl ModChord {
+    fn new(want: Modifiers) -> Self {
+        Self { want, active: false, spoiled: false, held: HashSet::new() }
+    }
+
+    fn step(&mut self, modifiers: Modifiers, key: Option<Key>, down: bool) -> Option<ChordOut> {
+        if let Some(key) = key {
+            if !down {
+                self.held.remove(&key);
+                return None;
+            }
+            self.held.insert(key);
+            if self.active && !self.spoiled {
+                self.spoiled = true;
+                return Some(ChordOut::Cancel);
+            }
+            return None;
+        }
+        // A key-up missed while every modifier was up cannot block the chord for good.
+        if modifiers.is_empty() {
+            self.held.clear();
+        }
+        let now = self.want.matches(modifiers);
+        if now && !self.active && self.held.is_empty() {
+            self.active = true;
+            self.spoiled = false;
+            return Some(ChordOut::Down);
+        }
+        if !now && self.active {
+            self.active = false;
+            return (!std::mem::take(&mut self.spoiled)).then_some(ChordOut::Up);
+        }
+        None
+    }
+}
+
+/// The shell opens Start when Win comes up with no other key since it went down; an unassigned key between them keeps
+/// it shut, as the hotkey hook's own mask does (`handy-keys`' MENU_MASK_VK).
+#[cfg(windows)]
+fn mask_start_menu() {
+    let _ = input_windows::keys(&[0xE8]);
+}
+
+#[cfg(not(windows))]
+fn mask_start_menu() {}
+
 fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Option<Keys>, String> {
     if config.hold.is_empty() && config.toggle.is_empty() {
         return Ok(None);
     }
-    // `new_with_blocking`: the chord must not also reach the focused app.
-    let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
-    let register = |texts: &Vec<String>| -> Result<Vec<_>, String> {
-        texts
-            .iter()
-            .map(|text| {
-                let hotkey: Hotkey = text.parse().map_err(|e| format!("{text}: {e}"))?;
-                manager.register(hotkey).map_err(|e| format!("{text}: {e}"))
-            })
-            .collect()
-    };
-    let hold = register(&config.hold)?;
-    register(&config.toggle)?;
-    let stop = Arc::new(AtomicBool::new(false));
-    let stopped = stop.clone();
-    let tx = tx.clone();
-    thread::spawn(move || {
-        while !stopped.load(Ordering::Relaxed) {
-            match manager.try_recv() {
-                Some(event) => {
-                    let pressed = event.state == HotkeyState::Pressed;
-                    let at = clock.elapsed().as_secs_f64() * 1000.0;
-                    let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed, at });
-                }
-                None => thread::sleep(Duration::from_millis(5)),
-            }
+    let parse = |text: &String| -> Result<Hotkey, String> { text.parse().map_err(|e| format!("{text}: {e}")) };
+    let mut chords = Vec::new();
+    let mut keyed = Vec::new();
+    for text in &config.hold {
+        let hotkey = parse(text)?;
+        if hotkey.key.is_none() {
+            chords.push(hotkey.modifiers);
+        } else {
+            keyed.push(hotkey);
         }
-    });
+    }
+    let toggles = config.toggle.iter().map(parse).collect::<Result<Vec<_>, _>>()?;
+    let stop = Arc::new(AtomicBool::new(false));
+    if !keyed.is_empty() || !toggles.is_empty() {
+        // `new_with_blocking`: a chord with a key must not also reach the focused app.
+        let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
+        let register = |hotkeys: Vec<Hotkey>| -> Result<Vec<_>, String> {
+            hotkeys.into_iter().map(|h| manager.register(h).map_err(|e| e.to_string())).collect()
+        };
+        let hold = register(keyed)?;
+        register(toggles)?;
+        let stopped = stop.clone();
+        let tx = tx.clone();
+        thread::spawn(move || {
+            while !stopped.load(Ordering::Relaxed) {
+                match manager.try_recv() {
+                    Some(event) => {
+                        let pressed = event.state == HotkeyState::Pressed;
+                        let at = clock.elapsed().as_secs_f64() * 1000.0;
+                        let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed, at });
+                    }
+                    None => thread::sleep(Duration::from_millis(5)),
+                }
+            }
+        });
+    }
+    if !chords.is_empty() {
+        let listener = KeyboardListener::new().map_err(|e| e.to_string())?;
+        let stopped = stop.clone();
+        let tx = tx.clone();
+        thread::spawn(move || {
+            let mut machines: Vec<ModChord> = chords.into_iter().map(ModChord::new).collect();
+            while !stopped.load(Ordering::Relaxed) {
+                let Some(event) = listener.try_recv() else {
+                    thread::sleep(Duration::from_millis(5));
+                    continue;
+                };
+                let at = clock.elapsed().as_secs_f64() * 1000.0;
+                for machine in &mut machines {
+                    match machine.step(event.modifiers, event.key, event.is_key_down) {
+                        Some(ChordOut::Down) => {
+                            mask_start_menu();
+                            let _ = tx.send(Msg::Key { hold: true, pressed: true, at });
+                        }
+                        Some(ChordOut::Up) => {
+                            let _ = tx.send(Msg::Key { hold: true, pressed: false, at });
+                        }
+                        Some(ChordOut::Cancel) => {
+                            let _ = tx.send(Msg::ChordJoined);
+                        }
+                        None => {}
+                    }
+                }
+            }
+        });
+    }
     Ok(Some(Keys(stop)))
 }
 
@@ -1795,6 +1899,14 @@ fn serve() {
             }
             Msg::Key { hold: false, pressed: false, .. } => toggle_down = false,
             Msg::FakeEnded => finish(&mut recording, &job_tx, true),
+            Msg::ChordJoined => {
+                held = false;
+                taps = PushToTalk::default();
+                if let Some(stopped) = recording.take() {
+                    let _ = job_tx.send(Work::Abort);
+                    emit(of_dictation(json!({"ev": "idle", "joined": true}), Some(stopped.id)));
+                }
+            }
             Msg::Meter(block) => emit(json!({"ev": "pcm", "b64": meter_b64(&block)})),
             Msg::PasteChecked { id, text, why, started } => {
                 // Past the deadline the desktop has kept the words already; pasting them now would type them twice.
@@ -2180,6 +2292,34 @@ mod tests {
     #[test]
     fn threads_are_half_the_cores_but_never_more_than_the_cores() {
         assert_eq!([1, 2, 3, 4, 8, 16].map(default_threads), [1, 2, 2, 2, 4, 8]);
+    }
+
+    #[test]
+    fn the_modifier_chord_holds_only_alone_and_lets_a_fourth_key_through() {
+        let want: Hotkey = "Ctrl+Shift+Win".parse().unwrap();
+        let (ctrl, shift, win) = (Modifiers::CTRL_LEFT, Modifiers::SHIFT_LEFT, Modifiers::CMD_LEFT);
+        let mut chord = ModChord::new(want.modifiers);
+        // In any order; only the third modifier starts it, and the first one up ends it.
+        assert_eq!(chord.step(win, None, true), None);
+        assert_eq!(chord.step(win | ctrl, None, true), None);
+        assert_eq!(chord.step(win | ctrl | shift, None, true), Some(ChordOut::Down));
+        assert_eq!(chord.step(win | ctrl | shift, None, true), None, "a modifier's key repeat");
+        assert_eq!(chord.step(win | shift, None, false), Some(ChordOut::Up));
+        assert_eq!(chord.step(Modifiers::empty(), None, false), None);
+        // Win+Ctrl+Shift+B: B joins, the dictation is dropped, and letting go starts nothing.
+        let b = Some(Key::B);
+        chord.step(ctrl | shift | win, None, true);
+        assert_eq!(chord.step(ctrl | shift | win, b, true), Some(ChordOut::Cancel));
+        assert_eq!(chord.step(ctrl | shift | win, b, false), None);
+        assert_eq!(chord.step(ctrl | shift, None, false), None);
+        // A key already down when the chord forms: it never starts.
+        chord.step(Modifiers::empty(), None, false);
+        chord.step(Modifiers::empty(), Some(Key::A), true);
+        assert_eq!(chord.step(ctrl | shift | win, None, true), None);
+        // Wispr's Ctrl+Win, or Alt as well, is not ours.
+        let mut other = ModChord::new(want.modifiers);
+        assert_eq!(other.step(ctrl | win, None, true), None);
+        assert_eq!(other.step(ctrl | shift | win | Modifiers::OPT_LEFT, None, true), None);
     }
 
     /// The timing table in docs/baton/fixtures/double-tap.json.

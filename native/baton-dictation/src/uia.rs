@@ -689,8 +689,8 @@ pub fn focused_is_secret() -> bool {
 
 /// The keyboard is on something that takes no typing: Explorer's or the desktop's icons, a list, a tree, a button. A
 /// paste there does nothing (or pastes files), so the words go on the clipboard with a card instead. Anything that might
-/// take text stays a box: an edit, a document, a text pattern, a writable value, and any pane, window or custom
-/// control, which is how editors that draw their own text show up.
+/// take text stays a box: an edit, a document, a text pattern, a writable value, a data item (a cell in Excel or
+/// Sheets), and any pane, window or custom control, which is how editors that draw their own text show up.
 pub fn focused_takes_no_text() -> bool {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -713,7 +713,6 @@ pub fn focused_takes_no_text() -> bool {
                 UIA_ListItemControlTypeId,
                 UIA_TreeControlTypeId,
                 UIA_TreeItemControlTypeId,
-                UIA_DataItemControlTypeId,
                 UIA_ButtonControlTypeId,
                 UIA_MenuItemControlTypeId,
                 UIA_TabItemControlTypeId,
