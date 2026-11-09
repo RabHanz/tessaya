@@ -1544,39 +1544,71 @@ index 5a62cde69c3758a8237930de51dfe1143f70f87c..ae59d68979cca71ea208f0991c02d525
  }
  
 diff --git a/apps/web/src/components/chat/chatViewSend.ts b/apps/web/src/components/chat/chatViewSend.ts
-index 81a00823a98be93a7546211063490f6af06d66f7..e4587a77d37fc3704859e2bb035649a8908440f7 100644
+index 81a00823a98be93a7546211063490f6af06d66f7..e603a6f3d428d9285b7aae4ec7f90244157c6b73 100644
 --- a/apps/web/src/components/chat/chatViewSend.ts
 +++ b/apps/web/src/components/chat/chatViewSend.ts
 @@ -42,6 +42,7 @@ import {
    readFileAsDataUrl,
    prepareRevertedMessageAttachments,
    waitForRevertedMessage,
-+  relinkAttachmentReferences,
++  relinkRewoundAttachmentReferences,
  } from "../ChatView.logic";
  import { readPreparedConnection } from "../../state/session";
  import { recallableComposerPrompt } from "./composerPromptHistory";
-@@ -226,7 +227,6 @@ export async function rewindToMessage(input: {
-         : currentPrompt.length > 0
-           ? `${currentPrompt}\n\n${restoredPrompt}`
-           : restoredPrompt;
+@@ -218,17 +219,9 @@ export async function rewindToMessage(input: {
+       });
+       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+     });
+-    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
+-    const restoredPrompt = recallableComposerPrompt(message.text);
+-    const nextPrompt =
+-      restoredPrompt.length === 0
+-        ? currentPrompt
+-        : currentPrompt.length > 0
+-          ? `${currentPrompt}\n\n${restoredPrompt}`
+-          : restoredPrompt;
 -    store.setPrompt(draftTarget, nextPrompt);
      const images: ComposerImageAttachment[] = [];
      const restoredFiles: ComposerFileAttachment[] = [];
++    const restored: Array<ComposerImageAttachment | ComposerFileAttachment> = [];
      files.forEach((file, index) => {
-@@ -243,9 +243,12 @@ export async function rewindToMessage(input: {
-         restoredFiles.push({ ...attachment, type: "file" });
+       const attachment = {
+         id: randomUUID(),
+@@ -238,11 +231,32 @@ export async function rewindToMessage(input: {
+         file,
+       };
+       if (message.attachments?.[index]?.type === "image") {
+-        images.push({ ...attachment, type: "image", previewUrl: URL.createObjectURL(file) });
++        const image = {
++          ...attachment,
++          type: "image" as const,
++          previewUrl: URL.createObjectURL(file),
++        };
++        images.push(image);
++        restored.push(image);
+       } else {
+-        restoredFiles.push({ ...attachment, type: "file" });
++        const restoredFile = { ...attachment, type: "file" as const };
++        restoredFiles.push(restoredFile);
++        restored.push(restoredFile);
        }
      });
-+    // The restored attachments get fresh ids; the message's chips still name the sent ones.
-+    const relinkedPrompt = relinkAttachmentReferences(nextPrompt, [...images, ...restoredFiles]);
-+    store.setPrompt(draftTarget, relinkedPrompt);
++    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
++    const restoredPrompt = relinkRewoundAttachmentReferences(
++      recallableComposerPrompt(message.text),
++      message,
++      restored,
++    );
++    const nextPrompt =
++      restoredPrompt.length === 0
++        ? currentPrompt
++        : currentPrompt.length > 0
++          ? `${currentPrompt}\n\n${restoredPrompt}`
++          : restoredPrompt;
++    store.setPrompt(draftTarget, nextPrompt);
      store.addImages(draftTarget, images, { allowDuplicates: true });
      store.addFiles(draftTarget, restoredFiles, { allowDuplicates: true });
--    return { error: null, prompt: nextPrompt };
-+    return { error: null, prompt: relinkedPrompt };
-   } catch (error) {
-     return { error: error instanceof Error ? error.message : "Failed to revert thread state." };
-   }
+     return { error: null, prompt: nextPrompt };
 diff --git a/apps/web/src/components/chat/timelineRowContext.ts b/apps/web/src/components/chat/timelineRowContext.ts
 index 1a0c3aa014ad02d4f9d114ee094059344a66ef2f..5213f9d5dad8046db3776f2a19e5590b7b8d2a61 100644
 --- a/apps/web/src/components/chat/timelineRowContext.ts
@@ -1665,18 +1697,10 @@ index a6312466d9747ce40a6e94b4c8de347f10ea29c7..31e4c592535a449bf8730343e21fea7d
      if (
        !supportsProviderSwitchingViaHandoff &&
 diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
-index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..a24daf035db91b339700d3be1444cd07f1d34fdd 100644
+index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c7f0ba22a1f79a3b6efc67e970c318060f2ac0e5 100644
 --- a/apps/web/src/components/chat/useComposerSend.ts
 +++ b/apps/web/src/components/chat/useComposerSend.ts
-@@ -15,6 +15,7 @@ import {
-   snapshotComposerSend,
-   withMessageContext,
-   makeThreadErrorSetter,
-+  relinkAttachmentReferences,
- } from "../ChatView.logic";
- import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
- import {
-@@ -125,6 +126,7 @@ import {
+@@ -125,6 +125,7 @@ import {
    prepareTurnAttachments,
    restoreComposerDraft,
  } from "./chatViewSend";
@@ -1684,7 +1708,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..a24daf035db91b339700d3be1444cd07
  import type {
    EnvironmentProject,
    EnvironmentThreadShell,
-@@ -594,6 +596,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -594,6 +595,7 @@ export function useComposerSend(input: ComposerSendInput) {
        selectedProviderModels: ctxSelectedProviderModels,
        selectedPromptEffort: ctxSelectedPromptEffort,
        selectedModelSelection: ctxSelectedModelSelection,
@@ -1692,27 +1716,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..a24daf035db91b339700d3be1444cd07
        interactionMode: sendInteractionMode,
        interactionModeEnabled: sendInteractionModeEnabled,
      } = sendCtx;
-@@ -606,11 +609,14 @@ export function useComposerSend(input: ComposerSendInput) {
-       });
-     // A direct "send annotation" writes the draft and sends in the same tick; the reference
-     // must be in the text now, not after the next render.
--    const promptForSend = directAnnotation
--      ? ensureInlineContextReferences(promptRef.current, [
--          previewAnnotationContextReference(directAnnotation.annotation),
--        ])
--      : promptRef.current;
-+    const promptForSend = relinkAttachmentReferences(
-+      directAnnotation
-+        ? ensureInlineContextReferences(promptRef.current, [
-+            previewAnnotationContextReference(directAnnotation.annotation),
-+          ])
-+        : promptRef.current,
-+      [...composerImages, ...composerFiles],
-+    );
-     const strandedThread = threadContextsOutsideEnvironment({
-       text: promptForSend,
-       records: composerThreadContexts,
-@@ -653,9 +659,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -653,9 +655,11 @@ export function useComposerSend(input: ComposerSendInput) {
        sendableTerminalContexts: sendableComposerTerminalContexts,
        expiredTerminalContextCount,
        hasSendableContent,
@@ -1724,7 +1728,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..a24daf035db91b339700d3be1444cd07
        terminalContexts: composerTerminalContexts,
        elementContextCount:
          composerPreviewAnnotations.length +
-@@ -663,6 +671,16 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -663,6 +667,16 @@ export function useComposerSend(input: ComposerSendInput) {
          composerThreadContexts.length +
          composerEnvironmentContexts.length,
      });
@@ -1741,7 +1745,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..a24daf035db91b339700d3be1444cd07
      const feedbackCommand =
        ctxSelectedProvider === "codex" &&
        composerImages.length === 0 &&
-@@ -1314,6 +1332,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1314,6 +1328,7 @@ export function useComposerSend(input: ComposerSendInput) {
              idleCompaction: "onReturn",
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1749,7 +1753,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..a24daf035db91b339700d3be1444cd07
            runtimeMode,
            interactionMode: sendInteractionMode,
          },
-@@ -1376,6 +1395,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1376,6 +1391,7 @@ export function useComposerSend(input: ComposerSendInput) {
              }),
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1757,7 +1761,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..a24daf035db91b339700d3be1444cd07
            titleSeed: title,
            runtimeMode,
            interactionMode: sendInteractionMode,
-@@ -1413,6 +1433,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1413,6 +1429,11 @@ export function useComposerSend(input: ComposerSendInput) {
          failure = startResult;
        } else {
          turnStartSucceeded = true;

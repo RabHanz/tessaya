@@ -90,11 +90,11 @@ import {
 import {
   collectComposerContextReferences,
   replaceComposerContextReferences,
-  sanitizeComposerContextLabel,
   toKindScopedComposerContextId,
 } from "@t3tools/shared/composerContextReferences";
 import {
   previewAnnotationContextLabel,
+  resolveUserMessageContext,
   reviewCommentContextLabel,
   terminalContextReference,
 } from "../lib/composerContextRecords";
@@ -764,38 +764,37 @@ export function cloneComposerImageForRetry(
 }
 
 /**
- * Points image and file chips whose attachment id no longer matches at an attached, otherwise
- * unreferenced attachment with the same kind and name, so a visibly attached image still sends
- * (a rewind restores attachments under fresh ids). Chips with no such partner stay as written.
+ * A rewind restores a message's attachments under fresh ids, while its text still names the
+ * sent ones. Maps each chip to its restored attachment through the message's context records
+ * (contextId -> attachmentId), by attachment position, never by name.
  */
-export function relinkAttachmentReferences(
-  prompt: string,
-  attachments: ReadonlyArray<{ type: "image" | "file"; id: string; name: string }>,
+export function relinkRewoundAttachmentReferences(
+  text: string,
+  message: Pick<ChatMessage, "text" | "context" | "attachments">,
+  restored: ReadonlyArray<{ type: "image" | "file"; id: string }>,
 ): string {
-  const contextIdOf = (attachment: (typeof attachments)[number]) =>
-    toKindScopedComposerContextId(attachment.type, attachment.id);
-  const attachedIds = new Set<string>(attachments.map(contextIdOf));
-  const referenced = new Set<string>(
-    collectComposerContextReferences(prompt).map((occurrence) => occurrence.contextId),
+  const restoredByAttachmentId = new Map(
+    (message.attachments ?? []).flatMap((attachment, index) => {
+      const target = restored[index];
+      return target ? [[attachment.id, target] as const] : [];
+    }),
   );
-  const unreferenced = attachments.filter((attachment) => !referenced.has(contextIdOf(attachment)));
-  if (unreferenced.length === 0) return prompt;
-  return replaceComposerContextReferences(prompt, (occurrence) => {
-    if (
-      (occurrence.kind !== "image" && occurrence.kind !== "file") ||
-      attachedIds.has(occurrence.contextId)
-    ) {
-      return occurrence.source;
+  const relinked = new Map<string, string>();
+  for (const record of resolveUserMessageContext(message).records) {
+    if ((record.kind !== "image" && record.kind !== "file") || !("attachmentId" in record)) {
+      continue;
     }
-    const index = unreferenced.findIndex(
-      (attachment) =>
-        attachment.type === occurrence.kind &&
-        sanitizeComposerContextLabel(attachment.name, attachment.type) === occurrence.label,
-    );
-    const [partner] = index === -1 ? [] : unreferenced.splice(index, 1);
-    return partner
-      ? occurrence.source.replace(`/${occurrence.contextId})`, `/${contextIdOf(partner)})`)
-      : occurrence.source;
+    const target = restoredByAttachmentId.get(record.attachmentId);
+    if (target && target.type === record.kind) {
+      relinked.set(record.contextId, toKindScopedComposerContextId(target.type, target.id));
+    }
+  }
+  if (relinked.size === 0) return text;
+  return replaceComposerContextReferences(text, (occurrence) => {
+    const contextId = relinked.get(occurrence.contextId);
+    return contextId === undefined
+      ? occurrence.source
+      : occurrence.source.replace(`/${occurrence.contextId})`, `/${contextId})`);
   });
 }
 

@@ -42,7 +42,7 @@ import {
   readFileAsDataUrl,
   prepareRevertedMessageAttachments,
   waitForRevertedMessage,
-  relinkAttachmentReferences,
+  relinkRewoundAttachmentReferences,
 } from "../ChatView.logic";
 import { readPreparedConnection } from "../../state/session";
 import { recallableComposerPrompt } from "./composerPromptHistory";
@@ -219,16 +219,9 @@ export async function rewindToMessage(input: {
       });
       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
     });
-    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
-    const restoredPrompt = recallableComposerPrompt(message.text);
-    const nextPrompt =
-      restoredPrompt.length === 0
-        ? currentPrompt
-        : currentPrompt.length > 0
-          ? `${currentPrompt}\n\n${restoredPrompt}`
-          : restoredPrompt;
     const images: ComposerImageAttachment[] = [];
     const restoredFiles: ComposerFileAttachment[] = [];
+    const restored: Array<ComposerImageAttachment | ComposerFileAttachment> = [];
     files.forEach((file, index) => {
       const attachment = {
         id: randomUUID(),
@@ -238,17 +231,35 @@ export async function rewindToMessage(input: {
         file,
       };
       if (message.attachments?.[index]?.type === "image") {
-        images.push({ ...attachment, type: "image", previewUrl: URL.createObjectURL(file) });
+        const image = {
+          ...attachment,
+          type: "image" as const,
+          previewUrl: URL.createObjectURL(file),
+        };
+        images.push(image);
+        restored.push(image);
       } else {
-        restoredFiles.push({ ...attachment, type: "file" });
+        const restoredFile = { ...attachment, type: "file" as const };
+        restoredFiles.push(restoredFile);
+        restored.push(restoredFile);
       }
     });
-    // The restored attachments get fresh ids; the message's chips still name the sent ones.
-    const relinkedPrompt = relinkAttachmentReferences(nextPrompt, [...images, ...restoredFiles]);
-    store.setPrompt(draftTarget, relinkedPrompt);
+    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
+    const restoredPrompt = relinkRewoundAttachmentReferences(
+      recallableComposerPrompt(message.text),
+      message,
+      restored,
+    );
+    const nextPrompt =
+      restoredPrompt.length === 0
+        ? currentPrompt
+        : currentPrompt.length > 0
+          ? `${currentPrompt}\n\n${restoredPrompt}`
+          : restoredPrompt;
+    store.setPrompt(draftTarget, nextPrompt);
     store.addImages(draftTarget, images, { allowDuplicates: true });
     store.addFiles(draftTarget, restoredFiles, { allowDuplicates: true });
-    return { error: null, prompt: relinkedPrompt };
+    return { error: null, prompt: nextPrompt };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to revert thread state." };
   }

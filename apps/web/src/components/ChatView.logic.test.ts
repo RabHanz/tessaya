@@ -49,7 +49,7 @@ import {
   createLocalDispatchSnapshot,
   deriveCommittedServerUserMessageIds,
   deriveComposerSendState,
-  relinkAttachmentReferences,
+  relinkRewoundAttachmentReferences,
   deriveLockedProvider,
   hasServerAcknowledgedLocalDispatch,
   waitForRevertedMessage,
@@ -140,25 +140,61 @@ describe("deriveComposerSendState", () => {
     expect(state.unattachedLabels).toEqual(["image.png", "notes.txt"]);
   });
 
-  it("relinks chips of two attached images both named image.png whose ids drifted", () => {
-    const attachments = [
+  it("relinks a rewound message's two image.png chips by attachment, not by name", () => {
+    const record = (contextId: string, attachmentId: string) => ({
+      version: 1 as const,
+      kind: "image" as const,
+      contextId: contextId as never,
+      label: "image.png",
+      attachmentId,
+      name: "image.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+    });
+    const image = (id: string) => ({
+      type: "image" as const,
+      id,
+      name: "image.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+    });
+    const text =
+      "second ![image.png](t3-context://v1/image/image_b) first ![image.png](t3-context://v1/image/image_a)";
+    const message = {
+      text,
+      context: {
+        version: 1 as const,
+        records: [record("image_a", "srv-a"), record("image_b", "srv-b")],
+      },
+      attachments: [image("srv-a"), image("srv-b")],
+    };
+    const restored = [
       { type: "image" as const, id: "new-a", name: "image.png" },
       { type: "image" as const, id: "new-b", name: "image.png" },
     ];
-    const prompt = relinkAttachmentReferences(
-      "a ![image.png](t3-context://v1/image/image_old-a) b ![image.png](t3-context://v1/image/image_old-b) ![image.png](t3-context://v1/image/image_gone)",
-      attachments,
-    );
+    // An earlier chip in the draft with the same name keeps its own id.
+    const stray = "![image.png](t3-context://v1/image/image_stray) ";
+    const prompt = relinkRewoundAttachmentReferences(stray + text, message, restored);
+
     expect(prompt).toBe(
-      "a ![image.png](t3-context://v1/image/image_new-a) b ![image.png](t3-context://v1/image/image_new-b) ![image.png](t3-context://v1/image/image_gone)",
+      `${stray}second ![image.png](t3-context://v1/image/image_new-b) first ![image.png](t3-context://v1/image/image_new-a)`,
     );
     const state = deriveComposerSendState({
-      prompt: prompt.replace(/ !\[image\.png\]\(t3-context:\/\/v1\/image\/image_gone\)$/, ""),
+      prompt,
       imageCount: 2,
-      attachments,
+      attachments: restored,
       terminalContexts: [],
     });
-    expect(state.unattachedLabels).toEqual([]);
+    // The stray chip has no attachment, so the guard still names it.
+    expect(state.unattachedLabels).toEqual(["image.png"]);
+    expect(
+      deriveComposerSendState({
+        prompt: prompt.slice(stray.length),
+        imageCount: 2,
+        attachments: restored,
+        terminalContexts: [],
+      }).unattachedLabels,
+    ).toEqual([]);
   });
 });
 
