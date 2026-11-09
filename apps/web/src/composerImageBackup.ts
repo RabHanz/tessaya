@@ -53,7 +53,7 @@ const backupKey = (threadKey: string, imageId: string) => `${threadKey}\u0000${i
 /** Mirrors every draft image into IndexedDB and restores the ones a reload dropped. */
 export function startComposerImageBackup(
   store: DraftImageStore,
-  restore: (backups: ReadonlyArray<ComposerImageBackup>) => void,
+  restore: (backups: ReadonlyArray<ComposerImageBackup>) => ReadonlyArray<ComposerImageBackup>,
 ): void {
   if (typeof indexedDB === "undefined") return;
   void (async () => {
@@ -68,8 +68,16 @@ export function startComposerImageBackup(
         "threadKey" in backup &&
         typeof backup.threadKey === "string",
     );
-    restore(backups);
-    const backedUp = new Set(backups.map((backup) => backupKey(backup.threadKey, backup.id)));
+    const stale = new Set(restore(backups));
+    for (const backup of stale) {
+      const key = backupKey(backup.threadKey, backup.id);
+      void withStore("readwrite", (images) => images.delete(key)).catch(() => undefined);
+    }
+    const backedUp = new Set(
+      backups
+        .filter((backup) => !stale.has(backup))
+        .map((backup) => backupKey(backup.threadKey, backup.id)),
+    );
     const sync = (state: ReturnType<DraftImageStore["getState"]>) => {
       const current = new Set<string>();
       for (const [threadKey, draft] of Object.entries(state.draftsByThreadKey)) {

@@ -438,17 +438,20 @@ describe("composerDraftStore file attachments", () => {
     );
     expect(useComposerDraftStore.getState().draftsByThreadKey[threadKey]?.images).toEqual([]);
 
-    restoreComposerImageBackups([
-      {
-        threadKey,
-        id: image.id,
-        name: image.name,
-        mimeType: image.mimeType,
-        sizeBytes: image.sizeBytes,
-        blob: image.file,
-      },
-    ]);
+    const backup = {
+      threadKey,
+      id: image.id,
+      name: image.name,
+      mimeType: image.mimeType,
+      sizeBytes: image.sizeBytes,
+      blob: image.file,
+    };
+    // A sent image whose delete had not landed has no chip; a dropped draft has no entry.
+    const sent = { ...backup, id: "img-sent" };
+    const orphan = { ...backup, threadKey: "dropped-draft" };
+    expect(restoreComposerImageBackups([backup, sent, orphan])).toEqual([sent, orphan]);
 
+    expect(useComposerDraftStore.getState().draftsByThreadKey["dropped-draft"]).toBeUndefined();
     const restored = useComposerDraftStore.getState().draftsByThreadKey[threadKey];
     expect(restored?.prompt).toContain("image_img-reload");
     expect(restored?.images.map(({ id, name, file }) => ({ id, name, size: file.size }))).toEqual([

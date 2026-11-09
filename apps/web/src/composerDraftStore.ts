@@ -95,6 +95,7 @@ import { useShallow } from "zustand/react/shallow";
 import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import {
+  collectComposerContextReferences,
   replaceComposerContextReferences,
   toComposerContextId,
   toKindScopedComposerContextId,
@@ -4254,14 +4255,30 @@ export interface ComposerImageBackup {
   readonly blob: Blob;
 }
 
-/** Puts back draft images a reload dropped because their bytes never reached localStorage. */
-export function restoreComposerImageBackups(backups: ReadonlyArray<ComposerImageBackup>): void {
+/**
+ * Puts back draft images a reload dropped because their bytes never reached localStorage. Only
+ * a draft whose prompt still holds the image's chip gets it back; a sent or removed image may
+ * still have a backup. Returns the backups that are stale and should be deleted.
+ */
+export function restoreComposerImageBackups(
+  backups: ReadonlyArray<ComposerImageBackup>,
+): ComposerImageBackup[] {
+  const stale: ComposerImageBackup[] = [];
   composerDraftStore.setState((state) => {
     const drafts = { ...state.draftsByThreadKey };
     let restored = false;
     for (const backup of backups) {
-      const draft = drafts[backup.threadKey] ?? createEmptyThreadDraft();
-      if (draft.images.some((image) => image.id === backup.id)) continue;
+      const draft = drafts[backup.threadKey];
+      if (draft?.images.some((image) => image.id === backup.id)) continue;
+      if (
+        !draft ||
+        !collectComposerContextReferences(draft.prompt).some(
+          (reference) => reference.contextId === toKindScopedComposerContextId("image", backup.id),
+        )
+      ) {
+        stale.push(backup);
+        continue;
+      }
       const file = new File([backup.blob], backup.name, { type: backup.mimeType });
       const image: ComposerImageAttachment = {
         type: "image",
@@ -4278,6 +4295,7 @@ export function restoreComposerImageBackups(backups: ReadonlyArray<ComposerImage
     }
     return restored ? { draftsByThreadKey: drafts } : state;
   });
+  return stale;
 }
 
 startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);

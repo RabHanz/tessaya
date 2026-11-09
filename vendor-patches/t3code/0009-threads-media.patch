@@ -1732,7 +1732,7 @@ index ac4ef649ed07c2c6d1c057424afdb05687d64e53..1b60b5e9abece9273e31451bfb691db1
        ? [
            {
 diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
-index cd0e74d231aaca9c3d15531c39d577990c7df62b..030da341776daa3fde9ddb9fff55147ed43dd813 100644
+index cd0e74d231aaca9c3d15531c39d577990c7df62b..33cc1a9de899170b1a0f36517a85f7d8768469c3 100644
 --- a/apps/web/src/composerDraftStore.test.ts
 +++ b/apps/web/src/composerDraftStore.test.ts
 @@ -90,6 +90,7 @@ import {
@@ -1743,7 +1743,7 @@ index cd0e74d231aaca9c3d15531c39d577990c7df62b..030da341776daa3fde9ddb9fff55147e
    useComposerDraftStore,
    DraftId,
  } from "./composerDraftStore";
-@@ -416,6 +417,45 @@ describe("composerDraftStore file attachments", () => {
+@@ -416,6 +417,48 @@ describe("composerDraftStore file attachments", () => {
      ]);
    });
  
@@ -1768,17 +1768,20 @@ index cd0e74d231aaca9c3d15531c39d577990c7df62b..030da341776daa3fde9ddb9fff55147e
 +    );
 +    expect(useComposerDraftStore.getState().draftsByThreadKey[threadKey]?.images).toEqual([]);
 +
-+    restoreComposerImageBackups([
-+      {
-+        threadKey,
-+        id: image.id,
-+        name: image.name,
-+        mimeType: image.mimeType,
-+        sizeBytes: image.sizeBytes,
-+        blob: image.file,
-+      },
-+    ]);
++    const backup = {
++      threadKey,
++      id: image.id,
++      name: image.name,
++      mimeType: image.mimeType,
++      sizeBytes: image.sizeBytes,
++      blob: image.file,
++    };
++    // A sent image whose delete had not landed has no chip; a dropped draft has no entry.
++    const sent = { ...backup, id: "img-sent" };
++    const orphan = { ...backup, threadKey: "dropped-draft" };
++    expect(restoreComposerImageBackups([backup, sent, orphan])).toEqual([sent, orphan]);
 +
++    expect(useComposerDraftStore.getState().draftsByThreadKey["dropped-draft"]).toBeUndefined();
 +    const restored = useComposerDraftStore.getState().draftsByThreadKey[threadKey];
 +    expect(restored?.prompt).toContain("image_img-reload");
 +    expect(restored?.images.map(({ id, name, file }) => ({ id, name, size: file.size }))).toEqual([
@@ -1790,10 +1793,10 @@ index cd0e74d231aaca9c3d15531c39d577990c7df62b..030da341776daa3fde9ddb9fff55147e
      const store = useComposerDraftStore.getState();
      store.addFiles(threadRef, [makeFile("file-pending")]);
 diff --git a/apps/web/src/composerDraftStore.ts b/apps/web/src/composerDraftStore.ts
-index aef9e88a385726458d979e6dca9c0fff705f4f6a..36d7a4df9067146db639cc8b92f571d5b935f4c6 100644
+index aef9e88a385726458d979e6dca9c0fff705f4f6a..f25a1cb671e83de17d0561eb6f9b85da4795f8a3 100644
 --- a/apps/web/src/composerDraftStore.ts
 +++ b/apps/web/src/composerDraftStore.ts
-@@ -89,6 +89,7 @@ import {
+@@ -89,11 +89,13 @@ import {
    environmentContextReference,
  } from "./lib/composerContextRecords";
  import { create } from "zustand";
@@ -1801,7 +1804,13 @@ index aef9e88a385726458d979e6dca9c0fff705f4f6a..36d7a4df9067146db639cc8b92f571d5
  import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
  import { useShallow } from "zustand/react/shallow";
  import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
-@@ -4243,6 +4244,44 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
+ import { getDefaultServerModel } from "./providerModels";
+ import {
++  collectComposerContextReferences,
+   replaceComposerContextReferences,
+   toComposerContextId,
+   toKindScopedComposerContextId,
+@@ -4243,6 +4245,61 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
  
  export const useComposerDraftStore = composerDraftStore;
  
@@ -1815,14 +1824,30 @@ index aef9e88a385726458d979e6dca9c0fff705f4f6a..36d7a4df9067146db639cc8b92f571d5
 +  readonly blob: Blob;
 +}
 +
-+/** Puts back draft images a reload dropped because their bytes never reached localStorage. */
-+export function restoreComposerImageBackups(backups: ReadonlyArray<ComposerImageBackup>): void {
++/**
++ * Puts back draft images a reload dropped because their bytes never reached localStorage. Only
++ * a draft whose prompt still holds the image's chip gets it back; a sent or removed image may
++ * still have a backup. Returns the backups that are stale and should be deleted.
++ */
++export function restoreComposerImageBackups(
++  backups: ReadonlyArray<ComposerImageBackup>,
++): ComposerImageBackup[] {
++  const stale: ComposerImageBackup[] = [];
 +  composerDraftStore.setState((state) => {
 +    const drafts = { ...state.draftsByThreadKey };
 +    let restored = false;
 +    for (const backup of backups) {
-+      const draft = drafts[backup.threadKey] ?? createEmptyThreadDraft();
-+      if (draft.images.some((image) => image.id === backup.id)) continue;
++      const draft = drafts[backup.threadKey];
++      if (draft?.images.some((image) => image.id === backup.id)) continue;
++      if (
++        !draft ||
++        !collectComposerContextReferences(draft.prompt).some(
++          (reference) => reference.contextId === toKindScopedComposerContextId("image", backup.id),
++        )
++      ) {
++        stale.push(backup);
++        continue;
++      }
 +      const file = new File([backup.blob], backup.name, { type: backup.mimeType });
 +      const image: ComposerImageAttachment = {
 +        type: "image",
@@ -1839,6 +1864,7 @@ index aef9e88a385726458d979e6dca9c0fff705f4f6a..36d7a4df9067146db639cc8b92f571d5
 +    }
 +    return restored ? { draftsByThreadKey: drafts } : state;
 +  });
++  return stale;
 +}
 +
 +startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
