@@ -1894,6 +1894,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
+    // The paste has landed (or never will): the keys he pressed meanwhile go now, in order.
+    sidecar?.holdKeys(false);
     if (result.status !== "pasted") ghost.stop();
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
@@ -3379,6 +3381,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       cleanup: "local",
     });
     oneShot.push(words);
+    // Enter pressed while the ghost plays must land after the words: keys wait for the paste (flushDictation).
+    if (ghost.active()) sidecar?.holdKeys(true);
     void flushDictation(Promise.resolve(app));
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
@@ -3472,6 +3476,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       showDictation("Esc twice discards");
       startGhost();
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
+    else if (event.ev === "held_key") ghost.skip();
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();

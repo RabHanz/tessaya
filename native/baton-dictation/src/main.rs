@@ -3,6 +3,9 @@
 //! See docs/baton/VOICE.md. Run with no arguments it serves; the subcommands are for voice-lab.
 #[cfg(unix)]
 mod desktop_unix;
+mod keygate;
+#[cfg(windows)]
+mod keygate_windows;
 mod keys;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod mouse;
@@ -1436,6 +1439,11 @@ fn serve() {
                         taps = PushToTalk::default();
                     }
                     "voice" => voice_on = value["on"].as_bool().unwrap_or(false),
+                    // Keys he presses while the ghost plays wait for its paste, then go in order (Windows only).
+                    "hold_keys" => {
+                        #[cfg(windows)]
+                        keygate_windows::hold(value["on"].as_bool().unwrap_or(false));
+                    }
                     "cancel" => {
                         recording = None;
                         let _ = job_tx.send(Work::Abort);

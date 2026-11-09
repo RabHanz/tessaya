@@ -73,6 +73,8 @@ export interface PillGhost {
    * click. False when the ghost was not up (nothing waited).
    */
   readonly play: (raw: string, clean: string) => Promise<boolean>;
+  /** A key he pressed is waiting for the paste: the play ends at once, now or as soon as it starts. */
+  readonly skip: () => void;
   readonly stop: () => void;
 }
 
@@ -86,6 +88,8 @@ export const createPillGhost = (input: {
   let window: Electron.BrowserWindow | null = null;
   let ready: Promise<unknown> = Promise.resolve();
   const live = () => window !== null && !window.isDestroyed();
+  let keyWaiting = false;
+  let onKey: (() => void) | null = null;
   const call = (code: string): Promise<unknown> => {
     const target = window;
     return ready.then(() =>
@@ -130,6 +134,7 @@ export const createPillGhost = (input: {
   return {
     start: (geometry) => {
       stop();
+      keyWaiting = false;
       const scale = (b: Box) => (input.windows ? Electron.screen.screenToDipRect(null, b) : b);
       const placed = ghostPlacement({
         caret: scale(geometry.caret),
@@ -182,7 +187,17 @@ export const createPillGhost = (input: {
         t.unref();
         end = resolve;
       });
-      const skip = await Promise.race([over.then(() => false), skipped(over).then(() => true)]);
+      const key = new Promise<boolean>((resolve) => {
+        onKey = () => resolve(true);
+        if (keyWaiting) resolve(true);
+      });
+      const skip = await Promise.race([
+        over.then(() => false),
+        skipped(over).then(() => true),
+        key,
+      ]);
+      onKey = null;
+      keyWaiting = false;
       end();
       // The words land under the ghost as it fades; a skip takes it away at once.
       setTimeout(
@@ -192,6 +207,10 @@ export const createPillGhost = (input: {
         skip || total <= fade ? 0 : fade,
       ).unref();
       return true;
+    },
+    skip: () => {
+      keyWaiting = true;
+      onKey?.();
     },
     stop,
   };

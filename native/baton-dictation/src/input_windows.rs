@@ -94,6 +94,11 @@ pub fn keys(vks: &[u16]) -> Result<(), String> {
     send(&up)
 }
 
+/// Keys held for a paste, sent again in one call as (code, up) events, so his typing cannot land between them.
+pub fn replay(events: &[(u16, bool)]) -> Result<(), String> {
+    send(&events.iter().map(|&(vk, up)| key(vk, up)).collect::<Vec<INPUT>>())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{is_extended, normalised};
