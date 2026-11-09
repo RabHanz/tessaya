@@ -93,7 +93,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/diffs": "Diffs & pull requests",
   "/settings/keybindings": "Keybindings",
   "/settings/snap-shot": "SnapShots",
-  "/settings/providers": "Providers",
+  "/settings/providers": "Accounts & providers",
   "/settings/threads": "Threads",
   "/settings/browser": "Browser",
   "/settings/devices": "Devices",

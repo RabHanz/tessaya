@@ -1,4 +1,5 @@
 import { SettingsGroup } from "./SettingsGroup";
+import { BatonAccountsSettings } from "./BatonAccountsSettings";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import {
   AuthSettingsWriteScope,
@@ -972,6 +973,7 @@ export function EnvironmentProviderSettings({
 
   return (
     <>
+      <BatonAccountsSettings environmentId={environmentId} />
       <SettingsSection
         {...searchableSetting("providers")}
         variant="plain"

@@ -1,0 +1,34 @@
+Accounts settings (ACCOUNTS-4): Tessaya's one-card-per-account section above T3's own provider list, and the
+settings page named "Accounts & providers".
+
+diff --git a/apps/web/src/components/settings/ProviderSettingsPanel.tsx b/apps/web/src/components/settings/ProviderSettingsPanel.tsx
+index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b411613c7 100644
+--- a/apps/web/src/components/settings/ProviderSettingsPanel.tsx
++++ b/apps/web/src/components/settings/ProviderSettingsPanel.tsx
+@@ -1,4 +1,5 @@
+ import { SettingsGroup } from "./SettingsGroup";
++import { BatonAccountsSettings } from "./BatonAccountsSettings";
+ import { RefreshIcon } from "~/components/ui/refresh-icon";
+ import {
+   AuthSettingsWriteScope,
+@@ -972,6 +973,7 @@ export function EnvironmentProviderSettings({
+ 
+   return (
+     <>
++      <BatonAccountsSettings environmentId={environmentId} />
+       <SettingsSection
+         {...searchableSetting("providers")}
+         variant="plain"
+diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
+index 60c89ffc6b732db13fd880bedac4af057157415d..4f218aeaa33b9c63bbb58d7caf5204f09a61be85 100644
+--- a/apps/web/src/components/settings/settingsSearch.ts
++++ b/apps/web/src/components/settings/settingsSearch.ts
+@@ -93,7 +93,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+   "/settings/diffs": "Diffs & pull requests",
+   "/settings/keybindings": "Keybindings",
+   "/settings/snap-shot": "SnapShots",
+-  "/settings/providers": "Providers",
++  "/settings/providers": "Accounts & providers",
+   "/settings/threads": "Threads",
+   "/settings/browser": "Browser",
+   "/settings/devices": "Devices",
