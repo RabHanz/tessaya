@@ -1,11 +1,11 @@
 ● Redeploying on the box.
 
-  Redeploy tessaya on hetzner
+  Redeploy tessaya on the server
   ⎿  $ C=/srv/work/deploy-export; rm -rf $C && mkdir -p $C && bash -c "rm -rf /srv/work/tmp/archive"
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
  Bash command
- Redeploy tessaya on hetzner
+ Redeploy tessaya on the server
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
  C=/srv/work/deploy-export; rm -rf $C && mkdir -p $C && bash -c "rm -rf /srv/work/tmp/archive"
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
