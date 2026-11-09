@@ -369,6 +369,7 @@ import {
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
+import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createLastLanded } from "./lastLanded.ts";
 import { dictationStep, type DictationEntry, type DictationStep } from "./dictationEntry.ts";
@@ -736,8 +737,6 @@ const PHONE_POLL_MS = 5_000;
 const STATE_REFRESH_MS = 5 * 60_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
 const CONTEXT_REFRESH_MS = 10_000;
-/** Long enough for him to fix a word in the field before it is read back. */
-const LEARN_READBACK_MS = 8_000;
 /** As the paste's own caret read: a field that hangs UI Automation teaches nothing. */
 const LEARN_CARET_MS = 1_500;
 /** Joins a taught form to its word in the toast, and splits it back on Discard. */
@@ -1254,28 +1253,49 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return next.entries;
     }).catch(() => undefined);
   };
+  /** Ends the watch of the last paste's field: a newer dictation's words are not that paste's. */
+  let stopWatching = () => {};
   /**
-   * A few seconds later, what he changed in the field teaches the words he meant. Only through the sidecar, which
-   * never reads a password or secret field, never in a private app, and never when either side looks like a secret.
+   * For a minute after the paste, what he changes in the field teaches the words he meant, the moment it settles. Only
+   * through the sidecar, which never reads a password or secret field, never in a private app, never once focus has
+   * left that window, and never when either side looks like a secret.
    */
-  const learnFromEdits = (
-    written: string,
-    turnId: string | null,
-    app: { readonly exe: string; readonly title: string },
-  ) => {
+  const learnFromEdits = (written: string, turnId: string | null, app: FocusedApp) => {
+    stopWatching();
     if (!settings.learnWords || cleanupLevelFor("claude", app) !== "claude") return;
-    setTimeout(() => {
-      const reader = sidecar;
-      if (reader === null || written.trim().length === 0 || detectSecret(written) !== null) return;
-      void Promise.race([
-        reader.caret().catch(() => null),
+    if (written.trim().length === 0 || detectSecret(written) !== null) return;
+    let watching = true;
+    stopWatching = () => void (watching = false);
+    const within = <A>(work: Promise<A>) =>
+      Promise.race([
+        work.catch(() => null),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), LEARN_CARET_MS)),
-      ]).then((around) => {
-        if (around === null || detectSecret(around.before) !== null) return;
-        const { fixes, fixed } = correctionsAtCaret(written.trim(), around.before);
-        if (fixes.length === 0) return;
+      ]);
+    void watchField({
+      reads: WATCH_MS / WATCH_EVERY_MS,
+      wait: () =>
+        new Promise<boolean>((resolve) =>
+          setTimeout(() => resolve(watching), WATCH_EVERY_MS).unref(),
+        ),
+      stillThere: async () => {
+        const now = sidecar === null ? null : await within(sidecar.foreground());
+        if (now === null || cleanupLevelFor("claude", now) !== "claude") return false;
+        // A paste whose window and app are both unknown is never watched: any field could be in front.
+        return app.window !== undefined
+          ? now.window === app.window
+          : app.exe !== "" && now.exe === app.exe;
+      },
+      // A read that times out comes back null, which ends the watch.
+      read: async () => {
+        const around = sidecar === null ? null : await within(sidecar.caret());
+        return around === null || detectSecret(around.before) !== null ? null : around.before;
+      },
+      ours: (before) => stillOurs(written, before),
+      learn: (before) => {
+        const { fixes, fixed } = correctionsAtCaret(written.trim(), before);
+        if (fixes.length === 0) return false;
         if (turnId !== null) history?.update(turnId, { corrected: true, fixed });
-        return changeVocabulary((entries, now) =>
+        void changeVocabulary((entries, now) =>
           fixes.reduce((all, fix) => {
             const next = learnCorrection(seenWords, all, fix, now, never);
             seenWords = next.seen;
@@ -1283,9 +1303,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             for (const t of next.taught ?? []) toast.add(`${t.heard}${TAUGHT}${t.meant}`);
             return next.entries;
           }, entries),
-        ).then(saveSeen);
-      });
-    }, LEARN_READBACK_MS).unref();
+        )
+          .then(saveSeen)
+          .catch(() => undefined);
+        return true;
+      },
+    }).finally(() => {
+      watching = false;
+    });
   };
   let keptTimer: ReturnType<typeof setTimeout> | null = null;
   let recordFailures = 0;
