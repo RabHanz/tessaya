@@ -1,0 +1,195 @@
+// @effect-diagnostics globalTimers:off
+/**
+ * PILL-V2 "D": his words drawn as ghost text at the caret of the field they will land in, then the same cleanup
+ * played in place; the paste lands as the ghost goes, and any key or click skips straight to it. A click-through
+ * window that never takes focus and stays out of screen sharing. With no caret to draw at, the pill shows them (E).
+ */
+import * as Electron from "electron";
+
+import { protectFromCapture } from "../captureProtection.ts";
+import { markCompanionWindow } from "../lastAppWindow.ts";
+import { applyLookScript, lookClasses, type Glass, type Motion } from "../home/look.ts";
+import { wordsScript } from "./pillIsland.ts";
+
+type Box = {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+};
+/** What the sidecar reads at the caret, in physical screen pixels; the font size in points (0: not said). */
+export type CaretGeometry = { readonly caret: Box; readonly field: Box; readonly fontPt: number };
+
+const LINES = 12;
+/** A field's text sits a little inside its box; the field does not say how far. */
+const INSET = 8;
+/** How often a key or click is looked for while the ghost plays. */
+const SKIP_POLL_MS = 50;
+
+/** Where the ghost window goes and how it sets its words, in DIP; null when there is no sensible place. */
+export const ghostPlacement = (g: CaretGeometry) => {
+  const line = Math.round(g.caret.height);
+  const left = g.field.x + INSET;
+  const width = Math.round(g.field.width - 2 * INSET);
+  const indent = Math.round(g.caret.x - left);
+  if (line < 8 || line > 80 || width < 120 || indent < 0 || indent > width) return null;
+  return {
+    bounds: { x: Math.round(left), y: Math.round(g.caret.y), width, height: line * LINES },
+    fontPx: g.fontPt > 0 ? Math.round((g.fontPt * 4) / 3) : Math.round(line * 0.72),
+    linePx: line,
+    width,
+    indent,
+  };
+};
+
+const GHOST_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
+:root{--field-ink:#e9e9ee;--ghost:rgba(233,233,238,.84);--ghost-drop:rgba(233,233,238,.5);--sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+@media (prefers-color-scheme:light){:root{--field-ink:#17181b;--ghost:rgba(23,24,27,.82);--ghost-drop:rgba(23,24,27,.5)}}
+html,body{margin:0;overflow:hidden;background:transparent;-webkit-font-smoothing:antialiased}
+#vp{position:absolute;left:0;top:0;pointer-events:none}
+#vp span{position:absolute;left:0;top:0;white-space:pre;text-decoration:underline dotted color-mix(in srgb,currentColor 55%,transparent);text-underline-offset:4px}
+#vp span.m span{position:static}
+#vp span.m .slot{position:relative;display:inline-block;vertical-align:top;height:1em}
+#vp span.m .g{position:absolute;left:0;top:0;transform-origin:0 85%}
+#mE{position:absolute;visibility:hidden;left:0;top:0}
+#mE span{display:inline-block;vertical-align:top;white-space:pre}
+</style></head><body><div id="vp" aria-hidden="true"></div><div id="mE" aria-hidden="true"></div><script>
+const $=i=>document.getElementById(i);
+const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
+const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
+${wordsScript("D")}
+window.ghost={start(f){setField(f.fontPx,f.linePx,f.width,f.indent);island.start();},words(t){island.words(t);},release(){island.release();},cleanup(r,c){return island.cleanup(r,c);},stop(){island.stop();}};
+</script></body></html>`;
+
+export interface PillGhost {
+  /** Opens the ghost at this caret; false when there is nowhere sensible to draw (the pill shows the words). */
+  readonly start: (geometry: CaretGeometry) => boolean;
+  readonly active: () => boolean;
+  readonly words: (text: string) => void;
+  /** His ✓ or the key's release. */
+  readonly release: () => void;
+  /**
+   * Plays the cleanup in place and resolves when the paste should land: as the ghost goes, or at once on a key or
+   * click. False when the ghost was not up (nothing waited).
+   */
+  readonly play: (raw: string, clean: string) => Promise<boolean>;
+  readonly stop: () => void;
+}
+
+export const createPillGhost = (input: {
+  readonly look: () => { readonly motion: Motion; readonly glass: Glass };
+  /** The system's last-input tick (a key, a click or a move); null when it cannot say. */
+  readonly lastInput: () => Promise<number | null>;
+  /** The sidecar's boxes are physical pixels only on Windows. */
+  readonly windows: boolean;
+}): PillGhost => {
+  let window: Electron.BrowserWindow | null = null;
+  let ready: Promise<unknown> = Promise.resolve();
+  const live = () => window !== null && !window.isDestroyed();
+  const call = (code: string): Promise<unknown> => {
+    const target = window;
+    return ready.then(() =>
+      target !== null && !target.isDestroyed()
+        ? target.webContents
+            .executeJavaScript(
+              `${applyLookScript(lookClasses(input.look().motion, input.look().glass))};${code}`,
+            )
+            .catch(() => null)
+        : null,
+    );
+  };
+  const stop = () => {
+    if (live()) window!.destroy();
+    window = null;
+  };
+  /** A key or click after `since`: the tick moved while the pointer stayed put (a move alone is not a skip). */
+  const skipped = (stopAt: Promise<void>) =>
+    new Promise<void>((resolve) => {
+      let done = false;
+      void stopAt.then(() => (done = true));
+      void input.lastInput().then((first) => {
+        if (first === null) return;
+        let cursor = Electron.screen.getCursorScreenPoint();
+        const look = () => {
+          if (done) return;
+          void input.lastInput().then((tick) => {
+            const now = Electron.screen.getCursorScreenPoint();
+            const moved = now.x !== cursor.x || now.y !== cursor.y;
+            cursor = now;
+            if (tick !== null && tick !== first && !moved) return resolve();
+            if (moved && tick !== null) first = tick;
+            setTimeout(look, SKIP_POLL_MS).unref();
+          });
+        };
+        setTimeout(look, SKIP_POLL_MS).unref();
+      });
+    });
+  return {
+    start: (geometry) => {
+      stop();
+      const scale = (b: Box) => (input.windows ? Electron.screen.screenToDipRect(null, b) : b);
+      const placed = ghostPlacement({
+        caret: scale(geometry.caret),
+        field: scale(geometry.field),
+        fontPt: geometry.fontPt,
+      });
+      if (placed === null) return false;
+      const win = new Electron.BrowserWindow({
+        ...placed.bounds,
+        frame: false,
+        transparent: true,
+        resizable: false,
+        focusable: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        hasShadow: false,
+        show: false,
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+      });
+      win.setAlwaysOnTop(true, "screen-saver");
+      win.setIgnoreMouseEvents(true);
+      markCompanionWindow(win);
+      protectFromCapture(win);
+      window = win;
+      ready = win
+        .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(GHOST_DOCUMENT)}`)
+        .then(() => {
+          if (!win.isDestroyed()) win.showInactive();
+        })
+        .catch(() => undefined);
+      void call(
+        `window.ghost.start(${JSON.stringify({ fontPx: placed.fontPx, linePx: placed.linePx, width: placed.width, indent: placed.indent })})`,
+      );
+      return true;
+    },
+    active: live,
+    words: (text) => void call(`window.ghost.words(${JSON.stringify(text)})`),
+    release: () => void call("window.ghost.release()"),
+    play: async (raw, clean) => {
+      if (!live()) return false;
+      const target = window;
+      const ms = await call(
+        `window.ghost.cleanup(${JSON.stringify(raw)},${JSON.stringify(clean)})`,
+      );
+      const fade = 300;
+      const total = typeof ms === "number" ? ms : 0;
+      let end = () => undefined as void;
+      const over = new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, Math.max(0, total - fade));
+        t.unref();
+        end = resolve;
+      });
+      const skip = await Promise.race([over.then(() => false), skipped(over).then(() => true)]);
+      end();
+      // The words land under the ghost as it fades; a skip takes it away at once.
+      setTimeout(
+        () => {
+          if (window === target) stop();
+        },
+        skip || total <= fade ? 0 : fade,
+      ).unref();
+      return true;
+    },
+    stop,
+  };
+};

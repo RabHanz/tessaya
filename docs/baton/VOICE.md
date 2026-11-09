@@ -37,6 +37,9 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
   ✕ and Esc throw it away. The pill shows his words as they are recognised and, once the clean text is pasted,
   plays the clean-up over them: the cut words grey and are struck, then one motion carries the kept words into the
   clean paragraph (`pillIsland.ts`, Settings → Dictation → Show words as you speak). The paste never waits for it.
+  With Pill style "In the text box when possible" the words are drawn as ghost text at the field's caret instead
+  (`pillGhost.ts`; the sidecar's `caret_at`, never for a password or secret field), the cleanup plays there and
+  the paste lands as the ghost goes; any key or click skips to the paste. No caret, and the pill shows them.
   If the window is gone, the text goes on the clipboard and the pill says so. Dictated text never reaches the
   environment. The hold key works the same way: release is ✓, Esc is ✕.
 
