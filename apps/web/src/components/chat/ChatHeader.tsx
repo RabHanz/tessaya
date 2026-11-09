@@ -21,6 +21,7 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { BatonLiveStatus } from "./BatonLiveStatus";
+import { displayThreadTitle } from "@t3tools/baton-shared/liveThread";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -74,7 +75,7 @@ const TITLE_MENU_OPEN_DELAY_MS = 500;
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
   activeThreadId,
-  activeThreadTitle,
+  activeThreadTitle: storedThreadTitle,
   activeThreadLinkOrigin,
   isServerThread,
   activeProject,
@@ -85,6 +86,7 @@ export const ChatHeader = memo(function ChatHeader({
   onOpenProjectSettings,
   onFindInThread,
 }: ChatHeaderProps) {
+  const activeThreadTitle = displayThreadTitle(activeThreadId, storedThreadTitle);
   const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
@@ -170,7 +172,7 @@ export const ChatHeader = memo(function ChatHeader({
     setRenaming({
       environmentId: activeThreadEnvironmentId,
       threadId: activeThreadId,
-      title: activeThreadTitle,
+      title: storedThreadTitle,
     });
   };
   const commitRename = (title: string) => {
@@ -178,7 +180,7 @@ export const ChatHeader = memo(function ChatHeader({
     if (!readEnvironmentScope(activeThreadEnvironmentId, AuthOrchestrationOperateScope)) return;
     const resolution = resolveRenameCommit({
       title,
-      originalTitle: renamingTitle ?? activeThreadTitle,
+      originalTitle: renamingTitle ?? storedThreadTitle,
     });
     if (resolution.action === "reject-empty") {
       toastManager.add({ type: "warning", title: "Thread title cannot be empty" });

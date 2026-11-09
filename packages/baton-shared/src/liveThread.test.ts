@@ -35,6 +35,8 @@ describe("a mirrored live thread", () => {
   it("shows its title without the account and machine the mirror appends, and leaves other titles alone", () => {
     expect(displayThreadTitle(live, "Pricing copy · someone · box1")).toBe("Pricing copy");
     expect(displayThreadTitle(live, "Pricing copy")).toBe("Pricing copy");
+    expect(displayThreadTitle(live, "Pricing copy · box1")).toBe("Pricing copy");
+    expect(displayThreadTitle(live, "Plan · step 2 · someone · box1")).toBe("Plan · step 2");
     expect(displayThreadTitle("thread-1", "Pricing · copy")).toBe("Pricing · copy");
   });
 });
