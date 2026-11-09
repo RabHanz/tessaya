@@ -43,6 +43,8 @@ export interface DictationConfig {
   readonly keepAudio?: string | null;
   /** Keep the speech model loaded between dictations (about 1.2 GB for v3); off on a machine with under 10 GB. */
   readonly keepLoaded?: boolean;
+  /** His words in the pill as he speaks: a quick decode of the words not yet cut, and the local model's words for the cloud too. */
+  readonly liveWords?: boolean;
 }
 
 /**

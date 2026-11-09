@@ -3169,6 +3169,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
       // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
+      liveWords: settings.showWords,
     });
     syncCleanupSession();
   };
@@ -6947,8 +6948,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ hideFromCapture: on });
       setHideFromCapture(on);
     } else if (id === "v.learnWords") save({ learnWords: on });
-    else if (id === "v.showWords") save({ showWords: on });
-    else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
+    else if (id === "v.showWords") {
+      save({ showWords: on });
+      configureDictation();
+    } else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
       save({ pillStyle: value });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });
