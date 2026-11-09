@@ -31,9 +31,9 @@ export const layer = Layer.effectDiscard(
         Effect.forever(
           Effect.sleep("2 seconds").pipe(
             Effect.andThen(
-              Effect.suspend(() =>
+              Effect.flatMap(Clock.currentTimeMillis, (now) =>
                 Effect.forEach(
-                  takeOpenRequests(stateDir, Date.now()),
+                  takeOpenRequests(stateDir, now),
                   (request) =>
                     catalog.openInTerminal({ threadId: request.threadId, stopTurn: true }).pipe(
                       // Acted on first; only then the answer the CLI prints.

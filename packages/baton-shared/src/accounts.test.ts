@@ -2,7 +2,14 @@ import type { BatonAccount } from "@t3tools/baton-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveSwitchRefusal, oneEntryPerProvider, pickModelFor, unifyAccounts } from "./accounts.ts";
+import {
+  liveSwitchRefusal,
+  oneEntryPerProvider,
+  pickModelFor,
+  sessionLoginKey,
+  threadAccount,
+  unifyAccounts,
+} from "./accounts.ts";
 
 const provider = (
   instanceId: string,
@@ -181,5 +188,23 @@ describe("pickModelFor", () => {
       "opus",
     );
     expect(pickModelFor(codex, "claudeAgent", "opus")).toBe("gpt-b");
+  });
+});
+
+describe("the account a thread runs as", () => {
+  const pool = [
+    { key: "1", email: "work@example.com", active: true },
+    { key: "2", email: "home@example.com", active: false },
+  ];
+  const accounts = [
+    { id: "work", instanceIds: ["claudeAgent"], liveSwitchKey: "1" },
+    { id: "home", instanceIds: ["claude_home"], liveSwitchKey: "2" },
+  ];
+
+  it("goes by the instance, or on a terminal thread by the session's own login over cswap's active one", () => {
+    expect(threadAccount(accounts, "claude_home", null)?.id).toBe("home");
+    expect(threadAccount(accounts, "baton-live", sessionLoginKey(pool, "home"))?.id).toBe("home");
+    expect(threadAccount(accounts, "baton-live", sessionLoginKey(pool, null))?.id).toBe("work");
+    expect(threadAccount(accounts, "baton-live", sessionLoginKey(pool, "gone"))).toBeUndefined();
   });
 });

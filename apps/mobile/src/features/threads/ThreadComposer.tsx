@@ -56,6 +56,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import { useBatonSettingsOpener } from "./BatonThreadHeader";
 import {
   getComposerDraftSnapshot,
   composerDraftsAtom,
@@ -730,6 +731,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const openSettings = () => {
     settingsSheetPresentation.open();
   };
+  useBatonSettingsOpener(composerOwnerKey, openSettings);
 
   useFocusEffect(() => {
     if (!settingsRoutePresentedRef.current) {

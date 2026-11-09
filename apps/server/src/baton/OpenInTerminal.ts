@@ -16,10 +16,11 @@ export interface OpenPorts {
   /** Stops the thread's running turn through the orchestrator; true once it is no longer running. */
   readonly stopTurn: (threadId: string) => Effect.Effect<boolean>;
   /** Puts the thread on its terminal session (the live instance), so no message can start an SDK resume beside it. */
-  readonly toTerminal: (threadId: string) => Effect.Effect<void, unknown>;
+  readonly toTerminal: (threadId: string) => Effect.Effect<boolean>;
   /** Puts it back on its own instance when the terminal could not be opened. */
-  readonly back: (threadId: string) => Effect.Effect<void, unknown>;
-  readonly detach: (threadId: string) => Effect.Effect<void, unknown>;
+  readonly back: (threadId: string) => Effect.Effect<void>;
+  /** A failed detach is caught by `released`: nothing launches while a process still holds the session. */
+  readonly detach: (threadId: string) => Effect.Effect<void>;
   /** Any verified process holds the session now (a terminal that did start, or one no scan lists). */
   readonly held: (sessionId: string) => Effect.Effect<boolean>;
   /** True once no process holds the session. */
@@ -57,7 +58,12 @@ export const openInTerminal = Effect.fn("OpenInTerminal.open")(function* (
       pane: null,
       detail: "Only a Claude thread that has started its session can open in a terminal.",
     } satisfies OpenResult;
-  yield* ports.toTerminal(input.threadId);
+  if (!(yield* ports.toTerminal(input.threadId)))
+    return {
+      state: "refused",
+      pane: null,
+      detail: "The thread could not be put on its terminal; nothing was opened.",
+    } satisfies OpenResult;
   // Back to Tessaya only when nothing holds the session; otherwise the thread stays with whatever runs it.
   const giveBack = (detail: string) =>
     ports.held(home.sessionId).pipe(

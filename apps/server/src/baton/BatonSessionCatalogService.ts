@@ -21,6 +21,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   defaultInstanceIdForDriver,
+  type ProviderInstanceConfig,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -908,7 +909,9 @@ export const layer = Layer.effect(
                   (yield* e.projects).find((p) => p.id === shell.projectId)?.workspaceRoot ??
                   null;
                 if (cwd === null) return null;
-                const instances = Option.isSome(serverSettings)
+                const instances: Readonly<Record<string, ProviderInstanceConfig>> = Option.isSome(
+                  serverSettings,
+                )
                   ? yield* serverSettings.value.getSettings.pipe(
                       Effect.map((current) => current.providerInstances),
                       Effect.orElseSucceed(() => ({})),
@@ -937,36 +940,44 @@ export const layer = Layer.effect(
                 }
                 return false;
               }),
-              toTerminal: Effect.fn("BatonSessionCatalogService.openToTerminal")(function* () {
-                sessionId = yield* sessionOf;
-                if (sessionId === null) return yield* Effect.fail("no session");
-                yield* pointTo({
-                  driver: LIVE_DRIVER,
-                  instanceId: LIVE_INSTANCE_ID,
-                  model: LIVE_MODEL,
-                  sessionId,
-                });
-              }),
-              back: Effect.fn("BatonSessionCatalogService.openBack")(function* () {
-                if (before === null || sessionId === null) return;
-                yield* pointTo({
-                  driver: "claudeAgent",
-                  instanceId: String(before.providerInstanceId),
-                  model: before.modelSelection.model,
-                  sessionId,
-                });
-              }),
+              toTerminal: Effect.fn("BatonSessionCatalogService.openToTerminal")(
+                function* () {
+                  sessionId = yield* sessionOf;
+                  if (sessionId === null) return false;
+                  yield* pointTo({
+                    driver: LIVE_DRIVER,
+                    instanceId: LIVE_INSTANCE_ID,
+                    model: LIVE_MODEL,
+                    sessionId,
+                  });
+                  return true;
+                },
+                Effect.orElseSucceed(() => false),
+              ),
+              back: Effect.fn("BatonSessionCatalogService.openBack")(
+                function* () {
+                  if (before === null || sessionId === null) return;
+                  yield* pointTo({
+                    driver: "claudeAgent",
+                    instanceId: String(before.providerInstanceId),
+                    model: before.modelSelection.model,
+                    sessionId,
+                  });
+                },
+                Effect.ignoreCause({ log: true }),
+              ),
               detach: (threadId) =>
-                e.detachSessions({ tag: "open-in-terminal", threadId: ThreadId.make(threadId) }),
+                e
+                  .detachSessions({ tag: "open-in-terminal", threadId: ThreadId.make(threadId) })
+                  .pipe(Effect.ignoreCause({ log: true })),
               held: (sessionId) => Effect.sync(() => sessionHolderPid(sessionId) !== null),
-              released: (sessionId) =>
-                Effect.promise(async () => {
-                  for (let i = 0; i < 60; i += 1) {
-                    if (sessionHolderPid(sessionId) === null) return true;
-                    await new Promise((resolve) => setTimeout(resolve, 250));
-                  }
-                  return false;
-                }),
+              released: Effect.fn("BatonSessionCatalogService.openReleased")(function* (sessionId) {
+                for (let i = 0; i < 60; i += 1) {
+                  if (sessionHolderPid(sessionId) === null) return true;
+                  yield* Effect.sleep("250 millis");
+                }
+                return false;
+              }),
               launch: (home) =>
                 Effect.promise(
                   () =>
@@ -1068,7 +1079,9 @@ export const layer = Layer.effect(
                   null;
                 if (cwd === null) return { refused: "the session's folder is not known." };
                 const list = Option.isSome(accounts) ? (yield* accounts.value.list).accounts : [];
-                const instances = Option.isSome(serverSettings)
+                const instances: Readonly<Record<string, ProviderInstanceConfig>> = Option.isSome(
+                  serverSettings,
+                )
                   ? yield* serverSettings.value.getSettings.pipe(
                       Effect.map((current) => current.providerInstances),
                       Effect.orElseSucceed(() => ({})),
@@ -1116,24 +1129,28 @@ export const layer = Layer.effect(
               }),
               endTerminal: (sessionId) => endClaudeTerminal(sessionId),
               held: (sessionId) => Effect.sync(() => sessionHolderPid(sessionId) !== null),
-              point: Effect.fn("BatonSessionCatalogService.movePoint")(function* (target) {
-                const threadId = ThreadId.make(target.threadId);
-                const thread = yield* e.appThread(threadId);
-                if (thread === null) return yield* Effect.fail("no thread record");
-                yield* e.writeEvents({
-                  events: pointAtSessionEvents({
-                    thread,
-                    driver: "claudeAgent",
-                    instanceId: target.instanceId,
-                    model: target.model,
-                    sessionId: target.sessionId,
-                    now: yield* DateTime.now,
-                    stamp: Date.now(),
-                  }),
-                });
-                // Handoffs a heal left ready would be pasted into the resumed session's first turn.
-                yield* supersedeLiveHandoffs(e, threadId);
-              }),
+              point: Effect.fn("BatonSessionCatalogService.movePoint")(
+                function* (target) {
+                  const threadId = ThreadId.make(target.threadId);
+                  const thread = yield* e.appThread(threadId);
+                  if (thread === null) return false;
+                  yield* e.writeEvents({
+                    events: pointAtSessionEvents({
+                      thread,
+                      driver: "claudeAgent",
+                      instanceId: target.instanceId,
+                      model: target.model,
+                      sessionId: target.sessionId,
+                      now: yield* DateTime.now,
+                      stamp: Date.now(),
+                    }),
+                  });
+                  // Handoffs a heal left ready would be pasted into the resumed session's first turn.
+                  yield* supersedeLiveHandoffs(e, threadId);
+                  return true;
+                },
+                Effect.orElseSucceed(() => false),
+              ),
             },
             input,
           );

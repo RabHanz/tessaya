@@ -3,6 +3,7 @@
  * own account, and the Herdr pane behind a ⋯ menu.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { threadAccount } from "@t3tools/baton-shared/accounts";
 import { maskedEmail, roomDetail, roomText, roomTone } from "@t3tools/baton-shared/accountRoom";
 import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -36,11 +37,11 @@ function LimitChip(props: {
   const composer = useComposerHandleContext();
   const accounts = useBatonAccounts(props.threadRef.environmentId);
   const login = useLiveAccounts(props.threadRef).find((entry) => entry.active);
-  const instanceId = props.shell.modelSelection.instanceId;
-  const account =
-    instanceId === LIVE_INSTANCE
-      ? accounts.find((entry) => login !== undefined && entry.liveSwitchKey === login.key)
-      : accounts.find((entry) => entry.instanceIds.includes(instanceId));
+  const account = threadAccount(
+    accounts,
+    props.shell.modelSelection.instanceId,
+    login?.key ?? null,
+  );
   if (account === undefined) return null;
   const room = roomText(account, now);
   const used = Math.round(

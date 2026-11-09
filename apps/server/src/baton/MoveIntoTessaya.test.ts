@@ -52,11 +52,11 @@ const fixture = (
     endTerminal: (id) => Effect.sync(() => (calls.push(`end:${id}`), over.exits ?? true)),
     held: () => Effect.sync(() => (calls.push("held?"), over.held ?? false)),
     point: (input) =>
-      over.pointFails === true
-        ? Effect.fail("write failed")
-        : Effect.sync(() => {
-            calls.push(`point:${input.instanceId}:${input.sessionId}`);
-          }),
+      Effect.sync(() => {
+        if (over.pointFails === true) return false;
+        calls.push(`point:${input.instanceId}:${input.sessionId}`);
+        return true;
+      }),
   };
   return { ports, calls };
 };
@@ -85,11 +85,16 @@ describe("moving a Terminal thread into Tessaya", () => {
     "does nothing without the confirmation, while busy, or when not a terminal thread",
     () =>
       Effect.gen(function* () {
-        const cases = [
+        const cases: ReadonlyArray<{
+          readonly over: Parameters<typeof fixture>[0];
+          readonly threadId: string;
+          readonly approved: boolean;
+          readonly state: string;
+        }> = [
           { over: {}, threadId: THREAD, approved: false, state: "refused" },
           { over: { running: true }, threadId: THREAD, approved: true, state: "busy" },
           {
-            over: { session: { status: "busy", pane: "p", account: "work" } },
+            over: { session: { status: "busy", pane: "p", account: "work", configDir: null } },
             threadId: THREAD,
             approved: true,
             state: "busy",
