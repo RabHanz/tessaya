@@ -8,6 +8,7 @@ import {
   BatonCatalogListResult,
   BatonFleetResult,
   BatonJobListResult,
+  BatonMoveIntoTessayaResult,
   BatonMemorySearchResult,
   BatonMemoryHistoryResult,
   BatonRecordListInput,
@@ -21,7 +22,11 @@ import {
   OrchestrationRuleListResult,
   WatchResult,
 } from "@t3tools/baton-contracts";
-import { OrchestratorMcpEnvironmentTarget, OrchestratorMcpFailure } from "@t3tools/contracts";
+import {
+  OrchestratorMcpEnvironmentTarget,
+  OrchestratorMcpFailure,
+  ThreadId,
+} from "@t3tools/contracts";
 import { DESKTOP_STATE_SECTIONS } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
@@ -268,6 +273,22 @@ const StateTool = Tool.make("tessaya_state", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+// Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
+const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
+  ...shared,
+  description:
+    "Move a Terminal thread's Claude session into Tessaya: its terminal process exits and the same conversation continues as a Tessaya thread on the session's own login. Refused while it works. It changes the thread's provider, so set providerChangeApproved only when the user asked for this move in so many words; without it nothing changes.",
+  parameters: Schema.Struct({
+    threadId: ThreadId,
+    providerChangeApproved: Schema.optional(Schema.Boolean),
+  }),
+  success: BatonMoveIntoTessayaResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -284,4 +305,5 @@ export const TessayaToolkit = Toolkit.make(
   WeaveSendTool,
   WeaveListTool,
   StateTool,
+  MoveIntoTessayaTool,
 );
