@@ -166,3 +166,93 @@ export const setModelResumingStopped = async (deps: {
     detail: "The session was resumed but is not live yet. Try again in a moment.",
   };
 };
+
+const isEffort = (value: unknown): value is LiveEffort =>
+  typeof value === "string" && (LIVE_EFFORT_CHOICES as ReadonlyArray<string>).includes(value);
+
+/**
+ * The effort a terminal session runs at: its newest /effort or /model answer in the transcript, else its config dir's
+ * `effortLevel`, else its model's default. Null only when none of the three says.
+ */
+export const sessionEffort = (input: {
+  readonly transcriptTail: string;
+  readonly settingsJson: string | null;
+  readonly modelDefault: string | null;
+}): LiveEffort | null => {
+  for (const output of [...input.transcriptTail.matchAll(STDOUT)].map((m) => m[1]!).reverse()) {
+    const said = /effort level to (\w+)|with (\w+) effort/i.exec(output);
+    const level = (said?.[1] ?? said?.[2])?.toLowerCase();
+    if (isEffort(level)) return level;
+  }
+  try {
+    const level = (JSON.parse(input.settingsJson ?? "null") as { effortLevel?: unknown } | null)
+      ?.effortLevel;
+    if (isEffort(level)) return level;
+  } catch {
+    // An unreadable settings file says nothing.
+  }
+  return isEffort(input.modelDefault) ? input.modelDefault : null;
+};
+
+/** The model a transcript's newest assistant line names, or null. */
+export const transcriptModel = (transcriptTail: string): string | null =>
+  [...transcriptTail.matchAll(/"model":"(claude-[a-z0-9.-]+)"/g)].at(-1)?.[1] ?? null;
+
+/** The live instance's "as it is" effort choice, which a picker never shows (ACCOUNTS-2). */
+export const EFFORT_AS_IS = "session";
+
+/**
+ * A terminal session's traits as a picker shows them: its real effort selected when the thread holds none (or only
+ * "as it is"), and the "as it is" choice gone. Shared by web and mobile.
+ */
+interface EffortDescriptors {
+  readonly capabilities?: {
+    readonly optionDescriptors?: ReadonlyArray<{
+      readonly id: string;
+      readonly options?: ReadonlyArray<{ readonly id: string }>;
+    }>;
+  } | null;
+}
+
+export function withRealEffort<M, O extends { readonly id: string; readonly value: unknown }>(
+  models: ReadonlyArray<M>,
+  options: ReadonlyArray<O> | null | undefined,
+  effort: string | null,
+): { readonly models: ReadonlyArray<M>; readonly options: ReadonlyArray<O> | undefined } {
+  const held = options?.find((option) => option.id === "effort")?.value;
+  const shown =
+    effort !== null && (held === undefined || held === EFFORT_AS_IS)
+      ? [
+          ...(options ?? []).filter((option) => option.id !== "effort"),
+          { id: "effort", value: effort } as unknown as O,
+        ]
+      : (options ?? undefined);
+  const withoutAsIs = (model: EffortDescriptors): EffortDescriptors =>
+    model.capabilities?.optionDescriptors === undefined
+      ? model
+      : {
+          ...model,
+          capabilities: {
+            ...model.capabilities,
+            optionDescriptors: model.capabilities.optionDescriptors.map((descriptor) =>
+              descriptor.id === "effort" && descriptor.options !== undefined
+                ? {
+                    ...descriptor,
+                    options: descriptor.options.filter((choice) => choice.id !== EFFORT_AS_IS),
+                  }
+                : descriptor,
+            ),
+          },
+        };
+  return {
+    // Only the effort choices change; every other field of the model stays as it was.
+    models: models.map((model) => withoutAsIs(model as EffortDescriptors) as M),
+    options: shown,
+  };
+}
+
+const working = (status: string | null) => status === "busy" || status === "waiting";
+
+/** A session that was working and now reads idle: a queued change can be typed in (ACCOUNTS-2). */
+export const wentIdle = (before: string | null | undefined, now: string | null): boolean =>
+  before !== undefined && working(before) && now !== null && !working(now);

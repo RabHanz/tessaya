@@ -2,7 +2,7 @@ import type { BatonAccount } from "@t3tools/baton-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveSwitchRefusal, unifyAccounts } from "./accounts.ts";
+import { liveSwitchRefusal, oneEntryPerProvider, pickModelFor, unifyAccounts } from "./accounts.ts";
 
 const provider = (
   instanceId: string,
@@ -121,6 +121,35 @@ describe("unifyAccounts", () => {
   });
 });
 
+describe("oneEntryPerProvider", () => {
+  const entry = (
+    instanceId: string,
+    driverKind: string,
+    displayName: string,
+    isDefault = false,
+  ) => ({
+    instanceId,
+    driverKind,
+    displayName,
+    isDefault,
+  });
+  const entries = [
+    entry("claudeAgent", "claudeAgent", "Claude", true),
+    entry("claudeAgent_work", "claudeAgent", "Work"),
+    entry("codex", "codex", "Codex", true),
+    entry("baton-live", "acpRegistry", "Terminal session"),
+  ];
+
+  it("keeps the selected login for its provider under the provider's name, and Terminal apart", () => {
+    expect(oneEntryPerProvider(entries, "claudeAgent_work")).toEqual([
+      entry("claudeAgent_work", "claudeAgent", "Claude"),
+      entries[2],
+      entry("baton-live", "acpRegistry", "Terminal"),
+    ]);
+    expect(oneEntryPerProvider(entries, "codex")[0]).toBe(entries[0]);
+  });
+});
+
 describe("two people's logins", () => {
   it("never merge: the default instance takes the active slot only when its address matches", () => {
     const accounts = unifyAccounts({
@@ -139,5 +168,18 @@ describe("two people's logins", () => {
     expect(accounts[0]?.liveSwitchKey).toBeNull();
     expect(liveSwitchRefusal(accounts, "6")).toBeNull();
     expect(liveSwitchRefusal(accounts, "7")).toContain("browser");
+  });
+});
+
+describe("pickModelFor", () => {
+  it("keeps the thread's model on its own provider and takes the default on another", () => {
+    const codex = {
+      driverKind: "codex",
+      models: [{ slug: "gpt-a" }, { slug: "gpt-b", isDefault: true }],
+    };
+    expect(pickModelFor({ ...codex, driverKind: "claudeAgent" }, "claudeAgent", "opus")).toBe(
+      "opus",
+    );
+    expect(pickModelFor(codex, "claudeAgent", "opus")).toBe("gpt-b");
   });
 });

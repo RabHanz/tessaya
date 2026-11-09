@@ -4,6 +4,9 @@ import {
   effortCommand,
   modelCommand,
   readBack,
+  sessionEffort,
+  wentIdle,
+  withRealEffort,
   setLiveModel,
   setModelResumingStopped,
   type LiveModelDeps,
@@ -44,6 +47,55 @@ describe("reading the session's answer back", () => {
     expect(readBack(text, "model")).toMatch(/^Set model to `Opus 5\.5/);
     expect(readBack(text, "effort")).toBe("Set effort level to medium");
     expect(readBack("{}\n", "model")).toBeNull();
+  });
+
+  it("reads a session's real effort: its last change, then its settings, then its model's default", () => {
+    const settings = JSON.stringify({ effortLevel: "xhigh" });
+    const changed = said("Set effort level to medium") + said("Set model to `Opus 5.5`");
+    expect(
+      sessionEffort({ transcriptTail: changed, settingsJson: settings, modelDefault: "high" }),
+    ).toBe("medium");
+    expect(
+      sessionEffort({ transcriptTail: "{}\n", settingsJson: settings, modelDefault: "high" }),
+    ).toBe("xhigh");
+    expect(
+      sessionEffort({ transcriptTail: "", settingsJson: "{not json", modelDefault: "high" }),
+    ).toBe("high");
+    expect(
+      sessionEffort({ transcriptTail: "", settingsJson: null, modelDefault: null }),
+    ).toBeNull();
+  });
+
+  it('shows the real effort in place of the live instance\'s "as it is" choice, and keeps a held pick', () => {
+    const models = [
+      {
+        capabilities: {
+          optionDescriptors: [
+            { id: "effort", options: [{ id: "session" }, { id: "high" }, { id: "max" }] },
+          ],
+        },
+      },
+    ];
+    const shown = withRealEffort(models, [{ id: "effort", value: "session" }], "high");
+    expect(shown.options).toEqual([{ id: "effort", value: "high" }]);
+    expect(shown.models[0]?.capabilities.optionDescriptors[0]?.options).toEqual([
+      { id: "high" },
+      { id: "max" },
+    ]);
+    expect(withRealEffort(models, [{ id: "effort", value: "max" }], "high").options).toEqual([
+      { id: "effort", value: "max" },
+    ]);
+  });
+});
+
+describe("wentIdle", () => {
+  it("fires once when a working session reads idle, typed in the terminal or not", () => {
+    expect(wentIdle("busy", "idle")).toBe(true);
+    expect(wentIdle("waiting", "idle")).toBe(true);
+    expect(wentIdle("idle", "idle")).toBe(false);
+    expect(wentIdle("busy", "busy")).toBe(false);
+    expect(wentIdle(undefined, "idle")).toBe(false);
+    expect(wentIdle("busy", null)).toBe(false);
   });
 });
 

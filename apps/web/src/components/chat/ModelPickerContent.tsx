@@ -368,7 +368,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onFocusEffort?: () => void;
   /** Closes the list column, inside the popup's fixed height. */
   listFooter?: ReactNode;
-  /** Above the footer: the browsed instance's account (the thread's own under Favorites). */
+  /** Above the models: the browsed instance's accounts (the thread's own under Favorites). */
   renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
 }) {
   const {
@@ -1011,6 +1011,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               onTouchStart={(e) => e.stopPropagation()}
             />
 
+            {detailEntry ? props.renderInstanceDetail?.(detailEntry) : null}
             <ModelPickerList
               listRef={modelListRef}
               itemKeys={filteredItemKeys}
@@ -1078,7 +1079,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               onRequestClose={onRequestClose}
               onOpenProviderSetup={onOpenProviderSetup}
             />
-            {detailEntry ? props.renderInstanceDetail?.(detailEntry) : null}
             {props.listFooter}
           </div>
         </Combobox>

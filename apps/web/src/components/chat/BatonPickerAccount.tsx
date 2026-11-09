@@ -1,27 +1,55 @@
 /**
- * The account side of T3's model picker (T6): which account an instance runs as, its room left, the thread's
- * "Keep on this account" pin, and on a live thread what a pick there does. Each account is a provider instance;
- * a mirrored terminal session runs on cswap's machine login, which the Usage page switches.
+ * The account side of T3's model picker (T6, ACCOUNTS-2): one row per real account above the models, with % used,
+ * the thread's "Keep on this account" pin, and on a terminal thread the session's own login and a queued change.
  */
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { accountReturnsAt, instanceAccount, type BatonAccount } from "@t3tools/baton-contracts";
-import { accountRow, returnsLabel } from "@t3tools/baton-shared/accountRoom";
+import {
+  accountReturnsAt,
+  instanceAccount,
+  type BatonAccount,
+  type BatonAccountRecord,
+  type BatonLiveQueued,
+} from "@t3tools/baton-contracts";
+import { pickModelFor, oneEntryPerProvider } from "@t3tools/baton-shared/accounts";
+import {
+  accountRow,
+  maskedEmail,
+  resetLabel,
+  returnsLabel,
+  roomDetail,
+  roomText,
+  roomTone,
+} from "@t3tools/baton-shared/accountRoom";
 import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
-import type { ProviderInstanceId, ScopedThreadRef } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  type EnvironmentId,
+  ProviderInstanceId,
+  type ScopedThreadRef,
+  ThreadId,
+} from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/reactivity";
-import { ChartNoAxesColumnIcon, HourglassIcon, LockIcon, LockOpenIcon } from "lucide-react";
-import { useState } from "react";
+import { Atom, AsyncResult } from "effect/reactivity";
+import {
+  ChartNoAxesColumnIcon,
+  CheckIcon,
+  HourglassIcon,
+  LockIcon,
+  LockOpenIcon,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
 import type { ProviderInstanceEntry } from "../../providerInstances";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { liveLoginOf, useLiveAccounts } from "./BatonLiveModel";
+import { useLiveAccounts, useLiveAccountSwitch, useLiveState } from "./BatonLiveModel";
 
 /** An instance's account, when it reports a login or limits; null for one that reports neither. */
 const accountOf = (entry: ProviderInstanceEntry): BatonAccount | null =>
@@ -34,27 +62,132 @@ const useNow = () => Date.parse(`${useNowMinute()}:00Z`);
 const useLiveAccount = (threadRef: ScopedThreadRef) =>
   useLiveAccounts(threadRef).find((entry) => entry.active);
 
-function AccountLine(props: {
-  readonly account: BatonAccount;
-  readonly email: string;
-  readonly children?: React.ReactNode;
+const NO_ACCOUNTS = Atom.make(AsyncResult.initial<never, never>(false));
+
+/** One record per real account on the thread's environment (baton.accounts.list). */
+export function useBatonAccounts(
+  environmentId: EnvironmentId | null,
+): ReadonlyArray<BatonAccountRecord> {
+  const result = useAtomValue(
+    environmentId === null
+      ? NO_ACCOUNTS
+      : batonWorkSessions.accountsQuery({ environmentId, input: {} }),
+  );
+  return Option.getOrNull(AsyncResult.value(result))?.accounts ?? [];
+}
+
+/** The rail's one entry per provider, with Terminal its own group. */
+export const batonPickModel = pickModelFor;
+
+export const batonRailEntries = (
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+  selectedInstanceId: ProviderInstanceId,
+) => oneEntryPerProvider(entries, selectedInstanceId);
+
+const METHOD_LABEL = { "setup-token": "token", browser: "browser", "api-key": "API key" } as const;
+
+const TONE_CLASS = {
+  ok: "text-muted-foreground",
+  warn: "text-warning-foreground",
+  limit: "text-destructive-foreground",
+} as const;
+
+/** "5h 34% · wk 62%" in its tone, with the resets in a tooltip; nothing without a reading. */
+export function BatonRoom(props: {
+  readonly account: BatonAccountRecord;
+  readonly prefix?: string;
 }) {
   const now = useNow();
+  const text = roomText(props.account, now);
+  if (text === null) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            data-testid="account-room"
+            className={`shrink-0 tabular-nums ${TONE_CLASS[roomTone(props.account)]}`}
+          />
+        }
+      >
+        {props.prefix}
+        {text}
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        {roomDetail(props.account, now).map((line) => (
+          <div key={line}>{line}</div>
+        ))}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function AccountRow(props: {
+  readonly account: BatonAccountRecord;
+  readonly current: boolean;
+  readonly next: boolean;
+  readonly onPick: (() => void) | null;
+}) {
+  const { account } = props;
+  const paused = account.health === "paused";
+  const signedOut = account.health === "signed-out";
+  return (
+    <button
+      type="button"
+      data-testid="model-picker-account"
+      aria-pressed={props.current}
+      disabled={props.onPick === null || paused}
+      onClick={props.onPick ?? undefined}
+      className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-start text-xs hover:bg-accent disabled:cursor-default disabled:hover:bg-transparent aria-pressed:bg-accent/60"
+    >
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate font-medium text-foreground">{account.label}</span>
+          {account.methods.map((method) => (
+            <Badge key={method.kind} size="sm" variant="outline">
+              {METHOD_LABEL[method.kind]}
+            </Badge>
+          ))}
+          {props.next ? (
+            <Badge size="sm" variant="info">
+              Next
+            </Badge>
+          ) : null}
+          {paused ? (
+            <Badge size="sm" variant="warning">
+              Paused · resume in Settings
+            </Badge>
+          ) : signedOut ? (
+            <Badge size="sm" variant="error">
+              Signed out
+            </Badge>
+          ) : null}
+        </span>
+        {account.email === null ? null : (
+          <span className="truncate text-2xs text-muted-foreground">
+            {props.current && props.next ? "Current · " : ""}
+            {maskedEmail(account.email)}
+          </span>
+        )}
+      </span>
+      <BatonRoom account={account} />
+      {props.current ? (
+        <CheckIcon aria-hidden className="size-3.5 shrink-0 text-foreground" />
+      ) : null}
+    </button>
+  );
+}
+
+function Section(props: { readonly children: React.ReactNode }) {
   return (
     <div
-      data-testid="model-picker-account"
-      className="flex min-h-8 min-w-0 items-center gap-1.5 border-t border-border/70 px-3 py-1 text-2xs leading-4 text-muted-foreground"
+      data-testid="model-picker-accounts"
+      className="border-b border-border/70 px-1.5 py-1.5 [contain:inline-size]"
     >
-      <span className="shrink-0">Runs as</span>
-      <span className="min-w-0 truncate font-medium text-foreground/80">{props.account.label}</span>
-      <RedactedSensitiveText
-        value={props.email}
-        ariaLabel="Toggle account email visibility"
-        revealTooltip="Click to reveal the account this thread will run as"
-        hideTooltip="Click to hide the account"
-        className="min-w-0 truncate"
-      />
-      <span className="shrink-0">· {accountRow(props.account, now)}</span>
+      <div className="flex items-center justify-between px-1.5 pb-1 text-2xs font-medium text-muted-foreground">
+        <span>Account</span>
+        <span>used</span>
+      </div>
       {props.children}
     </div>
   );
@@ -64,7 +197,7 @@ function Note({ children }: { readonly children: React.ReactNode }) {
   return (
     <p
       data-testid="model-picker-live-note"
-      className="border-t border-border/70 px-3 py-1.5 text-2xs leading-4 text-muted-foreground"
+      className="border-b border-border/70 px-3 py-1.5 text-2xs leading-4 text-muted-foreground [contain:inline-size]"
     >
       {children}
     </p>
@@ -80,64 +213,220 @@ function ContinueInNote({ name }: { readonly name: string }) {
   );
 }
 
-function LiveSessionAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const account = useLiveAccount(threadRef);
-  return account === undefined ? null : (
-    <AccountLine account={account} email="">
-      <KeepToggle threadRef={threadRef} />
-    </AccountLine>
+const queuedText = (
+  queued: BatonLiveQueued,
+  accounts: ReadonlyArray<BatonAccountRecord>,
+): string => {
+  const parts = [
+    queued.accountKey === undefined
+      ? null
+      : `switches to ${accounts.find((account) => account.liveSwitchKey === queued.accountKey)?.label ?? "another account"}`,
+    queued.model === undefined ? null : `model ${queued.model}`,
+    queued.effort === undefined ? null : `effort ${queued.effort}`,
+  ].filter((part) => part !== null);
+  const text = `${parts.join(", ")} when this turn ends`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+type TerminalRow = {
+  readonly id: string;
+  readonly project: string;
+  readonly title: string;
+  readonly pane: string | null;
+  readonly lastActivityAt: string | null;
+};
+
+/** The Terminal group: the Claude sessions running in a terminal on this environment; a pick opens its thread. */
+function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
+  const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
+  const navigate = useNavigate();
+  const now = useNow();
+  const [rows, setRows] = useState<ReadonlyArray<TerminalRow> | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's session catalog while the picker shows Terminal
+  useEffect(() => {
+    let cancelled = false;
+    void list({ environmentId: props.environmentId, input: { limit: 30 } }).then((result) => {
+      if (cancelled || result._tag !== "Success") return;
+      setRows(
+        result.value.sessions
+          .filter((session) => session.state === "running" && session.source === "live")
+          .map((session) => ({
+            id: session.id,
+            project: session.project,
+            title: session.title,
+            pane: session.pane ?? null,
+            lastActivityAt: session.lastActivityAt,
+          })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [list, props.environmentId]);
+  if (rows === null) return null;
+  return (
+    <div
+      data-testid="model-picker-terminal-sessions"
+      className="border-b border-border/70 px-1.5 py-1.5 [contain:inline-size]"
+    >
+      <div className="px-1.5 pb-1 text-2xs font-medium text-muted-foreground">
+        Terminal · sessions running in a terminal. Tessaya types into them.
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-1.5 py-1 text-xs text-muted-foreground">None running here now.</p>
+      ) : (
+        rows.map((row) => (
+          <button
+            key={row.id}
+            type="button"
+            data-testid="model-picker-terminal-session"
+            className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-start text-xs hover:bg-accent"
+            onClick={() =>
+              void navigate({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(
+                  scopeThreadRef(props.environmentId, ThreadId.make(`baton-live4:${row.id}`)),
+                ),
+              })
+            }
+          >
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate font-medium text-foreground">{row.project}</span>
+              <span className="truncate text-2xs text-muted-foreground">{row.title}</span>
+            </span>
+            <span className="shrink-0 text-2xs text-muted-foreground">
+              {[
+                row.pane?.split("~").at(-1),
+                row.lastActivityAt === null
+                  ? null
+                  : `active ${resetLabel(row.lastActivityAt, now)}`,
+              ]
+                .filter((part) => part)
+                .join(" · ")}
+            </span>
+          </button>
+        ))
+      )}
+    </div>
   );
 }
 
-/** A Claude instance on a live thread: /model on the session's own login, a live move to another known one. */
-function LiveClaudeNote(props: {
-  readonly entry: ProviderInstanceEntry;
+/** A terminal session's accounts: its own login is current, a pick moves it there while it runs (LIVE-ACCOUNT). */
+function LiveAccounts(props: {
   readonly threadRef: ScopedThreadRef;
+  readonly accounts: ReadonlyArray<BatonAccountRecord>;
 }) {
-  const relation = liveLoginOf(props.entry.instanceId, useLiveAccounts(props.threadRef)).relation;
-  if (relation === "same")
-    return <Note>A model picked here changes the terminal session's own model.</Note>;
-  if (relation === "other")
-    return (
-      <Note>
-        <span className="font-medium text-foreground/80">Move to {props.entry.displayName}</span>: a
-        model picked here moves the terminal session to this account while it runs. Its sub-agents
-        keep working.
-      </Note>
-    );
-  return <ContinueInNote name={props.entry.displayName} />;
+  const logins = useLiveAccounts(props.threadRef);
+  const switchTo = useLiveAccountSwitch(props.threadRef);
+  const { queued, failure, cancel } = useLiveState(props.threadRef);
+  const active = logins.find((login) => login.active);
+  const accounts = props.accounts.filter(
+    (account) => account.driver === "claudeAgent" && account.liveSwitchKey !== null,
+  );
+  if (accounts.length === 0) return null;
+  return (
+    <Section>
+      {accounts.map((account) => {
+        const login = logins.find((candidate) => candidate.key === account.liveSwitchKey);
+        const current = active !== undefined && active.key === account.liveSwitchKey;
+        return (
+          <AccountRow
+            key={account.id}
+            account={account}
+            current={current}
+            next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
+            onPick={current || login === undefined ? null : () => switchTo(login)}
+          />
+        );
+      })}
+      {failure === null ? null : (
+        <p
+          className="px-1.5 pt-1 text-2xs text-destructive-foreground"
+          data-testid="live-queued-failure"
+        >
+          Last queued change not applied: {failure}
+        </p>
+      )}
+      {queued === null ? null : (
+        <div className="flex items-center gap-2 px-1.5 pt-1 text-2xs text-muted-foreground">
+          <span className="min-w-0 flex-1">{queuedText(queued, props.accounts)}</span>
+          <Button size="xs" variant="ghost" data-testid="live-queued-cancel" onClick={cancel}>
+            Cancel
+          </Button>
+        </div>
+      )}
+    </Section>
+  );
 }
 
-/** The row under the model list for the instance being browsed (or the thread's own, under Favorites). */
+/**
+ * Above the models: the accounts of the provider being browsed, one row per real login, with % used. On a terminal
+ * thread a pick moves the session; elsewhere it puts the thread on that account from the next message.
+ */
 export function BatonPickerAccount(props: {
   readonly entry: ProviderInstanceEntry;
   readonly threadRef: ScopedThreadRef | null;
+  readonly environmentId: EnvironmentId | null;
   readonly threadInstanceId: ProviderInstanceId;
+  readonly onPickInstance: (instanceId: ProviderInstanceId) => void;
 }) {
   const { entry, threadRef } = props;
-  // A handed-off live thread is ordinary (livePick); only the Terminal session entry stays special.
-  if (
+  const accounts = useBatonAccounts(props.environmentId);
+  const onLiveThread =
     threadRef !== null &&
     isLiveThreadId(threadRef.threadId) &&
-    (props.threadInstanceId === LIVE_INSTANCE || entry.instanceId === LIVE_INSTANCE)
-  ) {
-    if (entry.instanceId === LIVE_INSTANCE) return <LiveSessionAccount threadRef={threadRef} />;
-    return entry.driverKind === "claudeAgent" ? (
-      <LiveClaudeNote entry={entry} threadRef={threadRef} />
-    ) : (
-      <ContinueInNote name={entry.displayName} />
-    );
+    props.threadInstanceId === LIVE_INSTANCE;
+  const terminal =
+    entry.instanceId === LIVE_INSTANCE && props.environmentId !== null ? (
+      <TerminalSessions environmentId={props.environmentId} />
+    ) : null;
+  if (onLiveThread) {
+    if (entry.instanceId === LIVE_INSTANCE || entry.driverKind === "claudeAgent")
+      return (
+        <>
+          {terminal}
+          <LiveAccounts threadRef={threadRef} accounts={accounts} />
+        </>
+      );
+    return <ContinueInNote name={entry.displayName} />;
   }
-  const account = accountOf(entry);
-  if (account === null) return null;
+  if (terminal !== null) return terminal;
+  const mine = accounts.filter(
+    (account) => account.driver === entry.driverKind && account.instanceIds.length > 0,
+  );
+  if (mine.length === 0) return null;
   const pinnable =
     threadRef !== null &&
-    entry.instanceId === props.threadInstanceId &&
-    entry.driverKind === "claudeAgent";
+    entry.driverKind === "claudeAgent" &&
+    mine.some((account) => account.instanceIds.includes(props.threadInstanceId));
   return (
-    <AccountLine account={account} email={entry.snapshot.auth.email?.trim() ?? ""}>
-      {pinnable ? <KeepToggle threadRef={threadRef} /> : null}
-    </AccountLine>
+    <Section>
+      {mine.map((account) => {
+        const current = account.instanceIds.includes(props.threadInstanceId);
+        const target =
+          account.methods.find((method) => method.liveSwitch)?.instanceId ??
+          account.instanceIds[0] ??
+          null;
+        return (
+          <AccountRow
+            key={account.id}
+            account={account}
+            current={current}
+            next={false}
+            onPick={
+              current || target === null
+                ? null
+                : () => props.onPickInstance(ProviderInstanceId.make(target))
+            }
+          />
+        );
+      })}
+      {pinnable ? (
+        <div className="flex justify-end">
+          <KeepToggle threadRef={threadRef} />
+        </div>
+      ) : null}
+    </Section>
   );
 }
 

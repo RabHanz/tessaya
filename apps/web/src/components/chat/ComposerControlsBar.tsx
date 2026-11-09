@@ -29,7 +29,13 @@ import {
 } from "./ComposerModelEffort";
 import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import { useLiveTraits } from "./BatonLiveModel";
-import { BatonLimitMark, BatonPickerAccount, BatonUsageDetails } from "./BatonPickerAccount";
+import {
+  BatonLimitMark,
+  BatonPickerAccount,
+  BatonUsageDetails,
+  batonPickModel,
+  batonRailEntries,
+} from "./BatonPickerAccount";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
@@ -174,6 +180,7 @@ export function ComposerControlsBar(props: {
     }),
   );
   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
+  const railEntries = batonRailEntries(providerInstanceEntries, selectedInstanceId);
   const restingBlockDefs = showModeBlock
     ? [
         {
@@ -226,7 +233,7 @@ export function ComposerControlsBar(props: {
       }
       lockedProvider={lockedProvider}
       lockedContinuationGroupKey={lockedContinuationGroupKey}
-      instanceEntries={providerInstanceEntries}
+      instanceEntries={railEntries}
       keybindings={keybindings}
       modelOptionsByInstance={modelOptionsByInstance}
       size={controlSize}
@@ -272,7 +279,14 @@ export function ComposerControlsBar(props: {
         <BatonPickerAccount
           entry={entry}
           threadRef={batonThreadRef}
+          environmentId={environmentId}
           threadInstanceId={selectedInstanceId}
+          onPickInstance={(instanceId) =>
+            onProviderModelSelect(
+              instanceId,
+              batonPickModel(entry, selectedProvider, selectedModel),
+            )
+          }
         />
       )}
       terminalOpen={terminalOpen}

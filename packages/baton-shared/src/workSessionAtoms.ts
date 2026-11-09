@@ -423,6 +423,18 @@ export function createBatonWorkSessionAtoms<R, E>(
       scheduler,
       concurrency,
     }),
+    liveStateQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:live-state-query",
+      tag: BATON_LIVE_WS_METHODS.liveState,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 10_000,
+    }),
+    liveCancelQueued: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:live-cancel-queued",
+      tag: BATON_LIVE_WS_METHODS.liveCancelQueued,
+      scheduler,
+      concurrency,
+    }),
     herdrSend: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:herdr-send",
       tag: BATON_LIVE_WS_METHODS.herdrSend,

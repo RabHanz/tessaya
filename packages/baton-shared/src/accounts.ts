@@ -205,6 +205,33 @@ function healthOf(group: Group): {
   return { health: "ok", detail: null };
 }
 
+/**
+ * A picker rail with one entry per provider, not per login: the selected instance stands for its provider (else the
+ * default one), under the provider's own name. The terminal sessions are their own group, "Terminal".
+ */
+export function oneEntryPerProvider<
+  E extends {
+    readonly instanceId: string;
+    readonly driverKind: string;
+    readonly displayName: string;
+    readonly isDefault: boolean;
+  },
+>(entries: ReadonlyArray<E>, selectedInstanceId: string): ReadonlyArray<E> {
+  const byDriver = new Map<string, E[]>();
+  for (const entry of entries) {
+    const key = entry.instanceId === LIVE_INSTANCE ? LIVE_INSTANCE : entry.driverKind;
+    byDriver.set(key, [...(byDriver.get(key) ?? []), entry]);
+  }
+  return [...byDriver.entries()].map(([key, group]) => {
+    if (key === LIVE_INSTANCE) return { ...group[0]!, displayName: "Terminal" };
+    const shown =
+      group.find((entry) => entry.instanceId === selectedInstanceId) ??
+      group.find((entry) => entry.isDefault) ??
+      group[0]!;
+    const name = (group.find((entry) => entry.isDefault) ?? shown).displayName;
+    return shown.displayName === name ? shown : { ...shown, displayName: name };
+  });
+}
 /** Why a running session may not be switched to this cswap slot, or null when it may: only a token moves live. */
 export const liveSwitchRefusal = (
   accounts: ReadonlyArray<Pick<BatonAccountRecord, "liveSwitchKey">>,
@@ -213,3 +240,20 @@ export const liveSwitchRefusal = (
   accounts.some((account) => account.liveSwitchKey === key)
     ? null
     : "That account signs in through a browser, which cannot be moved into a running session. Add it as a setup token to switch to it live.";
+
+/** The model an account pick lands on: the thread's own on the same provider, else the target's default. */
+export const pickModelFor = (
+  target: {
+    readonly driverKind: string;
+    readonly models: ReadonlyArray<{
+      readonly slug: string;
+      readonly isDefault?: boolean | undefined;
+    }>;
+  },
+  threadDriver: string,
+  threadModel: string,
+): string =>
+  target.driverKind === threadDriver
+    ? threadModel
+    : ((target.models.find((model) => model.isDefault === true) ?? target.models[0])?.slug ??
+      threadModel);
