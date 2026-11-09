@@ -32,7 +32,9 @@ import {
   useQuietThreadShell,
   useQuietThreadShells,
 } from "../../state/entities";
+import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { liveShellEnvironmentIdsAtom } from "../../state/shell";
 import {
   buildDraftThreadRouteParams,
@@ -332,7 +334,8 @@ function BatonPane(props: {
   const { onFocusPane, onClosePane, onDetachPane, onAttachPane, onBringHere } = props;
   const { target } = slot;
   const { shell, draftSession, draftRedirect } = usePaneThread(target);
-  const { environments } = useEnvironments();
+  const { environments, presentationById } = useEnvironments();
+  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow);
   const environmentState = usePaneEnvironmentState(
     target.kind === "server" ? target.threadRef.environmentId : null,
   );
@@ -382,11 +385,13 @@ function BatonPane(props: {
     );
   }
 
-  const loading =
-    paneFallback({
-      environment: environmentState,
-      threadPending: focused && props.pending,
-    }) === "loading";
+  const fallback = paneFallback({
+    environment: environmentState,
+    threadPending: focused && props.pending,
+  });
+  const loading = fallback === "loading";
+  const connection =
+    environmentId === null ? null : (presentationById.get(environmentId)?.connection ?? null);
   const title =
     shell?.title ??
     (target.kind === "draft" ? "New thread" : loading ? "Loading thread" : "Thread not available");
@@ -407,13 +412,16 @@ function BatonPane(props: {
       <BackgroundThreadContext value={background || !focused}>
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           {view ??
-            (loading ? (
+            (fallback === "retrying" && environmentId !== null ? (
+              <PaneReconnecting
+                label={environmentLabel ?? "its environment"}
+                offline={connection?.phase === "offline"}
+                error={connection?.error ?? null}
+                onRetry={() => void retryEnvironment(environmentId)}
+              />
+            ) : loading ? (
               <PaneLoading
-                connectingTo={
-                  environmentState === "connecting" || environmentState === "retrying"
-                    ? environmentLabel
-                    : null
-                }
+                connectingTo={environmentState === "connecting" ? environmentLabel : null}
               />
             ) : (
               <PaneUnavailable
@@ -531,6 +539,31 @@ function PaneLoading(props: { readonly connectingTo?: string | null }) {
     >
       {props.connectingTo ? `Connecting to ${props.connectingTo}…` : "Loading thread…"}
     </p>
+  );
+}
+
+/** A saved environment that failed its first try: says so, and lets him try again now. */
+function PaneReconnecting(props: {
+  readonly label: string;
+  readonly offline: boolean;
+  readonly error: string | null;
+  readonly onRetry: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      data-testid="baton-pane-reconnecting"
+      className="m-auto flex flex-col items-center gap-2 px-4 text-center text-sm text-muted-foreground"
+    >
+      <p>
+        {props.offline
+          ? `${props.label} is offline.`
+          : `Reconnecting to ${props.label}${props.error ? `: ${props.error}` : "…"}`}
+      </p>
+      <Button size="xs" variant="outline" onClick={props.onRetry}>
+        Retry
+      </Button>
+    </div>
   );
 }
 

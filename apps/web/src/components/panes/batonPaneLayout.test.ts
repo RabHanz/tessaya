@@ -200,7 +200,8 @@ describe("reopening a window", () => {
 
   it("shows a pane as loading only while something is on its way", () => {
     expect(paneFallback({ environment: "connecting", threadPending: false })).toBe("loading");
-    expect(paneFallback({ environment: "retrying", threadPending: false })).toBe("loading");
+    // A retry loop can last forever, so it says so instead of spinning.
+    expect(paneFallback({ environment: "retrying", threadPending: true })).toBe("retrying");
     expect(paneFallback({ environment: "ready", threadPending: true })).toBe("loading");
     expect(paneFallback({ environment: "ready", threadPending: false })).toBe("unavailable");
     expect(paneFallback({ environment: "unreachable", threadPending: true })).toBe("unavailable");

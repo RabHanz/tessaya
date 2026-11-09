@@ -107,8 +107,9 @@ export function paneFallback(input: {
   readonly environment: PaneEnvironmentState | null;
   /** The route still looking its thread up on a usable environment. */
   readonly threadPending: boolean;
-}): "loading" | "unavailable" {
-  if (input.environment === "connecting" || input.environment === "retrying") return "loading";
+}): "loading" | "retrying" | "unavailable" {
+  if (input.environment === "connecting") return "loading";
+  if (input.environment === "retrying") return "retrying";
   return input.environment === "ready" && input.threadPending ? "loading" : "unavailable";
 }
 
