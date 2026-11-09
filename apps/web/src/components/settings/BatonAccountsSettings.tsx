@@ -3,6 +3,8 @@
  * email. Pausing, signing in and removing stay on the provider instance below, which "Open" selects.
  */
 import { maskedEmail, roomDetail, roomTone } from "@t3tools/baton-shared/accountRoom";
+import { pickModelFor } from "@t3tools/baton-shared/accounts";
+import { createModelSelection } from "@t3tools/shared/model";
 import type { BatonAccountRecord, BatonSignInMethod } from "@t3tools/baton-contracts";
 import {
   type EnvironmentId,
@@ -13,9 +15,12 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { useEnvironmentProviders } from "../../state/environments";
 import { useBatonAccounts } from "../chat/BatonPickerAccount";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
@@ -149,6 +154,99 @@ function AccountCard(props: {
   );
 }
 
+/** Which account new threads start on: T3's own default model setting, put on that account's instance. */
+function NewThreadDefaults(props: {
+  readonly environmentId: EnvironmentId;
+  readonly accounts: ReadonlyArray<BatonAccountRecord>;
+}) {
+  const current = useEnvironmentSettings(
+    props.environmentId,
+    (settings) => settings.defaultModelSelection,
+  );
+  const updateSettings = useUpdateEnvironmentSettings(props.environmentId);
+  const providers = useEnvironmentProviders().get(props.environmentId) ?? [];
+  const usable = props.accounts.filter(
+    (account) => account.instanceIds.length > 0 && account.health !== "paused",
+  );
+  const selected =
+    current === null
+      ? null
+      : (usable.find((account) => account.instanceIds.includes(current.instanceId)) ?? null);
+  const choose = (id: string | null) => {
+    const account = usable.find((candidate) => candidate.id === id);
+    if (account === undefined) {
+      updateSettings({ defaultModelSelection: null });
+      return;
+    }
+    const instanceId =
+      account.methods.find((method) => method.liveSwitch)?.instanceId ?? account.instanceIds[0]!;
+    const target = providers.find((provider) => provider.instanceId === instanceId);
+    if (target === undefined) return;
+    const model = pickModelFor(
+      { driverKind: target.driver, models: target.models },
+      current === null
+        ? ""
+        : (providers.find((provider) => provider.instanceId === current.instanceId)?.driver ?? ""),
+      current?.model ?? "",
+    );
+    updateSettings({
+      defaultModelSelection: createModelSelection(ProviderInstanceId.make(instanceId), model),
+    });
+  };
+  return (
+    <SettingsSection title="Defaults for new threads">
+      <SettingsGroup>
+        <SettingsRow
+          title="Account"
+          description="New threads start on this account and its provider. Automatic uses T3's own default."
+          control={
+            <Select value={selected?.id ?? "automatic"} onValueChange={(value) => choose(value)}>
+              <SelectTrigger size="sm" aria-label="Account for new threads">
+                <SelectValue>
+                  {(value: string | null) =>
+                    usable.find((account) => account.id === value)?.label ?? "Automatic"
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem value="automatic">Automatic</SelectItem>
+                {usable.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {PROVIDER_DISPLAY_NAMES[account.driver as ProviderDriverKind] ?? account.driver}{" "}
+                    · {account.label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
+        <SettingsRow
+          title="Where new sessions run"
+          description="In Tessaya. A session started in a Herdr pane shows up under Terminal by itself."
+        />
+      </SettingsGroup>
+    </SettingsSection>
+  );
+}
+
+/** How the two kinds of session differ, for the picker's Terminal group. */
+function TerminalSessionsExplainer() {
+  return (
+    <SettingsSection title="Terminal sessions">
+      <SettingsGroup>
+        <SettingsRow
+          title="Tessaya"
+          description="Runs inside Tessaya. Full history, account switching and handover."
+        />
+        <SettingsRow
+          title="Terminal"
+          description="Runs in a terminal pane. Tessaya types into it and reads it; it switches accounts while it runs, and a model or effort change waits until it is idle."
+        />
+      </SettingsGroup>
+    </SettingsSection>
+  );
+}
+
 /** The accounts on this environment, by provider, before T3's own provider list. */
 export function BatonAccountsSettings(props: { readonly environmentId: EnvironmentId }) {
   const accounts = useBatonAccounts(props.environmentId);
@@ -156,6 +254,8 @@ export function BatonAccountsSettings(props: { readonly environmentId: Environme
   const drivers = [...new Set(accounts.map((account) => account.driver))];
   return (
     <>
+      <NewThreadDefaults environmentId={props.environmentId} accounts={accounts} />
+      <TerminalSessionsExplainer />
       {drivers.map((driver) => (
         <SettingsSection
           key={driver}
