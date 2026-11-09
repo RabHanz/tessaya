@@ -75,12 +75,16 @@ export function unifyAccounts(input: {
   readonly slots: Readonly<Record<string, string>>;
 }): ReadonlyArray<BatonAccountRecord> {
   const pool = input.pool ?? [];
-  const activeSlot = pool.find((account) => account.active)?.key ?? null;
-  const slotOf = (instanceId: string | null): string | null =>
-    instanceId === null
-      ? null
-      : (input.slots[instanceId] ??
-        (instanceId === BATON_DEFAULT_CLAUDE_INSTANCE ? activeSlot : null));
+  const active = pool.find((account) => account.active);
+  // The default instance runs as cswap's active login only when nothing says otherwise: an instance that reports
+  // another address is another person's login, and must never take the active slot (or merge with it).
+  const slotOf = (instanceId: string | null, ownEmail: string | null = null): string | null => {
+    if (instanceId === null) return null;
+    const pinned = input.slots[instanceId];
+    if (pinned !== undefined) return pinned;
+    if (instanceId !== BATON_DEFAULT_CLAUDE_INSTANCE || active === undefined) return null;
+    return ownEmail === null || ownEmail === realEmail(active.email) ? active.key : null;
+  };
   const groups = new Map<string, Group>();
   const groupFor = (driver: Group["driver"], identity: string, email: string | null) => {
     const id = `${driver}:${identity}`;
@@ -94,17 +98,18 @@ export function unifyAccounts(input: {
     group: Group,
     kind: BatonSignInMethodKind,
     instanceId: string | null,
-    slot = slotOf(instanceId),
+    slot: string | null,
   ) => {
-    if (group.methods.some((method) => method.kind === kind)) return;
+    if (group.methods.some((method) => method.kind === kind && method.slot === slot)) return;
     group.methods.push({ kind, instanceId, liveSwitch: false, slot });
   };
 
   for (const provider of input.providers) {
     if (provider.instanceId === LIVE_INSTANCE) continue;
-    const slot = slotOf(provider.instanceId);
+    const ownEmail = realEmail(provider.auth.email);
+    const slot = slotOf(provider.instanceId, ownEmail);
     const slotAccount = slot === null ? undefined : pool.find((account) => account.key === slot);
-    const email = realEmail(provider.auth.email) ?? realEmail(slotAccount?.email);
+    const email = ownEmail ?? realEmail(slotAccount?.email);
     const identity = email ?? (slot === null ? provider.instanceId : `slot:${slot}`);
     const group = groupFor(provider.driver, identity, email);
     group.providers.push(provider);
@@ -116,18 +121,22 @@ export function unifyAccounts(input: {
           ? "setup-token"
           : "browser",
       provider.instanceId,
+      slot,
     );
   }
 
   for (const account of pool) {
     const email = realEmail(account.email);
+    const claude = [...groups.values()].filter((candidate) => candidate.driver === "claudeAgent");
+    // By address first: a slot only joins a login with no address of its own, never a different one.
     const group =
-      [...groups.values()].find(
+      (email === null ? undefined : claude.find((candidate) => candidate.email === email)) ??
+      claude.find(
         (candidate) =>
-          candidate.driver === "claudeAgent" &&
-          ((email !== null && candidate.email === email) ||
-            candidate.methods.some((method) => method.slot === account.key)),
-      ) ?? groupFor("claudeAgent" as Group["driver"], email ?? `slot:${account.key}`, email);
+          (email === null || candidate.email === null) &&
+          candidate.methods.some((method) => method.slot === account.key),
+      ) ??
+      groupFor("claudeAgent" as Group["driver"], email ?? `slot:${account.key}`, email);
     group.pool.push(account);
     if (!group.methods.some((method) => method.slot === account.key))
       addMethod(group, email === null ? "setup-token" : "browser", null, account.key);
@@ -135,11 +144,10 @@ export function unifyAccounts(input: {
 
   return [...groups.values()].map((group): BatonAccountRecord => {
     const instanceIds = group.providers.map((provider) => provider.instanceId);
-    // A setup token is what a running session is switched with (tessaya-claude --switch); a browser login cannot be copied.
-    const token = group.methods.findIndex(
-      (method) => method.kind === "setup-token" && method.slot !== null,
+    // Only a token is copied into a session's own dir (tessaya-claude --switch); a browser login cannot be.
+    const live = group.methods.findIndex(
+      (method) => method.kind !== "browser" && method.slot !== null,
     );
-    const live = token >= 0 ? token : group.methods.findIndex((method) => method.slot !== null);
     const liveSwitchKey = group.methods[live]?.slot ?? null;
     const methods = group.methods.map(({ slot: _slot, ...method }, index) => ({
       ...method,
@@ -196,3 +204,12 @@ function healthOf(group: Group): {
   if (failing) return { health: "error", detail: enabled[0]?.message ?? "Not working" };
   return { health: "ok", detail: null };
 }
+
+/** Why a running session may not be switched to this cswap slot, or null when it may: only a token moves live. */
+export const liveSwitchRefusal = (
+  accounts: ReadonlyArray<Pick<BatonAccountRecord, "liveSwitchKey">>,
+  key: string,
+): string | null =>
+  accounts.some((account) => account.liveSwitchKey === key)
+    ? null
+    : "That account signs in through a browser, which cannot be moved into a running session. Add it as a setup token to switch to it live.";

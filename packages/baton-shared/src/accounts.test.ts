@@ -2,7 +2,7 @@ import type { BatonAccount } from "@t3tools/baton-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { unifyAccounts } from "./accounts.ts";
+import { liveSwitchRefusal, unifyAccounts } from "./accounts.ts";
 
 const provider = (
   instanceId: string,
@@ -115,8 +115,29 @@ describe("unifyAccounts", () => {
       [
         "claudeAgent:other@example.com",
         "ok",
-        [{ kind: "browser", instanceId: null, liveSwitch: true }],
+        [{ kind: "browser", instanceId: null, liveSwitch: false }],
       ],
     ]);
+  });
+});
+
+describe("two people's logins", () => {
+  it("never merge: the default instance takes the active slot only when its address matches", () => {
+    const accounts = unifyAccounts({
+      providers: [
+        provider("claudeAgent", { email: "ann@example.com" }),
+        provider("claudeAgent_bob", { displayName: "Bob" }),
+      ],
+      pool: [slot("6", "bob@example.com", true)],
+      slots: { claudeAgent_bob: "6" },
+    });
+    expect(accounts.map((account) => [account.id, account.instanceIds])).toEqual([
+      ["claudeAgent:ann@example.com", ["claudeAgent"]],
+      ["claudeAgent:bob@example.com", ["claudeAgent_bob"]],
+    ]);
+    // Ann's browser login has no slot, so no running session is ever switched to it.
+    expect(accounts[0]?.liveSwitchKey).toBeNull();
+    expect(liveSwitchRefusal(accounts, "6")).toBeNull();
+    expect(liveSwitchRefusal(accounts, "7")).toContain("browser");
   });
 });
