@@ -106,6 +106,30 @@ describe("localClean", () => {
     expect(localClean("So far it holds.", "default")).toBe("So far it holds.");
   });
 
+  it("joins a question the recogniser ended at a pause, so a timed-out clean-up still pastes one question", () => {
+    expect(
+      localClean(
+        "Can you check the wake word results first? And also send me the new pill recordings. The ones with the island version by tomorrow morning. Thanks.",
+        "default",
+      ),
+    ).toBe(
+      "Can you check the wake word results first and also send me the new pill recordings, the ones with the island version by tomorrow morning? Thanks.",
+    );
+    expect(
+      localClean(
+        "Will you book the room for Friday? And also order lunch for the six of us.",
+        "default",
+      ),
+    ).toBe("Will you book the room for Friday and also order lunch for the six of us?");
+    // Two questions, or a question and a statement of his own, stay as said.
+    for (const kept of [
+      "Did the deploy finish? And did anyone tell Priya?",
+      "Is it ready? Or should we wait?",
+      "Can you call me? And also I am running late.",
+    ])
+      expect(localClean(kept, "default")).toBe(kept);
+  });
+
   it("breaks lines only for a break said on its own", () => {
     expect(localClean("First bit. New paragraph. Second bit.", "default")).toBe(
       "First bit.\n\nSecond bit.",

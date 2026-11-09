@@ -268,6 +268,14 @@ const isCommand = (text: string): boolean =>
   oneSentence(text) && (PROGRAM.test(text) || new RegExp(CODE_TOKEN.source).test(text));
 
 /** Everything code can decide, in well under a millisecond. Raw is left exactly as heard. */
+/**
+ * A question the recogniser ended at a pause and that runs on with "and", "and also" or "or" into more of the same
+ * request ("first? And also send me the report. The one with the charts."), as the prompt's rule joins it. Not when
+ * the run-on asks again or is his own statement ("And did...", "And also I..."): those stay two.
+ */
+const RUN_ON_QUESTION =
+  /\?\s+(and also|and(?! also\b)|or)\s+(?!(?:can|could|did|do|does|is|are|was|were|will|would|should|shall|have|has|may|might|what|when|where|why|how|who|which|i|i'm|i've|i'll|we|we're|he|she|they|it|it's|there|that's|thanks|thank)\b)([^.?!\n]+)(?:\.\s+(the ones?\b[^.?!\n]*))?[.?!]/gi;
+
 export const localClean = (
   raw: string,
   mode: DictationMode,
@@ -295,6 +303,11 @@ export const localClean = (
     );
   text = tidy(applyDictionary(text, dictionary));
   if (mode === "code") return isCommand(text) ? text.replace(/\.$/, "") : text;
+  text = text.replace(
+    RUN_ON_QUESTION,
+    (_, join: string, rest: string, appended?: string) =>
+      ` ${join.toLowerCase()} ${rest.trim()}${appended === undefined ? "" : `, ${appended.charAt(0).toLowerCase()}${appended.slice(1).trim()}`}?`,
+  );
   text = capitaliseSentences(text);
   if (mode === "email") text = emailShape(text);
   if (mode === "chat" && oneSentence(text)) text = text.replace(/\.$/, "");
