@@ -37,6 +37,7 @@ import {
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
+import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
@@ -79,6 +80,15 @@ const scheduledTasks = Layer.succeed(ScheduledTaskService, {
   delete: ({ id }: { id: unknown }) => Effect.sync(() => (deleted.push(id), { id })),
 } as never);
 
+const recalls: Array<{ text?: string; agent?: string; budgetTokens?: number }> = [];
+const memory = Layer.succeed(BatonMemoryService, {
+  recall: (context: (typeof recalls)[number]) =>
+    Effect.sync(() => {
+      recalls.push(context);
+      return { block: "what you remember about him:\n- he wants the blue palette", ids: [] };
+    }),
+} as never);
+
 const providerInstances = Layer.succeed(ProviderInstanceRegistry, {
   getInstance: (id: string) =>
     Effect.succeed({ driverKind: id === "codex" ? "codex" : "claudeAgent" }),
@@ -90,6 +100,7 @@ const layer = it.layer(
     scheduledTasks,
     serverConfig,
     providerInstances,
+    memory,
     layerStatic({
       launch: (launch) => (launched.push(launch), launch.threadId ?? null),
       sent,
@@ -120,6 +131,9 @@ layer("BatonJobFlow", (it) => {
       assert.include(launched[0]?.text ?? "", `He asked: ${goal}`);
       assert.include(launched[0]?.text ?? "", "Do not start the work");
       assert.include(launched[0]?.text ?? "", "How to frame this job");
+      // The assistant's recall, for the lead who owns a whole job.
+      assert.include(launched[0]?.text ?? "", "he wants the blue palette");
+      assert.deepInclude(recalls[0], { text: goal, agent: "executive", budgetTokens: 300 });
 
       // Agreeing before the plan exists starts nothing.
       yield* agreeJob(id);

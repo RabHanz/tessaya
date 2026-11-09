@@ -65,6 +65,7 @@ import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
 import { ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
 import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
 import { BatonJobService } from "./BatonJobService.ts";
+import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -148,6 +149,13 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   if (existing !== null) return { terms, threadId: existing, model: modelSelection.model };
   const workSession = yield* workSessions.get(id);
   const threadId = ThreadIdSchema.make(`job-thread-${yield* uuid}`);
+  // The recall a sentence of his gets (memoryClient.forSentence), as the persona the job works for may see it.
+  const remembered = yield* (yield* BatonMemoryService).recall({
+    text: input.goal,
+    budgetTokens: 300,
+    agent: options.role ?? "executive",
+    scopeRef: (yield* engine.projects).find((p) => p.id === input.projectId)?.title ?? undefined,
+  });
   const launched = yield* engine.launchThread({
     tag: "job",
     threadId,
@@ -161,6 +169,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     text: workerFirstMessage({
       verbatim: input.goal,
       frame: frame(userdata, options.role),
+      memory: remembered.block,
       ...(options.agreed === true ? { agreed: true } : {}),
       permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
     }),
