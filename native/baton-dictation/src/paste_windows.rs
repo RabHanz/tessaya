@@ -23,7 +23,7 @@ use windows::Win32::System::Memory::{
 };
 use windows::Win32::System::Ole::{
     CF_BITMAP, CF_DSPBITMAP, CF_DSPENHMETAFILE, CF_DSPMETAFILEPICT, CF_DSPTEXT, CF_ENHMETAFILE,
-    CF_OWNERDISPLAY, CF_PALETTE, CF_UNICODETEXT,
+    CF_METAFILEPICT, CF_OWNERDISPLAY, CF_PALETTE, CF_UNICODETEXT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CopyImage, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
@@ -270,6 +270,34 @@ unsafe fn leave_transcript(shared: &WinTxShared) {
     }
 }
 
+/// Opts what is on the open clipboard out of clipboard history, cloud sync and clipboard
+/// managers (the formats Chrome uses for Incognito copies).
+unsafe fn mark_private() {
+    for (name, value) in [
+        ("ExcludeClipboardContentFromMonitorProcessing", 1u32),
+        ("CanIncludeInClipboardHistory", 0u32),
+        ("CanUploadToCloudClipboard", 0u32),
+    ] {
+        let name_wide = wide(name);
+        let format = RegisterClipboardFormatW(PCWSTR(name_wide.as_ptr()));
+        if format == 0 {
+            continue;
+        }
+        if let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, std::mem::size_of::<u32>()) {
+            let ptr = GlobalLock(hg) as *mut u32;
+            if !ptr.is_null() {
+                *ptr = value;
+                let _ = GlobalUnlock(hg);
+                if SetClipboardData(format, Some(HANDLE(hg.0))).is_err() {
+                    let _ = GlobalFree(Some(hg));
+                }
+            } else {
+                let _ = GlobalFree(Some(hg));
+            }
+        }
+    }
+}
+
 /// Puts the snapshotted clipboard back. Safe to call from any thread; false when the clipboard could not be opened.
 unsafe fn restore_snapshot(shared: &WinTxShared) -> bool {
     if OpenClipboard(None).is_err() {
@@ -303,6 +331,9 @@ unsafe fn restore_snapshot(shared: &WinTxShared) -> bool {
             let _ = SetClipboardData(CF_BITMAP.0 as u32, Some(HANDLE(raw as *mut _)));
         }
     }
+    // His copy is already in clipboard history; putting it back must not record it again.
+    // Last, so a saved marker of his own cannot turn history back on.
+    mark_private();
     let _ = CloseClipboard();
     log(&format!("paste: restored previous clipboard"));
     true
@@ -374,7 +405,9 @@ unsafe fn snapshot_clipboard(hwnd: HWND, shared: &WinTxShared) -> Result<(), Str
         }
         // Formats whose handles are not plain global memory cannot be
         // byte-copied; skipping them matches what the legacy path restored.
+        // CF_METAFILEPICT is global memory, but it holds an HMETAFILE that a byte copy leaves dead.
         if format == CF_ENHMETAFILE.0 as u32
+            || format == CF_METAFILEPICT.0 as u32
             || format == CF_DSPENHMETAFILE.0 as u32
             || format == CF_DSPBITMAP.0 as u32
             || format == CF_DSPMETAFILEPICT.0 as u32
@@ -424,30 +457,7 @@ unsafe fn publish(hwnd: HWND) -> Result<u32, String> {
 /// the legacy fallback snapshotting nothing.
 unsafe fn publish_formats() -> Result<(), String> {
     EmptyClipboard().map_err(|e| format!("EmptyClipboard failed: {e}"))?;
-
-    for (name, value) in [
-        ("ExcludeClipboardContentFromMonitorProcessing", 1u32),
-        ("CanIncludeInClipboardHistory", 0u32),
-        ("CanUploadToCloudClipboard", 0u32),
-    ] {
-        let name_wide = wide(name);
-        let format = RegisterClipboardFormatW(PCWSTR(name_wide.as_ptr()));
-        if format == 0 {
-            continue;
-        }
-        if let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, std::mem::size_of::<u32>()) {
-            let ptr = GlobalLock(hg) as *mut u32;
-            if !ptr.is_null() {
-                *ptr = value;
-                let _ = GlobalUnlock(hg);
-                if SetClipboardData(format, Some(HANDLE(hg.0))).is_err() {
-                    let _ = GlobalFree(Some(hg));
-                }
-            } else {
-                let _ = GlobalFree(Some(hg));
-            }
-        }
-    }
+    mark_private();
 
     // NULL handle = delayed rendering: we are only asked for the data (via
     // WM_RENDERFORMAT) when a consumer actually reads it. SetClipboardData
