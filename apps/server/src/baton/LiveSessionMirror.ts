@@ -251,19 +251,21 @@ export const waitingPrompt = (
 /**
  * Whether the card for the prompt still on screen stays. One T3 closed comes back only when it was answered, the bridge
  * has since finished with that answer (`answeredAt`, its marker) and the prompt still shows: an answer that pressed
- * nothing. A dismissed or expired card stays closed, and a card is raised again at most once.
+ * nothing. A dismissed or expired card stays closed, and a card is raised again at most once while the session's
+ * descriptor is unchanged: a later write is a new ask, which may be the same command again.
  */
 export const keepAsk = (
-  ask: { readonly at: number; readonly again: boolean },
+  ask: { readonly at: number; readonly again: boolean; readonly updatedAt: string | null },
   state: {
     readonly pending: boolean;
     readonly answered: boolean;
     readonly answeredAt: number | null;
+    readonly updatedAt: string | null;
   },
 ) =>
   state.pending ||
   !state.answered ||
-  ask.again ||
+  (ask.again && ask.updatedAt === state.updatedAt) ||
   state.answeredAt === null ||
   state.answeredAt < ask.at;
 
@@ -842,6 +844,8 @@ interface Follow {
     readonly at: number;
     /** It is the same prompt raised again, so it is not raised a third time. */
     readonly again: boolean;
+    /** The session descriptor's time when it was raised. */
+    readonly updatedAt: string | null;
   } | null;
   /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
   promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
@@ -1674,7 +1678,14 @@ const make = Effect.gen(function* () {
           (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending";
         const item = pending ? null : yield* engine.turnItem(follow.threadId, follow.ask.itemId);
         const answered = item?.type === "user_input_request" && item.questionAnswer !== undefined;
-        if (keepAsk(follow.ask, { pending, answered, answeredAt: answeredAt(session.sessionId) }))
+        if (
+          keepAsk(follow.ask, {
+            pending,
+            answered,
+            answeredAt: answeredAt(session.sessionId),
+            updatedAt: session.updatedAt,
+          })
+        )
           return;
       }
       const now = yield* DateTime.now;
@@ -1722,7 +1733,15 @@ const make = Effect.gen(function* () {
         resolvedAt: null,
       };
       yield* expireOtherAsks(follow, String(requestId));
-      follow.ask = { key: found.key, requestId, itemId, request, at: stamp, again };
+      follow.ask = {
+        key: found.key,
+        requestId,
+        itemId,
+        request,
+        at: stamp,
+        again,
+        updatedAt: session.updatedAt,
+      };
       const askRun = askRunId(follow.target, yield* engine.threadRuns(follow.threadId));
       yield* engine.writeEvents({
         events: [
