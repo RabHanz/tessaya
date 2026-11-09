@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { accountPickOption, batonProviderGroups, liveTraits, loadedLoginKey } from "./batonCatalog";
+import {
+  accountPickOption,
+  accountsFilterKey,
+  batonProviderGroups,
+  liveTraits,
+  loadedLoginKey,
+} from "./batonCatalog";
 
 const group = (
   providerKey: string,
@@ -43,7 +49,7 @@ describe("the sheet's providers", () => {
     const shown = batonProviderGroups(groups, "claude_home");
     expect(shown.map((entry) => [entry.providerKey, entry.providerLabel])).toEqual([
       ["baton-live", "Terminal"],
-      ["claudeAgent", "Work"],
+      ["claudeAgent", "Claude"],
       ["codex", "Codex"],
       ["acp_cursor", "Cursor"],
       ["acp_grok", "Grok"],
@@ -54,7 +60,13 @@ describe("the sheet's providers", () => {
 });
 
 describe("an account tap", () => {
-  const account = (instanceId: string) => ({ instanceIds: [instanceId], methods: [] });
+  const account = (instanceId: string) => ({
+    driver: ProviderDriverKind.make(instanceId.startsWith("claude") ? "claudeAgent" : "codex"),
+    email: null,
+    active: false,
+    instanceIds: [instanceId],
+    methods: [],
+  });
 
   it("keeps the thread's model on its own provider and takes the default on another", () => {
     const thread = { driver: "claudeAgent", model: "opus" };
@@ -106,5 +118,15 @@ describe("a terminal session's login", () => {
     expect(loadedLoginKey(null, "abc", pool)).toBeNull();
     expect(loadedLoginKey({ sessionId: "old", login: "home" }, "abc", pool)).toBeNull();
     expect(loadedLoginKey({ sessionId: "abc", login: "home" }, "abc", pool)).toBe("2");
+  });
+});
+
+describe("accountsFilterKey", () => {
+  it("opens the sheet on the thread's own provider, whichever login it runs on, and Terminal for a terminal thread", () => {
+    expect(accountsFilterKey(groups, "claude_home")).toBe("claudeAgent");
+    expect(accountsFilterKey(groups, "codex")).toBe("codex");
+    expect(accountsFilterKey(groups, "acp_grok")).toBe("acp_grok");
+    expect(accountsFilterKey(groups, "baton-live")).toBe("baton-live");
+    expect(accountsFilterKey(groups, "gone")).toBeNull();
   });
 });

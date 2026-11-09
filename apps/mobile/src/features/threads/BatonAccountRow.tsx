@@ -6,6 +6,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccountRecord } from "@t3tools/baton-contracts";
 import { keepsDraft, liveChangeRoute } from "@t3tools/baton-shared/liveModel";
+import { accountPickHint, accountPickTarget, accountTicks } from "@t3tools/baton-shared/accounts";
 import {
   maskedEmail,
   queuedText,
@@ -22,7 +23,7 @@ import {
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
@@ -253,6 +254,7 @@ function AccountRow(props: {
   readonly current: boolean;
   readonly next: boolean;
   readonly isLast: boolean;
+  readonly hint: string | null;
   readonly onPick: (() => void) | null;
 }) {
   const { account } = props;
@@ -289,6 +291,11 @@ function AccountRow(props: {
         {account.email === null ? null : (
           <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
             {maskedEmail(account.email)}
+          </Text>
+        )}
+        {props.hint === null ? null : (
+          <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
+            {props.hint}
           </Text>
         )}
       </View>
@@ -398,6 +405,8 @@ function LiveAccounts(props: {
   readonly sessionId: string;
   readonly loginKey: string | null;
   readonly accounts: ReadonlyArray<BatonAccountRecord>;
+  /** The instance the sheet shows, which may be a pick not yet saved. */
+  readonly shownInstanceId: string;
 }) {
   const stateAtom = batonWorkSessions.liveStateQuery({
     environmentId: props.environmentId,
@@ -417,11 +426,17 @@ function LiveAccounts(props: {
   const moveTo = useLiveAccountMove(props.environmentId, props.sessionId, setMovedTo);
   const queued = state?.queued ?? null;
   const failure = state?.failure ?? null;
+  // The tick is the login the session runs as, as the header chip says; a waiting pick is named apart.
+  const { runsAs, setTo } = accountTicks(props.accounts, {
+    storedInstanceId: LIVE_INSTANCE,
+    shownInstanceId: props.shownInstanceId,
+    loginKey,
+  });
   if (accounts.length === 0 && queued === null && failure === null) return null;
   return (
     <Card title="Account · % used">
       {accounts.map((account, index) => {
-        const current = loginKey !== null && account.liveSwitchKey === loginKey;
+        const current = runsAs?.id === account.id;
         return (
           <AccountRow
             key={account.id}
@@ -429,6 +444,7 @@ function LiveAccounts(props: {
             current={current}
             next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
             isLast={index === accounts.length - 1 && queued === null && failure === null}
+            hint={null}
             onPick={
               current || account.liveSwitchKey === null
                 ? null
@@ -437,6 +453,11 @@ function LiveAccounts(props: {
           />
         );
       })}
+      {setTo === undefined ? null : (
+        <Text className="px-4 py-2 text-2xs text-foreground-muted">
+          Thread set to {setTo.label}
+        </Text>
+      )}
       {failure === null ? null : (
         <Text className="px-4 py-2 text-2xs text-danger-foreground">
           Last queued change not applied: {failure}
@@ -502,14 +523,14 @@ export function BatonAccountRow(props: {
           sessionId={sessionId}
           loginKey={loginKey}
           accounts={accounts}
+          shownInstanceId={props.displayed?.instanceId ?? LIVE_INSTANCE}
         />
       </>
     );
   }
   if (terminal !== null) return terminal;
-  const mine = accounts.filter(
-    (account) => account.driver === props.provider.driver && account.instanceIds.length > 0,
-  );
+  // cswap-only logins too, so he sees them and how to add one.
+  const mine = accounts.filter((account) => account.driver === props.provider.driver);
   if (mine.length === 0) return null;
   const applied = props.appliedInstanceId ?? "";
   const shown = props.displayed?.instanceId ?? applied;
@@ -527,16 +548,26 @@ export function BatonAccountRow(props: {
     <Card title="Account · % used">
       {mine.map((account, index) => {
         const current = account.instanceIds.includes(applied);
+        const target = accountPickTarget(account);
         const option = accountPickOption(account, props.groups, thread);
+        const signIn = !current && target !== null && option === null;
         return (
-          <AccountRow
-            key={account.id}
-            account={account}
-            current={current}
-            next={!current && account.instanceIds.includes(shown)}
-            isLast={index === mine.length - 1 && !pinnable}
-            onPick={current || option === null ? null : () => props.onPick(option)}
-          />
+          <Fragment key={account.id}>
+            <AccountRow
+              account={account}
+              current={current}
+              next={!current && account.instanceIds.includes(shown)}
+              isLast={index === mine.length - 1 && !pinnable && !signIn}
+              hint={accountPickHint(target, current)}
+              onPick={current || option === null ? null : () => props.onPick(option)}
+            />
+            {/* Its instance lists no models (signed out or not probed), so a tap would land nowhere. */}
+            {!signIn ? null : (
+              <Text className="px-4 pb-2 text-2xs text-warning-foreground">
+                Sign in to use {account.label}: Settings → Accounts & providers.
+              </Text>
+            )}
+          </Fragment>
         );
       })}
       {pinnable && props.threadId !== null ? (

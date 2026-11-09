@@ -13,7 +13,9 @@ import { useNowMinuteMs } from "../../lib/clock";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useEffect, useEffectEvent } from "react";
+import type { ProviderGroup } from "../../lib/modelOptions";
 import { useBatonAccounts, useSessionLoginKey } from "./BatonAccountRow";
+import { accountsFilterKey } from "./batonCatalog";
 
 const TONE_COLOR = {
   ok: "--color-icon",
@@ -22,6 +24,20 @@ const TONE_COLOR = {
 } as const;
 
 const settingsOpeners = new Map<string, () => void>();
+
+// The instance whose accounts the next sheet for a thread opens on, set by the header's limit chip.
+const accountsFocus = new Map<string, string>();
+
+/** Read once by the sheet as it opens: the provider filter that puts the thread's accounts first, or null. */
+export const takeAccountsFilter = (
+  threadId: string | null | undefined,
+  groups: ReadonlyArray<ProviderGroup>,
+): string | null => {
+  if (threadId == null) return null;
+  const instanceId = accountsFocus.get(threadId);
+  accountsFocus.delete(threadId);
+  return instanceId === undefined ? null : accountsFilterKey(groups, instanceId);
+};
 
 /** The thread composer registers its settings opener here, for the header's limit chip. */
 export function useBatonSettingsOpener(threadKey: string, open: () => void) {
@@ -68,7 +84,10 @@ export function useBatonThreadHeader(
       tintColor: theme[TONE_COLOR[roomTone(account)]],
       separateBackground: false,
       // Through the composer's own opener, so its presented-route guard holds against a double tap.
-      onPress: () => settingsOpeners.get(scopedThreadKey(thread.environmentId, thread.id))?.(),
+      onPress: () => {
+        accountsFocus.set(thread.id, thread.modelSelection.instanceId);
+        settingsOpeners.get(scopedThreadKey(thread.environmentId, thread.id))?.();
+      },
     },
   };
 }

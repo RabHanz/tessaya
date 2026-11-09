@@ -2,14 +2,21 @@
  * The account side of T3's model picker (T6, ACCOUNTS-2): one row per real account above the models, with % used,
  * the thread's "Keep on this account" pin, and on a terminal thread the session's own login and a queued change.
  */
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   accountReturnsAt,
   instanceAccount,
   type BatonAccount,
   type BatonAccountRecord,
 } from "@t3tools/baton-contracts";
-import { pickModelFor, oneEntryPerProvider } from "@t3tools/baton-shared/accounts";
+import {
+  accountPickHint,
+  accountPickTarget,
+  accountTicks,
+  oneEntryPerProvider,
+  pickModelFor,
+  withProviderModels,
+} from "@t3tools/baton-shared/accounts";
 import {
   accountRow,
   maskedEmail,
@@ -38,12 +45,13 @@ import {
   LockIcon,
   LockOpenIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useQuietThreadShell } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -64,6 +72,54 @@ const useLiveAccount = (threadRef: ScopedThreadRef) =>
 
 const NO_ACCOUNTS = Atom.make(AsyncResult.initial<never, never>(false));
 
+/** Set by the header's chip: the picker opens on it, at that account's row. Cleared when the picker closes. */
+export const batonPickerFocusAtom = Atom.make<{
+  readonly anchor: HTMLElement;
+  readonly accountId: string;
+} | null>(null);
+
+const accountRowElement = (accountId: string) =>
+  document.querySelector<HTMLElement>(
+    `[data-testid="model-picker-account"][data-account-id="${CSS.escape(accountId)}"]`,
+  );
+
+/** The picker popup's placement while the header chip opened it: under the chip, not over the composer. */
+export function useBatonPickerAnchor(open: boolean) {
+  const focus = useAtomValue(batonPickerFocusAtom);
+  const setFocus = useAtomSet(batonPickerFocusAtom);
+  const wasOpen = useRef(open);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- forgets the chip's request held outside React when the picker closes
+  useEffect(() => {
+    if (wasOpen.current && !open) setFocus(null);
+    wasOpen.current = open;
+  }, [open, setFocus]);
+  return focus === null
+    ? {}
+    : {
+        anchor: focus.anchor,
+        side: "bottom" as const,
+        align: "end" as const,
+        collisionAvoidance: { side: "flip", align: "shift" } as const,
+      };
+}
+
+/** Scrolls to the chip's account row once the picker shows it, and forgets the request on close. */
+function useFocusRequestedRow(accountIds: ReadonlyArray<string>) {
+  const focus = useAtomValue(batonPickerFocusAtom);
+  const accountId = focus?.accountId ?? null;
+  const shown = accountId !== null && accountIds.includes(accountId);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the requested row into view once the popup lays it out
+  useEffect(() => {
+    if (!shown || accountId === null) return;
+    const timer = setTimeout(() => {
+      const row = accountRowElement(accountId);
+      // The thread's own row is disabled (it is already current), so it is shown, not focused.
+      row?.scrollIntoView({ block: "nearest" });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [accountId, shown]);
+}
+
 /** One record per real account on the thread's environment (baton.accounts.list). */
 export function useBatonAccounts(
   environmentId: EnvironmentId | null,
@@ -78,6 +134,16 @@ export function useBatonAccounts(
 
 /** The rail's one entry per provider, with Terminal its own group. */
 export const batonPickModel = pickModelFor;
+
+/** Each login's models, a login with none of its own showing its provider's (withProviderModels). */
+export const batonModelOptions = <M,>(
+  byInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<M>>,
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+) =>
+  withProviderModels(
+    byInstance,
+    (instanceId) => entries.find((entry) => entry.instanceId === instanceId)?.driverKind,
+  );
 
 export const batonRailEntries = (
   entries: ReadonlyArray<ProviderInstanceEntry>,
@@ -126,6 +192,7 @@ function AccountRow(props: {
   readonly account: BatonAccountRecord;
   readonly current: boolean;
   readonly next: boolean;
+  readonly hint: string | null;
   readonly onPick: (() => void) | null;
 }) {
   const { account } = props;
@@ -135,6 +202,7 @@ function AccountRow(props: {
     <button
       type="button"
       data-testid="model-picker-account"
+      data-account-id={account.id}
       aria-pressed={props.current}
       disabled={props.onPick === null || paused}
       onClick={props.onPick ?? undefined}
@@ -168,6 +236,9 @@ function AccountRow(props: {
             {props.current && props.next ? "Current · " : ""}
             {maskedEmail(account.email)}
           </span>
+        )}
+        {props.hint === null ? null : (
+          <span className="truncate text-2xs text-muted-foreground">{props.hint}</span>
         )}
       </span>
       <BatonRoom account={account} />
@@ -300,11 +371,20 @@ function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
 function LiveAccounts(props: {
   readonly threadRef: ScopedThreadRef;
   readonly accounts: ReadonlyArray<BatonAccountRecord>;
+  /** The instance the composer shows, which may be a pick not yet sent. */
+  readonly shownInstanceId: string;
 }) {
   const logins = useLiveAccounts(props.threadRef);
   const switchTo = useLiveAccountSwitch(props.threadRef);
   const { queued, failure, cancel } = useLiveState(props.threadRef);
   const active = logins.find((login) => login.active);
+  // The tick is the login the session runs as, as the header chip says (accountTicks).
+  useFocusRequestedRow(props.accounts.map((account) => account.id));
+  const { runsAs, setTo } = accountTicks(props.accounts, {
+    storedInstanceId: LIVE_INSTANCE,
+    shownInstanceId: props.shownInstanceId,
+    loginKey: active?.key ?? null,
+  });
   const accounts = props.accounts.filter(
     (account) => account.driver === "claudeAgent" && account.liveSwitchKey !== null,
   );
@@ -313,17 +393,23 @@ function LiveAccounts(props: {
     <Section>
       {accounts.map((account) => {
         const login = logins.find((candidate) => candidate.key === account.liveSwitchKey);
-        const current = active !== undefined && active.key === account.liveSwitchKey;
+        const current = runsAs?.id === account.id;
         return (
           <AccountRow
             key={account.id}
             account={account}
             current={current}
             next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
+            hint={null}
             onPick={current || login === undefined ? null : () => switchTo(login)}
           />
         );
       })}
+      {setTo === undefined ? null : (
+        <p className="px-1.5 pt-1 text-2xs text-muted-foreground" data-testid="thread-set-to">
+          Thread set to {setTo.label}
+        </p>
+      )}
       {failure === null ? null : (
         <p
           className="px-1.5 pt-1 text-2xs text-destructive-foreground"
@@ -357,10 +443,12 @@ export function BatonPickerAccount(props: {
 }) {
   const { entry, threadRef } = props;
   const accounts = useBatonAccounts(props.environmentId);
+  // The thread's own instance decides, not a pick waiting in the composer: the header chip reads the same.
+  const storedInstanceId = useQuietThreadShell(threadRef)?.modelSelection.instanceId;
   const onLiveThread =
     threadRef !== null &&
     isLiveThreadId(threadRef.threadId) &&
-    props.threadInstanceId === LIVE_INSTANCE;
+    (storedInstanceId ?? props.threadInstanceId) === LIVE_INSTANCE;
   const terminal =
     entry.instanceId === LIVE_INSTANCE && props.environmentId !== null ? (
       <TerminalSessions environmentId={props.environmentId} />
@@ -370,16 +458,37 @@ export function BatonPickerAccount(props: {
       return (
         <>
           {terminal}
-          <LiveAccounts threadRef={threadRef} accounts={accounts} />
+          <LiveAccounts
+            threadRef={threadRef}
+            accounts={accounts}
+            shownInstanceId={props.threadInstanceId}
+          />
         </>
       );
     return <ContinueInNote name={entry.displayName} />;
   }
   if (terminal !== null) return terminal;
-  const mine = accounts.filter(
-    (account) => account.driver === entry.driverKind && account.instanceIds.length > 0,
-  );
+  // cswap-only logins too, so he sees them and how to add one.
+  const mine = accounts.filter((account) => account.driver === entry.driverKind);
   if (mine.length === 0) return null;
+  return <InstanceAccounts {...props} mine={mine} />;
+}
+
+function InstanceAccounts(props: {
+  readonly entry: ProviderInstanceEntry;
+  readonly threadRef: ScopedThreadRef | null;
+  readonly threadInstanceId: ProviderInstanceId;
+  readonly onPickInstance: (instanceId: ProviderInstanceId) => void;
+  readonly mine: ReadonlyArray<BatonAccountRecord>;
+}) {
+  const { entry, threadRef, mine } = props;
+  useFocusRequestedRow(mine.map((account) => account.id));
+  const browsed = mine.find((account) => account.instanceIds.includes(entry.instanceId));
+  // Its models are the provider's until it signs in (batonModelOptions); a send would fail, so it says so.
+  const signIn =
+    browsed !== undefined && (browsed.health === "signed-out" || entry.models.length === 0)
+      ? browsed.label
+      : null;
   const pinnable =
     threadRef !== null &&
     entry.driverKind === "claudeAgent" &&
@@ -388,24 +497,27 @@ export function BatonPickerAccount(props: {
     <Section>
       {mine.map((account) => {
         const current = account.instanceIds.includes(props.threadInstanceId);
-        const target =
-          account.methods.find((method) => method.liveSwitch)?.instanceId ??
-          account.instanceIds[0] ??
-          null;
+        const target = accountPickTarget(account);
         return (
           <AccountRow
             key={account.id}
             account={account}
             current={current}
             next={false}
+            hint={accountPickHint(target, current)}
             onPick={
               current || target === null
                 ? null
-                : () => props.onPickInstance(ProviderInstanceId.make(target))
+                : () => props.onPickInstance(ProviderInstanceId.make(target.instanceId))
             }
           />
         );
       })}
+      {signIn === null ? null : (
+        <p className="px-1.5 pt-1 text-2xs text-warning-foreground" data-testid="account-sign-in">
+          Sign in to use {signIn}: Settings → Accounts & providers.
+        </p>
+      )}
       {pinnable ? (
         <div className="flex justify-end">
           <KeepToggle threadRef={threadRef} />

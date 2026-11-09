@@ -43,6 +43,8 @@ export const BatonAccountRecord = Schema.Struct({
   instanceIds: Schema.Array(TrimmedNonEmptyString),
   /** Includes the provider's default instance (the machine's own login). */
   isDefault: Schema.Boolean,
+  /** cswap's active login: the one the default Claude instance runs as right now. */
+  active: Schema.optional(Schema.Boolean),
   methods: Schema.Array(BatonSignInMethod),
   /** The account switcher's key a terminal session is moved with (liveSetAccount), or null when it cannot be. */
   liveSwitchKey: Schema.NullOr(TrimmedNonEmptyString),

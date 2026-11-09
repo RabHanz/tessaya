@@ -12,7 +12,11 @@ import {
   type BatonSignInMethod,
   type BatonSignInMethodKind,
 } from "@t3tools/baton-contracts";
-import type { ServerProvider } from "@t3tools/contracts";
+import {
+  PROVIDER_DISPLAY_NAMES,
+  type ProviderDriverKind,
+  type ServerProvider,
+} from "@t3tools/contracts";
 
 import { LIVE_INSTANCE } from "./liveThread.ts";
 
@@ -73,17 +77,23 @@ export function unifyAccounts(input: {
   readonly pool: ReadonlyArray<BatonAccount> | null;
   /** Token instances' cswap slots, by instance id (BATON_CLAUDE_ACCOUNT_INSTANCES). */
   readonly slots: Readonly<Record<string, string>>;
+  /** Each instance's own stored credential, as credentialKind reads it; null when it holds none. */
+  readonly credentialKinds?: Readonly<Record<string, CredentialKind | null>>;
+  /** Each cswap slot's stored credential, as cswapTokenKinds reads it. */
+  readonly slotKinds?: Readonly<Record<string, CredentialKind>>;
+  /** The address each non-default instance last signed in as (its own .claude.json), when its probe has none. */
+  readonly loginEmails?: Readonly<Record<string, string | null>>;
 }): ReadonlyArray<BatonAccountRecord> {
   const pool = input.pool ?? [];
   const active = pool.find((account) => account.active);
-  // The default instance runs as cswap's active login only when nothing says otherwise: an instance that reports
-  // another address is another person's login, and must never take the active slot (or merge with it).
+  // The default instance takes the active slot only when its own address confirms it: unconfirmed, it is "this
+  // machine's login", never a guessed account, and an instance reporting another address never takes the slot.
   const slotOf = (instanceId: string | null, ownEmail: string | null = null): string | null => {
     if (instanceId === null) return null;
     const pinned = input.slots[instanceId];
     if (pinned !== undefined) return pinned;
     if (instanceId !== BATON_DEFAULT_CLAUDE_INSTANCE || active === undefined) return null;
-    return ownEmail === null || ownEmail === realEmail(active.email) ? active.key : null;
+    return ownEmail !== null && ownEmail === realEmail(active.email) ? active.key : null;
   };
   const groups = new Map<string, Group>();
   const groupFor = (driver: Group["driver"], identity: string, email: string | null) => {
@@ -106,23 +116,36 @@ export function unifyAccounts(input: {
 
   for (const provider of input.providers) {
     if (provider.instanceId === LIVE_INSTANCE) continue;
-    const ownEmail = realEmail(provider.auth.email);
+    const ownEmail =
+      realEmail(provider.auth.email) ??
+      (String(provider.instanceId) === provider.driver
+        ? null
+        : realEmail(input.loginEmails?.[provider.instanceId]));
     const slot = slotOf(provider.instanceId, ownEmail);
     const slotAccount = slot === null ? undefined : pool.find((account) => account.key === slot);
     const email = ownEmail ?? realEmail(slotAccount?.email);
     const identity = email ?? (slot === null ? provider.instanceId : `slot:${slot}`);
     const group = groupFor(provider.driver, identity, email);
     group.providers.push(provider);
-    addMethod(
-      group,
-      isApiKey(provider.auth.type)
-        ? "api-key"
-        : input.slots[provider.instanceId] !== undefined
-          ? "setup-token"
-          : "browser",
-      provider.instanceId,
-      slot,
-    );
+    // An instance whose own credential file holds no login (signed out) adds no sign-in method.
+    const holdsNone =
+      input.credentialKinds !== undefined &&
+      provider.instanceId in input.credentialKinds &&
+      input.credentialKinds[provider.instanceId] === null &&
+      input.slots[provider.instanceId] === undefined &&
+      !isApiKey(provider.auth.type);
+    if (!holdsNone)
+      addMethod(
+        group,
+        isApiKey(provider.auth.type)
+          ? "api-key"
+          : (input.credentialKinds?.[provider.instanceId] ??
+              (input.slots[provider.instanceId] === undefined
+                ? "browser"
+                : (input.slotKinds?.[input.slots[provider.instanceId]!] ?? "setup-token"))),
+        provider.instanceId,
+        slot,
+      );
   }
 
   for (const account of pool) {
@@ -139,7 +162,12 @@ export function unifyAccounts(input: {
       groupFor("claudeAgent" as Group["driver"], email ?? `slot:${account.key}`, email);
     group.pool.push(account);
     if (!group.methods.some((method) => method.slot === account.key))
-      addMethod(group, email === null ? "setup-token" : "browser", null, account.key);
+      addMethod(
+        group,
+        input.slotKinds?.[account.key] ?? (email === null ? "setup-token" : "browser"),
+        null,
+        account.key,
+      );
   }
 
   return [...groups.values()].map((group): BatonAccountRecord => {
@@ -157,12 +185,21 @@ export function unifyAccounts(input: {
       (provider) =>
         String(provider.instanceId) !== provider.driver && provider.displayName !== undefined,
     );
-    const label =
-      named?.displayName ??
-      group.pool[0]?.label ??
-      group.providers[0]?.displayName ??
-      group.email?.split("@")[0] ??
-      group.id;
+    const alias = group.pool[0]?.label;
+    // cswap's alias is lowercase ("bob"); an account reads as a name.
+    // A default instance's name ("Alice" on the laptop) is not its login: it runs whatever the machine has.
+    const machineOnly =
+      group.email === null &&
+      group.pool.length === 0 &&
+      group.providers.length > 0 &&
+      group.providers.every((provider) => String(provider.instanceId) === provider.driver);
+    const label = machineOnly
+      ? "This machine's login"
+      : (named?.displayName ??
+        (alias === undefined ? undefined : alias.charAt(0).toUpperCase() + alias.slice(1)) ??
+        group.email?.split("@")[0] ??
+        group.providers[0]?.displayName ??
+        group.id);
     const rooms = [...group.providers.map(providerRoom), ...group.pool.map(poolRoom)]
       .filter((room): room is Room => room !== null)
       .toSorted((a, b) => (b.checkedAt ?? "").localeCompare(a.checkedAt ?? ""));
@@ -177,6 +214,7 @@ export function unifyAccounts(input: {
       isDefault: group.providers.some(
         (provider) => String(provider.instanceId) === provider.driver,
       ),
+      active: group.pool.some((account) => account.active),
       methods,
       liveSwitchKey,
       health,
@@ -219,7 +257,11 @@ export function oneEntryPerProvider<
 >(entries: ReadonlyArray<E>, selectedInstanceId: string): ReadonlyArray<E> {
   const byDriver = new Map<string, E[]>();
   for (const entry of entries) {
-    const key = entry.instanceId === LIVE_INSTANCE ? LIVE_INSTANCE : entry.driverKind;
+    // Terminal is its own group; so is each ACP agent, though they share one driver.
+    const key =
+      entry.instanceId === LIVE_INSTANCE || entry.driverKind === "acpRegistry"
+        ? entry.instanceId
+        : entry.driverKind;
     byDriver.set(key, [...(byDriver.get(key) ?? []), entry]);
   }
   return [...byDriver.entries()].map(([key, group]) => {
@@ -228,8 +270,13 @@ export function oneEntryPerProvider<
       group.find((entry) => entry.instanceId === selectedInstanceId) ??
       group.find((entry) => entry.isDefault) ??
       group[0]!;
-    const name = (group.find((entry) => entry.isDefault) ?? shown).displayName;
-    return shown.displayName === name ? shown : { ...shown, displayName: name };
+    if (group.length === 1) return shown;
+    // The provider's name, never a login's (a default instance he named "Alice" runs whatever login the machine has),
+    // and no per-login accent: the account rows say which login it is.
+    const name =
+      PROVIDER_DISPLAY_NAMES[shown.driverKind as ProviderDriverKind] ??
+      (group.find((entry) => entry.isDefault) ?? shown).displayName;
+    return { ...shown, displayName: name, accentColor: undefined };
   });
 }
 /** Why a running session may not be switched to this cswap slot, or null when it may: only a token moves live. */
@@ -277,3 +324,113 @@ export const threadAccount = <A extends Pick<BatonAccountRecord, "instanceIds" |
   instanceId === LIVE_INSTANCE
     ? accounts.find((account) => loginKey !== null && account.liveSwitchKey === loginKey)
     : accounts.find((account) => account.instanceIds.includes(instanceId));
+
+/**
+ * The picker's tick and the header chip agree: the tick is the account the thread runs as (its stored instance, and on
+ * a terminal thread the session's own login), never a pick still waiting in the composer. A waiting pick on another
+ * account comes back as `setTo`, for a "thread set to X" hint.
+ */
+export const accountTicks = <
+  A extends Pick<BatonAccountRecord, "id" | "instanceIds" | "liveSwitchKey">,
+>(
+  accounts: ReadonlyArray<A>,
+  input: {
+    readonly storedInstanceId: string;
+    readonly shownInstanceId: string;
+    readonly loginKey: string | null;
+  },
+): { readonly runsAs: A | undefined; readonly setTo: A | undefined } => {
+  const runsAs = threadAccount(accounts, input.storedInstanceId, input.loginKey);
+  const shown =
+    input.shownInstanceId === input.storedInstanceId
+      ? runsAs
+      : threadAccount(accounts, input.shownInstanceId, input.loginKey);
+  return { runsAs, setTo: shown !== undefined && shown.id !== runsAs?.id ? shown : undefined };
+};
+
+export type CredentialKind = "setup-token" | "browser";
+
+/**
+ * What kind of login a stored Claude credential is, from its shape alone (never its value): a browser sign-in keeps
+ * a refresh token; a setup token (claude setup-token, about a year) has none. Null when the file holds no login.
+ */
+export const credentialKind = (stored: unknown): CredentialKind | null => {
+  if (typeof stored !== "object" || stored === null) return null;
+  const oauth = (stored as { readonly claudeAiOauth?: unknown }).claudeAiOauth ?? stored;
+  if (typeof oauth !== "object" || oauth === null) return null;
+  const { accessToken, refreshToken } = oauth as {
+    readonly accessToken?: unknown;
+    readonly refreshToken?: unknown;
+  };
+  if (typeof accessToken !== "string" || accessToken.length === 0) return null;
+  return typeof refreshToken === "string" && refreshToken.length > 0 ? "browser" : "setup-token";
+};
+
+/** Each cswap slot's kind, from `cswap list --token-status` ("refresh token no" is a setup token). */
+export const cswapTokenKinds = (text: string): Readonly<Record<string, CredentialKind>> => {
+  const kinds: Record<string, CredentialKind> = {};
+  let slot: string | null = null;
+  for (const line of text.split("\n")) {
+    const head = /^\s*(\d+):\s/.exec(line);
+    if (head !== null) slot = head[1]!;
+    const refresh = /refresh token (yes|no)\b/.exec(line);
+    if (slot !== null && refresh !== null)
+      kinds[slot] = refresh[1] === "no" ? "setup-token" : "browser";
+  }
+  return kinds;
+};
+
+/**
+ * Models are a provider's, not a login's: a login whose instance lists none (signed out, or not probed yet) shows its
+ * provider's catalogue, so picking it never lands on an empty list. A pick still goes to that login's own instance.
+ */
+export function withProviderModels<K extends string, M>(
+  byInstance: ReadonlyMap<K, ReadonlyArray<M>>,
+  driverOf: (instanceId: K) => string | undefined,
+): ReadonlyMap<K, ReadonlyArray<M>> {
+  const filled = new Map(byInstance);
+  for (const [instanceId, models] of byInstance) {
+    if (models.length > 0) continue;
+    const driver = driverOf(instanceId);
+    if (driver === undefined || driver === "acpRegistry") continue;
+    const sibling = [...byInstance].find(
+      ([other, list]) => other !== instanceId && list.length > 0 && driverOf(other) === driver,
+    );
+    if (sibling !== undefined) filled.set(instanceId, sibling[1]);
+  }
+  return filled;
+}
+
+/**
+ * The instance a tick on an account sends the thread to: one of its own, never the default Claude instance, which
+ * runs whatever cswap's active login is and would follow a rotation. The default is offered only for the login it
+ * runs as right now, and says so (runsAsActive). Null when this machine has no instance for it.
+ */
+export const accountPickTarget = (
+  account: Pick<BatonAccountRecord, "driver" | "email" | "instanceIds" | "methods" | "active">,
+): { readonly instanceId: string; readonly runsAsActive: boolean } | null => {
+  const ordered = [
+    account.methods.find((method) => method.liveSwitch)?.instanceId ?? null,
+    ...account.instanceIds,
+  ].filter((id): id is string => id !== null);
+  if (account.driver !== "claudeAgent")
+    return ordered[0] === undefined ? null : { instanceId: ordered[0], runsAsActive: false };
+  const own = ordered.find((id) => id !== BATON_DEFAULT_CLAUDE_INSTANCE);
+  if (own !== undefined) return { instanceId: own, runsAsActive: false };
+  const machineLogin =
+    account.email === null && account.instanceIds.includes(BATON_DEFAULT_CLAUDE_INSTANCE);
+  return account.active === true || machineLogin
+    ? { instanceId: BATON_DEFAULT_CLAUDE_INSTANCE, runsAsActive: true }
+    : null;
+};
+
+/** The line under an account row: how a pick runs, or why it cannot be picked here. */
+export const accountPickHint = (
+  target: ReturnType<typeof accountPickTarget>,
+  current: boolean,
+): string | null =>
+  target?.runsAsActive === true
+    ? "Runs as this machine's active login"
+    : target === null && !current
+      ? "No instance here: add one in Settings"
+      : null;
