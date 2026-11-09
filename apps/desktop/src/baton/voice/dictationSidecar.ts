@@ -196,7 +196,8 @@ export type DictationEvent =
   | { readonly ev: "loading"; readonly elapsedMs: number }
   /** 40 ms of the recording's audio (16-bit PCM, base64): the pill's waveform when no wake-word mic runs. */
   | { readonly ev: "pcm"; readonly b64: string }
-  | { readonly ev: "idle"; readonly dictation?: number }
+  /** `tap`: the hold key came up within 200 ms, so the recording was dropped as an accidental tap. */
+  | { readonly ev: "idle"; readonly dictation?: number; readonly tap?: boolean }
   /** A key was held for dictation `id`'s paste (`holdKeys`): paste now. */
   | { readonly ev: "held_key"; readonly id: number }
   | { readonly ev: "error"; readonly message: string; readonly dictation?: number }
@@ -256,14 +257,19 @@ export interface SidecarTiming {
   readonly micMs: number;
   readonly firstAudioMs: number | null;
   readonly releasedMs: number;
+  /** The release took the last pause preview's words: nothing was decoded after the key came up. */
+  readonly reused?: boolean;
 }
 
-export type PasteVerdict = "ok" | "gone" | "changed" | "secret" | "refused";
+/** `nofield`: the keyboard was on icons, a list or a button, where a paste lands nowhere. */
+export type PasteVerdict = "ok" | "gone" | "changed" | "secret" | "nofield" | "refused";
 /** The helper checks and pastes within this (its own deadline is the same); after it nothing is pasted. */
 export const PASTE_CHECK_MS = 1_500;
 /** What the helper said stopped a checked paste; anything else, a late answer included, is "refused". */
 export const pasteVerdictOf = (why: unknown): PasteVerdict =>
-  why === "ok" || why === "gone" || why === "changed" || why === "secret" ? why : "refused";
+  why === "ok" || why === "gone" || why === "changed" || why === "secret" || why === "nofield"
+    ? why
+    : "refused";
 
 export interface SidecarDevice {
   readonly name: string;

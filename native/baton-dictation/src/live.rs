@@ -9,6 +9,10 @@ const FRAME: usize = RATE / 50;
 const PAUSE_FRAMES: usize = 10;
 /// The longest tail release may skip: a pause cut leaves half its pause behind.
 const QUIET_TAIL_MAX: usize = RATE * 3 / 4;
+/// How uneven the quiet after a pause preview may be for the release to take the preview's words (`quiet_after`).
+pub const REUSE_FLAT: f32 = 4.0;
+/// Quiet this long after speech is a pause worth a preview (`Chunker::paused_since`): about where he lets go.
+const PAUSE_PREVIEW: usize = RATE * 3 / 10;
 
 #[derive(Clone, Copy)]
 pub struct ChunkParams {
@@ -168,8 +172,23 @@ impl Chunker {
     /// Nothing but quiet since the last cut: short, below the recording's speech, and flat in its own levels, so a
     /// soft word after a pause is still heard. The words before it are decoded, so release has nothing to wait for.
     pub fn pending_is_quiet(&self, heard: &[f32]) -> bool {
-        if self.pending.len() > QUIET_TAIL_MAX {
-            return false;
+        self.pending.len() <= QUIET_TAIL_MAX && self.quiet_after(0, heard, 2.0)
+    }
+
+    /// He has just stopped: the last `PAUSE_PREVIEW` of the uncut audio is quiet and he spoke since `from` (where the
+    /// last preview reached). A preview now likely holds all he said, so a release soon after has nothing to decode.
+    pub fn paused_since(&self, from: usize, heard: &[f32]) -> bool {
+        let len = self.pending.len();
+        len >= from + PAUSE_PREVIEW && self.quiet_since(len - PAUSE_PREVIEW, heard) && !self.quiet_since(from, heard)
+    }
+
+    /// The uncut audio from `from` on is quiet by `pending_is_quiet`'s rule: below his speech, and its loudest frame
+    /// under `flat` times its own floor, so a soft word stands out. The words a preview read up to `from` are then all
+    /// of it. His release tails (a breath, the key) measured 2.3 to 4.8 times their floor; a word is far more.
+    pub fn quiet_after(&self, from: usize, heard: &[f32], flat: f32) -> bool {
+        let tail = &self.pending[from.min(self.pending.len())..];
+        if tail.len() < FRAME {
+            return true;
         }
         let levels = frame_levels(heard);
         let (floor, loud) = (percentile(&levels, 0.1), percentile(&levels, 0.9));
@@ -177,9 +196,9 @@ impl Chunker {
             return false;
         }
         let quiet = floor + (loud - floor) * 0.1;
-        let own = frame_levels(&self.pending);
+        let own = frame_levels(tail);
         let (own_floor, own_loud) = (percentile(&own, 0.1), percentile(&own, 1.0));
-        own.iter().all(|l| *l <= quiet) && own_loud <= own_floor * 2.0 + SILENCE
+        own.iter().all(|l| *l <= quiet) && own_loud <= own_floor * flat + SILENCE
     }
 }
 
@@ -339,6 +358,32 @@ mod tests {
         pcm.extend_from_slice(&more);
         assert!(chunker.push(&more).is_none());
         assert!(!chunker.pending_is_quiet(&pcm));
+    }
+
+    #[test]
+    fn a_preview_taken_at_his_pause_is_all_a_release_needs() {
+        // A short dictation, under the first cut: all of it is still uncut at release.
+        let mut chunker = Chunker::new(ChunkParams { min_samples: 6 * RATE, ..PARAMS });
+        let mut heard = tone(2.0, 0.2);
+        chunker.push(&heard);
+        // Still talking: no pause yet.
+        assert!(!chunker.paused_since(0, &heard));
+        let hush = tone(0.4, 0.2 / 300.0);
+        heard.extend_from_slice(&hush);
+        chunker.push(&hush);
+        assert!(chunker.paused_since(0, &heard));
+        // A preview here reaches the end; quiet after it, the release takes its words without decoding.
+        let reached = chunker.pending_len();
+        assert!(!chunker.paused_since(reached, &heard));
+        let more_hush = tone(0.5, 0.2 / 300.0);
+        heard.extend_from_slice(&more_hush);
+        chunker.push(&more_hush);
+        assert!(chunker.quiet_after(reached, &heard, REUSE_FLAT));
+        // A soft word after it is not quiet: the release decodes.
+        let soft = tone(0.15, 0.2 * 0.15);
+        heard.extend_from_slice(&soft);
+        chunker.push(&soft);
+        assert!(!chunker.quiet_after(reached, &heard, REUSE_FLAT));
     }
 
     #[test]

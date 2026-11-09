@@ -101,7 +101,7 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
     id: "hold",
     label: "Hold to dictate",
     hint: "Dictate while the key is down.",
-    fallback: key("Ctrl+Alt+Space"),
+    fallback: key("Ctrl+Shift+Win"),
   },
   {
     id: "toggle",
@@ -258,8 +258,14 @@ export const checkInput = (input: BindingInput): InputCheck => {
   const accelerator = normaliseAccelerator(input.accelerator);
   const parts = accelerator.split("+");
   const main = parts.at(-1) ?? "";
-  if (main === "" || (MODIFIERS as ReadonlyArray<string>).includes(main)) {
-    return { ok: false, reason: "Press a key as well, not only Ctrl, Alt, Shift or Win." };
+  // Modifiers alone hold only with Win and one more, as Wispr Flow's Ctrl+Win: Ctrl+Shift alone is half of every
+  // selection shortcut.
+  const modifierOnly = main === "" || (MODIFIERS as ReadonlyArray<string>).includes(main);
+  if (modifierOnly && !(parts.includes("Meta") && parts.length >= 2)) {
+    return {
+      ok: false,
+      reason: "Press a key as well, or hold Win with Ctrl or Shift.",
+    };
   }
   if (parts.length > MAX_KEYS)
     return { ok: false, reason: `Use at most ${MAX_KEYS} keys together.` };

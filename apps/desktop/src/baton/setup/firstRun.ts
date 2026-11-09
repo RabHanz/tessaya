@@ -66,7 +66,7 @@ export const SETUP_STEPS: ReadonlyArray<SetupStep> = STEPS.map(({ facts, ...s })
 
 /** F-keys are safe alone; the first is the default chord. */
 export const HOLD_KEY_CHOICES: ReadonlyArray<string> = [
-  "Ctrl+Alt+Space",
+  "Ctrl+Shift+Win",
   "F9",
   "F8",
   "Ctrl+Shift+Space",

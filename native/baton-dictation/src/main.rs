@@ -41,7 +41,9 @@ use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
 use keys::PasteMethod;
-use live::{join_pieces, lift_gain, meter_b64, preview_due, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES};
+use live::{
+    join_pieces, lift_gain, meter_b64, preview_due, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES, REUSE_FLAT,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
@@ -131,7 +133,9 @@ struct Config {
 
 enum Msg {
     Line(String),
-    Key { hold: bool, pressed: bool },
+    /// `at`: ms on the serve loop's clock when the hook saw it, so a press handled late (the microphone opening holds
+    /// the loop for 100 to 250 ms) still times the hold he made, not when the loop got to it.
+    Key { hold: bool, pressed: bool, at: f64 },
     MicFailed(String),
     /// A block of the recording's audio for the pill's waveform, written out by the serve thread, never the audio's.
     Meter(Vec<f32>),
@@ -159,6 +163,8 @@ struct Done {
     timing: Option<Value>,
     /// The recording as a WAV for History, when he keeps the audio of dictations.
     audio: Option<String>,
+    /// The release took the last preview's words: nothing was decoded after the key came up.
+    reused: bool,
 }
 
 struct Job {
@@ -390,6 +396,12 @@ struct Live {
     live_words: bool,
     previewed: usize,
     preview_ms: u64,
+    /// The last preview's words for the uncut audio up to `previewed`: with only quiet after it, the release takes
+    /// them instead of decoding again (`reused`).
+    preview: Option<String>,
+    /// Where the uncut audio was last checked for a pause (`Chunker::paused_since`), so the check runs every 100 ms.
+    pause_checked: usize,
+    reused: bool,
 }
 
 impl Live {
@@ -401,6 +413,9 @@ impl Live {
             live_words: false,
             previewed: 0,
             preview_ms: 0,
+            preview: None,
+            pause_checked: 0,
+            reused: false,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -426,6 +441,8 @@ impl Live {
             Err(e) => self.failed = Some(e),
         }
         self.previewed = 0;
+        self.preview = None;
+        self.pause_checked = 0;
         self.infer_ms += started.elapsed().as_millis() as u64;
         self.pieces += 1;
     }
@@ -442,12 +459,23 @@ impl Live {
         if let Some(piece) = piece {
             return self.decode(session, piece);
         }
-        if behind || !self.live_words || !preview_due(self.chunker.pending_len(), self.previewed, self.preview_ms) {
+        if behind {
+            return;
+        }
+        let pending = self.chunker.pending_len();
+        // His live words on their cadence; and, for every local dictation, a look as soon as he pauses, which is
+        // usually just before he lets go: the release then has nothing left to decode.
+        let paused = pending >= self.pause_checked + 1_600 && {
+            self.pause_checked = pending;
+            self.chunker.paused_since(self.previewed, &self.heard)
+        };
+        let due = self.live_words && preview_due(pending, self.previewed, self.preview_ms);
+        if !due && !paused {
             return;
         }
         let from = self.previewed;
-        self.previewed = self.chunker.pending_len();
-        // Nothing said since the last look: no decode.
+        self.previewed = pending;
+        // Nothing said since the last look: no decode, and the last preview still holds all of it.
         if self.chunker.quiet_since(from, &self.heard) {
             return;
         }
@@ -456,9 +484,11 @@ impl Live {
         };
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
-        if let Ok(text) = decode_piece(session, piece, self.language.clone()) {
+        self.preview = decode_piece(session, piece, self.language.clone()).ok();
+        // At his pause the words may be all of it: the desktop starts their cleanup now, so a release finds it done.
+        if let (true, Some(text)) = (self.live_words || paused, &self.preview) {
             let words: Vec<&str> = self.text.iter().map(String::as_str).chain([text.as_str()]).collect();
-            emit(json!({"ev": "partial", "text": join_pieces(&words), "pause": false}));
+            emit(json!({"ev": "partial", "text": join_pieces(&words), "pause": paused && self.external.is_none()}));
         }
         self.preview_ms = started.elapsed().as_millis() as u64;
     }
@@ -478,11 +508,23 @@ impl Live {
                 model: None,
                 timing: None,
                 audio: None,
+                reused: false,
             });
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
-        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard) {
-            if let Some(piece) = self.chunker.finish() {
+        // A long quiet tail after the last cut (he waits a second or two before letting go) is nothing to decode too.
+        let quiet = self.chunker.pending_is_quiet(&self.heard) || self.chunker.quiet_after(0, &self.heard, REUSE_FLAT);
+        if self.failed.is_none() && !quiet {
+            // Only quiet since the last preview: its words are the rest, and nothing is decoded at release.
+            let reuse = self.preview.is_some() && self.chunker.quiet_after(self.previewed, &self.heard, REUSE_FLAT);
+            if let (true, Some(text)) = (reuse, self.preview.take()) {
+                self.chunker.finish();
+                if !text.is_empty() {
+                    self.text.push(text);
+                }
+                self.reused = true;
+                self.pieces += 1;
+            } else if let Some(piece) = self.chunker.finish() {
                 self.decode(session, piece);
             }
         }
@@ -503,6 +545,7 @@ impl Live {
             model: None,
             timing: None,
             audio,
+            reused: self.reused,
         })
     }
 }
@@ -667,6 +710,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         model,
                         timing: None,
                         audio: None,
+                        reused: false,
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictation: None, dictated: job.dictated, target: job.target, result });
@@ -720,7 +764,11 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let result = match live.take_if(|l| l.id == id) {
                     Some(current) => current
                         .finish(loaded.as_mut().map(|(_, session)| session), released)
-                        .map(|done| Done { timing: Some(timing), ..done }),
+                        .map(|done| {
+                            let mut timing = timing;
+                            timing["reused"] = json!(done.reused);
+                            Done { timing: Some(timing), ..done }
+                        }),
                     None => Err("That dictation's recording was lost, so nothing was written.".to_string()),
                 };
                 let _ = out.send(Msg::Finished { id: None, dictation: Some(id), dictated: true, target, result });
@@ -828,7 +876,7 @@ impl Drop for Keys {
     }
 }
 
-fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String> {
+fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Option<Keys>, String> {
     if config.hold.is_empty() && config.toggle.is_empty() {
         return Ok(None);
     }
@@ -853,7 +901,8 @@ fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String>
             match manager.try_recv() {
                 Some(event) => {
                     let pressed = event.state == HotkeyState::Pressed;
-                    let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed });
+                    let at = clock.elapsed().as_secs_f64() * 1000.0;
+                    let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed, at });
                 }
                 None => thread::sleep(Duration::from_millis(5)),
             }
@@ -1109,14 +1158,17 @@ fn focus_window_event(id: Option<u64>, window: isize, title: Option<&str>) -> Va
 /// The desktop waits this long for a checked paste (`pasteChecked`); a verdict after it is never pasted.
 const PASTE_DEADLINE: Duration = Duration::from_millis(1_500);
 
-/// Which step stops a dictation paste, in the order they are checked.
-fn paste_verdict(focused: bool, same_window: bool, same_title: bool, secret: bool) -> &'static str {
+/// Which step stops a dictation paste, in the order they are checked. `no_field`: the keyboard is on icons, a list or a
+/// button (`focused_takes_no_text`), where a paste lands nowhere.
+fn paste_verdict(focused: bool, same_window: bool, same_title: bool, secret: bool, no_field: bool) -> &'static str {
     if !focused {
         "gone"
     } else if !same_window || !same_title {
         "changed"
     } else if secret {
         "secret"
+    } else if no_field {
+        "nofield"
     } else {
         "ok"
     }
@@ -1140,6 +1192,16 @@ fn focused_is_secret() -> bool {
 
 #[cfg(not(windows))]
 fn focused_is_secret() -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn focused_takes_no_text() -> bool {
+    uia::focused_takes_no_text()
+}
+
+#[cfg(not(windows))]
+fn focused_takes_no_text() -> bool {
     false
 }
 
@@ -1461,11 +1523,13 @@ fn serve() {
                                 meter_on.store(config.meter, Ordering::Relaxed);
                                 let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
                                 let local = config.model.is_some() && (config.external.is_none() || config.live_words);
-                                let _ = job_tx.send(Work::Keep(config.keep_loaded && bound && local));
-                                // Live words with the cloud: the local model, only if it is on disk (never downloaded
-                                // for this), read in the background once.
-                                if let (true, Some(_), Some(model)) =
-                                    (config.live_words, config.external.as_ref(), config.model.as_ref())
+                                let keep = config.keep_loaded && bound && local;
+                                let _ = job_tx.send(Work::Keep(keep));
+                                // Live words with the cloud, or a model kept loaded: read in the background now, only if
+                                // it is on disk (never downloaded for this), so the first dictation never waits for it
+                                // (his first after a start waited 1.6 to 2.4 s).
+                                if let (true, Some(model)) =
+                                    (keep || (config.live_words && config.external.is_some()), config.model.as_ref())
                                 {
                                     let _ = job_tx.send(Work::Warm(model.clone()));
                                 }
@@ -1481,7 +1545,7 @@ fn serve() {
                                     }
                                     keys = None;
                                     thread::sleep(Duration::from_millis(30));
-                                    match start_keys(&config, &tx) {
+                                    match start_keys(&config, &tx, clock) {
                                         Ok(started) => keys = started,
                                         Err(message) => emit(json!({"ev": "error", "message": message})),
                                     }
@@ -1674,7 +1738,13 @@ fn serve() {
                             let focused = focus_for_paste(target).is_ok();
                             let now = foreground_window();
                             let title_now = window_app(target).1;
-                            let why = paste_verdict(focused, now == target, title_now == title, focused_is_secret());
+                            let why = paste_verdict(
+                                focused,
+                                now == target,
+                                title_now == title,
+                                focused_is_secret(),
+                                focused_takes_no_text(),
+                            );
                             let _ = tx.send(Msg::PasteChecked { id, text, why, started });
                         });
                     }
@@ -1682,8 +1752,7 @@ fn serve() {
                     _ => {}
                 }
             }
-            Msg::Key { hold: true, pressed } => {
-                let at = clock.elapsed().as_secs_f64() * 1000.0;
+            Msg::Key { hold: true, pressed, at } => {
                 for out in taps.step(pressed, at, config.latch) {
                     match out {
                         Out::Start => match dictation_press(recording.is_some(), voice_on) {
@@ -1702,18 +1771,19 @@ fn serve() {
                             held = false;
                             finish(&mut recording, &job_tx, true);
                         }
-                        // An accidental tap: what little was heard is dropped, not transcribed.
+                        // An accidental tap: what little was heard is dropped, not transcribed. Said, so a key that
+                        // seems not to fire can be told from one let go too soon.
                         Out::Cancel => {
                             held = false;
                             let stopped = recording.take().map(|r| r.id);
                             let _ = job_tx.send(Work::Abort);
-                            emit(of_dictation(json!({"ev": "idle"}), stopped));
+                            emit(of_dictation(json!({"ev": "idle", "tap": true}), stopped));
                         }
                         Out::Latch | Out::Unlatch => {}
                     }
                 }
             }
-            Msg::Key { hold: false, pressed: true } => {
+            Msg::Key { hold: false, pressed: true, .. } => {
                 if !toggle_down {
                     toggle_down = true;
                     match dictation_press(recording.is_some(), voice_on) {
@@ -1723,7 +1793,7 @@ fn serve() {
                     }
                 }
             }
-            Msg::Key { hold: false, pressed: false } => toggle_down = false,
+            Msg::Key { hold: false, pressed: false, .. } => toggle_down = false,
             Msg::FakeEnded => finish(&mut recording, &job_tx, true),
             Msg::Meter(block) => emit(json!({"ev": "pcm", "b64": meter_b64(&block)})),
             Msg::PasteChecked { id, text, why, started } => {
@@ -1938,16 +2008,18 @@ mod tests {
     #[test]
     fn a_paste_stops_at_the_first_failed_check() {
         let rows = [
-            ((false, true, true, false), "gone"),
-            ((false, false, false, true), "gone"),
-            ((true, false, true, false), "changed"),
-            ((true, true, false, false), "changed"),
-            ((true, false, false, true), "changed"),
-            ((true, true, true, true), "secret"),
-            ((true, true, true, false), "ok"),
+            ((false, true, true, false, false), "gone"),
+            ((false, false, false, true, true), "gone"),
+            ((true, false, true, false, false), "changed"),
+            ((true, true, false, false, false), "changed"),
+            ((true, false, false, true, true), "changed"),
+            ((true, true, true, true, true), "secret"),
+            // Explorer's icons or the desktop in front: nothing takes the paste.
+            ((true, true, true, false, true), "nofield"),
+            ((true, true, true, false, false), "ok"),
         ];
-        for ((focused, same_window, same_title, secret), want) in rows {
-            assert_eq!(paste_verdict(focused, same_window, same_title, secret), want);
+        for ((focused, same_window, same_title, secret, no_field), want) in rows {
+            assert_eq!(paste_verdict(focused, same_window, same_title, secret, no_field), want);
         }
     }
 

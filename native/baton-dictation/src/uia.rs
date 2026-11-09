@@ -9,7 +9,9 @@ use windows::Win32::UI::Accessibility::{
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
     IUIAutomationTogglePattern, IUIAutomationValuePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
     ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded, ToggleState_Off, ToggleState_On,
-    UIA_PaneControlTypeId, UIA_WindowControlTypeId,
+    UIA_PaneControlTypeId, UIA_WindowControlTypeId, UIA_ButtonControlTypeId, UIA_CheckBoxControlTypeId,
+    UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId, UIA_ListControlTypeId, UIA_MenuItemControlTypeId,
+    UIA_RadioButtonControlTypeId, UIA_TreeControlTypeId,
     UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_DocumentControlTypeId,
     UIA_EditControlTypeId, UIA_ExpandCollapseExpandCollapseStatePropertyId, UIA_ExpandCollapsePatternId,
     UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId, UIA_IsEnabledPropertyId, UIA_IsOffscreenPropertyId,
@@ -682,6 +684,46 @@ pub fn focused_is_secret() -> bool {
         let password = element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true);
         let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
         password || secret_name(&name)
+    }
+}
+
+/// The keyboard is on something that takes no typing: Explorer's or the desktop's icons, a list, a tree, a button. A
+/// paste there does nothing (or pastes files), so the words go on the clipboard with a card instead. Anything that might
+/// take text stays a box: an edit, a document, a text pattern, a writable value, and any pane, window or custom
+/// control, which is how editors that draw their own text show up.
+pub fn focused_takes_no_text() -> bool {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+            Ok(automation) => automation,
+            Err(_) => return false,
+        };
+        let Ok(element) = automation.GetFocusedElement() else { return false };
+        let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+        if element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).is_ok() {
+            return false;
+        }
+        let writable = element
+            .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
+            .and_then(|v| v.CurrentIsReadOnly())
+            .is_ok_and(|read_only| !read_only.as_bool());
+        !writable
+            && [
+                UIA_ListControlTypeId,
+                UIA_ListItemControlTypeId,
+                UIA_TreeControlTypeId,
+                UIA_TreeItemControlTypeId,
+                UIA_DataItemControlTypeId,
+                UIA_ButtonControlTypeId,
+                UIA_MenuItemControlTypeId,
+                UIA_TabItemControlTypeId,
+                UIA_HyperlinkControlTypeId,
+                UIA_ImageControlTypeId,
+                UIA_CheckBoxControlTypeId,
+                UIA_RadioButtonControlTypeId,
+            ]
+            .iter()
+            .any(|t| t.0 == kind)
     }
 }
 

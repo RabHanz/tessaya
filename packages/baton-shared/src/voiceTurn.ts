@@ -288,7 +288,7 @@ export const frameLevel = (frame: Int16Array): number => {
 };
 
 /**
- * The pill's bars, normalised to his speech (an AGC): level over a slowly falling peak, gated at 1.5 times a noise
+ * The pill's bars, normalised to his speech (an AGC): level over a slowly falling peak, gated at 1.4 times a noise
  * floor that rises only on noise-like frames, so a quiet mic's speech fills them and a fluctuating room stays low.
  * Display only: silence detection and the mic test keep `frameLevel`.
  */
@@ -298,8 +298,11 @@ export const createSpeechGain = () => {
   return (level: number): number => {
     peak = Math.max(level, peak * 0.997, 0.15);
     if (level < floor) floor += (level - floor) * 0.2;
-    else if (level < floor * 2.5) floor += (level - floor) * 0.05;
-    return Math.max(0, Math.min(1, (level - floor * 1.5) / Math.max(peak - floor, 0.25)));
+    // Slowly, so a soft voice does not teach the floor to gate it (his quiet mic's speech was 31% gated at 0.05).
+    else if (level < floor * 2.5) floor += (level - floor) * 0.02;
+    const x = (level - floor * 1.4) / Math.max(peak - floor * 1.4, 0.2);
+    // Perceptual: a soft syllable shows as more than its share of the loudest, as an ear hears it.
+    return x <= 0 ? 0 : Math.min(1, x ** 0.85);
   };
 };
 

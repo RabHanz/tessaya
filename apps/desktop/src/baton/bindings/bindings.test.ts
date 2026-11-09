@@ -113,6 +113,11 @@ describe("more than one way to do an action", () => {
       reason: "Add Ctrl, Alt, Shift or Win so it does not get in the way of typing.",
     });
     expect(checkInput(key("Ctrl+Alt"))).toMatchObject({ ok: false });
+    // Modifiers alone only with Win: the hold default, and Wispr Flow's.
+    expect(checkInput(key("Ctrl+Shift+Win"))).toEqual({ ok: true });
+    expect(checkInput(key("Ctrl+Win"))).toEqual({ ok: true });
+    expect(checkInput(key("Win"))).toMatchObject({ ok: false });
+    expect(checkInput(key("Ctrl+Shift"))).toMatchObject({ ok: false });
     expect(checkInput(key("Ctrl+Alt+Shift+Z"))).toEqual({
       ok: false,
       reason: "Use at most 3 keys together.",

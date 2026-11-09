@@ -11,7 +11,7 @@ Tessaya is a desktop assistant that sits beside your coding agents. You talk or 
 
 ## What to try first
 
-- Hold **Ctrl+Alt+Space**, speak, release: your words are typed into the app you are in. See [Dictation](./tessaya-dictation.md).
+- Hold **Ctrl+Shift+Win**, speak, release: your words are typed into the app you are in. See [Dictation](./tessaya-dictation.md).
 - Say a wake word, then ask a question. See [Voice](./tessaya-voice.md).
 - Press **Ctrl+Alt+Shift+B** and ask "what's this error?" to have it look at your screen. See [Screen companion](./tessaya-screen.md).
 - Give it a job and come back later. See [Jobs and approvals](./tessaya-jobs.md).
