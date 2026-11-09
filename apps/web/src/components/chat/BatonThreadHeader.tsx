@@ -19,7 +19,8 @@ import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } fro
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useLiveAccounts } from "./BatonLiveModel";
-import { useBatonAccounts } from "./BatonPickerAccount";
+import { batonPickerFocusAtom, useBatonAccounts } from "./BatonPickerAccount";
+import { useAtomSet } from "@effect/atom-react";
 
 const TONE_VARIANT = { ok: "outline", warn: "warning", limit: "error" } as const;
 
@@ -31,6 +32,7 @@ function LimitChip(props: {
 }) {
   const now = Date.parse(`${useNowMinute()}:00Z`);
   const composer = useComposerHandleContext();
+  const setPickerFocus = useAtomSet(batonPickerFocusAtom);
   const accounts = useBatonAccounts(props.threadRef.environmentId);
   const login = useLiveAccounts(props.threadRef).find((entry) => entry.active);
   const account = threadAccount(
@@ -55,7 +57,10 @@ function LimitChip(props: {
               <button
                 type="button"
                 aria-label={`${account.label}: open the picker on its accounts`}
-                onClick={() => composer?.current?.openModelPicker()}
+                onClick={(event) => {
+                  setPickerFocus({ anchor: event.currentTarget, accountId: account.id });
+                  composer?.current?.openModelPicker();
+                }}
               />
             }
           />

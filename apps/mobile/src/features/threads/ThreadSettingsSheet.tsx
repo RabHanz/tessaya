@@ -105,6 +105,7 @@ import type { AppBarSearch } from "../../components/ui/AppBar";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
 import { BatonAccountRow, useLiveSheetChange, useSessionEffort } from "./BatonAccountRow";
 import { batonProviderGroups, liveTraits } from "./batonCatalog";
+import { takeAccountsFilter } from "./BatonThreadHeader";
 import {
   compatibleRuntimeModeForChoices,
   runtimeModeChoicesForSupportedModes,
@@ -476,7 +477,9 @@ function ThreadSettingsSessionProvider(
     });
   };
   const [showLegacyToggle, setShowLegacyToggle] = useState(false);
-  const [providerFilter, setProviderFilter] = useState<string | null>(null);
+  const [providerFilter, setProviderFilter] = useState<string | null>(() =>
+    takeAccountsFilter(props.threadId, providerGroups),
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [providerExpansionOverrides, setProviderExpansionOverrides] = useState<ReadonlySet<string>>(
     () => new Set(),

@@ -43,6 +43,20 @@ export const batonProviderGroups = (
     providerLabel: entry.displayName,
   }));
 
+/**
+ * The sheet's provider filter that shows a thread's accounts first: Terminal for a terminal thread, else the key
+ * batonProviderGroups gives the thread's provider (its first login's). Null when the sheet does not list it.
+ */
+export const accountsFilterKey = (
+  groups: ReadonlyArray<ProviderGroup>,
+  instanceId: string,
+): string | null => {
+  if (instanceId === LIVE_INSTANCE) return LIVE_INSTANCE;
+  const own = groups.find((group) => group.providerKey === instanceId);
+  if (own === undefined) return null;
+  return groups.find((group) => providerOf(group) === providerOf(own))?.providerKey ?? null;
+};
+
 /** The model a tap on an account lands on, or null when the sheet does not list that login. */
 export const accountPickOption = (
   account: Pick<BatonAccountRecord, "instanceIds" | "methods">,

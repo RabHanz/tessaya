@@ -3,7 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 import { ProviderInstanceId } from "@t3tools/contracts";
 
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { accountPickOption, batonProviderGroups, liveTraits, loadedLoginKey } from "./batonCatalog";
+import {
+  accountPickOption,
+  accountsFilterKey,
+  batonProviderGroups,
+  liveTraits,
+  loadedLoginKey,
+} from "./batonCatalog";
 
 const group = (
   providerKey: string,
@@ -106,5 +112,15 @@ describe("a terminal session's login", () => {
     expect(loadedLoginKey(null, "abc", pool)).toBeNull();
     expect(loadedLoginKey({ sessionId: "old", login: "home" }, "abc", pool)).toBeNull();
     expect(loadedLoginKey({ sessionId: "abc", login: "home" }, "abc", pool)).toBe("2");
+  });
+});
+
+describe("accountsFilterKey", () => {
+  it("opens the sheet on the thread's own provider, whichever login it runs on, and Terminal for a terminal thread", () => {
+    expect(accountsFilterKey(groups, "claude_home")).toBe("claudeAgent");
+    expect(accountsFilterKey(groups, "codex")).toBe("codex");
+    expect(accountsFilterKey(groups, "acp_grok")).toBe("acp_grok");
+    expect(accountsFilterKey(groups, "baton-live")).toBe("baton-live");
+    expect(accountsFilterKey(groups, "gone")).toBeNull();
   });
 });

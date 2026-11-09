@@ -82,19 +82,20 @@ index 80a3e8643a567176df20717e36360bc1334071b8..affb9f84af3d0b10d5e863e47af293a2
              )
            }
 diff --git a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
-index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72630fb1d0 100644
+index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439950abdc1 100644
 --- a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
 +++ b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
-@@ -103,6 +103,8 @@ import {
+@@ -103,6 +103,9 @@ import {
  import { useSearchToolbarInset } from "../../components/ui/useBarInset";
  import type { AppBarSearch } from "../../components/ui/AppBar";
  import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
 +import { BatonAccountRow, useLiveSheetChange, useSessionEffort } from "./BatonAccountRow";
 +import { batonProviderGroups, liveTraits } from "./batonCatalog";
++import { takeAccountsFilter } from "./BatonThreadHeader";
  import {
    compatibleRuntimeModeForChoices,
    runtimeModeChoicesForSupportedModes,
-@@ -257,6 +259,8 @@ type ThreadSettingsSubmenuPage =
+@@ -257,6 +260,8 @@ type ThreadSettingsSubmenuPage =
  
  type ThreadSettingsSessionProps = {
    readonly environmentId: EnvironmentId | null;
@@ -103,7 +104,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72
    readonly projectId: ProjectId | null;
    readonly providerInstanceId?: ProviderInstanceId;
    readonly lockedProviderInstanceId?: ProviderInstanceId;
-@@ -282,6 +286,7 @@ export type ExistingThreadSettingsRouteParams = {
+@@ -282,6 +287,7 @@ export type ExistingThreadSettingsRouteParams = {
  
  type ThreadSettingsSessionValue = {
    readonly environmentId: EnvironmentId | null;
@@ -111,7 +112,18 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72
    readonly providerInstanceId?: ProviderInstanceId;
    readonly providerGroups: ReadonlyArray<ProviderGroup>;
    readonly favoriteKeys: ReadonlySet<string>;
-@@ -594,6 +599,7 @@ function ThreadSettingsSessionProvider(
+@@ -471,7 +477,9 @@ function ThreadSettingsSessionProvider(
+     });
+   };
+   const [showLegacyToggle, setShowLegacyToggle] = useState(false);
+-  const [providerFilter, setProviderFilter] = useState<string | null>(null);
++  const [providerFilter, setProviderFilter] = useState<string | null>(() =>
++    takeAccountsFilter(props.threadId, providerGroups),
++  );
+   const [searchQuery, setSearchQuery] = useState("");
+   const [providerExpansionOverrides, setProviderExpansionOverrides] = useState<ReadonlySet<string>>(
+     () => new Set(),
+@@ -594,6 +602,7 @@ function ThreadSettingsSessionProvider(
  
    const value = {
      environmentId: props.environmentId,
@@ -119,7 +131,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72
      providerInstanceId: props.providerInstanceId,
      providerGroups,
      manageHidden,
-@@ -715,22 +721,37 @@ function ThreadSettingsProviderListHeader(props: {
+@@ -715,22 +724,37 @@ function ThreadSettingsProviderListHeader(props: {
    const onToggle = () => session.toggleProvider(props.provider.key);
  
    return (
@@ -167,7 +179,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72
      if (
        session.providerFilter !== null &&
        session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
-@@ -1168,11 +1189,13 @@ function ThreadSettingsModelsScreen() {
+@@ -1168,11 +1192,13 @@ function ThreadSettingsModelsScreen() {
    const providerFilters = [
      { id: "all-providers", title: "All providers", value: null },
      { id: "favorites", title: "Favorites", value: FAVORITES_PROVIDER_FILTER },
@@ -186,7 +198,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72
    ];
  
    return (
-@@ -1312,6 +1335,12 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1312,6 +1338,12 @@ export function ExistingThreadSettingsRouteScreen({
    // A queued edit can end while the sheet is open; the prompt then belongs to the thread's draft.
    const draftKey = activeComposerDraftKey(threadKey, route.params.draftKey, queuedRunEdit);
    const prompt = useComposerDraft(draftKey).text;
@@ -199,7 +211,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72
  
    if (!selectedThread) {
      return <View className="flex-1 bg-sheet" />;
-@@ -1343,6 +1372,7 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1343,6 +1375,7 @@ export function ExistingThreadSettingsRouteScreen({
    return (
      <ThreadSettingsPickerScreen
        environmentId={selectedThread.environmentId}
@@ -207,7 +219,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..21a8d77f48ae206dcae66ce15d7ddb72
        projectId={selectedThread.projectId}
        providerInstanceId={modelSelection.instanceId}
        {...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {})}
-@@ -1351,15 +1381,25 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1351,15 +1384,25 @@ export function ExistingThreadSettingsRouteScreen({
        prompt={prompt}
        onPromptChange={(text) => setComposerDraftText(draftKey, text)}
        reportedModelSelection={reportedModelSelection}
@@ -425,18 +437,30 @@ index f040df764cda9188e68a9f70ee639d3a258d98ae..c3beb2b97ba09e89a51e21e1b1233944
                listRef={modelListRef}
                itemKeys={filteredItemKeys}
 diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
-index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..356c7ef222488e22e7753209d5906da8aaf61156 100644
+index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..f380c66bd1f65aa5fb0596d71af68019b341509d 100644
 --- a/apps/web/src/components/chat/ProviderModelPicker.tsx
 +++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
-@@ -112,6 +112,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+@@ -12,6 +12,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import { cn } from "~/lib/utils";
+ import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
+ import { ChatGptSharingControl } from "./ChatGptSharingControl";
++import { useBatonPickerAnchor } from "./BatonPickerAccount";
+ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+ import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
+ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
+@@ -112,8 +113,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     */
    effortColumn?: ReactNode;
    footer?: ReactNode;
 +  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
  }) {
    const composerFloatingLayerProps = useComposerMenuProps();
++  // Opened from the header's account chip, it hangs under that chip instead of the composer.
++  const batonAnchor = useBatonPickerAnchor();
    const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
-@@ -274,6 +275,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
+   const searchInputRef = useRef<HTMLInputElement>(null);
+@@ -274,6 +278,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
            : (props.getModelDisabledReason?.(instanceId, model) ?? null)
        }
        onInstanceModelChange={handleInstanceModelChange}
@@ -444,6 +468,14 @@ index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..356c7ef222488e22e7753209d5906da8
        {...(docked
          ? {
              docked,
+@@ -420,6 +425,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+         {...(docked
+           ? { side: "top" as const, collisionAvoidance: { side: "shift", align: "shift" } as const }
+           : {})}
++        {...batonAnchor}
+         className="before:hidden"
+         padding="none"
+         touchBackdrop
 diff --git a/vite.config.ts b/vite.config.ts
 index fb6255cf9636350f177eb574adb6d23c7fd77ba0..b53fa73a881833bf9951bb0b86b7c7bd3dc554a7 100644
 --- a/vite.config.ts

@@ -2,7 +2,7 @@
  * The account side of T3's model picker (T6, ACCOUNTS-2): one row per real account above the models, with % used,
  * the thread's "Keep on this account" pin, and on a terminal thread the session's own login and a queued change.
  */
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   accountReturnsAt,
   instanceAccount,
@@ -64,6 +64,51 @@ const useLiveAccount = (threadRef: ScopedThreadRef) =>
   useLiveAccounts(threadRef).find((entry) => entry.active);
 
 const NO_ACCOUNTS = Atom.make(AsyncResult.initial<never, never>(false));
+
+/** Set by the header's chip: the picker opens on it, at that account's row. Cleared when the picker closes. */
+export const batonPickerFocusAtom = Atom.make<{
+  readonly anchor: HTMLElement;
+  readonly accountId: string;
+} | null>(null);
+
+/** The picker popup's placement while the header chip opened it: under the chip, not over the composer. */
+export function useBatonPickerAnchor() {
+  const focus = useAtomValue(batonPickerFocusAtom);
+  return focus === null
+    ? {}
+    : {
+        anchor: focus.anchor,
+        side: "bottom" as const,
+        align: "end" as const,
+        collisionAvoidance: { side: "flip", align: "shift" } as const,
+      };
+}
+
+/** Scrolls to and focuses the chip's account row once the picker shows it, and forgets the request on close. */
+function useFocusRequestedRow(accountIds: ReadonlyArray<string>) {
+  const focus = useAtomValue(batonPickerFocusAtom);
+  const accountId = focus?.accountId ?? null;
+  const shown = accountId !== null && accountIds.includes(accountId);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves DOM focus to the requested row after the popup's own initial focus
+  useEffect(() => {
+    if (!shown || accountId === null) return;
+    const timer = setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(
+        `[data-testid="model-picker-account"][data-account-id="${CSS.escape(accountId)}"]`,
+      );
+      row?.scrollIntoView({ block: "nearest" });
+      row?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [accountId, shown]);
+}
+
+/** The chip's request lives as long as the picker that answered it, whichever provider it ends on. */
+function useForgetFocusOnClose() {
+  const setFocus = useAtomSet(batonPickerFocusAtom);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears a request held outside React when the picker unmounts
+  useEffect(() => () => setFocus(null), [setFocus]);
+}
 
 /** One record per real account on the thread's environment (baton.accounts.list). */
 export function useBatonAccounts(
@@ -136,6 +181,7 @@ function AccountRow(props: {
     <button
       type="button"
       data-testid="model-picker-account"
+      data-account-id={account.id}
       aria-pressed={props.current}
       disabled={props.onPick === null || paused}
       onClick={props.onPick ?? undefined}
@@ -309,6 +355,7 @@ function LiveAccounts(props: {
   const { queued, failure, cancel } = useLiveState(props.threadRef);
   const active = logins.find((login) => login.active);
   // The tick is the login the session runs as, as the header chip says (accountTicks).
+  useFocusRequestedRow(props.accounts.map((account) => account.id));
   const { runsAs, setTo } = accountTicks(props.accounts, {
     storedInstanceId: LIVE_INSTANCE,
     shownInstanceId: props.shownInstanceId,
@@ -370,6 +417,7 @@ export function BatonPickerAccount(props: {
   readonly onPickInstance: (instanceId: ProviderInstanceId) => void;
 }) {
   const { entry, threadRef } = props;
+  useForgetFocusOnClose();
   const accounts = useBatonAccounts(props.environmentId);
   // The thread's own instance decides, not a pick waiting in the composer: the header chip reads the same.
   const storedInstanceId = useQuietThreadShell(threadRef)?.modelSelection.instanceId;
@@ -400,6 +448,18 @@ export function BatonPickerAccount(props: {
     (account) => account.driver === entry.driverKind && account.instanceIds.length > 0,
   );
   if (mine.length === 0) return null;
+  return <InstanceAccounts {...props} mine={mine} />;
+}
+
+function InstanceAccounts(props: {
+  readonly entry: ProviderInstanceEntry;
+  readonly threadRef: ScopedThreadRef | null;
+  readonly threadInstanceId: ProviderInstanceId;
+  readonly onPickInstance: (instanceId: ProviderInstanceId) => void;
+  readonly mine: ReadonlyArray<BatonAccountRecord>;
+}) {
+  const { entry, threadRef, mine } = props;
+  useFocusRequestedRow(mine.map((account) => account.id));
   const pinnable =
     threadRef !== null &&
     entry.driverKind === "claudeAgent" &&
