@@ -7,6 +7,7 @@ import type { BatonAccountRecord, BatonSignInMethod } from "@t3tools/baton-contr
 import {
   type EnvironmentId,
   PROVIDER_DISPLAY_NAMES,
+  ProviderInstanceId,
   type ProviderDriverKind,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -91,7 +92,10 @@ function AccountCard(props: {
               onClick={() =>
                 void navigate({
                   to: "/settings/providers",
-                  search: { environmentId: props.environmentId, instanceId },
+                  search: {
+                    environmentId: props.environmentId,
+                    instanceId: ProviderInstanceId.make(instanceId),
+                  },
                 })
               }
             >
