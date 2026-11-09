@@ -8,7 +8,7 @@ import * as NodeSqlite from "node:sqlite";
 
 import { REDACTED } from "@t3tools/baton-shared/memory";
 
-import { openHistory } from "./history.ts";
+import { flaggedReport, openHistory } from "./history.ts";
 
 describe("history", () => {
   it("keeps raw and cleaned text, searches both, retries, and deletes", () => {
@@ -152,6 +152,63 @@ describe("history", () => {
     expect(history.list({ query: "horse" })).toEqual([]);
     history.close();
     NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a flagged report goes with the row when it is deleted, hidden, unflagged or found to hold a secret", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "history-"));
+    let n = 0;
+    const history = openHistory(":memory:", () => `t${(n += 1)}`, dir);
+    const row = () =>
+      history.add({
+        at: "2026-11-08T10:00:00.000Z",
+        kind: "dictation",
+        app: "slack.exe",
+        raw: "hello there",
+        cleaned: "Hello there.",
+        status: "ok",
+        model: null,
+        delivery: "oneshot",
+        error: null,
+      });
+    const flagged = () => {
+      const id = row();
+      history.flag(id, true);
+      NodeFS.writeFileSync(flaggedReport(dir, id), "report");
+      return id;
+    };
+    const ids = [flagged(), flagged(), flagged(), flagged()];
+    history.remove(ids[0]!);
+    history.hide(ids[1]!, "private app");
+    history.flag(ids[2]!, false);
+    history.update(ids[3]!, { cleaned: "The password is hunter-fake-77." });
+    expect(ids.filter((id) => NodeFS.existsSync(flaggedReport(dir, id)))).toEqual([]);
+    expect(history.get(ids[1]!)?.flagged).toBe(false);
+    history.close();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a row known to be private when it starts never has its words written", () => {
+    const history = openHistory(":memory:", () => "t1");
+    const id = history.add({
+      at: "2026-11-08T10:00:00.000Z",
+      kind: "dictation",
+      app: "1password.exe",
+      raw: "correct horse battery",
+      cleaned: "Correct horse battery.",
+      status: "none",
+      model: null,
+      delivery: "hold key",
+      error: null,
+      audio: "C:/clip.webm",
+      hidden: "private app",
+    });
+    expect(history.get(id)).toMatchObject({
+      raw: "",
+      cleaned: null,
+      audio: null,
+      hidden: "private app",
+    });
+    history.close();
   });
 
   it("delete removes the words and the recording; a flag can be taken back", () => {

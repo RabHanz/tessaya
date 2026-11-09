@@ -3,9 +3,10 @@
  * them, until he picks it. Pure, so the menu, the no-recording path and the versions are tested
  * without Electron.
  */
-import { strictestCleanup } from "@t3tools/baton-shared/dictationCleanup";
+import { cleanupLevelFor, strictestCleanup } from "@t3tools/baton-shared/dictationCleanup";
+import { detectSecret } from "@t3tools/baton-shared/memory";
 
-import type { HistoryTurn, HistoryVersion } from "./history.ts";
+import type { HiddenReason, HistoryTurn, HistoryVersion } from "./history.ts";
 
 export const NO_RECORDING = "No recording was kept for this one";
 export const NO_HOLD_KEY_RECORDING = "No recording for hold-key dictation yet";
@@ -101,6 +102,33 @@ export const undoAiEdit = (
   fixed: null,
   status: "raw" as const,
 });
+
+/** A password box, or a private app (the rule that keeps dictionary learning away): its words are never kept or learned. */
+export const privateReason = (
+  app: { readonly exe: string; readonly title: string },
+  passwordBox: boolean,
+): HiddenReason | null =>
+  passwordBox
+    ? "password field"
+    : app.exe !== "" && cleanupLevelFor("claude", app) === "local"
+      ? "private app"
+      : null;
+
+/** Paste again goes only into the app the words were first said into. */
+export const mayPasteInto = (turnApp: string, nowExe: string): boolean =>
+  turnApp !== "" && turnApp.toLowerCase() === nowExe.toLowerCase();
+
+/** Edit and teach learns from his fix under the same rules as a fix in the field, and never from a row kept local. */
+export const mayTeach = (
+  turn: Pick<HistoryTurn, "app" | "cleanup" | "hidden">,
+  meant: string,
+  learnWords: boolean,
+): boolean =>
+  learnWords &&
+  turn.hidden === null &&
+  turn.cleanup !== "local" &&
+  cleanupLevelFor("claude", { exe: turn.app, title: "" }) === "claude" &&
+  detectSecret(meant) === null;
 
 export interface Retried {
   readonly at: string;

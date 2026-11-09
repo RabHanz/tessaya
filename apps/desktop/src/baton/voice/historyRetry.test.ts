@@ -4,6 +4,9 @@ import type { HistoryTurn } from "./history.ts";
 import {
   NO_HOLD_KEY_RECORDING,
   NO_RECORDING,
+  mayPasteInto,
+  mayTeach,
+  privateReason,
   retryCleanupLevel,
   retryPlan,
   rowMenu,
@@ -160,5 +163,33 @@ describe("a History retry's clean-up level", () => {
     // Decided local when he dictated (a bank or sign-in page, known only by its title then): a retry stays local.
     expect(retryCleanupLevel("claude", "chrome.exe", "local")).toBe("local");
     expect(retryCleanupLevel("claude", "chrome.exe", "claude")).toBe("claude");
+  });
+});
+
+describe("what stays private", () => {
+  it("hides a password box and a private app, never an ordinary or unnamed one", () => {
+    expect(privateReason({ exe: "slack.exe", title: "" }, true)).toBe("password field");
+    expect(privateReason({ exe: "1password", title: "" }, false)).toBe("private app");
+    expect(privateReason({ exe: "chrome.exe", title: "Sign in - Bank" }, false)).toBe(
+      "private app",
+    );
+    expect(privateReason({ exe: "slack.exe", title: "#ops" }, false)).toBeNull();
+    expect(privateReason({ exe: "", title: "" }, false)).toBeNull();
+  });
+
+  it("pastes again only into the app it was said into", () => {
+    expect(mayPasteInto("Slack.exe", "slack.exe")).toBe(true);
+    expect(mayPasteInto("slack.exe", "chrome.exe")).toBe(false);
+    expect(mayPasteInto("", "chrome.exe")).toBe(false);
+  });
+
+  it("teaches from an edit only where learning from the field would, and never from a row kept local", () => {
+    const row = { app: "slack.exe", cleanup: "claude" as const, hidden: null };
+    expect(mayTeach(row, "Herdr pane", true)).toBe(true);
+    expect(mayTeach(row, "Herdr pane", false)).toBe(false);
+    expect(mayTeach({ ...row, cleanup: "local" }, "Herdr pane", true)).toBe(false);
+    expect(mayTeach({ ...row, app: "1password" }, "Herdr pane", true)).toBe(false);
+    expect(mayTeach({ ...row, hidden: "password field" }, "Herdr pane", true)).toBe(false);
+    expect(mayTeach(row, "The password is hunter-fake-77.", true)).toBe(false);
   });
 });

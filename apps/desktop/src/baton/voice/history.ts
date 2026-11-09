@@ -111,6 +111,8 @@ export interface History {
       | "flagged"
     > & {
       readonly seconds?: number | null;
+      /** Known private when it starts: nothing of what was said is written, even for a moment. */
+      readonly hidden?: HiddenReason | null;
     } & { readonly audio?: string | null; readonly cleanup?: "local" | "claude" | null },
   ) => string;
   readonly update: (
@@ -188,9 +190,15 @@ const parseVersions = (value: unknown): ReadonlyArray<HistoryVersion> => {
   }
 };
 
+/** Where a flagged row's transcript report is kept for the clean-up eval. */
+export const flaggedReport = (dir: string, id: string): string =>
+  NodePath.join(dir, `transcript-${id}.md`);
+
 export const openHistory = (
   file: string,
   newId: () => string = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+  /** Flagged reports live here; a row removed, hidden or unflagged takes its report with it. */
+  flaggedDir: string | null = null,
 ): History => {
   if (file !== ":memory:") NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
   const db = new NodeSqlite.DatabaseSync(file);
@@ -238,6 +246,9 @@ export const openHistory = (
     )
       db.exec(`alter table turns add column ${column} ${type}`);
   }
+  const dropReport = (id: string) => {
+    if (flaggedDir !== null) NodeFS.rmSync(flaggedReport(flaggedDir, id), { force: true });
+  };
   /** A redacted row keeps no recording of the words it hides. */
   const dropAudio = (audio: unknown) => {
     if (typeof audio !== "string") return;
@@ -282,10 +293,13 @@ export const openHistory = (
   };
   return {
     add: (written) => {
-      const turn = safeWords(written);
+      const turn =
+        written.hidden == null
+          ? safeWords(written)
+          : { ...written, raw: "", cleaned: null, audio: null };
       const id = newId();
       db.prepare(
-        `insert into turns (id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, seconds, cleanup) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        `insert into turns (id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, seconds, cleanup, hidden) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       ).run(
         id,
         turn.at,
@@ -300,6 +314,7 @@ export const openHistory = (
         turn.error,
         turn.seconds ?? null,
         turn.cleanup ?? null,
+        written.hidden ?? null,
       );
       return id;
     },
@@ -312,7 +327,10 @@ export const openHistory = (
       // A secret in the new words hides the stored ones too, and the recording of them.
       const marked = hasSecret(written);
       const stored = marked ? get(id) : null;
-      if (stored !== null) dropAudio(stored.audio);
+      if (stored !== null) {
+        dropAudio(stored.audio);
+        dropReport(id);
+      }
       const change = {
         ...safeWords(written),
         ...(stored === null
@@ -366,17 +384,20 @@ export const openHistory = (
       if (turn !== null) {
         db.prepare("delete from turns where id = ?").run(id);
         dropAudio(turn.audio);
+        dropReport(id);
       }
       return turn;
     },
     hide: (id, reason) => {
       dropAudio(get(id)?.audio);
+      dropReport(id);
       db.prepare(
-        "update turns set raw = '', cleaned = null, fixed = null, versions = null, audio = null, error = null, corrected = 0, hidden = ? where id = ?",
+        "update turns set raw = '', cleaned = null, fixed = null, versions = null, audio = null, error = null, corrected = 0, flagged = 0, hidden = ? where id = ?",
       ).run(reason, id);
     },
     flag: (id, flagged) => {
       db.prepare("update turns set flagged = ? where id = ?").run(flagged ? 1 : 0, id);
+      if (!flagged) dropReport(id);
     },
     close: () => db.close(),
   };

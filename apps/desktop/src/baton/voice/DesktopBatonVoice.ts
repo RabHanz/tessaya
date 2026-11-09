@@ -434,12 +434,21 @@ import { createPillGhost } from "./pillGhost.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
-import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
+import {
+  flaggedReport,
+  openHistory,
+  type HiddenReason,
+  type HistoryTurn,
+  type TidyStatus,
+} from "./history.ts";
 import {
   hasRecording,
   NO_RECORDING,
   retryCleanupLevel,
   retryPlan,
+  mayPasteInto,
+  mayTeach,
+  privateReason,
   rowMenu,
   rowText,
   undoAiEdit,
@@ -1303,12 +1312,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (history === null || turn.hidden !== null || meant === "") return [];
     const fixes = correctionsBetween(rowText(turn), meant);
     history.update(turn.id, { fixed: meant, corrected: true });
-    if (
-      !settings.learnWords ||
-      cleanupLevelFor("claude", { exe: turn.app, title: "" }) !== "claude" ||
-      detectSecret(meant) !== null
-    )
-      return [];
+    if (!mayTeach(turn, meant, settings.learnWords)) return [];
     void teachFixes(fixes);
     return fixes.map((fix) => fix.meant);
   };
@@ -1469,9 +1473,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   // Everything he says and what it became, kept forever on this machine (the History tab).
   let historyRev = 0;
+  const flaggedDir = NodePath.join(input.stateDir, "reports", "flagged");
   const history = (() => {
     try {
-      const opened = openHistory(NodePath.join(input.stateDir, "voice", "history.sqlite"));
+      const opened = openHistory(
+        NodePath.join(input.stateDir, "voice", "history.sqlite"),
+        undefined,
+        flaggedDir,
+      );
       const bump =
         <A extends ReadonlyArray<unknown>, R>(write: (...args: A) => R) =>
         (...args: A): R => {
@@ -1483,6 +1492,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         add: bump(opened.add),
         update: bump(opened.update),
         remove: bump(opened.remove),
+        hide: bump(opened.hide),
       };
     } catch {
       return null;
@@ -1558,16 +1568,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** Said into a password box or a private app (the apps whose edits are never learned from): no words, no recording. */
   const hideIfPrivate = (
-    id: string,
+    id: string | null,
     app: { readonly exe: string; readonly title: string },
     passwordBox: boolean,
   ) => {
-    const reason = passwordBox
-      ? "password field"
-      : app.exe !== "" && cleanupLevelFor("claude", app) === "local"
-        ? "private app"
-        : null;
-    if (reason !== null) history?.hide(id, reason);
+    const reason = privateReason(app, passwordBox);
+    if (reason !== null && id !== null) history?.hide(id, reason);
+    return reason;
   };
   const record = (turn: {
     readonly kind: "dictation" | "spoken";
@@ -1580,6 +1587,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly error?: string | null;
     readonly seconds?: number | null;
     readonly cleanup?: "local" | "claude" | null;
+    readonly hidden?: HiddenReason | null;
   }): string | null => {
     if (history === null || testRun || turn.raw.trim().length === 0) return null;
     // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
@@ -1598,6 +1606,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         error: turn.error ?? null,
         seconds: turn.seconds ?? null,
         cleanup: turn.cleanup ?? null,
+        hidden: turn.hidden ?? null,
       });
     } catch {
       return null;
@@ -1625,9 +1634,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** Flagged rows are written where the clean-up eval's new cases are picked from; unflagging takes it back. */
   const flagTurn = (turn: HistoryTurn, on: boolean) => {
-    const file = NodePath.join(input.stateDir, "reports", "flagged", `transcript-${turn.id}.md`);
     history?.flag(turn.id, on);
-    if (!on) return NodeFS.rmSync(file, { force: true });
+    if (!on) return;
+    const file = flaggedReport(flaggedDir, turn.id);
     NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
     NodeFS.writeFileSync(
       file,
@@ -1636,16 +1645,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     );
   };
   /** Home steps aside so the window he was in before comes forward, then the words go in with the dictation paste's checks. */
-  const pasteAgain = async (text: string, home: Electron.BrowserWindow | null) => {
+  const pasteAgain = async (text: string, app: string, home: Electron.BrowserWindow | null) => {
     const side = sidecar;
     if (side === null || text === "") return { failed: "Pasting is not available right now" };
     home?.minimize();
     await new Promise((resolve) => setTimeout(resolve, PASTE_AGAIN_MS));
     const why = await pasteInOrder(async () => {
       const now = await side.foreground().catch(() => null);
-      return now?.window === undefined
-        ? ("gone" as const)
-        : await side.pasteChecked(text, now.window, now.title).catch(() => "refused" as const);
+      if (now?.window === undefined) return "gone" as const;
+      if (!mayPasteInto(app, now.exe)) return "elsewhere" as const;
+      return await side.pasteChecked(text, now.window, now.title).catch(() => "refused" as const);
     });
     if (why === "ok") return { pasted: true };
     Electron.clipboard.writeText(text);
@@ -1653,7 +1662,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       failed:
         why === "secret"
           ? "That box is for a password, so the words are on your clipboard"
-          : "Not pasted, so the words are on your clipboard",
+          : why === "elsewhere"
+            ? `${app === "" ? "Its app" : app} is not in front, so the words are on your clipboard`
+            : "Not pasted, so the words are on your clipboard",
     };
   };
   const extractAudio = async (turn: HistoryTurn, home: Electron.BrowserWindow | null) => {
@@ -1713,7 +1724,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (action === "copy" || action === "copy_cleaned") {
       void Electron.clipboard.writeText(rowText(turn));
     } else if (action === "paste") {
-      return pasteAgain(rowText(turn), Electron.BrowserWindow.fromWebContents(event.sender));
+      return pasteAgain(
+        rowText(turn),
+        turn.app,
+        Electron.BrowserWindow.fromWebContents(event.sender),
+      );
     } else if (action.startsWith("teach:")) {
       const taught = teachFromHistory(turn, action.slice("teach:".length));
       const after = history.get(id);
@@ -1968,6 +1983,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const app = (await target) ?? { exe: "", title: "" };
     const turnId = openTurn;
     openTurn = null;
+    keptWhy = "refused";
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
@@ -1993,13 +2009,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? "Not pasted"
           : null,
     });
-    if (turnId !== null)
-      hideIfPrivate(turnId, app, result.status === "kept" && keptWhy === "secret");
+    const hidden = hideIfPrivate(turnId, app, result.status === "kept" && keptWhy === "secret");
     if (result.status === "pasted") {
       // Pasted already: the pill plays the cleanup over his words afterwards, so it never holds the paste up.
       if (!ghostPlayed) pill.cleanup(result.raw, result.text);
-      learnWording(result.text);
-      learnFromEdits(result.text, turnId, app);
+      // Nothing said into a private app or a password box is learned from.
+      if (hidden === null) {
+        learnWording(result.text);
+        learnFromEdits(result.text, turnId, app);
+      }
       if (result.failed) {
         showDictation(null);
         toast.show({ kind: "error", message: CLEANUP_FAILED_LINE });
@@ -2041,7 +2059,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         lastDictation = text;
       }
       oneShot.discard();
-      if (openTurn !== null) history?.update(openTurn, { error: "Discarded" });
+      if (openTurn !== null) {
+        history?.update(openTurn, { error: "Discarded" });
+        const discarded = openTurn;
+        void dictationHold
+          .target()
+          .then((app) => app !== null && hideIfPrivate(discarded, app, false));
+      }
       openTurn = null;
     }
     void core?.setDictation(false).then(() => {
@@ -3455,6 +3479,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       status: "none",
       delivery: "hold key",
       cleanup: "local",
+      hidden: privateReason(app, false),
     });
     oneShot.push(words);
     void flushDictation(Promise.resolve(app));
