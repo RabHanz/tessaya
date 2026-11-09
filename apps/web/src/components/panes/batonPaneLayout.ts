@@ -78,8 +78,11 @@ export function closePane(
   };
 }
 
-/** What a pane's environment can do for it now: still coming up, usable, or not there at all. */
-export type PaneEnvironmentState = "connecting" | "ready" | "unreachable";
+/**
+ * What a pane's environment can do for it now: still coming up, usable, not there at all, or
+ * "idle": saved but not yet asked to connect, as every saved environment reads at boot.
+ */
+export type PaneEnvironmentState = "connecting" | "ready" | "unreachable" | "idle";
 
 export function paneEnvironmentState(input: {
   readonly catalogReady: boolean;
@@ -92,6 +95,7 @@ export function paneEnvironmentState(input: {
   if (!input.catalogReady || !input.localListed) return "connecting";
   // Only a first try is worth waiting on; "reconnecting" can retry forever.
   if (input.phase === "connecting") return "connecting";
+  if (input.phase === "available") return "idle";
   if (input.phase !== "connected") return "unreachable";
   return input.shellLive ? "ready" : "connecting";
 }
@@ -106,11 +110,7 @@ export function paneFallback(input: {
   return input.environment === "ready" && input.threadPending ? "loading" : "unavailable";
 }
 
-/**
- * Whether a saved pane can be resumed. A draft passes its project's environment. Only a thread its
- * environment has said is gone is skipped: an unreachable one may just not have connected yet, and
- * skipping it leaves home to start a draft that overwrites the pane.
- */
+/** Whether a saved pane can be resumed. A draft passes its project's environment. */
 export function paneRestoreState(input: {
   readonly heldElsewhere: boolean;
   /** Null when the pane has no environment left, such as a draft whose session is gone. */
@@ -119,7 +119,8 @@ export function paneRestoreState(input: {
 }): "ready" | "waiting" | "gone" {
   if (input.heldElsewhere) return "gone";
   if (input.environment === "connecting") return "waiting";
-  if (input.environment === "unreachable") return "ready";
+  // Nothing can say yet whether its thread exists; skipping it lets home's draft overwrite it.
+  if (input.environment === "idle") return "ready";
   return input.environment === "ready" && input.exists ? "ready" : "gone";
 }
 
@@ -130,7 +131,7 @@ export type PaneRestore =
 
 /**
  * Where a window opened at home resumes: its focused pane, else the next pane in order, skipping
- * threads that are gone or held by another window. Waits while a better pane may load.
+ * threads that are gone or on environments it cannot reach. Waits while a better pane may load.
  */
 export function resolvePaneRestore(
   layout: PaneLayout,
