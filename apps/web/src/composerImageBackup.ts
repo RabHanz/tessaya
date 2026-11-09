@@ -50,12 +50,78 @@ interface DraftImageStore {
 
 const backupKey = (threadKey: string, imageId: string) => `${threadKey}\u0000${imageId}`;
 
+// Sent and removed images are written here synchronously, so a reload that beats the async
+// IndexedDB delete cannot bring them back.
+const TOMBSTONES_KEY = "t3code:composer-image-tombstones";
+const MAX_TOMBSTONES = 200;
+
+function readTombstones(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(TOMBSTONES_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((key) => typeof key === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeTombstones(keys: ReadonlyArray<string>) {
+  try {
+    localStorage.setItem(TOMBSTONES_KEY, JSON.stringify(keys.slice(-MAX_TOMBSTONES)));
+  } catch {
+    // Storage full or blocked: the async delete is then the only guard.
+  }
+}
+
+function removeBackup(key: string) {
+  void withStore("readwrite", (images) => images.delete(key)).then(
+    () => writeTombstones(readTombstones().filter((tombstone) => tombstone !== key)),
+    () => undefined,
+  );
+}
+
 /** Mirrors every draft image into IndexedDB and restores the ones a reload dropped. */
 export function startComposerImageBackup(
   store: DraftImageStore,
-  restore: (backups: ReadonlyArray<ComposerImageBackup>) => ReadonlyArray<ComposerImageBackup>,
+  restore: (
+    backups: ReadonlyArray<ComposerImageBackup>,
+    removed: (backup: ComposerImageBackup) => boolean,
+  ) => ReadonlyArray<ComposerImageBackup>,
 ): void {
-  if (typeof indexedDB === "undefined") return;
+  if (typeof indexedDB === "undefined" || typeof localStorage === "undefined") return;
+  const tracked = new Set<string>();
+  const sync = (state: ReturnType<DraftImageStore["getState"]>) => {
+    const current = new Set<string>();
+    for (const [threadKey, draft] of Object.entries(state.draftsByThreadKey)) {
+      for (const image of draft.images) {
+        const key = backupKey(threadKey, image.id);
+        current.add(key);
+        if (tracked.has(key)) continue;
+        tracked.add(key);
+        const backup: ComposerImageBackup = {
+          threadKey,
+          id: image.id,
+          name: image.name,
+          mimeType: image.mimeType,
+          sizeBytes: image.sizeBytes,
+          ...(image.source ? { source: image.source } : {}),
+          blob: image.file,
+        };
+        void withStore("readwrite", (images) => images.put(backup, key)).catch(() => undefined);
+      }
+    }
+    const gone = [...tracked].filter((key) => !current.has(key));
+    if (gone.length === 0) return;
+    writeTombstones([...readTombstones().filter((key) => !gone.includes(key)), ...gone]);
+    for (const key of gone) {
+      tracked.delete(key);
+      removeBackup(key);
+    }
+  };
+  // Tracking starts before the backups load, so a removal in the meantime is tombstoned.
+  sync(store.getState());
+  store.subscribe((state, previous) => {
+    if (state.draftsByThreadKey !== previous.draftsByThreadKey) sync(state);
+  });
   void (async () => {
     const stored: unknown[] =
       (await withStore("readonly", (images) => images.getAll()).catch(() => undefined)) ?? [];
@@ -68,45 +134,14 @@ export function startComposerImageBackup(
         "threadKey" in backup &&
         typeof backup.threadKey === "string",
     );
-    const stale = new Set(restore(backups));
-    for (const backup of stale) {
-      const key = backupKey(backup.threadKey, backup.id);
-      void withStore("readwrite", (images) => images.delete(key)).catch(() => undefined);
+    const tombstones = new Set(readTombstones());
+    for (const backup of restore(backups, (candidate) =>
+      tombstones.has(backupKey(candidate.threadKey, candidate.id)),
+    )) {
+      removeBackup(backupKey(backup.threadKey, backup.id));
     }
-    const backedUp = new Set(
-      backups
-        .filter((backup) => !stale.has(backup))
-        .map((backup) => backupKey(backup.threadKey, backup.id)),
-    );
-    const sync = (state: ReturnType<DraftImageStore["getState"]>) => {
-      const current = new Set<string>();
-      for (const [threadKey, draft] of Object.entries(state.draftsByThreadKey)) {
-        for (const image of draft.images) {
-          const key = backupKey(threadKey, image.id);
-          current.add(key);
-          if (backedUp.has(key)) continue;
-          backedUp.add(key);
-          const backup: ComposerImageBackup = {
-            threadKey,
-            id: image.id,
-            name: image.name,
-            mimeType: image.mimeType,
-            sizeBytes: image.sizeBytes,
-            ...(image.source ? { source: image.source } : {}),
-            blob: image.file,
-          };
-          void withStore("readwrite", (images) => images.put(backup, key)).catch(() => undefined);
-        }
-      }
-      for (const key of backedUp) {
-        if (current.has(key)) continue;
-        backedUp.delete(key);
-        void withStore("readwrite", (images) => images.delete(key)).catch(() => undefined);
-      }
-    };
-    sync(store.getState());
-    store.subscribe((state, previous) => {
-      if (state.draftsByThreadKey !== previous.draftsByThreadKey) sync(state);
-    });
+    // Tombstones whose backups are already gone have done their job.
+    const stillStored = new Set(backups.map((backup) => backupKey(backup.threadKey, backup.id)));
+    writeTombstones(readTombstones().filter((key) => !tombstones.has(key) || stillStored.has(key)));
   })();
 }

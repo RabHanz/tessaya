@@ -95,7 +95,6 @@ import { useShallow } from "zustand/react/shallow";
 import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import {
-  collectComposerContextReferences,
   replaceComposerContextReferences,
   toComposerContextId,
   toKindScopedComposerContextId,
@@ -244,6 +243,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
 const PersistedComposerThreadDraftState = Schema.Struct({
   prompt: Schema.String,
   attachments: Schema.Array(PersistedComposerImageAttachment),
+  // Images whose bytes live only in the IndexedDB backup; they keep an image-only draft alive.
+  backedUpImageIds: Schema.optionalKey(Schema.Array(Schema.String)),
   files: Schema.optionalKey(Schema.Array(PersistedComposerDraftFileAttachment)),
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
   previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
@@ -1848,6 +1849,9 @@ function normalizePersistedDraftsByThreadId(
           return normalized ? [normalized] : [];
         })
       : [];
+    const backedUpImageIds = Array.isArray(draftCandidate.backedUpImageIds)
+      ? draftCandidate.backedUpImageIds.filter((id): id is string => typeof id === "string")
+      : [];
     const files = Array.isArray(draftCandidate.files)
       ? draftCandidate.files.filter(isPersistedComposerDraftFileAttachment)
       : [];
@@ -1977,6 +1981,7 @@ function normalizePersistedDraftsByThreadId(
     if (
       promptCandidate.length === 0 &&
       attachments.length === 0 &&
+      backedUpImageIds.length === 0 &&
       files.length === 0 &&
       terminalContexts.length === 0 &&
       previewAnnotations.length === 0 &&
@@ -2004,6 +2009,7 @@ function normalizePersistedDraftsByThreadId(
     nextDraftsByThreadKey[normalizedThreadKey] = {
       prompt,
       attachments,
+      ...(backedUpImageIds.length > 0 ? { backedUpImageIds } : {}),
       ...(files.length > 0 ? { files } : {}),
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
       ...(previewAnnotations.length > 0 ? { previewAnnotations } : {}),
@@ -2108,6 +2114,7 @@ export function partializeComposerDraftStoreState(
     if (
       draft.prompt.length === 0 &&
       draft.persistedAttachments.length === 0 &&
+      draft.images.length === 0 &&
       draft.files.length === 0 &&
       draft.terminalContexts.length === 0 &&
       draft.previewAnnotations.length === 0 &&
@@ -2123,6 +2130,9 @@ export function partializeComposerDraftStoreState(
     const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
       prompt: draft.prompt,
       attachments: draft.persistedAttachments,
+      ...(draft.images.length > 0
+        ? { backedUpImageIds: draft.images.map((image) => image.id) }
+        : {}),
       ...(draft.files.length > 0
         ? {
             files: draft.files.map((file) => ({
@@ -4256,12 +4266,13 @@ export interface ComposerImageBackup {
 }
 
 /**
- * Puts back draft images a reload dropped because their bytes never reached localStorage. Only
- * a draft whose prompt still holds the image's chip gets it back; a sent or removed image may
- * still have a backup. Returns the backups that are stale and should be deleted.
+ * Puts back draft images a reload dropped because their bytes never reached localStorage.
+ * `removed` marks backups of images that were sent or removed, whose delete may not have landed.
+ * Returns the backups that are stale and should be deleted.
  */
 export function restoreComposerImageBackups(
   backups: ReadonlyArray<ComposerImageBackup>,
+  removed: (backup: ComposerImageBackup) => boolean,
 ): ComposerImageBackup[] {
   const stale: ComposerImageBackup[] = [];
   composerDraftStore.setState((state) => {
@@ -4270,12 +4281,7 @@ export function restoreComposerImageBackups(
     for (const backup of backups) {
       const draft = drafts[backup.threadKey];
       if (draft?.images.some((image) => image.id === backup.id)) continue;
-      if (
-        !draft ||
-        !collectComposerContextReferences(draft.prompt).some(
-          (reference) => reference.contextId === toKindScopedComposerContextId("image", backup.id),
-        )
-      ) {
+      if (!draft || removed(backup)) {
         stale.push(backup);
         continue;
       }
