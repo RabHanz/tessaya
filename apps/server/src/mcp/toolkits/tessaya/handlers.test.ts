@@ -380,3 +380,31 @@ it.effect(
       });
     }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );
+
+it.effect(
+  "an agent's move reaches the same service guard: no approval of its own, and a thread agent may ask",
+  () =>
+    Effect.gen(function* () {
+      const asked: Array<unknown> = [];
+      const catalog = BatonSessionCatalogService.of({
+        moveIntoTessaya: (input: { providerChangeApproved?: boolean }) =>
+          Effect.sync(() => {
+            asked.push(input);
+            return input.providerChangeApproved === true
+              ? { state: "moved", detail: "ok", instanceId: "claudeAgent" }
+              : { state: "refused", detail: "needs approval", instanceId: null };
+          }),
+      } as never);
+      const runtime = Context.make(BatonSessionCatalogService, catalog) as never;
+      const refused = yield* callTool("thread", runtime, "tessaya_move_into_tessaya", {
+        threadId: thread,
+      });
+      expect(refused.result).toMatchObject({ state: "refused" });
+      expect(asked).toEqual([{ threadId: thread }]);
+      const moved = yield* callTool("full-access", runtime, "tessaya_move_into_tessaya", {
+        threadId: thread,
+        providerChangeApproved: true,
+      });
+      expect(moved.result).toMatchObject({ state: "moved" });
+    }),
+);

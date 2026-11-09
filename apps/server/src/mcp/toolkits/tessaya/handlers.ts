@@ -219,6 +219,17 @@ export const layer = McpToolAccess.toLayer(
           ),
         { linkedCallers: "allowed" },
       ),
+      // The service refuses a busy session and a move without the user's approval; the agent's word is passed as is.
+      tessaya_move_into_tessaya: McpToolAccess.writesThreads(
+        (input) => [input.threadId],
+        (input) =>
+          handlers[BATON_SESSIONS_WS_METHODS.moveIntoTessaya]({
+            threadId: input.threadId,
+            ...(input.providerChangeApproved === undefined
+              ? {}
+              : { providerChangeApproved: input.providerChangeApproved }),
+          }).pipe(Effect.mapError(failed)),
+      ),
       weave_list: McpToolAccess.reads((input) =>
         call(
           handlers[BATON_WEAVE_WS_METHODS.list](
