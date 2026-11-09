@@ -14,6 +14,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
 
 export const SteeringExecutionPolicyV2 = Schema.Literals(["active_steering", "interrupt_restart"]);
 export type SteeringExecutionPolicyV2 = typeof SteeringExecutionPolicyV2.Type;
@@ -46,7 +47,7 @@ export class CommandPolicyCapabilityUnsupportedError extends Schema.TaggedError<
   },
 ) {
   override get message(): string {
-    return `${this.providerInstanceId} cannot satisfy ${this.capability} for command ${this.commandId}: ${this.detail}`;
+    return `${instanceLabel(this.providerInstanceId)} cannot satisfy ${this.capability} for command ${this.commandId}: ${this.detail}`;
   }
 }
 

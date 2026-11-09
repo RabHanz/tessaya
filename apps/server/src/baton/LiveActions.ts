@@ -32,6 +32,7 @@ import * as Effect from "effect/Effect";
 import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
 import { setLiveModel } from "@t3tools/baton-shared/liveModel";
 import { herdrSend } from "./HerdrSend.ts";
+import { TESSAYA_CLI } from "./SessionCatalogLive.ts";
 
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { isThreadConfigDir, readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
@@ -101,8 +102,6 @@ const alive = (pid: number): boolean => {
   }
 };
 
-const BATON = NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
-
 export const liveAdopt = (input: BatonLiveAdoptInput): Effect.Effect<BatonLiveAdoptResult> =>
   Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
@@ -125,18 +124,25 @@ export const liveAdopt = (input: BatonLiveAdoptInput): Effect.Effect<BatonLiveAd
         return { adopted: false, pane: null, detail: "It did not exit; left as it was." };
       const out = await new Promise<string>((resolve) =>
         NodeChildProcess.execFile(
-          BATON,
+          TESSAYA_CLI,
           ["--resume", session.sessionId, session.cwd],
           {
             timeout: 30_000,
-            env: { ...process.env, PATH: `${NodePath.dirname(BATON)}:${process.env.PATH ?? ""}` },
+            env: {
+              ...process.env,
+              PATH: `${NodePath.dirname(TESSAYA_CLI)}:${process.env.PATH ?? ""}`,
+            },
           },
           (_error, stdout, stderr) => resolve(`${stdout}${stderr}`),
         ),
       );
       const pane = /running in (\S+) pane (\S+)/.exec(out);
       return pane === null
-        ? { adopted: false, pane: null, detail: `baton --resume said: ${out.trim().slice(0, 200)}` }
+        ? {
+            adopted: false,
+            pane: null,
+            detail: `tessaya --resume said: ${out.trim().slice(0, 200)}`,
+          }
         : { adopted: true, pane: `${pane[1]}~${pane[2]}`, detail: `Now in Herdr ${pane[1]}.` };
     });
   });

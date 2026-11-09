@@ -13,7 +13,7 @@ const parts = (version: string) => {
   return { core: core.split(".").map((n) => Number.parseInt(n, 10) || 0), pre: pre?.split(".") };
 };
 
-/** Semver precedence: `0.1.2-baton.41` is older than `0.1.2` and newer than `0.1.2-baton.9`. */
+/** Semver precedence: `0.1.2-tessaya.41` is older than `0.1.2` and newer than `0.1.2-tessaya.9` or any `-baton.N`. */
 export const compareVersions = (a: string, b: string): number => {
   const x = parts(a);
   const y = parts(b);

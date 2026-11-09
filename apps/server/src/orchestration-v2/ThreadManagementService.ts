@@ -67,6 +67,7 @@ import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimi
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 
@@ -321,7 +322,7 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
   },
 ) {
   override get message(): string {
-    return `Provider instance "${this.instanceId}" is disabled for project ${this.projectId}.`;
+    return `Provider instance "${instanceLabel(this.instanceId)}" is disabled for project ${this.projectId}.`;
   }
 }
 

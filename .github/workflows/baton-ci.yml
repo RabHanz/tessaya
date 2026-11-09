@@ -109,7 +109,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/resource-monitor/linux-x64"
           cp native/resource-monitor/target/release/t3-resource-monitor "$RUNNER_TEMP/resource-monitor/linux-x64/"
           export BATON_RESOURCE_MONITOR_DIR="$RUNNER_TEMP/resource-monitor"
-          NODE_ENV=production bash scripts/tessaya/release-build.sh 0.0.0-baton.0
+          NODE_ENV=production bash scripts/tessaya/release-build.sh 0.0.0-tessaya.0
 
       # Not a gate: the barge-in detector's measured numbers, printed whenever the voice package changes (docs/baton/BARGE_IN.md).
       - name: Barge-in detector, measured (report only)

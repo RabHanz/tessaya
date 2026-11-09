@@ -53,6 +53,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
@@ -88,7 +89,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
   },
 ) {
   override get message(): string {
-    return `Failed to open provider instance ${this.instanceId} session ${this.providerSessionId}.`;
+    return `Failed to open provider instance ${instanceLabel(this.instanceId)} session ${this.providerSessionId}.`;
   }
 }
 
@@ -2571,7 +2572,7 @@ export const layerWithOptions = (
                 releaseEntry({
                   providerSessionId: entry.runtime.providerSessionId,
                   reason: "manual_shutdown",
-                  detail: `Provider instance ${instanceId} logged out.`,
+                  detail: `Provider instance ${instanceLabel(instanceId)} logged out.`,
                 }).pipe(Effect.exit),
               { concurrency: "unbounded" },
             );

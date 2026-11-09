@@ -12,6 +12,7 @@ import * as Scope from "effect/Scope";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import { ProviderAdapterDriverCreateError } from "@t3tools/provider-core/server/adapterDriver";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
 
 const isProviderSetupError = Schema.is(ProviderSetupError);
 
@@ -22,7 +23,7 @@ export class ProviderAdapterRegistryLookupError extends Schema.TaggedError<Provi
   },
 ) {
   override get message(): string {
-    return `No orchestration provider adapter is registered for ${this.instanceId}.`;
+    return `No orchestration provider adapter is registered for ${instanceLabel(this.instanceId)}.`;
   }
 }
 
