@@ -89,10 +89,12 @@ import {
 } from "~/lib/composerContextReferences";
 import {
   collectComposerContextReferences,
+  replaceComposerContextReferences,
   toKindScopedComposerContextId,
 } from "@t3tools/shared/composerContextReferences";
 import {
   previewAnnotationContextLabel,
+  resolveUserMessageContext,
   reviewCommentContextLabel,
   terminalContextReference,
 } from "../lib/composerContextRecords";
@@ -759,6 +761,41 @@ export function cloneComposerImageForRetry(
   } catch {
     return image;
   }
+}
+
+/**
+ * A rewind restores a message's attachments under fresh ids, while its text still names the
+ * sent ones. Maps each chip to its restored attachment through the message's context records
+ * (contextId -> attachmentId), by attachment position, never by name.
+ */
+export function relinkRewoundAttachmentReferences(
+  text: string,
+  message: Pick<ChatMessage, "text" | "context" | "attachments">,
+  restored: ReadonlyArray<{ type: "image" | "file"; id: string }>,
+): string {
+  const restoredByAttachmentId = new Map(
+    (message.attachments ?? []).flatMap((attachment, index) => {
+      const target = restored[index];
+      return target ? [[attachment.id, target] as const] : [];
+    }),
+  );
+  const relinked = new Map<string, string>();
+  for (const record of resolveUserMessageContext(message).records) {
+    if ((record.kind !== "image" && record.kind !== "file") || !("attachmentId" in record)) {
+      continue;
+    }
+    const target = restoredByAttachmentId.get(record.attachmentId);
+    if (target && target.type === record.kind) {
+      relinked.set(record.contextId, toKindScopedComposerContextId(target.type, target.id));
+    }
+  }
+  if (relinked.size === 0) return text;
+  return replaceComposerContextReferences(text, (occurrence) => {
+    const contextId = relinked.get(occurrence.contextId);
+    return contextId === undefined
+      ? occurrence.source
+      : occurrence.source.replace(`/${occurrence.contextId})`, `/${contextId})`);
+  });
 }
 
 export function deriveComposerSendState(options: {

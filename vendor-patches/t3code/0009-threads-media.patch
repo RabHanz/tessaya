@@ -1543,6 +1543,72 @@ index 5a62cde69c3758a8237930de51dfe1143f70f87c..ae59d68979cca71ea208f0991c02d525
    );
  }
  
+diff --git a/apps/web/src/components/chat/chatViewSend.ts b/apps/web/src/components/chat/chatViewSend.ts
+index 81a00823a98be93a7546211063490f6af06d66f7..e603a6f3d428d9285b7aae4ec7f90244157c6b73 100644
+--- a/apps/web/src/components/chat/chatViewSend.ts
++++ b/apps/web/src/components/chat/chatViewSend.ts
+@@ -42,6 +42,7 @@ import {
+   readFileAsDataUrl,
+   prepareRevertedMessageAttachments,
+   waitForRevertedMessage,
++  relinkRewoundAttachmentReferences,
+ } from "../ChatView.logic";
+ import { readPreparedConnection } from "../../state/session";
+ import { recallableComposerPrompt } from "./composerPromptHistory";
+@@ -218,17 +219,9 @@ export async function rewindToMessage(input: {
+       });
+       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+     });
+-    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
+-    const restoredPrompt = recallableComposerPrompt(message.text);
+-    const nextPrompt =
+-      restoredPrompt.length === 0
+-        ? currentPrompt
+-        : currentPrompt.length > 0
+-          ? `${currentPrompt}\n\n${restoredPrompt}`
+-          : restoredPrompt;
+-    store.setPrompt(draftTarget, nextPrompt);
+     const images: ComposerImageAttachment[] = [];
+     const restoredFiles: ComposerFileAttachment[] = [];
++    const restored: Array<ComposerImageAttachment | ComposerFileAttachment> = [];
+     files.forEach((file, index) => {
+       const attachment = {
+         id: randomUUID(),
+@@ -238,11 +231,32 @@ export async function rewindToMessage(input: {
+         file,
+       };
+       if (message.attachments?.[index]?.type === "image") {
+-        images.push({ ...attachment, type: "image", previewUrl: URL.createObjectURL(file) });
++        const image = {
++          ...attachment,
++          type: "image" as const,
++          previewUrl: URL.createObjectURL(file),
++        };
++        images.push(image);
++        restored.push(image);
+       } else {
+-        restoredFiles.push({ ...attachment, type: "file" });
++        const restoredFile = { ...attachment, type: "file" as const };
++        restoredFiles.push(restoredFile);
++        restored.push(restoredFile);
+       }
+     });
++    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
++    const restoredPrompt = relinkRewoundAttachmentReferences(
++      recallableComposerPrompt(message.text),
++      message,
++      restored,
++    );
++    const nextPrompt =
++      restoredPrompt.length === 0
++        ? currentPrompt
++        : currentPrompt.length > 0
++          ? `${currentPrompt}\n\n${restoredPrompt}`
++          : restoredPrompt;
++    store.setPrompt(draftTarget, nextPrompt);
+     store.addImages(draftTarget, images, { allowDuplicates: true });
+     store.addFiles(draftTarget, restoredFiles, { allowDuplicates: true });
+     return { error: null, prompt: nextPrompt };
 diff --git a/apps/web/src/components/chat/timelineRowContext.ts b/apps/web/src/components/chat/timelineRowContext.ts
 index 1a0c3aa014ad02d4f9d114ee094059344a66ef2f..5213f9d5dad8046db3776f2a19e5590b7b8d2a61 100644
 --- a/apps/web/src/components/chat/timelineRowContext.ts
