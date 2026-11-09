@@ -123,6 +123,19 @@ if [[ -z "$real" ]]; then
   done < <(type -P -a claude)
 fi
 [[ -n "$real" ]] || { echo "tessaya-claude: no claude on PATH" >&2; exit 127; }
+# Only conversations someone talks to get a dir: not one-shot `-p` workers (unless TESSAYA_THREAD_DIR_PRINT=1, the
+# proof's), not `claude mcp|update|doctor|…`, not --version or --help.
+case "${1:-}" in
+  -v | --version | -h | --help | mcp | update | upgrade | doctor | install | config | setup-token | plugin | migrate-installer)
+    exec "$real" "$@" ;;
+esac
+if [[ "${TESSAYA_THREAD_DIR_PRINT:-}" != 1 ]]; then
+  for arg in "$@"; do [[ "$arg" == "-p" || "$arg" == "--print" ]] && exec "$real" "$@"; done
+fi
+# Dirs whose conversation has not run for 30 days go; a later resume starts from the machine's login again.
+find "$root" -mindepth 1 -maxdepth 1 -type d -name 'n-*' -mtime +30 -exec sh -c \
+  'for d; do [ -n "$(ls -A "$d/sessions" 2> /dev/null)" ] || rm -rf "$d"; done' sh {} + 2> /dev/null || true
+find "$root" -mindepth 1 -maxdepth 1 -xtype l -name 's-*' -delete 2> /dev/null || true
 # Already in a thread's own dir (a hook or tool starting claude inside one): leave it there.
 [[ "$(readlink -f "${CLAUDE_CONFIG_DIR:-/}")" != "$(readlink -f "$root")"/* ]] || exec "$real" "$@"
 dir="$(pick_dir "$resume")"
