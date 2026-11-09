@@ -584,10 +584,22 @@ index 54b16d7aa2aef6d888a9b5eecb787bac19eaa0e6..e3e955efd3e550c4b96debe9d184b292
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 46ea45431055488dec1344429bcc791bb4be1f19..4975e5f1ebbb9722fbfa35c1712ec0bb45f14644 100644
+index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd57dca599 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-@@ -61,11 +61,13 @@ import * as Orchestrator from "./Orchestrator.ts";
+@@ -2,6 +2,11 @@ import type {
+   OrchestrationV2SearchThreadInput,
+   OrchestrationV2SearchThreadResult,
+ } from "@t3tools/contracts";
++import {
++  BATON_LIVE_INSTANCE,
++  liveSendingRefusal,
++  liveSendingUnavailableReason,
++} from "../baton/BatonLiveInstance.ts";
+ import type {
+   ProjectionRecordField,
+   ProjectionRecordFilter,
+@@ -61,11 +66,13 @@ import * as Orchestrator from "./Orchestrator.ts";
  import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
  import { projectedRowEncodedBytes } from "./threadHistoryPaging.ts";
  import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -601,16 +613,19 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..4975e5f1ebbb9722fbfa35c1712ec0bb
  
  export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
  
-@@ -320,7 +322,7 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
+@@ -320,7 +327,10 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
    },
  ) {
    override get message(): string {
 -    return `Provider instance "${this.instanceId}" is disabled for project ${this.projectId}.`;
++    // Tessaya: the Terminal instance is off only where sending cannot work; say why in his words.
++    if (this.instanceId === BATON_LIVE_INSTANCE)
++      return liveSendingRefusal(liveSendingUnavailableReason());
 +    return `Provider instance "${instanceLabel(this.instanceId)}" is disabled for project ${this.projectId}.`;
    }
  }
  
-@@ -670,9 +672,21 @@ const make = Effect.gen(function* () {
+@@ -670,9 +680,21 @@ const make = Effect.gen(function* () {
        Effect.andThen(orchestrator.getCheckpointContext(threadId)),
      );
  
@@ -632,7 +647,7 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..4975e5f1ebbb9722fbfa35c1712ec0bb
      );
    const getThreadTranscript = Effect.fn("orchestrationV2.threadManagement.getThreadTranscript")(
      function* (threadId: ThreadId) {
-@@ -706,6 +720,7 @@ const make = Effect.gen(function* () {
+@@ -706,6 +728,7 @@ const make = Effect.gen(function* () {
    ) =>
      ensureProjectionTranscript(threadId).pipe(
        Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),

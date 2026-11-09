@@ -584,4 +584,21 @@ describe("liveProviderInstance", () => {
     const { config } = liveProviderInstance("/usr/bin/node", "/x/baton-live-acp.mjs");
     expect(decodeAcpSettings(config).customModels).toEqual(["live"]);
   });
+
+  it("is registered off where sending cannot work, and runs on Electron as Node on the desktop", () => {
+    const off = liveProviderInstance(
+      "C:/T3/Tessaya.exe",
+      "C:/T3/resources/baton-live/baton-live-acp.mjs",
+      {
+        enabled: false,
+        electron: true,
+      },
+    );
+    expect(off.enabled).toBe(false);
+    expect(off.environment).toEqual([
+      { name: "ELECTRON_RUN_AS_NODE", value: "1", sensitive: false },
+    ]);
+    expect(decodeAcpSettings(off.config).commandPath).toBe("C:/T3/Tessaya.exe");
+    expect("environment" in liveProviderInstance("/usr/bin/node", "/x.mjs")).toBe(false);
+  });
 });

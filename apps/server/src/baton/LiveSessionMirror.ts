@@ -69,9 +69,14 @@ import {
   type LiveTranscriptMessage,
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
 
-import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
+import {
+  BATON_LIVE_INSTANCE,
+  liveSendingUnavailable,
+  noteLiveSendingUnavailable,
+} from "./BatonLiveInstance.ts";
 import { makeSessionHomes } from "./SessionHomes.ts";
 import { carriesMain, decideMainPin } from "./MainSession.ts";
 import { pointAtSessionEvents } from "./MoveIntoTessaya.ts";
@@ -124,12 +129,38 @@ const MODEL = LIVE_MODEL;
  * an instance that fails to decode is dropped, and every live thread then fails with "no adapter registered".
  * The agent script itself names the model "Claude Code".
  */
-export const liveProviderInstance = (node: string, script: string) => ({
+export const liveProviderInstance = (
+  node: string,
+  script: string,
+  options: {
+    /** Off when sending cannot work here: Terminal is then left out of the picker, and a turn says why. */
+    readonly enabled?: boolean;
+    /** The node is the desktop's own Electron, which runs a script only as Node. */
+    readonly electron?: boolean;
+  } = {},
+) => ({
   driver: DRIVER,
   displayName: "Terminal session",
-  enabled: true,
+  enabled: options.enabled ?? true,
+  ...(options.electron === true
+    ? { environment: [{ name: "ELECTRON_RUN_AS_NODE", value: "1", sensitive: false }] }
+    : {}),
   config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
 });
+
+/** The node found is this server's own Electron, which runs a script only with ELECTRON_RUN_AS_NODE. */
+const isElectronNode = (node: string): boolean =>
+  process.env.ELECTRON_RUN_AS_NODE === "1" && node === process.execPath;
+
+/** Herdr where the agent looks for it (BATON_HERDR_BIN, ~/.local/bin) or on PATH. */
+const herdrPresent = (): boolean =>
+  [
+    process.env.BATON_HERDR_BIN,
+    NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr"),
+    ...(process.env.PATH ?? "").split(NodePath.delimiter).map((dir) => NodePath.join(dir, "herdr")),
+  ].some(
+    (candidate) => candidate !== undefined && candidate !== "" && NodeFS.existsSync(candidate),
+  );
 /**
  * Id namespace of live threads. "baton-live" (2026-10-27 rounds 1–2) back-filled older history
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
@@ -485,6 +516,8 @@ export const findNode = (): string | null => {
   } catch {}
   const candidates = [
     process.env.BATON_LIVE_NODE,
+    // The desktop's server runs on Electron as Node: the same executable runs the agent.
+    process.env.ELECTRON_RUN_AS_NODE === "1" ? process.execPath : undefined,
     stateFile(home, "node"),
     NodePath.join(home, "bin", "node"),
     ...nvmNodes,
@@ -1014,14 +1047,24 @@ const make = Effect.gen(function* () {
   const ensureProviderInstance = Effect.gen(function* () {
     const script = agentScript();
     const node = findNode();
-    if (!NodeFS.existsSync(script) || node === null) {
-      yield* Effect.logWarning("Tessaya live threads: no agent script or Node, sending is off", {
+    const reason = liveSendingUnavailable({
+      platform: yield* HostProcess.Platform,
+      herdr: herdrPresent(),
+      script: NodeFS.existsSync(script),
+      node: node !== null,
+    });
+    noteLiveSendingUnavailable(reason);
+    if (reason !== null)
+      yield* Effect.logWarning("Tessaya live threads: sending is off here", {
+        reason,
         script,
         node,
       });
-      return;
-    }
-    const wanted = liveProviderInstance(node, script);
+    // Registered either way, so its threads are Terminal threads that say why, not an unknown instance.
+    const wanted = liveProviderInstance(node ?? process.execPath, script, {
+      enabled: reason === null,
+      electron: node !== null && isElectronNode(node),
+    });
     const current = (yield* settings.getSettings).providerInstances[LIVE_INSTANCE_ID];
     // @effect-diagnostics-next-line globalJsonInEffect:off - settings values, always serialisable.
     if (JSON.stringify(current) === JSON.stringify(wanted)) return;

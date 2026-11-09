@@ -1122,6 +1122,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
   WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
   WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
 ] as const;
+/** The Terminal-thread agent and what it imports (Node built-ins otherwise). */
+export const BATON_LIVE_AGENT_FILES = ["baton-live-acp.mjs", "pane-prompt.mjs"] as const;
 export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/cursor-sdk",
@@ -1144,6 +1146,11 @@ export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/memory-model",
     to: "memory-model",
+  },
+  // The Terminal-thread agent (scripts/tessaya/live), which the bundled server runs with Electron as Node.
+  {
+    from: "apps/desktop/prod-resources/baton-live",
+    to: "baton-live",
   },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
@@ -4041,6 +4048,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     path.join(repoRoot, "apps/server/resources/memory-model"),
     path.join(stageProdResourcesDir, "memory-model"),
   );
+  yield* fs.makeDirectory(path.join(stageProdResourcesDir, "baton-live"), { recursive: true });
+  for (const file of BATON_LIVE_AGENT_FILES) {
+    yield* fs.copy(
+      path.join(repoRoot, "scripts/tessaya/live", file),
+      path.join(stageProdResourcesDir, "baton-live", file),
+    );
+  }
 
   const configuredMacPasskeySigning =
     options.platform === "mac" && options.signed
