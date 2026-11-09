@@ -592,10 +592,10 @@ index c810890ebf96b1c7112c721575303c5f7ed7a435..e59f34cb462f6a4ce5aeaed355d4a1c1
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
 diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
-index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a64675a318 100644
+index 0002beeaf9fef7dd2c9920799430367027b4c23b..1c923265e84f96f371b870a6a5e64e3d22a5fde8 100644
 --- a/apps/web/src/components/chat/ComposerControlsBar.tsx
 +++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
-@@ -27,6 +27,14 @@ import {
+@@ -27,6 +27,15 @@ import {
    ComposerPickerFooter,
    describeComposerEffort,
  } from "./ComposerModelEffort";
@@ -605,12 +605,13 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a6
 +  BatonLimitMark,
 +  BatonPickerAccount,
 +  BatonUsageDetails,
++  batonPickModel,
 +  batonRailEntries,
 +} from "./BatonPickerAccount";
  import type { useComposerProviderModel } from "./useComposerProviderModel";
  import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
  
-@@ -88,6 +96,7 @@ export function ComposerControlsBar(props: {
+@@ -88,6 +97,7 @@ export function ComposerControlsBar(props: {
    onModelPickerOpenChange: (open: boolean) => void;
    modelPickerIconClassName: string | undefined;
    getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
@@ -618,7 +619,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a6
  }) {
    const {
      environmentId,
-@@ -152,20 +161,25 @@ export function ComposerControlsBar(props: {
+@@ -152,20 +162,25 @@ export function ComposerControlsBar(props: {
      measuredHiddenBlockCount,
    });
    const controlSize = composerControlsCollapsed ? "xs" : "sm";
@@ -657,7 +658,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a6
    const restingBlockDefs = showModeBlock
      ? [
          {
-@@ -200,7 +214,12 @@ export function ComposerControlsBar(props: {
+@@ -200,7 +215,12 @@ export function ComposerControlsBar(props: {
        multipleModelSelections={multipleModelSelections}
        onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
        selectedModelSelection={selectedModelSelection}
@@ -671,7 +672,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a6
        activeInstanceId={
          providerCatalogPending
            ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
-@@ -213,7 +232,7 @@ export function ComposerControlsBar(props: {
+@@ -213,7 +233,7 @@ export function ComposerControlsBar(props: {
        }
        lockedProvider={lockedProvider}
        lockedContinuationGroupKey={lockedContinuationGroupKey}
@@ -680,7 +681,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a6
        keybindings={keybindings}
        modelOptionsByInstance={modelOptionsByInstance}
        size={controlSize}
-@@ -222,7 +241,15 @@ export function ComposerControlsBar(props: {
+@@ -222,7 +242,15 @@ export function ComposerControlsBar(props: {
          MODEL_TRIGGER_STATES,
          composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
        )}
@@ -697,7 +698,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a6
        triggerDetail={effort.detail}
        triggerShortcuts={
          pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
-@@ -234,8 +261,28 @@ export function ComposerControlsBar(props: {
+@@ -234,8 +262,33 @@ export function ComposerControlsBar(props: {
            runtimeMode={compatibleRuntimeMode}
            runtimeModeOptions={compatibleRuntimeModeOptions}
            onRuntimeModeChange={handleRuntimeModeChange}
@@ -721,7 +722,12 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..fb6289b6daf1159aa5b3931dda77e2a6
 +          threadRef={batonThreadRef}
 +          environmentId={environmentId}
 +          threadInstanceId={selectedInstanceId}
-+          onPickInstance={(instanceId) => onProviderModelSelect(instanceId, selectedModel)}
++          onPickInstance={(instanceId) =>
++            onProviderModelSelect(
++              instanceId,
++              batonPickModel(entry, selectedProvider, selectedModel),
++            )
++          }
 +        />
 +      )}
        terminalOpen={terminalOpen}

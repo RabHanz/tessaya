@@ -46,38 +46,69 @@ describe("selectionOnInstance", () => {
   });
 });
 
-const idle: ApplyLive = () => Effect.succeed("done");
+const idle: ApplyLive = () => Effect.succeed({ state: "done" });
 
 effectIt.effect(
-  "applies a terminal session's queued change once it is idle, and can cancel it",
+  "applies a terminal session's queued change once it is idle, across a restart",
   () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const engine = { threadShell: () => Effect.succeed(null) } as unknown as BatonEngineShape;
       let busy = true;
       const told: Array<unknown> = [];
-      const moves = yield* makeMoves(engine, sql, (_sessionId, change) =>
+      const apply: ApplyLive = (_sessionId, change) =>
         Effect.sync(() => {
-          if (busy) return "busy";
+          if (busy) return { state: "busy" as const };
           told.push(change);
-          return "done";
-        }),
-      );
+          return { state: "done" as const };
+        });
+      const moves = yield* makeMoves(engine, sql, apply);
       yield* moves.queueLive("s1", { effort: "high" });
       // A later pick joins the waiting one.
       yield* moves.queueLive("s1", { model: "claude-opus-5-5" });
       yield* moves.settle("baton-live4:s1");
       expect(told).toEqual([]);
-      expect(yield* moves.liveQueued("s1")).toEqual({ effort: "high", model: "claude-opus-5-5" });
+      // A restart keeps it.
+      const restarted = yield* makeMoves(engine, sql, apply);
+      expect((yield* restarted.liveQueued("s1")).queued).toEqual({
+        effort: "high",
+        model: "claude-opus-5-5",
+      });
       busy = false;
-      yield* moves.settle("baton-live4:s1");
+      yield* restarted.settle("baton-live4:s1");
       expect(told).toEqual([{ effort: "high", model: "claude-opus-5-5" }]);
-      expect(yield* moves.liveQueued("s1")).toBeNull();
-      yield* moves.queueLive("s1", { accountKey: "5" });
-      expect(yield* moves.cancelLive("s1")).toBe(true);
-      yield* moves.settle("baton-live4:s1");
-      expect(told).toHaveLength(1);
+      expect(yield* restarted.liveQueued("s1")).toEqual({ queued: null, failure: null });
+      expect((yield* (yield* makeMoves(engine, sql, apply)).liveQueued("s1")).queued).toBeNull();
     }).pipe(Effect.provide(SqlitePersistenceMemory)),
+);
+
+effectIt.effect("a cancel or a newer pick during an apply wins, and a failure is reported", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const engine = { threadShell: () => Effect.succeed(null) } as unknown as BatonEngineShape;
+    let during: Effect.Effect<unknown> = Effect.void;
+    let answer: { state: "busy" | "done" } | { state: "failed"; detail: string } = {
+      state: "busy",
+    };
+    const moves = yield* makeMoves(engine, sql, () => Effect.as(during, answer));
+    yield* moves.queueLive("s1", { accountKey: "5" });
+    during = moves.cancelLive("s1");
+    yield* moves.settle("baton-live4:s1");
+    expect((yield* moves.liveQueued("s1")).queued).toBeNull();
+
+    yield* moves.queueLive("s1", { accountKey: "5" });
+    during = moves.queueLive("s1", { accountKey: "4" });
+    yield* moves.settle("baton-live4:s1");
+    expect((yield* moves.liveQueued("s1")).queued).toEqual({ accountKey: "4" });
+
+    during = Effect.void;
+    answer = { state: "failed", detail: "Not switched: refused." };
+    yield* moves.settle("baton-live4:s1");
+    expect(yield* moves.liveQueued("s1")).toEqual({
+      queued: null,
+      failure: "Not switched: refused.",
+    });
+  }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );
 
 effectIt.effect("keeps a thread on its account across a restart, and lets it go again", () =>

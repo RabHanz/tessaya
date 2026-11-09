@@ -33,6 +33,7 @@ import {
   BatonLimitMark,
   BatonPickerAccount,
   BatonUsageDetails,
+  batonPickModel,
   batonRailEntries,
 } from "./BatonPickerAccount";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
@@ -280,7 +281,12 @@ export function ComposerControlsBar(props: {
           threadRef={batonThreadRef}
           environmentId={environmentId}
           threadInstanceId={selectedInstanceId}
-          onPickInstance={(instanceId) => onProviderModelSelect(instanceId, selectedModel)}
+          onPickInstance={(instanceId) =>
+            onProviderModelSelect(
+              instanceId,
+              batonPickModel(entry, selectedProvider, selectedModel),
+            )
+          }
         />
       )}
       terminalOpen={terminalOpen}
