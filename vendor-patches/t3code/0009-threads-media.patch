@@ -1731,6 +1731,121 @@ index ac4ef649ed07c2c6d1c057424afdb05687d64e53..1b60b5e9abece9273e31451bfb691db1
      ...(state.branch
        ? [
            {
+diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
+index cd0e74d231aaca9c3d15531c39d577990c7df62b..030da341776daa3fde9ddb9fff55147ed43dd813 100644
+--- a/apps/web/src/composerDraftStore.test.ts
++++ b/apps/web/src/composerDraftStore.test.ts
+@@ -90,6 +90,7 @@ import {
+   type ComposerImageAttachment,
+   composerFileNeedsReattach,
+   partializeComposerDraftStoreState,
++  restoreComposerImageBackups,
+   useComposerDraftStore,
+   DraftId,
+ } from "./composerDraftStore";
+@@ -416,6 +417,45 @@ describe("composerDraftStore file attachments", () => {
+     ]);
+   });
+ 
++  it("restores a draft image whose bytes never reached localStorage after a reload", () => {
++    const store = useComposerDraftStore.getState();
++    const image = makeImage({ id: "img-reload", previewUrl: "blob:img-reload" });
++    store.addImages(threadRef, [image]);
++    store.setPrompt(threadRef, "look ![image.png](t3-context://v1/image/image_img-reload)");
++    const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
++    const persistApi = useComposerDraftStore.persist as unknown as {
++      getOptions: () => {
++        merge: (
++          persistedState: unknown,
++          currentState: ReturnType<typeof useComposerDraftStore.getState>,
++        ) => ReturnType<typeof useComposerDraftStore.getState>;
++      };
++    };
++    // The composer never serialized the image, as when the localStorage write misses.
++    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
++    useComposerDraftStore.setState(
++      persistApi.getOptions().merge(persisted, useComposerDraftStore.getState()),
++    );
++    expect(useComposerDraftStore.getState().draftsByThreadKey[threadKey]?.images).toEqual([]);
++
++    restoreComposerImageBackups([
++      {
++        threadKey,
++        id: image.id,
++        name: image.name,
++        mimeType: image.mimeType,
++        sizeBytes: image.sizeBytes,
++        blob: image.file,
++      },
++    ]);
++
++    const restored = useComposerDraftStore.getState().draftsByThreadKey[threadKey];
++    expect(restored?.prompt).toContain("image_img-reload");
++    expect(restored?.images.map(({ id, name, file }) => ({ id, name, size: file.size }))).toEqual([
++      { id: "img-reload", name: "image.png", size: image.sizeBytes },
++    ]);
++  });
++
+   it("persists a pending file as a needs-reattach marker instead of dropping it", () => {
+     const store = useComposerDraftStore.getState();
+     store.addFiles(threadRef, [makeFile("file-pending")]);
+diff --git a/apps/web/src/composerDraftStore.ts b/apps/web/src/composerDraftStore.ts
+index aef9e88a385726458d979e6dca9c0fff705f4f6a..36d7a4df9067146db639cc8b92f571d5b935f4c6 100644
+--- a/apps/web/src/composerDraftStore.ts
++++ b/apps/web/src/composerDraftStore.ts
+@@ -89,6 +89,7 @@ import {
+   environmentContextReference,
+ } from "./lib/composerContextRecords";
+ import { create } from "zustand";
++import { startComposerImageBackup } from "./composerImageBackup";
+ import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
+ import { useShallow } from "zustand/react/shallow";
+ import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
+@@ -4243,6 +4244,44 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
+ 
+ export const useComposerDraftStore = composerDraftStore;
+ 
++export interface ComposerImageBackup {
++  readonly threadKey: string;
++  readonly id: string;
++  readonly name: string;
++  readonly mimeType: string;
++  readonly sizeBytes: number;
++  readonly source?: ComposerImageAttachment["source"];
++  readonly blob: Blob;
++}
++
++/** Puts back draft images a reload dropped because their bytes never reached localStorage. */
++export function restoreComposerImageBackups(backups: ReadonlyArray<ComposerImageBackup>): void {
++  composerDraftStore.setState((state) => {
++    const drafts = { ...state.draftsByThreadKey };
++    let restored = false;
++    for (const backup of backups) {
++      const draft = drafts[backup.threadKey] ?? createEmptyThreadDraft();
++      if (draft.images.some((image) => image.id === backup.id)) continue;
++      const file = new File([backup.blob], backup.name, { type: backup.mimeType });
++      const image: ComposerImageAttachment = {
++        type: "image",
++        id: backup.id,
++        name: backup.name,
++        mimeType: backup.mimeType,
++        sizeBytes: backup.sizeBytes,
++        previewUrl: URL.createObjectURL(file),
++        file,
++        ...(backup.source ? { source: backup.source } : {}),
++      };
++      drafts[backup.threadKey] = { ...draft, images: [...draft.images, image] };
++      restored = true;
++    }
++    return restored ? { draftsByThreadKey: drafts } : state;
++  });
++}
++
++startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
++
+ export function subscribeComposerDraftModelReconciliation(input: {
+   readonly registry: AtomRegistry.AtomRegistry;
+   readonly threadRefsAtom: Atom.Atom<ReadonlyArray<ScopedThreadRef>>;
 diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
 index d22b1d9cf6c4fdca3fa41ca0ccaf49dde08ebe59..1c3a981cdc4bad8760f5d583f0f99e847ea77ad1 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.ts

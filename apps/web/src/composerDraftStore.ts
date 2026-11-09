@@ -89,6 +89,7 @@ import {
   environmentContextReference,
 } from "./lib/composerContextRecords";
 import { create } from "zustand";
+import { startComposerImageBackup } from "./composerImageBackup";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
@@ -4242,6 +4243,44 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
 );
 
 export const useComposerDraftStore = composerDraftStore;
+
+export interface ComposerImageBackup {
+  readonly threadKey: string;
+  readonly id: string;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number;
+  readonly source?: ComposerImageAttachment["source"];
+  readonly blob: Blob;
+}
+
+/** Puts back draft images a reload dropped because their bytes never reached localStorage. */
+export function restoreComposerImageBackups(backups: ReadonlyArray<ComposerImageBackup>): void {
+  composerDraftStore.setState((state) => {
+    const drafts = { ...state.draftsByThreadKey };
+    let restored = false;
+    for (const backup of backups) {
+      const draft = drafts[backup.threadKey] ?? createEmptyThreadDraft();
+      if (draft.images.some((image) => image.id === backup.id)) continue;
+      const file = new File([backup.blob], backup.name, { type: backup.mimeType });
+      const image: ComposerImageAttachment = {
+        type: "image",
+        id: backup.id,
+        name: backup.name,
+        mimeType: backup.mimeType,
+        sizeBytes: backup.sizeBytes,
+        previewUrl: URL.createObjectURL(file),
+        file,
+        ...(backup.source ? { source: backup.source } : {}),
+      };
+      drafts[backup.threadKey] = { ...draft, images: [...draft.images, image] };
+      restored = true;
+    }
+    return restored ? { draftsByThreadKey: drafts } : state;
+  });
+}
+
+startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
 
 export function subscribeComposerDraftModelReconciliation(input: {
   readonly registry: AtomRegistry.AtomRegistry;
