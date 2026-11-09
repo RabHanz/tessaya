@@ -194,7 +194,9 @@ for (const c of cases) {
     id: c.id,
     said: c.said,
     firsts: runs.map((r) => firstTool(r.calls)),
-    calls: runs.map((r) => r.calls.map((t) => t.replace(/^mcp__baton__/, "")).join(" > ")),
+    calls: runs.map((r) =>
+      r.calls.map((t) => t.replace(/^mcp__(baton|tessaya)__/, "")).join(" > "),
+    ),
     replies: runs.map((r) => (r.replies ?? [r.reply]).join(" | ")),
     judged: runs.map((r) => r.judgeNote ?? r.judged),
     pass: casePasses(c, runs),

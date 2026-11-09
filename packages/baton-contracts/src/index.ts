@@ -7,6 +7,7 @@ export * from "./handoff.ts";
 export * from "./intent.ts";
 export * from "./liveSessions.ts";
 export * from "./orchestrationRule.ts";
+export * from "./renamed.ts";
 export * from "./rpc.ts";
 export * from "./sessionState.ts";
 export * from "./synopsis.ts";

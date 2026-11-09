@@ -37,6 +37,7 @@ import { RepositoryIdentity } from "@t3tools/contracts";
 import { ModelSelection, ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
 import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import { WorkSessionSynopsis } from "./synopsis.ts";
+import { renamedKind } from "./renamed.ts";
 
 // Legacy names (D71): wire methods, event types and error tags keep "fabric"; the event store holds them.
 export const BATON_WS_METHODS = {
@@ -322,25 +323,25 @@ export const WorkSessionStreamItem = Schema.Union([
     workSessions: Schema.Array(WorkSession),
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.workSession.created"),
+    kind: renamedKind("fabric.workSession.created"),
     workSession: WorkSession,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.workSession.updated"),
+    kind: renamedKind("fabric.workSession.updated"),
     workSession: WorkSession,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.workSession.statusChanged"),
+    kind: renamedKind("fabric.workSession.statusChanged"),
     workSession: WorkSession,
     previousStatus: WorkSessionStatus,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.workSession.providerAttached"),
+    kind: renamedKind("fabric.workSession.providerAttached"),
     workSession: WorkSession,
     providerSession: WorkSessionProviderSession,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.workSession.providerDetached"),
+    kind: renamedKind("fabric.workSession.providerDetached"),
     workSession: WorkSession,
     providerSession: WorkSessionProviderSession,
   }),
@@ -348,7 +349,7 @@ export const WorkSessionStreamItem = Schema.Union([
   // far more often than the work session's own fields, and a surface showing
   // only the synopsis should not repaint for a title change.
   Schema.Struct({
-    kind: Schema.Literal("fabric.synopsis.updated"),
+    kind: renamedKind("fabric.synopsis.updated"),
     workSessionId: WorkSessionId,
     synopsis: WorkSessionSynopsis,
   }),

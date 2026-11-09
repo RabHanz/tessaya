@@ -40,6 +40,7 @@ import {
   OrchestrationTrigger,
 } from "./orchestrationRule.ts";
 import { WorkSessionId } from "./workSession.ts";
+import { renamedKind } from "./renamed.ts";
 
 // Legacy names (D71): wire method names keep "fabric." so installed clients keep working.
 export const BATON_INTENT_WS_METHODS = {
@@ -255,17 +256,17 @@ export type BatonIntentRecord = typeof BatonIntentRecord.Type;
  */
 export const BatonIntentEvent = Schema.Union([
   Schema.Struct({
-    kind: Schema.Literal("fabric.intent.received"),
+    kind: renamedKind("fabric.intent.received"),
     id: BatonIntentId,
     text: TrimmedNonEmptyString,
     at: IsoDateTime,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.intent.resolved"),
+    kind: renamedKind("fabric.intent.resolved"),
     record: BatonIntentRecord,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.intent.refused"),
+    kind: renamedKind("fabric.intent.refused"),
     record: BatonIntentRecord,
   }),
 ]);

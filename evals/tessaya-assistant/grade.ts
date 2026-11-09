@@ -3,7 +3,7 @@ import type { AssistantCase } from "./cases.ts";
 
 /** The tool a sample reached for first, without the MCP server prefix; "none" when it used none. */
 export const firstTool = (calls: ReadonlyArray<string>): string =>
-  (calls[0] ?? "none").replace(/^mcp__baton__/, "");
+  (calls[0] ?? "none").replace(/^mcp__(baton|tessaya)__/, "");
 
 export interface Sample {
   readonly calls: ReadonlyArray<string>;
@@ -22,7 +22,7 @@ export interface Sample {
 
 /** The arguments of the first call to the goal tool, as lower-case JSON. */
 const goalInput = (c: AssistantCase, sample: Sample): string => {
-  const at = sample.calls.findIndex((t) => t.replace(/^mcp__baton__/, "") === c.goal);
+  const at = sample.calls.findIndex((t) => t.replace(/^mcp__(baton|tessaya)__/, "") === c.goal);
   return at < 0 ? "" : JSON.stringify(sample.inputs?.[at] ?? null).toLowerCase();
 };
 

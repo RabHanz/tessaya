@@ -17,7 +17,9 @@ import {
   BATON_SESSIONS_WS_METHODS,
   BatonRecordAppendInput,
   AuthGrantScopes,
+  BatonRpcGroup,
   BatonRpcScopeAuthorization,
+  tessayaSpelling,
 } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -106,6 +108,27 @@ describe("who may import memory from a folder", () => {
     expect(
       missingBatonScope(search, [...AuthStandardClientScopes, AuthBatonHandsHostScope], admin),
     ).toBeNull();
+  });
+});
+
+describe("rename R1: every method also answers as tessaya.*", () => {
+  it("is in the group under both names and needs exactly what the old name needs, payload rules included", () => {
+    const callers = [
+      [],
+      AuthStandardClientScopes,
+      [AuthBatonMemorySyncScope],
+      [...AuthStandardClientScopes, AuthBatonHandsHostScope],
+    ];
+    const payloads = [undefined, { text: "deploy key", admin: true }, { action: "run" }];
+    for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES)) {
+      const renamed = tessayaSpelling(tag);
+      expect(BatonRpcGroup.requests.has(renamed), renamed).toBe(true);
+      for (const scopes of callers)
+        for (const payload of payloads)
+          expect(missingBatonScope(renamed, scopes, payload), renamed).toBe(
+            missingBatonScope(tag, scopes, payload),
+          );
+    }
   });
 });
 

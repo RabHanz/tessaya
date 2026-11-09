@@ -9,6 +9,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { clockLine } from "@t3tools/baton-shared/brain";
+import { batonToolName } from "@t3tools/baton-shared/operator";
 import type { Brain } from "@t3tools/baton-shared/osPack";
 
 import { createPersonaConversations } from "../conversation/conversationLog.ts";
@@ -83,7 +84,7 @@ export const replayTurn = async (input: {
   const calls: string[] = [];
   const inputs: unknown[] = [];
   const answers = input.answers ?? {};
-  const answered = (tool: string) => answers[tool.replace(/^mcp__baton__/, "")] !== undefined;
+  const answered = (tool: string) => answers[batonToolName(tool)] !== undefined;
   const refuse = async (call: { readonly tool: string }) =>
     answered(call.tool)
       ? { allow: true as const }

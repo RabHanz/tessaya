@@ -28,22 +28,25 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
 import type { BATON_PHONE_OPS } from "./phone.ts";
+import { alsoReads } from "./renamed.ts";
 
 /**
  * Who reported a snapshot. §15's producer list, and the reason the bus keeps
  * one slot per producer rather than one global snapshot: VS Code going quiet
  * must not erase what the browser just said.
  */
-export const BatonContextProducer = Schema.Literals([
+export const BatonContextProducer = Schema.Union([
   /** The Baton client itself: which work session the user is looking at. */
   // Legacy name (D71): producers already publish as "fabric".
-  "fabric",
-  /** The desktop shell: foreground application and window title, where the OS allows. */
-  "desktop",
-  "vscode",
-  "browser",
-  /** The voice conversation manager: the target inherited between utterances. */
-  "voice",
+  alsoReads("fabric", "tessaya"),
+  Schema.Literals([
+    /** The desktop shell: foreground application and window title, where the OS allows. */
+    "desktop",
+    "vscode",
+    "browser",
+    /** The voice conversation manager: the target inherited between utterances. */
+    "voice",
+  ]),
 ]);
 export type BatonContextProducer = typeof BatonContextProducer.Type;
 

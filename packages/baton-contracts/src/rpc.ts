@@ -16,6 +16,7 @@ import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { BatonFleetInput, BatonFleetResult } from "./fleet.ts";
+import { tessayaSpelling, type TessayaSpelling } from "./renamed.ts";
 import {
   BATON_ADOPTED_WS_METHODS,
   AdoptedDiscoverInput,
@@ -828,7 +829,7 @@ export class BatonRpcScopeAuthorization extends RpcMiddleware.Service<BatonRpcSc
   { error: EnvironmentAuthorizationError },
 ) {}
 
-export const BatonRpcGroup = RpcGroup.make(
+const BATON_RPCS = [
   WsBatonAccountPoolRpc,
   WsBatonAccountUseRpc,
   WsBatonOnLimitRpc,
@@ -930,4 +931,37 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonAdoptedSendInputRpc,
   WsBatonAdoptedReadOutputRpc,
   WsBatonSubscribeWorkSessionsRpc,
-).middleware(BatonRpcScopeAuthorization);
+] as const;
+
+type TessayaAlias<R> =
+  R extends Rpc.Rpc<
+    infer Tag,
+    infer Payload,
+    infer Success,
+    infer Error,
+    infer Middleware,
+    infer Requires
+  >
+    ? Rpc.Rpc<TessayaSpelling<Tag>, Payload, Success, Error, Middleware, Requires>
+    : never;
+
+// Rename R1: every method also answers under its tessaya.* name, which the next build's clients call.
+const TESSAYA_ALIASES = BATON_RPCS.map((rpc) =>
+  Rpc.make(tessayaSpelling(rpc._tag), {
+    payload: rpc.payloadSchema,
+    success: rpc.successSchema,
+    error: rpc.errorSchema,
+  }),
+) as unknown as ReadonlyArray<TessayaAlias<(typeof BATON_RPCS)[number]>>;
+
+/** The name this build's handlers and scope table use, for a method called under either name. */
+export const BATON_METHOD_OF: ReadonlyMap<string, string> = new Map(
+  BATON_RPCS.flatMap((rpc) => [
+    [rpc._tag, rpc._tag],
+    [tessayaSpelling(rpc._tag), rpc._tag],
+  ]),
+);
+
+export const BatonRpcGroup = RpcGroup.make(...BATON_RPCS, ...TESSAYA_ALIASES).middleware(
+  BatonRpcScopeAuthorization,
+);

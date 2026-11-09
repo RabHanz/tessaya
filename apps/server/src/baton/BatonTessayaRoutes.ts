@@ -6,7 +6,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { BatonRpcGroup } from "@t3tools/baton-contracts";
+import { BATON_METHOD_OF, BatonRpcGroup } from "@t3tools/baton-contracts";
 import { buildPhoneState } from "@t3tools/baton-shared/phone";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import * as Clock from "effect/Clock";
@@ -272,7 +272,11 @@ export const routes = HttpRouter.use((router) =>
       if (session._tag === "None") {
         return HttpServerResponse.jsonUnsafe({ message: "Not paired." }, { status: 401 });
       }
-      const tag = new URL(request.url, "http://local").pathname.replace(/^\/tessaya\/desk\//, "");
+      const calledAs = new URL(request.url, "http://local").pathname.replace(
+        /^\/tessaya\/desk\//,
+        "",
+      );
+      const tag = BATON_METHOD_OF.get(calledAs) ?? calledAs;
       const codec = DESK_CODECS.get(tag);
       if (codec === undefined) {
         return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 404 });

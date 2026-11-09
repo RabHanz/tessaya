@@ -7,6 +7,7 @@ import {
   BATON_TOOL_PREFIX,
   batchSteps,
   batonToolName,
+  isOwnTool,
   judgeToolCall,
   type JudgeContext,
   type ToolCall,
@@ -84,7 +85,7 @@ const planCovers = (
   context: JudgeContext,
   plan: ReadonlyArray<string>,
 ): boolean => {
-  if (!call.tool.startsWith(BATON_TOOL_PREFIX) || context.focusedShell === true) return false;
+  if (!isOwnTool(call.tool) || context.focusedShell === true) return false;
   const covered = (tool: string, args: Readonly<Record<string, unknown>>) => {
     const one = judgeToolCall({ tool: `${BATON_TOOL_PREFIX}${tool}`, input: args }, context);
     return (
@@ -104,7 +105,7 @@ const planCovers = (
 /** The tools a call uses: a batch uses itself and each of its steps. */
 const toolsUsed = (call: ToolCall): ReadonlyArray<string> => {
   const name = batonToolName(call.tool);
-  return name === "act_batch" && call.tool.startsWith(BATON_TOOL_PREFIX)
+  return name === "act_batch" && isOwnTool(call.tool)
     ? [name, ...(batchSteps(call.input) ?? []).map((s) => s.tool)]
     : [name];
 };
