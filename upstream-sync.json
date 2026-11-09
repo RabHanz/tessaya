@@ -1,15 +1,15 @@
 {
-  "at": "2026-11-08T22:38:03.945Z",
+  "at": "2026-11-09T22:39:34.369Z",
   "result": "disk",
   "ok": false,
   "pin": "ade473018d32003658b7d38693e083ee2e314bd8",
-  "target": "4549bee918ec8bb877f1e21a82c51d562b178406",
-  "behindCommits": 18,
-  "oldestUnsyncedDays": 0,
+  "target": "ff7aa5ace311c70587631dcedb43f1d92068c342",
+  "behindCommits": 140,
+  "oldestUnsyncedDays": 1,
   "conflictingPatches": [],
   "conflictingFiles": [],
   "touching": {},
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261108T223759Z.log",
+  "log": "/home/dev/.t3/baton-autosync/20261109T223930Z.log",
   "hint": "Skipped: the volume is below its free-space floor."
 }
