@@ -55,7 +55,11 @@ export interface LiveModelDeps {
   readonly mark: () => number | null;
   readonly since: (mark: number) => string;
   readonly wait: (ms: number) => Promise<void>;
+  /** The Claude provider's model slugs: a live session is Claude Code, so nothing else is typed into it. */
+  readonly claudeModels: ReadonlyArray<string>;
 }
+
+const CLAUDE_ALIASES = ["opus", "sonnet", "haiku"];
 
 const READBACK_TRIES = 16;
 const READBACK_EVERY_MS = 500;
@@ -70,6 +74,13 @@ export const setLiveModel = async (
     const text = modelCommand(input.model);
     if (text === null)
       return { state: "refused", detail: "That is not a model name.", confirmed: [] };
+    if (!CLAUDE_ALIASES.includes(input.model) && !deps.claudeModels.includes(input.model))
+      return {
+        state: "refused",
+        detail:
+          "A terminal session runs Claude Code; continue in a new thread for another provider.",
+        confirmed: [],
+      };
     steps.push({ kind: "model", text });
   }
   if (input.effort !== undefined) {

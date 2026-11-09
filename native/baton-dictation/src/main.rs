@@ -46,6 +46,8 @@ use transcribe_cpp::{
 };
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
+/// The caret's place is read as a dictation starts; past this the words go in the pill instead.
+const CARET_AT_DEADLINE: Duration = Duration::from_millis(300);
 /// How often an idle engine looks for a model slot it can let go.
 const IDLE_TICK: Duration = Duration::from_secs(60);
 const MIN_SAMPLES: usize = 16_000 / 4;
@@ -357,11 +359,9 @@ impl Live {
             Ok(text) if text.is_empty() => {}
             Ok(text) => {
                 self.text.push(text);
-                // At a pause the words so far may be all of it: the desktop starts their cleanup now, so a release
-                // right after finds it done.
-                if at_pause {
-                    emit(json!({"ev": "partial", "text": self.text.join(" ")}));
-                }
+                // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
+                // starts their cleanup then, so a release right after finds it done.
+                emit(json!({"ev": "partial", "text": self.text.join(" "), "pause": at_pause}));
             }
             Err(e) => self.failed = Some(e),
         }
@@ -1052,6 +1052,36 @@ fn caret_event(id: Option<u64>) -> Value {
     json!({"ev": "caret", "id": id, "before": null, "after": null})
 }
 
+/// Where the caret is drawn, for the words to appear there as he speaks. Its own worker with a deadline: a field
+/// that hangs UI Automation answers "no caret" in time and the pill shows the words instead.
+fn caret_at_event(id: Option<u64>) -> Value {
+    let (tx, rx) = channel();
+    thread::spawn(move || {
+        #[cfg(windows)]
+        let out = uia::caret_geometry().unwrap_or_else(|_| json!({"caret": null}));
+        #[cfg(not(windows))]
+        let out = json!({"caret": null});
+        let _ = tx.send(out);
+    });
+    let mut out = rx.recv_timeout(CARET_AT_DEADLINE).unwrap_or_else(|_| json!({"caret": null, "late": true}));
+    out["ev"] = json!("caret_at");
+    out["id"] = json!(id);
+    out
+}
+
+/// When he last pressed a key, clicked or moved the mouse, in the system's ms tick (0 off Windows).
+fn last_input_tick() -> u32 {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+        let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+        if GetLastInputInfo(&mut info).as_bool() {
+            return info.dwTime;
+        }
+    }
+    0
+}
+
 #[cfg(not(windows))]
 fn focus_state_event(id: Option<u64>, _window: Option<&str>) -> Value {
     json!({"ev": "focus_state", "id": id, "error": "not on this platform yet"})
@@ -1304,6 +1334,13 @@ fn serve() {
                     "caret" => {
                         let id = value["id"].as_u64();
                         thread::spawn(move || emit(caret_event(id)));
+                    }
+                    "caret_at" => {
+                        let id = value["id"].as_u64();
+                        thread::spawn(move || emit(caret_at_event(id)));
+                    }
+                    "last_input" => {
+                        emit(json!({"ev": "last_input", "id": value["id"].as_u64(), "tick": last_input_tick()}));
                     }
                     "focus_state" => {
                         let id = value["id"].as_u64();

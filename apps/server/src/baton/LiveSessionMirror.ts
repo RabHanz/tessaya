@@ -8,7 +8,7 @@
  * to become one. Each session in the registry (`~/.claude/sessions/<pid>.json`, D68) gets a thread
  * under the T3 project its directory belongs to, written with the same events upstream's own
  * agent-session import writes, and its transcript is followed so new messages arrive as they are
- * written. The thread's provider is the "Live session" instance: T3's own ACP Registry driver
+ * written. The thread's provider is the "Terminal session" instance: T3's own ACP Registry driver
  * running `scripts/tessaya/live/baton-live-acp.mjs`, so the composer's send becomes a turn that
  * types into the session's Herdr pane (adopting it first when needed).
  *
@@ -90,6 +90,7 @@ import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { resendKept, sessionOfThread, stampKept } from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
 import { splitPaneRef } from "./HerdrAdapterLive.ts";
+import { liveQueueDir } from "./BatonLiveQueue.ts";
 // @ts-expect-error -- plain JS shared with the live agent, which runs without a build; typed below
 import * as panePrompt from "../../../../scripts/tessaya/live/pane-prompt.mjs";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
@@ -176,9 +177,11 @@ interface PanePrompt {
   readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
   readonly customIndex: number | null;
   readonly key: string;
+  /** A permission dialog's own words, behind its plain question. */
+  readonly details?: string;
 }
 
-const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
+export const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
 const screenTail: (screen: string) => string = panePrompt.screenTail;
 
 /** The visible screen of a Herdr pane read in-process (no node child per read), or null when Herdr cannot read it. */
@@ -244,6 +247,57 @@ export const unreadPrompt = (
         ],
         customIndex: null,
       };
+
+/**
+ * Whether the card for the prompt still on screen stays. One T3 closed comes back only when it was answered, the bridge
+ * has since finished with that answer (`answeredAt`, its marker) and the prompt still shows: an answer that pressed
+ * nothing. A dismissed or expired card stays closed, and a card is raised again at most once.
+ */
+export const keepAsk = (
+  ask: { readonly at: number; readonly again: boolean },
+  state: {
+    readonly pending: boolean;
+    readonly answered: boolean;
+    readonly answeredAt: number | null;
+  },
+) =>
+  state.pending ||
+  !state.answered ||
+  ask.again ||
+  state.answeredAt === null ||
+  state.answeredAt < ask.at;
+
+/** When the live bridge last finished pressing a card's answer for the session (its `<id>.answered`), or null. */
+const answeredAt = (sessionId: string): number | null => {
+  try {
+    const at = Number(
+      NodeFS.readFileSync(
+        NodePath.join(liveQueueDir(), `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.answered`),
+        "utf8",
+      ),
+    );
+    return Number.isFinite(at) ? at : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The T3 question a terminal prompt becomes. T3 sends its answer back as "<question>\n<answer>". */
+export const askQuestion = (found: PanePrompt, overview: string) => ({
+  id: "answer",
+  header: (found.header ?? "Terminal").slice(0, 60),
+  question: [overview, found.context, found.question]
+    .filter((part) => part.length > 0)
+    .join(". ")
+    .replace(/[ \t]+/g, " ")
+    .slice(-1_400),
+  options: found.options.map((option) => ({
+    label: option.label,
+    description: option.description.length > 0 ? option.description : option.label,
+  })),
+  ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
+  ...(found.details === undefined ? {} : { details: found.details }),
+});
 
 const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolStep =>
   "kind" in entry;
@@ -760,6 +814,10 @@ interface Follow {
     readonly requestId: RuntimeRequestId;
     readonly itemId: TurnItemId;
     readonly request: OrchestrationV2RuntimeRequest;
+    /** When it was raised (ms). */
+    readonly at: number;
+    /** It is the same prompt raised again, so it is not raised a third time. */
+    readonly again: boolean;
   } | null;
   /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
   promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
@@ -886,9 +944,15 @@ const make = Effect.gen(function* () {
     }
     const wanted = {
       driver: DRIVER,
-      displayName: "Live session",
+      // Named for what is there: a Claude Code session in a terminal, never the internal slug.
+      displayName: "Terminal session",
       enabled: true,
-      config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
+      config: {
+        source: "local",
+        commandPath: node,
+        commandArgs: [script],
+        customModels: [{ slug: MODEL, name: "Claude Code" }],
+      },
     };
     const current = (yield* settings.getSettings).providerInstances[LIVE_INSTANCE_ID];
     // @effect-diagnostics-next-line globalJsonInEffect:off - settings values, always serialisable.
@@ -1523,7 +1587,15 @@ const make = Effect.gen(function* () {
         readable: read !== null && read.options.length > 0,
         shown: found?.key ?? null,
       });
-      if (follow.ask !== null && follow.ask.key === found?.key) return;
+      const again = follow.ask !== null && follow.ask.key === found?.key;
+      if (again && follow.ask !== null) {
+        const pending =
+          (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending";
+        const item = pending ? null : yield* engine.turnItem(follow.threadId, follow.ask.itemId);
+        const answered = item?.type === "user_input_request" && item.questionAnswer !== undefined;
+        if (keepAsk(follow.ask, { pending, answered, answeredAt: answeredAt(session.sessionId) }))
+          return;
+      }
       const now = yield* DateTime.now;
       if (follow.ask !== null) {
         const open = follow.ask;
@@ -1570,7 +1642,6 @@ const make = Effect.gen(function* () {
       const requestId = RuntimeRequestId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       const itemId = TurnItemId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       const nodeId = NodeId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
-      // One line: T3 sends the answer back as "<question>\n<answer>".
       // A tabbed form shows its other questions too, from the transcript's exact text; the pane question stays last
       // because T3 sends the answer back keyed by it.
       const overview =
@@ -1588,11 +1659,6 @@ const make = Effect.gen(function* () {
               ),
             ).slice(0, 900)
           : "";
-      const question = [overview, found.context, found.question]
-        .filter((part) => part.length > 0)
-        .join(". ")
-        .replace(/[ \t]+/g, " ")
-        .slice(-1_400);
       const request = {
         id: requestId,
         nodeId,
@@ -1605,7 +1671,7 @@ const make = Effect.gen(function* () {
         resolvedAt: null,
       };
       yield* expireOtherAsks(follow, String(requestId));
-      follow.ask = { key: found.key, requestId, itemId, request };
+      follow.ask = { key: found.key, requestId, itemId, request, at: stamp, again };
       const askRun = askRunId(follow.target, yield* engine.threadRuns(follow.threadId));
       yield* engine.writeEvents({
         events: [
@@ -1632,18 +1698,7 @@ const make = Effect.gen(function* () {
               type: "user_input_request",
               requestId,
               responseMode: "message",
-              questions: [
-                {
-                  id: "answer",
-                  header: (found.header ?? "Terminal").slice(0, 60),
-                  question,
-                  options: found.options.map((option) => ({
-                    label: option.label,
-                    description: option.description.length > 0 ? option.description : option.label,
-                  })),
-                  ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
-                },
-              ],
+              questions: [askQuestion(found, overview)],
             },
           },
           {

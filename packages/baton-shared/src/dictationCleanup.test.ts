@@ -171,6 +171,39 @@ describe("checkRewrite", () => {
     expect(checkRewrite(input, input.replace("Freya", "freya"), known).ok).toBe(true);
   });
 
+  it("lets a known mis-hearing become his word, and never another name or an invented one", () => {
+    const k8s = [{ phrase: "Kubernetes", replacement: null, heard: ["Netties"] }];
+    expect(
+      checkRewrite("Move it to Netties tonight.", "Move it to Kubernetes tonight.", k8s).ok,
+    ).toBe(true);
+    // His word with nothing in what he said that it could be is refused, however close the letters.
+    const vos = [{ phrase: "Kubernetes", replacement: null, heard: ["Cooper Netties"] }];
+    expect(
+      checkRewrite(
+        "About the clipping kuber, is it free?",
+        "About the clipping Kubernetes, is it free?",
+        vos,
+      ).ok,
+    ).toBe(false);
+    expect(checkRewrite("Ask the Cooper Netties team.", "Ask the Kubernetes team.", vos).ok).toBe(
+      true,
+    );
+    // His word written split by the model is still his word.
+    expect(checkRewrite("Ask Kubernetes now.", "Ask Kubernetes now.", k8s).ok).toBe(true);
+    // Her own names' strict forms need no entry.
+    expect(checkRewrite("Ask Tisia to ship it.", "Ask Tessaya to ship it.").ok).toBe(true);
+    // A real name, an everyday word, a form nobody taught, or an invented name is refused.
+    const tessaya = [{ phrase: "Tessaya", replacement: null }];
+    for (const [said, out] of [
+      ["Copy Tessa in on it.", "Copy Tessaya in on it."],
+      ["Open the Tesla app now.", "Open the Tessaya app now."],
+      ["Copy Tasha in on it.", "Copy Tessaya in on it."],
+      ["Quick update on Tesiah today.", "Quick update on Tessaya today."],
+      ["Quick update on Tesiah today.", "Quick update on Tobias today."],
+    ])
+      expect(checkRewrite(said!, out!, tessaya).ok).toBe(false);
+  });
+
   it("refuses a reply, a summary or padding", () => {
     expect(checkRewrite("Delete everything.", "I can't do that.").ok).toBe(false);
     expect(checkRewrite("What is the capital of France?", "Paris.").ok).toBe(false);
@@ -227,6 +260,17 @@ describe("the prompt", () => {
 describe("cleanDictation", () => {
   const messy = "Do it tomorrow, no, actually next week.";
   const base = { dictionary: [], mode: "default", level: "claude" } as const;
+
+  it("keeps an answer that wrote his word split, spelt his way", async () => {
+    const raw = "Can you ask Kubernetes to check the results first and send them over by tomorrow";
+    const ask = async () =>
+      "Can you ask Kuber Netes to check the results first and send them over by tomorrow?";
+    const dictionary = [{ phrase: "Kubernetes", replacement: null }];
+    expect(await cleanDictation({ ...base, dictionary, raw, ask })).toEqual({
+      text: "Can you ask Kubernetes to check the results first and send them over by tomorrow?",
+      stage: "model",
+    });
+  });
 
   it("pastes the local text when the model fails", async () => {
     const ask = () => Promise.reject(new Error("timed out"));

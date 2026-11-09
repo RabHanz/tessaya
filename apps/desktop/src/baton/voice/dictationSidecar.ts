@@ -17,6 +17,7 @@ import { outsideLanguages } from "@t3tools/baton-shared/dictationLanguages";
 import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/baton-voice";
 
 import { makeFramer } from "./pcm.ts";
+import type { CaretGeometry } from "./pillGhost.ts";
 import type { AudioInputDevice, AudioInputProvider } from "./voiceTypes.ts";
 
 export type PasteMethod = "ctrl_v" | "shift_insert" | "ctrl_shift_v";
@@ -49,6 +50,22 @@ export interface DictationConfig {
  * from the cloud, a notice or a reconfigure leaves a live recording as it was.
  */
 /** Whether the sidecar is busy with a key dictation (recording it, or writing it out) after this event. */
+const boxOf = (value: unknown) => {
+  const b = value as Record<string, unknown> | null;
+  if (typeof b !== "object" || b === null) return null;
+  const { x, y, width, height } = b;
+  return [x, y, width, height].every((n) => typeof n === "number" && Number.isFinite(n))
+    ? { x: x as number, y: y as number, width: width as number, height: height as number }
+    : null;
+};
+/** The sidecar's `caret_at` answer, or null when any part of it is missing. */
+export const caretGeometry = (event: Record<string, unknown>): CaretGeometry | null => {
+  const caret = boxOf(event["caret"]);
+  const field = boxOf(event["field"]);
+  const fontPt = typeof event["fontPt"] === "number" ? event["fontPt"] : 0;
+  return caret === null || field === null ? null : { caret, field, fontPt };
+};
+
 export const busyAfter = (ev: DictationEvent["ev"], was: boolean): boolean =>
   ev === "recording" || ev === "transcribing"
     ? true
@@ -141,7 +158,8 @@ export type DictationEvent =
   | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
   | { readonly ev: "transcribing" }
   /** The words so far, at a pause while the key is still held. */
-  | { readonly ev: "partial"; readonly text: string }
+  /** Every decoded piece; `pause` when it ended at a pause (an older sidecar sends only those, unmarked). */
+  | { readonly ev: "partial"; readonly text: string; readonly pause?: boolean }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
   | { readonly ev: "idle" }
@@ -265,6 +283,10 @@ export interface DictationSidecar {
   readonly focusState: (window?: string) => Promise<FocusState>;
   /** The words either side of the caret in the focused field; null when it does not say. */
   readonly caret: () => Promise<CaretContext | null>;
+  /** Where the caret is drawn in the focused field; null for a secret field or one that does not say. */
+  readonly caretAt: () => Promise<CaretGeometry | null>;
+  /** The system's last-input tick (any key, click or move). */
+  readonly lastInput: () => Promise<number | null>;
   readonly input: (input: SidecarInput) => Promise<void>;
   /** Adds text to the box of a window by its UI Automation value: no keyboard, clipboard or focus. */
   readonly setValue: (
@@ -453,6 +475,15 @@ export const startDictationSidecar = (input: {
       if (event["ev"] === "paste_checked") {
         return settle(event["id"] as number, { value: pasteVerdictOf(event["why"]) });
       }
+      if (event["ev"] === "caret_at") {
+        return settle(event["id"] as number, { value: caretGeometry(event) });
+      }
+      if (event["ev"] === "last_input") {
+        const tick = event["tick"];
+        return settle(event["id"] as number, {
+          value: typeof tick === "number" && tick > 0 ? tick : null,
+        });
+      }
       if (event["ev"] === "caret") {
         const { before, after } = event;
         return settle(event["id"] as number, {
@@ -574,6 +605,8 @@ export const startDictationSidecar = (input: {
         ...(number === true ? { number: true } : {}),
       }),
     caret: () => call<CaretContext | null>({ cmd: "caret" }),
+    caretAt: () => call<CaretGeometry | null>({ cmd: "caret_at" }),
+    lastInput: () => call<number | null>({ cmd: "last_input" }),
     focusState: (window) =>
       call<FocusState>({ cmd: "focus_state", ...(window === undefined ? {} : { window }) }),
     input: (input) => call<void>({ cmd: "input", ...input }),

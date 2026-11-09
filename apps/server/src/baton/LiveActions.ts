@@ -142,6 +142,7 @@ export const liveAdopt = (input: BatonLiveAdoptInput): Effect.Effect<BatonLiveAd
 export const liveSetModel = (
   adopted: AdoptedSessionService["Service"],
   input: BatonLiveSetModelInput,
+  claudeModels: ReadonlyArray<string>,
 ): Effect.Effect<BatonLiveSetModelResult> =>
   Effect.gen(function* () {
     const live = yield* readClaudeLiveSessions({ account: null });
@@ -182,6 +183,7 @@ export const liveSetModel = (
             }
           },
           wait: async (ms) => void (await sleep(ms)),
+          claudeModels,
         },
         {
           ...(input.model === undefined ? {} : { model: input.model }),

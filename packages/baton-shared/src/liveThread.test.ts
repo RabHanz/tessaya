@@ -5,7 +5,7 @@ import {
   bindingOf,
   pinnedLiveSelection,
   classifierStopReason,
-  describeAnswerer,
+  livePick,
   liveSessionKey,
   liveThreadSwitchRefusal,
   runningLiveSessionKeys,
@@ -33,24 +33,24 @@ describe("a mirrored live thread", () => {
   });
 });
 
-describe("who answers a thread", () => {
-  it("names the harness, session, model, effort and account, and flags a summary handoff on a live thread", () => {
-    const live = describeAnswerer({
-      threadId: "baton-live4:cc828d1b-1111",
-      instanceId: "baton-live",
-      model: "claude-opus-5-5",
-      effort: "medium",
-      account: "Main",
-    });
-    expect(live).toMatchObject({ harness: "herdr-session", handedOff: false });
-    expect(live.line).toBe("Terminal session · cc828d1b · claude-opus-5-5 · medium · Main");
-    const twin = describeAnswerer({
-      threadId: "baton-live4:cc828d1b-1111",
-      instanceId: "claudeAgent",
-      model: "claude-opus-5-5",
-    });
-    expect(twin).toMatchObject({ harness: "t3-hosted", handedOff: true });
-  });
+describe("a model picked on a live thread", () => {
+  it.each([
+    // picked instance, driver, thread's instance, same login, route
+    ["claudeAgent", "claudeAgent", "baton-live", true, "session-model"],
+    ["claude-work", "claudeAgent", "baton-live", false, "continue-in"],
+    ["codex", "codex", "baton-live", true, "continue-in"],
+    ["gone", null, "baton-live", false, "continue-in"],
+    ["baton-live", "acpRegistry", "baton-live", true, "unchanged"],
+    // Handed off: ordinary, and the Terminal session entry takes it back.
+    ["baton-live", "acpRegistry", "codex", false, "switch-back"],
+    ["claudeAgent", "claudeAgent", "codex", true, "normal"],
+    ["codex", "codex", "claudeAgent", false, "normal"],
+  ] as const)(
+    "%s (%s) on %s, same login %s: %s",
+    (pickedInstance, pickedDriver, currentInstance, sameAccount, route) => {
+      expect(livePick({ pickedInstance, pickedDriver, currentInstance, sameAccount })).toBe(route);
+    },
+  );
 });
 
 describe("a reply stopped by the safety classifier", () => {

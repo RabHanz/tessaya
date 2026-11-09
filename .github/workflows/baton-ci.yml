@@ -28,7 +28,7 @@ jobs:
           node scripts/tessaya/check-notices.mjs
           node --test scripts/tessaya/check-notices.test.mjs
       - name: Status-file writer
-        run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs
+        run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs scripts/tessaya/live/baton-live-acp.test.mjs
       - name: Upstream paths equal PIN + series
         run: bash scripts/tessaya/patches.sh verify
       # After verify, which fetches the pin: the guard needs its tree to know which files are ours.

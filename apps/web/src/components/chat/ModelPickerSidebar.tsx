@@ -4,6 +4,8 @@ import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { instanceRoom, RailLimitMark } from "./BatonPickerAccount";
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import {
@@ -45,6 +47,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
     props.onSelectInstance(instanceId);
   };
   const showFavorites = props.showFavorites ?? true;
+  const now = Date.parse(`${useNowMinute()}:00Z`);
   const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
@@ -141,6 +144,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
                 : entry.displayName;
+            const room = isUnavailable || isContextDisabled ? null : instanceRoom(entry, now);
 
             const button = (
               <Toolbar.Button
@@ -183,6 +187,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   }
                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                 />
+                {room?.onLimit ? <RailLimitMark /> : null}
               </Toolbar.Button>
             );
 
@@ -206,6 +211,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                     align="center"
                   >
                     {tooltip}
+                    {room ? <div className="text-muted-foreground">{room.text}</div> : null}
                   </TooltipPopup>
                 </Tooltip>
               </div>

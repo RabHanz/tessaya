@@ -281,6 +281,7 @@ export interface HomeExtra {
   readonly vocabulary: ReadonlyArray<{
     readonly phrase: string;
     readonly replacement: string | null;
+    readonly heard?: ReadonlyArray<string>;
   }>;
   readonly hotkeys: ReadonlyArray<{
     readonly label: string;

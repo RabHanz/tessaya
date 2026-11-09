@@ -30,6 +30,52 @@ describe("makeRewriter", () => {
     expect(prompts[1]).toContain("Tessaya");
   });
 
+  it("keeps a session up while it should stay warm: a used-up or dead one is replaced at once", async () => {
+    let started = 0;
+    let alive = true;
+    let warmNow = true;
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: "haiku",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      keepWarm: () => warmNow,
+      start: (): VisionSession => {
+        started += 1;
+        return {
+          ask: async (content) => (content[0]?.type === "text" ? content[0].text : ""),
+          alive: () => alive,
+          dispose: () => {},
+        };
+      },
+    });
+    rewriter.warm();
+    for (let i = 0; i < 20; i += 1)
+      await rewriter.clean({
+        raw: `note number ${i} for the team`,
+        mode: "default",
+        level: "claude",
+      });
+    // The twentieth answer used the session up; the next is already starting, before he speaks again.
+    expect(started).toBe(2);
+    alive = false;
+    rewriter.warm();
+    expect(started).toBe(3);
+    warmNow = false;
+    alive = true;
+    for (let i = 0; i < 20; i += 1)
+      await rewriter.clean({
+        raw: `note number ${i} for the team`,
+        mode: "default",
+        level: "claude",
+      });
+    expect(started).toBe(3);
+    rewriter.dispose();
+  });
+
   /** A session whose answers are released by hand, and which counts what it was asked and how many at once. */
   const held = () => {
     const asked: string[] = [];

@@ -1,0 +1,161 @@
+One model picker (T6): slots in T3's picker for the account row (renderInstanceDetail), the footer's
+Usage details (ComposerPickerFooter children, onUsageLimitsCommand), and mobile's account row and pin.
+
+diff --git a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
+index a505e5b3f39f78583b95278a1c2677edc6c97f8d..82c7273fb6cbbdc92fa6c0a46355758f1ea471b4 100644
+--- a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
++++ b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
+@@ -103,6 +103,7 @@ import {
+ import { useSearchToolbarInset } from "../../components/ui/useBarInset";
+ import type { AppBarSearch } from "../../components/ui/AppBar";
+ import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
++import { BatonAccountRow } from "./BatonAccountRow";
+ import {
+   compatibleRuntimeModeForChoices,
+   runtimeModeChoicesForSupportedModes,
+@@ -257,6 +258,8 @@ type ThreadSettingsSubmenuPage =
+ 
+ type ThreadSettingsSessionProps = {
+   readonly environmentId: EnvironmentId | null;
++  /** The existing thread the sheet edits, for its account pin. */
++  readonly threadId?: ThreadId;
+   readonly projectId: ProjectId | null;
+   readonly providerInstanceId?: ProviderInstanceId;
+   readonly lockedProviderInstanceId?: ProviderInstanceId;
+@@ -282,6 +285,7 @@ export type ExistingThreadSettingsRouteParams = {
+ 
+ type ThreadSettingsSessionValue = {
+   readonly environmentId: EnvironmentId | null;
++  readonly threadId: ThreadId | null;
+   readonly providerInstanceId?: ProviderInstanceId;
+   readonly providerGroups: ReadonlyArray<ProviderGroup>;
+   readonly favoriteKeys: ReadonlySet<string>;
+@@ -594,6 +598,7 @@ function ThreadSettingsSessionProvider(
+ 
+   const value = {
+     environmentId: props.environmentId,
++    threadId: props.threadId ?? null,
+     providerInstanceId: props.providerInstanceId,
+     providerGroups,
+     manageHidden,
+@@ -715,15 +720,22 @@ function ThreadSettingsProviderListHeader(props: {
+   const onToggle = () => session.toggleProvider(props.provider.key);
+ 
+   return (
+-    <ProviderHeader
+-      collapsible={props.provider.collapsible}
+-      collapsed={props.provider.collapsed}
+-      driver={props.provider.driver}
+-      iconUrl={props.provider.iconUrl}
+-      label={props.provider.label}
+-      modelCount={props.provider.modelCount}
+-      onToggle={onToggle}
+-    />
++    <>
++      <ProviderHeader
++        collapsible={props.provider.collapsible}
++        collapsed={props.provider.collapsed}
++        driver={props.provider.driver}
++        iconUrl={props.provider.iconUrl}
++        label={props.provider.label}
++        modelCount={props.provider.modelCount}
++        onToggle={onToggle}
++      />
++      <BatonAccountRow
++        environmentId={session.environmentId}
++        instanceId={props.provider.key}
++        pinThreadId={props.provider.key === session.providerInstanceId ? session.threadId : null}
++      />
++    </>
+   );
+ }
+ 
+@@ -1343,6 +1355,7 @@ export function ExistingThreadSettingsRouteScreen({
+   return (
+     <ThreadSettingsPickerScreen
+       environmentId={selectedThread.environmentId}
++      threadId={selectedThread.id}
+       projectId={selectedThread.projectId}
+       providerInstanceId={modelSelection.instanceId}
+       {...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {})}
+diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
+index be106a251592ebba7d7f223fc889d1886768d089..83031cfe2078c371bf56bf48c07afa0e35121c27 100644
+--- a/apps/web/src/components/chat/ChatComposer.tsx
++++ b/apps/web/src/components/chat/ChatComposer.tsx
+@@ -2471,6 +2471,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+       onModelPickerOpenChange={setIsComposerModelPickerOpen}
+       modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
+       getModelDisabledReason={getModelDisabledReason}
++      onUsageLimitsCommand={props.onUsageLimitsCommand}
+     />
+   );
+   // An open question owns the space above the composer. Only a machine problem,
+diff --git a/apps/web/src/components/chat/ComposerModelEffort.tsx b/apps/web/src/components/chat/ComposerModelEffort.tsx
+index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2da8aad7e2f5b5f9e648115a659998b02284b4e3 100644
+--- a/apps/web/src/components/chat/ComposerModelEffort.tsx
++++ b/apps/web/src/components/chat/ComposerModelEffort.tsx
+@@ -681,6 +681,7 @@ export function ComposerPickerFooter(props: {
+   runtimeMode: RuntimeMode;
+   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
+   onRuntimeModeChange: (mode: RuntimeMode) => void;
++  children?: ReactNode;
+ }) {
+   return (
+     <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2">
+@@ -691,6 +692,7 @@ export function ComposerPickerFooter(props: {
+         options={props.runtimeModeOptions}
+         onChange={props.onRuntimeModeChange}
+       />
++      {props.children}
+     </div>
+   );
+ }
+diff --git a/apps/web/src/components/chat/ModelPickerContent.tsx b/apps/web/src/components/chat/ModelPickerContent.tsx
+index f040df764cda9188e68a9f70ee639d3a258d98ae..ccc98f35c73977ed9045d8e9f3713d2ec75e1442 100644
+--- a/apps/web/src/components/chat/ModelPickerContent.tsx
++++ b/apps/web/src/components/chat/ModelPickerContent.tsx
+@@ -368,6 +368,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+   onFocusEffort?: () => void;
+   /** Closes the list column, inside the popup's fixed height. */
+   listFooter?: ReactNode;
++  /** Above the footer: the browsed instance's account (the thread's own under Favorites). */
++  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
+ }) {
+   const {
+     searchInputRef,
+@@ -710,6 +712,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+ 
+   const selectedEntry =
+     selectedInstanceId === "favorites" ? undefined : entryByInstanceId.get(selectedInstanceId);
++  const detailEntry = selectedEntry ?? entryByInstanceId.get(props.activeInstanceId);
+   const providerSetupEntries =
+     !isSearching && canOpenProviderSetup
+       ? instanceEntries.filter(
+@@ -1075,6 +1078,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+               onRequestClose={onRequestClose}
+               onOpenProviderSetup={onOpenProviderSetup}
+             />
++            {detailEntry ? props.renderInstanceDetail?.(detailEntry) : null}
+             {props.listFooter}
+           </div>
+         </Combobox>
+diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
+index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..356c7ef222488e22e7753209d5906da8aaf61156 100644
+--- a/apps/web/src/components/chat/ProviderModelPicker.tsx
++++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
+@@ -112,6 +112,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+    */
+   effortColumn?: ReactNode;
+   footer?: ReactNode;
++  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
+ }) {
+   const composerFloatingLayerProps = useComposerMenuProps();
+   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
+@@ -274,6 +275,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+           : (props.getModelDisabledReason?.(instanceId, model) ?? null)
+       }
+       onInstanceModelChange={handleInstanceModelChange}
++      {...(props.renderInstanceDetail ? { renderInstanceDetail: props.renderInstanceDetail } : {})}
+       {...(docked
+         ? {
+             docked,

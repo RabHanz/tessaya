@@ -103,6 +103,7 @@ import {
 import { useSearchToolbarInset } from "../../components/ui/useBarInset";
 import type { AppBarSearch } from "../../components/ui/AppBar";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
+import { BatonAccountRow } from "./BatonAccountRow";
 import {
   compatibleRuntimeModeForChoices,
   runtimeModeChoicesForSupportedModes,
@@ -257,6 +258,8 @@ type ThreadSettingsSubmenuPage =
 
 type ThreadSettingsSessionProps = {
   readonly environmentId: EnvironmentId | null;
+  /** The existing thread the sheet edits, for its account pin. */
+  readonly threadId?: ThreadId;
   readonly projectId: ProjectId | null;
   readonly providerInstanceId?: ProviderInstanceId;
   readonly lockedProviderInstanceId?: ProviderInstanceId;
@@ -282,6 +285,7 @@ export type ExistingThreadSettingsRouteParams = {
 
 type ThreadSettingsSessionValue = {
   readonly environmentId: EnvironmentId | null;
+  readonly threadId: ThreadId | null;
   readonly providerInstanceId?: ProviderInstanceId;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
   readonly favoriteKeys: ReadonlySet<string>;
@@ -594,6 +598,7 @@ function ThreadSettingsSessionProvider(
 
   const value = {
     environmentId: props.environmentId,
+    threadId: props.threadId ?? null,
     providerInstanceId: props.providerInstanceId,
     providerGroups,
     manageHidden,
@@ -715,15 +720,22 @@ function ThreadSettingsProviderListHeader(props: {
   const onToggle = () => session.toggleProvider(props.provider.key);
 
   return (
-    <ProviderHeader
-      collapsible={props.provider.collapsible}
-      collapsed={props.provider.collapsed}
-      driver={props.provider.driver}
-      iconUrl={props.provider.iconUrl}
-      label={props.provider.label}
-      modelCount={props.provider.modelCount}
-      onToggle={onToggle}
-    />
+    <>
+      <ProviderHeader
+        collapsible={props.provider.collapsible}
+        collapsed={props.provider.collapsed}
+        driver={props.provider.driver}
+        iconUrl={props.provider.iconUrl}
+        label={props.provider.label}
+        modelCount={props.provider.modelCount}
+        onToggle={onToggle}
+      />
+      <BatonAccountRow
+        environmentId={session.environmentId}
+        instanceId={props.provider.key}
+        pinThreadId={props.provider.key === session.providerInstanceId ? session.threadId : null}
+      />
+    </>
   );
 }
 
@@ -1343,6 +1355,7 @@ export function ExistingThreadSettingsRouteScreen({
   return (
     <ThreadSettingsPickerScreen
       environmentId={selectedThread.environmentId}
+      threadId={selectedThread.id}
       projectId={selectedThread.projectId}
       providerInstanceId={modelSelection.instanceId}
       {...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {})}

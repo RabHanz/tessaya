@@ -17,8 +17,10 @@ use windows::Win32::UI::Accessibility::{
     UIA_SelectionItemIsSelectedPropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId,
     UIA_ToggleToggleStatePropertyId, UIA_TogglePatternId, UIA_TreeItemControlTypeId, UIA_ValuePatternId,
     UIA_ValueValuePropertyId, IUIAutomationTextPattern, TextPatternRangeEndpoint_End, TextPatternRangeEndpoint_Start,
-    TextUnit_Character, UIA_TextPatternId,
+    TextUnit_Character, UIA_TextPatternId, UIA_FontSizeAttributeId,
 };
+use windows::Win32::System::Com::SAFEARRAY;
+use windows::Win32::System::Ole::SafeArrayDestroy;
 use windows::core::{BOOL, BSTR};
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -724,6 +726,66 @@ pub fn caret_context(chars: i32) -> Result<Value, String> {
             .and_then(|v| v.CurrentValue())
             .is_ok_and(|v| v.is_empty());
         Ok(if empty { json!({"before": "", "after": ""}) } else { json!({"before": null, "after": null}) })
+    }
+}
+
+/// The first box of a text range, in physical screen pixels; the array is freed here.
+unsafe fn first_box(array: *mut SAFEARRAY) -> Option<(f64, f64, f64, f64)> {
+    if array.is_null() {
+        return None;
+    }
+    let a = &*array;
+    let found = if a.rgsabound[0].cElements >= 4 && !a.pvData.is_null() {
+        let d = std::slice::from_raw_parts(a.pvData as *const f64, 4);
+        Some((d[0], d[1], d[2], d[3]))
+    } else {
+        None
+    };
+    let _ = SafeArrayDestroy(array);
+    found.filter(|b| b.3 > 0.0)
+}
+
+/// The caret's box, the field's box (physical px) and the font size (points, 0 when the field does not say), for
+/// the words to be drawn where they will land. A password box, or one named like a secret, gives nothing.
+pub fn caret_geometry() -> Result<Value, String> {
+    let err = |e: windows::core::Error| e.to_string();
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+        let element = automation.GetFocusedElement().map_err(err)?;
+        let password = element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true);
+        let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        if password || secret_name(&name) {
+            return Ok(json!({"caret": null}));
+        }
+        let field = element.CurrentBoundingRectangle().map_err(err)?;
+        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64)>> {
+            let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
+            let selection = pattern.GetSelection()?;
+            if selection.Length()? == 0 {
+                return Ok(None);
+            }
+            let range = selection.GetElement(0)?;
+            let mut caret = first_box(range.GetBoundingRectangles()?);
+            if caret.is_none() {
+                // A collapsed caret has no box in most fields; the character before it does, and the caret is its right edge.
+                let before = range.Clone()?;
+                before.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -1)?;
+                caret = first_box(before.GetBoundingRectangles()?).map(|(x, y, w, h)| (x + w, y, 0.0, h));
+            }
+            let Some(caret) = caret else { return Ok(None) };
+            let size = range.GetAttributeValue(UIA_FontSizeAttributeId).ok().and_then(|v| f64::try_from(&v).ok()).unwrap_or(0.0);
+            Ok(Some((caret, size)))
+        })()
+        .ok()
+        .flatten();
+        let Some(((x, y, w, h), size)) = found else { return Ok(json!({"caret": null})) };
+        Ok(json!({
+            "caret": {"x": x, "y": y, "width": w, "height": h},
+            "field": {"x": field.left, "y": field.top, "width": field.right - field.left, "height": field.bottom - field.top},
+            "fontPt": size,
+        }))
     }
 }
 

@@ -222,7 +222,7 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
-import { REDACTED, detectSecret, type MemoryItem } from "@t3tools/baton-shared/memory";
+import { detectSecret, REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
 import {
   SERVER_MEMORY_NAME,
   applyRestore,
@@ -325,7 +325,6 @@ import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { createDictationHold } from "./dictationHold.ts";
-import { showCleanup } from "./cleanupCard.ts";
 import * as Electron from "electron";
 
 import {
@@ -373,12 +372,7 @@ import {
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createLastLanded } from "./lastLanded.ts";
 import { dictationStep, type DictationEntry, type DictationStep } from "./dictationEntry.ts";
-import {
-  importWisprDictionary,
-  makeRewriter,
-  dictionaryPath,
-  readDictionary,
-} from "./dictationRewriter.ts";
+import { importWispr, makeRewriter, readDictionary } from "./dictationRewriter.ts";
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import {
@@ -410,14 +404,15 @@ import {
   type TurnEvent,
 } from "@t3tools/baton-shared/voiceTurn";
 import {
-  biasTranscript,
-  correctionsBetween,
+  correctionsAtCaret,
   learnCorrection,
   observeWording,
   addNever,
   parseNever,
   type NeverList,
   parseAddToDictionary,
+  removeHeard,
+  unteach,
   upsertEntry,
   type SeenWords,
   type VocabularyEntry,
@@ -433,7 +428,8 @@ import {
   spaceUsed,
   type KeepSettings,
 } from "./audioKeep.ts";
-import { createVocabToast } from "./vocabToast.ts";
+import { acrylicSupported, createVocabToast } from "./vocabToast.ts";
+import { createPillGhost } from "./pillGhost.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
@@ -501,6 +497,8 @@ import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
+/** The longest the paste waits for the ghost in his field. */
+const GHOST_WAIT_MS = 3_000;
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: BatonFocusTarget = {
   producer: "desktop",
@@ -542,6 +540,12 @@ interface VoiceSettings {
   readonly cues: CueLevel;
   /** Hold-key dictation plays no cue unless he asks. */
   readonly holdKeyCues: boolean;
+  /** His words in the pill as he dictates, and their cleanup after the paste. */
+  readonly showWords: boolean;
+  /** "field": his words at the caret of the field they go into when it says where; "pill": always in the pill. */
+  readonly pillStyle: "pill" | "field";
+  /** Windows 11's acrylic behind the cards beside the pill; off by default. */
+  readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
   /** How long it listens after the wake word with nothing said, in ms. */
@@ -666,6 +670,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   hideFromCapture: false,
   cues: "normal",
   holdKeyCues: false,
+  showWords: true,
+  // The pill until D has been tried on Windows; the text box is opt-in under Settings → Dictation → Pill style.
+  pillStyle: "pill",
+  frosted: false,
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
   conversationOpenMs: 30_000,
@@ -730,6 +738,10 @@ const STATE_REFRESH_MS = 5 * 60_000;
 const CONTEXT_REFRESH_MS = 10_000;
 /** Long enough for him to fix a word in the field before it is read back. */
 const LEARN_READBACK_MS = 8_000;
+/** As the paste's own caret read: a field that hangs UI Automation teaches nothing. */
+const LEARN_CARET_MS = 1_500;
+/** Joins a taught form to its word in the toast, and splits it back on Discard. */
+const TAUGHT = " \u2192 ";
 /** How soon a plugged or unplugged mic is noticed; listing devices costs a few milliseconds. */
 const MIC_POLL_MS = 5_000;
 /** The pointer does not wait on a slow accessibility tree. */
@@ -765,6 +777,9 @@ export const readSettings = (path: string): VoiceSettings => {
       wakeDefaults: WAKE_DEFAULTS,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
+      showWords: saved["showWords"] !== false,
+      pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
+      frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
       pronounce: pronounceFrom(saved["pronounce"]),
@@ -794,8 +809,6 @@ export const readSettings = (path: string): VoiceSettings => {
 /** Longer than the spoken 15 s, for reading; a typed yes must still run out. */
 const TYPED_CONFIRM_MS = 30_000;
 const APP_CHECK_MS = 500;
-/** Long enough to read a sentence that did not land where it was meant to. */
-const KEPT_TEXT_MS = 20_000;
 /** A second Esc within this discards a dictation. */
 const ESC_AGAIN_MS = 2_000;
 /** How long "Discarded · click to undo" stays. */
@@ -1199,8 +1212,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const toast = createVocabToast({
     anchor: () => pill.anchor(),
-    onDiscard: (words) => {
-      rememberNever(words);
+    holdEscape: input.holdEscape,
+    frosted: () => settings.frosted && acrylicSupported(input.platform, NodeOS.release()),
+    onDiscard: (all) => {
+      // "heard → meant" undoes one taught form; any other is a whole word.
+      const taught = all.flatMap((w) => {
+        const [heard, meant] = w.split(TAUGHT);
+        return heard !== undefined && meant !== undefined ? [{ heard, meant }] : [];
+      });
+      const words = all.filter((w) => !w.includes(TAUGHT));
+      rememberNever([...words, ...taught.map((t) => t.heard)]);
       void changeVocabulary((entries) =>
         words.reduce(
           (all, word) =>
@@ -1209,7 +1230,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 e.phrase.toLowerCase() !== word.toLowerCase() &&
                 (e.replacement ?? "").toLowerCase() !== word.toLowerCase(),
             ),
-          entries,
+          taught.reduce(unteach, entries),
         ),
       );
     },
@@ -1235,21 +1256,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return next.entries;
     }).catch(() => undefined);
   };
-  /** A few seconds later, what he changed in the field teaches the words he meant. */
-  const learnFromEdits = (written: string, turnId: string | null = null) => {
-    if (!settings.learnWords) return;
+  /**
+   * A few seconds later, what he changed in the field teaches the words he meant. Only through the sidecar, which
+   * never reads a password or secret field, never in a private app, and never when either side looks like a secret.
+   */
+  const learnFromEdits = (
+    written: string,
+    turnId: string | null,
+    app: { readonly exe: string; readonly title: string },
+  ) => {
+    if (!settings.learnWords || cleanupLevelFor("claude", app) !== "claude") return;
     setTimeout(() => {
-      void readCaretContext(input.platform).then((around) => {
-        if (around === null || written.trim().length === 0) return;
-        const tail = around.before.slice(-(written.length + 2)).trim();
-        const fixes = correctionsBetween(written.trim(), tail);
+      const reader = sidecar;
+      if (reader === null || written.trim().length === 0 || detectSecret(written) !== null) return;
+      void Promise.race([
+        reader.caret().catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), LEARN_CARET_MS)),
+      ]).then((around) => {
+        if (around === null || detectSecret(around.before) !== null) return;
+        const { fixes, fixed } = correctionsAtCaret(written.trim(), around.before);
         if (fixes.length === 0) return;
-        if (turnId !== null) history?.update(turnId, { corrected: true, fixed: tail });
+        if (turnId !== null) history?.update(turnId, { corrected: true, fixed });
         return changeVocabulary((entries, now) =>
           fixes.reduce((all, fix) => {
             const next = learnCorrection(seenWords, all, fix, now, never);
             seenWords = next.seen;
             announce(next.added);
+            for (const t of next.taught ?? []) toast.add(`${t.heard}${TAUGHT}${t.meant}`);
             return next.entries;
           }, entries),
         ).then(saveSeen);
@@ -1271,6 +1304,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     env: input.env,
     platform: input.platform,
     dictionary: () => dictionary,
+    keepWarm: () => cleanupStaysWarm(),
   });
   /** Held to where the words came from and where he is now. Unknown counts as secret. */
   const levelNow = async (spokenIn: { readonly exe: string; readonly title: string }) => {
@@ -1354,7 +1388,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // Words that look like a secret are never put in a Claude prompt, whatever the level.
     const level = detectSecret(raw) === null ? await levelNow(app) : "local";
     const out = await rewriter.clean({
-      raw: biasTranscript(raw, dictionary),
+      raw: raw,
       mode: chooseMode(app, settings.appModes),
       level,
     });
@@ -1658,7 +1692,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (turn.kind === "dictation") {
           const tidy = await rewriter
             .clean({
-              raw: biasTranscript(heard, dictionary),
+              raw: heard,
               mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
               level,
             })
@@ -1679,7 +1713,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Re-runs the tidy-up on the stored words; nothing is inserted unless he copies it.
       const cleaned = await rewriter
         .clean({
-          raw: biasTranscript(turn.raw, dictionary),
+          raw: turn.raw,
           mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
           level: retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup),
         })
@@ -1759,7 +1793,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     dictationTimer = null;
     if (line != null) input.onNote?.("dictation_timing", { ...line });
   };
+  const ghost = createPillGhost({
+    look: () => ({ motion: settings.motion, glass: settings.glass }),
+    lastInput: () => sidecar?.lastInput().catch(() => null) ?? Promise.resolve(null),
+    windows: input.platform === "win32",
+  });
+  /** The ghost played this flush's cleanup in his field, so the pill does not play it again. */
+  let ghostPlayed = false;
+  /** As a dictation starts: the words go at the caret when the field says where it is, else in the pill. */
+  const startGhost = () => {
+    ghost.stop();
+    if (settings.pillStyle !== "field" || !settings.showWords || sidecar === null) return;
+    void sidecar
+      .caretAt()
+      .catch(() => null)
+      .then((at) => {
+        if (at !== null && (keyRecording() || dictatingByVoice)) ghost.start(at);
+      });
+  };
+  const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
   const oneShot = createOneShot<FocusedApp>({
+    // A hung ghost page never stops the paste: past GHOST_WAIT_MS the words land anyway.
+    beforePaste: (raw, text) =>
+      Promise.race([
+        ghost.play(raw, text),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), GHOST_WAIT_MS).unref()),
+      ]).then((played) => {
+        ghostPlayed = played;
+        if (!played) ghost.stop();
+      }),
     save: (chunks) => {
       try {
         NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
@@ -1776,8 +1838,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       app.window === undefined
         ? Promise.resolve(text)
         : fitToCaret(text, app).then((t) => (dictationTimer?.fitted(), t)),
-    preview: (raw, text) =>
-      showCleanup({ anchor: pill.anchor(), raw, clean: text, motion: settings.motion }),
     paste: (text, app) =>
       noteNext
         ? Promise.resolve(
@@ -1812,23 +1872,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
   let keptWhy: Exclude<PasteVerdict, "ok"> = "refused";
-  /** The words go on the clipboard, out of the buffer, and the pill says why in one line. */
+  /** The words go on the clipboard, out of the buffer, and a card beside the pill says why, with Copy. */
   const toClipboard = (text: string, taken: number, why: string) => {
     Electron.clipboard.writeText(text);
     oneShot.release(taken);
     landed(text);
-    showDictation(`${why}, so it is on your clipboard`);
-    if (keptTimer !== null) clearTimeout(keptTimer);
-    keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
+    showDictation(null);
+    toast.show({ kind: "copy", why: `${why}, so it is on your clipboard`, text });
   };
   /**
    * `target` is the window that dictation started in, read when it ended: never one a newer dictation started in.
    * Flushes run in turn inside `oneShot`, each with its own window. A key flush shows no preview card (`preview`).
    */
-  const flushDictation = async (
-    target: Promise<FocusedApp | null> | null,
-    options: { readonly preview?: boolean } = {},
-  ) => {
+  const flushDictation = async (target: Promise<FocusedApp | null> | null) => {
     if (!dictatingByVoice) collecting = false;
     if (oneShot.pending().length === 0 || sidecar === null) return;
     // The window it was started in, never wherever the keyboard went since (LIVE-2240).
@@ -1836,7 +1892,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turnId = openTurn;
     openTurn = null;
     if (app.window !== undefined) showDictation("Tidying…", true);
-    const result = await oneShot.flush(app, options);
+    ghostPlayed = false;
+    const result = await oneShot.flush(app);
+    if (result.status !== "pasted") ghost.stop();
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     landed(result.text);
@@ -1859,11 +1917,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : null,
     });
     if (result.status === "pasted") {
+      // Pasted already: the pill plays the cleanup over his words afterwards, so it never holds the paste up.
+      if (!ghostPlayed) pill.cleanup(result.raw, result.text);
       learnWording(result.text);
-      learnFromEdits(result.text, turnId);
+      learnFromEdits(result.text, turnId, app);
       if (result.failed) {
         showDictation(null);
-        pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
+        toast.show({ kind: "error", message: CLEANUP_FAILED_LINE });
       } else offerSmarterCleanup();
       dictationTimer?.pillGone();
     } else {
@@ -1894,6 +1954,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         "voice",
       );
     if (!insert) {
+      ghost.stop();
       discarding = true;
       const text = oneShot.pending().join(" ");
       if (text !== "") {
@@ -1906,7 +1967,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     void core?.setDictation(false).then(() => {
       if (insert || undo === null) return;
-      showDictation("Discarded · click to undo");
+      showDictation("Discarded · click to undo", false, true);
       if (keptTimer !== null) clearTimeout(keptTimer);
       keptTimer = setTimeout(() => {
         undo = null;
@@ -1935,8 +1996,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (collecting) {
         oneShot.push(request.text);
         const joined = oneShot.pending().join(" ");
-        if (dictatingByVoice)
+        if (dictatingByVoice) {
           pill.on({ type: "dictating", caption: dictationCaption(dictatingInto, joined) });
+          dictationWords(joined);
+        }
         if (openTurn === null) {
           openTurn = record({
             kind: "dictation",
@@ -3107,9 +3170,24 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
     });
+    syncCleanupSession();
   };
+  /** Up at the claude level, gone below it: a session nobody will ask holds memory for nothing. */
+  const syncCleanupSession = () => (cleanupStaysWarm() ? rewriter.warm() : rewriter.dispose());
+  /** A dictation key (or mouse button) is bound and its words go to Claude: the first dictation must not wait for it. */
+  const cleanupStaysWarm = () =>
+    settings.dictationCleanup === "claude" &&
+    settings.dictation === "baton" &&
+    parakeetPath !== null &&
+    currentBindings().some(
+      (row) => (row.def.id === "hold" || row.def.id === "toggle") && row.inputs.length > 0,
+    );
 
-  const showDictation = (caption: string | null, tidying = false) => {
+  /** The dictation pill's line is a message after the words (Discarded, an offer), not a dictation in progress. */
+  let dictationMessage = false;
+  const showDictation = (caption: string | null, tidying = false, message = false) => {
+    dictationMessage = message;
+    if (tidying) ghost.release();
     pill.on({ type: "dictating", caption, tidying }, { silent: !settings.holdKeyCues });
     render();
   };
@@ -3181,12 +3259,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     note = `Heard ${languageName(code)}, which is not one of your languages. Change them under Dictation: Languages you speak.`;
     render();
   };
-  /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
+  /** Words that have no home yet: an error card with Copy beside the pill, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
     landed(text);
-    showDictation(`${why}. Tray: Copy last transcript.`);
-    if (keptTimer !== null) clearTimeout(keptTimer);
-    keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
+    showDictation(null);
+    toast.show({ kind: "error", message: why, text });
   };
   /** Short utterances cut from the mic while the helper records, each heard for a whole stop or cancel. */
   const commandClips = createCommandClips();
@@ -3274,9 +3351,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...(typeof target === "number" ? { window: target } : {}),
     };
     if (discarded) {
+      ghost.stop();
       if (text === "") return showDictation(null);
       undo = { text, target: Promise.resolve(app) };
-      showDictation("Discarded · click to undo");
+      showDictation("Discarded · click to undo", false, true);
       if (keptTimer !== null) clearTimeout(keptTimer);
       keptTimer = setTimeout(() => {
         undo = null;
@@ -3300,7 +3378,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       cleanup: "local",
     });
     oneShot.push(words);
-    void flushDictation(Promise.resolve(app), { preview: false });
+    void flushDictation(Promise.resolve(app));
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
   const offerSmarterCleanup = () => {
@@ -3309,7 +3387,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     save({ cleanupOffered: true });
-    showDictation("Smarter cleanup with Claude? Settings → Dictation");
+    showDictation("Smarter cleanup with Claude? Settings → Dictation", false, true);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), OFFER_MS);
   };
@@ -3363,11 +3441,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
+      dictationWords(event.text);
       const app = focusedApp;
-      if (settings.dictationCleanup === "claude")
+      if (settings.dictationCleanup === "claude" && event.pause !== false)
         void levelNow(app).then((level) =>
           rewriter.speculate({
-            raw: biasTranscript(event.text, dictionary),
+            raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
           }),
@@ -3390,18 +3469,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       showDictation("Esc twice discards");
+      startGhost();
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
+      ghost.stop();
       recordings.shift();
       discardKeyText = false;
       showDictation(null);
     } else if (event.ev === "error") {
+      ghost.stop();
       recordings.shift();
       discardKeyText = false;
       note = event.message;
       showDictation(null);
-      pill.on({ type: "trouble", message: event.message });
+      toast.show({ kind: "error", message: event.message });
     } else if (event.ev === "paste_check") {
       // What the clipboard held at the chord and whether the target read it, for the turn log (no words).
       input.onNote?.("paste_check", { ...event });
@@ -3455,7 +3537,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const text = event.text ?? "";
       const outside = outsideLanguages(text, settings.languages);
       if (event.dictated === true && event.error === undefined && outside !== null) {
-        keepText(`Heard as ${languageName(outside)}, so not pasted`, text);
+        keepText(`Heard as ${languageName(outside)}, not pasted`, text);
         return void heardOutside(outside);
       }
       if (event.dictated === true && event.error === undefined) {
@@ -3584,9 +3666,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ),
     });
     markPhase("dictation-sidecar-spawn:end");
-    dictionary = NodeFS.existsSync(dictionaryPath(input.stateDir))
-      ? readDictionary(input.stateDir, [])
-      : await importWisprDictionary({ stateDir: input.stateDir, appData: input.env["APPDATA"] });
+    dictionary = await importWispr({
+      stateDir: input.stateDir,
+      appData: input.env["APPDATA"],
+      entries: readDictionary(input.stateDir, []),
+      never,
+      putSnippet: ({ cue, text }) => {
+        if (!snippets.list().some((s) => s.cue === cue.toLowerCase()))
+          snippets.put({ cue: cue.toLowerCase(), text, apps: [] });
+      },
+    });
     markPhase("dictation-devices:begin");
     devices = await listSidecarDevices();
     markPhase("dictation-devices:end");
@@ -3636,6 +3725,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : undefined,
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
+    showWords: () => settings.showWords && !ghost.active(),
+    dictationMessage: () => dictationMessage,
     workArea: () => workRect,
     onDismiss: () => {
       // Spoken dictation ends only by its ✓, ✕, Esc or "stop dictation", never a stray click on the pill.
@@ -3721,12 +3812,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         void duck.start(settings.duckWhileDictating);
         collecting = true;
         discarding = false;
+        dictationMessage = false;
         dictatingInto = null;
         undo = null;
         escArmedUntil = 0;
         // A line left from the last dictation (kept text, the offer, an undo) must not end on this one.
         if (keptTimer !== null) clearTimeout(keptTimer);
         keptTimer = null;
+        startGhost();
         void target?.then((app) => {
           if (!dictatingByVoice || app == null || app.exe === "") return;
           dictatingInto = app.title.trim() || app.exe;
@@ -5020,6 +5113,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         source: d.source ?? "added",
         count: d.count ?? null,
         lastSeen: d.lastSeen ?? null,
+        heard: d.heard ?? [],
       })),
       hotkeys: [
         ...currentBindings().flatMap((row) =>
@@ -5688,6 +5782,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.learnWords,
       },
       {
+        id: "v.showWords",
+        section: "Dictation",
+        label: "Show words as you speak",
+        hint: "Your words appear in the pill as Tessaya hears them, and after the paste it shows what the cleanup changed.",
+        kind: "toggle",
+        on: settings.showWords,
+      },
+      {
+        id: "v.pillStyle",
+        section: "Dictation",
+        label: "Pill style",
+        hint: "Where your words appear as you speak: in the pill, or in the text box itself when it says where its caret is (never in a password box).",
+        kind: "choice",
+        value: settings.pillStyle,
+        options: [
+          { value: "pill", label: "Pill" },
+          { value: "field", label: "In the text box when possible" },
+        ],
+      },
+      {
         id: "v.copyLast",
         section: "Dictation",
         label: "Last transcript",
@@ -5899,6 +6013,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         hint: "Play the start and end cue when you dictate with the hold key. Off by default.",
         kind: "toggle",
         on: settings.holdKeyCues,
+        more: true,
+      },
+      {
+        id: "v.frosted",
+        section: "On screen",
+        label: "Frosted glass",
+        hint: "Windows 11 blurs what is behind the cards beside the pill. Off, or on Windows 10, they keep their tinted glass.",
+        kind: "toggle",
+        on: settings.frosted,
         more: true,
       },
       {
@@ -6247,9 +6370,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       rememberNever(dictionary.filter((e) => e.source === "learned").map((e) => e.phrase));
       dictionary = forgetLearned(dictionary);
       saveDictionary(input.stateDir, dictionary);
+    } else if (id === "d.unhear" && typeof value === "string") {
+      try {
+        const e = JSON.parse(value) as { phrase?: unknown; form?: unknown };
+        if (typeof e.phrase === "string" && typeof e.form === "string") {
+          // A form he took off is not taught again by a correction.
+          rememberNever([e.form]);
+          dictionary = removeHeard(dictionary, e.phrase, e.form);
+          saveDictionary(input.stateDir, dictionary);
+        }
+      } catch {
+        // A malformed change is ignored; the list stays as it was.
+      }
     } else if (id === "d.remove" && typeof value === "string") {
       // Deleting a word he did not add himself means he does not want it: it never comes back.
-      if (dictionary.some((e) => e.phrase === value && e.source === "learned"))
+      if (dictionary.some((e) => e.phrase === value && e.source !== "added"))
         rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);
@@ -6417,6 +6552,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (act?.kind === "style") styles.set(act.category, act.style);
       else if (act?.kind === "level") {
         save({ dictationCleanupChosen: true, dictationCleanup: cleanupSettingOf(act.level) });
+        syncCleanupSession();
       } else if (act?.kind === "guide") void runStyleGuide();
     } else if (id.startsWith("tr.")) {
       const act = transformAction(id, value);
@@ -6680,6 +6816,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.download") requestDictation();
     else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
+      syncCleanupSession();
     } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
       const code = languageCode(id.endsWith(":add") ? settings.speechModel : "v3", value);
       const v3Code = code === undefined ? languageCode("v3", value) : undefined;
@@ -6809,12 +6946,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ hideFromCapture: on });
       setHideFromCapture(on);
     } else if (id === "v.learnWords") save({ learnWords: on });
+    else if (id === "v.showWords") save({ showWords: on });
+    else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
+      save({ pillStyle: value });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });
       configureDictation();
     } else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
+    else if (id === "v.frosted") save({ frosted: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
     else if (
       id === "v.headphones" &&
@@ -7003,6 +7144,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const setDictation = (dictation: VoiceSettings["dictation"]) => {
     save({ dictation });
+    syncCleanupSession();
     configureDictation();
     render();
     if (dictation === "baton") requestDictation();
@@ -7114,6 +7256,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (holdKey !== settings.holdKey || toggleKey !== settings.toggleKey)
       save({ holdKey, toggleKey });
     configureDictation();
+    // Unbinding the last dictation key ends the Claude session it kept warm.
+    syncCleanupSession();
   };
   applyBindings();
   Electron.app.on("will-quit", () => {

@@ -3,15 +3,50 @@
  * header menu is gone, P1). The session is told with its own `/model` and `/effort` in its Herdr pane, and the toast
  * says what the session itself answered, never what was only typed. A session not in Herdr offers to be brought in.
  */
+import { useAtomValue } from "@effect/atom-react";
+import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
 import { effortCommand } from "@t3tools/baton-shared/liveModel";
-import type { EnvironmentId, ProviderOptionSelection, ScopedThreadRef } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import type {
+  EnvironmentId,
+  ModelSelection,
+  ProviderOptionSelection,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
+import * as Option from "effect/Option";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { newThreadId } from "~/lib/utils";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { waitForThreadShell } from "../../state/entities";
+import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { toastManager } from "../ui/toast";
 import type { TraitsSelectionInput } from "./TraitsPicker";
+
+const NO_POOL = Atom.make(AsyncResult.initial<never, never>(false));
+
+/** The machine logins (cswap) on a live thread's environment; empty elsewhere, so no other thread asks. */
+export function useLiveAccounts(threadRef: ScopedThreadRef | null): ReadonlyArray<BatonAccount> {
+  const live = threadRef !== null && liveSessionIdOf(threadRef.threadId) !== null;
+  const pool = useAtomValue(
+    live
+      ? batonWorkSessions.accountPoolQuery({ environmentId: threadRef.environmentId, input: {} })
+      : NO_POOL,
+  );
+  return Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
+}
+
+/** True when an instance runs as the login the terminal session uses, so /model there changes nothing else. */
+export const runsAsLiveLogin = (instanceId: string, accounts: ReadonlyArray<BatonAccount>) => {
+  const active = accounts.find((account) => account.active);
+  return active !== undefined && accountForInstance(instanceId, accounts)?.key === active.key;
+};
 
 // baton-live4: is the current namespace; the older ones were retired but the id shape is the same.
 export const liveSessionIdOf = (threadId: string): string | null =>
@@ -101,5 +136,53 @@ export function useLiveTraits(
         }),
       );
     },
+  };
+}
+
+/**
+ * "Continue in <provider>" from a live thread: T3's own fork of the conversation into a new thread on that model, so
+ * its first send hands the context over (T3's provider switch). The terminal session and its thread stay as they are.
+ */
+export function useContinueInNewThread() {
+  const fork = useAtomCommand(threadEnvironment.forkFromRun, { reportFailure: false });
+  const setMetadata = useAtomCommand(threadEnvironment.updateMetadata, { reportFailure: false });
+  const navigate = useNavigate();
+  return async (
+    thread: EnvironmentThreadShell,
+    selection: ModelSelection,
+    providerName: string,
+  ) => {
+    const runId = thread.latestRun?.runId;
+    if (runId === undefined) {
+      toastManager.add({
+        type: "info",
+        title: "Nothing to continue yet",
+        description: "Send a message in the session first.",
+      });
+      return;
+    }
+    const targetThreadId = newThreadId();
+    const result = await fork({
+      environmentId: thread.environmentId,
+      input: {
+        sourceThreadId: thread.id,
+        targetThreadId,
+        runId,
+        title: `${thread.title} (${providerName})`,
+      },
+    });
+    const target = scopeThreadRef(thread.environmentId, targetThreadId);
+    if (result._tag !== "Success" || !(await waitForThreadShell(target))) {
+      toastManager.add({ type: "error", title: `Could not continue in ${providerName}` });
+      return;
+    }
+    // On the thread itself, so the choice holds on every device, not only in this composer's draft.
+    const set = await setMetadata({
+      environmentId: thread.environmentId,
+      input: { threadId: targetThreadId, modelSelection: selection },
+    });
+    if (set._tag !== "Success")
+      useComposerDraftStore.getState().setModelSelection(target, selection, { explicit: true });
+    await navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(target) });
   };
 }
