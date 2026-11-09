@@ -25,6 +25,7 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonEngine, layerStatic } from "./BatonEngine.ts";
 import { agreeJob, autoRetry, enforceCaps, postReports, startJob } from "./BatonJobFlow.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
+import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
 
 const sent: Array<{ threadId: ThreadId; text: string }> = [];
@@ -37,6 +38,9 @@ const layer = it.layer(
   Layer.mergeAll(
     jobLayer,
     Layer.succeed(ScheduledTaskService, {} as never),
+    Layer.succeed(BatonMemoryService, {
+      recall: () => Effect.succeed({ block: "", ids: [] }),
+    } as never),
     Layer.succeed(ServerConfig.ServerConfig, {
       dbPath: NodePath.join(NodeOS.tmpdir(), "baton-spine-test", "state.sqlite"),
     } as never),
