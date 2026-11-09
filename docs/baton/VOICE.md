@@ -34,10 +34,10 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
   "Tessaya, stop" included, and it waits in a buffer (on disk too) rather than being typed as it comes. Only
   "stop dictation" (or "stop dictating"), the pill's ✓, ✕ or Esc ends it, back into the conversation with no
   wake word (D125). The stop phrase and ✓ paste the buffer in one go into that window, brought forward first;
-  ✕ and Esc throw it away. Before the paste, a card above the pill shows what was said in grey, the words the
-  clean-up kept turning white and the rest blurring away (`cleanupCard.ts`, 1.6 s; the clean text alone when motion
-  is reduced). If the window is gone, the text goes on the clipboard and the pill says so. The pill
-  stays up the whole time, naming the window and showing the last few words. Dictated text never reaches the
+  ✕ and Esc throw it away. The pill shows his words as they are recognised and, once the clean text is pasted,
+  plays the clean-up over them: the cut words grey and are struck, then one motion carries the kept words into the
+  clean paragraph (`pillIsland.ts`, Settings → Dictation → Show words as you speak). The paste never waits for it.
+  If the window is gone, the text goes on the clipboard and the pill says so. Dictated text never reaches the
   environment. The hold key works the same way: release is ✓, Esc is ✕.
 
 While Tessaya speaks, a short stop phrase (stop, quiet, enough, that's enough, cancel, shut up)

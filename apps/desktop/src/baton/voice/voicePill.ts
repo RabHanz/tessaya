@@ -16,6 +16,9 @@ import {
   PLACES,
   cursorOverCapsule,
   defaultPosition,
+  baseOf,
+  createLowerHold,
+  grownBounds,
   parseSpots,
   pickScreen,
   placePosition,
@@ -34,6 +37,13 @@ import { applyLookScript, lookClasses, type Glass, type Motion } from "../home/l
 import { LISTENING_WEBP, STING_WEBP } from "./pillMotionArt.ts";
 import { TRAY_PNG } from "./trayArt.ts";
 import { isPillClick } from "./pillGesture.ts";
+import {
+  ISLAND_CSS,
+  ISLAND_HEIGHT,
+  ISLAND_HTML,
+  ISLAND_MEASURE,
+  ISLAND_SCRIPT,
+} from "./pillIsland.ts";
 import {
   CUE_TAIL_MS,
   PILL_PARTIAL,
@@ -75,6 +85,8 @@ const BEAT_TIMEOUT_MS = 700;
 const DEAD_LEVEL = 0.03;
 /** Baton's own voice level reaches the bars at most this often. */
 const SPEECH_MS = 20;
+/** Longer than any cleanup (opening 0.75 s, hold, 1.4 s motion, fade): replaced by the page's own figure. */
+const PROVISIONAL_HOLD_MS = 4_500;
 /** The closing sound plays out before the window hides. */
 const CLOSE_MS = 280;
 
@@ -90,16 +102,16 @@ export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><
 :root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--woad:#5FB3B3;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
-body{display:flex;align-items:center;justify-content:center}
+body{box-sizing:border-box;display:flex;align-items:flex-end;justify-content:center;padding-bottom:28px}
 #p{box-sizing:border-box;display:flex;align-items:center;gap:7px;height:24px;max-width:${WIDTH - 16}px;padding:0 11px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 55%),var(--ink);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.5);color:var(--text);position:relative;touch-action:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s}
 #p.on{opacity:1;transform:none}
 body.moving #p{cursor:grab;border:1px dashed var(--blue)}
 body.moving #p.drag{cursor:grabbing}
-#ok{display:none;position:absolute;left:50%;top:2px;transform:translateX(-50%);box-sizing:border-box;width:24px;height:24px;padding:0;margin:0;border-radius:50%;border:1px solid var(--line);background:var(--ink);color:var(--green);cursor:pointer;align-items:center;justify-content:center}
+#ok{display:none;position:absolute;left:50%;bottom:54px;transform:translateX(-50%);box-sizing:border-box;width:24px;height:24px;padding:0;margin:0;border-radius:50%;border:1px solid var(--line);background:var(--ink);color:var(--green);cursor:pointer;align-items:center;justify-content:center}
 body.moving #ok{display:flex}
 #ok:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p.drag::before{content:"";position:absolute;inset:-10px}
-#p.rest{height:6px;width:36px;padding:0;gap:0;border-color:rgba(255,255,255,.4);background:rgba(13,13,17,.78)}
+#p.rest{margin-bottom:9px;height:6px;width:36px;padding:0;gap:0;border-color:rgba(255,255,255,.4);background:rgba(13,13,17,.78)}
 #p.rest[data-rest=muted]{border-color:var(--amber)}
 #p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
 #p.rest>*{display:none}
@@ -140,7 +152,12 @@ html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
 #dv{color:var(--text)}
 .db:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p[data-phase=dictating][data-voice=on] .db{display:flex}
-</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><canvas id="w" width="54" height="16" aria-hidden="true"></canvas><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
+/* The tall window grew downward (no room above it): everything hangs from the top, at the same place. */
+body.down{align-items:flex-start;padding-bottom:0;padding-top:28px}
+body.down #ok{bottom:auto;top:2px}
+body.down #p.rest{margin-bottom:0;margin-top:9px}
+body.down #p.isl{bottom:auto;top:18px}
+${ISLAND_CSS}</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><canvas id="w" width="54" height="16" aria-hidden="true"></canvas><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span>${ISLAND_HTML}</div>${ISLAND_MEASURE}
 <script>
 const $=i=>document.getElementById(i),N=${PILL_BANDS},SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
@@ -159,7 +176,7 @@ const fit=()=>{const r=devicePixelRatio||1;cv.width=Math.round(W*r);cv.height=Ma
 const slot=Array.from({length:N},(_,b)=>Math.round((N-1)/2+(b%2?1:-1)*(Math.floor(b/2)+.5)));
 const taper=slot.map(x=>{const d=Math.abs(x-(N-1)/2)/((N-1)/2);return 1-.35*d*d;});
 const tgt=new Float32Array(N),lvl=new Float32Array(N);
-let ctx=null,mode='off',raf=0,last=0,since=0,color='#fff',bw=2.5,look='';
+let ctx=null,mode='off',raf=0,last=0,since=0,color='#fff',glow='#fff',bw=2.5,look='';
 const take=v=>{if(mode!=='live'||isCalm())return;const t=performance.now();for(let i=0;i<N;i++){const x=v.length===1?v[0]/255*(.45+.55*Math.abs(Math.sin(t/90+i*1.9))):v[i]/255;if(x>tgt[i])tgt[i]=x;}kick();};
 // Up to 60 fps while something moves: a ripple for the first 2 s, his voice, or the tidy sweep (bounded). Settled, it draws the rest once and stops.
 const paint=t=>{raf=0;if(mode==='off')return;if(isCalm()){lvl.fill(0);drawBars(null,0);return;}
@@ -169,7 +186,7 @@ const paint=t=>{raf=0;if(mode==='off')return;if(isCalm()){lvl.fill(0);drawBars(n
  const age=t-since;
  if(mode==='sweep'?age>SWEEP_MS:age>RIPPLE_MS&&pending===0&&e<.005*N){lvl.fill(0);drawBars(null,0);return;}
  drawBars(t,e/N);raf=requestAnimationFrame(paint);};
-const drawBars=(t,e)=>{g.clearRect(0,0,W,H);g.fillStyle=color;g.shadowColor=color;g.shadowBlur=mode==='live'&&e>.04?Math.min(8,14*e):0;const step=W/N,fade=t===null?0:Math.max(0,1-(t-since)/RIPPLE_MS);
+const drawBars=(t,e)=>{g.clearRect(0,0,W,H);g.fillStyle=color;g.shadowColor=glow;g.shadowBlur=mode==='live'&&e>.04?Math.min(8,14*e):0;const step=W/N,fade=t===null?0:Math.max(0,1-(t-since)/RIPPLE_MS);
  for(let b=0;b<N;b++){const x=slot[b];let rest=.16,alpha=1;
   if(mode==='live'&&fade>0)rest=.16+.07*fade*Math.sin(t/240-x*.6);
   // Tidying: the bars lie low and a slow light runs across them, left to right.
@@ -178,7 +195,7 @@ const drawBars=(t,e)=>{g.clearRect(0,0,W,H);g.fillStyle=color;g.shadowColor=colo
  g.globalAlpha=1;};
 const kick=()=>{if(!raf&&mode!=='off'&&!isCalm()){last=0;raf=requestAnimationFrame(paint);}};
 // Reduced motion: drawn once, still, and no loop.
-const setMode=m=>{const p=$('p'),key=p.dataset.phase+'/'+p.dataset.tone;if(key!==look){look=key;color=getComputedStyle(p).getPropertyValue('--bar').trim()||'#fff';bw=p.dataset.phase==='speaking'?3:2.5;}
+const setMode=m=>{const p=$('p'),isl=p.classList.contains('isl'),key=p.dataset.phase+'/'+p.dataset.tone+'/'+isl;if(key!==look){look=key;const cs=getComputedStyle(p);color=cs.getPropertyValue('--bar').trim()||'#fff';glow=isl?cs.getPropertyValue('--glow').trim()||'transparent':color;bw=p.dataset.phase==='speaking'?3:2.5;}
  if(m!==mode)since=performance.now();mode=m;if(m==='off'){lvl.fill(0);tgt.fill(0);cancelAnimationFrame(raf);raf=0;return;}if(isCalm()){lvl.fill(0);drawBars(null,0);}else kick();};
 fit();
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
@@ -206,25 +223,31 @@ grab.addEventListener('lostpointercapture',()=>{down=null;ipcRenderer.send('bato
 grab.addEventListener('dblclick',()=>{if(grab.classList.contains('rest'))ipcRenderer.send('baton-pill:reset');});
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
 // The capsule's box goes to the main process, which decides by the cursor position when the window takes the mouse, so a missed forwarded mousemove cannot leave the pill dead.
-const sendRect=()=>{const r=grab.getBoundingClientRect(),o=$('ok').getBoundingClientRect(),k=moving()&&o.width>0;
- const x=k?Math.min(r.left,o.left):r.left,y=k?Math.min(r.top,o.top):r.top;ipcRenderer.send('baton-pill:rect',x,y,(k?Math.max(r.right,o.right):r.right)-x,(k?Math.max(r.bottom,o.bottom):r.bottom)-y);};
+// The island resizes every frame while it moves: only a change of a few pixels is worth a message.
+let sentRect='';const sendRect=()=>{const r=grab.getBoundingClientRect(),o=$('ok').getBoundingClientRect(),k=moving()&&o.width>0;
+ const x=k?Math.min(r.left,o.left):r.left,y=k?Math.min(r.top,o.top):r.top,w=(k?Math.max(r.right,o.right):r.right)-x,h=(k?Math.max(r.bottom,o.bottom):r.bottom)-y,key=[x,y,w,h].map(n=>Math.round(n/3)).join();if(key===sentRect)return;sentRect=key;ipcRenderer.send('baton-pill:rect',x,y,w,h);};
 new ResizeObserver(sendRect).observe(grab);addEventListener('load',sendRect);
 for(const t of['pointerdown','pointerup','pointermove','pointercancel'])addEventListener(t,e=>ipcRenderer.send('baton-pill:pointer',t,e.clientX,e.clientY,e.target&&e.target.id||e.target.tagName,e.buttons),true);
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
+${ISLAND_SCRIPT}
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
- show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':isCalm()||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
-  setMode(!wave||v.wave==='flat'?'off':v.wave);
+ show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':isCalm()||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;
+  // Dictation's island: a new one for each recording; any other phase puts the plain pill back.
+  if(v.island!==true)island.stop();else if(v.fresh===true||!island.on())island.start();p.className=island.on()?'on isl':'on';p.dataset.esc=island.on()&&/Esc again/.test(v.caption||'')?'on':'off';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
+  setMode(!wave||v.wave==='flat'?'off':v.wave);if(island.on()&&v.wave==='sweep')island.release();
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
   p.dataset.voice=v.voice?'on':'off';
   $('c').textContent=v.phase==='ended'?'Say the wake word':v.phase==='dictating'?(v.caption||''):(v.caption&&/^to /.test(v.caption)?v.caption:'');},
- rest(why){const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';setMode('off');},
- hide(){$('p').className='';$('p').dataset.mark='off';setMode('off');clearTimeout(stingTimer);stinging=false;setMark('none');},
+ rest(why){island.stop();const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';setMode('off');},
+ hide(){if(I)I.until=0;$('p').className=island.on()?'isl':'';$('p').dataset.mark='off';setMode('off');clearTimeout(stingTimer);stinging=false;setMark('none');},
  sting(){if(isCalm())return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
- move(){const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';setMode('off');p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
+ move(){island.stop();const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';setMode('off');p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
  moving(on){document.body.classList.toggle('moving',on);if(on)$('ok').focus();sendRect();},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
+ words(text){island.words(text);},
+ cleanup(raw,clean){const ms=island.cleanup(raw,clean);if(ms>0){setMode('off');drawBars(null,0);}return ms;},
  sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);return ctx.state+':'+SOUNDS[name].length;},
 };
 </script></body></html>`;
@@ -255,6 +278,10 @@ export interface VoicePill {
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** Baton's own voice, while it speaks. */
   readonly speechLevel: (value: number) => void;
+  /** His words so far, as the recogniser hears them, while he dictates. */
+  readonly words: (text: string) => void;
+  /** The pasted words: the pill plays their cleanup over what he said, then goes. */
+  readonly cleanup: (raw: string, clean: string) => void;
   /** Build the window now, so the first wake is as quick as the rest. */
   readonly warm: () => void;
   /** The small mark at rest, off unless he asks. */
@@ -322,6 +349,10 @@ export const createVoicePill = (input: {
   /** Spoken dictation's ✓ (true: insert) or ✕ (false: throw away), shown while `voiceDictating`. */
   readonly onDictation?: (insert: boolean) => void;
   readonly voiceDictating?: () => boolean;
+  /** The dictation pill is saying something after the words (Discarded, an offer): the plain pill, not the island. */
+  readonly dictationMessage?: () => boolean;
+  /** Settings → Dictation → Show words as you speak (on unless he turns it off). */
+  readonly showWords?: () => boolean;
   /** The target window's rect in DIP (null when unknown): the pill goes on its screen. */
   readonly workArea?: () => Area | null;
   /** Each wake, from the event to the window on screen. */
@@ -365,6 +396,56 @@ export const createVoicePill = (input: {
   let movedFrom: Promise<number | null> = Promise.resolve(null);
   /** A press on the capsule is held: the window keeps the mouse even if the cursor slides off its edge. */
   let pressing = false;
+  /** Dictation's island is up: the window is ISLAND_HEIGHT tall, grown from where it sits (`grownBounds`). */
+  let tall = false;
+  /** The tall window grew downward (no room above): the page anchors its capsule at the top. */
+  let down = false;
+  /** The cleanup plays until its hold ends: the pill goes only after it, unless ✕ or Esc ends it first. */
+  const hold = createLowerHold({
+    now: () => Date.now(),
+    after: (ms, run) => {
+      const t = setTimeout(run, ms);
+      return () => clearTimeout(t);
+    },
+    lower: () => lower(),
+  });
+  let releaseHoldEscape: (() => void) | null = null;
+  const dropHoldEscape = () => {
+    releaseHoldEscape?.();
+    releaseHoldEscape = null;
+  };
+  /** ✕, ✓ or Esc during the cleanup: it is pasted already, so the pill just goes. */
+  const endCleanup = () => {
+    dropHoldEscape();
+    hold.holdUntil(0);
+    if (turnView(state) === null) lower();
+  };
+  /** Where the window goes for a spot of the 80 px pill; tall, it grows without moving the capsule. */
+  const boundsAt = (at: { readonly x: number; readonly y: number }): Electron.Rectangle => {
+    const base = { x: at.x, y: at.y, width: WIDTH, height: HEIGHT };
+    if (!tall) return base;
+    const grown = grownBounds(
+      base,
+      ISLAND_HEIGHT,
+      Electron.screen.getDisplayMatching(base).workArea,
+    );
+    if (grown.down !== down) {
+      down = grown.down;
+      call(`document.body.classList.toggle('down',${down})`);
+    }
+    return grown.bounds;
+  };
+  /** The 80 px pill's bounds, whatever the window's height: what places, saves and anchors use. */
+  const baseBounds = (target: Electron.BrowserWindow): Electron.Rectangle =>
+    baseOf(target.getBounds(), HEIGHT, tall && down);
+  const setTall = (on: boolean) => {
+    if (on && (moving || dragTimer !== null)) return;
+    if (on === tall) return;
+    const target = window;
+    const base = target === null || target.isDestroyed() ? null : baseBounds(target);
+    tall = on;
+    if (base !== null && target!.isVisible()) target!.setBounds(boundsAt(base));
+  };
   const trace = (record: Record<string, unknown>) => {
     if (input.captureDir === undefined) return;
     try {
@@ -492,7 +573,7 @@ export const createVoicePill = (input: {
     dragTimer = null;
     closeMarkers();
     if (window === null || window.isDestroyed()) return;
-    const bounds = window.getBounds();
+    const bounds = baseBounds(window);
     if (dragStarted !== null) {
       input.onDrag?.({
         reason,
@@ -528,6 +609,7 @@ export const createVoicePill = (input: {
     if (on === moving) return;
     moving = on;
     if (on) {
+      setTall(false);
       releaseMoveEscape = input.holdEscape(() => setMoving(false));
       // Never waits on a busy helper: no answer in 300 ms means focus is not handed back.
       movedFrom = Promise.race([
@@ -551,7 +633,7 @@ export const createVoicePill = (input: {
   };
 
   const this_anchor = () => {
-    if (window !== null && !window.isDestroyed()) return window.getBounds();
+    if (window !== null && !window.isDestroyed()) return baseBounds(window);
     return { ...placeFor(workScreen()), width: WIDTH, height: HEIGHT };
   };
 
@@ -624,6 +706,7 @@ export const createVoicePill = (input: {
   };
 
   const raise = () => {
+    hold.raised();
     build();
     if (hideTimer !== null) clearTimeout(hideTimer);
     hideTimer = null;
@@ -633,7 +716,7 @@ export const createVoicePill = (input: {
       if (target === null || target.isDestroyed()) return;
       if (target.isVisible()) return startHitTest();
       const at = placeFor(display);
-      target.setBounds({ ...at, width: WIDTH, height: HEIGHT });
+      target.setBounds(boundsAt(at));
       takingMouse = false;
       target.setIgnoreMouseEvents(true, { forward: true });
       target.showInactive();
@@ -643,16 +726,21 @@ export const createVoicePill = (input: {
 
   const lower = () => {
     if (window === null || window.isDestroyed()) return;
+    if (hold.defer()) return;
+    dropHoldEscape();
     if (moving) return call("window.pill.move()");
     if (input.rest()) {
       raise();
       call(`window.pill.rest(${JSON.stringify(why)})`);
+      setTall(false);
       return;
     }
     call("window.pill.hide()");
     const closing = window;
     hideTimer = setTimeout(() => {
       if (!closing.isDestroyed()) closing.hide();
+      tall = false;
+      down = false;
       stopHitTest();
     }, CLOSE_MS);
   };
@@ -716,10 +804,22 @@ export const createVoicePill = (input: {
         lower();
       }
     } else {
+      // Dictation's island while he records and until it is pasted; any other phase ends a cleanup still playing.
+      // Tidying continues the island it follows (spoken dictation lowers the pill between ✓ and its flush).
+      const island = state.phase === "dictating" && input.dictationMessage?.() !== true;
+      const fresh = island && previous.phase !== "dictating" && view.wave !== "sweep";
+      const words = island && input.showWords?.() !== false;
+      // A new dictation or any other phase ends a cleanup still playing.
+      if (!island || fresh) {
+        dropHoldEscape();
+        hold.holdUntil(0);
+      }
+      if (words) setTall(true);
       raise();
+      if (!words) setTall(false);
       setEscape(turnHoldsEscape(state));
       call(
-        `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true })})`,
+        `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true, island, fresh })})`,
       );
       if (event.type === "wake") {
         call("window.pill.sting()");
@@ -873,7 +973,9 @@ export const createVoicePill = (input: {
     input.onDismiss();
   });
   Electron.ipcMain.on("baton-pill:dictation", (event, insert: unknown) => {
-    if (mine(event)) input.onDictation?.(insert === true);
+    if (!mine(event)) return;
+    if (hold.holding()) return endCleanup();
+    input.onDictation?.(insert === true);
   });
   Electron.ipcMain.on("baton-pill:bypass", (event, on: unknown) => {
     if (mine(event)) bypassSnap = on === true;
@@ -889,7 +991,7 @@ export const createVoicePill = (input: {
     const at = placePosition(display.workArea, size, id, margins());
     spots = { any: spotFrom(display.workArea, size, at) };
     saveSpots();
-    target.setBounds({ ...at, ...size });
+    target.setBounds(boundsAt(at));
   };
   Electron.ipcMain.on("baton-pill:menu", (event) => {
     if (!mine(event) || window === null || window.isDestroyed()) return;
@@ -910,7 +1012,7 @@ export const createVoicePill = (input: {
     const display = Electron.screen.getDisplayMatching(window.getBounds());
     spots = {};
     saveSpots();
-    window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
+    window.setBounds(boundsAt(placeFor(display)));
   });
 
   return {
@@ -926,6 +1028,20 @@ export const createVoicePill = (input: {
       if (state.phase !== "speaking" || now - lastSpeech < SPEECH_MS || !barsWanted()) return;
       lastSpeech = now;
       sendBars([value]);
+    },
+    words: (text) => {
+      if (state.phase !== "dictating" || input.showWords?.() === false) return;
+      call(`window.pill.words(${JSON.stringify(text)})`);
+    },
+    cleanup: (raw, clean) => {
+      if (input.showWords?.() === false || !tall) return;
+      // Held a little past the longest cleanup until the page says how long this one plays.
+      hold.holdUntil(Date.now() + PROVISIONAL_HOLD_MS);
+      releaseHoldEscape ??= input.holdEscape(endCleanup);
+      call(`window.pill.cleanup(${JSON.stringify(raw)},${JSON.stringify(clean)})`, (ms) => {
+        if (typeof ms === "number" && ms > 0) hold.holdUntil(Date.now() + ms);
+        else endCleanup();
+      });
     },
     warm: build,
     setRest: (next) => {
@@ -943,7 +1059,7 @@ export const createVoicePill = (input: {
       if (moving && window !== null && !window.isDestroyed()) {
         // Hiding would take the focus and end the move: it goes to its new place still movable.
         const display = Electron.screen.getDisplayMatching(window.getBounds());
-        return window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
+        return window.setBounds(boundsAt(placeFor(display)));
       }
       if (window !== null && !window.isDestroyed()) {
         call("window.pill.hide()");
@@ -963,8 +1079,7 @@ export const createVoicePill = (input: {
       const display = Electron.screen.getDisplayMatching(this_anchor());
       spots = {};
       saveSpots();
-      if (window !== null && !window.isDestroyed())
-        window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
+      if (window !== null && !window.isDestroyed()) window.setBounds(boundsAt(placeFor(display)));
     },
     place: () => {
       const b = this_anchor();
@@ -978,7 +1093,7 @@ export const createVoicePill = (input: {
       return near.id;
     },
     anchor: () => {
-      if (window !== null && !window.isDestroyed()) return window.getBounds();
+      if (window !== null && !window.isDestroyed()) return baseBounds(window);
       return { ...placeFor(workScreen()), width: WIDTH, height: HEIGHT };
     },
     retarget: () => {
@@ -992,7 +1107,7 @@ export const createVoicePill = (input: {
         return;
       const display = workScreen();
       if (display.id === Electron.screen.getDisplayMatching(window.getBounds()).id) return;
-      window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
+      window.setBounds(boundsAt(placeFor(display)));
     },
     state: () => state,
     dispose: () => {

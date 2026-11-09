@@ -347,11 +347,9 @@ impl Live {
             Ok(text) if text.is_empty() => {}
             Ok(text) => {
                 self.text.push(text);
-                // At a pause the words so far may be all of it: the desktop starts their cleanup now, so a release
-                // right after finds it done.
-                if at_pause {
-                    emit(json!({"ev": "partial", "text": self.text.join(" ")}));
-                }
+                // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
+                // starts their cleanup then, so a release right after finds it done.
+                emit(json!({"ev": "partial", "text": self.text.join(" "), "pause": at_pause}));
             }
             Err(e) => self.failed = Some(e),
         }
