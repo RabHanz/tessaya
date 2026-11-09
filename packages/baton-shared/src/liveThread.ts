@@ -15,6 +15,39 @@ export const instanceLabel = (instanceId: string): string =>
 export const liveSessionIdOf = (threadId: string): string | null =>
   /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;
 
+/**
+ * A live thread's title as shown: without the " · <account> · <box>" the mirror appends for T3's own lists
+ * (liveThreadTitle). A trailing segment goes only when it is exactly a name the client knows (an account's label,
+ * address or login, an environment or machine label), so real title text is never cut. Display only.
+ */
+export const displayThreadTitle = (
+  threadId: string,
+  title: string,
+  known: ReadonlySet<string>,
+): string => {
+  if (!isLiveThreadId(threadId)) return title;
+  const parts = title.split(" · ");
+  while (parts.length > 1 && known.has(parts.at(-1)!.trim().toLowerCase())) parts.pop();
+  return parts.join(" · ");
+};
+
+/** The names a live title may end with, lowercased, for displayThreadTitle. */
+export const knownTitleSuffixes = (input: {
+  readonly accounts: ReadonlyArray<{ readonly label: string; readonly email: string | null }>;
+  readonly environmentLabels: ReadonlyArray<string>;
+}): ReadonlySet<string> =>
+  new Set(
+    [
+      ...input.accounts.flatMap((account) => [
+        account.label,
+        ...(account.email === null ? [] : [account.email, account.email.split("@")[0]!]),
+      ]),
+      ...input.environmentLabels.flatMap((label) => [label, label.split(".")[0]!]),
+    ]
+      .map((name) => name.trim().toLowerCase())
+      .filter((name) => name.length > 0),
+  );
+
 export const isLiveThreadId = (threadId: string): boolean =>
   threadId.startsWith(LIVE_THREAD_PREFIX);
 

@@ -110,6 +110,7 @@ import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
 import { BatonLiveBadge } from "./BatonLiveBadge";
+import { BatonThreadTitleText } from "../chat/BatonThreadTitle";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { InlineButton } from "../ui/button";
@@ -1047,7 +1048,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       )}
       dir={textDirection(thread.title)}
     >
-      {thread.title}
+      <BatonThreadTitleText
+        environmentId={thread.environmentId}
+        threadId={thread.id}
+        title={thread.title}
+      />
     </span>
   );
   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
