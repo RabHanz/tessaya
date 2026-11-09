@@ -23,7 +23,7 @@ use windows::Win32::System::Memory::{
 };
 use windows::Win32::System::Ole::{
     CF_BITMAP, CF_DSPBITMAP, CF_DSPENHMETAFILE, CF_DSPMETAFILEPICT, CF_DSPTEXT, CF_ENHMETAFILE,
-    CF_OWNERDISPLAY, CF_PALETTE, CF_UNICODETEXT,
+    CF_METAFILEPICT, CF_OWNERDISPLAY, CF_PALETTE, CF_UNICODETEXT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CopyImage, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
@@ -405,7 +405,9 @@ unsafe fn snapshot_clipboard(hwnd: HWND, shared: &WinTxShared) -> Result<(), Str
         }
         // Formats whose handles are not plain global memory cannot be
         // byte-copied; skipping them matches what the legacy path restored.
+        // CF_METAFILEPICT is global memory, but it holds an HMETAFILE that a byte copy leaves dead.
         if format == CF_ENHMETAFILE.0 as u32
+            || format == CF_METAFILEPICT.0 as u32
             || format == CF_DSPENHMETAFILE.0 as u32
             || format == CF_DSPBITMAP.0 as u32
             || format == CF_DSPMETAFILEPICT.0 as u32
