@@ -9,8 +9,8 @@
 #
 # Everything in ~/.claude is shared by link (projects, history, settings, skills…) except the credential, the live
 # session descriptors and the global config, which Claude rewrites in place. A login with a refresh token is never
-# copied: Claude rotates it in place, so two copies would strand each other (cswap's own rule); such a machine login
-# runs plain `claude`, and a refreshable slot moves to at most one dir at a time.
+# copied: Claude rotates it in place, so a copy would strand the original (cswap's own rule). Such a machine login
+# runs plain `claude`, and such a slot is refused by --switch; setup tokens and API keys move freely.
 set -euo pipefail
 
 root="${TESSAYA_CLAUDE_THREADS:-$HOME/.local/share/tessaya/claude-threads}"
@@ -66,43 +66,32 @@ if [[ "${1:-}" == "--switch" ]]; then
   [[ "$slot" =~ ^[0-9]{1,4}$ ]] || { echo "not a slot: $slot" >&2; exit 2; }
   [[ "$(readlink -f "$dir")" == "$(readlink -f "$root")"/* && -f "$dir/.tessaya-account" ]] ||
     { echo "not a Tessaya thread dir: $dir" >&2; exit 2; }
+  command -v cswap > /dev/null 2>&1 || { echo "cswap not installed" >&2; exit 2; }
   py="$(head -1 "$(command -v cswap)" | sed 's/^#!//')"
-  exec "$py" -I - "$swap" "$root" "$dir" "$slot" << 'PY'
+  # One switch at a time on this machine.
+  exec 9> "$root/.switch.lock"
+  flock -w 30 9 || { echo "another switch is still running" >&2; exit 1; }
+  "$py" -I - "$swap" "$dir" "$slot" << 'PY'
 import json, os, sys, tempfile
 from claude_swap.switcher import ClaudeAccountSwitcher
 
-swap, root, target_dir, slot = sys.argv[1:]
-seq = json.load(open(os.path.join(swap, "sequence.json")))
-accounts = seq["accounts"]
+swap, target_dir, slot = sys.argv[1:]
+accounts = json.load(open(os.path.join(swap, "sequence.json")))["accounts"]
 if slot not in accounts:
     sys.exit(f"no account in slot {slot}")
-sw = ClaudeAccountSwitcher()
-cred_path = os.path.join(target_dir, ".credentials.json")
-marker = os.path.join(target_dir, ".tessaya-account")
-current = open(marker).read().strip()
-refreshable = lambda text: '"refreshToken"' in text
-# A refreshable login lives in one place: hand the rotated copy back before leaving it.
-if current in accounts and current != slot and os.path.exists(cred_path):
-    held = open(cred_path).read()
-    if refreshable(held):
-        sw._write_account_credentials(current, accounts[current]["email"], held)
-creds = sw._read_account_credentials(slot, accounts[slot]["email"])
-if refreshable(creds):
-    if slot == str(seq.get("activeAccountNumber")):
-        sys.exit("that login is the machine's own and refreshes in place; it cannot be copied to one thread")
-    for name in os.listdir(root):
-        other = os.path.join(root, name, ".tessaya-account")
-        if os.path.realpath(os.path.dirname(other)) != os.path.realpath(target_dir) and os.path.exists(other) \
-                and open(other).read().strip() == slot:
-            sys.exit("that login refreshes in place and another thread holds it")
+creds = ClaudeAccountSwitcher()._read_account_credentials(slot, accounts[slot]["email"])
+# Claude rotates a refresh token in place, so a copy would strand the original: only setup tokens and API keys move.
+if '"refreshToken"' in creds:
+    sys.exit("This account signs in with a refresh token; switch it machine-wide or re-add it as a setup token.")
 fd, tmp = tempfile.mkstemp(dir=target_dir, prefix=".cred.")
 os.write(fd, creds.encode()); os.close(fd); os.chmod(tmp, 0o600)
-os.replace(tmp, cred_path)
+os.replace(tmp, os.path.join(target_dir, ".credentials.json"))
 fd, tmp = tempfile.mkstemp(dir=target_dir, prefix=".acct.")
 os.write(fd, slot.encode()); os.close(fd)
-os.replace(tmp, marker)
+os.replace(tmp, os.path.join(target_dir, ".tessaya-account"))
 print(f"slot {slot}")
 PY
+  exit $?
 fi
 
 if [[ "${1:-}" == "--dir" ]]; then

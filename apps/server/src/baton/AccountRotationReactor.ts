@@ -255,12 +255,21 @@ export const make = Effect.gen(function* () {
         { sessionId: move.sessionId, accountKey: move.target.key },
         current.accounts,
       );
-      if (result.state !== "switched") continue;
+      // A refused move waits out the same cooldown as a done one, so it is tried (and logged) once per 15 minutes,
+      // and the policy's floor, hysteresis and once-per-window rule keep two tight accounts from trading it back.
       sessionRotatedAt.set(move.sessionId, now);
-      yield* Effect.logInfo("Tessaya moved a live session to another account near its limit", {
-        sessionId: move.sessionId,
-        to: move.target.label,
-      });
+      if (result.state === "switched")
+        yield* Effect.logInfo("Tessaya moved a live session to another account near its limit", {
+          sessionId: move.sessionId,
+          to: move.target.label,
+        });
+      else
+        yield* Effect.logWarning("Tessaya could not move a live session near its limit", {
+          sessionId: move.sessionId,
+          to: move.target.label,
+          state: result.state,
+          detail: result.detail,
+        });
     }
   });
   let lastAutoRotationAt: string | null = null;

@@ -204,6 +204,18 @@ export const liveSetModel = (
     ),
   );
 
+/** Whether the machine's own login (~/.claude) refreshes in place; its token never leaves this process. */
+const machineLoginRefreshes = (): boolean => {
+  try {
+    return NodeFS.readFileSync(
+      NodePath.join(NodeOS.homedir(), ".claude", ".credentials.json"),
+      "utf8",
+    ).includes('"refreshToken"');
+  } catch {
+    return false;
+  }
+};
+
 /** tessaya-claude --switch: the slot's credential renamed into the thread's own dir (cswap's store, never echoed). */
 const switchThreadDir = (dir: string, slot: string): Promise<{ ok: boolean; detail: string }> =>
   new Promise((resolve) =>
@@ -251,6 +263,12 @@ export const liveSetAccount = (
       if (!isThreadConfigDir(session.configDir)) {
         if (!NodeFS.existsSync(TESSAYA_CLAUDE))
           return { state: "refused", detail: "tessaya-claude is not installed on this machine." };
+        if (machineLoginRefreshes())
+          return {
+            state: "refused",
+            detail:
+              "The machine's login signs in with a refresh token, which cannot be copied into one thread. Switch it machine-wide, or re-add it as a setup token.",
+          };
         if (input.restart !== true)
           return {
             state: "needs_restart",
