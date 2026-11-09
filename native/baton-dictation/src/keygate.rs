@@ -2,12 +2,14 @@
 //! words, never before them (the chat would send without them), and never sent twice. Pure, so it is tested on any
 //! platform; `keygate_windows.rs` feeds it from a low-level keyboard hook that exists only while a hold is up.
 //!
-//! The rules: only plain typing keys, Enter and Tab are held, and only while the window the dictation targets is in
-//! front. Ctrl, Alt or Win down: everything passes, so shortcuts are never touched. Another window in front: the held
-//! keys are dropped and the hold ends. After `CAP_MS` everything passes. A hold is owned by one dictation's id.
+//! The rules: a hold starts only with a plain typing key, Enter or Tab, and only while the window the dictation
+//! targets is in front; from then on every key is held, Backspace and the arrows too, so their order is kept. Ctrl,
+//! Alt or Win down: everything passes, so shortcuts are never touched. Another window in front: the held keys are
+//! dropped and the hold ends. `CAP_MS` after the first held key everything passes, and the expired hold sends its
+//! typing again but drops Enter and Tab, which could land before the words. A hold is owned by one dictation's id.
 #![cfg_attr(not(windows), allow(dead_code))]
 
-/// The hold never lasts longer than this, in ms; then everything passes and the held keys are sent.
+/// How long the first held key may wait, in ms; then everything passes (`expire`).
 pub const CAP_MS: u64 = 3_000;
 const SHIFTS: [u16; 3] = [0x10, 0xA0, 0xA1];
 const SHIFT: u16 = 0xA0;
@@ -39,18 +41,21 @@ pub struct Gate {
     pub owner: u64,
     target: isize,
     held: Vec<(u16, bool)>,
+    /// When the first key was held, in the caller's ms.
+    first: Option<u64>,
     /// Keys whose press was held: their release is held too, so the app never sees a release without its press.
     down: Vec<u16>,
 }
 
 impl Gate {
     pub fn new(owner: u64, target: isize) -> Self {
-        Self { owner, target, held: Vec::new(), down: Vec::new() }
+        Self { owner, target, held: Vec::new(), first: None, down: Vec::new() }
     }
 
     /// One key event, `elapsed` ms after the hold began, with `front` the window in front now.
     pub fn key(&mut self, vk: u16, up: bool, injected: bool, mods: Mods, front: isize, elapsed: u64) -> Verdict {
-        if injected || elapsed >= CAP_MS || SHIFTS.contains(&vk) {
+        let expired = self.first.is_some_and(|first| elapsed >= first + CAP_MS);
+        if injected || expired || SHIFTS.contains(&vk) {
             return Verdict::Pass;
         }
         if front != self.target {
@@ -61,10 +66,11 @@ impl Gate {
         if up {
             return if self.down.contains(&vk) { Verdict::Hold } else { Verdict::Pass };
         }
-        if mods.command || !holdable(vk) {
+        let first = self.held.is_empty();
+        if mods.command || (first && !holdable(vk)) {
             return Verdict::Pass;
         }
-        let first = self.held.is_empty();
+        self.first.get_or_insert(elapsed);
         self.held.push((vk, mods.shift));
         if !self.down.contains(&vk) {
             self.down.push(vk);
@@ -94,7 +100,17 @@ impl Gate {
             }
         }
         self.down.clear();
+        self.first = None;
         Some(out)
+    }
+
+    /// The cap ran out before the paste: the hold ends, sending its keys again except Enter and Tab.
+    pub fn expire(&mut self, owner: u64, shift_down: bool) -> Option<Vec<(u16, bool)>> {
+        if owner != self.owner {
+            return None;
+        }
+        self.held.retain(|(vk, _)| *vk != 0x0D && *vk != 0x09);
+        self.release(owner, shift_down)
     }
 }
 
@@ -126,6 +142,19 @@ mod tests {
         assert_eq!(gate.key(ENTER, false, false, shift, FIELD, 5), Verdict::First);
         assert_eq!(gate.key(0xA0, true, false, PLAIN, FIELD, 9), Verdict::Pass);
         assert_eq!(gate.release(1, false), Some(vec![(SHIFT, false), (ENTER, false), (ENTER, true), (SHIFT, true)]));
+    }
+
+    #[test]
+    fn once_one_key_waits_every_key_waits_so_their_order_holds() {
+        let mut gate = Gate::new(1, FIELD);
+        // An arrow before anything is held passes; it does not start a hold.
+        assert_eq!(gate.key(0x25, false, false, PLAIN, FIELD, 0), Verdict::Pass);
+        assert_eq!(gate.key(A, false, false, PLAIN, FIELD, 1), Verdict::First);
+        assert_eq!(gate.key(0x42, false, false, PLAIN, FIELD, 2), Verdict::Hold);
+        assert_eq!(gate.key(0x08, false, false, PLAIN, FIELD, 3), Verdict::Hold);
+        assert_eq!(gate.key(0x2E, false, false, PLAIN, FIELD, 4), Verdict::Hold);
+        let order: Vec<u16> = gate.release(1, false).unwrap().into_iter().filter(|(_, up)| !up).map(|(vk, _)| vk).collect();
+        assert_eq!(order, vec![A, 0x42, 0x08, 0x2E]);
     }
 
     #[test]
@@ -162,11 +191,15 @@ mod tests {
     }
 
     #[test]
-    fn after_three_seconds_everything_passes() {
+    fn three_seconds_after_the_first_held_key_everything_passes_and_enter_is_dropped() {
         let mut gate = Gate::new(1, FIELD);
-        assert_eq!(gate.key(A, false, false, PLAIN, FIELD, CAP_MS - 1), Verdict::First);
-        assert_eq!(gate.key(ENTER, false, false, PLAIN, FIELD, CAP_MS), Verdict::Pass);
-        assert_eq!(gate.key(ENTER, false, false, PLAIN, 99, CAP_MS + 1), Verdict::Pass);
-        assert_eq!(gate.release(1, false), Some(vec![(A, false), (A, true)]));
+        // The ghost played 4 s before he pressed anything: the cap counts from his first key, not from the ghost.
+        assert_eq!(gate.key(A, false, false, PLAIN, FIELD, 4_000), Verdict::First);
+        assert_eq!(gate.key(ENTER, false, false, PLAIN, FIELD, 4_000 + CAP_MS - 1), Verdict::Hold);
+        assert_eq!(gate.key(0x09, false, false, PLAIN, FIELD, 4_000 + CAP_MS - 1), Verdict::Hold);
+        assert_eq!(gate.key(ENTER, false, false, PLAIN, FIELD, 4_000 + CAP_MS), Verdict::Pass);
+        assert_eq!(gate.key(ENTER, false, false, PLAIN, 99, 4_000 + CAP_MS + 1), Verdict::Pass);
+        assert_eq!(gate.expire(2, false), None);
+        assert_eq!(gate.expire(1, false), Some(vec![(A, false), (A, true)]));
     }
 }

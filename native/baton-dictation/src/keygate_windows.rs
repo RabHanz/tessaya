@@ -1,9 +1,9 @@
 //! The Windows side of the key gate (`keygate.rs`): a low-level keyboard hook on its own thread, installed when the
 //! ghost starts playing and removed when its dictation's paste lands, another window comes to the front, or CAP_MS
-//! passes. The hook only decides and queues; a worker thread does every write and ends the hook.
+//! passes after the first held key. The hook only decides and queues; a worker thread does every write and ends it.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -111,6 +111,9 @@ unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRE
     CallNextHookEx(None, code, wparam, lparam)
 }
 
+/// A desktop that never says the paste landed cannot leave the hook installed longer than this.
+const IDLE_MAX: Duration = Duration::from_secs(30);
+
 /// Keys wait for dictation `owner`'s paste into `target` from now, unless that window is elevated or not in front.
 pub fn hold(owner: u64, target: isize) {
     let front = unsafe { GetForegroundWindow() };
@@ -148,18 +151,25 @@ pub fn hold(owner: u64, target: isize) {
     if let Ok(mut live) = LIVE.lock() {
         *live = Some(Live { gate: Gate::new(owner, target), started: Instant::now() });
     }
-    // Every write happens here, never in the hook; at the cap the held keys go and everything passes.
+    // Every write happens here, never in the hook. The cap counts from the first held key; when it runs out the hold
+    // ends, its typing is sent and its Enter and Tab are dropped.
     thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_millis(CAP_MS);
+        let mut deadline = Instant::now() + IDLE_MAX;
+        let mut capped = false;
         loop {
             match notes.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                Ok(Note::Held(o)) => emit(json!({"ev": "held_key", "id": o})),
+                Ok(Note::Held(o)) => {
+                    deadline = Instant::now() + Duration::from_millis(CAP_MS);
+                    capped = true;
+                    emit(json!({"ev": "held_key", "id": o}));
+                }
                 Ok(Note::Lost(o)) => {
                     emit(json!({"ev": "held_lost", "id": o}));
                     unhook(id);
                     return;
                 }
-                Err(_) => return release(owner),
+                Err(RecvTimeoutError::Timeout) if capped => return end(owner, true),
+                Err(_) => return end(owner, false),
             }
         }
     });
@@ -174,8 +184,19 @@ fn unhook(thread: u32) {
 
 /// Dictation `owner`'s paste has landed: its held keys go, in order, and the hook ends. Another's id does nothing.
 pub fn release(owner: u64) {
+    end(owner, false);
+}
+
+fn end(owner: u64, expired: bool) {
+    let shift = down(VK_SHIFT.0);
     let events = match LIVE.lock() {
-        Ok(mut live) => match live.as_mut().and_then(|l| l.gate.release(owner, down(VK_SHIFT.0))) {
+        Ok(mut live) => match live.as_mut().and_then(|l| {
+            if expired {
+                l.gate.expire(owner, shift)
+            } else {
+                l.gate.release(owner, shift)
+            }
+        }) {
             Some(events) => {
                 *live = None;
                 events

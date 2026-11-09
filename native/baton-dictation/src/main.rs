@@ -265,8 +265,17 @@ enum Work {
     Abort,
     /// Dictation is bound to a key and heard here: the dictation model stays loaded, so a press never waits on a reload.
     Keep(bool),
-    /// The model `warm_in_background` loaded for cloud dictation's live words; taken only into an empty slot.
-    Warmed(PathBuf, Session),
+    /// Cloud live words want this model read in the background (`warm_needed`); a cloud Begin asks again.
+    Warm(PathBuf),
+    /// The model `warm_in_background` loaded for cloud dictation's live words (None: it would not load); taken only
+    /// into an empty slot.
+    Warmed(PathBuf, Option<Session>),
+}
+
+/// A background read of `wanted` is due: it is on disk, no slot holds it and none is running. After an idle unload
+/// the slot is empty again, so the next ask reads it again; a model already in either slot is never read twice.
+fn warm_needed(wanted: &Path, main: Option<&Path>, other: Option<&Path>, warming: bool, on_disk: bool) -> bool {
+    on_disk && !warming && main != Some(wanted) && other != Some(wanted)
 }
 
 /// Cloud dictation's live words need the local model, but a recording must never wait for it: it is read here, on a
@@ -282,9 +291,8 @@ fn warm_in_background(
             use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
             let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
         }
-        if let Ok((session, _)) = loader(&model) {
-            let _ = job_tx.send(Work::Warmed(model, session));
-        }
+        let session = loader(&model).ok().map(|(session, _)| session);
+        let _ = job_tx.send(Work::Warmed(model, session));
     })
 }
 
@@ -571,7 +579,10 @@ fn path_of(slot: &Loaded) -> Option<&Path> {
 /// One thread owns the models. Each slot loads on first use and leaves after ten idle minutes of its own, because
 /// 16 GB is shared with everything else on the laptop; the dictation slot stays while dictation is bound (`Keep`).
 /// v3 held is about 1.2 GB.
-fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
+fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
+    // Cloud live words: the model to read in the background, and whether a read is running.
+    let mut wanted: Option<PathBuf> = None;
+    let mut warming = false;
     let mut loaded: Loaded = None;
     let mut other: Loaded = None;
     let mut loaded_at = Instant::now();
@@ -631,6 +642,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 emit(line);
             }
             Ok(Work::Begin { model, language, external: Some(dir), live: words, .. }) => {
+                // Unloaded after idle: read again in the background for the next one; this one never waits for it.
+                if words && wanted.as_ref() == Some(&model) {
+                    let _ = me.send(Work::Warm(model.clone()));
+                }
                 // The cloud hears the recording. The local model shows his words as he speaks only when it is already
                 // loaded: never loaded for them, so the key's release never waits on a load.
                 let words = words && path_of(&loaded) == Some(model.as_path());
@@ -663,8 +678,16 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 let _ = out.send(Msg::Finished { id: None, dictated: true, target, result });
             }
             Ok(Work::Abort) => live = None,
+            Ok(Work::Warm(model)) => {
+                if warm_needed(&model, path_of(&loaded), path_of(&other), warming, model.is_file()) {
+                    warming = true;
+                    warm_in_background(model.clone(), me.clone(), |m| load(m));
+                }
+                wanted = Some(model);
+            }
             Ok(Work::Warmed(path, session)) => {
-                if loaded.is_none() {
+                warming = false;
+                if let Some(session) = session.filter(|_| loaded.is_none()) {
                     loaded = Some((path, session));
                     loaded_at = Instant::now();
                 }
@@ -1189,11 +1212,10 @@ fn over_limit(held: Duration) -> bool {
 fn serve() {
     let (tx, rx) = channel::<Msg>();
     let (job_tx, job_rx) = channel::<Work>();
-    // The model already read in the background for cloud live words, so a reconfigure does not read it again.
-    let mut warmed: Option<PathBuf> = None;
     {
         let tx = tx.clone();
-        thread::spawn(move || engine_thread(job_rx, tx));
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, tx, me));
     }
     {
         let tx = tx.clone();
@@ -1338,10 +1360,7 @@ fn serve() {
                                 if let (true, Some(_), Some(model)) =
                                     (config.live_words, config.external.as_ref(), config.model.as_ref())
                                 {
-                                    if model.is_file() && warmed.as_ref() != Some(model) {
-                                        warmed = Some(model.clone());
-                                        warm_in_background(model.clone(), job_tx.clone(), |m| load(m));
-                                    }
+                                    let _ = job_tx.send(Work::Warm(model.clone()));
                                 }
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
@@ -1874,10 +1893,24 @@ mod tests {
     }
 
     #[test]
+    fn the_background_read_never_loads_a_model_twice_and_runs_again_after_an_unload() {
+        let m = Path::new("parakeet.gguf");
+        assert!(warm_needed(m, None, None, false, true));
+        assert!(!warm_needed(m, Some(m), None, false, true));
+        assert!(!warm_needed(m, Some(Path::new("wake.gguf")), Some(m), false, true));
+        assert!(!warm_needed(m, None, None, true, true));
+        // Not on disk: never downloaded for this.
+        assert!(!warm_needed(m, None, None, false, false));
+        // Unloaded after idle, the slot is empty again: the next ask reads it again.
+        assert!(warm_needed(m, None, Some(Path::new("wake.gguf")), false, true));
+    }
+
+    #[test]
     fn a_cloud_dictation_never_waits_on_the_live_words_load() {
         let (job_tx, job_rx) = channel::<Work>();
         let (out_tx, out_rx) = channel::<Msg>();
-        thread::spawn(move || engine_thread(job_rx, out_tx));
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, out_tx, me));
         // A load that takes as long as the test does: the recording must finish without it.
         let (unblock, blocked) = channel::<()>();
         let model = PathBuf::from("parakeet-test.gguf");
