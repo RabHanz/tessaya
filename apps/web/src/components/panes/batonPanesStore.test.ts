@@ -8,11 +8,12 @@ describe("pane restore", () => {
     expect(startedAtHome("#/")).toBe(true);
     expect(startedAtHome("#/box/thread")).toBe(false);
     expect(startedAtHome("#/pair")).toBe(false);
+    // The web app routes by path, not hash.
+    expect(startedAtHome("/")).toBe(true);
+    expect(startedAtHome("/box/thread")).toBe(false);
   });
 
   it("is dropped once any page but home shows, so a later visit home starts fresh", () => {
-    // Off the desktop app nothing resumes: web tabs share one layout.
-    expect(useBatonPanesStore.getState().restorePending).toBe(false);
     useBatonPanesStore.setState({ restorePending: true });
     useBatonPanesStore.getState().noteLocation("/");
     expect(useBatonPanesStore.getState().restorePending).toBe(true);

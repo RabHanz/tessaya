@@ -28,10 +28,7 @@ interface BatonPanesState extends PaneLayout {
   readonly arranged: boolean;
   /** Threads another window claimed; this window keeps the pane and shows no ChatView for them. */
   readonly ceded: ReadonlyArray<string>;
-  /**
-   * Decided once from the URL this page started on: only a desktop window opened at home resumes
-   * its panes. Web tabs share one layout, so there every tab would jump to the same thread.
-   */
+  /** Decided once from the URL this page started on: a window or tab opened at home resumes its panes. */
   readonly restorePending: boolean;
   readonly settleRestore: () => void;
   /** Any page but home has shown, so a later visit home is a choice, not a reopen. */
@@ -65,7 +62,8 @@ export const useBatonPanesStore = create<BatonPanesState>()(
         arranged: false,
         ceded: [],
         restorePending:
-          isElectron && typeof window !== "undefined" && startedAtHome(window.location.hash),
+          typeof window !== "undefined" &&
+          startedAtHome(isElectron ? window.location.hash : window.location.pathname),
         settleRestore: () => set({ restorePending: false }),
         noteLocation: (pathname) => {
           if (pathname !== "/" && get().restorePending) set({ restorePending: false });
@@ -170,8 +168,8 @@ if (typeof window !== "undefined") {
   });
 }
 
-export function startedAtHome(hash: string): boolean {
-  return hash === "" || hash === "#" || hash === "#/";
+export function startedAtHome(path: string): boolean {
+  return path === "" || path === "#" || path === "#/" || path === "/";
 }
 
 /** Opens a thread beside the current one. Outside a thread route it has nothing to sit beside. */

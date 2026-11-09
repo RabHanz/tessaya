@@ -106,7 +106,11 @@ export function paneFallback(input: {
   return input.environment === "ready" && input.threadPending ? "loading" : "unavailable";
 }
 
-/** Whether a saved pane can be resumed. A draft passes its project's environment. */
+/**
+ * Whether a saved pane can be resumed. A draft passes its project's environment. Only a thread its
+ * environment has said is gone is skipped: an unreachable one may just not have connected yet, and
+ * skipping it leaves home to start a draft that overwrites the pane.
+ */
 export function paneRestoreState(input: {
   readonly heldElsewhere: boolean;
   /** Null when the pane has no environment left, such as a draft whose session is gone. */
@@ -115,6 +119,7 @@ export function paneRestoreState(input: {
 }): "ready" | "waiting" | "gone" {
   if (input.heldElsewhere) return "gone";
   if (input.environment === "connecting") return "waiting";
+  if (input.environment === "unreachable") return "ready";
   return input.environment === "ready" && input.exists ? "ready" : "gone";
 }
 
@@ -125,7 +130,7 @@ export type PaneRestore =
 
 /**
  * Where a window opened at home resumes: its focused pane, else the next pane in order, skipping
- * threads that are gone or on environments it cannot reach. Waits while a better pane may load.
+ * threads that are gone or held by another window. Waits while a better pane may load.
  */
 export function resolvePaneRestore(
   layout: PaneLayout,

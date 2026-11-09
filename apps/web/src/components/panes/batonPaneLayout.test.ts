@@ -163,7 +163,13 @@ describe("reopening a window", () => {
     expect(paneRestoreState(ready)).toBe("ready");
     expect(paneRestoreState({ ...ready, heldElsewhere: true })).toBe("gone");
     expect(paneRestoreState({ ...ready, environment: "connecting" })).toBe("waiting");
-    expect(paneRestoreState({ ...ready, environment: "unreachable" })).toBe("gone");
+    // At boot a saved environment reads "available" before it connects; its pane must still resume.
+    expect(paneRestoreState({ ...ready, environment: "unreachable", exists: false })).toBe("ready");
+    expect(
+      resolvePaneRestore(layout, (target) =>
+        paneRestoreState({ ...ready, environment: "unreachable", exists: target !== t2 }),
+      ),
+    ).toEqual({ kind: "go", target: t2 });
     // A draft whose session is gone has no environment to wait for.
     expect(paneRestoreState({ ...ready, environment: null })).toBe("gone");
     expect(paneRestoreState({ ...ready, exists: false })).toBe("gone");
