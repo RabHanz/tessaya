@@ -22,6 +22,10 @@ export type Card =
   | { readonly kind: "copy"; readonly why: string; readonly text: string }
   | { readonly kind: "error"; readonly message: string; readonly text?: string };
 
+/** Windows 11 22H2 and later draw acrylic behind a window (BrowserWindow backgroundMaterial). */
+export const acrylicSupported = (platform: string, release: string): boolean =>
+  platform === "win32" && Number(release.split(".")[2] ?? 0) >= 22621;
+
 /** One line: Learned “Kowalczyk”, or “A”, “B”, or 4 words. */
 export const learnedText = (words: ReadonlyArray<string>): string =>
   words.length <= 2
@@ -31,14 +35,14 @@ export const learnedText = (words: ReadonlyArray<string>): string =>
 const esc = (text: string) =>
   text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-export const cardDocument = (card: Card): string => {
+export const cardDocument = (card: Card, frosted = false): string => {
   const body =
     card.kind === "learned"
       ? `<div class="body"><div class="txt">${esc(learnedText(card.words))}</div></div><div class="acts"><button class="cb" id="discard" type="button">Discard</button>`
       : card.kind === "copy"
         ? `<div class="body"><div class="why">${esc(card.why)}</div><div class="txt">${esc(card.text)}</div></div><div class="acts"><button class="cb" id="copy" type="button">Copy</button>`
         : `<span class="dot" aria-hidden="true"></span><div class="body"><div class="txt">${esc(card.message)}</div></div><div class="acts">${card.text === undefined ? "" : '<button class="cb" id="copy" type="button">Copy</button>'}`;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  return `<!doctype html><html${frosted ? ' class="frost"' : ""}><head><meta charset="utf-8"><style>
 :root{--glass:rgba(20,20,26,.58);--edge:rgba(255,255,255,.13);--text:#fff;--soft:rgba(255,255,255,.62);--accent:#5FB3B3;--danger:#ff8a80;
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 @media (prefers-color-scheme:light){:root{--glass:rgba(255,255,255,.82);--edge:rgba(0,0,0,.16);--text:#0f1012;--soft:rgba(15,16,18,.74);--accent:#14505A;--danger:#b3261e}}
@@ -56,6 +60,10 @@ html,body{margin:0;overflow:hidden;background:transparent;-webkit-font-smoothing
 .cb.x{color:var(--soft);padding:0}
 .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--danger);margin:10px 2px 0 0}
 @media (prefers-reduced-motion:reduce){#t{animation:none}}
+/* Frosted: Windows blurs what is behind the window, so the glass only tints it, at the system's corner radius. */
+html.frost{--glass:rgba(20,20,26,.4)}
+@media (prefers-color-scheme:light){html.frost{--glass:rgba(255,255,255,.6)}}
+html.frost #t{border-radius:8px;min-height:100vh}
 </style></head><body><div id="t" role="status" aria-live="polite">${body}<button class="cb x" id="x" type="button" aria-label="Close">✕</button></div></div>
 <script>
 const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
@@ -78,6 +86,8 @@ export const createVocabToast = (input: {
   readonly anchor: () => Electron.Rectangle;
   /** He chose Discard: take these out and never add them again. */
   readonly onDiscard: (words: ReadonlyArray<string>) => void;
+  /** Settings → On screen → Frosted glass, where Windows can draw it (`acrylicSupported`); else the tint. */
+  readonly frosted?: () => boolean;
   /** Esc closes the card while it is up; it is his key again after. */
   readonly holdEscape?: (onPress: () => void) => () => void;
 }): VocabToast => {
@@ -124,8 +134,10 @@ export const createVocabToast = (input: {
         height,
       };
     };
+    const frosted = input.frosted?.() === true;
     const win = new Electron.BrowserWindow({
       ...place(MAX_HEIGHT),
+      ...(frosted ? { backgroundMaterial: "acrylic" as const, roundedCorners: true } : {}),
       frame: false,
       transparent: true,
       resizable: false,
@@ -141,7 +153,7 @@ export const createVocabToast = (input: {
     protectFromCapture(win);
     window = win;
     void win
-      .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(cardDocument(card))}`)
+      .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(cardDocument(card, frosted))}`)
       .then(() => win.webContents.executeJavaScript("document.getElementById('t').offsetHeight"))
       .then((height: unknown) => {
         if (win.isDestroyed()) return;

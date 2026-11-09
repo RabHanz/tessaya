@@ -424,7 +424,7 @@ import {
   spaceUsed,
   type KeepSettings,
 } from "./audioKeep.ts";
-import { createVocabToast } from "./vocabToast.ts";
+import { acrylicSupported, createVocabToast } from "./vocabToast.ts";
 import { createPillGhost } from "./pillGhost.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
@@ -540,6 +540,8 @@ interface VoiceSettings {
   readonly showWords: boolean;
   /** "field": his words at the caret of the field they go into when it says where; "pill": always in the pill. */
   readonly pillStyle: "pill" | "field";
+  /** Windows 11's acrylic behind the cards beside the pill; off by default. */
+  readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
   /** How long it listens after the wake word with nothing said, in ms. */
@@ -667,6 +669,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   showWords: true,
   // The pill until D has been tried on Windows; the text box is opt-in under Settings → Dictation → Pill style.
   pillStyle: "pill",
+  frosted: false,
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
   conversationOpenMs: 30_000,
@@ -772,6 +775,7 @@ export const readSettings = (path: string): VoiceSettings => {
       learnWords: saved["learnWords"] !== false,
       showWords: saved["showWords"] !== false,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
+      frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
       pronounce: pronounceFrom(saved["pronounce"]),
@@ -1200,6 +1204,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const toast = createVocabToast({
     anchor: () => pill.anchor(),
     holdEscape: input.holdEscape,
+    frosted: () => settings.frosted && acrylicSupported(input.platform, NodeOS.release()),
     onDiscard: (all) => {
       // "heard → meant" undoes one taught form; any other is a whole word.
       const taught = all.flatMap((w) => {
@@ -5947,6 +5952,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
+        id: "v.frosted",
+        section: "On screen",
+        label: "Frosted glass",
+        hint: "Windows 11 blurs what is behind the cards beside the pill. Off, or on Windows 10, they keep their tinted glass.",
+        kind: "toggle",
+        on: settings.frosted,
+        more: true,
+      },
+      {
         id: "v.pillPlace",
         section: "On screen",
         label: "Pill position",
@@ -6874,6 +6888,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
+    else if (id === "v.frosted") save({ frosted: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
     else if (
       id === "v.headphones" &&
