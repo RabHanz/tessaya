@@ -50,7 +50,7 @@ import {
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
 import type { ConversationLog } from "../conversation/conversationLog.ts";
-import { parseActivity, todayStats } from "../home/activityLog.ts";
+import { homeActivity, mergeFeed, parseLogEntries, todayStats } from "../home/activityLog.ts";
 import type { HomeExtra } from "../home/batonHome.ts";
 import {
   addEntry,
@@ -406,6 +406,7 @@ import {
 } from "@t3tools/baton-shared/voiceTurn";
 import {
   correctionsAtCaret,
+  correctionsBetween,
   learnCorrection,
   observeWording,
   addNever,
@@ -434,13 +435,24 @@ import { createPillGhost } from "./pillGhost.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
-import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
+import {
+  flaggedReport,
+  openHistory,
+  type HiddenReason,
+  type HistoryTurn,
+  type TidyStatus,
+} from "./history.ts";
 import {
   hasRecording,
   NO_RECORDING,
   retryCleanupLevel,
   retryPlan,
+  mayPasteInto,
+  mayTeach,
+  privateReason,
   rowMenu,
+  rowText,
+  undoAiEdit,
   useVersion,
   withRetry,
 } from "./historyRetry.ts";
@@ -730,6 +742,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   bindings: [],
 };
 
+/** Time for the window he was in to come forward after Home steps aside for Paste again. */
+const PASTE_AGAIN_MS = 350;
 /** The renderer has this long to answer an intent call before the core is told it failed. */
 const REQUEST_TIMEOUT_MS = 20_000;
 const PHONE_POLL_MS = 5_000;
@@ -1295,22 +1309,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const { fixes, fixed } = correctionsAtCaret(written.trim(), before);
         if (fixes.length === 0) return false;
         if (turnId !== null) history?.update(turnId, { corrected: true, fixed });
-        void changeVocabulary((entries, now) =>
-          fixes.reduce((all, fix) => {
-            const next = learnCorrection(seenWords, all, fix, now, never);
-            seenWords = next.seen;
-            announce(next.added);
-            for (const t of next.taught ?? []) toast.add(`${t.heard}${TAUGHT}${t.meant}`);
-            return next.entries;
-          }, entries),
-        )
-          .then(saveSeen)
-          .catch(() => undefined);
+        void teachFixes(fixes);
         return true;
       },
     }).finally(() => {
       watching = false;
     });
+  };
+  /** Each fix teaches the word he meant, announced as "Learned X" so he can undo it. */
+  const teachFixes = (fixes: ReadonlyArray<{ readonly heard: string; readonly meant: string }>) =>
+    changeVocabulary((entries, now) =>
+      fixes.reduce((all, fix) => {
+        const next = learnCorrection(seenWords, all, fix, now, never);
+        seenWords = next.seen;
+        announce(next.added);
+        for (const t of next.taught ?? []) toast.add(`${t.heard}${TAUGHT}${t.meant}`);
+        return next.entries;
+      }, entries),
+    )
+      .then(saveSeen)
+      .catch(() => undefined);
+  /** History's Edit and teach: his fixed words become the row's, and teach under the same rules as a fix in the field. */
+  const teachFromHistory = (turn: HistoryTurn, text: string): ReadonlyArray<string> => {
+    const meant = text.trim();
+    if (history === null || turn.hidden !== null || meant === "") return [];
+    const fixes = correctionsBetween(rowText(turn), meant);
+    history.update(turn.id, { fixed: meant, corrected: true });
+    if (!mayTeach(turn, meant, settings.learnWords)) return [];
+    void teachFixes(fixes);
+    return fixes.map((fix) => fix.meant);
   };
   let keptTimer: ReturnType<typeof setTimeout> | null = null;
   let recordFailures = 0;
@@ -1469,9 +1496,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   // Everything he says and what it became, kept forever on this machine (the History tab).
   let historyRev = 0;
+  const flaggedDir = NodePath.join(input.stateDir, "reports", "flagged");
   const history = (() => {
     try {
-      const opened = openHistory(NodePath.join(input.stateDir, "voice", "history.sqlite"));
+      const opened = openHistory(
+        NodePath.join(input.stateDir, "voice", "history.sqlite"),
+        undefined,
+        flaggedDir,
+      );
       const bump =
         <A extends ReadonlyArray<unknown>, R>(write: (...args: A) => R) =>
         (...args: A): R => {
@@ -1483,6 +1515,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         add: bump(opened.add),
         update: bump(opened.update),
         remove: bump(opened.remove),
+        hide: bump(opened.hide),
       };
     } catch {
       return null;
@@ -1556,6 +1589,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     );
     return safe;
   };
+  /** Said into a password box or a private app (the apps whose edits are never learned from): no words, no recording. */
+  const hideIfPrivate = (
+    id: string | null,
+    app: { readonly exe: string; readonly title: string },
+    passwordBox: boolean,
+  ) => {
+    const reason = privateReason(app, passwordBox);
+    if (reason !== null && id !== null) history?.hide(id, reason);
+    return reason;
+  };
   const record = (turn: {
     readonly kind: "dictation" | "spoken";
     readonly app: string;
@@ -1567,6 +1610,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly error?: string | null;
     readonly seconds?: number | null;
     readonly cleanup?: "local" | "claude" | null;
+    readonly hidden?: HiddenReason | null;
   }): string | null => {
     if (history === null || testRun || turn.raw.trim().length === 0) return null;
     // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
@@ -1585,6 +1629,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         error: turn.error ?? null,
         seconds: turn.seconds ?? null,
         cleanup: turn.cleanup ?? null,
+        hidden: turn.hidden ?? null,
       });
     } catch {
       return null;
@@ -1596,8 +1641,84 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setTimeout(retention, 2 * QUIET_START_MS).unref();
   setInterval(retention, 24 * 3_600_000).unref();
   let retrying: string | null = null;
+  /** A row's kept clips, decoded and joined. */
+  const joinedPcm = async (turn: HistoryTurn) => {
+    const parts: Int16Array[] = [];
+    for (const path of clipPaths(turn.audio ?? "")) {
+      parts.push(await encoder.decode(NodeFS.readFileSync(path)));
+    }
+    const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) {
+      pcm.set(p, at);
+      at += p.length;
+    }
+    return pcm;
+  };
+  /** Flagged rows are written where the clean-up eval's new cases are picked from; unflagging takes it back. */
+  const flagTurn = (turn: HistoryTurn, on: boolean) => {
+    history?.flag(turn.id, on);
+    if (!on) return;
+    const file = flaggedReport(flaggedDir, turn.id);
+    NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+    NodeFS.writeFileSync(
+      file,
+      buildTranscriptReport(turn, { version: input.appVersion, platform: input.platform }),
+      { mode: 0o600 },
+    );
+  };
+  /** Home steps aside so the window he was in before comes forward, then the words go in with the dictation paste's checks. */
+  const pasteAgain = async (text: string, app: string, home: Electron.BrowserWindow | null) => {
+    const side = sidecar;
+    if (side === null || text === "") return { failed: "Pasting is not available right now" };
+    home?.minimize();
+    await new Promise((resolve) => setTimeout(resolve, PASTE_AGAIN_MS));
+    const why = await pasteInOrder(async () => {
+      const now = await side.foreground().catch(() => null);
+      if (now?.window === undefined) return "gone" as const;
+      if (!mayPasteInto(app, now.exe)) return "elsewhere" as const;
+      return await side.pasteChecked(text, now.window, now.title).catch(() => "refused" as const);
+    });
+    if (why === "ok") return { pasted: true };
+    Electron.clipboard.writeText(text);
+    return {
+      failed:
+        why === "secret"
+          ? "That box is for a password, so the words are on your clipboard"
+          : why === "elsewhere"
+            ? `${app === "" ? "Its app" : app} is not in front, so the words are on your clipboard`
+            : "Not pasted, so the words are on your clipboard",
+    };
+  };
+  const extractAudio = async (turn: HistoryTurn, home: Electron.BrowserWindow | null) => {
+    if (!hasRecording(turn)) return { failed: NO_RECORDING };
+    const options = {
+      title: "Save the recording",
+      defaultPath: `tessaya-${turn.at.slice(0, 19).replace(/[T:]/g, "-")}.wav`,
+      filters: [{ name: "WAV audio", extensions: ["wav"] }],
+    };
+    const chosen = await (home === null
+      ? Electron.dialog.showSaveDialog(options)
+      : Electron.dialog.showSaveDialog(home, options));
+    if (chosen.canceled || chosen.filePath === undefined) return null;
+    try {
+      NodeFS.writeFileSync(chosen.filePath, encodeWav(await joinedPcm(turn)));
+      return { saved: chosen.filePath };
+    } catch {
+      return { failed: "That recording could not be saved" };
+    }
+  };
   const withMenu = (turn: HistoryTurn) => ({ ...turn, menu: rowMenu(turn, retrying !== null) });
-  const listHistory = (query: string) => (history?.list({ query, limit: 300 }) ?? []).map(withMenu);
+  // shortcut: commands and actions come from the turn log's last 96 KB, so older ones drop out of History first.
+  const listHistory = (query: string) =>
+    mergeFeed(
+      (history?.list({ query, limit: 300 }) ?? []).map(withMenu),
+      parseLogEntries(tailOf(NodePath.join(input.logDir, "voice-turns.ndjson"))).map((entry) => ({
+        ...entry,
+        menu: [],
+      })),
+      query,
+    );
   Electron.ipcMain.handle("baton-history:list", (event, query: unknown) =>
     Electron.BrowserWindow.fromWebContents(event.sender) === null
       ? []
@@ -1608,10 +1729,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (!Array.isArray(ids)) return 0;
     let removed = 0;
     for (const id of ids) {
-      const turn = typeof id === "string" ? history.remove(id) : null;
-      if (turn === null) continue;
-      for (const path of clipPaths(turn.audio ?? "")) NodeFS.rmSync(path, { force: true });
-      removed += 1;
+      if (typeof id === "string" && history.remove(id) !== null) removed += 1;
     }
     return removed;
   });
@@ -1624,22 +1742,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (action === "copy_raw") void Electron.clipboard.writeText(turn.raw);
     else if (action === "undo_ai") {
       // The heard words become the row's words (the written ones stay as a version) and go on the clipboard.
-      history.update(id, {
-        versions: withRetry(turn, {
-          at: new Date().toISOString(),
-          raw: turn.raw,
-          cleaned: turn.raw,
-          model: null,
-        }),
-        cleaned: turn.raw,
-        status: "raw",
-      });
+      history.update(id, undoAiEdit(turn, new Date().toISOString()));
       void Electron.clipboard.writeText(turn.raw);
-    } else if (action === "copy") {
-      void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
-    } else if (action === "copy_cleaned")
-      void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
-    else if (action.startsWith("copy_version:")) {
+    } else if (action === "copy" || action === "copy_cleaned") {
+      void Electron.clipboard.writeText(rowText(turn));
+    } else if (action === "paste") {
+      return pasteAgain(
+        rowText(turn),
+        turn.app,
+        Electron.BrowserWindow.fromWebContents(event.sender),
+      );
+    } else if (action.startsWith("teach:")) {
+      const taught = teachFromHistory(turn, action.slice("teach:".length));
+      const after = history.get(id);
+      return after === null ? null : { ...withMenu(after), taught };
+    } else if (action === "extract") {
+      return extractAudio(turn, Electron.BrowserWindow.fromWebContents(event.sender));
+    } else if (action === "flag" || action === "unflag") {
+      flagTurn(turn, action === "flag");
+    } else if (action.startsWith("copy_version:")) {
       const v = useVersion(turn, Number(action.slice("copy_version:".length)));
       if (v !== null) void Electron.clipboard.writeText(v.cleaned ?? v.raw);
     } else if (action.startsWith("use_version:")) {
@@ -1647,38 +1768,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (v !== null) history.update(id, { raw: v.raw, cleaned: v.cleaned, model: v.model });
     } else if (action === "delete") {
       history.remove(id);
-      for (const path of clipPaths(turn.audio ?? "")) NodeFS.rmSync(path, { force: true });
       return { deleted: true };
     } else if (action === "play") {
       // The kept clips, joined, as a WAV the page plays itself: nothing leaves this computer.
       if (!hasRecording(turn)) return { failed: NO_RECORDING };
       try {
-        const parts: Int16Array[] = [];
-        for (const path of clipPaths(turn.audio ?? "")) {
-          parts.push(await encoder.decode(NodeFS.readFileSync(path)));
-        }
-        const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
-        let at = 0;
-        for (const p of parts) {
-          pcm.set(p, at);
-          at += p.length;
-        }
+        const pcm = await joinedPcm(turn);
         return {
           playback: `data:audio/wav;base64,${Buffer.from(encodeWav(pcm)).toString("base64")}`,
         };
       } catch {
         return { failed: "That recording could not be played" };
       }
-    } else if (action === "report") {
-      const file = NodePath.join(input.stateDir, "reports", `transcript-${id}.md`);
-      NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
-      NodeFS.writeFileSync(
-        file,
-        buildTranscriptReport(turn, { version: input.appVersion, platform: input.platform }),
-        { mode: 0o600 },
-      );
-      Electron.shell.showItemInFolder(file);
-      return { reported: file };
     } else if (action === "retry_transcript") {
       // Not while he is dictating, and one at a time. The original stays as it was if this fails.
       if (retrying !== null || dictatingByVoice || releaseRecordingEscape !== null) {
@@ -1689,16 +1790,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       retrying = id;
       try {
-        const parts: Int16Array[] = [];
-        for (const path of clipPaths(turn.audio ?? "")) {
-          parts.push(await encoder.decode(NodeFS.readFileSync(path)));
-        }
-        const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
-        let at = 0;
-        for (const p of parts) {
-          pcm.set(p, at);
-          at += p.length;
-        }
+        const pcm = await joinedPcm(turn);
         // A row kept at the local level, or from an app kept private, is heard again on this computer only.
         const level = retryCleanupLevel(settings.dictationCleanup, turn.app, turn.cleanup);
         const heard = (
@@ -1927,6 +2019,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const app = (await target) ?? { exe: "", title: "" };
     const turnId = openTurn;
     openTurn = null;
+    // The paste below sets it again; the cast keeps TypeScript from narrowing past that closure.
+    keptWhy = "refused" as Exclude<PasteVerdict, "ok">;
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
@@ -1952,11 +2046,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? "Not pasted"
           : null,
     });
+    const hidden = hideIfPrivate(turnId, app, result.status === "kept" && keptWhy === "secret");
     if (result.status === "pasted") {
       // Pasted already: the pill plays the cleanup over his words afterwards, so it never holds the paste up.
       if (!ghostPlayed) pill.cleanup(result.raw, result.text);
-      learnWording(result.text);
-      learnFromEdits(result.text, turnId, app);
+      // Nothing said into a private app or a password box is learned from.
+      if (hidden === null) {
+        learnWording(result.text);
+        learnFromEdits(result.text, turnId, app);
+      }
       if (result.failed) {
         showDictation(null);
         toast.show({ kind: "error", message: CLEANUP_FAILED_LINE });
@@ -1998,7 +2096,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         lastDictation = text;
       }
       oneShot.discard();
-      if (openTurn !== null) history?.update(openTurn, { error: "Discarded" });
+      if (openTurn !== null) {
+        history?.update(openTurn, { error: "Discarded" });
+        const discarded = openTurn;
+        void dictationHold
+          .target()
+          ?.then((app) => app !== null && hideIfPrivate(discarded, app, false));
+      }
       openTurn = null;
     }
     void core?.setDictation(false).then(() => {
@@ -3413,6 +3517,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       status: "none",
       delivery: "hold key",
       cleanup: "local",
+      hidden: privateReason(app, false),
     });
     oneShot.push(words);
     void flushDictation(Promise.resolve(app));
@@ -5104,8 +5209,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
 
   const homeExtra = (): HomeExtra => {
-    const activity = parseActivity(tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")));
-    const today = todayStats(activity, new Date());
+    const turnLog = tailOf(NodePath.join(input.logDir, "voice-turns.ndjson"));
+    const today = todayStats(turnLog, new Date());
+    const activity = homeActivity(history?.list({ limit: 5 }) ?? [], parseLogEntries(turnLog, 5));
     const sessionRows = input.sessions?.rows() ?? [];
     const lifecycle = tailOf(NodePath.join(input.logDir, "baton-lifecycle.ndjson"))
       .split("\n")

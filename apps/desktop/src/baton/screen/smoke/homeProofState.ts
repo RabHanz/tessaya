@@ -43,15 +43,37 @@ const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 export const proofExtra: HomeExtra = {
   wakeWords: ["Sebastian", "Alfred"],
   activity: [
-    { at: ago(6), kind: "heard", text: "Open the sessions page and resume the launch post." },
-    { at: ago(21), kind: "dictated", text: "Dictated 214 characters" },
-    { at: ago(48), kind: "action", text: "Opened Sessions" },
-    { at: ago(95), kind: "quiet", text: "Heard the wake word, then nothing.", dim: true },
-    { at: ago(140), kind: "stopped", text: "You said stop." },
+    {
+      id: "a",
+      at: ago(6),
+      kind: "dictation",
+      text: "Push the filing review to Thursday, please.",
+      detail: null,
+      app: "slack.exe",
+    },
+    {
+      id: "b",
+      at: ago(21),
+      kind: "assistant",
+      text: "Asked you to look at a session",
+      detail: "A session needs an answer",
+    },
+    { id: "c", at: ago(48), kind: "command", text: "Focused Chrome", detail: null },
+    {
+      id: "d",
+      at: ago(95),
+      kind: "spoken",
+      text: "What is the launch post waiting on?",
+      detail: "Your review.",
+      app: "",
+    },
+    { id: "e", at: ago(140), kind: "command", text: "Stopped: you said stop", detail: null },
   ],
   stats: { turns: 18, dictations: 42, sessions: 3, needYou: 1 },
   insights: {
     wordsToday: 1860,
+    dictationsToday: 42,
+    minutesSaved: 31,
     wpm: 142,
     streak: 11,
     topApps: [
