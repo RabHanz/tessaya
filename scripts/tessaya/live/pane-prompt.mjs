@@ -109,7 +109,149 @@ export function parseReviewScreen(lines) {
  * order (`index`), so an answer is arrows from the highlighted one plus Enter.
  */
 export function parsePanePrompt(screen) {
-  return parseScreen(screen) ?? unreadPermission(String(screen ?? "").replace(ANSI, ""));
+  const text = String(screen ?? "").replace(ANSI, "");
+  return parseScreen(screen) ?? unreadPermission(text) ?? keyHintPrompt(text);
+}
+
+/**
+ * The prompt a waiting session shows: one Tessaya knows, else Esc (and Enter only when no option list shows, since
+ * Enter would take a dialog's highlighted "Yes") over the screen's last lines. Null when the pane is back at its input
+ * box or shows nothing, so a card raised from an earlier screen can expire.
+ */
+export function parseWaitingScreen(screen) {
+  const found = parsePanePrompt(screen);
+  if (found !== null) return found;
+  const lines = String(screen ?? "")
+    .replace(ANSI, "")
+    .replace(/\r/g, "")
+    .split("\n");
+  const details = screenTail(lines.join("\n"), 20);
+  if (details === "" || inputBoxAt(lines) >= 0) return null;
+  const note = "Tessaya didn't recognise this screen";
+  const keys = hasOptionList(lines)
+    ? [["Esc", "esc"]]
+    : [
+        ["Enter", "enter"],
+        ["Esc", "esc"],
+      ];
+  return withRef({
+    question: `Claude Code is waiting on a screen Tessaya didn't recognise. Press ${keys.length > 1 ? "a key" : "Esc to cancel"}?`,
+    header: "In the terminal",
+    context: "",
+    details,
+    options: keys.map(([label, key], index) => ({
+      index,
+      label,
+      description: key === "enter" ? `${note}. This may approve or confirm.` : note,
+      keys: [key],
+    })),
+    selected: 0,
+    customIndex: null,
+    key: `unknown\u0000${steadyKey(details)}`,
+  });
+}
+
+/** An option list among the last lines (numbered, or a highlighted `❯` line): Enter would choose its highlighted one. */
+const hasOptionList = (lines) =>
+  lines
+    .slice(-20)
+    .some(
+      (l, i, tail) => NUMBERED.test(l) || (/^\s*❯\s+\S/.test(l) && !RULE.test(tail[i - 1] ?? "")),
+    );
+
+/** A screen's text without what changes on every redraw (spinners, timers, token counts), so its card does not flap. */
+const steadyKey = (text) =>
+  text
+    .split("\n")
+    .filter((l) => !/esc to interrupt|^\s*[✻✶✢✳✽✺✷✸✹·*]\s/i.test(l))
+    .join("\n")
+    .replace(/\d+/g, "#");
+
+/** The line of Claude Code's input box (a rule, then `❯`/`>`, a rule below) among the last lines, or -1. */
+function inputBoxAt(lines) {
+  for (let i = lines.length - 2; i >= 1 && i >= lines.length - 16; i -= 1)
+    if (
+      /^\s*[❯>](\s|$)/.test(lines[i]) &&
+      RULE.test(lines[i - 1]) &&
+      lines.slice(i + 1).some((l) => RULE.test(l))
+    )
+      return i;
+  return -1;
+}
+
+const ENDS_SESSION = /\b(exit|quit|discard|delete)\b/i;
+const HINT =
+  /^((?:(?:ctrl|shift|alt|meta)\+\S+|enter|return|esc|escape|tab|space|backspace|[a-z0-9])(?:\s+(?:ctrl|shift|alt|meta)\+\S+)*)\s+to\s+(.+)$/i;
+const NUMBERED_HINT = /^(\d)\.\s+(.+)$/;
+
+/** One "<key> to <action>" or "1. <action>" of a hint line, or null for anything else. */
+const hintOf = (part) => {
+  const numbered = NUMBERED_HINT.exec(part);
+  if (numbered !== null) return { keys: [numbered[1]], key: numbered[1], action: numbered[2] };
+  const m = HINT.exec(part);
+  if (m === null) return null;
+  const said = m[1].replace(/^return$/i, "enter").replace(/^escape$/i, "esc");
+  const keys = said.toLowerCase().split(/\s+/);
+  const key = /^[a-z]+$/i.test(said) ? said[0].toUpperCase() + said.slice(1).toLowerCase() : said;
+  return { keys, key, action: m[2] };
+};
+
+/**
+ * A screen Tessaya has no reader for, which still says which keys do what: "Enter to review & send · Esc to discard
+ * and exit". Each hint is an option in the screen's own words; choosing it presses that key. Arrow hints only move.
+ */
+function keyHintPrompt(screen) {
+  const lines = screen.replace(/\r/g, "").split("\n");
+  let at = lines.length - 1;
+  while (at >= 0 && lines[at].trim() === "") at -= 1;
+  let hints = null;
+  for (let i = at; i >= 0 && i >= at - 3; i -= 1) {
+    const parts = clean(lines[i])
+      .split(/\s+·\s+/)
+      .filter((p) => !/^[↑↓←→/]+\s+to\s/.test(p));
+    const read = parts.map(hintOf);
+    // A lone "2. No" is an option list's line, not a hint line.
+    const lone = parts.length === 1 && NUMBERED_HINT.test(parts[0]);
+    if (parts.length > 0 && !lone && read.every((h) => h !== null)) {
+      hints = { line: i, read };
+      break;
+    }
+  }
+  if (hints === null || inputBoxAt(lines) > hints.line) return null;
+  // Over an option list, Enter takes its highlighted choice (a dialog's "Yes"): never offered there.
+  if (hasOptionList(lines.slice(0, hints.line)))
+    hints.read = hints.read.filter((h) => !h.keys.includes("enter"));
+  if (hints.read.length === 0) return null;
+  const above = [];
+  for (let i = hints.line - 1; i >= 0 && above.length < 4; i -= 1) {
+    const text = clean(lines[i]);
+    if (RULE.test(lines[i]) || (text === "" && above.length > 0)) break;
+    if (text !== "") above.unshift(text);
+  }
+  const details = screenTail(lines.slice(0, hints.line + 1).join("\n"), 20);
+  const question = above.length > 0 ? above.join(" ") : "Claude Code is waiting in its terminal.";
+  return withRef({
+    question,
+    header: "In the terminal",
+    context: "",
+    details,
+    options: hints.read.map((h, index) => ({
+      index,
+      label: `${h.action[0].toUpperCase()}${h.action.slice(1)} (${h.key})`,
+      description: [
+        ENDS_SESSION.test(h.action) ? "Warning: this may end the session." : "",
+        h.keys.includes("enter") || /\bconfirm/i.test(h.action)
+          ? "This may approve or confirm."
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      keys: h.keys,
+    })),
+    selected: 0,
+    customIndex: null,
+    key: `hints\u0000${steadyKey(details)}`,
+  });
 }
 
 /**

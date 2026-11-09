@@ -52,7 +52,12 @@ import {
   run,
   sendFailure,
 } from "./baton-live-acp.mjs";
-import { parsePanePrompt, parseReviewScreen, screenTail } from "./pane-prompt.mjs";
+import {
+  parsePanePrompt,
+  parseReviewScreen,
+  parseWaitingScreen,
+  screenTail,
+} from "./pane-prompt.mjs";
 
 const AGENT = NodePath.join(
   NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
@@ -154,6 +159,74 @@ NodeTest.test("unnumbered options are read too, and a plain screen has no prompt
   });
   NodeAssert.equal(parsePanePrompt("❯ hello\n───────\n  ⏵⏵ bypass permissions on"), null);
 });
+
+NodeTest.test(
+  "a screen with no reader offers its own key hints, and Enter and Esc without them",
+  () => {
+    const draft = parsePanePrompt(fixture("pane-feedback-draft.txt"));
+    NodeAssert.equal(plain(draft.question), "You have 1 unsent feedback draft");
+    NodeAssert.deepEqual(
+      draft.options.map((o) => [o.label, o.description]),
+      [
+        ["Review & send (Enter)", "This may approve or confirm."],
+        ["Discard and exit (Esc)", "Warning: this may end the session."],
+      ],
+    );
+    NodeAssert.deepEqual(answerKeys(draft, "Discard and exit (Esc)"), {
+      keys: ["esc"],
+      text: null,
+    });
+    NodeAssert.ok(isCardAnswer(`${draft.question}\nReview & send (Enter)`, draft));
+
+    const unknown = parseWaitingScreen("Something new happened\n\nPress on");
+    NodeAssert.equal(parsePanePrompt("Something new happened\n\nPress on"), null);
+    NodeAssert.match(unknown.question, /didn't recognise/);
+    NodeAssert.deepEqual(
+      unknown.options.map((o) => [o.label, o.keys]),
+      [
+        ["Enter", ["enter"]],
+        ["Esc", ["esc"]],
+      ],
+    );
+    NodeAssert.equal(
+      parseWaitingScreen("● Done.\n\n──────────\n❯ \n──────────\n  ? for shortcuts"),
+      null,
+    );
+  },
+);
+
+NodeTest.test(
+  "a dialog the readers miss never gets Enter, which would take its highlighted Yes",
+  () => {
+    const rule = "─".repeat(60);
+    const screens = {
+      wrapped: [
+        rule,
+        " Do you want to proceed with",
+        " this command?",
+        "   1. Yes",
+        "   2. No",
+        "",
+      ],
+      scrolled: [
+        "   2. Yes, and don't ask again",
+        " ❯ 3. No",
+        "",
+        " Enter to confirm · Esc to cancel",
+      ],
+    };
+    for (const [name, lines] of Object.entries(screens))
+      NodeAssert.deepEqual(
+        parseWaitingScreen(lines.join("\n")).options.map((o) => o.keys),
+        [["esc"]],
+        name,
+      );
+    // A timer ticking on screen does not make a new card.
+    const at = (s) =>
+      parseWaitingScreen(`Working on it\n✻ Baking… (${s}s · 1.2k tokens)\nPress on`).key;
+    NodeAssert.equal(at(3), at(4));
+  },
+);
 
 NodeTest.test("only the user's words reach Claude, never T3's instruction wrappers", () => {
   const first =
@@ -1275,5 +1348,8 @@ NodeTest.test("a dialog that is not a permission prompt never gets Allow pressed
     "",
     " Esc to cancel",
   ].join("\n");
-  NodeAssert.equal(parsePanePrompt(screen), null);
+  NodeAssert.deepEqual(
+    parsePanePrompt(screen).options.map((o) => o.label),
+    ["Cancel (Esc)"],
+  );
 });

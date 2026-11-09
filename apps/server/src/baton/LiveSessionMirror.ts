@@ -194,7 +194,7 @@ interface PanePrompt {
 }
 
 export const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
-const screenTail: (screen: string) => string = panePrompt.screenTail;
+const parseWaitingScreen: (screen: string) => PanePrompt | null = panePrompt.parseWaitingScreen;
 
 /** The visible screen of a Herdr pane read in-process (no node child per read), or null when Herdr cannot read it. */
 const readPane = (paneRef: string, lines: number): Effect.Effect<string | null> => {
@@ -210,23 +210,16 @@ const readPane = (paneRef: string, lines: number): Effect.Effect<string | null> 
   });
 };
 
-const readPanePrompt = (pane: string): Effect.Effect<PanePrompt | null> =>
-  readPane(pane, 80).pipe(
-    Effect.map((screen) => (screen === null ? null : parsePanePrompt(screen))),
-  );
-
-/** The last lines on a waiting pane; empty when it cannot be read. */
-const readPaneScreen = (pane: string): Effect.Effect<string> =>
-  readPane(pane, 40).pipe(Effect.map((screen) => (screen === null ? "" : screenTail(screen))));
-
 /**
- * A session that is waiting but whose prompt cannot be read as options (a plain terminal, or a screen the reader does not
- * know) still gets a question in its thread, so the thread never says "waiting" and shows nothing.
+ * The card a waiting session's screen raises (D88): its prompt, or Enter and Esc for a screen Tessaya has no reader
+ * for. Null once a read shows the pane back at its input box, so the card raised earlier expires; undefined when the
+ * read failed, which says nothing about the screen, so the card stays. A session outside Herdr cannot be read or
+ * pressed, so its card offers bringing it into Herdr.
  */
-export const unreadPrompt = (
+export const waitingPrompt = (
   session: { sessionId: string; herdrPane: string | null },
-  screen: string,
-): PanePrompt =>
+  screen: string | null,
+): PanePrompt | null | undefined =>
   session.herdrPane === null
     ? {
         key: `plain:${session.sessionId}`,
@@ -243,22 +236,9 @@ export const unreadPrompt = (
         ],
         customIndex: null,
       }
-    : {
-        key: `screen:${session.sessionId}:${screen.length}:${screen.slice(-40)}`,
-        header: "In the terminal",
-        context: "",
-        question:
-          screen === ""
-            ? "Claude Code is waiting on something in its terminal that Tessaya could not read as a question."
-            : `Claude Code is waiting in its terminal:\n${screen}`,
-        options: [
-          {
-            label: "I'll answer it in the terminal",
-            description: "Open the pane in Herdr and answer it there.",
-          },
-        ],
-        customIndex: null,
-      };
+    : screen === null
+      ? undefined
+      : parseWaitingScreen(screen);
 
 /**
  * Whether the card for the prompt still on screen stays. One T3 closed comes back only when it was answered, the bridge
@@ -1566,26 +1546,19 @@ const make = Effect.gen(function* () {
         return;
       follow.promptRead =
         session.status === "waiting" ? { updatedAt: session.updatedAt, at: nowMs } : null;
-      const read =
-        session.status === "waiting" && session.herdrPane !== null
-          ? yield* readPanePrompt(session.herdrPane)
-          : null;
-      // Waiting with nothing readable to show is still a question in the thread (not "waiting" and silence).
       const found =
-        read !== null && read.options.length > 0
-          ? read
-          : session.status === "waiting"
-            ? unreadPrompt(
-                session,
-                session.herdrPane === null ? "" : yield* readPaneScreen(session.herdrPane),
-              )
-            : null;
+        session.status !== "waiting"
+          ? null
+          : waitingPrompt(
+              session,
+              session.herdrPane === null ? null : yield* readPane(session.herdrPane, 80),
+            );
+      if (found === undefined) return;
       mirrorLog(`prompt:${session.sessionId}`, {
         event: "prompt",
         sessionId: session.sessionId,
         status: session.status,
         pane: session.herdrPane,
-        readable: read !== null && read.options.length > 0,
         shown: found?.key ?? null,
       });
       const again = follow.ask !== null && follow.ask.key === found?.key;
@@ -1598,40 +1571,10 @@ const make = Effect.gen(function* () {
           return;
       }
       const now = yield* DateTime.now;
+      // Answered in T3, the request is resolved already; answered in the terminal or its screen gone, it expires.
       if (follow.ask !== null) {
-        const open = follow.ask;
         follow.ask = null;
-        // Answered in T3, the request is resolved already; answered in the terminal, it expires.
-        if ((yield* engine.runtimeRequestStatus(follow.threadId, open.requestId)) === "pending") {
-          const item = yield* engine.turnItem(follow.threadId, open.itemId);
-          yield* engine.writeEvents({
-            events: [
-              {
-                id: EventId.make(`${open.requestId}:expired`),
-                type: "runtime-request.updated",
-                threadId: follow.threadId,
-                occurredAt: now,
-                payload: { ...open.request, status: "expired", resolvedAt: now },
-              },
-              ...(item === null
-                ? []
-                : [
-                    {
-                      id: EventId.make(`${open.itemId}:closed`),
-                      type: "turn-item.updated" as const,
-                      threadId: follow.threadId,
-                      occurredAt: now,
-                      payload: {
-                        ...item,
-                        status: "completed" as const,
-                        completedAt: now,
-                        updatedAt: now,
-                      },
-                    },
-                  ]),
-            ],
-          });
-        }
+        yield* expireOtherAsks(follow, null);
       }
       // Once per thread per server start, and whenever the card on screen changes: older pending cards go.
       if (!sweptAsks.has(String(follow.threadId))) {
