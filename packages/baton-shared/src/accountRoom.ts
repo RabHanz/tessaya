@@ -6,6 +6,7 @@ import {
   accountReturnsAt,
   type BatonAccount,
   type BatonAccountRecord,
+  type BatonLiveQueued,
 } from "@t3tools/baton-contracts";
 
 /** Three missed five-minute ticks: the same point at which cswap's hold on the reading lapses. */
@@ -109,4 +110,20 @@ export function roomDetail(room: Room, now: number): ReadonlyArray<string> {
 export const maskedEmail = (email: string): string => {
   const [local = "", domain = ""] = email.split("@");
   return `${local.slice(0, 2)}${"•".repeat(Math.min(5, Math.max(3, local.length - 2)))}@${domain}`;
+};
+
+/** "Switches to Work, effort high when this turn ends": a terminal session's change waiting for it to go idle. */
+export const queuedText = (
+  queued: BatonLiveQueued,
+  accounts: ReadonlyArray<Pick<BatonAccountRecord, "label" | "liveSwitchKey">>,
+): string => {
+  const parts = [
+    queued.accountKey === undefined
+      ? null
+      : `switches to ${accounts.find((account) => account.liveSwitchKey === queued.accountKey)?.label ?? "another account"}`,
+    queued.model === undefined ? null : `model ${queued.model}`,
+    queued.effort === undefined ? null : `effort ${queued.effort}`,
+  ].filter((part) => part !== null);
+  const text = `${parts.join(", ")} when this turn ends`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
 };

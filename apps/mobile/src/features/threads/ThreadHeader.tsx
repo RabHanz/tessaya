@@ -21,6 +21,7 @@ export function ThreadHeader(props: {
   readonly inspectorMode: ThreadInspectorMode | null;
   readonly onToggleInspector: () => void;
   readonly onOpenFilesInspector: () => void;
+  readonly batonAction?: AppBarAction | null;
 }) {
   const goBack = useWorkspaceBackNavigation("threads");
   const { panes, toggleAuxiliaryPane, composerKeyboardActive, startNewTask } =
@@ -58,7 +59,7 @@ export function ThreadHeader(props: {
             }
           : undefined
       }
-      actions={actions}
+      actions={props.batonAction ? [props.batonAction, ...actions] : actions}
       menus={menus}
       trailing={
         props.fileInspectorSupported && props.hasThreadCwd ? (

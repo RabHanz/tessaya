@@ -588,6 +588,9 @@ importers:
       '@react-navigation/native-stack':
         specifier: 7.21.0
         version: 7.21.0(patch_hash=990d575444c4af2ce8218b3b7a8280fe244c03abbdb32b822a2e862f791dbf42)(c96dd4885eac0393fe69fdf9aeb7f361)
+      '@t3tools/baton-contracts':
+        specifier: workspace:*
+        version: link:../../packages/baton-contracts
       '@t3tools/baton-shared':
         specifier: workspace:*
         version: link:../../packages/baton-shared

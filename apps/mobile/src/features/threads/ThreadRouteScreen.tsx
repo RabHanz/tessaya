@@ -104,6 +104,7 @@ import {
   threadRouteIsHydrating,
   threadRouteOpensDraft,
 } from "./thread-route-hydration";
+import { useBatonThreadHeader } from "./BatonThreadHeader";
 import { ThreadHeader } from "./ThreadHeader";
 import { resumeThread } from "./resume-thread";
 import {
@@ -503,7 +504,9 @@ function ThreadRouteContent(
       : scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
   // The title it had at delegation, until this client sees the parent itself.
   const delegatedFromThread = useThreadShell(delegatedFromRef);
+  const batonHeader = useBatonThreadHeader(selectedThread);
   const headerSubtitle = [
+    batonHeader.subtitle,
     selectedThreadProject?.title ?? null,
     selectedEnvironmentConnection?.environmentLabel ?? null,
     // A linked environment's delegated task names its parent; other linked work its origin.
@@ -970,6 +973,7 @@ function ThreadRouteContent(
                 onToggleInspector={handleToggleInspector}
                 onOpenFilesInspector={handleOpenFilesInspector}
                 onReturnToThread={props.onReturnToThread}
+                batonAction={batonHeader.action}
               />
             )
           }

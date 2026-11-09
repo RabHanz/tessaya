@@ -1,19 +1,8 @@
 Provider change guard (Director, 2026-11-09): a started thread keeps its provider unless the user picks
 another. The composer no longer falls back to the first ready provider for an existing thread, and a
-turn that changes a thread's driver needs message.dispatch's providerChangeApproved.
+turn that changes a thread's driver needs message.dispatch's providerChangeApproved. Mobile's
+ThreadRouteScreen.tsx line for it lives in 0013-one-picker, which owns that path whole.
 
-diff --git a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
-index 80a3e8643a567176df20717e36360bc1334071b8..595f46a5eb9b6c68bb13162d9810dcd28cc837d4 100644
---- a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
-+++ b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
-@@ -669,6 +669,7 @@ function ThreadRouteContent(
-       runtimeMode: composer.runtimeMode ?? selectedThread.runtimeMode,
-       interactionMode: composer.interactionMode ?? selectedThread.interactionMode,
-       modelSelection: composer.modelSelection,
-+      providerChangeApproved: composer.providerChangeApproved,
-       messageId: MessageId.make(uuidv4()),
-       createdAt: new Date().toISOString(),
-       setRuntimeMode: setThreadRuntimeMode,
 diff --git a/apps/mobile/src/features/threads/resume-thread.test.ts b/apps/mobile/src/features/threads/resume-thread.test.ts
 index 3520f72293f89697f68043295020b9645956ac3e..ac76ffed0900af0c2d8e27c560b568d21d477910 100644
 --- a/apps/mobile/src/features/threads/resume-thread.test.ts

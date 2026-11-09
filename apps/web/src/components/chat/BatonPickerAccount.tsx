@@ -8,19 +8,19 @@ import {
   instanceAccount,
   type BatonAccount,
   type BatonAccountRecord,
-  type BatonLiveQueued,
 } from "@t3tools/baton-contracts";
 import { pickModelFor, oneEntryPerProvider } from "@t3tools/baton-shared/accounts";
 import {
   accountRow,
   maskedEmail,
+  queuedText,
   resetLabel,
   returnsLabel,
   roomDetail,
   roomText,
   roomTone,
 } from "@t3tools/baton-shared/accountRoom";
-import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { isLiveThreadId, LIVE_INSTANCE, liveThreadIdOf } from "@t3tools/baton-shared/liveThread";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   type EnvironmentId,
@@ -213,21 +213,6 @@ function ContinueInNote({ name }: { readonly name: string }) {
   );
 }
 
-const queuedText = (
-  queued: BatonLiveQueued,
-  accounts: ReadonlyArray<BatonAccountRecord>,
-): string => {
-  const parts = [
-    queued.accountKey === undefined
-      ? null
-      : `switches to ${accounts.find((account) => account.liveSwitchKey === queued.accountKey)?.label ?? "another account"}`,
-    queued.model === undefined ? null : `model ${queued.model}`,
-    queued.effort === undefined ? null : `effort ${queued.effort}`,
-  ].filter((part) => part !== null);
-  const text = `${parts.join(", ")} when this turn ends`;
-  return text.charAt(0).toUpperCase() + text.slice(1);
-};
-
 type TerminalRow = {
   readonly id: string;
   readonly project: string;
@@ -285,7 +270,7 @@ function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
               void navigate({
                 to: "/$environmentId/$threadId",
                 params: buildThreadRouteParams(
-                  scopeThreadRef(props.environmentId, ThreadId.make(`baton-live4:${row.id}`)),
+                  scopeThreadRef(props.environmentId, ThreadId.make(liveThreadIdOf(row.id))),
                 ),
               })
             }

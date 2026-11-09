@@ -257,3 +257,23 @@ export const pickModelFor = (
     ? threadModel
     : ((target.models.find((model) => model.isDefault === true) ?? target.models[0])?.slug ??
       threadModel);
+
+/** The login a terminal session runs as: the one the catalog names (by address local part), else cswap's active one. */
+export const sessionLoginKey = (
+  pool: ReadonlyArray<Pick<BatonAccount, "key" | "email" | "active">>,
+  login: string | null,
+): string | null =>
+  (login === null
+    ? pool.find((account) => account.active)
+    : pool.find((account) => account.email?.split("@")[0] === login)
+  )?.key ?? null;
+
+/** The account a thread runs as: a terminal thread by its session's login, any other by its instance. */
+export const threadAccount = <A extends Pick<BatonAccountRecord, "instanceIds" | "liveSwitchKey">>(
+  accounts: ReadonlyArray<A>,
+  instanceId: string,
+  loginKey: string | null,
+): A | undefined =>
+  instanceId === LIVE_INSTANCE
+    ? accounts.find((account) => loginKey !== null && account.liveSwitchKey === loginKey)
+    : accounts.find((account) => account.instanceIds.includes(instanceId));
