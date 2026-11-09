@@ -239,9 +239,9 @@ describe("live sessions in their own config dirs (LIVE-ACCOUNT)", () => {
 });
 
 describe("the respawn plan after a rotation (D69)", () => {
-  it("exits, waits for the shell, and resumes the same conversation in the same pane", () => {
+  it("never types into the pane, waits for the shell, and resumes the same conversation there", () => {
     const plan = respawnPlan("fab-api~w1:p2", "cc828d1b-2b64", "claude");
-    expect(plan.exit[0]).toEqual(["--session", "fab-api", "pane", "send-text", "w1:p2", "/exit"]);
+    expect("exit" in plan).toBe(false);
     expect(plan.resume).toEqual([
       "--session",
       "fab-api",

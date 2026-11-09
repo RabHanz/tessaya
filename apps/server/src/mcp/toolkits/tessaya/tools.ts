@@ -8,7 +8,6 @@ import {
   BatonCatalogListResult,
   BatonFleetResult,
   BatonJobListResult,
-  BatonMoveIntoTessayaResult,
   BatonMemorySearchResult,
   BatonMemoryHistoryResult,
   BatonRecordListInput,
@@ -277,15 +276,12 @@ const StateTool = Tool.make("tessaya_state", {
 const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   ...shared,
   description:
-    "Move a Terminal thread's Claude session into Tessaya: its terminal process exits and the same conversation continues as a Tessaya thread on the session's own login. Refused while it works. It changes the thread's provider, so set providerChangeApproved only when the user asked for this move in so many words; without it nothing changes.",
-  parameters: Schema.Struct({
-    threadId: ThreadId,
-    providerChangeApproved: Schema.optional(Schema.Boolean),
-  }),
-  success: BatonMoveIntoTessayaResult,
+    "Ask the Director to move a Terminal thread's Claude session into Tessaya: its terminal process ends and the same conversation continues as a Tessaya thread. It only files the request: he approves or refuses it on his own screen, and nothing moves before that. Returns an id; outside agents follow it with `tessaya_ask_status`.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: AskResult,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 

@@ -382,29 +382,30 @@ it.effect(
 );
 
 it.effect(
-  "an agent's move reaches the same service guard: no approval of its own, and a thread agent may ask",
+  "an agent's move only files a request he answers: it cannot approve itself, and nothing moves",
   () =>
     Effect.gen(function* () {
-      const asked: Array<unknown> = [];
+      const inbox = yield* BatonPhoneInbox;
+      yield* inbox.take;
+      const moved: Array<unknown> = [];
       const catalog = BatonSessionCatalogService.of({
-        moveIntoTessaya: (input: { providerChangeApproved?: boolean }) =>
-          Effect.sync(() => {
-            asked.push(input);
-            return input.providerChangeApproved === true
-              ? { state: "moved", detail: "ok", instanceId: "claudeAgent" }
-              : { state: "refused", detail: "needs approval", instanceId: null };
-          }),
+        moveIntoTessaya: (input: unknown) => Effect.sync(() => (moved.push(input), {})),
       } as never);
-      const runtime = Context.make(BatonSessionCatalogService, catalog) as never;
-      const refused = yield* callTool("thread", runtime, "tessaya_move_into_tessaya", {
-        threadId: thread,
-      });
-      expect(refused.result).toMatchObject({ state: "refused" });
-      expect(asked).toEqual([{ threadId: thread }]);
-      const moved = yield* callTool("full-access", runtime, "tessaya_move_into_tessaya", {
+      const runtime = Context.mergeAll(
+        Context.make(BatonPhoneInbox, inbox),
+        Context.make(BatonSessionCatalogService, catalog),
+      ) as never;
+      const asked = yield* callTool("thread", runtime, "tessaya_move_into_tessaya", {
         threadId: thread,
         providerChangeApproved: true,
       });
-      expect(moved.result).toMatchObject({ state: "moved" });
-    }),
+      expect(asked.result).toMatchObject({ status: "queued" });
+      expect(moved).toEqual([]);
+      const waiting = yield* inbox.recent(10);
+      expect(waiting.map((ask) => ask.text)).toEqual([
+        expect.stringContaining(`Move the Terminal thread ${thread} into Tessaya`),
+      ]);
+      const tool = TessayaToolkit.tools.tessaya_move_into_tessaya;
+      expect(Object.keys(tool.parametersSchema.fields)).toEqual(["threadId"]);
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );

@@ -195,6 +195,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "weave_send",
   "job_retry",
   "job_handoff",
+  "thread_move_into_tessaya",
   "job_update",
   "job_delete",
   "skill_draft",
@@ -387,6 +388,13 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "job_handoff":
       // The same work on another provider or account spends another subscription: it asks every time.
       return { verdict: "ask", why: "It would move a job to another worker or account." };
+    case "thread_move_into_tessaya":
+      // It ends a terminal session and changes which provider answers the thread: his yes, every time.
+      return {
+        verdict: "ask",
+        why: "It would end a terminal session and continue it in Tessaya.",
+        risky: true,
+      };
     case "job_update":
     case "job_delete":
       // Changing or removing one of his own jobs is his to say, every time: read text could otherwise rewrite one.

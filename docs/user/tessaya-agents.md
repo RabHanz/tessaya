@@ -25,7 +25,7 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 
 ## Move sessions between Tessaya and a terminal
 
-- `tessaya_move_into_tessaya` moves a Terminal thread's session into Tessaya. It changes the thread's provider, so it does nothing unless the agent passes `providerChangeApproved`, which it should only do when you asked for the move. It is refused while the session works. T3's own thread agents can use it too.
+- `tessaya_move_into_tessaya` asks you to move a Terminal thread's session into Tessaya. It only files the request: Tessaya asks you on your screen, and nothing moves until you say yes. T3's own thread agents can use it too.
 
 ## Agents messaging each other
 
