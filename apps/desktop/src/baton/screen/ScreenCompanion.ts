@@ -547,9 +547,8 @@ export interface ScreenCompanion {
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
   readonly volume: () => number;
-  readonly stop: () => void;
-  /** Dismissed by Esc, a click or "never mind": everything comes down and goes quiet, with nothing said and no turn logged. */
-  readonly dismissQuietly: () => void;
+  /** The one Stop: everything running for him comes down; `quiet` (Esc, a click, "never mind") says nothing. */
+  readonly stop: (quiet?: boolean) => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   /** The same question, also put to a paired phone: the first answer counts. */
@@ -876,18 +875,25 @@ export const startScreenCompanion = (input: {
     spokenFrom = null;
     await overlay.clear();
   };
-  /** Takes down whatever is up, and the voice with it. Esc stays his: this is the tray's. */
-  const dismiss = () => {
+  /**
+   * Every Stop (Esc, the pill's ✕, the tray, the Stop key or button, a spoken or typed "stop"): the talking, his drive
+   * or lesson, the assistant's turn, and a paired device's or standing job's turn. `quiet` (Esc, a click, "never
+   * mind") says nothing and leaves a device's or standing job's turn running.
+   */
+  const stopAll = (quiet = false) => {
+    const busy = runningMode() !== null || answering > 0 || (!quiet && turnLock.deviceRunning());
     hush();
+    // The answering turn does nothing more (stopsOnCutIn), as when he talks over her.
+    if (answering > 0) cutIns.cut();
     input.onDismissed?.();
-    // Stop means the work too, not only the talking about it.
+    // Closing the pill is not a Stop: a device's or standing job's turn goes on unless he really stops.
+    if (!quiet) turnLock.stopDevice();
     dropOperator();
-    if (run !== null && run.mode !== "look") {
-      say("Stopped.");
-      end();
-    }
+    if (busy && !quiet) say("Stopped.");
+    if (runningMode() !== null) end();
     void wipe();
   };
+  const dismiss = () => stopAll();
 
   const FINISHED_CARD_MS = 12_000;
   /** The end of a lesson or a drive: a green-edged card, and a bubble at the pointer saying what changed. */
@@ -1770,11 +1776,7 @@ export const startScreenCompanion = (input: {
             return Promise.resolve();
           }
           // Nothing running: a silent no-op, so a stray "stop" costs nothing.
-          const wasBusy = runningMode() !== null || answering > 0;
-          hush();
-          void wipe();
-          if (wasBusy) say("Stopped.");
-          end();
+          stopAll();
           return Promise.resolve();
         case "refused":
         case "act":
@@ -3281,7 +3283,6 @@ export const startScreenCompanion = (input: {
   let askKey: string | null = ASK_HOTKEY;
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
-  const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
   /** "Learn from that": a skill from the last turn, tested by replaying it, shown for his yes. */
   const learnFromLast = async () => {
     const turn = lastTurn;
@@ -3373,12 +3374,6 @@ export const startScreenCompanion = (input: {
     });
     input.onChange?.();
     return out.text;
-  };
-  const dismissQuietly = () => {
-    hush();
-    dropOperator();
-    if (run !== null && run.mode !== "look") end();
-    void wipe();
   };
 
   return {
@@ -3505,8 +3500,7 @@ export const startScreenCompanion = (input: {
     ask: windows.ask,
     askMirrored: (box, needs) =>
       askHandsFree({ inactive: false, ...box }, box.title, 0, false, needs),
-    stop,
-    dismissQuietly,
+    stop: stopAll,
     learnNightly,
     menuItems: () => [
       { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
@@ -3537,7 +3531,7 @@ export const startScreenCompanion = (input: {
         ? [
             {
               label: run.mode === "teach" ? "Stop the lesson" : "Stop driving",
-              click: stop,
+              click: () => stopAll(),
             },
           ]
         : []),

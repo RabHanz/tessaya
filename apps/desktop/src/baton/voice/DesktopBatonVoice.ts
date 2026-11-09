@@ -1017,10 +1017,8 @@ export interface DesktopBatonVoiceInput {
   /** Where the wake and listening models are, for the Check area. */
   readonly voiceAssets?: (modelsDir: string | null) => VoiceAssets;
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
-  /** What to do when he dismisses a turn: stop Baton's voice, and the same for the assistant. */
-  readonly onDismiss?: () => void;
-  /** He said stop over Baton's voice. The tray's dismiss; the window stays open. */
-  readonly onSpokenStop?: () => void;
+  /** The one Stop (the companion's `stop`): `quiet` for Esc, a click or "never mind", which say nothing. */
+  readonly onStop?: (quiet: boolean) => void;
   /** Plays one fixed line in a voice (null: the chosen one), for the Voice page's Play. */
   readonly audition?: (voice: string | null) => void;
   /** Bring the main window up, however it was left. */
@@ -3403,7 +3401,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (id === "hold") return void moveDictation(up ? "hold_up" : "hold_down");
     if (up) return;
     if (id === "toggle") return void moveDictation("toggle");
-    if (id === "stop") pill.on({ type: "dismissed" });
     bindingHandlers?.[id]?.();
   };
   /** The helper is recording a key or button dictation (its Esc is held while it does). */
@@ -3688,6 +3685,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   /** The target window's rect in DIP: the pill shows on its screen. Read by the pill as soon as it is built. */
   let workRect: Electron.Rectangle | null = null;
+  /** Every Stop from this side (Esc, the pill, the Stop key or button, the Home page, "never mind") ends the same way. */
+  const stopAll = (quiet: boolean) => {
+    pill.on({ type: "dismissed" });
+    loop?.activate("dismiss");
+    input.onStop?.(quiet);
+  };
   const pill: VoicePill = createVoicePill({
     look: () => ({ motion: settings.motion, glass: settings.glass }),
     menuItems: () => [
@@ -3733,9 +3736,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (dictatingByVoice || undoDiscard()) return;
       // A click on the pill while a key dictation records ends it, written out: never the pill gone and the mic on.
       if (moveDictation("pill_click") !== "none") return;
-      pill.on({ type: "dismissed" });
-      loop?.activate("dismiss");
-      input.onDismiss?.();
+      stopAll(true);
     },
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
     onChange: (turn) => input.onPillState?.(turn.phase),
@@ -3889,11 +3890,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           }
           return { type: event.reason === "wake not confirmed" ? "unconfirmed" : "resume" };
         case "stop_heard":
-          input.onSpokenStop?.();
+          input.onStop?.(false);
           return null;
         case "dismissed":
           // Said on its own, so no model was asked: the window is already closed.
-          input.onDismiss?.();
+          input.onStop?.(true);
           return { type: "dismissed" };
         case "transcript":
           // A spoken cancel takes the pill down at once, the way Esc does.
@@ -3906,8 +3907,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               ),
             )
           ) {
-            pill.on({ type: "dismissed" });
-            input.onDismiss?.();
+            stopAll(true);
             return null;
           }
           if (!dictatingByVoice) {
@@ -4905,6 +4905,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             detail: `${result.text.slice(0, 1_900)}${usedLine(result.model, result.turns)}`,
           })
           .catch(() => undefined);
+        // He stopped it or took the turn: the rest of this pass waits for the next tick.
+        if (result.status === "cancelled") break;
       }
     } finally {
       clearTimeout(budget);
@@ -6260,13 +6262,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ?.menuItems()
         .find((i) => i.label === (id === "q.ask" ? "Ask Tessaya…" : "Clear the screen"));
       (entry?.click as (() => void) | undefined)?.();
-    } else if (id === "q.stop") {
-      input.onDismiss?.();
-      const entry = input.extras
-        ?.menuItems()
-        .find((i) => i.label === "Stop driving" || i.label === "Stop the lesson");
-      (entry?.click as (() => void) | undefined)?.();
-    } else if (id === "q.quit") Electron.app.quit();
+    } else if (id === "q.stop") stopAll(false);
+    else if (id === "q.quit") Electron.app.quit();
     else if (id.startsWith("q.open:")) {
       const target = homeExtra().paths.find((p) => `q.open:${p.id}` === id);
       if (target !== undefined) void Electron.shell.openPath(target.path);
@@ -7188,13 +7185,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     direct: () => loop?.activate("toggle_direct_session"),
     mute: () => toggleMute(),
     dictation: () => void moveDictation("toggle"),
-    stop: () => {
-      input.onDismiss?.();
-      const stop = input.extras
-        ?.menuItems()
-        .find((i) => i.label === "Stop driving" || i.label === "Stop the lesson");
-      (stop?.click as (() => void) | undefined)?.();
-    },
+    stop: () => stopAll(false),
     clear: () => {
       const clear = input.extras?.menuItems().find((i) => i.label === "Clear the screen");
       (clear?.click as (() => void) | undefined)?.();
