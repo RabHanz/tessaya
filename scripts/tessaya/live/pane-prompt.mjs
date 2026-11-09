@@ -100,7 +100,7 @@ export function parseReviewScreen(lines) {
     selected: options.findIndex((o) => o.selected),
     customIndex: null,
     review: true,
-    key: [question, ...options.map((o) => o.label), context].join("\u0000"),
+    key: steadyKey([question, ...options.map((o) => o.label), context].join("\u0000")),
   };
 }
 
@@ -109,18 +109,9 @@ export function parseReviewScreen(lines) {
  * order (`index`), so an answer is arrows from the highlighted one plus Enter.
  */
 export function parsePanePrompt(screen) {
-  const text = steadyScreen(screen);
+  const text = String(screen ?? "").replace(ANSI, "");
   return parseScreen(text) ?? unreadPermission(text) ?? keyHintPrompt(text);
 }
-
-/**
- * The screen without its colour codes and with a dialog's countdown ("will automatically block this request in 1:58")
- * said as "soon": it ticks every second, and a prompt's key (its card's ref) must not change while the prompt shows.
- */
-const steadyScreen = (screen) =>
-  String(screen ?? "")
-    .replace(ANSI, "")
-    .replace(/(\bautomatically\b[^\n]*?) in \d+:\d{2}\b/gi, "$1 soon");
 
 /**
  * The prompt a waiting session shows: one Tessaya knows, else Esc (and Enter only when no option list shows, since
@@ -130,7 +121,10 @@ const steadyScreen = (screen) =>
 export function parseWaitingScreen(screen) {
   const found = parsePanePrompt(screen);
   if (found !== null) return found;
-  const lines = steadyScreen(screen).replace(/\r/g, "").split("\n");
+  const lines = String(screen ?? "")
+    .replace(ANSI, "")
+    .replace(/\r/g, "")
+    .split("\n");
   const details = screenTail(lines.join("\n"), 20);
   if (details === "" || inputBoxAt(lines) >= 0) return null;
   const note = "Tessaya didn't recognise this screen";
@@ -153,7 +147,7 @@ export function parseWaitingScreen(screen) {
     })),
     selected: 0,
     customIndex: null,
-    key: `unknown\u0000${steadyKey(details)}`,
+    key: `unknown\u0000${looseKey(details)}`,
   });
 }
 
@@ -165,13 +159,19 @@ const hasOptionList = (lines) =>
       (l, i, tail) => NUMBERED.test(l) || (/^\s*❯\s+\S/.test(l) && !RULE.test(tail[i - 1] ?? "")),
     );
 
-/** A screen's text without what changes on every redraw (spinners, timers, token counts), so its card does not flap. */
+/**
+ * A prompt's text without what changes on every redraw (spinners, "esc to interrupt", timers, durations, token counts
+ * and percentages), so the key, and its card's ref, stays the same while the same prompt shows.
+ */
 const steadyKey = (text) =>
   text
     .split("\n")
     .filter((l) => !/esc to interrupt|^\s*[✻✶✢✳✽✺✷✸✹·*]\s/i.test(l))
     .join("\n")
-    .replace(/\d+/g, "#");
+    .replace(/\b\d+(?::\d{2}){1,2}\b/g, "#")
+    .replace(/\b\d+(?:\.\d+)?\s*k?\s*(?:ms|s|%|tokens?)(?!\w)/gi, "#");
+/** An unread screen has no command whose digits tell two prompts apart, so all of its numbers are dropped. */
+const looseKey = (text) => steadyKey(text).replace(/\d+/g, "#");
 
 /** The line of Claude Code's input box (a rule, then `❯`/`>`, a rule below) among the last lines, or -1. */
 function inputBoxAt(lines) {
@@ -256,7 +256,7 @@ function keyHintPrompt(screen) {
     })),
     selected: 0,
     customIndex: null,
-    key: `hints\u0000${steadyKey(details)}`,
+    key: `hints\u0000${looseKey(details)}`,
   });
 }
 
@@ -288,7 +288,7 @@ function unreadPermission(screen) {
     ],
     selected: 0,
     customIndex: null,
-    key: `unread\u0000${details}`,
+    key: `unread\u0000${steadyKey(details)}`,
   });
 }
 
@@ -469,7 +469,7 @@ function parseScreen(screen) {
       context: "",
       selected: options.findIndex((o) => o.selected),
       customIndex: null,
-      key: [question, ...options.map((o) => o.label), plain.details].join("\u0000"),
+      key: steadyKey([question, ...options.map((o) => o.label), plain.details].join("\u0000")),
     });
   return {
     question,
@@ -479,7 +479,7 @@ function parseScreen(screen) {
     options: shown,
     selected: options.findIndex((o) => o.selected),
     customIndex: custom === undefined ? null : custom.number - 1,
-    key: [question, ...options.map((o) => o.label)].join("\u0000"),
+    key: steadyKey([question, ...options.map((o) => o.label)].join("\u0000")),
   };
 }
 
