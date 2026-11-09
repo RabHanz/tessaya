@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { limitsAge, maskedEmail, roomDetail, roomText, roomTone } from "./accountRoom.ts";
+import {
+  limitsAge,
+  maskedEmail,
+  queuedText,
+  roomDetail,
+  roomText,
+  roomTone,
+} from "./accountRoom.ts";
 
 const now = Date.parse("2026-10-30T12:00:00Z");
 // @effect-diagnostics-next-line globalDate:off -- a display label, not a date value
@@ -50,5 +57,17 @@ describe("room as % used", () => {
       "5-hour: 100% used · resets 18:00 (GMT+5)",
       "Weekly: 62% used · resets Thu 09:00 (GMT+5)",
     ]);
+  });
+});
+
+describe("a terminal session's queued change", () => {
+  it("names the account it moves to and what else waits for the turn to end", () => {
+    const accounts = [{ label: "Work", liveSwitchKey: "1" }];
+    expect(queuedText({ accountKey: "1", effort: "high" }, accounts)).toBe(
+      "Switches to Work, effort high when this turn ends",
+    );
+    expect(queuedText({ accountKey: "9" }, accounts)).toBe(
+      "Switches to another account when this turn ends",
+    );
   });
 });

@@ -32,6 +32,10 @@ on:
         description: "Version to release, e.g. 1.0.0 (tag baton-v<version> is created at the current commit if it doesn't exist)"
         required: true
         type: string
+      dry_run:
+        description: "Build every installer but publish no release (CI proof of the build)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -270,6 +274,7 @@ jobs:
   publish:
     name: Publish GitHub release
     needs: [resolve_version, build_linux, build_windows, build_macos]
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
