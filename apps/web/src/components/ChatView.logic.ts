@@ -89,6 +89,8 @@ import {
 } from "~/lib/composerContextReferences";
 import {
   collectComposerContextReferences,
+  replaceComposerContextReferences,
+  sanitizeComposerContextLabel,
   toKindScopedComposerContextId,
 } from "@t3tools/shared/composerContextReferences";
 import {
@@ -759,6 +761,42 @@ export function cloneComposerImageForRetry(
   } catch {
     return image;
   }
+}
+
+/**
+ * Points image and file chips whose attachment id no longer matches at an attached, otherwise
+ * unreferenced attachment with the same kind and name, so a visibly attached image still sends
+ * (a rewind restores attachments under fresh ids). Chips with no such partner stay as written.
+ */
+export function relinkAttachmentReferences(
+  prompt: string,
+  attachments: ReadonlyArray<{ type: "image" | "file"; id: string; name: string }>,
+): string {
+  const contextIdOf = (attachment: (typeof attachments)[number]) =>
+    toKindScopedComposerContextId(attachment.type, attachment.id);
+  const attachedIds = new Set<string>(attachments.map(contextIdOf));
+  const referenced = new Set<string>(
+    collectComposerContextReferences(prompt).map((occurrence) => occurrence.contextId),
+  );
+  const unreferenced = attachments.filter((attachment) => !referenced.has(contextIdOf(attachment)));
+  if (unreferenced.length === 0) return prompt;
+  return replaceComposerContextReferences(prompt, (occurrence) => {
+    if (
+      (occurrence.kind !== "image" && occurrence.kind !== "file") ||
+      attachedIds.has(occurrence.contextId)
+    ) {
+      return occurrence.source;
+    }
+    const index = unreferenced.findIndex(
+      (attachment) =>
+        attachment.type === occurrence.kind &&
+        sanitizeComposerContextLabel(attachment.name, attachment.type) === occurrence.label,
+    );
+    const [partner] = index === -1 ? [] : unreferenced.splice(index, 1);
+    return partner
+      ? occurrence.source.replace(`/${occurrence.contextId})`, `/${contextIdOf(partner)})`)
+      : occurrence.source;
+  });
 }
 
 export function deriveComposerSendState(options: {

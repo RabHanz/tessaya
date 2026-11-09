@@ -354,10 +354,18 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..53df100b31f29111ea6c1b6a71345293
              creationSource: "web",
              commandId: CommandId.make("command:provider-switch:legacy-import:recovery"),
 diff --git a/apps/web/src/components/ChatView.logic.test.ts b/apps/web/src/components/ChatView.logic.test.ts
-index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..0747ff54cd5c56db55e01e8080aa488e54c62303 100644
+index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..9305f8e0884031f061186e4a89624094bd0ea43b 100644
 --- a/apps/web/src/components/ChatView.logic.test.ts
 +++ b/apps/web/src/components/ChatView.logic.test.ts
-@@ -126,6 +126,18 @@ describe("deriveComposerSendState", () => {
+@@ -49,6 +49,7 @@ import {
+   createLocalDispatchSnapshot,
+   deriveCommittedServerUserMessageIds,
+   deriveComposerSendState,
++  relinkAttachmentReferences,
+   deriveLockedProvider,
+   hasServerAcknowledgedLocalDispatch,
+   waitForRevertedMessage,
+@@ -126,6 +127,39 @@ describe("deriveComposerSendState", () => {
      expect(state.expiredTerminalContextCount).toBe(1);
      expect(state.hasSendableContent).toBe(true);
    });
@@ -373,10 +381,31 @@ index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..0747ff54cd5c56db55e01e8080aa488e
 +
 +    expect(state.unattachedLabels).toEqual(["image.png", "notes.txt"]);
 +  });
++
++  it("relinks chips of two attached images both named image.png whose ids drifted", () => {
++    const attachments = [
++      { type: "image" as const, id: "new-a", name: "image.png" },
++      { type: "image" as const, id: "new-b", name: "image.png" },
++    ];
++    const prompt = relinkAttachmentReferences(
++      "a ![image.png](t3-context://v1/image/image_old-a) b ![image.png](t3-context://v1/image/image_old-b) ![image.png](t3-context://v1/image/image_gone)",
++      attachments,
++    );
++    expect(prompt).toBe(
++      "a ![image.png](t3-context://v1/image/image_new-a) b ![image.png](t3-context://v1/image/image_new-b) ![image.png](t3-context://v1/image/image_gone)",
++    );
++    const state = deriveComposerSendState({
++      prompt: prompt.replace(/ !\[image\.png\]\(t3-context:\/\/v1\/image\/image_gone\)$/, ""),
++      imageCount: 2,
++      attachments,
++      terminalContexts: [],
++    });
++    expect(state.unattachedLabels).toEqual([]);
++  });
  });
  
  describe("buildExpiredTerminalContextToastCopy", () => {
-@@ -596,6 +608,30 @@ describe("resolveComposerProviderSelection", () => {
+@@ -596,6 +630,30 @@ describe("resolveComposerProviderSelection", () => {
      },
    );
  
@@ -408,21 +437,23 @@ index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..0747ff54cd5c56db55e01e8080aa488e
      const signedOutEntry = entry("antigravity", "google_work", {
        status: "error",
 diff --git a/apps/web/src/components/ChatView.logic.ts b/apps/web/src/components/ChatView.logic.ts
-index d4b54a7e5a84800802f427863210cda70c8bc6f1..5923962ae42c6258d29fdac35edeb401e057b264 100644
+index d4b54a7e5a84800802f427863210cda70c8bc6f1..868d096faed32c673e7d32ea6a0de2248ee8b66c 100644
 --- a/apps/web/src/components/ChatView.logic.ts
 +++ b/apps/web/src/components/ChatView.logic.ts
-@@ -87,6 +87,10 @@ import {
+@@ -87,6 +87,12 @@ import {
    removeInlineContextReference,
    stripInlineContextReferences,
  } from "~/lib/composerContextReferences";
 +import {
 +  collectComposerContextReferences,
++  replaceComposerContextReferences,
++  sanitizeComposerContextLabel,
 +  toKindScopedComposerContextId,
 +} from "@t3tools/shared/composerContextReferences";
  import {
    previewAnnotationContextLabel,
    reviewCommentContextLabel,
-@@ -488,6 +492,8 @@ export function resolveComposerProviderSelection(input: {
+@@ -488,6 +494,8 @@ export function resolveComposerProviderSelection(input: {
    candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
    lockedProvider: ProviderDriverKind | null;
    lockedInstanceId: ProviderInstanceId | null | undefined;
@@ -431,7 +462,7 @@ index d4b54a7e5a84800802f427863210cda70c8bc6f1..5923962ae42c6258d29fdac35edeb401
  }) {
    const requestedInstanceId = input.candidateInstanceIds.find(
      (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
-@@ -512,7 +518,15 @@ export function resolveComposerProviderSelection(input: {
+@@ -512,7 +520,15 @@ export function resolveComposerProviderSelection(input: {
        (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
        (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
    );
@@ -447,7 +478,47 @@ index d4b54a7e5a84800802f427863210cda70c8bc6f1..5923962ae42c6258d29fdac35edeb401
      input.candidateInstanceIds
        .map((candidate) =>
          compatibleEntries.find(
-@@ -751,6 +765,8 @@ export function deriveComposerSendState(options: {
+@@ -747,10 +763,48 @@ export function cloneComposerImageForRetry(
+   }
+ }
+ 
++/**
++ * Points image and file chips whose attachment id no longer matches at an attached, otherwise
++ * unreferenced attachment with the same kind and name, so a visibly attached image still sends
++ * (a rewind restores attachments under fresh ids). Chips with no such partner stay as written.
++ */
++export function relinkAttachmentReferences(
++  prompt: string,
++  attachments: ReadonlyArray<{ type: "image" | "file"; id: string; name: string }>,
++): string {
++  const contextIdOf = (attachment: (typeof attachments)[number]) =>
++    toKindScopedComposerContextId(attachment.type, attachment.id);
++  const attachedIds = new Set<string>(attachments.map(contextIdOf));
++  const referenced = new Set<string>(
++    collectComposerContextReferences(prompt).map((occurrence) => occurrence.contextId),
++  );
++  const unreferenced = attachments.filter((attachment) => !referenced.has(contextIdOf(attachment)));
++  if (unreferenced.length === 0) return prompt;
++  return replaceComposerContextReferences(prompt, (occurrence) => {
++    if (
++      (occurrence.kind !== "image" && occurrence.kind !== "file") ||
++      attachedIds.has(occurrence.contextId)
++    ) {
++      return occurrence.source;
++    }
++    const index = unreferenced.findIndex(
++      (attachment) =>
++        attachment.type === occurrence.kind &&
++        sanitizeComposerContextLabel(attachment.name, attachment.type) === occurrence.label,
++    );
++    const [partner] = index === -1 ? [] : unreferenced.splice(index, 1);
++    return partner
++      ? occurrence.source.replace(`/${occurrence.contextId})`, `/${contextIdOf(partner)})`)
++      : occurrence.source;
++  });
++}
++
+ export function deriveComposerSendState(options: {
    prompt: string;
    imageCount: number;
    existingAttachmentCount?: number;
@@ -456,7 +527,7 @@ index d4b54a7e5a84800802f427863210cda70c8bc6f1..5923962ae42c6258d29fdac35edeb401
    terminalContexts: ReadonlyArray<TerminalContextDraft>;
    elementContextCount?: number;
  }): {
-@@ -758,13 +774,31 @@ export function deriveComposerSendState(options: {
+@@ -758,13 +812,31 @@ export function deriveComposerSendState(options: {
    sendableTerminalContexts: TerminalContextDraft[];
    expiredTerminalContextCount: number;
    hasSendableContent: boolean;

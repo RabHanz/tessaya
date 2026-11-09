@@ -42,6 +42,7 @@ import {
   readFileAsDataUrl,
   prepareRevertedMessageAttachments,
   waitForRevertedMessage,
+  relinkAttachmentReferences,
 } from "../ChatView.logic";
 import { readPreparedConnection } from "../../state/session";
 import { recallableComposerPrompt } from "./composerPromptHistory";
@@ -226,7 +227,6 @@ export async function rewindToMessage(input: {
         : currentPrompt.length > 0
           ? `${currentPrompt}\n\n${restoredPrompt}`
           : restoredPrompt;
-    store.setPrompt(draftTarget, nextPrompt);
     const images: ComposerImageAttachment[] = [];
     const restoredFiles: ComposerFileAttachment[] = [];
     files.forEach((file, index) => {
@@ -243,9 +243,12 @@ export async function rewindToMessage(input: {
         restoredFiles.push({ ...attachment, type: "file" });
       }
     });
+    // The restored attachments get fresh ids; the message's chips still name the sent ones.
+    const relinkedPrompt = relinkAttachmentReferences(nextPrompt, [...images, ...restoredFiles]);
+    store.setPrompt(draftTarget, relinkedPrompt);
     store.addImages(draftTarget, images, { allowDuplicates: true });
     store.addFiles(draftTarget, restoredFiles, { allowDuplicates: true });
-    return { error: null, prompt: nextPrompt };
+    return { error: null, prompt: relinkedPrompt };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to revert thread state." };
   }

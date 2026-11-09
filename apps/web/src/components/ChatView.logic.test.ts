@@ -49,6 +49,7 @@ import {
   createLocalDispatchSnapshot,
   deriveCommittedServerUserMessageIds,
   deriveComposerSendState,
+  relinkAttachmentReferences,
   deriveLockedProvider,
   hasServerAcknowledgedLocalDispatch,
   waitForRevertedMessage,
@@ -137,6 +138,27 @@ describe("deriveComposerSendState", () => {
     });
 
     expect(state.unattachedLabels).toEqual(["image.png", "notes.txt"]);
+  });
+
+  it("relinks chips of two attached images both named image.png whose ids drifted", () => {
+    const attachments = [
+      { type: "image" as const, id: "new-a", name: "image.png" },
+      { type: "image" as const, id: "new-b", name: "image.png" },
+    ];
+    const prompt = relinkAttachmentReferences(
+      "a ![image.png](t3-context://v1/image/image_old-a) b ![image.png](t3-context://v1/image/image_old-b) ![image.png](t3-context://v1/image/image_gone)",
+      attachments,
+    );
+    expect(prompt).toBe(
+      "a ![image.png](t3-context://v1/image/image_new-a) b ![image.png](t3-context://v1/image/image_new-b) ![image.png](t3-context://v1/image/image_gone)",
+    );
+    const state = deriveComposerSendState({
+      prompt: prompt.replace(/ !\[image\.png\]\(t3-context:\/\/v1\/image\/image_gone\)$/, ""),
+      imageCount: 2,
+      attachments,
+      terminalContexts: [],
+    });
+    expect(state.unattachedLabels).toEqual([]);
   });
 });
 
