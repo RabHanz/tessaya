@@ -28,17 +28,6 @@ function RunsAs({ account }: { readonly account: BatonAccount }) {
   );
 }
 
-/** A terminal session runs on the machine's active login (cswap), not on an instance's. */
-function LiveAccount({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const pool = useAtomValue(batonWorkSessions.accountPoolQuery({ environmentId, input: {} }));
-  const account = Option.getOrNull(AsyncResult.value(pool))?.accounts.find((entry) => entry.active);
-  return account === undefined ? null : (
-    <View className="mx-4 px-1 pb-1">
-      <RunsAs account={account} />
-    </View>
-  );
-}
-
 export function BatonAccountRow(props: {
   readonly environmentId: EnvironmentId | null;
   readonly instanceId: string;
@@ -53,8 +42,8 @@ export function BatonAccountRow(props: {
           .get(props.environmentId)
           ?.providers.find((entry) => entry.instanceId === props.instanceId);
   if (props.environmentId === null) return null;
-  if (props.instanceId === LIVE_INSTANCE)
-    return <LiveAccount environmentId={props.environmentId} />;
+  // A terminal session may run on its own login (LIVE-ACCOUNT), which this sheet does not read: say nothing.
+  if (props.instanceId === LIVE_INSTANCE) return null;
   if (provider === undefined) return null;
   const email = provider.auth.email?.trim() ?? "";
   if (provider.usageLimits === undefined && email === "") return null;

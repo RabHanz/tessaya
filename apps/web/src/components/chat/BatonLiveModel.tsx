@@ -3,7 +3,7 @@
  * header menu is gone, P1). The session is told with its own `/model` and `/effort` in its Herdr pane, and the toast
  * says what the session itself answered, never what was only typed. A session not in Herdr offers to be brought in.
  */
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
 import { effortCommand } from "@t3tools/baton-shared/liveModel";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -31,22 +31,79 @@ import type { TraitsSelectionInput } from "./TraitsPicker";
 
 const NO_POOL = Atom.make(AsyncResult.initial<never, never>(false));
 
-/** The machine logins (cswap) on a live thread's environment; empty elsewhere, so no other thread asks. */
+/** The login each live session runs as, from the session catalog the header's binding reads (by session id). */
+export const liveLoginAtom = Atom.family((_sessionId: string) => Atom.make<string | null>(null));
+
+/**
+ * The machine logins (cswap) on a live thread's environment, with `active` marking the session's own login once the
+ * catalog has named it (a session in its own config dir can run on any of them); empty elsewhere.
+ */
 export function useLiveAccounts(threadRef: ScopedThreadRef | null): ReadonlyArray<BatonAccount> {
-  const live = threadRef !== null && liveSessionIdOf(threadRef.threadId) !== null;
+  const sessionId = threadRef === null ? null : liveSessionIdOf(threadRef.threadId);
   const pool = useAtomValue(
-    live
+    threadRef !== null && sessionId !== null
       ? batonWorkSessions.accountPoolQuery({ environmentId: threadRef.environmentId, input: {} })
       : NO_POOL,
   );
-  return Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
+  const login = useAtomValue(liveLoginAtom(sessionId ?? ""));
+  const accounts = Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
+  return login === null
+    ? accounts
+    : accounts.map((account) => ({ ...account, active: account.email?.split("@")[0] === login }));
 }
 
-/** True when an instance runs as the login the terminal session uses, so /model there changes nothing else. */
-export const runsAsLiveLogin = (instanceId: string, accounts: ReadonlyArray<BatonAccount>) => {
+/** How an instance's login relates to the terminal session's: /model there, a live move, or not known. */
+export const liveLoginOf = (
+  instanceId: string,
+  accounts: ReadonlyArray<BatonAccount>,
+): { readonly relation: "same" | "other" | "unknown"; readonly key: string | null } => {
   const active = accounts.find((account) => account.active);
-  return active !== undefined && accountForInstance(instanceId, accounts)?.key === active.key;
+  const picked = accountForInstance(instanceId, accounts);
+  if (active === undefined || picked === undefined) return { relation: "unknown", key: null };
+  return { relation: picked.key === active.key ? "same" : "other", key: picked.key };
 };
+
+/** Moves a live session to another login while it runs; a session on the shared login offers its one restart. */
+export function useLiveAccountSwitch(threadRef: ScopedThreadRef | null) {
+  const sessionId = threadRef === null ? null : liveSessionIdOf(threadRef.threadId);
+  const setAccount = useAtomCommand(batonWorkSessions.liveSetAccount, { reportFailure: false });
+  const setLogin = useAtomSet(liveLoginAtom(sessionId ?? ""));
+  const switchTo = (account: BatonAccount, restart = false): void => {
+    if (threadRef === null || sessionId === null) return;
+    const label = account.label;
+    void setAccount({
+      environmentId: threadRef.environmentId,
+      input: { sessionId, accountKey: account.key, ...(restart ? { restart: true } : {}) },
+    }).then((result) => {
+      if (result._tag !== "Success") {
+        toastManager.add({ type: "error", title: "Could not reach the session" });
+        return;
+      }
+      const { state, detail } = result.value;
+      if (state === "switched" || state === "unchanged") {
+        // The catalog the header polls catches up within 30 s; the label should not wait for it.
+        setLogin(account.email?.split("@")[0] ?? null);
+        toastManager.add({ type: "success", title: `On ${label}`, description: detail });
+      } else if (state === "needs_restart")
+        toastManager.add({
+          type: "warning",
+          title: "Make this thread switchable",
+          description: detail,
+          actionProps: {
+            children: "Restart once and switch",
+            onClick: () => switchTo(account, true),
+          },
+        });
+      else
+        toastManager.add({
+          type: state === "busy" ? "warning" : "error",
+          title: "Not switched",
+          description: detail,
+        });
+    });
+  };
+  return switchTo;
+}
 
 // baton-live4: is the current namespace; the older ones were retired but the id shape is the same.
 export const liveSessionIdOf = (threadId: string): string | null =>

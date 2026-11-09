@@ -77,7 +77,7 @@ import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { BatonSessionsAcross } from "./BatonSessionsAcross.ts";
 import { BatonIntentService } from "./IntentService.ts";
-import { liveAdopt, liveAttach, liveSetModel } from "./LiveActions.ts";
+import { liveAdopt, liveAttach, liveSetAccount, liveSetModel } from "./LiveActions.ts";
 import { setModelResumingStopped } from "@t3tools/baton-shared/liveModel";
 import { BatonOrchestrationReactor } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
@@ -309,6 +309,16 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_LIVE_WS_METHODS.liveAttach]: (input) =>
       run(Effect.flatMap(AdoptedSessionService, (adopted) => liveAttach(adopted, input))),
     [BATON_LIVE_WS_METHODS.liveAdopt]: (input) => liveAdopt(input),
+    [BATON_LIVE_WS_METHODS.liveSetAccount]: (input) =>
+      run(
+        Effect.flatMap(AccountPoolService, (pool) =>
+          pool.read(ProviderDriverKind.make("claudeAgent")),
+        ).pipe(
+          Effect.map((read) => read.accounts),
+          Effect.orElseSucceed(() => []),
+          Effect.flatMap((accounts) => liveSetAccount(input, accounts)),
+        ),
+      ),
     [BATON_LIVE_WS_METHODS.liveSetModel]: (input) =>
       run(
         Effect.gen(function* () {

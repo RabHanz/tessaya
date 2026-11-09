@@ -1529,24 +1529,25 @@ index 1a0c3aa014ad02d4f9d114ee094059344a66ef2f..5213f9d5dad8046db3776f2a19e5590b
    onCancelWorktreeSetup: (() => void) | null;
    retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
 diff --git a/apps/web/src/components/chat/useComposerSelection.ts b/apps/web/src/components/chat/useComposerSelection.ts
-index a6312466d9747ce40a6e94b4c8de347f10ea29c7..4cd9f1fe4508ddd1e68991f5fb6337fcf1fcabec 100644
+index a6312466d9747ce40a6e94b4c8de347f10ea29c7..bc252f14144748deae98fab3bcf615ee95daa8be 100644
 --- a/apps/web/src/components/chat/useComposerSelection.ts
 +++ b/apps/web/src/components/chat/useComposerSelection.ts
-@@ -17,6 +17,13 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+@@ -17,6 +17,14 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
  import { type SetStateAction } from "react";
  import { useNavigate } from "@tanstack/react-router";
  import { toastManager } from "../ui/toast";
 +import { livePick } from "@t3tools/baton-shared/liveThread";
 +import {
-+  runsAsLiveLogin,
++  liveLoginOf,
 +  useContinueInNewThread,
 +  useLiveAccounts,
++  useLiveAccountSwitch,
 +  useLiveSessionChange,
 +} from "./BatonLiveModel";
  import { resolveAppModelSelectionForInstance } from "../../modelSelection";
  import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
  import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
-@@ -139,6 +146,14 @@ export function useComposerSelection(input: ComposerSelectionInput) {
+@@ -139,6 +147,17 @@ export function useComposerSelection(input: ComposerSelectionInput) {
        : null,
    );
  
@@ -1555,25 +1556,32 @@ index a6312466d9747ce40a6e94b4c8de347f10ea29c7..4cd9f1fe4508ddd1e68991f5fb6337fc
 +    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
 +  );
 +  const continueInNewThread = useContinueInNewThread();
++  const switchLiveAccount = useLiveAccountSwitch(
++    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
++  );
 +  const liveAccounts = useLiveAccounts(
 +    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
 +  );
    const onProviderModelSelect = (
      instanceId: ProviderInstanceId,
      model: string,
-@@ -146,6 +161,31 @@ export function useComposerSelection(input: ComposerSelectionInput) {
+@@ -146,6 +165,35 @@ export function useComposerSelection(input: ComposerSelectionInput) {
    ) => {
      if (!activeThread) return;
      const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
 +    if (liveSession.sessionId !== null) {
++      const liveLogin = liveLoginOf(instanceId, liveAccounts);
 +      const route = livePick({
 +        pickedInstance: instanceId,
 +        pickedDriver: entry?.driver ?? null,
 +        currentInstance: activeThread.modelSelection.instanceId,
-+        sameAccount: runsAsLiveLogin(instanceId, liveAccounts),
++        account: liveLogin.relation,
 +      });
 +      if (route === "session-model") liveSession.apply({ model });
-+      else if (route === "switch-back")
++      else if (route === "session-account") {
++        const account = liveAccounts.find((entry) => entry.key === liveLogin.key);
++        if (account !== undefined) switchLiveAccount(account);
++      } else if (route === "switch-back")
 +        setComposerDraftModelSelection(
 +          scopeThreadRef(activeThread.environmentId, activeThread.id),
 +          { instanceId, model },

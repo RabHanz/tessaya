@@ -416,6 +416,12 @@ export function createBatonWorkSessionAtoms<R, E>(
       scheduler,
       concurrency,
     }),
+    liveSetAccount: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:live-set-account",
+      tag: BATON_LIVE_WS_METHODS.liveSetAccount,
+      scheduler,
+      concurrency,
+    }),
     herdrSend: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:herdr-send",
       tag: BATON_LIVE_WS_METHODS.herdrSend,

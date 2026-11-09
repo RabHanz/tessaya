@@ -6,6 +6,7 @@ import { at, v2Shell } from "./__fixtures__/v2ThreadShell.ts";
 import { respawnPlan } from "./HerdrRespawn.ts";
 import {
   limitReached,
+  planLiveSessionMoves,
   planThreadMoves,
   rotationTick,
   sourceWindowResetsAt,
@@ -220,9 +221,26 @@ describe("native rotation of T3 threads (L-76)", () => {
   });
 });
 
+describe("live sessions in their own config dirs (LIVE-ACCOUNT)", () => {
+  it("moves only the session whose own login is spent, and leaves a kept one", () => {
+    const moves = planLiveSessionMoves({
+      pool: pool(100),
+      sessions: [
+        { sessionId: "spent", slot: "a" },
+        { sessionId: "kept", slot: "a" },
+        { sessionId: "roomy", slot: "b" },
+      ],
+      kept: (sessionId) => sessionId === "kept",
+      lastAutoRotationAt: new Map(),
+      now,
+    });
+    expect(moves.map((move) => [move.sessionId, move.target.key])).toEqual([["spent", "b"]]);
+  });
+});
+
 describe("the respawn plan after a rotation (D69)", () => {
   it("exits, waits for the shell, and resumes the same conversation in the same pane", () => {
-    const plan = respawnPlan("fab-api~w1:p2", "cc828d1b-2b64");
+    const plan = respawnPlan("fab-api~w1:p2", "cc828d1b-2b64", "claude");
     expect(plan.exit[0]).toEqual(["--session", "fab-api", "pane", "send-text", "w1:p2", "/exit"]);
     expect(plan.resume).toEqual([
       "--session",
@@ -233,5 +251,9 @@ describe("the respawn plan after a rotation (D69)", () => {
       "claude --resume cc828d1b-2b64",
     ]);
     expect(respawnPlan("w1:p1", "x").prefix).toEqual([]);
+    // Through tessaya-claude the conversation keeps its own config dir (LIVE-ACCOUNT).
+    expect(respawnPlan("w1:p1", "x", "tessaya-claude").resume.at(-1)).toBe(
+      "tessaya-claude --resume x",
+    );
   });
 });

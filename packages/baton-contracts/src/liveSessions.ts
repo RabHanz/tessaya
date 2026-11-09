@@ -24,6 +24,8 @@ export const BATON_LIVE_WS_METHODS = {
   liveAdopt: "baton.live.adopt",
   /** Set a live Claude session's model and effort with its own slash commands, confirmed from its transcript. */
   liveSetModel: "baton.live.setModel",
+  /** Move one live Claude session to another account (a cswap slot) while it runs: its own dir's credential is swapped. */
+  liveSetAccount: "baton.live.setAccount",
 } as const;
 
 /** Where a live session is: a Herdr pane, or a Claude conversation by id. */
@@ -83,6 +85,29 @@ export const BatonLiveSetModelResult = Schema.Struct({
   confirmed: Schema.Array(Schema.String),
 });
 export type BatonLiveSetModelResult = typeof BatonLiveSetModelResult.Type;
+
+export const BatonLiveSetAccountInput = Schema.Struct({
+  sessionId: TrimmedNonEmptyString,
+  /** The cswap slot (the pool account's key). */
+  accountKey: TrimmedNonEmptyString.check(Schema.isMaxLength(20)),
+  /** A session on the machine's shared login gets its own dir first: one restart in its pane, only when he asks. */
+  restart: Schema.optionalKey(Schema.Boolean),
+});
+export type BatonLiveSetAccountInput = typeof BatonLiveSetAccountInput.Type;
+
+export const BatonLiveSetAccountResult = Schema.Struct({
+  state: Schema.Literals([
+    "switched",
+    "unchanged",
+    "needs_restart",
+    "busy",
+    "not_in_herdr",
+    "not_running",
+    "refused",
+  ]),
+  detail: Schema.String,
+});
+export type BatonLiveSetAccountResult = typeof BatonLiveSetAccountResult.Type;
 
 /**
  * Which project a live session belongs to, the same on every box (D72): the
