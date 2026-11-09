@@ -185,6 +185,16 @@ describe("the thread list stays clean", () => {
     expect(endedMirrorThreads(shells, new Set(["live"]), missing, now + 3 * 60_000)).toEqual([
       liveThreadId("ended"),
     ]);
+    // The main session's thread is never archived for its session ending.
+    expect(
+      endedMirrorThreads(
+        shells,
+        new Set(["live"]),
+        new Map(missing),
+        now + 3 * 60_000,
+        String(liveThreadId("ended")),
+      ),
+    ).toEqual([]);
     const fresh = new Map<ThreadId, number>([[liveThreadId("ended"), 0]]);
     expect(
       endedMirrorThreads(shells, new Set(), fresh, Date.parse("2026-11-01T10:01:00Z")),

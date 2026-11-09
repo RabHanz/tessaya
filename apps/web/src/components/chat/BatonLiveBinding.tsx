@@ -3,7 +3,7 @@
  * the session list is read every 30 s, and a stopped session offers Resume (the same session id comes back).
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { bindingBanner, bindingOf, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
+import { bindingBanner, bindingOf } from "@t3tools/baton-shared/liveThread";
 import { useEffect, useState } from "react";
 
 import { batonWorkSessions } from "../../state/batonWorkSessions";
@@ -24,8 +24,13 @@ type Found =
   | "missing"
   | null;
 
-export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const sessionId = liveSessionIdOf(threadRef.threadId);
+export function BatonLiveBinding({
+  threadRef,
+  sessionId,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly sessionId: string | null;
+}) {
   const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
   const resume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
   const [found, setFound] = useState<Found>(null);

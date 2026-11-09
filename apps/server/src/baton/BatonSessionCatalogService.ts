@@ -2,6 +2,7 @@
 /** The session catalog as a service, so the RPC door, agents and MCP all reach the same methods. */
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import type {
+  BatonSessionDefaultsResult,
   BatonCatalogSession,
   BatonCatalogState,
   BatonReattachResult,
@@ -17,6 +18,7 @@ import {
   DEFAULT_RUNTIME_MODE,
   ProjectId,
   ProviderDriverKind,
+  ProviderInstanceId,
   ThreadId,
   defaultInstanceIdForDriver,
   type ProviderInstanceConfig,
@@ -93,7 +95,12 @@ import {
   type WatchdogOutcome,
 } from "@t3tools/baton-shared/watch";
 import { turnsInFlight } from "@t3tools/baton-shared/turnsInFlight";
-import { createSessionCatalog, sendOutcome, type CatalogPorts } from "./SessionCatalog.ts";
+import {
+  createSessionCatalog,
+  newSessionSelection,
+  sendOutcome,
+  type CatalogPorts,
+} from "./SessionCatalog.ts";
 import { realCatalogPorts, TESSAYA_CLI } from "./SessionCatalogLive.ts";
 
 export class BatonSessionCatalogService extends Context.Service<
@@ -157,6 +164,11 @@ export class BatonSessionCatalogService extends Context.Service<
       cwd?: string;
       confirmPane?: string;
     }) => Effect.Effect<typeof BatonReattachResult.Type>;
+    readonly mainSession: (input: {
+      threadId: string;
+      main: boolean;
+    }) => Effect.Effect<typeof BatonSessionDefaultsResult.Type>;
+    readonly sessionDefaults: Effect.Effect<typeof BatonSessionDefaultsResult.Type>;
     readonly openInTerminal: (input: {
       threadId: string;
       stopTurn?: boolean;
@@ -360,19 +372,51 @@ export const layer = Layer.effect(
                   .slice(0, 160)}`,
               };
             });
-    // A new session on a machine with no Herdr: a T3 thread in that folder's project, on the Claude provider, with the
-    // model, effort and first message asked for. The project is found by its exact folder, so no other project is touched.
+    // A new session as a Tessaya thread (Where new sessions run, and always with no Herdr): a thread in that folder's
+    // project, on the Claude provider, with the model, effort and first message asked for. The project is found by its
+    // exact folder, so no other project is touched.
     const claudeInstance = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));
-    const launch: CatalogPorts["launch"] = !noHerdr
-      ? undefined
-      : Option.isNone(projects) || Option.isNone(engine)
-        ? async () => ({ detail: MISSING })
+    const newSessionsInTerminal: CatalogPorts["newSessionsInTerminal"] = () =>
+      noHerdr || Option.isNone(serverSettings)
+        ? Promise.resolve(false)
+        : Effect.runPromiseWith(services)(
+            serverSettings.value.getSettings.pipe(
+              Effect.map((current) => current.newSessionsRun === "terminal"),
+              Effect.orElseSucceed(() => false),
+            ),
+          );
+    const launch: CatalogPorts["launch"] =
+      Option.isNone(projects) || Option.isNone(engine)
+        ? noHerdr
+          ? async () => ({ detail: MISSING })
+          : undefined
         : (input) =>
             Effect.runPromiseWith(services)(
               Effect.gen(function* () {
                 if (isTessayaOwnFolder(input.cwd)) return { detail: OWN_FOLDER };
+                const defaultSelection = Option.isSome(serverSettings)
+                  ? yield* serverSettings.value.getSettings.pipe(
+                      Effect.map((current) => current.defaultModelSelection),
+                      Effect.orElseSucceed(() => null),
+                    )
+                  : null;
+                const selection = newSessionSelection({
+                  defaultSelection,
+                  defaultIsClaude:
+                    defaultSelection !== null &&
+                    Option.isSome(registry) &&
+                    (yield* registry.value.getInstance(defaultSelection.instanceId))?.driverKind ===
+                      "claudeAgent",
+                  fallbackInstance: claudeInstance,
+                  fallbackModel:
+                    DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] ??
+                    "claude-opus-5-5",
+                  askedModel: input.model,
+                });
                 if (Option.isSome(registry)) {
-                  const instance = yield* registry.value.getInstance(claudeInstance);
+                  const instance = yield* registry.value.getInstance(
+                    ProviderInstanceId.make(selection.instanceId),
+                  );
                   const snapshot =
                     instance === undefined ? null : yield* instance.snapshot.getSnapshot;
                   if (
@@ -398,20 +442,14 @@ export const layer = Layer.effect(
                       title: NodePath.basename(input.cwd) || input.cwd,
                       workspaceRoot: input.cwd,
                     });
-                const family = (input.model ?? "").trim().toLowerCase();
-                const model =
-                  family === "" || family === "opus"
-                    ? (DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] ??
-                      "claude-opus-5-5")
-                    : input.model!.trim();
                 const effort = (input.effort ?? "").trim().toLowerCase();
                 const threadId = yield* engine.value.launchThread({
                   tag: "new-session",
                   projectId: project.id,
                   title: NodePath.basename(input.cwd) || "New session",
                   modelSelection: {
-                    instanceId: claudeInstance,
-                    model,
+                    instanceId: ProviderInstanceId.make(selection.instanceId),
+                    model: selection.model,
                     ...(effort === "" ? {} : { options: [{ id: "effort", value: effort }] }),
                   },
                   runtimeMode: DEFAULT_RUNTIME_MODE,
@@ -465,7 +503,7 @@ export const layer = Layer.effect(
     const ports: CatalogPorts = {
       ...real,
       ...(thread === undefined ? {} : { thread }),
-      ...(launch === undefined ? {} : { launch }),
+      ...(launch === undefined ? {} : { launch, newSessionsInTerminal }),
       ...(thread === undefined || Option.isNone(engine)
         ? {}
         : {
@@ -650,6 +688,21 @@ export const layer = Layer.effect(
       }
       return { enabled, resumed, skipped };
     };
+    const fallbackDefaults: typeof BatonSessionDefaultsResult.Type = {
+      newSessionsRun: "tessaya",
+      mainThreadId: null,
+    };
+    const defaults: Effect.Effect<typeof BatonSessionDefaultsResult.Type> = Option.isSome(
+      serverSettings,
+    )
+      ? serverSettings.value.getSettings.pipe(
+          Effect.map((current) => ({
+            newSessionsRun: current.newSessionsRun,
+            mainThreadId: current.mainThreadId,
+          })),
+          Effect.orElseSucceed(() => fallbackDefaults),
+        )
+      : Effect.succeed(fallbackDefaults);
     return BatonSessionCatalogService.of({
       list: Effect.fn("BatonSessionCatalogService.list")(function* (input: {
         query?: string;
@@ -792,6 +845,21 @@ export const layer = Layer.effect(
           }),
         ),
       ),
+      sessionDefaults: defaults,
+      mainSession: Effect.fn("BatonSessionCatalogService.mainSession")(function* (input: {
+        threadId: string;
+        main: boolean;
+      }) {
+        if (Option.isSome(serverSettings)) {
+          const current = yield* defaults;
+          // Stopping one that is not the main session leaves the main one alone.
+          if (input.main || current.mainThreadId === input.threadId)
+            yield* serverSettings.value
+              .updateSettings({ mainThreadId: input.main ? input.threadId : null })
+              .pipe(Effect.ignore);
+        }
+        return yield* defaults;
+      }),
       openInTerminal: Effect.fn("BatonSessionCatalogService.openInTerminal")(
         function* (input: { threadId: string; stopTurn?: boolean }) {
           if (Option.isNone(engine) || noHerdr)

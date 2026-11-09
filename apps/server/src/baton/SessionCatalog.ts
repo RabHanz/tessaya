@@ -73,13 +73,15 @@ export interface CatalogPorts {
   readonly threadSend?: (threadId: string, text: string) => Promise<boolean>;
   /** Machines with no Herdr: a resumed thread is gone once archived or deleted, working while a turn runs. */
   readonly threadState?: (threadId: string) => Promise<"gone" | "idle" | "working">;
-  /** Machines with no Herdr: starts a new session in a folder as a T3 thread, with a model, an effort and a first message. */
+  /** Starts a new session in a folder as a Tessaya thread, with a model, an effort and a first message. */
   readonly launch?: (input: {
     readonly cwd: string;
     readonly model?: string;
     readonly effort?: string;
     readonly message?: string;
   }) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
+  /** "Where new sessions run" says a terminal: a new session goes to Herdr even though `launch` could start it. */
+  readonly newSessionsInTerminal?: () => Promise<boolean>;
   /** The last part of a transcript file, for the auto-resume watchdog. */
   readonly readTail?: (file: string) => Promise<string>;
   /** Resumed by the watchdog in the last two hours: shown on the row. */
@@ -564,7 +566,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
         pane: null,
         detail: `The folder ${input.cwd} is not on this machine.`,
       };
-    if (ports.launch !== undefined) {
+    if (ports.launch !== undefined && (await ports.newSessionsInTerminal?.()) !== true) {
       const launched = await ports.launch(input);
       return "threadId" in launched
         ? {
@@ -632,3 +634,23 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   return { list, folders, resume, send, create, waitingFor, forgetResumed };
 };
 export type SessionCatalog = ReturnType<typeof createSessionCatalog>;
+
+/**
+ * The instance and model a new Tessaya session starts on: the "Account for new threads" default when it is a Claude
+ * instance (with its model unless one was asked for), else the default Claude instance.
+ */
+export const newSessionSelection = (input: {
+  readonly defaultSelection: { readonly instanceId: string; readonly model: string } | null;
+  readonly defaultIsClaude: boolean;
+  readonly fallbackInstance: string;
+  readonly fallbackModel: string;
+  /** What the request asked for: "" or "opus" means the default. */
+  readonly askedModel: string | undefined;
+}): { readonly instanceId: string; readonly model: string } => {
+  const useDefault = input.defaultSelection !== null && input.defaultIsClaude;
+  const family = (input.askedModel ?? "").trim().toLowerCase();
+  const instanceId = useDefault ? input.defaultSelection!.instanceId : input.fallbackInstance;
+  if (family === "")
+    return { instanceId, model: useDefault ? input.defaultSelection!.model : input.fallbackModel };
+  return { instanceId, model: family === "opus" ? input.fallbackModel : input.askedModel!.trim() };
+};
