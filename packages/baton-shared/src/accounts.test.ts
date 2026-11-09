@@ -2,7 +2,7 @@ import type { BatonAccount } from "@t3tools/baton-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { unifyAccounts } from "./accounts.ts";
+import { oneEntryPerProvider, unifyAccounts } from "./accounts.ts";
 
 const provider = (
   instanceId: string,
@@ -118,5 +118,34 @@ describe("unifyAccounts", () => {
         [{ kind: "browser", instanceId: null, liveSwitch: true }],
       ],
     ]);
+  });
+});
+
+describe("oneEntryPerProvider", () => {
+  const entry = (
+    instanceId: string,
+    driverKind: string,
+    displayName: string,
+    isDefault = false,
+  ) => ({
+    instanceId,
+    driverKind,
+    displayName,
+    isDefault,
+  });
+  const entries = [
+    entry("claudeAgent", "claudeAgent", "Claude", true),
+    entry("claudeAgent_work", "claudeAgent", "Work"),
+    entry("codex", "codex", "Codex", true),
+    entry("baton-live", "acpRegistry", "Terminal session"),
+  ];
+
+  it("keeps the selected login for its provider under the provider's name, and Terminal apart", () => {
+    expect(oneEntryPerProvider(entries, "claudeAgent_work")).toEqual([
+      entry("claudeAgent_work", "claudeAgent", "Claude"),
+      entries[2],
+      entry("baton-live", "acpRegistry", "Terminal"),
+    ]);
+    expect(oneEntryPerProvider(entries, "codex")[0]).toBe(entries[0]);
   });
 });

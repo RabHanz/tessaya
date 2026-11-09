@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { limitsAge } from "./accountRoom.ts";
+import { limitsAge, maskedEmail, roomDetail, roomText, roomTone } from "./accountRoom.ts";
 
 const now = Date.parse("2026-10-30T12:00:00Z");
 // @effect-diagnostics-next-line globalDate:off -- a display label, not a date value
@@ -21,5 +21,34 @@ describe("limitsAge", () => {
 
   it("does not invent an age from a bad timestamp", () => {
     expect(limitsAge("not a date", now)).toBeNull();
+  });
+});
+
+describe("room as % used", () => {
+  const limit = (usedPercent: number, resetsAt: string | null = null) => ({
+    usedPercent,
+    resetsAt,
+  });
+
+  it("reads both windows, or the weekly one alone, and turns amber at 80% and red at the limit", () => {
+    expect(roomText({ fiveHour: limit(34.4), weekly: limit(62) }, now)).toBe("5h 34% · wk 62%");
+    expect(roomText({ fiveHour: null, weekly: limit(14) }, now)).toBe("wk 14%");
+    expect(roomText({ fiveHour: null, weekly: null }, now)).toBeNull();
+    expect(maskedEmail("someone@example.com")).toBe("so•••••@example.com");
+    expect(roomTone({ fiveHour: limit(79), weekly: limit(12) })).toBe("ok");
+    expect(roomTone({ fiveHour: limit(86), weekly: limit(12) })).toBe("warn");
+    expect(roomTone({ fiveHour: limit(100), weekly: limit(12) })).toBe("limit");
+  });
+
+  it("says when a spent account is back, and resets in GMT+5, never UTC", () => {
+    const room = {
+      fiveHour: limit(100, "2026-10-30T13:00:00Z"),
+      weekly: limit(62, "2026-11-05T04:00:00Z"),
+    };
+    expect(roomText(room, now)).toBe("at limit · back 18:00 (GMT+5)");
+    expect(roomDetail(room, now)).toEqual([
+      "5-hour: 100% used · resets 18:00 (GMT+5)",
+      "Weekly: 62% used · resets Thu 09:00 (GMT+5)",
+    ]);
   });
 });

@@ -137,7 +137,11 @@ const servicesInner = IntentService.layer.pipe(
       AccountPoolService.layer,
       BatonAccounts.layer.pipe(Layer.provide(AccountPoolService.layer)),
       AccountRotationPolicy.layer,
-      ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
+      ThreadAccountMoves.layer.pipe(
+        Layer.provide(BatonEngine.layer),
+        Layer.provide(AccountPoolService.layer),
+        Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+      ),
       // The adapter is provided here so the one place that talks to another program stays
       // visible, and a machine without Herdr still gets a service that refuses by name.
       AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer)),

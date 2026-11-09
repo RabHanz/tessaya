@@ -11,6 +11,10 @@ export const LIVE_INSTANCE = "baton-live";
 export const instanceLabel = (instanceId: string): string =>
   instanceId === LIVE_INSTANCE ? "Terminal session" : instanceId;
 
+/** The Claude session id of a live thread (any `baton-live<n>:` namespace), or null for any other thread. */
+export const liveSessionIdOf = (threadId: string): string | null =>
+  /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;
+
 export const isLiveThreadId = (threadId: string): boolean =>
   threadId.startsWith(LIVE_THREAD_PREFIX);
 

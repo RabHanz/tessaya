@@ -81,7 +81,14 @@ import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { BatonSessionsAcross } from "./BatonSessionsAcross.ts";
 import { BatonIntentService } from "./IntentService.ts";
-import { liveAdopt, liveAttach, liveSetAccount, liveSetModel } from "./LiveActions.ts";
+import {
+  defaultEffortOf,
+  liveAdopt,
+  liveAttach,
+  liveEffort,
+  liveSetAccount,
+  liveSetModel,
+} from "./LiveActions.ts";
 import { setModelResumingStopped } from "@t3tools/baton-shared/liveModel";
 import { BatonOrchestrationReactor } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
@@ -323,13 +330,21 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_LIVE_WS_METHODS.liveAdopt]: (input) => liveAdopt(input),
     [BATON_LIVE_WS_METHODS.liveSetAccount]: (input) =>
       run(
-        Effect.flatMap(AccountPoolService, (pool) =>
-          pool.read(ProviderDriverKind.make("claudeAgent")),
-        ).pipe(
-          Effect.map((read) => read.accounts),
-          Effect.orElseSucceed(() => []),
-          Effect.flatMap((accounts) => liveSetAccount(input, accounts)),
-        ),
+        Effect.gen(function* () {
+          const accounts = yield* (yield* AccountPoolService)
+            .read(ProviderDriverKind.make("claudeAgent"))
+            .pipe(
+              Effect.map((read) => read.accounts),
+              Effect.orElseSucceed(() => []),
+            );
+          const result = yield* liveSetAccount(input, accounts);
+          if (result.state !== "busy") return result;
+          yield* (yield* ThreadAccountMoves).queueLive(input.sessionId, {
+            accountKey: input.accountKey,
+            ...(input.restart === true ? { restart: true } : {}),
+          });
+          return { ...result, queued: true, detail: "Switches when this turn ends." };
+        }),
       ),
     [BATON_LIVE_WS_METHODS.liveSetModel]: (input) =>
       run(
@@ -340,7 +355,7 @@ export const makeHandlers = Effect.gen(function* () {
             .filter((provider) => provider.driver === "claudeAgent")
             .flatMap((provider) => provider.models.map((model) => model.slug));
           const services = yield* Effect.context<never>();
-          return yield* Effect.promise(() =>
+          const result = yield* Effect.promise(() =>
             setModelResumingStopped({
               run: () =>
                 Effect.runPromiseWith(services)(liveSetModel(adopted, input, claudeModels)),
@@ -355,7 +370,29 @@ export const makeHandlers = Effect.gen(function* () {
               wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
             }),
           );
+          if (result.state !== "busy") return result;
+          // A busy session gets it when it goes idle, never typed into a turn or a question on screen.
+          yield* (yield* ThreadAccountMoves).queueLive(input.sessionId, {
+            ...(input.model === undefined ? {} : { model: input.model }),
+            ...(input.effort === undefined ? {} : { effort: input.effort }),
+          });
+          return { ...result, queued: true, detail: "Applies when this turn ends." };
         }),
+      ),
+    [BATON_LIVE_WS_METHODS.liveState]: (input) =>
+      run(
+        Effect.gen(function* () {
+          const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+          const effort = yield* liveEffort(input.sessionId, (model) =>
+            defaultEffortOf(providers, model),
+          );
+          const queued = yield* (yield* ThreadAccountMoves).liveQueued(input.sessionId);
+          return { effort, queued };
+        }),
+      ),
+    [BATON_LIVE_WS_METHODS.liveCancelQueued]: (input) =>
+      run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.cancelLive(input.sessionId))).pipe(
+        Effect.map((cancelled) => ({ cancelled })),
       ),
     [BATON_SESSIONS_WS_METHODS.across]: (input) =>
       run(Effect.flatMap(BatonSessionsAcross, (sessions) => sessions.list(input))),

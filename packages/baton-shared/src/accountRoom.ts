@@ -2,7 +2,11 @@
  * How an account reads in the model picker, on web and mobile: room left, or when it returns, and how old the
  * reading is (D92). A setup token's windows come from Baton's five-minute probe, so they lag the account.
  */
-import { accountReturnsAt, type BatonAccount } from "@t3tools/baton-contracts";
+import {
+  accountReturnsAt,
+  type BatonAccount,
+  type BatonAccountRecord,
+} from "@t3tools/baton-contracts";
 
 /** Three missed five-minute ticks: the same point at which cswap's hold on the reading lapses. */
 const STALE_AFTER_MS = 15 * 60_000;
@@ -44,3 +48,65 @@ export function accountRow(account: BatonAccount, now: number): string {
   const age = account.usageCheckedAt === null ? null : limitsAge(account.usageCheckedAt, now);
   return age === null ? room : `${room} · ${age.text.toLowerCase()}`;
 }
+
+/** The owner reads every time in GMT+5 (POSIX zone names flip the sign). */
+const OWNER_TIME_ZONE = "Etc/GMT-5";
+
+/** "18:00 (GMT+5)" today, "Thu 09:00 (GMT+5)" on another day. */
+export function resetLabel(resetsAt: string, now: number): string {
+  const at = Date.parse(resetsAt);
+  if (!Number.isFinite(at)) return "";
+  const day = (ms: number) =>
+    new Intl.DateTimeFormat("en-GB", { timeZone: OWNER_TIME_ZONE, dateStyle: "short" }).format(ms);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: OWNER_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(day(at) === day(now) ? {} : { weekday: "short" }),
+  }).format(at);
+  return `${time} (GMT+5)`;
+}
+
+type Room = Pick<BatonAccountRecord, "fiveHour" | "weekly">;
+
+/** Amber from 80% used, red at the limit. */
+export function roomTone(room: Room): "ok" | "warn" | "limit" {
+  const used = Math.max(room.fiveHour?.usedPercent ?? 0, room.weekly?.usedPercent ?? 0);
+  return used >= 100 ? "limit" : used >= 80 ? "warn" : "ok";
+}
+
+/** "5h 34% · wk 62%", "wk 14%", or "at limit · back 18:00 (GMT+5)"; null with no reading. */
+export function roomText(room: Room, now: number): string | null {
+  if (roomTone(room) === "limit") {
+    const back = [room.fiveHour, room.weekly]
+      .filter((limit) => limit !== null && limit.usedPercent >= 100 && limit.resetsAt !== null)
+      .map((limit) => limit!.resetsAt!)
+      .toSorted()
+      .at(-1);
+    return back === undefined ? "at limit" : `at limit · back ${resetLabel(back, now)}`;
+  }
+  const parts = [
+    room.fiveHour === null ? null : `5h ${Math.round(room.fiveHour.usedPercent)}%`,
+    room.weekly === null ? null : `wk ${Math.round(room.weekly.usedPercent)}%`,
+  ].filter((part) => part !== null);
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** Tooltip lines: "5-hour: 34% used · resets 18:00 (GMT+5)". */
+export function roomDetail(room: Room, now: number): ReadonlyArray<string> {
+  const line = (name: string, limit: Room["fiveHour"]) =>
+    limit === null
+      ? []
+      : [
+          `${name}: ${Math.round(limit.usedPercent)}% used${
+            limit.resetsAt === null ? "" : ` · resets ${resetLabel(limit.resetsAt, now)}`
+          }`,
+        ];
+  return [...line("5-hour", room.fiveHour), ...line("Weekly", room.weekly)];
+}
+
+/** "si•••••@gmail.com": enough to tell two logins apart on a shared screen. */
+export const maskedEmail = (email: string): string => {
+  const [local = "", domain = ""] = email.split("@");
+  return `${local.slice(0, 2)}${"•".repeat(Math.min(5, Math.max(3, local.length - 2)))}@${domain}`;
+};

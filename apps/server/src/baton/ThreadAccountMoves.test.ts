@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import type { BatonEngineShape } from "./BatonEngine.ts";
 import {
+  type ApplyLive,
   makeMoves,
   selectionOnInstance,
   threadHasQueuedRun,
@@ -45,16 +46,50 @@ describe("selectionOnInstance", () => {
   });
 });
 
+const idle: ApplyLive = () => Effect.succeed("done");
+
+effectIt.effect(
+  "applies a terminal session's queued change once it is idle, and can cancel it",
+  () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const engine = { threadShell: () => Effect.succeed(null) } as unknown as BatonEngineShape;
+      let busy = true;
+      const told: Array<unknown> = [];
+      const moves = yield* makeMoves(engine, sql, (_sessionId, change) =>
+        Effect.sync(() => {
+          if (busy) return "busy";
+          told.push(change);
+          return "done";
+        }),
+      );
+      yield* moves.queueLive("s1", { effort: "high" });
+      // A later pick joins the waiting one.
+      yield* moves.queueLive("s1", { model: "claude-opus-5-5" });
+      yield* moves.settle("baton-live4:s1");
+      expect(told).toEqual([]);
+      expect(yield* moves.liveQueued("s1")).toEqual({ effort: "high", model: "claude-opus-5-5" });
+      busy = false;
+      yield* moves.settle("baton-live4:s1");
+      expect(told).toEqual([{ effort: "high", model: "claude-opus-5-5" }]);
+      expect(yield* moves.liveQueued("s1")).toBeNull();
+      yield* moves.queueLive("s1", { accountKey: "5" });
+      expect(yield* moves.cancelLive("s1")).toBe(true);
+      yield* moves.settle("baton-live4:s1");
+      expect(told).toHaveLength(1);
+    }).pipe(Effect.provide(SqlitePersistenceMemory)),
+);
+
 effectIt.effect("keeps a thread on its account across a restart, and lets it go again", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const engine = { threadShell: () => Effect.succeed(null) } as unknown as BatonEngineShape;
     const thread = ThreadId.make("kept-thread");
-    yield* (yield* makeMoves(engine, sql)).keep({ threadId: thread, keep: true });
-    const restarted = yield* makeMoves(engine, sql);
+    yield* (yield* makeMoves(engine, sql, idle)).keep({ threadId: thread, keep: true });
+    const restarted = yield* makeMoves(engine, sql, idle);
     expect(yield* restarted.kept(thread)).toBe(true);
     expect((yield* restarted.held).has(thread)).toBe(true);
     yield* restarted.keep({ threadId: thread, keep: false });
-    expect((yield* (yield* makeMoves(engine, sql)).held).has(thread)).toBe(false);
+    expect((yield* (yield* makeMoves(engine, sql, idle)).held).has(thread)).toBe(false);
   }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );

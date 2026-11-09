@@ -30,11 +30,14 @@ import {
 } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
-import { setLiveModel } from "@t3tools/baton-shared/liveModel";
+import { sessionEffort, setLiveModel, transcriptModel } from "@t3tools/baton-shared/liveModel";
 import { herdrSend } from "./HerdrSend.ts";
 import { TESSAYA_CLI } from "./SessionCatalogLive.ts";
 
-import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
+import { ProviderDriverKind, type BatonLiveQueued } from "@t3tools/baton-contracts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { AccountPoolService } from "./AccountPoolService.ts";
+import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { isThreadConfigDir, readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { respawnClaudeInPane, TESSAYA_CLAUDE } from "./HerdrRespawn.ts";
 
@@ -147,6 +150,80 @@ export const liveAdopt = (input: BatonLiveAdoptInput): Effect.Effect<BatonLiveAd
     });
   });
 
+const transcriptPath = (session: {
+  readonly configDir?: string | undefined;
+  readonly cwd: string;
+  readonly sessionId: string;
+}) =>
+  NodePath.join(
+    session.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"),
+    "projects",
+    claudeProjectSlug(session.cwd),
+    `${session.sessionId}.jsonl`,
+  );
+
+const TAIL_BYTES = 512 * 1024;
+
+const readTail = (path: string): string => {
+  try {
+    const bytes = NodeFS.readFileSync(path);
+    return bytes.subarray(Math.max(0, bytes.length - TAIL_BYTES)).toString("utf8");
+  } catch {
+    return "";
+  }
+};
+
+/** A Claude model's default effort, from T3's own model capabilities. */
+export const defaultEffortOf = (
+  providers: ReadonlyArray<{
+    readonly driver: string;
+    readonly models: ReadonlyArray<{
+      readonly slug: string;
+      readonly capabilities: {
+        readonly optionDescriptors?: ReadonlyArray<{
+          readonly id: string;
+          readonly options?: ReadonlyArray<{ readonly id: string; readonly isDefault?: boolean }>;
+        }>;
+      } | null;
+    }>;
+  }>,
+  model: string | null,
+): string | null =>
+  providers
+    .filter((provider) => provider.driver === "claudeAgent")
+    .flatMap((provider) => provider.models)
+    .find((candidate) => candidate.slug === model)
+    ?.capabilities?.optionDescriptors?.find((descriptor) => descriptor.id === "effort")
+    ?.options?.find((option) => option.isDefault === true)?.id ?? null;
+
+/** The effort a live session really runs at (never the composer's "as it is"), for the picker (ACCOUNTS-2). */
+export const liveEffort = (
+  sessionId: string,
+  defaultEffortOf: (model: string | null) => string | null,
+): Effect.Effect<string | null> =>
+  Effect.gen(function* () {
+    const found = (yield* readAllProfileLiveSessions()).find((s) => s.sessionId === sessionId);
+    if (found === undefined) return null;
+    const tail = readTail(transcriptPath(found));
+    let settingsJson: string | null = null;
+    try {
+      settingsJson = NodeFS.readFileSync(
+        NodePath.join(
+          found.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"),
+          "settings.json",
+        ),
+        "utf8",
+      );
+    } catch {
+      settingsJson = null;
+    }
+    return sessionEffort({
+      transcriptTail: tail,
+      settingsJson,
+      modelDefault: defaultEffortOf(transcriptModel(tail)),
+    });
+  }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+
 /** Tell a live Claude session its model and effort, and report only what it confirmed (D-live-model). */
 export const liveSetModel = (
   adopted: AdoptedSessionService["Service"],
@@ -156,15 +233,7 @@ export const liveSetModel = (
   Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
     const found = live.find((s) => s.sessionId === input.sessionId) ?? null;
-    const path =
-      found === null
-        ? null
-        : NodePath.join(
-            found.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"),
-            "projects",
-            claudeProjectSlug(found.cwd),
-            `${found.sessionId}.jsonl`,
-          );
+    const path = found === null ? null : transcriptPath(found);
     const services = yield* Effect.context<never>();
     return yield* Effect.promise(() =>
       setLiveModel(
@@ -321,3 +390,44 @@ export const liveSetAccount = (
       }),
     ),
   );
+
+/** Applies a queued change once its session is idle; "busy" leaves it queued (ThreadAccountMoves). */
+export const makeApplyLive = Effect.gen(function* () {
+  const adopted = yield* AdoptedSessionService;
+  const registry = yield* ProviderRegistry.ProviderRegistry;
+  const pool = yield* AccountPoolService;
+  return (sessionId: string, change: BatonLiveQueued) =>
+    Effect.gen(function* () {
+      if (change.model !== undefined || change.effort !== undefined) {
+        const claudeModels = (yield* registry.getProviders)
+          .filter((provider) => provider.driver === "claudeAgent")
+          .flatMap((provider) => provider.models.map((model) => model.slug));
+        const result = yield* liveSetModel(
+          adopted,
+          {
+            sessionId,
+            ...(change.model === undefined ? {} : { model: change.model }),
+            ...(change.effort === undefined ? {} : { effort: change.effort }),
+          },
+          claudeModels,
+        );
+        if (result.state === "busy") return "busy" as const;
+      }
+      if (change.accountKey !== undefined) {
+        const accounts = yield* pool.read(ProviderDriverKind.make("claudeAgent")).pipe(
+          Effect.map((read) => read.accounts),
+          Effect.orElseSucceed(() => []),
+        );
+        const result = yield* liveSetAccount(
+          {
+            sessionId,
+            accountKey: change.accountKey,
+            ...(change.restart === true ? { restart: true } : {}),
+          },
+          accounts,
+        );
+        if (result.state === "busy") return "busy" as const;
+      }
+      return "done" as const;
+    });
+});

@@ -234,14 +234,14 @@ index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2da8aad7e2f5b5f9e648115a659998b0
    );
  }
 diff --git a/apps/web/src/components/chat/ModelPickerContent.tsx b/apps/web/src/components/chat/ModelPickerContent.tsx
-index f040df764cda9188e68a9f70ee639d3a258d98ae..ccc98f35c73977ed9045d8e9f3713d2ec75e1442 100644
+index f040df764cda9188e68a9f70ee639d3a258d98ae..c3beb2b97ba09e89a51e21e1b123394491913bf2 100644
 --- a/apps/web/src/components/chat/ModelPickerContent.tsx
 +++ b/apps/web/src/components/chat/ModelPickerContent.tsx
 @@ -368,6 +368,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
    onFocusEffort?: () => void;
    /** Closes the list column, inside the popup's fixed height. */
    listFooter?: ReactNode;
-+  /** Above the footer: the browsed instance's account (the thread's own under Favorites). */
++  /** Above the models: the browsed instance's accounts (the thread's own under Favorites). */
 +  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
  }) {
    const {
@@ -254,14 +254,14 @@ index f040df764cda9188e68a9f70ee639d3a258d98ae..ccc98f35c73977ed9045d8e9f3713d2e
    const providerSetupEntries =
      !isSearching && canOpenProviderSetup
        ? instanceEntries.filter(
-@@ -1075,6 +1078,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
-               onRequestClose={onRequestClose}
-               onOpenProviderSetup={onOpenProviderSetup}
+@@ -1008,6 +1011,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+               onTouchStart={(e) => e.stopPropagation()}
              />
+ 
 +            {detailEntry ? props.renderInstanceDetail?.(detailEntry) : null}
-             {props.listFooter}
-           </div>
-         </Combobox>
+             <ModelPickerList
+               listRef={modelListRef}
+               itemKeys={filteredItemKeys}
 diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
 index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..356c7ef222488e22e7753209d5906da8aaf61156 100644
 --- a/apps/web/src/components/chat/ProviderModelPicker.tsx

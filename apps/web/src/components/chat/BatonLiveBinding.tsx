@@ -3,7 +3,7 @@
  * the session list is read every 30 s, and a stopped session offers Resume (the same session id comes back).
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { bindingBanner, bindingOf } from "@t3tools/baton-shared/liveThread";
+import { bindingBanner, bindingOf, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
 import { useEffect, useState } from "react";
 
 import { batonWorkSessions } from "../../state/batonWorkSessions";
@@ -11,7 +11,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { useAtomSet } from "@effect/atom-react";
-import { liveLoginAtom, liveSessionIdOf } from "./BatonLiveModel";
+import { liveLoginAtom } from "./BatonLiveModel";
 
 const CHECK_MS = 30_000;
 type Found =

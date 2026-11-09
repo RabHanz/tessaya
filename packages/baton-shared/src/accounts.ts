@@ -146,7 +146,8 @@ export function unifyAccounts(input: {
       liveSwitch: index === live,
     }));
     const named = group.providers.find(
-      (provider) => provider.instanceId !== provider.driver && provider.displayName !== undefined,
+      (provider) =>
+        String(provider.instanceId) !== provider.driver && provider.displayName !== undefined,
     );
     const label =
       named?.displayName ??
@@ -165,7 +166,9 @@ export function unifyAccounts(input: {
       label,
       email: group.email,
       instanceIds,
-      isDefault: group.providers.some((provider) => provider.instanceId === provider.driver),
+      isDefault: group.providers.some(
+        (provider) => String(provider.instanceId) === provider.driver,
+      ),
       methods,
       liveSwitchKey,
       health,
@@ -192,4 +195,32 @@ function healthOf(group: Group): {
   const failing = enabled.length > 0 && enabled.every((provider) => provider.status === "error");
   if (failing) return { health: "error", detail: enabled[0]?.message ?? "Not working" };
   return { health: "ok", detail: null };
+}
+
+/**
+ * A picker rail with one entry per provider, not per login: the selected instance stands for its provider (else the
+ * default one), under the provider's own name. The terminal sessions are their own group, "Terminal".
+ */
+export function oneEntryPerProvider<
+  E extends {
+    readonly instanceId: string;
+    readonly driverKind: string;
+    readonly displayName: string;
+    readonly isDefault: boolean;
+  },
+>(entries: ReadonlyArray<E>, selectedInstanceId: string): ReadonlyArray<E> {
+  const byDriver = new Map<string, E[]>();
+  for (const entry of entries) {
+    const key = entry.instanceId === LIVE_INSTANCE ? LIVE_INSTANCE : entry.driverKind;
+    byDriver.set(key, [...(byDriver.get(key) ?? []), entry]);
+  }
+  return [...byDriver.entries()].map(([key, group]) => {
+    if (key === LIVE_INSTANCE) return { ...group[0]!, displayName: "Terminal" };
+    const shown =
+      group.find((entry) => entry.instanceId === selectedInstanceId) ??
+      group.find((entry) => entry.isDefault) ??
+      group[0]!;
+    const name = (group.find((entry) => entry.isDefault) ?? shown).displayName;
+    return shown.displayName === name ? shown : { ...shown, displayName: name };
+  });
 }

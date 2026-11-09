@@ -5,8 +5,10 @@
  */
 import {
   BATON_DEFAULT_CLAUDE_INSTANCE,
+  type BatonLiveQueued,
   type BatonThreadAccountUseResult,
 } from "@t3tools/baton-contracts";
+import { liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
 import { ProviderInstanceId, ThreadId, type ModelSelection } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -17,6 +19,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
+import { makeApplyLive } from "./LiveActions.ts";
 
 export class ThreadAccountMoveError extends Schema.TaggedError<ThreadAccountMoveError>()(
   "ThreadAccountMoveError",
@@ -62,7 +65,20 @@ export interface ThreadAccountMovesShape {
     readonly threadId: ThreadId;
     readonly keep: boolean;
   }) => Effect.Effect<boolean>;
+  /** A terminal session's model, effort or account change that waits for the session to go idle. */
+  readonly queueLive: (
+    sessionId: string,
+    change: BatonLiveQueued,
+  ) => Effect.Effect<BatonLiveQueued>;
+  readonly liveQueued: (sessionId: string) => Effect.Effect<BatonLiveQueued | null>;
+  readonly cancelLive: (sessionId: string) => Effect.Effect<boolean>;
 }
+
+/** Tells a terminal session a queued change: "busy" keeps it waiting, anything else is its answer. */
+export type ApplyLive = (
+  sessionId: string,
+  change: BatonLiveQueued,
+) => Effect.Effect<"busy" | "done">;
 
 export class ThreadAccountMoves extends Context.Service<
   ThreadAccountMoves,
@@ -72,6 +88,7 @@ export class ThreadAccountMoves extends Context.Service<
 export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
   engine: BatonEngineShape,
   sql: SqlClient.SqlClient,
+  applyLive: ApplyLive,
 ) {
   const stored = yield* sql<{ readonly thread_id: string; readonly instance_id: string }>`
     SELECT thread_id, instance_id FROM fabric_thread_account_moves
@@ -145,7 +162,29 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     ),
   );
 
+  // shortcut: in memory, so a server restart drops a queued live change; persist it if that bites.
+  const live = new Map<string, BatonLiveQueued>();
+  const queueLive = (sessionId: string, change: BatonLiveQueued) =>
+    Effect.sync(() => {
+      // A later pick replaces the waiting one field by field, as the thread's own move does.
+      const merged = { ...live.get(sessionId), ...change };
+      live.set(sessionId, merged);
+      return merged;
+    });
+  const applyLiveWhenIdle = Effect.fn("ThreadAccountMoves.applyLiveWhenIdle")(
+    function* (sessionId: string, change: BatonLiveQueued) {
+      if ((yield* applyLive(sessionId, change)) === "busy") return;
+      // Only the change that was applied is forgotten; one queued meanwhile waits for the next idle.
+      if (live.get(sessionId) === change) live.delete(sessionId);
+      yield* Effect.logInfo("Tessaya applied a queued terminal session change", { sessionId });
+    },
+    Effect.ignoreCause({ log: true }),
+  );
+
   const settle = (threadId: string) => {
+    const sessionId = liveSessionIdOf(threadId);
+    const change = sessionId === null ? undefined : live.get(sessionId);
+    if (sessionId !== null && change !== undefined) return applyLiveWhenIdle(sessionId, change);
     const instanceId = pending.get(threadId);
     return instanceId === undefined ? Effect.void : applyWhenIdle(threadId, instanceId);
   };
@@ -171,7 +210,17 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     return input.keep;
   }, Effect.orDie);
 
-  return { request, settle, held, kept, keep, pendingThreadIds: () => [...pending.keys()] };
+  return {
+    request,
+    settle,
+    held,
+    kept,
+    keep,
+    queueLive,
+    liveQueued: (sessionId: string) => Effect.sync(() => live.get(sessionId) ?? null),
+    cancelLive: (sessionId: string) => Effect.sync(() => live.delete(sessionId)),
+    pendingThreadIds: () => [...pending.keys()],
+  };
 });
 
 export const layer = Layer.effect(
@@ -179,7 +228,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const engine = yield* BatonEngine;
     const sql = yield* SqlClient.SqlClient;
-    const moves = yield* makeMoves(engine, sql);
+    const moves = yield* makeMoves(engine, sql, yield* makeApplyLive);
     // Moves left waiting by a restart first, then every thread as it changes.
     yield* Effect.forEach(moves.pendingThreadIds(), moves.settle, { discard: true });
     yield* engine.changedThreads.pipe(Stream.runForEach(moves.settle), Effect.forkScoped);
@@ -188,6 +237,9 @@ export const layer = Layer.effect(
       held: moves.held,
       kept: moves.kept,
       keep: moves.keep,
+      queueLive: moves.queueLive,
+      liveQueued: moves.liveQueued,
+      cancelLive: moves.cancelLive,
     });
   }),
 );

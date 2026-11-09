@@ -95,6 +95,9 @@ import {
   BatonLiveSetModelInput,
   BatonLiveSetModelResult,
   BatonLiveSetAccountInput,
+  BatonLiveSessionInput,
+  BatonLiveStateResult,
+  BatonLiveCancelQueuedResult,
   BatonLiveSetAccountResult,
   BatonLiveAdoptResult,
   BatonLiveAttachInput,
@@ -357,6 +360,18 @@ const WsBatonLiveSetModelRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetModel, {
 const WsBatonLiveSetAccountRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetAccount, {
   payload: BatonLiveSetAccountInput,
   success: BatonLiveSetAccountResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonLiveStateRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveState, {
+  payload: BatonLiveSessionInput,
+  success: BatonLiveStateResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonLiveCancelQueuedRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveCancelQueued, {
+  payload: BatonLiveSessionInput,
+  success: BatonLiveCancelQueuedResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -861,6 +876,8 @@ const BATON_RPCS = [
   WsBatonLiveAdoptRpc,
   WsBatonLiveSetModelRpc,
   WsBatonLiveSetAccountRpc,
+  WsBatonLiveStateRpc,
+  WsBatonLiveCancelQueuedRpc,
   WsBatonWorkSessionSettleRpc,
   WsBatonWorkSessionUnsettleRpc,
   WsBatonWorkSessionArchiveRpc,

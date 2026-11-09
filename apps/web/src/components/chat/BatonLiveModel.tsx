@@ -3,9 +3,10 @@
  * header menu is gone, P1). The session is told with its own `/model` and `/effort` in its Herdr pane, and the toast
  * says what the session itself answered, never what was only typed. A session not in Herdr offers to be brought in.
  */
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
-import { effortCommand } from "@t3tools/baton-shared/liveModel";
+import { effortCommand, withRealEffort } from "@t3tools/baton-shared/liveModel";
+import { liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type {
@@ -30,6 +31,33 @@ import { toastManager } from "../ui/toast";
 import type { TraitsSelectionInput } from "./TraitsPicker";
 
 const NO_POOL = Atom.make(AsyncResult.initial<never, never>(false));
+const NO_STATE = Atom.make(AsyncResult.initial<never, never>(false));
+
+const liveStateAtom = (threadRef: ScopedThreadRef | null) => {
+  const sessionId = threadRef === null ? null : liveSessionIdOf(threadRef.threadId);
+  return threadRef === null || sessionId === null
+    ? NO_STATE
+    : batonWorkSessions.liveStateQuery({
+        environmentId: threadRef.environmentId,
+        input: { sessionId },
+      });
+};
+
+/** A terminal session's real effort and the change waiting for it to go idle, with a way to cancel that change. */
+export function useLiveState(threadRef: ScopedThreadRef | null) {
+  const atom = liveStateAtom(threadRef);
+  const state = Option.getOrNull(AsyncResult.value(useAtomValue(atom)));
+  const refresh = useAtomRefresh(atom);
+  const cancelQueued = useAtomCommand(batonWorkSessions.liveCancelQueued, { reportFailure: false });
+  const sessionId = threadRef === null ? null : liveSessionIdOf(threadRef.threadId);
+  const cancel = () => {
+    if (threadRef === null || sessionId === null) return;
+    void cancelQueued({ environmentId: threadRef.environmentId, input: { sessionId } }).then(
+      refresh,
+    );
+  };
+  return { effort: state?.effort ?? null, queued: state?.queued ?? null, refresh, cancel };
+}
 
 /** The login each live session runs as, from the session catalog the header's binding reads (by session id). */
 export const liveLoginAtom = Atom.family((_sessionId: string) => Atom.make<string | null>(null));
@@ -66,6 +94,7 @@ export const liveLoginOf = (
 /** Moves a live session to another login while it runs; a session on the shared login offers its one restart. */
 export function useLiveAccountSwitch(threadRef: ScopedThreadRef | null) {
   const sessionId = threadRef === null ? null : liveSessionIdOf(threadRef.threadId);
+  const { refresh } = useLiveState(threadRef);
   const setAccount = useAtomCommand(batonWorkSessions.liveSetAccount, { reportFailure: false });
   const setLogin = useAtomSet(liveLoginAtom(sessionId ?? ""));
   const switchTo = (account: BatonAccount, restart = false): void => {
@@ -80,7 +109,10 @@ export function useLiveAccountSwitch(threadRef: ScopedThreadRef | null) {
         return;
       }
       const { state, detail } = result.value;
-      if (state === "switched" || state === "unchanged") {
+      if (result.value.queued === true) {
+        refresh();
+        toastManager.add({ type: "info", title: `${label} next`, description: detail });
+      } else if (state === "switched" || state === "unchanged") {
         // The catalog the header polls catches up within 30 s; the label should not wait for it.
         setLogin(account.email?.split("@")[0] ?? null);
         toastManager.add({ type: "success", title: `On ${label}`, description: detail });
@@ -105,10 +137,6 @@ export function useLiveAccountSwitch(threadRef: ScopedThreadRef | null) {
   return switchTo;
 }
 
-// baton-live4: is the current namespace; the older ones were retired but the id shape is the same.
-export const liveSessionIdOf = (threadId: string): string | null =>
-  /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;
-
 /** Model and effort changes of a mirrored terminal session, applied inside that session (never a new one). */
 export function useLiveSessionChange(threadRef: ScopedThreadRef | null) {
   const sessionId = threadRef === null ? null : liveSessionIdOf(threadRef.threadId);
@@ -116,6 +144,7 @@ export function useLiveSessionChange(threadRef: ScopedThreadRef | null) {
   const adopt = useAtomCommand(batonWorkSessions.liveAdopt, { reportFailure: false });
   const [busy, setBusy] = useState(false);
   const environmentId: EnvironmentId | null = threadRef?.environmentId ?? null;
+  const { refresh } = useLiveState(threadRef);
 
   const apply = (wanted: { model?: string; effort?: string }, onApplied?: () => void) => {
     if (environmentId === null || sessionId === null) return;
@@ -127,7 +156,10 @@ export function useLiveSessionChange(threadRef: ScopedThreadRef | null) {
         return;
       }
       const { state, detail, confirmed } = result.value;
-      if (state === "applied") {
+      if (result.value.queued === true) {
+        refresh();
+        toastManager.add({ type: "info", title: "Queued", description: detail });
+      } else if (state === "applied") {
         onApplied?.();
         toastManager.add({
           type: "success",
@@ -177,10 +209,14 @@ export function useLiveTraits(
   traits: TraitsSelectionInput | null,
 ): TraitsSelectionInput | null {
   const { sessionId, busy, apply } = useLiveSessionChange(threadRef);
+  const { effort } = useLiveState(threadRef);
   if (sessionId === null || traits === null || traits.threadRef === undefined) return traits;
   const { threadRef: target, draftId: _draftId, ...rest } = traits;
+  const real = withRealEffort(traits.models, traits.modelOptions, effort);
   return {
     ...rest,
+    models: real.models,
+    modelOptions: real.options,
     onModelOptionsChange: (options: ReadonlyArray<ProviderOptionSelection> | undefined) => {
       const effort = options?.find((option) => option.id === "effort")?.value;
       // One change at a time, as the header menu was; the thread keeps a confirmed pick so the label is not stale.
