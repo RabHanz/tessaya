@@ -186,8 +186,8 @@ export function unifyAccounts(input: {
         String(provider.instanceId) !== provider.driver && provider.displayName !== undefined,
     );
     const alias = group.pool[0]?.label;
-    // cswap's alias is lowercase ("signzart"); an account reads as a name.
-    // A default instance's name ("Rabee" on the laptop) is not its login: it runs whatever the machine has.
+    // cswap's alias is lowercase ("bob"); an account reads as a name.
+    // A default instance's name ("Alice" on the laptop) is not its login: it runs whatever the machine has.
     const machineOnly =
       group.email === null &&
       group.pool.length === 0 &&
@@ -271,7 +271,7 @@ export function oneEntryPerProvider<
       group.find((entry) => entry.isDefault) ??
       group[0]!;
     if (group.length === 1) return shown;
-    // The provider's name, never a login's (a default instance he named "Rabee" runs whatever login the machine has),
+    // The provider's name, never a login's (a default instance he named "Alice" runs whatever login the machine has),
     // and no per-login accent: the account rows say which login it is.
     const name =
       PROVIDER_DISPLAY_NAMES[shown.driverKind as ProviderDriverKind] ??

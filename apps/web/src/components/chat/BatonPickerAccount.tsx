@@ -400,6 +400,7 @@ function LiveAccounts(props: {
             account={account}
             current={current}
             next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
+            hint={null}
             onPick={current || login === undefined ? null : () => switchTo(login)}
           />
         );

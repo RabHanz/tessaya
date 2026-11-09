@@ -162,10 +162,10 @@ describe("oneEntryPerProvider", () => {
   });
 
   it("names the provider, not a default instance he named after a person, and keeps ACP agents apart", () => {
-    // The laptop: its default instance is called "Rabee" but runs the machine's own login.
+    // The laptop: its default instance is called "Alice" but runs the machine's own login.
     const laptop = [
-      { ...entry("claudeAgent", "claudeAgent", "Rabee", true), accentColor: "#c96" },
-      entry("claudeAgent_optima", "claudeAgent", "Optima"),
+      { ...entry("claudeAgent", "claudeAgent", "Alice", true), accentColor: "#c96" },
+      entry("claudeAgent_work", "claudeAgent", "Work"),
       entry("acp_cursor", "acpRegistry", "Cursor"),
       entry("acp_grok", "acpRegistry", "Grok"),
     ];
@@ -254,7 +254,7 @@ describe("the account a thread runs as", () => {
 });
 
 describe("his real logins", () => {
-  // Shapes read from hetzner, onnyx and the laptop (fields and expiry only; values replaced).
+  // Shapes read from box-1, box-2 and the laptop (fields and expiry only; values replaced).
   const setupToken = {
     claudeAiOauth: { accessToken: "sk-ant-oat01-x", scopes: ["user:inference"] },
   };
@@ -274,12 +274,12 @@ describe("his real logins", () => {
   };
   const tokenStatus = [
     "Accounts:",
-    "  4: rabee (se***@token.local) [personal]",
+    "  4: alice (se***@token.local) [personal]",
     "     └ 7d:  10%   resets Nov 16 14:00",
     "     • stored backup: unknown expiry, refresh token no",
-    "  5: optima (op***@example.com) [personal]",
+    "  5: work (op***@example.com) [personal]",
     "     • stored backup: unknown expiry, refresh token no",
-    "  6: signzart (si***@example.com) [personal] (active)",
+    "  6: bob (si***@example.com) [personal] (active)",
     "     • active profile: unknown expiry, refresh token no",
     "  7: other (ot***@example.com) [personal]",
     "     • stored backup: expires Nov 10, refresh token yes",
@@ -300,20 +300,23 @@ describe("his real logins", () => {
   const laptop = (loginEmails: Record<string, string>, defaultEmail?: string) =>
     unifyAccounts({
       providers: [
-        provider("claudeAgent", { displayName: "Rabee", email: defaultEmail }),
-        provider("claudeAgent_optima", { displayName: "Optima" }),
-        provider("claudeAgent_signzart", { displayName: "Signzart" }),
+        provider("claudeAgent", {
+          displayName: "Alice",
+          ...(defaultEmail === undefined ? {} : { email: defaultEmail }),
+        }),
+        provider("claudeAgent_work", { displayName: "Work" }),
+        provider("claudeAgent_bob", { displayName: "Bob" }),
       ],
       pool: [
-        { ...slot("4", "setup-token-4@token.local"), label: "rabee" },
-        { ...slot("5", "optima@example.com"), label: "optima" },
-        { ...slot("6", "signzart@example.com", true), label: "signzart" },
+        { ...slot("4", "setup-token-4@token.local"), label: "alice" },
+        { ...slot("5", "work@example.com"), label: "work" },
+        { ...slot("6", "bob@example.com", true), label: "bob" },
       ],
       slots: {},
       credentialKinds: {
         claudeAgent: "setup-token",
-        claudeAgent_optima: null,
-        claudeAgent_signzart: null,
+        claudeAgent_work: null,
+        claudeAgent_bob: null,
       },
       slotKinds: cswapTokenKinds(tokenStatus),
       loginEmails,
@@ -332,33 +335,33 @@ describe("his real logins", () => {
       rows(
         laptop(
           {
-            claudeAgent_optima: "optima@example.com",
-            claudeAgent_signzart: "signzart@example.com",
+            claudeAgent_work: "work@example.com",
+            claudeAgent_bob: "bob@example.com",
           },
-          "signzart@example.com",
+          "bob@example.com",
         ),
       ),
     ).toEqual([
       [
-        "Signzart",
-        ["claudeAgent", "claudeAgent_signzart"],
+        "Bob",
+        ["claudeAgent", "claudeAgent_bob"],
         ["setup-token"],
         "6",
-        { instanceId: "claudeAgent_signzart", runsAsActive: false },
+        { instanceId: "claudeAgent_bob", runsAsActive: false },
       ],
       [
-        "Optima",
-        ["claudeAgent_optima"],
+        "Work",
+        ["claudeAgent_work"],
         ["setup-token"],
         "5",
-        { instanceId: "claudeAgent_optima", runsAsActive: false },
+        { instanceId: "claudeAgent_work", runsAsActive: false },
       ],
-      ["Rabee", [], ["setup-token"], "4", null],
+      ["Alice", [], ["setup-token"], "4", null],
     ]);
   });
 
   it("never merges by name, and never names or routes an unconfirmed default as an account", () => {
-    // No address anywhere: "Optima" the instance and "optima" the slot stay apart; the default is the machine's.
+    // No address anywhere: "Work" the instance and "work" the slot stay apart; the default is the machine's.
     expect(rows(laptop({}))).toEqual([
       [
         "This machine's login",
@@ -368,23 +371,23 @@ describe("his real logins", () => {
         { instanceId: "claudeAgent", runsAsActive: true },
       ],
       [
-        "Optima",
-        ["claudeAgent_optima"],
+        "Work",
+        ["claudeAgent_work"],
         [],
         null,
-        { instanceId: "claudeAgent_optima", runsAsActive: false },
+        { instanceId: "claudeAgent_work", runsAsActive: false },
       ],
       [
-        "Signzart",
-        ["claudeAgent_signzart"],
+        "Bob",
+        ["claudeAgent_bob"],
         [],
         null,
-        { instanceId: "claudeAgent_signzart", runsAsActive: false },
+        { instanceId: "claudeAgent_bob", runsAsActive: false },
       ],
-      ["Rabee", [], ["setup-token"], "4", null],
-      ["Optima", [], ["setup-token"], "5", null],
+      ["Alice", [], ["setup-token"], "4", null],
+      ["Work", [], ["setup-token"], "5", null],
       // Active, with no instance of its own: a tick runs as the machine's active login, and says so.
-      ["Signzart", [], ["setup-token"], "6", { instanceId: "claudeAgent", runsAsActive: true }],
+      ["Bob", [], ["setup-token"], "6", { instanceId: "claudeAgent", runsAsActive: true }],
     ]);
     expect(accountPickHint({ instanceId: "claudeAgent", runsAsActive: true }, false)).toBe(
       "Runs as this machine's active login",
@@ -393,30 +396,30 @@ describe("his real logins", () => {
   });
 
   it("does not send a tick to the default once its login is no longer cswap's active one", () => {
-    // The default last reported Signzart, but cswap has rotated to Rabee: Signzart has no instance of its own here.
+    // The default last reported Bob, but cswap has rotated to Alice: Bob has no instance of its own here.
     const accounts = unifyAccounts({
-      providers: [provider("claudeAgent", { email: "signzart@example.com" })],
+      providers: [provider("claudeAgent", { email: "bob@example.com" })],
       pool: [
-        { ...slot("4", "rabee@example.com", true), label: "rabee" },
-        { ...slot("6", "signzart@example.com"), label: "signzart" },
+        { ...slot("4", "alice@example.com", true), label: "alice" },
+        { ...slot("6", "bob@example.com"), label: "bob" },
       ],
       slots: {},
     });
-    const signzart = accounts.find((account) => account.email === "signzart@example.com")!;
-    expect(signzart.instanceIds).toEqual(["claudeAgent"]);
-    expect(accountPickTarget(signzart)).toBeNull();
+    const bob = accounts.find((account) => account.email === "bob@example.com")!;
+    expect(bob.instanceIds).toEqual(["claudeAgent"]);
+    expect(accountPickTarget(bob)).toBeNull();
   });
 
   it("lists the provider's models for a login whose instance has none, picks still going to that login", () => {
     const byInstance = new Map([
       ["claudeAgent", ["opus", "sonnet"]],
-      ["claudeAgent_optima", []],
+      ["claudeAgent_work", []],
       ["acp_grok", []],
     ]);
     const filled = withProviderModels(byInstance, (id) =>
       id.startsWith("claudeAgent") ? "claudeAgent" : "acpRegistry",
     );
-    expect(filled.get("claudeAgent_optima")).toEqual(["opus", "sonnet"]);
+    expect(filled.get("claudeAgent_work")).toEqual(["opus", "sonnet"]);
     expect(filled.get("acp_grok")).toEqual([]);
   });
 });
