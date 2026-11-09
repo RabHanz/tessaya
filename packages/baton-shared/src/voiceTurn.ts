@@ -287,22 +287,55 @@ export const frameLevel = (frame: Int16Array): number => {
   return Math.min(1, Math.sqrt(peak / 32768) * 1.4);
 };
 
+/** Voiced frames the speech reference is taken over: 3 s at 50 frames a second. */
+const REFERENCE_FRAMES = 150;
+/** The reference falls this far a frame when he speaks more softly (1.5 dB a second); it rises at once. */
+const REFERENCE_RELEASE_DB = 0.03;
+/** Bars span this many dB below his reference; 3 dB above it is the top. */
+const SHOWN_RANGE_DB = 20;
+/** A frame this far over the noise floor is his voice. */
+const VOICED_OVER_FLOOR_DB = 9;
+/** A peak stays this many frames (80 ms) before it falls, so a syllable's top is seen. */
+const PEAK_HOLD_FRAMES = 4;
+
 /**
- * The pill's bars, normalised to his speech (an AGC): level over a slowly falling peak, gated at 1.4 times a noise
- * floor that rises only on noise-like frames, so a quiet mic's speech fills them and a fluctuating room stays low.
- * Display only: silence detection and the mic test keep `frameLevel`.
+ * The pill's bars, normalised to his own speech level (a display AGC), so a quiet mic and a hot one look alike: each
+ * frame in dB against a reference that is the 90th percentile of his voiced frames over the last 3 s, rising at once
+ * and falling slowly, clamped to -50..-6 dBFS. Shown on a dB scale with a short peak hold. Display only: recognition,
+ * silence detection and the mic test keep `frameLevel` and the audio as heard.
  */
 export const createSpeechGain = () => {
-  let peak = 0.15;
-  let floor = 0.05;
+  let floor = -70;
+  let reference = -30;
+  const recent: number[] = [];
+  const voiced: number[] = [];
+  let held = 0;
+  let holding = 0;
   return (level: number): number => {
-    peak = Math.max(level, peak * 0.997, 0.15);
-    if (level < floor) floor += (level - floor) * 0.2;
-    // Slowly, so a soft voice does not teach the floor to gate it (his quiet mic's speech was 31% gated at 0.05).
-    else if (level < floor * 2.5) floor += (level - floor) * 0.02;
-    const x = (level - floor * 1.4) / Math.max(peak - floor * 1.4, 0.2);
-    // Perceptual: a soft syllable shows as more than its share of the loudest, as an ear hears it.
-    return x <= 0 ? 0 : Math.min(1, x ** 0.85);
+    // frameLevel is 1.4 * sqrt(peak): back to the peak in dBFS.
+    const db = level > 0 ? 40 * Math.log10(level / 1.4) : -120;
+    // The room: the quietest tenth of the last 3 s, whatever the mic's gain.
+    recent.push(db);
+    if (recent.length > REFERENCE_FRAMES) recent.shift();
+    floor = [...recent].sort((a, b) => a - b)[Math.floor(recent.length * 0.1)]!;
+    const isVoiced = db > floor + VOICED_OVER_FLOOR_DB;
+    if (isVoiced) {
+      voiced.push(db);
+      if (voiced.length > REFERENCE_FRAMES) voiced.shift();
+      const sorted = [...voiced].sort((a, b) => a - b);
+      const p90 = sorted[Math.floor(sorted.length * 0.9)]!;
+      reference = p90 > reference ? p90 : Math.max(p90, reference - REFERENCE_RELEASE_DB);
+      reference = Math.min(-6, Math.max(-50, floor + VOICED_OVER_FLOOR_DB + 6, reference));
+    }
+    const shown = isVoiced
+      ? Math.max(0, Math.min(1, (db - reference + SHOWN_RANGE_DB) / (SHOWN_RANGE_DB + 3)))
+      : 0;
+    if (shown >= held) {
+      held = shown;
+      holding = PEAK_HOLD_FRAMES;
+    } else if (holding > 0) holding -= 1;
+    else held = Math.max(shown, held * 0.6);
+    return held;
   };
 };
 

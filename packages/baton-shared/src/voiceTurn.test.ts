@@ -300,37 +300,41 @@ describe("frameLevel", () => {
     expect(frameLevel(new Int16Array(160))).toBe(0);
     expect(frameLevel(new Int16Array(160).fill(32767))).toBe(1);
   });
-  it("the pill's bars follow his speech, not full scale: quiet speech fills them and the pauses fall back (0.1.79)", () => {
-    const gain = createSpeechGain();
-    // His voice on a quiet desk mic: frame levels of 0.10 to 0.40 (his clip at -20 dB), with pauses at 0.06.
-    const speech = [0.06, 0.18, 0.33, 0.4, 0.25, 0.18, 0.06, 0.06, 0.3, 0.38, 0.2, 0.1];
-    let shown: number[] = [];
-    for (let round = 0; round < 20; round += 1) shown = speech.map(gain);
-    expect(Math.max(...shown)).toBeGreaterThan(0.85);
-    expect(shown[3]).toBeGreaterThan(speech[3]! * 2);
-    expect(shown[6]).toBeLessThan(0.1);
-    // A loud mic is not pushed past the top, and its pauses still fall back.
-    const loud = createSpeechGain();
-    let loudShown: number[] = [];
-    for (let round = 0; round < 20; round += 1) loudShown = [0.1, 0.9, 1, 0.6, 0.1].map(loud);
-    expect(Math.max(...loudShown)).toBeLessThanOrEqual(1);
-    expect(loudShown[0]).toBeLessThan(0.1);
-    // A room's fluctuating noise alone (0.03 to 0.13, as loud as his soft syllables) stays well under his speech.
-    const noise = Array.from(
-      { length: 60 },
-      (_, i) => 0.08 + 0.035 * Math.sin(i * 1.7) + 0.02 * Math.sin(i * 0.9),
-    );
-    const quietRoom = createSpeechGain();
-    let noiseShown: number[] = [];
-    for (let round = 0; round < 5; round += 1) noiseShown = noise.map(quietRoom);
-    expect(Math.max(...noiseShown)).toBeLessThan(0.35);
-    // A long sentence with no pause keeps moving: the floor does not climb with his voice.
-    const talking = createSpeechGain();
-    const sentence = [
-      0.06, 0.2, 0.3, 0.35, 0.28, 0.32, 0.25, 0.3, 0.36, 0.22, 0.3, 0.27, 0.33, 0.2, 0.3, 0.06,
-    ];
-    let said: number[] = [];
-    for (let round = 0; round < 5; round += 1) said = sentence.map(talking);
-    expect(Math.min(...said.slice(2, 14))).toBeGreaterThan(0.3);
+  it("normalises to his own speech: a -41 dBFS and a -12 dBFS speaker fill the bars alike, and pauses fall back", () => {
+    // A frame's level from its peak in dBFS, as frameLevel gives it.
+    const level = (db: number) => 1.4 * Math.sqrt(10 ** (db / 20));
+    // Syllables around his median, with pauses, over a room 26 dB under his speech.
+    const syllables = [0, -4, 3, -8, -2, 5, -6, -12, 1, -3];
+    const talk = (median: number, floor: number) =>
+      Array.from({ length: 400 }, (_, i) =>
+        i % 40 < 30 ? median + syllables[i % syllables.length]! : floor + ((i * 7) % 5) - 2,
+      );
+    const run = (median: number) => {
+      const gain = createSpeechGain();
+      const frames = talk(median, median - 26);
+      const shown = frames.map((db) => gain(level(db)));
+      const speech = shown.slice(200).filter((_, i) => (i + 200) % 40 < 30);
+      const sorted = [...speech].sort((a, b) => a - b);
+      return {
+        mean: speech.reduce((s, x) => s + x, 0) / speech.length,
+        p90: sorted[Math.floor(sorted.length * 0.9)]!,
+        pinned: speech.filter((x) => x >= 1).length / speech.length,
+        // The last pause, 10 frames in.
+        pause: shown[399]!,
+      };
+    };
+    const quiet = run(-41);
+    const hot = run(-12);
+    expect(Math.abs(quiet.mean - hot.mean)).toBeLessThan(0.1);
+    expect(Math.abs(quiet.p90 - hot.p90)).toBeLessThan(0.1);
+    // Lively, never flat, never pinned at the top.
+    expect(quiet.mean).toBeGreaterThan(0.5);
+    expect(hot.pinned).toBeLessThan(0.3);
+    expect(quiet.pause).toBeLessThan(0.1);
+    expect(hot.pause).toBeLessThan(0.1);
+    // The room alone, a few dB either way, never lifts the bars.
+    const room = createSpeechGain();
+    const roomShown = Array.from({ length: 200 }, (_, i) => room(level(-67 + ((i * 3) % 7) - 3)));
+    expect(Math.max(...roomShown.slice(20))).toBe(0);
   });
 });
