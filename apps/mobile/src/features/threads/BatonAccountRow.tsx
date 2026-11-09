@@ -4,7 +4,8 @@
  * session's own login, a move to another while it runs, and the change queued for when its turn ends.
  */
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import type { BatonAccountRecord } from "@t3tools/baton-contracts";
+import { accountForInstance, type BatonAccountRecord } from "@t3tools/baton-contracts";
+import { liveChangeRoute } from "@t3tools/baton-shared/liveModel";
 import { sessionLoginKey } from "@t3tools/baton-shared/accounts";
 import {
   maskedEmail,
@@ -56,6 +57,116 @@ export function useBatonAccounts(
       : batonWorkSessions.accountsQuery({ environmentId, input: {} }),
   );
   return Option.getOrNull(AsyncResult.value(result))?.accounts ?? [];
+}
+
+const liveStateAtom = (environmentId: EnvironmentId, sessionId: string | null) =>
+  sessionId === null
+    ? NOTHING
+    : batonWorkSessions.liveStateQuery({ environmentId, input: { sessionId } });
+
+/** Moves a terminal session to another login while it runs, or queues the move while it works. */
+function useLiveAccountMove(
+  environmentId: EnvironmentId,
+  sessionId: string | null,
+  onMoved: (accountKey: string) => void,
+) {
+  const setAccount = useAtomCommand(batonWorkSessions.liveSetAccount, { reportFailure: false });
+  const refresh = useAtomRefresh(liveStateAtom(environmentId, sessionId));
+  const moveTo = (accountKey: string, restart = false) => {
+    if (sessionId === null) return;
+    void setAccount({
+      environmentId,
+      input: { sessionId, accountKey, ...(restart ? { restart: true } : {}) },
+    }).then((result) => {
+      if (result._tag !== "Success") {
+        Dialog.alert("Could not reach the session");
+        return;
+      }
+      const { state: outcome, detail } = result.value;
+      if (result.value.queued === true) refresh();
+      else if (outcome === "switched" || outcome === "unchanged") onMoved(accountKey);
+      else if (outcome === "needs_restart")
+        Dialog.confirm({
+          title: "Make this thread switchable",
+          message: detail,
+          confirmText: "Restart once and switch",
+          onConfirm: () => moveTo(accountKey, true),
+        });
+      else Dialog.alert("Not switched", detail);
+    });
+  };
+  return moveTo;
+}
+
+const effortOf = (selection: ModelSelection): string | null => {
+  const value = selection.options?.find((option) => option.id === "effort")?.value;
+  return typeof value === "string" ? value : null;
+};
+
+/**
+ * A model or effort pick in the sheet on a terminal thread, sent the way web sends it (liveChangeRoute): into the
+ * session, which answers or queues it while it works (shown as Next · Cancel), or a move to another login. Returns
+ * false when the pick belongs in the draft as on any other thread; `keep` stores a pick the session confirmed.
+ */
+export function useLiveSheetChange(
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  sessionEffort: string | null,
+) {
+  const sessionId = liveSessionIdOf(threadId);
+  const pool = useAtomValue(
+    sessionId === null ? NOTHING : batonWorkSessions.accountPoolQuery({ environmentId, input: {} }),
+  );
+  const loginKey = useSessionLoginKey(environmentId, threadId);
+  const setModel = useAtomCommand(batonWorkSessions.liveSetModel, { reportFailure: false });
+  const refresh = useAtomRefresh(liveStateAtom(environmentId, sessionId));
+  const moveTo = useLiveAccountMove(environmentId, sessionId, () => undefined);
+  return (
+    current: ModelSelection,
+    picked: ModelSelection,
+    pickedDriver: string | null,
+    keep: () => void,
+  ): boolean => {
+    if (sessionId === null) return false;
+    const login = accountForInstance(
+      picked.instanceId,
+      Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [],
+    );
+    const route = liveChangeRoute({
+      threadId,
+      currentInstance: current.instanceId,
+      picked: {
+        instance: picked.instanceId,
+        driver: pickedDriver,
+        model: picked.model,
+        effort: effortOf(picked),
+      },
+      current: { model: current.model, effort: sessionEffort ?? effortOf(current) },
+      account:
+        login === undefined || loginKey === null
+          ? { relation: "unknown", key: null }
+          : { relation: login.key === loginKey ? "same" : "other", key: login.key },
+    });
+    if (route.kind === "draft") return false;
+    if (route.kind === "account") moveTo(route.key);
+    else if (route.kind === "continue-in")
+      Dialog.alert(
+        "Continue in a new thread",
+        "A terminal session only runs Claude on a login this machine knows. Continuing in another provider opens a new thread: do that from web or desktop.",
+      );
+    else if (route.kind === "session")
+      void setModel({ environmentId, input: { sessionId, ...route.change } }).then((result) => {
+        if (result._tag !== "Success") {
+          Dialog.alert("Could not reach the session");
+          return;
+        }
+        const { state, detail } = result.value;
+        if (result.value.queued === true) refresh();
+        else if (state === "applied") keep();
+        else Dialog.alert(state === "busy" ? "It is working" : "Not changed", detail);
+      });
+    return true;
+  };
 }
 
 /** The effort a terminal thread's session really runs at, or null on any other thread. */
@@ -289,7 +400,6 @@ function LiveAccounts(props: {
   });
   const state = Option.getOrNull(AsyncResult.value(useAtomValue(stateAtom)));
   const refresh = useAtomRefresh(stateAtom);
-  const setAccount = useAtomCommand(batonWorkSessions.liveSetAccount, { reportFailure: false });
   const cancelQueued = useAtomCommand(batonWorkSessions.liveCancelQueued, {
     reportFailure: false,
   });
@@ -299,33 +409,10 @@ function LiveAccounts(props: {
   const accounts = props.accounts.filter(
     (account) => account.driver === "claudeAgent" && account.liveSwitchKey !== null,
   );
-  const switchTo = (account: BatonAccountRecord, restart = false) => {
-    const accountKey = account.liveSwitchKey;
-    if (accountKey === null) return;
-    void setAccount({
-      environmentId: props.environmentId,
-      input: { sessionId: props.sessionId, accountKey, ...(restart ? { restart: true } : {}) },
-    }).then((result) => {
-      if (result._tag !== "Success") {
-        Dialog.alert("Could not reach the session");
-        return;
-      }
-      const { state: outcome, detail } = result.value;
-      if (result.value.queued === true) refresh();
-      else if (outcome === "switched" || outcome === "unchanged") setMovedTo(accountKey);
-      else if (outcome === "needs_restart")
-        Dialog.confirm({
-          title: "Make this thread switchable",
-          message: detail,
-          confirmText: "Restart once and switch",
-          onConfirm: () => switchTo(account, true),
-        });
-      else Dialog.alert("Not switched", detail);
-    });
-  };
-  if (accounts.length === 0) return null;
+  const moveTo = useLiveAccountMove(props.environmentId, props.sessionId, setMovedTo);
   const queued = state?.queued ?? null;
   const failure = state?.failure ?? null;
+  if (accounts.length === 0 && queued === null && failure === null) return null;
   return (
     <Card title="Account · % used">
       {accounts.map((account, index) => {
@@ -337,7 +424,11 @@ function LiveAccounts(props: {
             current={current}
             next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
             isLast={index === accounts.length - 1 && queued === null && failure === null}
-            onPick={current ? null : () => switchTo(account)}
+            onPick={
+              current || account.liveSwitchKey === null
+                ? null
+                : () => moveTo(account.liveSwitchKey!)
+            }
           />
         );
       })}

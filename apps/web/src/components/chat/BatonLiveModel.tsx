@@ -5,8 +5,8 @@
  */
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
-import { effortCommand, withRealEffort } from "@t3tools/baton-shared/liveModel";
-import { liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
+import { liveChangeRoute, withRealEffort } from "@t3tools/baton-shared/liveModel";
+import { LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type {
@@ -229,14 +229,24 @@ export function useLiveTraits(
     onModelOptionsChange: (options: ReadonlyArray<ProviderOptionSelection> | undefined) => {
       const effort = options?.find((option) => option.id === "effort")?.value;
       // One change at a time, as the header menu was; the thread keeps a confirmed pick so the label is not stale.
-      if (busy || typeof effort !== "string" || effortCommand(effort) === null) return;
-      apply({ effort }, () =>
+      if (busy || typeof effort !== "string") return;
+      const instance = traits.instanceId ?? LIVE_INSTANCE;
+      const held = real.options?.find((option) => option.id === "effort")?.value;
+      const route = liveChangeRoute({
+        threadId: target.threadId,
+        currentInstance: instance,
+        picked: { instance, driver: null, model: traits.model ?? "", effort },
+        current: { model: traits.model ?? "", effort: typeof held === "string" ? held : null },
+        account: { relation: "same", key: null },
+      });
+      const keep = () =>
         useComposerDraftStore.getState().setProviderModelOptions(target, traits.provider, options, {
           ...(traits.instanceId ? { instanceId: traits.instanceId } : {}),
           model: traits.model,
           persistSticky: true,
-        }),
-      );
+        });
+      if (route.kind === "session") apply(route.change, keep);
+      else if (route.kind === "draft") keep();
     },
   };
 }

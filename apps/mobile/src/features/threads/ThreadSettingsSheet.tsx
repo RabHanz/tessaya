@@ -103,7 +103,7 @@ import {
 import { useSearchToolbarInset } from "../../components/ui/useBarInset";
 import type { AppBarSearch } from "../../components/ui/AppBar";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
-import { BatonAccountRow, useSessionEffort } from "./BatonAccountRow";
+import { BatonAccountRow, useLiveSheetChange, useSessionEffort } from "./BatonAccountRow";
 import { batonProviderGroups, liveTraits } from "./batonCatalog";
 import {
   compatibleRuntimeModeForChoices,
@@ -1336,6 +1336,11 @@ export function ExistingThreadSettingsRouteScreen({
   const draftKey = activeComposerDraftKey(threadKey, route.params.draftKey, queuedRunEdit);
   const prompt = useComposerDraft(draftKey).text;
   const sessionEffort = useSessionEffort(route.params.environmentId, route.params.threadId);
+  const liveChange = useLiveSheetChange(
+    route.params.environmentId,
+    route.params.threadId,
+    sessionEffort,
+  );
 
   if (!selectedThread) {
     return <View className="flex-1 bg-sheet" />;
@@ -1376,14 +1381,25 @@ export function ExistingThreadSettingsRouteScreen({
       prompt={prompt}
       onPromptChange={(text) => setComposerDraftText(draftKey, text)}
       reportedModelSelection={reportedModelSelection}
-      onSelectModel={(option) => updateModelSelection(withRememberedModelOptions(option.selection))}
+      onSelectModel={(option) => {
+        const selection = withRememberedModelOptions(option.selection);
+        if (
+          !liveChange(modelSelection, selection, option.providerDriver, () =>
+            updateModelSelection(selection),
+          )
+        )
+          updateModelSelection(selection);
+      }}
       restoreSelection={withRememberedModelOptions}
       optionDescriptors={resolveProviderOptionDescriptors(
         liveTraits(currentModelOption?.capabilities, modelSelection, sessionEffort),
       )}
       onUpdateOptionSelections={(options) => {
-        rememberModelOptions(modelSelection.instanceId, modelSelection.model, options ?? []);
-        updateModelSelection({ ...modelSelection, options });
+        const keep = () => {
+          rememberModelOptions(modelSelection.instanceId, modelSelection.model, options ?? []);
+          updateModelSelection({ ...modelSelection, options });
+        };
+        if (!liveChange(modelSelection, { ...modelSelection, options }, null, keep)) keep();
       }}
       runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
       onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}

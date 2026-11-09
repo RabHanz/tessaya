@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   effortCommand,
+  liveChangeRoute,
   modelCommand,
   readBack,
   sessionEffort,
@@ -204,5 +205,54 @@ describe("a model change on a stopped live session", () => {
       wait: async () => undefined,
     });
     expect(never.detail).toContain("not live yet");
+  });
+});
+
+describe("where a pick on a terminal thread goes", () => {
+  const route = (over: {
+    threadId?: string;
+    currentInstance?: string;
+    instance?: string;
+    driver?: string;
+    model?: string;
+    effort?: string | null;
+    relation?: "same" | "other" | "unknown";
+  }) =>
+    liveChangeRoute({
+      threadId: over.threadId ?? "baton-live4:abc",
+      currentInstance: over.currentInstance ?? "baton-live",
+      picked: {
+        instance: over.instance ?? "baton-live",
+        driver: over.driver ?? "claudeAgent",
+        model: over.model ?? "claude-opus-5-5",
+        effort: over.effort === undefined ? "high" : over.effort,
+      },
+      current: { model: "claude-opus-5-5", effort: "high" },
+      account: { relation: over.relation ?? "same", key: over.relation === "other" ? "2" : null },
+    });
+
+  it("types only what changed into the session, a model or an effort", () => {
+    expect(route({ effort: "max" })).toEqual({ kind: "session", change: { effort: "max" } });
+    expect(route({ model: "claude-sonnet-4-6", instance: "claudeAgent" })).toEqual({
+      kind: "session",
+      change: { model: "claude-sonnet-4-6" },
+    });
+    expect(route({})).toEqual({ kind: "none" });
+    expect(route({ effort: "session" })).toEqual({ kind: "none" });
+  });
+
+  it("moves the session for another login, and never sends another provider into it", () => {
+    expect(route({ instance: "claude_home", relation: "other" })).toEqual({
+      kind: "account",
+      key: "2",
+    });
+    expect(route({ instance: "codex", driver: "codex" })).toEqual({ kind: "continue-in" });
+  });
+
+  it("leaves ordinary and handed-off threads to the draft", () => {
+    expect(route({ threadId: "thread-1" })).toEqual({ kind: "draft" });
+    expect(route({ currentInstance: "claudeAgent", instance: "claudeAgent" })).toEqual({
+      kind: "draft",
+    });
   });
 });
