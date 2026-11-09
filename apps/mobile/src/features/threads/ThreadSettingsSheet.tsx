@@ -103,7 +103,8 @@ import {
 import { useSearchToolbarInset } from "../../components/ui/useBarInset";
 import type { AppBarSearch } from "../../components/ui/AppBar";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
-import { BatonAccountRow } from "./BatonAccountRow";
+import { BatonAccountRow, useSessionEffort } from "./BatonAccountRow";
+import { batonProviderGroups, liveTraits } from "./batonCatalog";
 import {
   compatibleRuntimeModeForChoices,
   runtimeModeChoicesForSupportedModes,
@@ -732,8 +733,12 @@ function ThreadSettingsProviderListHeader(props: {
       />
       <BatonAccountRow
         environmentId={session.environmentId}
-        instanceId={props.provider.key}
-        pinThreadId={props.provider.key === session.providerInstanceId ? session.threadId : null}
+        threadId={session.threadId}
+        provider={props.provider}
+        groups={session.providerGroups}
+        appliedInstanceId={session.providerInstanceId}
+        displayed={session.displayedModelSelection}
+        onPick={session.pressModel}
       />
     </>
   );
@@ -742,7 +747,11 @@ function ThreadSettingsProviderListHeader(props: {
 function buildThreadSettingsCatalogItems(
   session: ThreadSettingsSessionValue,
 ): ReadonlyArray<ThreadSettingsCatalogItem> {
-  return session.providerGroups.flatMap((group) => {
+  const groups = batonProviderGroups(
+    session.providerGroups,
+    session.displayedModelSelection?.instanceId,
+  );
+  return groups.flatMap((group) => {
     if (
       session.providerFilter !== null &&
       session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
@@ -1180,11 +1189,13 @@ function ThreadSettingsModelsScreen() {
   const providerFilters = [
     { id: "all-providers", title: "All providers", value: null },
     { id: "favorites", title: "Favorites", value: FAVORITES_PROVIDER_FILTER },
-    ...session.providerGroups.map((group) => ({
-      id: `provider:${group.providerKey}`,
-      title: group.providerLabel,
-      value: group.providerKey,
-    })),
+    ...batonProviderGroups(session.providerGroups, session.displayedModelSelection?.instanceId).map(
+      (group) => ({
+        id: `provider:${group.providerKey}`,
+        title: group.providerLabel,
+        value: group.providerKey,
+      }),
+    ),
   ];
 
   return (
@@ -1324,6 +1335,7 @@ export function ExistingThreadSettingsRouteScreen({
   // A queued edit can end while the sheet is open; the prompt then belongs to the thread's draft.
   const draftKey = activeComposerDraftKey(threadKey, route.params.draftKey, queuedRunEdit);
   const prompt = useComposerDraft(draftKey).text;
+  const sessionEffort = useSessionEffort(route.params.environmentId, route.params.threadId);
 
   if (!selectedThread) {
     return <View className="flex-1 bg-sheet" />;
@@ -1366,10 +1378,9 @@ export function ExistingThreadSettingsRouteScreen({
       reportedModelSelection={reportedModelSelection}
       onSelectModel={(option) => updateModelSelection(withRememberedModelOptions(option.selection))}
       restoreSelection={withRememberedModelOptions}
-      optionDescriptors={resolveProviderOptionDescriptors({
-        capabilities: currentModelOption?.capabilities,
-        selections: modelSelection.options,
-      })}
+      optionDescriptors={resolveProviderOptionDescriptors(
+        liveTraits(currentModelOption?.capabilities, modelSelection, sessionEffort),
+      )}
       onUpdateOptionSelections={(options) => {
         rememberModelOptions(modelSelection.instanceId, modelSelection.model, options ?? []);
         updateModelSelection({ ...modelSelection, options });

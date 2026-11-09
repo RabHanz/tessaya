@@ -1,64 +1,452 @@
 /**
- * The account under each provider in the model sheet (T6, as web's BatonPickerAccount): who it runs as, its room left,
- * and on the thread's own Claude instance the "Keep on this account" pin, which automatic rotation respects.
+ * The accounts under each provider in the thread settings sheet, as web's BatonPickerAccount (ACCOUNTS-2): one row per
+ * real login with its sign-in badges and % used, the "Keep on this account" pin, and on a terminal thread the
+ * session's own login, a move to another while it runs, and the change queued for when its turn ends.
  */
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { instanceAccount, type BatonAccount } from "@t3tools/baton-contracts";
-import { accountRow } from "@t3tools/baton-shared/accountRoom";
-import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { BatonAccountRecord } from "@t3tools/baton-contracts";
+import { sessionLoginKey } from "@t3tools/baton-shared/accounts";
+import {
+  maskedEmail,
+  queuedText,
+  resetLabel,
+  roomText,
+  roomTone,
+} from "@t3tools/baton-shared/accountRoom";
+import {
+  isLiveThreadId,
+  LIVE_INSTANCE,
+  liveSessionIdOf,
+  liveThreadIdOf,
+} from "@t3tools/baton-shared/liveThread";
+import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/reactivity";
-import { useState } from "react";
-import { View } from "react-native";
+import { Atom, AsyncResult } from "effect/reactivity";
+import { useEffect, useState } from "react";
+import { Pressable, View } from "react-native";
 
+import * as Dialog from "../../components/ui/Dialog";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
+import { cn } from "../../lib/cn";
+import { useNowMinuteMs } from "../../lib/clock";
+import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
-import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { accountPickOption } from "./batonCatalog";
+import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
-function RunsAs({ account }: { readonly account: BatonAccount }) {
-  // The sheet is short-lived: the reading's age as of opening it is enough.
-  const [now] = useState(Date.now);
+const NOTHING = Atom.make(AsyncResult.initial<never, never>(false));
+
+const METHOD_LABEL = { "setup-token": "token", browser: "browser", "api-key": "API key" } as const;
+const TONE_CLASS = {
+  ok: "text-foreground-muted",
+  warn: "text-warning-foreground",
+  limit: "text-danger-foreground",
+} as const;
+
+/** One record per real account on the environment (baton.accounts.list). */
+export function useBatonAccounts(
+  environmentId: EnvironmentId | null,
+): ReadonlyArray<BatonAccountRecord> {
+  const result = useAtomValue(
+    environmentId === null
+      ? NOTHING
+      : batonWorkSessions.accountsQuery({ environmentId, input: {} }),
+  );
+  return Option.getOrNull(AsyncResult.value(result))?.accounts ?? [];
+}
+
+/** The effort a terminal thread's session really runs at, or null on any other thread. */
+export function useSessionEffort(environmentId: EnvironmentId, threadId: string): string | null {
+  const sessionId = liveSessionIdOf(threadId);
+  const state = useAtomValue(
+    sessionId === null
+      ? NOTHING
+      : batonWorkSessions.liveStateQuery({ environmentId, input: { sessionId } }),
+  );
+  return Option.getOrNull(AsyncResult.value(state))?.effort ?? null;
+}
+
+/**
+ * The cswap key a terminal thread's session runs as, from the session catalog's login (read once per mount), else
+ * the machine's active one. Null on any other thread.
+ */
+export function useSessionLoginKey(
+  environmentId: EnvironmentId | null,
+  threadId: string | null,
+): string | null {
+  const sessionId = threadId === null ? null : liveSessionIdOf(threadId);
+  const live = environmentId !== null && sessionId !== null;
+  const pool = useAtomValue(
+    live ? batonWorkSessions.accountPoolQuery({ environmentId, input: {} }) : NOTHING,
+  );
+  const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
+  const [login, setLogin] = useState<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's session catalog for this session's login
+  useEffect(() => {
+    if (environmentId === null || sessionId === null) return;
+    let cancelled = false;
+    void list({ environmentId, input: { query: sessionId, limit: 10 } }).then((result) => {
+      if (cancelled || result._tag !== "Success") return;
+      setLogin(result.value.sessions.find((row) => row.id === sessionId)?.account ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [environmentId, list, sessionId]);
+  if (!live) return null;
+  return sessionLoginKey(Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [], login);
+}
+
+function Badge(props: { readonly label: string; readonly tone?: "info" | "warn" | "error" }) {
   return (
-    <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
-      Runs as {account.label} · {accountRow(account, now)}
-    </Text>
+    <View
+      className={cn(
+        "rounded px-1",
+        props.tone === "info"
+          ? "bg-primary/10"
+          : props.tone === "warn"
+            ? "bg-warning/15"
+            : props.tone === "error"
+              ? "bg-danger/15"
+              : "border border-border-subtle",
+      )}
+    >
+      <Text
+        className={cn(
+          "text-[10px] font-t3-medium",
+          props.tone === "info"
+            ? "text-primary"
+            : props.tone === "warn"
+              ? "text-warning-foreground"
+              : props.tone === "error"
+                ? "text-danger-foreground"
+                : "text-foreground-muted",
+        )}
+      >
+        {props.label}
+      </Text>
+    </View>
   );
 }
 
+function AccountRow(props: {
+  readonly account: BatonAccountRecord;
+  readonly current: boolean;
+  readonly next: boolean;
+  readonly isLast: boolean;
+  readonly onPick: (() => void) | null;
+}) {
+  const { account } = props;
+  const now = useNowMinuteMs();
+  const room = roomText(account, now);
+  const paused = account.health === "paused";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={[account.label, room].filter(Boolean).join(", ")}
+      accessibilityState={{ selected: props.current, disabled: props.onPick === null || paused }}
+      disabled={props.onPick === null || paused}
+      onPress={props.onPick ?? undefined}
+      className={cn(
+        "min-h-11 flex-row items-center gap-2 px-4 py-1.5 active:opacity-60",
+        !props.isLast && "border-b border-border-subtle",
+      )}
+    >
+      <View className="min-w-0 flex-1 gap-0.5">
+        <View className="flex-row flex-wrap items-center gap-1">
+          <Text className="shrink text-sm font-t3-medium text-foreground" numberOfLines={1}>
+            {account.label}
+          </Text>
+          {account.methods.map((method) => (
+            <Badge key={method.kind} label={METHOD_LABEL[method.kind]} />
+          ))}
+          {props.next ? <Badge label="Next" tone="info" /> : null}
+          {paused ? (
+            <Badge label="Paused · resume in Settings" tone="warn" />
+          ) : account.health === "signed-out" ? (
+            <Badge label="Signed out" tone="error" />
+          ) : null}
+        </View>
+        {account.email === null ? null : (
+          <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
+            {maskedEmail(account.email)}
+          </Text>
+        )}
+      </View>
+      {room === null ? null : (
+        <Text className={cn("text-xs tabular-nums", TONE_CLASS[roomTone(account)])}>{room}</Text>
+      )}
+      {props.current ? (
+        <SymbolView
+          name="checkmark"
+          size={13}
+          tintColorClassName="accent-primary"
+          type="monochrome"
+        />
+      ) : null}
+    </Pressable>
+  );
+}
+
+function Card(props: { readonly title: string; readonly children: React.ReactNode }) {
+  return (
+    <View className="mx-4 mb-1 mt-1 gap-1">
+      <Text className="px-1 text-2xs font-t3-medium text-foreground-muted">{props.title}</Text>
+      <View className="overflow-hidden rounded-2xl bg-grouped-card">{props.children}</View>
+    </View>
+  );
+}
+
+type TerminalRow = {
+  readonly id: string;
+  readonly project: string;
+  readonly title: string;
+  readonly pane: string | null;
+  readonly lastActivityAt: string | null;
+};
+
+/** The Terminal group's sessions running here now; a tap opens its thread. */
+function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
+  const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
+  const open = useOpenLinkedThread();
+  const now = useNowMinuteMs();
+  const [rows, setRows] = useState<ReadonlyArray<TerminalRow> | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's session catalog while the sheet shows Terminal
+  useEffect(() => {
+    let cancelled = false;
+    void list({ environmentId: props.environmentId, input: { limit: 30 } }).then((result) => {
+      if (cancelled || result._tag !== "Success") return;
+      setRows(
+        result.value.sessions
+          .filter((session) => session.state === "running" && session.source === "live")
+          .map((session) => ({
+            id: session.id,
+            project: session.project,
+            title: session.title,
+            pane: session.pane ?? null,
+            lastActivityAt: session.lastActivityAt,
+          })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [list, props.environmentId]);
+  if (rows === null) return null;
+  return (
+    <Card title="Sessions running in a terminal. Tessaya types into them.">
+      {rows.length === 0 ? (
+        <Text className="px-4 py-3 text-sm text-foreground-muted">None running here now.</Text>
+      ) : (
+        rows.map((row, index) => (
+          <Pressable
+            key={row.id}
+            accessibilityRole="button"
+            onPress={() =>
+              open({ environmentId: props.environmentId, threadId: liveThreadIdOf(row.id) })
+            }
+            className={cn(
+              "min-h-11 flex-row items-center gap-2 px-4 py-1.5 active:opacity-60",
+              index < rows.length - 1 && "border-b border-border-subtle",
+            )}
+          >
+            <View className="min-w-0 flex-1">
+              <Text className="text-sm font-t3-medium text-foreground" numberOfLines={1}>
+                {row.project}
+              </Text>
+              <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
+                {row.title}
+              </Text>
+            </View>
+            <Text className="text-2xs text-foreground-muted">
+              {[
+                row.pane?.split("~").at(-1),
+                row.lastActivityAt === null ? null : resetLabel(row.lastActivityAt, now),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </Text>
+          </Pressable>
+        ))
+      )}
+    </Card>
+  );
+}
+
+/** A terminal session's logins: its own is current, a tap moves it there while it runs, or queues the move. */
+function LiveAccounts(props: {
+  readonly environmentId: EnvironmentId;
+  readonly sessionId: string;
+  readonly loginKey: string | null;
+  readonly accounts: ReadonlyArray<BatonAccountRecord>;
+}) {
+  const stateAtom = batonWorkSessions.liveStateQuery({
+    environmentId: props.environmentId,
+    input: { sessionId: props.sessionId },
+  });
+  const state = Option.getOrNull(AsyncResult.value(useAtomValue(stateAtom)));
+  const refresh = useAtomRefresh(stateAtom);
+  const setAccount = useAtomCommand(batonWorkSessions.liveSetAccount, { reportFailure: false });
+  const cancelQueued = useAtomCommand(batonWorkSessions.liveCancelQueued, {
+    reportFailure: false,
+  });
+  // Moved here, the catalog's login catches up later; the check should not wait for it.
+  const [movedTo, setMovedTo] = useState<string | null>(null);
+  const loginKey = movedTo ?? props.loginKey;
+  const accounts = props.accounts.filter(
+    (account) => account.driver === "claudeAgent" && account.liveSwitchKey !== null,
+  );
+  const switchTo = (account: BatonAccountRecord, restart = false) => {
+    const accountKey = account.liveSwitchKey;
+    if (accountKey === null) return;
+    void setAccount({
+      environmentId: props.environmentId,
+      input: { sessionId: props.sessionId, accountKey, ...(restart ? { restart: true } : {}) },
+    }).then((result) => {
+      if (result._tag !== "Success") {
+        Dialog.alert("Could not reach the session");
+        return;
+      }
+      const { state: outcome, detail } = result.value;
+      if (result.value.queued === true) refresh();
+      else if (outcome === "switched" || outcome === "unchanged") setMovedTo(accountKey);
+      else if (outcome === "needs_restart")
+        Dialog.confirm({
+          title: "Make this thread switchable",
+          message: detail,
+          confirmText: "Restart once and switch",
+          onConfirm: () => switchTo(account, true),
+        });
+      else Dialog.alert("Not switched", detail);
+    });
+  };
+  if (accounts.length === 0) return null;
+  const queued = state?.queued ?? null;
+  const failure = state?.failure ?? null;
+  return (
+    <Card title="Account · % used">
+      {accounts.map((account, index) => {
+        const current = loginKey !== null && account.liveSwitchKey === loginKey;
+        return (
+          <AccountRow
+            key={account.id}
+            account={account}
+            current={current}
+            next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
+            isLast={index === accounts.length - 1 && queued === null && failure === null}
+            onPick={current ? null : () => switchTo(account)}
+          />
+        );
+      })}
+      {failure === null ? null : (
+        <Text className="px-4 py-2 text-2xs text-danger-foreground">
+          Last queued change not applied: {failure}
+        </Text>
+      )}
+      {queued === null ? null : (
+        <View className="min-h-11 flex-row items-center gap-2 px-4">
+          <Text className="min-w-0 flex-1 text-2xs text-foreground-muted">
+            Next · {queuedText(queued, props.accounts)}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel the queued change"
+            className="min-h-9 justify-center px-2 active:opacity-60"
+            onPress={() =>
+              void cancelQueued({
+                environmentId: props.environmentId,
+                input: { sessionId: props.sessionId },
+              }).then(refresh)
+            }
+          >
+            <Text className="text-sm font-t3-medium text-primary">Cancel</Text>
+          </Pressable>
+        </View>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Under a provider's header: its accounts, one row per real login. A tap on another login makes it the pending pick,
+ * which Save commits as the user's own choice (a provider change needs one); on a terminal thread the
+ * Terminal group's rows move the session instead.
+ */
 export function BatonAccountRow(props: {
   readonly environmentId: EnvironmentId | null;
-  readonly instanceId: string;
-  /** The thread whose instance this is; it carries the pin. */
-  readonly pinThreadId: ThreadId | null;
+  readonly threadId: ThreadId | null;
+  readonly provider: { readonly key: string; readonly driver: string | undefined };
+  /** Every login's models, before the sheet groups them by provider. */
+  readonly groups: ReadonlyArray<ProviderGroup>;
+  /** The thread's applied instance. */
+  readonly appliedInstanceId: string | undefined;
+  /** The pick shown: pending, else applied. */
+  readonly displayed: ModelSelection | null;
+  readonly onPick: (option: ModelOption) => void;
 }) {
-  const configs = useAtomValue(environmentServerConfigsAtom);
-  const provider =
-    props.environmentId === null
-      ? undefined
-      : configs
-          .get(props.environmentId)
-          ?.providers.find((entry) => entry.instanceId === props.instanceId);
+  const accounts = useBatonAccounts(props.environmentId);
+  const loginKey = useSessionLoginKey(props.environmentId, props.threadId);
   if (props.environmentId === null) return null;
-  // A terminal session may run on its own login (LIVE-ACCOUNT), which this sheet does not read: say nothing.
-  if (props.instanceId === LIVE_INSTANCE) return null;
-  if (provider === undefined) return null;
-  const email = provider.auth.email?.trim() ?? "";
-  if (provider.usageLimits === undefined && email === "") return null;
-  const account = instanceAccount(provider, true);
+  const sessionId = props.threadId === null ? null : liveSessionIdOf(props.threadId);
+  const terminal =
+    props.provider.key === LIVE_INSTANCE ? (
+      <TerminalSessions environmentId={props.environmentId} />
+    ) : null;
+  if (sessionId !== null && props.appliedInstanceId === LIVE_INSTANCE) {
+    // Once, under Terminal: the session's logins are its own, not the Claude group's.
+    if (props.provider.key !== LIVE_INSTANCE) return null;
+    return (
+      <>
+        {terminal}
+        <LiveAccounts
+          environmentId={props.environmentId}
+          sessionId={sessionId}
+          loginKey={loginKey}
+          accounts={accounts}
+        />
+      </>
+    );
+  }
+  if (terminal !== null) return terminal;
+  const mine = accounts.filter(
+    (account) => account.driver === props.provider.driver && account.instanceIds.length > 0,
+  );
+  if (mine.length === 0) return null;
+  const applied = props.appliedInstanceId ?? "";
+  const shown = props.displayed?.instanceId ?? applied;
+  const appliedGroup = props.groups.find((group) => group.providerKey === applied);
+  const thread = {
+    driver: appliedGroup?.models[0]?.providerDriver ?? "",
+    model: props.displayed?.model ?? "",
+  };
   const pinnable =
-    props.pinThreadId !== null &&
-    !isLiveThreadId(props.pinThreadId) &&
-    provider.driver === "claudeAgent";
+    props.threadId !== null &&
+    !isLiveThreadId(props.threadId) &&
+    props.provider.driver === "claudeAgent" &&
+    mine.some((account) => account.instanceIds.includes(applied));
   return (
-    <View className="mx-4 gap-1 px-1 pb-1">
-      <RunsAs account={account} />
-      {pinnable && props.pinThreadId !== null ? (
-        <KeepSwitch environmentId={props.environmentId} threadId={props.pinThreadId} />
+    <Card title="Account · % used">
+      {mine.map((account, index) => {
+        const current = account.instanceIds.includes(applied);
+        const option = accountPickOption(account, props.groups, thread);
+        return (
+          <AccountRow
+            key={account.id}
+            account={account}
+            current={current}
+            next={!current && account.instanceIds.includes(shown)}
+            isLast={index === mine.length - 1 && !pinnable}
+            onPick={current || option === null ? null : () => props.onPick(option)}
+          />
+        );
+      })}
+      {pinnable && props.threadId !== null ? (
+        <KeepSwitch environmentId={props.environmentId} threadId={props.threadId} />
       ) : null}
-    </View>
+    </Card>
   );
 }
 
@@ -74,7 +462,7 @@ function KeepSwitch(props: { readonly environmentId: EnvironmentId; readonly thr
   const keep = Option.getOrNull(AsyncResult.value(query))?.keep ?? null;
   if (keep === null) return null;
   return (
-    <View className="min-h-9 flex-row items-center justify-between">
+    <View className="min-h-11 flex-row items-center justify-between px-4">
       <Text className="text-sm text-foreground">Keep on this account</Text>
       <ThemedSwitch
         accessibilityLabel="Keep on this account"
