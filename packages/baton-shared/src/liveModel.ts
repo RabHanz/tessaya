@@ -250,3 +250,9 @@ export function withRealEffort<M, O extends { readonly id: string; readonly valu
     options: shown,
   };
 }
+
+const working = (status: string | null) => status === "busy" || status === "waiting";
+
+/** A session that was working and now reads idle: a queued change can be typed in (ACCOUNTS-2). */
+export const wentIdle = (before: string | null | undefined, now: string | null): boolean =>
+  before !== undefined && working(before) && now !== null && !working(now);

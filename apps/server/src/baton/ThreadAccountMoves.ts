@@ -76,6 +76,8 @@ export interface ThreadAccountMovesShape {
     readonly failure: string | null;
   }>;
   readonly cancelLive: (sessionId: string) => Effect.Effect<boolean>;
+  /** The mirror saw this session go from busy to idle: a queued change goes in now. */
+  readonly settleLive: (sessionId: string) => Effect.Effect<void>;
 }
 
 /** Tells a terminal session a queued change: "busy" keeps it waiting, "failed" says why it was not applied. */
@@ -244,6 +246,11 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     Effect.ignoreCause({ log: true }),
   );
 
+  const settleLive = (sessionId: string) => {
+    const change = live.get(sessionId);
+    return change === undefined ? Effect.void : applyLiveWhenIdle(sessionId, change);
+  };
+
   const settle = (threadId: string) => {
     const sessionId = liveSessionIdOf(threadId);
     const change = sessionId === null ? undefined : live.get(sessionId);
@@ -286,6 +293,7 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
         failure: failures.get(sessionId) ?? null,
       })),
     cancelLive,
+    settleLive,
     pendingThreadIds: () => [...pending.keys()],
   };
 });
@@ -307,6 +315,7 @@ export const layer = Layer.effect(
       queueLive: moves.queueLive,
       liveQueued: moves.liveQueued,
       cancelLive: moves.cancelLive,
+      settleLive: moves.settleLive,
     });
   }),
 );
