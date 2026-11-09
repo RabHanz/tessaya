@@ -793,8 +793,6 @@ export const readSettings = (path: string): VoiceSettings => {
 /** Longer than the spoken 15 s, for reading; a typed yes must still run out. */
 const TYPED_CONFIRM_MS = 30_000;
 const APP_CHECK_MS = 500;
-/** Long enough to read a sentence that did not land where it was meant to. */
-const KEPT_TEXT_MS = 20_000;
 /** A second Esc within this discards a dictation. */
 const ESC_AGAIN_MS = 2_000;
 /** How long "Discarded · click to undo" stays. */
@@ -1193,6 +1191,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const toast = createVocabToast({
     anchor: () => pill.anchor(),
+    holdEscape: input.holdEscape,
     onDiscard: (all) => {
       // "heard → meant" undoes one taught form; any other is a whole word.
       const taught = all.flatMap((w) => {
@@ -1808,14 +1807,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
   let keptWhy: "gone" | "changed" | "refused" = "refused";
-  /** The words go on the clipboard, out of the buffer, and the pill says why in one line. */
+  /** The words go on the clipboard, out of the buffer, and a card beside the pill says why, with Copy. */
   const toClipboard = (text: string, taken: number, why: string) => {
     Electron.clipboard.writeText(text);
     oneShot.release(taken);
     lastDictation = text;
-    showDictation(`${why}, so it is on your clipboard`, false, true);
-    if (keptTimer !== null) clearTimeout(keptTimer);
-    keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
+    showDictation(null);
+    toast.show({ kind: "copy", why: `${why}, so it is on your clipboard`, text });
   };
   /**
    * `target` is the window that dictation started in, read when it ended: never one a newer dictation started in.
@@ -1853,7 +1851,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       learnFromEdits(result.text, turnId, app);
       if (result.failed) {
         showDictation(null);
-        pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
+        toast.show({ kind: "error", message: CLEANUP_FAILED_LINE });
       } else offerSmarterCleanup();
       dictationTimer?.pillGone();
     } else {
@@ -3183,12 +3181,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     note = `Heard ${languageName(code)}, which is not one of your languages. Change them under Dictation: Languages you speak.`;
     render();
   };
-  /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
+  /** Words that have no home yet: an error card with Copy beside the pill, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
     lastDictation = text;
-    showDictation(`${why}. Tray: Copy last transcript.`, false, true);
-    if (keptTimer !== null) clearTimeout(keptTimer);
-    keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
+    showDictation(null);
+    toast.show({ kind: "error", message: why, text });
   };
   /** Short utterances cut from the mic while the helper records, each heard for a whole stop or cancel. */
   const commandClips = createCommandClips();
@@ -3404,7 +3401,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       discardKeyText = false;
       note = event.message;
       showDictation(null);
-      pill.on({ type: "trouble", message: event.message });
+      toast.show({ kind: "error", message: event.message });
     } else if (event.ev === "paste_check") {
       // What the clipboard held at the chord and whether the target read it, for the turn log (no words).
       input.onNote?.("paste_check", { ...event });
@@ -3438,7 +3435,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const text = event.text ?? "";
       const outside = outsideLanguages(text, settings.languages);
       if (event.dictated === true && event.error === undefined && outside !== null) {
-        keepText(`Heard as ${languageName(outside)}, so not pasted`, text);
+        keepText(`Heard as ${languageName(outside)}, not pasted`, text);
         return void heardOutside(outside);
       }
       if (event.dictated === true && event.error === undefined) {

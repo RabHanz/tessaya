@@ -303,7 +303,7 @@ export interface VoicePill {
   readonly placed: () => boolean;
   /** Forgets the saved place: back to the default edge. */
   readonly putBack: () => void;
-  /** Where the pill is, or would appear: what the vocabulary toast sits beside. */
+  /** Where the pill's capsule is, or would appear: what the card sits beside. */
   readonly anchor: () => Electron.Rectangle;
   readonly state: () => TurnState;
   readonly dispose: () => void;
@@ -1093,6 +1093,16 @@ export const createVoicePill = (input: {
       return near.id;
     },
     anchor: () => {
+      // The capsule itself while it is up, so a card clears the island however tall it is.
+      if (window !== null && !window.isDestroyed() && window.isVisible()) {
+        const b = window.getBounds();
+        return {
+          x: b.x + capsule.x,
+          y: b.y + capsule.y,
+          width: capsule.width,
+          height: capsule.height,
+        };
+      }
       if (window !== null && !window.isDestroyed()) return baseBounds(window);
       return { ...placeFor(workScreen()), width: WIDTH, height: HEIGHT };
     },
