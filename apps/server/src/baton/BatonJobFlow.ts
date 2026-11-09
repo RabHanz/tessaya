@@ -65,7 +65,7 @@ import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
 import { ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
 import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
 import { BatonJobService } from "./BatonJobService.ts";
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -149,13 +149,24 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   if (existing !== null) return { terms, threadId: existing, model: modelSelection.model };
   const workSession = yield* workSessions.get(id);
   const threadId = ThreadIdSchema.make(`job-thread-${yield* uuid}`);
-  // The recall a sentence of his gets (memoryClient.forSentence), as the persona the job works for may see it.
-  const remembered = yield* (yield* BatonMemoryService).recall({
-    text: input.goal,
-    budgetTokens: 300,
-    agent: options.role ?? "executive",
-    scopeRef: (yield* engine.projects).find((p) => p.id === input.projectId)?.title ?? undefined,
-  });
+  // The recall a sentence of his gets (memoryClient.forSentence), as the job's own persona when the pack knows it and
+  // it is neither the lead (who sees through walls) nor private. The first message is kept with the thread, so it is
+  // read in the walled view, and memory that is slow or down never holds the job up.
+  const own = readPack(userdata).personas.find(
+    (p) => p.id === options.role && !p.lead && p.private !== true,
+  );
+  const remembered = yield* (yield* BatonMemoryService)
+    .recall({
+      text: input.goal,
+      budgetTokens: 300,
+      ...(own === undefined ? {} : { agent: own.id }),
+      scopeRef: (yield* engine.projects).find((p) => p.id === input.projectId)?.title ?? undefined,
+    })
+    .pipe(
+      Effect.provideService(MemoryViewer, "client"),
+      Effect.timeout("2 seconds"),
+      Effect.catchCause(() => Effect.succeed({ block: "" })),
+    );
   const launched = yield* engine.launchThread({
     tag: "job",
     threadId,

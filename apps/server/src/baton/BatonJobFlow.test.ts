@@ -37,7 +37,7 @@ import {
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
@@ -80,11 +80,18 @@ const scheduledTasks = Layer.succeed(ScheduledTaskService, {
   delete: ({ id }: { id: unknown }) => Effect.sync(() => (deleted.push(id), { id })),
 } as never);
 
-const recalls: Array<{ text?: string; agent?: string; budgetTokens?: number }> = [];
+const recalls: Array<{ text?: string; agent?: string; budgetTokens?: number; viewer?: string }> =
+  [];
+/** The next recall fails, as a memory store that is down does. */
+const recallFails = { next: false };
 const memory = Layer.succeed(BatonMemoryService, {
   recall: (context: (typeof recalls)[number]) =>
-    Effect.sync(() => {
-      recalls.push(context);
+    Effect.gen(function* () {
+      recalls.push({ ...context, viewer: yield* MemoryViewer });
+      if (recallFails.next) {
+        recallFails.next = false;
+        return yield* Effect.die(new Error("memory is down"));
+      }
       return { block: "what you remember about him:\n- he wants the blue palette", ids: [] };
     }),
 } as never);
@@ -131,9 +138,11 @@ layer("BatonJobFlow", (it) => {
       assert.include(launched[0]?.text ?? "", `He asked: ${goal}`);
       assert.include(launched[0]?.text ?? "", "Do not start the work");
       assert.include(launched[0]?.text ?? "", "How to frame this job");
-      // The assistant's recall, for the lead who owns a whole job.
+      // The assistant's recall, in the walled view: the first message is kept, so no walled project's items, and a
+      // whole job never recalls as the lead, who sees through walls.
       assert.include(launched[0]?.text ?? "", "he wants the blue palette");
-      assert.deepInclude(recalls[0], { text: goal, agent: "executive", budgetTokens: 300 });
+      assert.deepInclude(recalls[0], { text: goal, budgetTokens: 300, viewer: "client" });
+      assert.notProperty(recalls[0], "agent");
 
       // Agreeing before the plan exists starts nothing.
       yield* agreeJob(id);
@@ -147,6 +156,20 @@ layer("BatonJobFlow", (it) => {
         sent.map((s) => s.text),
         ["Use the blue palette"],
       );
+      // Memory that is down never holds a job up: it starts without the block.
+      recallFails.next = true;
+      yield* startJob({
+        id: WorkSessionId.make("job-flow-no-memory"),
+        projectId: ProjectId.make("project-site"),
+        title: "Another",
+        goal: "tidy the site",
+        permissions: { folders: [], projects: [], tools: [] },
+        modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+        runtimeMode: "approval-required",
+      });
+      assert.notInclude(launched.at(-1)?.text ?? "", "blue palette");
+      assert.include(launched.at(-1)?.text ?? "", "He asked: tidy the site");
+
       const agreed = yield* agreeJob(id);
       assert.strictEqual(agreed?.phase, "approved");
       assert.lengthOf(sent, 2);
@@ -246,6 +269,7 @@ layer("BatonJobFlow", (it) => {
         assert.lengthOf(yield* splitJob({ id: parent, parts: [{ title: "A", goal: "do a" }] }), 0);
         yield* agreeJob(parent);
         const before = launched.length;
+        const recalled = recalls.length;
         const started = yield* splitJob({
           id: parent,
           parts: [
@@ -261,6 +285,11 @@ layer("BatonJobFlow", (it) => {
           ["default", "default", "default"],
         );
         assert.include(mine[0]?.text ?? "", "Your role (marketing)");
+        // A part recalls as its persona when the pack has one (research); a role with none (marketing), or none, as nobody.
+        assert.deepEqual(
+          recalls.slice(recalled).map((r) => r.agent),
+          [undefined, undefined, "research"],
+        );
         assert.include(mine[0]?.text ?? "", "already agreed");
         // Routine work runs on the cheap model at low effort; a model he picked stays for the other
         // parts, a specialist's too.
