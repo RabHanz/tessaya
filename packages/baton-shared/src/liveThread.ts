@@ -11,6 +11,9 @@ export const LIVE_INSTANCE = "baton-live";
 export const instanceLabel = (instanceId: string): string =>
   instanceId === LIVE_INSTANCE ? "Terminal session" : instanceId;
 
+/** The thread the server mirrors a terminal session into (LiveSessionMirror's namespace). */
+export const liveThreadIdOf = (sessionId: string): string => `baton-live4:${sessionId}`;
+
 /** The Claude session id of a live thread (any `baton-live<n>:` namespace), or null for any other thread. */
 export const liveSessionIdOf = (threadId: string): string | null =>
   /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;

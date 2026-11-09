@@ -17,7 +17,8 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type SetStateAction } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toastManager } from "../ui/toast";
-import { livePick } from "@t3tools/baton-shared/liveThread";
+import { liveChangeRoute } from "@t3tools/baton-shared/liveModel";
+import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import {
   liveLoginOf,
   useContinueInNewThread,
@@ -147,7 +148,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       : null,
   );
 
-  // A mirrored terminal session changes model inside itself; another provider continues in a new thread (livePick).
+  // A mirrored terminal session changes model inside itself; another provider continues in a new thread (liveChangeRoute).
   const liveSession = useLiveSessionChange(
     activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
@@ -167,29 +168,30 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
     if (liveSession.sessionId !== null) {
       const liveLogin = liveLoginOf(instanceId, liveAccounts);
-      const route = livePick({
-        pickedInstance: instanceId,
-        pickedDriver: entry?.driver ?? null,
+      const route = liveChangeRoute({
+        threadId: activeThread.id,
         currentInstance: activeThread.modelSelection.instanceId,
-        account: liveLogin.relation,
+        picked: { instance: instanceId, driver: entry?.driver ?? null, model, effort: null },
+        current: { model: activeThread.modelSelection.model, effort: null },
+        account: liveLogin,
       });
-      if (route === "session-model") liveSession.apply({ model });
-      else if (route === "session-account") {
-        const account = liveAccounts.find((entry) => entry.key === liveLogin.key);
+      if (route.kind === "session") liveSession.apply(route.change);
+      else if (route.kind === "account") {
+        const account = liveAccounts.find((entry) => entry.key === route.key);
         if (account !== undefined) switchLiveAccount(account);
-      } else if (route === "switch-back")
+      } else if (route.kind === "draft" && instanceId === LIVE_INSTANCE)
         setComposerDraftModelSelection(
           scopeThreadRef(activeThread.environmentId, activeThread.id),
           { instanceId, model },
           { explicit: true, replaceOptions: true },
         );
-      else if (route === "continue-in")
+      else if (route.kind === "continue-in")
         void continueInNewThread(
           activeThread,
           { instanceId, model },
           entry?.displayName ?? String(instanceId),
         );
-      if (route !== "normal") {
+      if (route.kind !== "draft" || instanceId === LIVE_INSTANCE) {
         if (options?.focusComposer !== false) scheduleComposerFocus();
         return;
       }

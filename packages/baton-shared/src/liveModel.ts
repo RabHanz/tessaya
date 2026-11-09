@@ -7,6 +7,8 @@
  * until that line is there.
  */
 
+import { livePick, liveSessionIdOf } from "./liveThread.ts";
+
 export const LIVE_EFFORT_CHOICES = ["low", "medium", "high", "xhigh", "max"] as const;
 export type LiveEffort = (typeof LIVE_EFFORT_CHOICES)[number];
 
@@ -256,3 +258,61 @@ const working = (status: string | null) => status === "busy" || status === "wait
 /** A session that was working and now reads idle: a queued change can be typed in (ACCOUNTS-2). */
 export const wentIdle = (before: string | null | undefined, now: string | null): boolean =>
   before !== undefined && working(before) && now !== null && !working(now);
+
+/**
+ * Where a model or effort pick on a thread goes, on web and mobile alike. A thread still on its terminal session takes
+ * it inside the session (liveSetModel, which queues while the session works); a Claude login the machine knows moves
+ * the session (liveSetAccount); another provider continues in a new thread. Any other thread keeps the ordinary draft.
+ */
+export type LiveChangeRoute =
+  | {
+      readonly kind: "session";
+      readonly change: { readonly model?: string; readonly effort?: string };
+    }
+  | { readonly kind: "account"; readonly key: string }
+  | { readonly kind: "continue-in" }
+  | { readonly kind: "none" }
+  | { readonly kind: "draft" };
+
+export const liveChangeRoute = (input: {
+  readonly threadId: string;
+  readonly currentInstance: string;
+  readonly picked: {
+    readonly instance: string;
+    readonly driver: string | null;
+    readonly model: string;
+    readonly effort: string | null;
+  };
+  readonly current: { readonly model: string; readonly effort: string | null };
+  /** How the picked instance's login relates to the session's, and its cswap key. */
+  readonly account: {
+    readonly relation: "same" | "other" | "unknown";
+    readonly key: string | null;
+  };
+}): LiveChangeRoute => {
+  if (liveSessionIdOf(input.threadId) === null) return { kind: "draft" };
+  const route = livePick({
+    pickedInstance: input.picked.instance,
+    pickedDriver: input.picked.driver,
+    currentInstance: input.currentInstance,
+    account: input.account.relation,
+  });
+  if (route === "normal" || route === "switch-back") return { kind: "draft" };
+  if (route === "continue-in") return { kind: "continue-in" };
+  if (route === "session-account")
+    return input.account.key === null
+      ? { kind: "continue-in" }
+      : { kind: "account", key: input.account.key };
+  const { model, effort } = input.picked;
+  const change = {
+    ...(model !== input.current.model && modelCommand(model) !== null ? { model } : {}),
+    ...(effort !== null && effort !== input.current.effort && effortCommand(effort) !== null
+      ? { effort }
+      : {}),
+  };
+  return Object.keys(change).length === 0 ? { kind: "none" } : { kind: "session", change };
+};
+
+/** Nothing to type into the session: the pick (another option, or the same model) still belongs in the draft. */
+export const keepsDraft = (route: LiveChangeRoute): boolean =>
+  route.kind === "draft" || route.kind === "none";
