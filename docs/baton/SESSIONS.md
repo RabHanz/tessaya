@@ -26,4 +26,6 @@ tap starts it again.
   the session's own login. Refused while it works.
 - **Open in terminal** (⋯ on a Claude thread), or `tessaya resume <thread>` from any shell, even with Tessaya down: the
   session opens in a Herdr pane on the thread's login and the thread follows it there; closing the pane hands it back.
-- **Make this the main session** (⋯): that thread stays pinned and is never archived when its session ends.
+- **Make this the main session** (⋯): that thread is pinned once and never archived when its session ends. Restarted
+  under a new session id in the same Herdr pane, the session stays on that thread. Unpinning it stops it being main.
+  New threads from the sessions list start on the Account for new threads default when it is a Claude account.

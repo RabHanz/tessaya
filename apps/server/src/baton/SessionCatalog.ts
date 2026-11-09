@@ -634,3 +634,23 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   return { list, folders, resume, send, create, waitingFor, forgetResumed };
 };
 export type SessionCatalog = ReturnType<typeof createSessionCatalog>;
+
+/**
+ * The instance and model a new Tessaya session starts on: the "Account for new threads" default when it is a Claude
+ * instance (with its model unless one was asked for), else the default Claude instance.
+ */
+export const newSessionSelection = (input: {
+  readonly defaultSelection: { readonly instanceId: string; readonly model: string } | null;
+  readonly defaultIsClaude: boolean;
+  readonly fallbackInstance: string;
+  readonly fallbackModel: string;
+  /** What the request asked for: "" or "opus" means the default. */
+  readonly askedModel: string | undefined;
+}): { readonly instanceId: string; readonly model: string } => {
+  const useDefault = input.defaultSelection !== null && input.defaultIsClaude;
+  const family = (input.askedModel ?? "").trim().toLowerCase();
+  const instanceId = useDefault ? input.defaultSelection!.instanceId : input.fallbackInstance;
+  if (family === "")
+    return { instanceId, model: useDefault ? input.defaultSelection!.model : input.fallbackModel };
+  return { instanceId, model: family === "opus" ? input.fallbackModel : input.askedModel!.trim() };
+};

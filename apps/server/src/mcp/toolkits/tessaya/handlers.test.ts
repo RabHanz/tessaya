@@ -426,3 +426,28 @@ it.effect(
       expect(result.result).toMatchObject({ state: "busy" });
     }),
 );
+
+it.effect(
+  "an agent marks the main session through the service and reads the defaults, but cannot set them",
+  () =>
+    Effect.gen(function* () {
+      let mainThreadId: string | null = null;
+      const catalog = BatonSessionCatalogService.of({
+        mainSession: (input: { threadId: string; main: boolean }) =>
+          Effect.sync(() => {
+            mainThreadId = input.main ? input.threadId : null;
+            return { newSessionsRun: "tessaya", mainThreadId };
+          }),
+        sessionDefaults: Effect.sync(() => ({ newSessionsRun: "tessaya", mainThreadId })),
+      } as never);
+      const runtime = Context.make(BatonSessionCatalogService, catalog) as never;
+      const marked = yield* callTool("thread", runtime, "tessaya_main_session", {
+        threadId: thread,
+        main: true,
+      });
+      expect(marked.result).toMatchObject({ mainThreadId: thread });
+      const read = yield* callTool("read-only", runtime, "tessaya_session_defaults", {});
+      expect(read.result).toEqual({ newSessionsRun: "tessaya", mainThreadId: thread });
+      expect(Object.keys(TessayaToolkit.tools)).not.toContain("tessaya_session_defaults_update");
+    }),
+);

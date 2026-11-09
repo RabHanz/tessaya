@@ -19,6 +19,8 @@ export const BATON_SESSIONS_WS_METHODS = {
   reattach: "baton.sessions.reattach",
   moveIntoTessaya: "baton.sessions.moveintotessaya",
   openInTerminal: "baton.sessions.openinterminal",
+  mainSession: "baton.sessions.mainsession",
+  sessionDefaults: "baton.sessions.defaults",
   kept: "baton.sessions.kept",
   waiting: "baton.sessions.waiting",
   across: "baton.sessions.across",
@@ -275,6 +277,17 @@ export const BatonOpenInTerminalResult = Schema.Struct({
   state: Schema.Literals(["opened", "refused", "busy"]),
   pane: Schema.NullOr(Schema.String),
   detail: Schema.String,
+});
+
+/** Make a thread the main session (kept pinned, and kept across a restart in its pane), or stop it being that. */
+export const BatonMainSessionInput = Schema.Struct({
+  threadId: Schema.String.check(Schema.isMaxLength(120)),
+  main: Schema.Boolean,
+});
+/** Where new sessions run and which thread is the main session, read only. */
+export const BatonSessionDefaultsResult = Schema.Struct({
+  newSessionsRun: Schema.Literals(["tessaya", "terminal"]),
+  mainThreadId: Schema.NullOr(Schema.String),
 });
 
 /** The messages a thread kept because it had no session, and a Retry that sends one (or the oldest) back through it. */

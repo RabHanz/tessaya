@@ -73,6 +73,8 @@ import * as DateTime from "effect/DateTime";
 
 import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
 import { makeSessionHomes } from "./SessionHomes.ts";
+import { carriesMain, decideMainPin } from "./MainSession.ts";
+import { pointAtSessionEvents } from "./MoveIntoTessaya.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -940,19 +942,59 @@ const make = Effect.gen(function* () {
     live: { driver: DRIVER, model: MODEL },
   });
 
-  /** The main session's thread, wherever its session runs, stays pinned while it is the main one. */
-  const keepMainPinned = (mainThreadId: string | null) =>
+  /** The main session (MainSession.ts): its thread, the session it is on, and the pane that session last ran in. */
+  const mainFile = NodePath.join(stateDir, "tessaya-main.json");
+  const main = {
+    seen: yield* settings.getSettings.pipe(
+      Effect.map((current) => current.mainThreadId),
+      Effect.orElseSucceed(() => null),
+    ),
+    wasPinned: true,
+    sessionId: null as string | null,
+    pane: ((): string | null => {
+      try {
+        const pane = (JSON.parse(NodeFS.readFileSync(mainFile, "utf8")) as { pane?: unknown }).pane;
+        return typeof pane === "string" ? pane : null;
+      } catch {
+        return null;
+      }
+    })(),
+  };
+  const trackMain = (mainThreadId: string | null, live: ReadonlyArray<ClaudeLiveSession>) =>
     Effect.gen(function* () {
-      if (mainThreadId === null) return;
-      const shell = yield* engine.threadShell(ThreadId.make(mainThreadId));
-      if (
-        shell === null ||
-        (shell.pinnedAt ?? null) !== null ||
-        (shell.archivedAt ?? null) !== null
-      )
-        return;
-      if (yield* engine.pinThread({ tag: "main-session", threadId: shell.id }))
-        mirrorLog(null, { event: "main-pinned", thread: mainThreadId });
+      const shell =
+        mainThreadId === null ? null : yield* engine.threadShell(ThreadId.make(mainThreadId));
+      const pinned = (shell?.pinnedAt ?? null) !== null;
+      const action =
+        shell === null || (shell.archivedAt ?? null) !== null
+          ? "none"
+          : decideMainPin({
+              main: mainThreadId,
+              seenMain: main.seen,
+              pinned,
+              wasPinned: main.wasPinned,
+            });
+      if (action === "pin" && shell !== null) {
+        if (yield* engine.pinThread({ tag: "main-session", threadId: shell.id }))
+          mirrorLog(null, { event: "main-pinned", thread: mainThreadId });
+      } else if (action === "clear") {
+        yield* settings.updateSettings({ mainThreadId: null }).pipe(Effect.ignore);
+        mirrorLog(null, { event: "main-unpinned-cleared", thread: mainThreadId });
+      }
+      main.seen = action === "clear" ? null : mainThreadId;
+      main.wasPinned = action === "pin" || pinned;
+      main.sessionId =
+        mainThreadId === null
+          ? null
+          : ((yield* engine.activeProviderThread(ThreadId.make(mainThreadId)))?.nativeThreadRef
+              ?.nativeId ?? null);
+      const pane = live.find((s) => s.sessionId === main.sessionId)?.herdrPane ?? null;
+      if (pane !== null && pane !== main.pane) {
+        main.pane = pane;
+        try {
+          NodeFS.writeFileSync(mainFile, JSON.stringify({ pane }));
+        } catch {}
+      }
     });
 
   const follows = new Map<string, Follow>();
@@ -1724,17 +1766,54 @@ const make = Effect.gen(function* () {
 
   const startFollowing = (session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      // A Tessaya thread's own session, open in a terminal: that thread, which already holds its history.
+      // A Tessaya thread's own session, open in a terminal: that thread, which already holds its history. The same for
+      // the main session restarted under a new id in its pane: it stays the main thread.
       const home = homes.ofSession(session.sessionId);
+      const mainThreadId = main.seen;
+      const carried =
+        home === null &&
+        mainThreadId !== null &&
+        carriesMain({
+          mainSessionId: main.sessionId,
+          mainPane: main.pane,
+          liveSessionIds: new Set((yield* readAllProfileLiveSessions()).map((s) => s.sessionId)),
+          session,
+        });
+      if (carried) {
+        const thread = yield* engine.appThread(ThreadId.make(mainThreadId));
+        if (thread !== null)
+          yield* engine.writeEvents({
+            events: pointAtSessionEvents({
+              thread,
+              driver: DRIVER,
+              instanceId: LIVE_INSTANCE_ID,
+              model: MODEL,
+              sessionId: session.sessionId,
+              now: yield* DateTime.now,
+              stamp: Date.now(),
+            }),
+          });
+        main.sessionId = session.sessionId;
+        mirrorLog(null, {
+          event: "main-carried",
+          thread: mainThreadId,
+          sessionId: session.sessionId,
+        });
+      }
       const threadId =
-        home === null ? liveThreadId(session.sessionId) : ThreadId.make(home.threadId);
+        home !== null
+          ? ThreadId.make(home.threadId)
+          : carried
+            ? ThreadId.make(mainThreadId)
+            : liveThreadId(session.sessionId);
+      const keepsHistory = home !== null || carried;
       const path = transcriptPath(session);
       const size = path === null ? 0 : NodeFS.statSync(path).size;
       // Long tool-heavy sessions hold few messages per megabyte: read back until there are enough.
       let from = size;
       let history: Array<LiveTranscriptMessage> = [];
       while (
-        home === null &&
+        !keepsHistory &&
         path !== null &&
         from > 0 &&
         history.length < FIRST_MESSAGES &&
@@ -1997,7 +2076,7 @@ const make = Effect.gen(function* () {
       Effect.map((current) => current.mainThreadId),
       Effect.orElseSucceed(() => null),
     );
-    yield* keepMainPinned(mainThreadId);
+    yield* trackMain(mainThreadId, live).pipe(Effect.ignoreCause({ log: true }));
     for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now(), mainThreadId)) {
       if (continued.has(id)) continue;
       if (sentFromT3(yield* threadMessages(id))) continued.add(id);

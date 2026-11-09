@@ -10,6 +10,7 @@ import {
   BatonJobListResult,
   BatonMoveIntoTessayaResult,
   BatonOpenInTerminalResult,
+  BatonSessionDefaultsResult,
   BatonMemorySearchResult,
   BatonMemoryHistoryResult,
   BatonRecordListInput,
@@ -302,6 +303,29 @@ const OpenInTerminalTool = Tool.make("tessaya_open_in_terminal", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const MainSessionTool = Tool.make("tessaya_main_session", {
+  ...shared,
+  description:
+    "Make a thread the main session (main: true), which Tessaya pins once and keeps on that thread when its session restarts in the same Herdr pane, or stop it being the main one (main: false).",
+  parameters: Schema.Struct({ threadId: ThreadId, main: Schema.Boolean }),
+  success: BatonSessionDefaultsResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const SessionDefaultsTool = Tool.make("tessaya_session_defaults", {
+  ...shared,
+  description:
+    "Read only: where a new session from the sessions list starts (`tessaya`: a Tessaya thread, `terminal`: a Herdr pane) and which thread is the main session. Only the user changes these, in Settings.",
+  success: BatonSessionDefaultsResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -320,4 +344,6 @@ export const TessayaToolkit = Toolkit.make(
   StateTool,
   MoveIntoTessayaTool,
   OpenInTerminalTool,
+  MainSessionTool,
+  SessionDefaultsTool,
 );

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   createSessionCatalog,
+  newSessionSelection,
   sendOutcome,
   type CatalogPorts,
   type TranscriptInfo,
@@ -582,5 +583,38 @@ describe("listing sessions by words", () => {
     expect(searched).toEqual([]);
     await catalog.list({ query: "deploy key" });
     expect(searched).toEqual(["deploy key"]);
+  });
+});
+
+describe("the account a new Tessaya session starts on", () => {
+  const pick = (over: Partial<Parameters<typeof newSessionSelection>[0]>) =>
+    newSessionSelection({
+      defaultSelection: { instanceId: "claude-work", model: "claude-sonnet" },
+      defaultIsClaude: true,
+      fallbackInstance: "claudeAgent",
+      fallbackModel: "claude-opus",
+      askedModel: undefined,
+      ...over,
+    });
+  it("is the Account for new threads default, with its model unless one is asked for", () => {
+    expect(pick({})).toEqual({ instanceId: "claude-work", model: "claude-sonnet" });
+    expect(pick({ askedModel: "claude-haiku" })).toEqual({
+      instanceId: "claude-work",
+      model: "claude-haiku",
+    });
+    expect(pick({ askedModel: "opus" })).toEqual({
+      instanceId: "claude-work",
+      model: "claude-opus",
+    });
+  });
+  it("falls back to the default Claude instance when that default is not Claude or not set", () => {
+    expect(pick({ defaultIsClaude: false })).toEqual({
+      instanceId: "claudeAgent",
+      model: "claude-opus",
+    });
+    expect(pick({ defaultSelection: null })).toEqual({
+      instanceId: "claudeAgent",
+      model: "claude-opus",
+    });
   });
 });

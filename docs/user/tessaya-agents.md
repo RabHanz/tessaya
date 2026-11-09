@@ -27,6 +27,7 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 
 - `tessaya_move_into_tessaya` moves a Terminal thread's session into Tessaya. It changes the thread's provider, so it does nothing unless the agent passes `providerChangeApproved`, which it should only do when you asked for the move. It is refused while the session works. T3's own thread agents can use it too.
 - `tessaya_open_in_terminal` opens a Tessaya Claude thread's session in a Herdr pane; the thread comes back when the pane closes. It is refused while a turn runs.
+- `tessaya_main_session` makes a thread the main session (pinned once, kept on that thread when it restarts in the same Herdr pane) or stops it being one. `tessaya_session_defaults` reads where new sessions start and which thread is the main one; only you change these, in Settings.
 
 ## Agents messaging each other
 

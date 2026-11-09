@@ -154,6 +154,8 @@ import {
   BatonMoveIntoTessayaResult,
   BatonOpenInTerminalInput,
   BatonOpenInTerminalResult,
+  BatonMainSessionInput,
+  BatonSessionDefaultsResult,
   BatonKeptInput,
   BatonKeptResult,
   BatonReattachResult,
@@ -537,6 +539,16 @@ const WsBatonSessionsMoveIntoTessayaRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.mov
 const WsBatonSessionsOpenInTerminalRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.openInTerminal, {
   payload: BatonOpenInTerminalInput,
   success: BatonOpenInTerminalResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsMainSessionRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.mainSession, {
+  payload: BatonMainSessionInput,
+  success: BatonSessionDefaultsResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsDefaultsRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.sessionDefaults, {
+  payload: Schema.Struct({}),
+  success: BatonSessionDefaultsResult,
   error: CatalogErrors,
 });
 const WsBatonSessionsKeptRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.kept, {
@@ -926,6 +938,8 @@ const BATON_RPCS = [
   WsBatonSessionsReattachRpc,
   WsBatonSessionsMoveIntoTessayaRpc,
   WsBatonSessionsOpenInTerminalRpc,
+  WsBatonSessionsMainSessionRpc,
+  WsBatonSessionsDefaultsRpc,
   WsBatonSessionsKeptRpc,
   WsBatonSessionsWaitingRpc,
   WsBatonSessionsInFlightRpc,

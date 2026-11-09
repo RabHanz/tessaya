@@ -28,14 +28,19 @@ export function BatonLiveStatus({ threadRef }: { readonly threadRef: ScopedThrea
   const shell = useQuietThreadShell(threadRef);
   const live = isLiveThreadId(threadRef.threadId);
   const items = useThreadVisibleTurnItems(live ? threadRef : null);
-  const pane = useAtomValue(livePaneAtom(liveSessionIdOf(threadRef.threadId) ?? ""));
   const projection = useQuietThreadProjection(live ? threadRef : null)?.projection ?? null;
-  if (shell === null) return null;
-  const header = <BatonThreadHeader threadRef={threadRef} shell={shell} pane={pane} />;
-  if (!live) return header;
   const activeNativeId =
     projection?.providerThreads.find((p) => p.id === projection.thread.activeProviderThreadId)
       ?.nativeThreadRef?.nativeId ?? null;
+  // The session it is on now: a main session restarted under a new id stays on this thread.
+  const sessionId =
+    shell?.providerInstanceId === LIVE_INSTANCE && activeNativeId !== null
+      ? activeNativeId
+      : liveSessionIdOf(threadRef.threadId);
+  const pane = useAtomValue(livePaneAtom(sessionId ?? ""));
+  if (shell === null) return null;
+  const header = <BatonThreadHeader threadRef={threadRef} shell={shell} pane={pane} />;
+  if (!live) return header;
   // Moved into Tessaya: an ordinary thread on the same session, with no terminal to report on.
   if (movedIntoTessaya(threadRef.threadId, shell.providerInstanceId, activeNativeId)) return header;
   const lastItem = items.at(-1)?.item;
@@ -45,7 +50,7 @@ export function BatonLiveStatus({ threadRef }: { readonly threadRef: ScopedThrea
   return (
     <>
       {header}
-      <BatonLiveBinding threadRef={threadRef} />
+      <BatonLiveBinding threadRef={threadRef} sessionId={sessionId} />
       {stopped === null ? null : (
         <span
           className="shrink-0 text-2xs text-warning-foreground"
