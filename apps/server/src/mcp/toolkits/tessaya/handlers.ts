@@ -230,6 +230,13 @@ export const layer = McpToolAccess.toLayer(
               : { providerChangeApproved: input.providerChangeApproved }),
           }).pipe(Effect.mapError(failed)),
       ),
+      tessaya_open_in_terminal: McpToolAccess.writesThreads(
+        (input) => [input.threadId],
+        (input) =>
+          handlers[BATON_SESSIONS_WS_METHODS.openInTerminal]({ threadId: input.threadId }).pipe(
+            Effect.mapError(failed),
+          ),
+      ),
       weave_list: McpToolAccess.reads((input) =>
         call(
           handlers[BATON_WEAVE_WS_METHODS.list](

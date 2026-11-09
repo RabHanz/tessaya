@@ -408,3 +408,21 @@ it.effect(
       expect(moved.result).toMatchObject({ state: "moved" });
     }),
 );
+
+it.effect(
+  "an agent opens a thread's session in a terminal through the service, busy refusal included",
+  () =>
+    Effect.gen(function* () {
+      const catalog = BatonSessionCatalogService.of({
+        openInTerminal: () =>
+          Effect.succeed({ state: "busy", pane: null, detail: "A turn is running." }),
+      } as never);
+      const result = yield* callTool(
+        "thread",
+        Context.make(BatonSessionCatalogService, catalog) as never,
+        "tessaya_open_in_terminal",
+        { threadId: thread },
+      );
+      expect(result.result).toMatchObject({ state: "busy" });
+    }),
+);

@@ -9,6 +9,7 @@ import {
   BatonFleetResult,
   BatonJobListResult,
   BatonMoveIntoTessayaResult,
+  BatonOpenInTerminalResult,
   BatonMemorySearchResult,
   BatonMemoryHistoryResult,
   BatonRecordListInput,
@@ -289,6 +290,18 @@ const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const OpenInTerminalTool = Tool.make("tessaya_open_in_terminal", {
+  ...shared,
+  description:
+    "Open a Tessaya Claude thread's session in a Herdr terminal pane on the thread's own login. Tessaya lets go of the session first; the thread follows the pane as a Terminal thread and comes back when the pane closes. Refused while a turn runs.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: BatonOpenInTerminalResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -306,4 +319,5 @@ export const TessayaToolkit = Toolkit.make(
   WeaveListTool,
   StateTool,
   MoveIntoTessayaTool,
+  OpenInTerminalTool,
 );
