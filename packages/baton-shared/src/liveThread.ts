@@ -73,6 +73,19 @@ export const runningLiveSessionKeys = (
   new Set(environments.flatMap((e) => e.sessions.map((s) => `${e.environmentId}:${s.sessionId}`)));
 
 /**
+ * A live thread moved into Tessaya: off the live instance, but resuming the same Claude session id (not a handoff twin,
+ * which runs a new session). It is then an ordinary Tessaya thread.
+ */
+export const movedIntoTessaya = (
+  threadId: string,
+  currentInstance: string,
+  activeNativeId: string | null,
+): boolean =>
+  currentInstance !== LIVE_INSTANCE &&
+  activeNativeId !== null &&
+  activeNativeId === liveSessionIdOf(threadId);
+
+/**
  * The reason a turn on this thread may not run: a live thread answers only on the live instance, so a turn that names
  * another one is refused whether the thread is still on the live instance or was already moved off it (a handoff
  * session is never started or woken again; Retire handoff session puts the thread back).
@@ -81,8 +94,12 @@ export const liveThreadSwitchRefusal = (input: {
   readonly threadId: string;
   readonly currentInstance: string;
   readonly targetInstance: string;
+  /** The native id of the thread's active provider thread, when known. */
+  readonly activeNativeId?: string | null;
 }): string | null =>
-  isLiveThreadId(input.threadId) && input.targetInstance !== LIVE_INSTANCE
+  isLiveThreadId(input.threadId) &&
+  input.targetInstance !== LIVE_INSTANCE &&
+  !movedIntoTessaya(input.threadId, input.currentInstance, input.activeNativeId ?? null)
     ? input.currentInstance === LIVE_INSTANCE
       ? "This thread belongs to a running terminal session and is answered only by it. Tessaya will not start a new session with a summary here. Continue in a new thread if you want that."
       : "This thread is answered by a handoff session, which Tessaya will not wake. Retire the handoff session, or switch the thread back to its live session."

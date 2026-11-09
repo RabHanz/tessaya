@@ -9,9 +9,13 @@ import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread"
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { EllipsisIcon, GaugeIcon, SquareTerminalIcon } from "lucide-react";
 
+import { requestConfirmDialog } from "../../confirmDialog";
 import { useComposerHandleContext } from "../../composerHandleContext";
+import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -89,13 +93,34 @@ function LimitChip(props: {
   );
 }
 
-/** The Herdr pane, its id to copy, and a terminal to attach from: kept out of the header line. */
-function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: string }) {
-  const herdrSession = props.pane.split("~")[0] ?? props.pane;
+/** The Herdr pane, its id to copy, a terminal to attach from, and the move into Tessaya: kept out of the header line. */
+function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: string | null }) {
+  const { pane } = props;
+  const herdrSession = pane === null ? null : (pane.split("~")[0] ?? pane);
   const { copyToClipboard } = useCopyToClipboard<string>({
     onCopy: (title) => toastManager.add({ type: "success", title }),
     onError: () => toastManager.add({ type: "error", title: "Could not copy" }),
   });
+  const move = useAtomCommand(batonWorkSessions.sessionsMoveIntoTessaya, { reportFailure: false });
+  const moveIntoTessaya = async () => {
+    const confirmed = await requestConfirmDialog(
+      "Move this session into Tessaya?\nIts terminal process ends and the same conversation continues here, with Tessaya's account switching and handover. Open in terminal brings it back.",
+    );
+    if (confirmed !== true) return;
+    const result = await move({
+      environmentId: props.threadRef.environmentId,
+      input: { threadId: props.threadRef.threadId, providerChangeApproved: true },
+    });
+    toastManager.add(
+      result._tag === "Success" && result.value.state === "moved"
+        ? { type: "success", title: "Moved into Tessaya", description: result.value.detail }
+        : {
+            type: "error",
+            title: "Not moved",
+            ...(result._tag === "Success" ? { description: result.value.detail } : {}),
+          },
+    );
+  };
   return (
     <Menu>
       <MenuTrigger
@@ -111,24 +136,87 @@ function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: s
         <EllipsisIcon />
       </MenuTrigger>
       <MenuPopup align="end">
-        <MenuGroup>
-          <MenuGroupLabel>Herdr pane {props.pane}</MenuGroupLabel>
-          <MenuItem onClick={() => copyToClipboard(props.pane, "Pane id copied")}>
-            Copy pane id
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              // T3's terminal cannot be started on a command, so it opens with the attach line ready to paste.
-              useTerminalUiStateStore.getState().setTerminalOpen(props.threadRef, true);
-              copyToClipboard(
-                `herdr session attach ${herdrSession}`,
-                "Attach command copied: paste it here",
-              );
-            }}
-          >
-            Open in terminal
-          </MenuItem>
-        </MenuGroup>
+        {pane === null || herdrSession === null ? null : (
+          <MenuGroup>
+            <MenuGroupLabel>Herdr pane {pane}</MenuGroupLabel>
+            <MenuItem onClick={() => copyToClipboard(pane, "Pane id copied")}>
+              Copy pane id
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                // T3's terminal cannot be started on a command, so it opens with the attach line ready to paste.
+                useTerminalUiStateStore.getState().setTerminalOpen(props.threadRef, true);
+                copyToClipboard(
+                  `herdr session attach ${herdrSession}`,
+                  "Attach command copied: paste it here",
+                );
+              }}
+            >
+              Open in terminal
+            </MenuItem>
+          </MenuGroup>
+        )}
+        {isLiveThreadId(props.threadRef.threadId) ? (
+          <MenuItem onClick={() => void moveIntoTessaya()}>Move into Tessaya…</MenuItem>
+        ) : null}
+        <MainSessionItem threadRef={props.threadRef} />
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/** The main session's thread stays pinned wherever its session runs; one thread at a time, and the way back out. */
+function MainSessionItem(props: { readonly threadRef: ScopedThreadRef }) {
+  const main = useEnvironmentSettings(
+    props.threadRef.environmentId,
+    (settings) => settings.mainThreadId,
+  );
+  const updateSettings = useUpdateEnvironmentSettings(props.threadRef.environmentId);
+  const isMain = main === props.threadRef.threadId;
+  return (
+    <MenuItem
+      onClick={() => updateSettings({ mainThreadId: isMain ? null : props.threadRef.threadId })}
+    >
+      {isMain ? "Stop being the main session" : "Make this the main session"}
+    </MenuItem>
+  );
+}
+
+/** A Tessaya Claude thread's way out to a terminal: its own session in a Herdr pane, handed back when that closes. */
+function OpenInTerminalMenu(props: { readonly threadRef: ScopedThreadRef }) {
+  const open = useAtomCommand(batonWorkSessions.sessionsOpenInTerminal, { reportFailure: false });
+  const openInTerminal = async () => {
+    const result = await open({
+      environmentId: props.threadRef.environmentId,
+      input: { threadId: props.threadRef.threadId },
+    });
+    toastManager.add(
+      result._tag === "Success" && result.value.state === "opened"
+        ? { type: "success", title: "Opened in a terminal", description: result.value.detail }
+        : {
+            type: "error",
+            title: "Not opened",
+            ...(result._tag === "Success" ? { description: result.value.detail } : {}),
+          },
+    );
+  };
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Session actions"
+            data-testid="thread-session-menu"
+          />
+        }
+      >
+        <EllipsisIcon />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        <MenuItem onClick={() => void openInTerminal()}>Open in terminal</MenuItem>
+        <MainSessionItem threadRef={props.threadRef} />
       </MenuPopup>
     </Menu>
   );
@@ -139,8 +227,13 @@ export function BatonThreadHeader(props: {
   readonly shell: EnvironmentThreadShell;
   readonly pane: string | null;
 }) {
-  const terminal =
-    isLiveThreadId(props.threadRef.threadId) && props.shell.providerInstanceId === LIVE_INSTANCE;
+  // A Tessaya thread open in a terminal is on the live instance too, under its own id.
+  const terminal = props.shell.providerInstanceId === LIVE_INSTANCE;
+  const claude = useBatonAccounts(props.threadRef.environmentId).some(
+    (account) =>
+      account.driver === "claudeAgent" &&
+      account.instanceIds.includes(props.shell.providerInstanceId),
+  );
   return (
     <>
       {terminal ? (
@@ -151,8 +244,10 @@ export function BatonThreadHeader(props: {
         </span>
       ) : null}
       <LimitChip threadRef={props.threadRef} shell={props.shell} terminal={terminal} />
-      {terminal && props.pane !== null ? (
+      {terminal ? (
         <PaneMenu threadRef={props.threadRef} pane={props.pane} />
+      ) : claude ? (
+        <OpenInTerminalMenu threadRef={props.threadRef} />
       ) : null}
     </>
   );

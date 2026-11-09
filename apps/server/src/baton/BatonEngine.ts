@@ -16,6 +16,7 @@ import {
   MessageId,
   type ModelSelection,
   type OrchestrationProjectShell,
+  type OrchestrationV2AppThread,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ContextHandoff,
   type OrchestrationV2ProviderThread,
@@ -139,6 +140,8 @@ export interface BatonEngineShape {
   readonly contextHandoffs: (
     threadId: ThreadId,
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2ContextHandoff>>;
+  /** The thread record itself (not the shell), for events that rewrite it. Null when unknown. */
+  readonly appThread: (threadId: ThreadId) => Effect.Effect<OrchestrationV2AppThread | null>;
   /** The thread's active provider thread, for live-session working state (D85). */
   readonly activeProviderThread: (
     threadId: ThreadId,
@@ -169,6 +172,11 @@ export interface BatonEngineShape {
     readonly tag: string;
     readonly threadId: ThreadId;
   }) => Effect.Effect<boolean>;
+  /** Upstream's `provider-session.detach` for each of the thread's running provider sessions; how many. */
+  readonly detachSessions: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<number, BatonEngineError>;
   /** Upstream's `thread.delete`. */
   readonly deleteThread: (input: {
     readonly tag: string;
@@ -180,6 +188,11 @@ export interface BatonEngineShape {
     readonly threadId: ThreadId;
   }) => Effect.Effect<boolean>;
   readonly unarchiveThread: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<boolean>;
+  /** Upstream's `thread.pin`; false when refused. */
+  readonly pinThread: (input: {
     readonly tag: string;
     readonly threadId: ThreadId;
   }) => Effect.Effect<boolean>;
@@ -429,6 +442,28 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
+  const detachSessions: BatonEngineShape["detachSessions"] = (input) =>
+    Effect.gen(function* () {
+      const records = yield* orchestrator.getThreadRecords(input.threadId, ["providerSessions"]);
+      const running = records.providerSessions.filter(
+        (session) => session.status !== "stopped" && session.status !== "error",
+      );
+      for (const session of running) {
+        yield* orchestrator.dispatch({
+          type: "provider-session.detach",
+          commandId: yield* commandId(`${input.tag}:detach`),
+          threadId: input.threadId,
+          providerSessionId: session.id,
+          reason: "Opened in a terminal.",
+        });
+      }
+      return running.length;
+    }).pipe(
+      Effect.mapError(
+        (cause) => new BatonEngineError({ operation: "session.detach", detail: String(cause) }),
+      ),
+    );
+
   const settleThread: BatonEngineShape["settleThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -458,6 +493,12 @@ export const make = Effect.gen(function* () {
     orchestrator.getThreadSnapshotWindow(threadId, { rowLimit }).pipe(
       Effect.map(({ projection }) => projection.messages),
       Effect.catchCause(() => Effect.succeed([])),
+    );
+
+  const appThread: BatonEngineShape["appThread"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, []).pipe(
+      Effect.map((records) => records.thread),
+      Effect.catchCause(() => Effect.succeed(null)),
     );
 
   const activeProviderThread: BatonEngineShape["activeProviderThread"] = (threadId) =>
@@ -564,6 +605,16 @@ export const make = Effect.gen(function* () {
       return true;
     }).pipe(Effect.catchCause(() => Effect.succeed(false)));
 
+  const pinThread: BatonEngineShape["pinThread"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.pin",
+        commandId: yield* commandId(`${input.tag}:pin`),
+        threadId: input.threadId,
+      });
+      return true;
+    }).pipe(Effect.catchCause(() => Effect.succeed(false)));
+
   const unarchiveThread: BatonEngineShape["unarchiveThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -611,12 +662,14 @@ export const make = Effect.gen(function* () {
     runtimeRequestStatus,
     pendingRuntimeRequests,
     turnItem,
+    appThread,
     activeProviderThread,
     renameThread,
     resumeQueue,
     keepActive,
     archiveThread,
     unarchiveThread,
+    pinThread,
     deleteThread,
     createProject,
     projects,
@@ -629,6 +682,7 @@ export const make = Effect.gen(function* () {
     setThreadSelection,
     setInteractionMode,
     interruptThread,
+    detachSessions,
     settleThread,
   } satisfies BatonEngineShape;
 });
@@ -680,6 +734,7 @@ export const layerStatic = (input: {
         return true;
       }),
     settleThread: () => Effect.succeed(true),
+    detachSessions: () => Effect.succeed(0),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
     threadRuns: (threadId) => Effect.succeed((input.runs?.get(threadId) ?? []) as never),
@@ -688,11 +743,13 @@ export const layerStatic = (input: {
     runtimeRequestStatus: () => Effect.succeed(null),
     pendingRuntimeRequests: () => Effect.succeed([]),
     turnItem: () => Effect.succeed(null),
+    appThread: () => Effect.succeed(null),
     activeProviderThread: () => Effect.succeed(null),
     renameThread: () => Effect.succeed(true),
     resumeQueue: () => Effect.void,
     keepActive: () => Effect.succeed(true),
     archiveThread: () => Effect.succeed(true),
+    pinThread: () => Effect.succeed(true),
     unarchiveThread: ({ threadId }) =>
       Effect.sync(() => {
         input.unarchived?.push(threadId);

@@ -7,6 +7,8 @@ import {
   MessageId,
   OrchestrationV2UserInputQuestion,
   ProjectId,
+  ProviderInstanceConfig,
+  ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -18,6 +20,7 @@ import {
   askQuestion,
   askRunId,
   keepAsk,
+  promptReadDue,
   parsePanePrompt,
   endedMirrorThreads,
   forgetUnarchived,
@@ -78,8 +81,8 @@ describe("a terminal permission prompt's card", () => {
   });
 
   it("a card closed while its prompt still shows comes back only after an answer that pressed nothing, once", () => {
-    const first = { at: 1_000, again: false };
-    const answered = { pending: false, answered: true, answeredAt: 5_000 };
+    const first = { at: 1_000, again: false, updatedAt: "t1" };
+    const answered = { pending: false, answered: true, answeredAt: 5_000, updatedAt: "t1" };
     expect(keepAsk(first, { ...answered, pending: true })).toBe(true);
     // Dismissed or expired: no answer, so it stays closed.
     expect(keepAsk(first, { ...answered, answered: false })).toBe(true);
@@ -88,7 +91,21 @@ describe("a terminal permission prompt's card", () => {
     expect(keepAsk(first, { ...answered, answeredAt: 500 })).toBe(true);
     expect(keepAsk(first, answered)).toBe(false);
     // The card raised again is not raised a third time.
-    expect(keepAsk({ at: 6_000, again: true }, { ...answered, answeredAt: 9_000 })).toBe(true);
+    const again = { at: 6_000, again: true, updatedAt: "t1" };
+    expect(keepAsk(again, { ...answered, answeredAt: 9_000 })).toBe(true);
+    // The session wrote its descriptor since: the same command asking again is a new ask and gets its card.
+    expect(keepAsk(again, { ...answered, answeredAt: 9_000, updatedAt: "t2" })).toBe(false);
+  });
+
+  it("an answer the bridge finished makes the next tick read the pane, so a card whose prompt is gone closes", () => {
+    const read = { updatedAt: "t1", at: 1_000 };
+    const none = () => null;
+    expect(promptReadDue(read, "t1", 2_000, none)).toBe(false);
+    expect(promptReadDue(read, "t1", 2_000, () => 500)).toBe(false);
+    expect(promptReadDue(read, "t1", 2_000, () => 1_500)).toBe(true);
+    expect(promptReadDue(read, "t2", 2_000, none)).toBe(true);
+    expect(promptReadDue(read, "t1", 11_000, none)).toBe(true);
+    expect(promptReadDue(null, "t1", 2_000, none)).toBe(true);
   });
 });
 
@@ -161,9 +178,10 @@ describe("a title someone set", () => {
 
 describe("the thread list stays clean", () => {
   const at = (iso: string) => ({ updatedAt: DateTime.makeUnsafe(iso) });
-  const t = (id: string, projectId: string, iso: string) => ({
+  const t = (id: string, projectId: string, iso: string, instance = "baton-live") => ({
     id: ThreadId.make(id),
     projectId: ProjectId.make(projectId),
+    providerInstanceId: ProviderInstanceId.make(instance),
     archivedAt: null,
     ...at(iso),
   });
@@ -173,6 +191,8 @@ describe("the thread list stays clean", () => {
       t(String(liveThreadId("ended")), "p", "2026-11-01T10:00:00Z"),
       t(String(liveThreadId("live")), "p", "2026-11-01T10:00:00Z"),
       t("import:x:old", "p", "2026-11-01T10:00:00Z"),
+      // Moved into Tessaya: no terminal session, and none expected.
+      t(String(liveThreadId("moved")), "p", "2026-11-01T10:00:00Z", "claudeAgent"),
     ];
     const now = Date.parse("2026-11-01T10:10:00Z");
     const missing = new Map<ThreadId, number>();
@@ -181,6 +201,16 @@ describe("the thread list stays clean", () => {
     expect(endedMirrorThreads(shells, new Set(["live"]), missing, now + 3 * 60_000)).toEqual([
       liveThreadId("ended"),
     ]);
+    // The main session's thread is never archived for its session ending.
+    expect(
+      endedMirrorThreads(
+        shells,
+        new Set(["live"]),
+        new Map(missing),
+        now + 3 * 60_000,
+        String(liveThreadId("ended")),
+      ),
+    ).toEqual([]);
     const fresh = new Map<ThreadId, number>([[liveThreadId("ended"), 0]]);
     expect(
       endedMirrorThreads(shells, new Set(), fresh, Date.parse("2026-11-01T10:01:00Z")),
@@ -564,10 +594,30 @@ describe("media that only appears in text is not shown", () => {
 });
 
 const decodeAcpSettings = Schema.decodeUnknownSync(AcpRegistrySettings);
+const decodeInstanceConfig = Schema.decodeSync(ProviderInstanceConfig);
 
 describe("liveProviderInstance", () => {
   it("decodes as the acpRegistry driver's settings, so the instance and its adapter register", () => {
     const { config } = liveProviderInstance("/usr/bin/node", "/x/baton-live-acp.mjs");
     expect(decodeAcpSettings(config).customModels).toEqual(["live"]);
+  });
+
+  it("is registered off where sending cannot work, and runs on Electron as Node on the desktop", () => {
+    const off = liveProviderInstance(
+      "C:/T3/Tessaya.exe",
+      "C:/T3/resources/baton-live/baton-live-acp.mjs",
+      {
+        enabled: false,
+        electron: true,
+      },
+    );
+    expect(off.enabled).toBe(false);
+    expect(off.environment).toEqual([
+      { name: "ELECTRON_RUN_AS_NODE", value: "1", sensitive: false },
+    ]);
+    expect(decodeAcpSettings(off.config).commandPath).toBe("C:/T3/Tessaya.exe");
+    expect("environment" in liveProviderInstance("/usr/bin/node", "/x.mjs")).toBe(false);
+    // Settings hand it back decoded; it must compare equal, or the desktop rewrites settings every start.
+    expect(JSON.stringify(decodeInstanceConfig(off))).toBe(JSON.stringify(off));
   });
 });

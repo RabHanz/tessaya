@@ -159,6 +159,14 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:sessions-reattach",
       tag: BATON_SESSIONS_WS_METHODS.reattach,
     }),
+    sessionsMoveIntoTessaya: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-move-into-tessaya",
+      tag: BATON_SESSIONS_WS_METHODS.moveIntoTessaya,
+    }),
+    sessionsOpenInTerminal: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-open-in-terminal",
+      tag: BATON_SESSIONS_WS_METHODS.openInTerminal,
+    }),
     sessionsKept: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:sessions-kept",
       tag: BATON_SESSIONS_WS_METHODS.kept,

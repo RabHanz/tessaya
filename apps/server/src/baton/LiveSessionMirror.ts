@@ -69,9 +69,17 @@ import {
   type LiveTranscriptMessage,
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
 
-import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
+import {
+  BATON_LIVE_INSTANCE,
+  liveSendingUnavailable,
+  noteLiveSendingUnavailable,
+} from "./BatonLiveInstance.ts";
+import { makeSessionHomes } from "./SessionHomes.ts";
+import { carriesMain, decideMainPin } from "./MainSession.ts";
+import { pointAtSessionEvents } from "./MoveIntoTessaya.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -111,20 +119,42 @@ import { wentIdle } from "@t3tools/baton-shared/liveModel";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);
-const DRIVER = ProviderDriverKind.make("acpRegistry");
-const MODEL = "live";
+export const LIVE_DRIVER = ProviderDriverKind.make("acpRegistry");
+const DRIVER = LIVE_DRIVER;
+export const LIVE_MODEL = "live";
+const MODEL = LIVE_MODEL;
 
 /**
  * The "Terminal session" instance. Its config must decode as AcpRegistrySettings, whose customModels are bare slugs:
  * an instance that fails to decode is dropped, and every live thread then fails with "no adapter registered".
  * The agent script itself names the model "Claude Code".
  */
-export const liveProviderInstance = (node: string, script: string) => ({
+export const liveProviderInstance = (
+  node: string,
+  script: string,
+  options: {
+    /** Off when sending cannot work here: Terminal is then left out of the picker, and a turn says why. */
+    readonly enabled?: boolean;
+    /** The node is the desktop's own Electron, which runs a script only as Node. */
+    readonly electron?: boolean;
+  } = {},
+) => ({
   driver: DRIVER,
   displayName: "Terminal session",
-  enabled: true,
+  // Schema key order: the settings comparison below is by JSON, so a reordered copy would be rewritten every start.
+  ...(options.electron === true
+    ? { environment: [{ name: "ELECTRON_RUN_AS_NODE", value: "1", sensitive: false }] }
+    : {}),
+  enabled: options.enabled ?? true,
   config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
 });
+
+/** The node found is this server's own Electron, which runs a script only with ELECTRON_RUN_AS_NODE. */
+const isElectronNode = (node: string): boolean =>
+  process.env.ELECTRON_RUN_AS_NODE === "1" && node === process.execPath;
+
+const herdrPresent = (): boolean => NodeFS.existsSync(panePrompt.herdrBin());
+
 /**
  * Id namespace of live threads. "baton-live" (2026-10-27 rounds 1–2) back-filled older history
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
@@ -246,19 +276,21 @@ export const waitingPrompt = (
 /**
  * Whether the card for the prompt still on screen stays. One T3 closed comes back only when it was answered, the bridge
  * has since finished with that answer (`answeredAt`, its marker) and the prompt still shows: an answer that pressed
- * nothing. A dismissed or expired card stays closed, and a card is raised again at most once.
+ * nothing. A dismissed or expired card stays closed, and a card is raised again at most once while the session's
+ * descriptor is unchanged: a later write is a new ask, which may be the same command again.
  */
 export const keepAsk = (
-  ask: { readonly at: number; readonly again: boolean },
+  ask: { readonly at: number; readonly again: boolean; readonly updatedAt: string | null },
   state: {
     readonly pending: boolean;
     readonly answered: boolean;
     readonly answeredAt: number | null;
+    readonly updatedAt: string | null;
   },
 ) =>
   state.pending ||
   !state.answered ||
-  ask.again ||
+  (ask.again && ask.updatedAt === state.updatedAt) ||
   state.answeredAt === null ||
   state.answeredAt < ask.at;
 
@@ -276,6 +308,21 @@ const answeredAt = (sessionId: string): number | null => {
     return null;
   }
 };
+
+/**
+ * Whether a waiting session's card needs its pane read again: its descriptor changed, the last read is
+ * PROMPT_REREAD_MS old, or the bridge finished an answer since (a pressed or stale answer settles on the next tick).
+ */
+export const promptReadDue = (
+  read: { readonly updatedAt: string | null; readonly at: number } | null,
+  updatedAt: string | null,
+  nowMs: number,
+  answered: () => number | null,
+) =>
+  read === null ||
+  read.updatedAt !== updatedAt ||
+  nowMs - read.at >= PROMPT_REREAD_MS ||
+  (answered() ?? -Infinity) >= read.at;
 
 /** The T3 question a terminal prompt becomes. T3 sends its answer back as "<question>\n<answer>". */
 export const askQuestion = (found: PanePrompt, overview: string) => ({
@@ -480,6 +527,8 @@ export const findNode = (): string | null => {
   } catch {}
   const candidates = [
     process.env.BATON_LIVE_NODE,
+    // The desktop's server runs on Electron as Node: the same executable runs the agent.
+    process.env.ELECTRON_RUN_AS_NODE === "1" ? process.execPath : undefined,
     stateFile(home, "node"),
     NodePath.join(home, "bin", "node"),
     ...nvmNodes,
@@ -571,14 +620,21 @@ const MISSING_GRACE_MS = 3 * 60_000;
  * caller's memory across ticks of when each thread's session was first seen missing; this updates it.
  */
 export const endedMirrorThreads = (
-  shells: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "updatedAt">>,
+  shells: ReadonlyArray<
+    Pick<OrchestrationV2ThreadShell, "id" | "updatedAt" | "providerInstanceId">
+  >,
   liveSessionIds: ReadonlySet<string>,
   missingSince: Map<ThreadId, number>,
   nowMs: number,
+  /** The main session's thread: it stays in the list whether or not its session runs. */
+  mainThreadId: string | null = null,
 ): ReadonlyArray<ThreadId> => {
+  // A thread moved into Tessaya is off the live instance and continues without a terminal.
   const missing = shells.filter(
     (t) =>
       String(t.id).startsWith(`${PREFIX}:`) &&
+      String(t.id) !== mainThreadId &&
+      t.providerInstanceId === LIVE_INSTANCE_ID &&
       !liveSessionIds.has(String(t.id).slice(PREFIX.length + 1)),
   );
   const ids = new Set(missing.map((t) => t.id));
@@ -815,6 +871,8 @@ interface Follow {
     readonly at: number;
     /** It is the same prompt raised again, so it is not raised a third time. */
     readonly again: boolean;
+    /** The session descriptor's time when it was raised. */
+    readonly updatedAt: string | null;
   } | null;
   /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
   promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
@@ -919,6 +977,75 @@ const make = Effect.gen(function* () {
     appendResumeLog(NodePath.join(logsDir, "baton-mirror.ndjson"), record);
   };
 
+  const homes = makeSessionHomes({
+    engine,
+    stateDir,
+    instances: settings.getSettings.pipe(
+      Effect.map((current) => current.providerInstances),
+      Effect.orElseSucceed(() => ({})),
+    ),
+    log: (record) => mirrorLog(null, record),
+    live: { driver: DRIVER, model: MODEL },
+  });
+
+  /** The main session (MainSession.ts): its thread, the session it is on, and the pane that session last ran in. */
+  const mainFile = NodePath.join(stateDir, "tessaya-main.json");
+  const main = {
+    seen: yield* settings.getSettings.pipe(
+      Effect.map((current) => current.mainThreadId),
+      Effect.orElseSucceed(() => null),
+    ),
+    wasPinned: true,
+    sessionId: null as string | null,
+    pane: ((): string | null => {
+      try {
+        const pane = (JSON.parse(NodeFS.readFileSync(mainFile, "utf8")) as { pane?: unknown }).pane;
+        return typeof pane === "string" ? pane : null;
+      } catch {
+        return null;
+      }
+    })(),
+  };
+  const saveMainPane = (pane: string): void => {
+    try {
+      NodeFS.writeFileSync(mainFile, JSON.stringify({ pane }));
+    } catch {}
+  };
+  const trackMain = (mainThreadId: string | null, live: ReadonlyArray<ClaudeLiveSession>) =>
+    Effect.gen(function* () {
+      const shell =
+        mainThreadId === null ? null : yield* engine.threadShell(ThreadId.make(mainThreadId));
+      const pinned = (shell?.pinnedAt ?? null) !== null;
+      const action =
+        shell === null || (shell.archivedAt ?? null) !== null
+          ? "none"
+          : decideMainPin({
+              main: mainThreadId,
+              seenMain: main.seen,
+              pinned,
+              wasPinned: main.wasPinned,
+            });
+      if (action === "pin" && shell !== null) {
+        if (yield* engine.pinThread({ tag: "main-session", threadId: shell.id }))
+          mirrorLog(null, { event: "main-pinned", thread: mainThreadId });
+      } else if (action === "clear") {
+        yield* settings.updateSettings({ mainThreadId: null }).pipe(Effect.ignore);
+        mirrorLog(null, { event: "main-unpinned-cleared", thread: mainThreadId });
+      }
+      main.seen = action === "clear" ? null : mainThreadId;
+      main.wasPinned = action === "pin" || pinned;
+      main.sessionId =
+        mainThreadId === null
+          ? null
+          : ((yield* engine.activeProviderThread(ThreadId.make(mainThreadId)))?.nativeThreadRef
+              ?.nativeId ?? null);
+      const pane = live.find((s) => s.sessionId === main.sessionId)?.herdrPane ?? null;
+      if (pane !== null && pane !== main.pane) {
+        main.pane = pane;
+        saveMainPane(pane);
+      }
+    });
+
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
   const owned = new Set<string>();
@@ -933,14 +1060,24 @@ const make = Effect.gen(function* () {
   const ensureProviderInstance = Effect.gen(function* () {
     const script = agentScript();
     const node = findNode();
-    if (!NodeFS.existsSync(script) || node === null) {
-      yield* Effect.logWarning("Tessaya live threads: no agent script or Node, sending is off", {
+    const reason = liveSendingUnavailable({
+      platform: yield* HostProcess.Platform,
+      herdr: herdrPresent(),
+      script: NodeFS.existsSync(script),
+      node: node !== null,
+    });
+    noteLiveSendingUnavailable(reason);
+    if (reason !== null)
+      yield* Effect.logWarning("Tessaya live threads: sending is off here", {
+        reason,
         script,
         node,
       });
-      return;
-    }
-    const wanted = liveProviderInstance(node, script);
+    // Registered either way, so its threads are Terminal threads that say why, not an unknown instance.
+    const wanted = liveProviderInstance(node ?? process.execPath, script, {
+      enabled: reason === null,
+      electron: node !== null && isElectronNode(node),
+    });
     const current = (yield* settings.getSettings).providerInstances[LIVE_INSTANCE_ID];
     // @effect-diagnostics-next-line globalJsonInEffect:off - settings values, always serialisable.
     if (JSON.stringify(current) === JSON.stringify(wanted)) return;
@@ -1550,9 +1687,9 @@ const make = Effect.gen(function* () {
       if (
         session.status === "waiting" &&
         follow.ask !== null &&
-        follow.promptRead !== null &&
-        follow.promptRead.updatedAt === session.updatedAt &&
-        nowMs - follow.promptRead.at < PROMPT_REREAD_MS
+        !promptReadDue(follow.promptRead, session.updatedAt, nowMs, () =>
+          answeredAt(session.sessionId),
+        )
       )
         return;
       follow.promptRead =
@@ -1578,7 +1715,14 @@ const make = Effect.gen(function* () {
           (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending";
         const item = pending ? null : yield* engine.turnItem(follow.threadId, follow.ask.itemId);
         const answered = item?.type === "user_input_request" && item.questionAnswer !== undefined;
-        if (keepAsk(follow.ask, { pending, answered, answeredAt: answeredAt(session.sessionId) }))
+        if (
+          keepAsk(follow.ask, {
+            pending,
+            answered,
+            answeredAt: answeredAt(session.sessionId),
+            updatedAt: session.updatedAt,
+          })
+        )
           return;
       }
       const now = yield* DateTime.now;
@@ -1626,7 +1770,15 @@ const make = Effect.gen(function* () {
         resolvedAt: null,
       };
       yield* expireOtherAsks(follow, String(requestId));
-      follow.ask = { key: found.key, requestId, itemId, request, at: stamp, again };
+      follow.ask = {
+        key: found.key,
+        requestId,
+        itemId,
+        request,
+        at: stamp,
+        again,
+        updatedAt: session.updatedAt,
+      };
       const askRun = askRunId(follow.target, yield* engine.threadRuns(follow.threadId));
       yield* engine.writeEvents({
         events: [
@@ -1688,13 +1840,54 @@ const make = Effect.gen(function* () {
 
   const startFollowing = (session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      const threadId = liveThreadId(session.sessionId);
+      // A Tessaya thread's own session, open in a terminal: that thread, which already holds its history. The same for
+      // the main session restarted under a new id in its pane: it stays the main thread.
+      const home = homes.ofSession(session.sessionId);
+      const mainThreadId = main.seen;
+      const carried =
+        home === null &&
+        mainThreadId !== null &&
+        carriesMain({
+          mainSessionId: main.sessionId,
+          mainPane: main.pane,
+          liveSessionIds: new Set((yield* readAllProfileLiveSessions()).map((s) => s.sessionId)),
+          session,
+        });
+      if (carried) {
+        const thread = yield* engine.appThread(ThreadId.make(mainThreadId));
+        if (thread !== null)
+          yield* engine.writeEvents({
+            events: pointAtSessionEvents({
+              thread,
+              driver: DRIVER,
+              instanceId: LIVE_INSTANCE_ID,
+              model: MODEL,
+              sessionId: session.sessionId,
+              now: yield* DateTime.now,
+              stamp: Date.now(),
+            }),
+          });
+        main.sessionId = session.sessionId;
+        mirrorLog(null, {
+          event: "main-carried",
+          thread: mainThreadId,
+          sessionId: session.sessionId,
+        });
+      }
+      const threadId =
+        home !== null
+          ? ThreadId.make(home.threadId)
+          : carried
+            ? ThreadId.make(mainThreadId)
+            : liveThreadId(session.sessionId);
+      const keepsHistory = home !== null || carried;
       const path = transcriptPath(session);
       const size = path === null ? 0 : NodeFS.statSync(path).size;
       // Long tool-heavy sessions hold few messages per megabyte: read back until there are enough.
       let from = size;
       let history: Array<LiveTranscriptMessage> = [];
       while (
+        !keepsHistory &&
         path !== null &&
         from > 0 &&
         history.length < FIRST_MESSAGES &&
@@ -1909,6 +2102,7 @@ const make = Effect.gen(function* () {
 
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
+    yield* homes.refresh.pipe(Effect.andThen(homes.link(live)), Effect.ignoreCause({ log: true }));
     // Before any heal rewrites a thread's native id, so kept messages still find their thread.
     yield* stampKept(engine, weave).pipe(Effect.ignoreCause);
     mirrorLog("live-set", {
@@ -1952,7 +2146,12 @@ const make = Effect.gen(function* () {
     const liveIds = new Set(live.map((s) => s.sessionId));
     const open = yield* engine.threadShells;
     forgetUnarchived(endedArchived, open);
-    for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now())) {
+    const mainThreadId = yield* settings.getSettings.pipe(
+      Effect.map((current) => current.mainThreadId),
+      Effect.orElseSucceed(() => null),
+    );
+    yield* trackMain(mainThreadId, live).pipe(Effect.ignoreCause({ log: true }));
+    for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now(), mainThreadId)) {
       if (continued.has(id)) continue;
       if (sentFromT3(yield* threadMessages(id))) continued.add(id);
       else if (yield* engine.archiveThread({ tag: "live", threadId: id })) {

@@ -361,7 +361,7 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..3657fed3ba0b4328c87a71312f3b7e268d445596 100644
+index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..029cbbad9c993e95b43af5367f28e9a39ec484ba 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,5 @@
@@ -448,15 +448,18 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..3657fed3ba0b4328c87a71312f3b7e26
    const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
    const providerSessions = yield* ProviderSessionManagerV2;
    const providerSwitchService = yield* ProviderSwitchServiceV2;
-@@ -3538,6 +3600,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
-       }
-     }
- 
+@@ -3557,9 +3619,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           )
+           .pipe(mapDispatchError(command))
+       : null;
 +    if (command.type === "thread.model-selection.set" || command.type === "provider.switch") {
 +      const liveRefusal = liveThreadSwitchRefusal({
 +        threadId: command.threadId,
 +        currentInstance: thread.providerInstanceId,
 +        targetInstance: command.modelSelection.instanceId,
++        activeNativeId:
++          providerContext!.providerThreads.find((p) => p.id === thread.activeProviderThreadId)
++            ?.nativeThreadRef?.nativeId ?? null,
 +      });
 +      if (liveRefusal !== null) {
 +        yield* Effect.logWarning("live-thread-new-session-blocked", {
@@ -471,10 +474,6 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..3657fed3ba0b4328c87a71312f3b7e26
 +        });
 +      }
 +    }
-     const needsProviderState =
-       command.type === "thread.runtime-mode.set" ||
-       command.type === "thread.model-selection.set" ||
-@@ -3560,6 +3641,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      const providerSwitchPlan =
        command.type === "thread.model-selection.set" || command.type === "provider.switch"
          ? yield* Effect.gen(function* () {
@@ -488,7 +487,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..3657fed3ba0b4328c87a71312f3b7e26
              yield* providerAdapters.get(command.modelSelection.instanceId).pipe(
                Effect.mapError(
                  (cause) =>
-@@ -5825,7 +5913,35 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5825,7 +5916,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ]);
        projection = applyToProjection(projection, event);
      }
@@ -502,6 +501,9 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..3657fed3ba0b4328c87a71312f3b7e26
 +      threadId: command.threadId,
 +      currentInstance: projection.thread.providerInstanceId,
 +      targetInstance: modelSelection.instanceId,
++      activeNativeId:
++        projection.providerThreads.find((p) => p.id === projection.thread.activeProviderThreadId)
++          ?.nativeThreadRef?.nativeId ?? null,
 +    });
 +    if (liveRefusal !== null) {
 +      yield* Effect.logWarning("live-thread-new-session-blocked", {
@@ -525,7 +527,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..3657fed3ba0b4328c87a71312f3b7e26
      let dispatchMode = resolveMessageDispatchIntent(
        projection,
        command.dispatchMode,
-@@ -6575,6 +6691,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6575,6 +6697,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
@@ -582,10 +584,22 @@ index 54b16d7aa2aef6d888a9b5eecb787bac19eaa0e6..e3e955efd3e550c4b96debe9d184b292
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 46ea45431055488dec1344429bcc791bb4be1f19..4975e5f1ebbb9722fbfa35c1712ec0bb45f14644 100644
+index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd57dca599 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-@@ -61,11 +61,13 @@ import * as Orchestrator from "./Orchestrator.ts";
+@@ -2,6 +2,11 @@ import type {
+   OrchestrationV2SearchThreadInput,
+   OrchestrationV2SearchThreadResult,
+ } from "@t3tools/contracts";
++import {
++  BATON_LIVE_INSTANCE,
++  liveSendingRefusal,
++  liveSendingUnavailableReason,
++} from "../baton/BatonLiveInstance.ts";
+ import type {
+   ProjectionRecordField,
+   ProjectionRecordFilter,
+@@ -61,11 +66,13 @@ import * as Orchestrator from "./Orchestrator.ts";
  import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
  import { projectedRowEncodedBytes } from "./threadHistoryPaging.ts";
  import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -599,16 +613,19 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..4975e5f1ebbb9722fbfa35c1712ec0bb
  
  export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
  
-@@ -320,7 +322,7 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
+@@ -320,7 +327,10 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
    },
  ) {
    override get message(): string {
 -    return `Provider instance "${this.instanceId}" is disabled for project ${this.projectId}.`;
++    // Tessaya: the Terminal instance is off only where sending cannot work; say why in his words.
++    if (this.instanceId === BATON_LIVE_INSTANCE)
++      return liveSendingRefusal(liveSendingUnavailableReason());
 +    return `Provider instance "${instanceLabel(this.instanceId)}" is disabled for project ${this.projectId}.`;
    }
  }
  
-@@ -670,9 +672,21 @@ const make = Effect.gen(function* () {
+@@ -670,9 +680,21 @@ const make = Effect.gen(function* () {
        Effect.andThen(orchestrator.getCheckpointContext(threadId)),
      );
  
@@ -630,7 +647,7 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..4975e5f1ebbb9722fbfa35c1712ec0bb
      );
    const getThreadTranscript = Effect.fn("orchestrationV2.threadManagement.getThreadTranscript")(
      function* (threadId: ThreadId) {
-@@ -706,6 +720,7 @@ const make = Effect.gen(function* () {
+@@ -706,6 +728,7 @@ const make = Effect.gen(function* () {
    ) =>
      ensureProjectionTranscript(threadId).pipe(
        Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),
@@ -1265,13 +1282,18 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index f6409a87074fda1cc83a97b39a484abaa519ed02..71d732ade26768b62e0d7c256d54604bc28ed1d4 100644
+index f6409a87074fda1cc83a97b39a484abaa519ed02..8a095a49a75251ec47c653579ba552ae6301dae9 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1267,8 +1267,9 @@ export const ServerSettings = Schema.Struct({
+@@ -1267,8 +1267,14 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
++  // Tessaya: where a new session starts (a Tessaya thread, or a Herdr pane), and the thread kept pinned as the main one.
++  newSessionsRun: Schema.Literals(["tessaya", "terminal"]).pipe(
++    Schema.withDecodingDefault(Effect.succeed("tessaya" as const)),
++  ),
++  mainThreadId: Schema.NullOr(TrimmedString).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
 +  // Off in Tessaya: after a restart a thread comes back stopped and resumable, never a Claude process the user did not ask for.
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
 -    Schema.withDecodingDefault(Effect.succeed(true)),
@@ -1279,3 +1301,12 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..71d732ade26768b62e0d7c256d54604b
    ),
  
    enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+@@ -1689,6 +1695,8 @@ export const ServerSettingsPatch = Schema.Struct({
+   worktreesDirectory: Schema.optionalKey(TrimmedString),
+   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
++  newSessionsRun: Schema.optionalKey(Schema.Literals(["tessaya", "terminal"])),
++  mainThreadId: Schema.optionalKey(Schema.NullOr(TrimmedString)),
+   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
+   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
+   cloudSpeechCredentials: Schema.optionalKey(

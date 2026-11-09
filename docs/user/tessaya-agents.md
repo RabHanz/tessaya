@@ -23,6 +23,12 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 - `weave_list` shows those messages, newest first: whether each arrived, and what the session wrote back.
 - Add `environmentId` to reach a session on a linked environment. A link paired below **Full access** cannot send.
 
+## Move sessions between Tessaya and a terminal
+
+- `tessaya_move_into_tessaya` asks you to move a Terminal thread's session into Tessaya. It only files the request: Tessaya asks you on your screen, and nothing moves until you say yes. T3's own thread agents can use it too.
+- `tessaya_open_in_terminal` opens a Tessaya Claude thread's session in a Herdr pane; the thread comes back when the pane closes. On the agent's own thread it opens at once; on any other thread it asks you first. It is refused while a turn runs.
+- `tessaya_main_session` makes a thread the main session (pinned once, kept on that thread when it restarts in the same Herdr pane) or stops it being one. `tessaya_session_defaults` reads where new sessions start and which thread is the main one; only you change these, in Settings.
+
 ## Agents messaging each other
 
 An agent messages another agent's thread with `t3_thread_send`, here or on a linked environment (`environmentId`). To reach a session in a terminal pane that has no thread, use `weave_send`.

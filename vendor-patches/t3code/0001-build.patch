@@ -482,7 +482,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..7244389061b6f0f7a953345b7b6369fa
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74f86d8bf9 100644
+index 599c6b809a18ff4ce320c9780c87bd244d94dad3..955d56acafb64ddda8e19918396acafa363aa8bc 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -561,7 +561,16 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1099,6 +1131,20 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1090,6 +1122,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+   WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
+   WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
+ ] as const;
++/** The Terminal-thread agent and what it imports (Node built-ins otherwise). */
++export const BATON_LIVE_AGENT_FILES = ["baton-live-acp.mjs", "pane-prompt.mjs"] as const;
+ export const DESKTOP_EXTRA_RESOURCES = [
+   {
+     from: "apps/desktop/prod-resources/cursor-sdk",
+@@ -1099,6 +1133,25 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -579,10 +588,15 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
 +    from: "apps/desktop/prod-resources/memory-model",
 +    to: "memory-model",
 +  },
++  // The Terminal-thread agent (scripts/tessaya/live), which the bundled server runs with Electron as Node.
++  {
++    from: "apps/desktop/prod-resources/baton-live",
++    to: "baton-live",
++  },
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2393,131 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2400,131 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -714,7 +728,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +2963,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +2970,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -722,7 +736,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3148,6 +3320,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3148,6 +3327,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -742,7 +756,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3411,6 +3596,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3411,6 +3603,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -789,7 +803,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3772,6 +3997,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3772,6 +4004,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -803,7 +817,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3804,6 +4036,11 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3804,6 +4043,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
@@ -812,6 +826,13 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74
 +    path.join(repoRoot, "apps/server/resources/memory-model"),
 +    path.join(stageProdResourcesDir, "memory-model"),
 +  );
++  yield* fs.makeDirectory(path.join(stageProdResourcesDir, "baton-live"), { recursive: true });
++  for (const file of BATON_LIVE_AGENT_FILES) {
++    yield* fs.copy(
++      path.join(repoRoot, "scripts/tessaya/live", file),
++      path.join(stageProdResourcesDir, "baton-live", file),
++    );
++  }
  
    const configuredMacPasskeySigning =
      options.platform === "mac" && options.signed

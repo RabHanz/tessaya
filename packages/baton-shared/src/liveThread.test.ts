@@ -33,6 +33,18 @@ describe("a mirrored live thread", () => {
     expect(ok(live, "claudeAgent", "claudeAgent")).toContain("handoff session");
     expect(ok("import:claudeAgent:x", "claudeAgent", "codex")).toBeNull();
   });
+  it("treats a thread moved into Tessaya on its own session id as ordinary, and a twin as a twin", () => {
+    const pick = (activeNativeId: string, targetInstance: string) =>
+      liveThreadSwitchRefusal({
+        threadId: live,
+        currentInstance: "claude-work",
+        targetInstance,
+        activeNativeId,
+      });
+    expect(pick("cc828d1b", "claude-work")).toBeNull();
+    expect(pick("cc828d1b", "claude-home")).toBeNull();
+    expect(pick("a-new-session", "claude-work")).toContain("handoff session");
+  });
   it("shows its title without the account and machine the mirror appends, and never cuts real text", () => {
     const known = knownTitleSuffixes({
       accounts: [{ label: "Work", email: "someone@example.com" }],

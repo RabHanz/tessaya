@@ -8,6 +8,8 @@ import {
   BatonCatalogListResult,
   BatonFleetResult,
   BatonJobListResult,
+  BatonOpenInTerminalResult,
+  BatonSessionDefaultsResult,
   BatonMemorySearchResult,
   BatonMemoryHistoryResult,
   BatonRecordListInput,
@@ -21,7 +23,11 @@ import {
   OrchestrationRuleListResult,
   WatchResult,
 } from "@t3tools/baton-contracts";
-import { OrchestratorMcpEnvironmentTarget, OrchestratorMcpFailure } from "@t3tools/contracts";
+import {
+  OrchestratorMcpEnvironmentTarget,
+  OrchestratorMcpFailure,
+  ThreadId,
+} from "@t3tools/contracts";
 import { DESKTOP_STATE_SECTIONS } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
@@ -268,6 +274,56 @@ const StateTool = Tool.make("tessaya_state", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+// Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
+const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
+  ...shared,
+  description:
+    "Ask the Director to move a Terminal thread's Claude session into Tessaya: its terminal process ends and the same conversation continues as a Tessaya thread. It only files the request: he approves or refuses it on his own screen, and nothing moves before that. Returns an id; outside agents follow it with `tessaya_ask_status`.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: AskResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+/** Opened (its own thread), or the request the Director answers (anyone else's). */
+export const OpenInTerminalReply = Schema.Union([BatonOpenInTerminalResult, AskResult]);
+const OpenInTerminalTool = Tool.make("tessaya_open_in_terminal", {
+  ...shared,
+  description:
+    "Open a Tessaya Claude thread's session in a Herdr terminal pane on the thread's own login; the thread follows the pane and comes back when it closes. On your own thread it opens at once. On any other thread it only files a request the Director answers on his screen (an id for `tessaya_ask_status`). Refused while a turn runs.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: OpenInTerminalReply,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+const MainSessionTool = Tool.make("tessaya_main_session", {
+  ...shared,
+  description:
+    "Make a thread the main session (main: true), which Tessaya pins once and keeps on that thread when its session restarts in the same Herdr pane, or stop it being the main one (main: false).",
+  parameters: Schema.Struct({ threadId: ThreadId, main: Schema.Boolean }),
+  success: BatonSessionDefaultsResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const SessionDefaultsTool = Tool.make("tessaya_session_defaults", {
+  ...shared,
+  description:
+    "Read only: where a new session from the sessions list starts (`tessaya`: a Tessaya thread, `terminal`: a Herdr pane) and which thread is the main session. Only the user changes these, in Settings.",
+  success: BatonSessionDefaultsResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -284,4 +340,8 @@ export const TessayaToolkit = Toolkit.make(
   WeaveSendTool,
   WeaveListTool,
   StateTool,
+  MoveIntoTessayaTool,
+  OpenInTerminalTool,
+  MainSessionTool,
+  SessionDefaultsTool,
 );

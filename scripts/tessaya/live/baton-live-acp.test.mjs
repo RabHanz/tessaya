@@ -8,6 +8,8 @@ import * as NodeReadline from "node:readline";
 import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
+import { herdrBin } from "./pane-prompt.mjs";
+
 import { LIVE_EFFORT_CHOICES } from "../../../packages/baton-shared/src/liveModel.ts";
 import {
   effortConfigOption,
@@ -73,6 +75,14 @@ const fixture = (name) =>
     "utf8",
   );
 
+NodeTest.test("herdrBin is BATON_HERDR_BIN or ~/.local/bin/herdr, never PATH", () => {
+  NodeAssert.equal(herdrBin({ BATON_HERDR_BIN: "/opt/herdr" }), "/opt/herdr");
+  NodeAssert.equal(
+    herdrBin({ PATH: "/usr/bin" }),
+    NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr"),
+  );
+});
+
 NodeTest.test("a permission dialog on the screen is read with its options (D88)", () => {
   const prompt = parsePanePrompt(fixture("pane-permission.txt"));
   NodeAssert.equal(
@@ -87,6 +97,23 @@ NodeTest.test("a permission dialog on the screen is read with its options (D88)"
   NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["down", "enter"], text: null });
   NodeAssert.deepEqual(answerKeys(prompt, "1"), { keys: ["enter"], text: null });
   NodeAssert.equal(answerKeys(prompt, "maybe"), null, "no free text where none is offered");
+});
+
+NodeTest.test("a ticking line in a permission dialog does not change its card", () => {
+  for (const [name, from, to] of [
+    ["pane-permission-countdown.txt", "in 1:58,", "in 1:48,"],
+    ["pane-permission-tokens.txt", "(12s · ↓ 3.4k tokens) · 40%", "(13s · ↓ 3.5k tokens) · 41%"],
+  ]) {
+    const first = fixture(name);
+    const redraw = first.replace(from, to);
+    NodeAssert.notEqual(redraw, first, name);
+    for (const parse of [parsePanePrompt, parseWaitingScreen]) {
+      const [a, b] = [parse(first), parse(redraw)];
+      NodeAssert.equal(a.key, b.key, name);
+      NodeAssert.equal(a.question, b.question, "the same ref, so an answer still fits");
+      NodeAssert.ok(isCardAnswer(`${a.question}\nAllow`, b));
+    }
+  }
 });
 
 NodeTest.test("an AskUserQuestion is read with its header, descriptions and free-text slot", () => {
