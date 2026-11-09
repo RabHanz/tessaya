@@ -41,10 +41,10 @@ export function useBatonThreadHeader(
     account === undefined || (account.fiveHour === null && account.weekly === null)
       ? null
       : Math.round(Math.max(account.fiveHour?.usedPercent ?? 0, account.weekly?.usedPercent ?? 0));
-  const subtitle =
-    [terminal ? "Terminal" : null, used === null ? null : `${used}% used`]
-      .filter(Boolean)
-      .join(" · ") || null;
+  const parts = [terminal ? "Terminal" : null, used === null ? null : `${used}% used`].filter(
+    (part) => part !== null,
+  );
+  const subtitle = parts.length === 0 ? null : parts.join(" · ");
   if (account === undefined) return { subtitle, action: null };
   return {
     subtitle,
