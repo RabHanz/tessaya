@@ -939,6 +939,7 @@ it.effect(
                 text: id,
                 attachments: [],
                 modelSelection: selection,
+                providerChangeApproved: true,
                 dispatchMode: { type: "steer_active", targetRunId: started[0]!.runId },
                 createdBy: "user",
                 creationSource: "web",

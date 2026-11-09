@@ -488,6 +488,8 @@ export function resolveComposerProviderSelection(input: {
   candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
   lockedProvider: ProviderDriverKind | null;
   lockedInstanceId: ProviderInstanceId | null | undefined;
+  /** The user's pick for a provider handoff: the only way a started thread leaves its driver. */
+  handoffInstanceId?: ProviderInstanceId | null | undefined;
 }) {
   const requestedInstanceId = input.candidateInstanceIds.find(
     (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
@@ -512,7 +514,15 @@ export function resolveComposerProviderSelection(input: {
       (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
       (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
   );
+  const handoffEntry = input.entries.find(
+    (entry) =>
+      input.handoffInstanceId != null &&
+      entry.instanceId === input.handoffInstanceId &&
+      entry.enabled &&
+      entry.isAvailable,
+  );
   const selectedProviderEntry =
+    handoffEntry ??
     input.candidateInstanceIds
       .map((candidate) =>
         compatibleEntries.find(

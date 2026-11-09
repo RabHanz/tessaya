@@ -33,6 +33,8 @@ export async function resumeThread<E>(input: {
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly modelSelection: ModelSelection | null;
+  /** The user picked `modelSelection` in the picker. */
+  readonly providerChangeApproved: boolean;
   readonly messageId: MessageId;
   readonly createdAt: string;
   readonly setRuntimeMode: Command<SetThreadRuntimeModeInput, E>;
@@ -66,6 +68,7 @@ export async function resumeThread<E>(input: {
         threadId: thread.id,
         manualContinuationOfRunId: input.resumableRunId,
         ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
+        ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
         message: {
           messageId: input.messageId,
           role: "user",

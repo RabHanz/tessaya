@@ -1,0 +1,542 @@
+Provider change guard (Director, 2026-11-09): a started thread keeps its provider unless the user picks
+another. The composer no longer falls back to the first ready provider for an existing thread, and a
+turn that changes a thread's driver needs message.dispatch's providerChangeApproved.
+
+diff --git a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
+index 80a3e8643a567176df20717e36360bc1334071b8..595f46a5eb9b6c68bb13162d9810dcd28cc837d4 100644
+--- a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
++++ b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
+@@ -669,6 +669,7 @@ function ThreadRouteContent(
+       runtimeMode: composer.runtimeMode ?? selectedThread.runtimeMode,
+       interactionMode: composer.interactionMode ?? selectedThread.interactionMode,
+       modelSelection: composer.modelSelection,
++      providerChangeApproved: composer.providerChangeApproved,
+       messageId: MessageId.make(uuidv4()),
+       createdAt: new Date().toISOString(),
+       setRuntimeMode: setThreadRuntimeMode,
+diff --git a/apps/mobile/src/features/threads/resume-thread.test.ts b/apps/mobile/src/features/threads/resume-thread.test.ts
+index 3520f72293f89697f68043295020b9645956ac3e..ac76ffed0900af0c2d8e27c560b568d21d477910 100644
+--- a/apps/mobile/src/features/threads/resume-thread.test.ts
++++ b/apps/mobile/src/features/threads/resume-thread.test.ts
+@@ -26,6 +26,7 @@ function setup(options: { readonly startTurnFails?: boolean } = {}) {
+     runtimeMode: "full-access",
+     interactionMode: "default",
+     modelSelection: null,
++    providerChangeApproved: false,
+     messageId: MessageId.make("message"),
+     createdAt: "2026-10-30T00:00:00.000Z",
+     setRuntimeMode: record("setRuntimeMode"),
+diff --git a/apps/mobile/src/features/threads/resume-thread.ts b/apps/mobile/src/features/threads/resume-thread.ts
+index e11242386825448233eb004a3feaef186f155d8b..d45160f998dc25a41d7b29d4dabc28b80333b5d3 100644
+--- a/apps/mobile/src/features/threads/resume-thread.ts
++++ b/apps/mobile/src/features/threads/resume-thread.ts
+@@ -33,6 +33,8 @@ export async function resumeThread<E>(input: {
+   readonly runtimeMode: RuntimeMode;
+   readonly interactionMode: ProviderInteractionMode;
+   readonly modelSelection: ModelSelection | null;
++  /** The user picked `modelSelection` in the picker. */
++  readonly providerChangeApproved: boolean;
+   readonly messageId: MessageId;
+   readonly createdAt: string;
+   readonly setRuntimeMode: Command<SetThreadRuntimeModeInput, E>;
+@@ -66,6 +68,7 @@ export async function resumeThread<E>(input: {
+         threadId: thread.id,
+         manualContinuationOfRunId: input.resumableRunId,
+         ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
++        ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
+         message: {
+           messageId: input.messageId,
+           role: "user",
+diff --git a/apps/mobile/src/state/thread-outbox-model.ts b/apps/mobile/src/state/thread-outbox-model.ts
+index 4796ec19f27ec84d2860e30f35ec9d3b312a223f..e11a59d08dd02019470f44284b38b63d546ea81b 100644
+--- a/apps/mobile/src/state/thread-outbox-model.ts
++++ b/apps/mobile/src/state/thread-outbox-model.ts
+@@ -55,6 +55,7 @@ export const QueuedThreadMessageSchema = Schema.Struct({
+   context: Schema.optional(OrchestrationMessageContext),
+   attachments: Schema.Array(DraftComposerAttachmentSchema),
+   modelSelection: Schema.optional(ModelSelection),
++  providerChangeApproved: Schema.optional(Schema.Boolean),
+   dispatchMode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
+   compactBeforeSend: Schema.optional(Schema.Boolean),
+   freshContext: Schema.optional(Schema.Boolean),
+@@ -87,6 +88,8 @@ export interface QueuedThreadMessage {
+   readonly context?: OrchestrationMessageContext;
+   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
+   readonly modelSelection?: ModelSelectionType;
++  /** The user picked `modelSelection` in the picker, so it may move the thread to another provider. */
++  readonly providerChangeApproved?: boolean;
+   readonly runtimeMode?: RuntimeModeType;
+   readonly interactionMode?: ProviderInteractionModeType;
+   /** Captured at enqueue because draining may occur long after the tap. */
+diff --git a/apps/mobile/src/state/threadOutboxDelivery.ts b/apps/mobile/src/state/threadOutboxDelivery.ts
+index 9b2da676eee44929c56d9d47cc34b8ebf24224ee..4d29b5add024d445f6a1a157d9df5cf7c7421f6f 100644
+--- a/apps/mobile/src/state/threadOutboxDelivery.ts
++++ b/apps/mobile/src/state/threadOutboxDelivery.ts
+@@ -891,6 +891,7 @@ export function createThreadOutboxDelivery(): {
+             idleCompaction: "onReturn",
+           },
+           modelSelection: sendSettings.modelSelection,
++          providerChangeApproved: queuedMessage.providerChangeApproved === true,
+           runtimeMode: sendSettings.runtimeMode,
+           interactionMode: sendSettings.interactionMode,
+           createdAt: queuedMessage.createdAt,
+@@ -926,6 +927,7 @@ export function createThreadOutboxDelivery(): {
+           attachments: prepared.attachments,
+         },
+         modelSelection: sendSettings.modelSelection,
++        providerChangeApproved: queuedMessage.providerChangeApproved === true,
+         titleSeed: deriveThreadTitleSeed({
+           text: queuedMessage.text,
+           attachments: queuedMessage.attachments,
+diff --git a/apps/mobile/src/state/use-thread-composer-state.ts b/apps/mobile/src/state/use-thread-composer-state.ts
+index e19009fcc16baee77d696605cfcf98e0b8566cd7..3e3813ba6e322843cbb667be001dbe5309a52e4d 100644
+--- a/apps/mobile/src/state/use-thread-composer-state.ts
++++ b/apps/mobile/src/state/use-thread-composer-state.ts
+@@ -780,6 +780,7 @@ export function useThreadComposerState(input: {
+       attachments,
+       context: draft.context,
+       modelSelection,
++      ...(draft.modelSelection !== undefined ? { providerChangeApproved: true } : {}),
+       runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
+       interactionMode: resolveProviderInteractionMode(
+         provider,
+@@ -904,6 +905,7 @@ export function useThreadComposerState(input: {
+     cancelQueuedRunEdit,
+     onRemoveQueuedEditAttachment,
+     modelSelection,
++    providerChangeApproved: selectedDraft.modelSelection !== undefined,
+     pendingHandoff,
+     canSwitchThreadProvider,
+     runtimeMode,
+diff --git a/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts b/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
+index 2b08c0b8345b6a1bbf62c21902ef9c089aa29fdf..7c63d5ad77efcb4e9dbb996175fb6473b99ac788 100644
+--- a/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
++++ b/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
+@@ -939,6 +939,7 @@ it.effect(
+                 text: id,
+                 attachments: [],
+                 modelSelection: selection,
++                providerChangeApproved: true,
+                 dispatchMode: { type: "steer_active", targetRunId: started[0]!.runId },
+                 createdBy: "user",
+                 creationSource: "web",
+diff --git a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
+index e9b26369983860b841824b82970a0ad64d2b8ab2..53df100b31f29111ea6c1b6a71345293e0e2fbe9 100644
+--- a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
++++ b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
+@@ -582,6 +582,7 @@ describe("orchestration v2 provider switching", () => {
+           const dispatch = (ordinal: number, text: string, selection: ModelSelection) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               commandId: CommandId.make(`regression:${ordinal}`),
+               threadId,
+               messageId: MessageId.make(`regression:${ordinal}`),
+@@ -1087,6 +1088,7 @@ describe("orchestration v2 provider switching", () => {
+             const dispatch = (ordinal: number, text: string, selection: ModelSelection) =>
+               orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(`retry:${ordinal}`),
+                 threadId,
+                 messageId: MessageId.make(`retry:${ordinal}`),
+@@ -1253,6 +1255,7 @@ describe("orchestration v2 provider switching", () => {
+             const runToCompletion = Effect.fn("runToCompletion")(function* (ordinal: number) {
+               yield* orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(`resume-fallback:${ordinal}`),
+                 threadId,
+                 messageId: MessageId.make(`resume-fallback:${ordinal}`),
+@@ -1399,6 +1402,7 @@ describe("orchestration v2 provider switching", () => {
+               }
+               yield* orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(`handoff-order:${ordinal}`),
+                 threadId,
+                 messageId: MessageId.make(`handoff-order:${ordinal}`),
+@@ -1513,6 +1517,7 @@ describe("orchestration v2 provider switching", () => {
+           const run = Effect.fn("run")(function* (ordinal: number) {
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               commandId: CommandId.make(`refused-start:${ordinal}`),
+               threadId,
+               messageId: MessageId.make(`refused-start:${ordinal}`),
+@@ -1665,6 +1670,7 @@ describe("orchestration v2 provider switching", () => {
+           ) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               commandId: CommandId.make(`command:handoff:${key}`),
+               threadId,
+               messageId: MessageId.make(`message:handoff:${key}`),
+@@ -1829,6 +1835,7 @@ describe("orchestration v2 provider switching", () => {
+             });
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:queued-capability:first:${key}`),
+@@ -1843,6 +1850,7 @@ describe("orchestration v2 provider switching", () => {
+             yield* worker.drain();
+             const queue = orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:queued-capability:claude:${key}`),
+@@ -1939,6 +1947,7 @@ describe("orchestration v2 provider switching", () => {
+           ) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:queued-steer-provider-switch:${key}`),
+@@ -2135,6 +2144,14 @@ describe("orchestration v2 provider switching", () => {
+             responseByRunOrdinal: { 2: "Alternate account complete" },
+             capturedTurns,
+           }),
++          makeTestAdapter({
++            instanceId: CLAUDE_MODEL_SELECTION.instanceId,
++            driver: CLAUDE_DRIVER,
++            capabilities: ClaudeProviderCapabilitiesV2,
++            modelSelection: CLAUDE_MODEL_SELECTION,
++            responseByRunOrdinal: {},
++            capturedTurns,
++          }),
+         ];
+         const layerRegistry = Layer.succeed(
+           ProviderAdapterRegistry.ProviderAdapterRegistryV2,
+@@ -2143,7 +2160,9 @@ describe("orchestration v2 provider switching", () => {
+               const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
+               return adapter === undefined
+                 ? Effect.fail(
+-                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({ instanceId }),
++                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({
++                      instanceId,
++                    }),
+                   )
+                 : Effect.succeed(adapter);
+             },
+@@ -2152,7 +2171,9 @@ describe("orchestration v2 provider switching", () => {
+               const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
+               return adapter === undefined
+                 ? Effect.fail(
+-                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({ instanceId }),
++                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({
++                      instanceId,
++                    }),
+                   )
+                 : Effect.succeed({
+                     driver: CODEX_DRIVER,
+@@ -2198,6 +2219,50 @@ describe("orchestration v2 provider switching", () => {
+             dispatchMode: { type: "start_immediately" },
+           });
+           yield* Deferred.await(started);
++          const refused = yield* orchestrator
++            .dispatch({
++              type: "message.dispatch",
++              createdBy: "user",
++              creationSource: "web",
++              commandId: CommandId.make("command:queued-account-switch:other-driver"),
++              threadId: queuedThreadId,
++              messageId: MessageId.make("message:queued-account-switch:other-driver"),
++              text: "Another provider's turn",
++              attachments: [],
++              modelSelection: CLAUDE_MODEL_SELECTION,
++              dispatchMode: { type: "queue_after_active" },
++            })
++            .pipe(Effect.flip);
++          assert.include(String("cause" in refused ? refused.cause : refused), "will not move it");
++          for (const command of [
++            {
++              type: "thread.model-selection.set" as const,
++              commandId: CommandId.make("command:queued-account-switch:select-other-driver"),
++              threadId: queuedThreadId,
++              modelSelection: CLAUDE_MODEL_SELECTION,
++            },
++            {
++              type: "message.dispatch" as const,
++              createdBy: "user" as const,
++              creationSource: "web" as const,
++              commandId: CommandId.make("command:queued-account-switch:unknown-provider"),
++              threadId: queuedThreadId,
++              messageId: MessageId.make("message:queued-account-switch:unknown-provider"),
++              text: "A provider this server does not have",
++              attachments: [],
++              modelSelection: {
++                ...CLAUDE_MODEL_SELECTION,
++                instanceId: ProviderInstanceId.make("gone"),
++              },
++              dispatchMode: { type: "queue_after_active" as const },
++            },
++          ]) {
++            const refusedCommand = yield* orchestrator.dispatch(command).pipe(Effect.flip);
++            assert.include(
++              String("cause" in refusedCommand ? refusedCommand.cause : refusedCommand),
++              "will not move it",
++            );
++          }
+           yield* orchestrator.dispatch({
+             type: "message.dispatch",
+             createdBy: "user",
+@@ -2326,6 +2391,7 @@ describe("orchestration v2 provider switching", () => {
+           const dispatch = (ordinal: number, modelSelection: ModelSelection) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:queued-provider-switch:${ordinal}`),
+@@ -2612,6 +2678,7 @@ describe("orchestration v2 provider switching", () => {
+           const send = (ordinal: number, modelSelection: ModelSelection, attempt = "") =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:handoff-releases-session:${ordinal}${attempt}`),
+@@ -2816,6 +2883,7 @@ describe("orchestration v2 provider switching", () => {
+             ) =>
+               orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 createdBy: "user",
+                 creationSource: "web",
+                 commandId: CommandId.make(`command:fresh-context:${key}:${name}`),
+@@ -2986,6 +3054,7 @@ describe("orchestration v2 provider switching", () => {
+           ) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:fresh-context-reserved:${name}`),
+@@ -3148,6 +3217,7 @@ describe("orchestration v2 provider switching", () => {
+             const dispatch = (text: string, modelSelection: ModelSelection) =>
+               orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(text),
+                 messageId: MessageId.make(text),
+                 threadId,
+@@ -3340,6 +3410,7 @@ describe("orchestration v2 provider switching", () => {
+           });
+           yield* orchestrator.dispatch({
+             type: "message.dispatch",
++            providerChangeApproved: true,
+             createdBy: "user",
+             creationSource: "web",
+             commandId: CommandId.make("command:queued-handoff-rejection:first"),
+@@ -3391,6 +3462,7 @@ describe("orchestration v2 provider switching", () => {
+           });
+           yield* orchestrator.dispatch({
+             type: "message.dispatch",
++            providerChangeApproved: true,
+             createdBy: "user",
+             creationSource: "web",
+             commandId: CommandId.make("command:queued-handoff-rejection:claude"),
+@@ -3403,6 +3475,7 @@ describe("orchestration v2 provider switching", () => {
+           });
+           yield* orchestrator.dispatch({
+             type: "message.dispatch",
++            providerChangeApproved: true,
+             createdBy: "user",
+             creationSource: "web",
+             commandId: CommandId.make("command:queued-handoff-rejection:later"),
+@@ -3674,6 +3747,7 @@ describe("orchestration v2 provider switching", () => {
+ 
+           yield* orchestrator.dispatch({
+             type: "message.dispatch",
++            providerChangeApproved: true,
+             createdBy: "user",
+             creationSource: "web",
+             commandId: CommandId.make("command:provider-switch:legacy-import:failed"),
+@@ -3691,6 +3765,7 @@ describe("orchestration v2 provider switching", () => {
+           }
+           yield* orchestrator.dispatch({
+             type: "message.dispatch",
++            providerChangeApproved: true,
+             createdBy: "user",
+             creationSource: "web",
+             commandId: CommandId.make("command:provider-switch:legacy-import:recovery"),
+diff --git a/apps/web/src/components/ChatView.logic.test.ts b/apps/web/src/components/ChatView.logic.test.ts
+index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..8d883034861c6d50de485e968c9ee4735e4ac457 100644
+--- a/apps/web/src/components/ChatView.logic.test.ts
++++ b/apps/web/src/components/ChatView.logic.test.ts
+@@ -596,6 +596,30 @@ describe("resolveComposerProviderSelection", () => {
+     },
+   );
+ 
++  it("keeps a thread on its missing instance under handoff until the user picks another", () => {
++    const codex = entry("codex");
++    const claude = entry("claudeAgent");
++    const missingInstanceId = ProviderInstanceId.make("baton-live");
++    const thread = importedThread(missingInstanceId);
++    const resolve = (handoffInstanceId: ProviderInstanceId | null) =>
++      resolveComposerProviderSelection({
++        entries: [codex, claude],
++        candidateInstanceIds: [handoffInstanceId, missingInstanceId, codex.instanceId],
++        lockedProvider: deriveLockedProvider({
++          thread,
++          selectedProvider: handoffInstanceId,
++          threadProvider: missingInstanceId,
++          providers: [codex.snapshot, claude.snapshot],
++        }),
++        lockedInstanceId: missingInstanceId,
++        handoffInstanceId,
++      });
++
++    expect(resolve(null).selectedProviderEntry).toBeUndefined();
++    expect(resolve(null).unavailableProviderInstanceId).toBe(missingInstanceId);
++    expect(resolve(claude.instanceId).selectedProviderEntry?.instanceId).toBe(claude.instanceId);
++  });
++
+   it("keeps a signed-out selection instead of silently switching providers", () => {
+     const signedOutEntry = entry("antigravity", "google_work", {
+       status: "error",
+diff --git a/apps/web/src/components/ChatView.logic.ts b/apps/web/src/components/ChatView.logic.ts
+index d4b54a7e5a84800802f427863210cda70c8bc6f1..8aaef626bdc1549141f67e3d30feac10a72c096e 100644
+--- a/apps/web/src/components/ChatView.logic.ts
++++ b/apps/web/src/components/ChatView.logic.ts
+@@ -488,6 +488,8 @@ export function resolveComposerProviderSelection(input: {
+   candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
+   lockedProvider: ProviderDriverKind | null;
+   lockedInstanceId: ProviderInstanceId | null | undefined;
++  /** The user's pick for a provider handoff: the only way a started thread leaves its driver. */
++  handoffInstanceId?: ProviderInstanceId | null | undefined;
+ }) {
+   const requestedInstanceId = input.candidateInstanceIds.find(
+     (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
+@@ -512,7 +514,15 @@ export function resolveComposerProviderSelection(input: {
+       (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
+       (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
+   );
++  const handoffEntry = input.entries.find(
++    (entry) =>
++      input.handoffInstanceId != null &&
++      entry.instanceId === input.handoffInstanceId &&
++      entry.enabled &&
++      entry.isAvailable,
++  );
+   const selectedProviderEntry =
++    handoffEntry ??
+     input.candidateInstanceIds
+       .map((candidate) =>
+         compatibleEntries.find(
+diff --git a/apps/web/src/components/chat/useComposerProviderModel.ts b/apps/web/src/components/chat/useComposerProviderModel.ts
+index 7d36d56b08922f0365f7ed06b8663a2abfc5e252..22612d06c321ab81698edcc64d23b388d8026e4e 100644
+--- a/apps/web/src/components/chat/useComposerProviderModel.ts
++++ b/apps/web/src/components/chat/useComposerProviderModel.ts
+@@ -48,6 +48,7 @@ export function useComposerProviderModel(
+     candidateInstanceIds,
+     lockedProvider,
+     lockedInstanceId,
++    handoffInstanceId,
+   } = input;
+   const draftModelState = useComposerDraftModelState(threadRef);
+   const providerInstanceEntries: ReadonlyArray<ProviderInstanceEntry> = providerInstanceEntriesFor(
+@@ -60,6 +61,7 @@ export function useComposerProviderModel(
+     candidateInstanceIds,
+     lockedProvider,
+     lockedInstanceId,
++    handoffInstanceId,
+   });
+   const selectedInstanceId =
+     selection.selectedProviderEntry?.instanceId ?? NO_PROVIDER_MODEL_SELECTION.instanceId;
+diff --git a/apps/web/src/components/chat/useComposerResume.ts b/apps/web/src/components/chat/useComposerResume.ts
+index f81dce9517c961287f62968e61203cd0d9435db5..7b528555f8ca7ef0f3ced0085cbb70d1ab471a41 100644
+--- a/apps/web/src/components/chat/useComposerResume.ts
++++ b/apps/web/src/components/chat/useComposerResume.ts
+@@ -108,7 +108,8 @@ export function useComposerResume(input: ComposerResumeInput) {
+       }
+       // Read before the first await: the composer follows the route, so after the user switches
+       // threads it holds the other thread's model.
+-      const modelSelection = composerRef.current?.getSendContext().selectedModelSelection;
++      const sendContext = composerRef.current?.getSendContext();
++      const modelSelection = sendContext?.selectedModelSelection;
+       const createdAt = new Date().toISOString();
+       const settingsResult = await persistThreadSettingsForNextTurn({
+         threadId,
+@@ -126,6 +127,7 @@ export function useComposerResume(input: ComposerResumeInput) {
+           threadId,
+           manualContinuationOfRunId: resumableRunId,
+           ...(modelSelection ? { modelSelection } : {}),
++          ...(sendContext?.providerChangeApproved ? { providerChangeApproved: true } : {}),
+           message: {
+             messageId: newMessageId(),
+             role: "user",
+diff --git a/apps/web/src/components/chat/useProposedPlanSend.ts b/apps/web/src/components/chat/useProposedPlanSend.ts
+index eb945e3e056a419e1e493c4ba43e32789fa91057..c4c423fab1230412343f0f9626d2b80a21379043 100644
+--- a/apps/web/src/components/chat/useProposedPlanSend.ts
++++ b/apps/web/src/components/chat/useProposedPlanSend.ts
+@@ -194,6 +194,7 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
+             attachments: [],
+           },
+           modelSelection: sendCtx.selectedModelSelection,
++          providerChangeApproved: sendCtx.providerChangeApproved,
+           titleSeed: activeThread.title,
+           runtimeMode,
+           interactionMode: nextInteractionMode,
+diff --git a/apps/web/src/components/chat/useThreadLifecycle.tsx b/apps/web/src/components/chat/useThreadLifecycle.tsx
+index 50ed46ae671f9c6debc3a2ee0bf509833110dbdd..c35b42d3e54bd839d62cf49165efeaa7e022f57f 100644
+--- a/apps/web/src/components/chat/useThreadLifecycle.tsx
++++ b/apps/web/src/components/chat/useThreadLifecycle.tsx
+@@ -547,6 +547,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
+               threadId,
+               message: { messageId, role: "user", text, attachments: [] },
+               modelSelection: context.selectedModelSelection,
++              providerChangeApproved: context.providerChangeApproved,
+               runtimeMode,
+               interactionMode: context.interactionMode,
+               createdAt,
+diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
+index f813ece95dc4538ff3f6e6b1536aa1b49585cfaf..34795bce02ace904a72bcb6c6736034f82cf8423 100644
+--- a/packages/client-runtime/src/operations/commands.ts
++++ b/packages/client-runtime/src/operations/commands.ts
+@@ -130,6 +130,8 @@ export interface UpdateThreadMetadataInput extends ThreadCommandInput {
+   readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecoveryUpdate | null;
+   readonly title?: string;
+   readonly modelSelection?: ModelSelection;
++  /** The user picked `modelSelection`; another provider is refused without it. */
++  readonly providerChangeApproved?: boolean;
+   readonly branch?: string | null;
+   readonly worktreePath?: string | null;
+   readonly regenerateTitle?: boolean;
+@@ -177,6 +179,8 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
+     readonly idleCompaction?: import("@t3tools/contracts").OrchestrationV2IdleCompaction;
+   };
+   readonly modelSelection?: ModelSelection;
++  /** The user picked `modelSelection`'s provider; the server keeps a started thread's driver without it. */
++  readonly providerChangeApproved?: boolean;
+   readonly titleSeed?: string;
+   readonly runtimeMode: RuntimeMode;
+   readonly interactionMode: ProviderInteractionMode;
+@@ -641,6 +645,7 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
+         commandId: result === null ? commandId : CommandId.make(`${commandId}:model-selection`),
+         threadId: input.threadId,
+         modelSelection: input.modelSelection,
++        ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
+       });
+     }
+     return result ?? { sequence: 0 };
+@@ -751,6 +756,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
+         : { idleCompaction: input.message.idleCompaction }),
+       attachments,
+       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
++      ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
+       ...(input.sourceProposedPlan === undefined
+         ? {}
+         : { sourcePlanRef: input.sourceProposedPlan }),
+@@ -778,6 +784,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
+     attachments,
+     ...(input.titleSeed === undefined ? {} : { titleSeed: input.titleSeed }),
+     ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
++    ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
+     ...(input.sourceProposedPlan === undefined ? {} : { sourcePlanRef: input.sourceProposedPlan }),
+     ...(input.freshContext ? { freshContext: true } : {}),
+     ...(requestedMode !== "queue" ? { deliveryIntent: requestedMode } : {}),

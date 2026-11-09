@@ -669,6 +669,7 @@ function ThreadRouteContent(
       runtimeMode: composer.runtimeMode ?? selectedThread.runtimeMode,
       interactionMode: composer.interactionMode ?? selectedThread.interactionMode,
       modelSelection: composer.modelSelection,
+      providerChangeApproved: composer.providerChangeApproved,
       messageId: MessageId.make(uuidv4()),
       createdAt: new Date().toISOString(),
       setRuntimeMode: setThreadRuntimeMode,

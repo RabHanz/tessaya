@@ -595,6 +595,7 @@ export function useComposerSend(input: ComposerSendInput) {
       selectedProviderModels: ctxSelectedProviderModels,
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
+      providerChangeApproved: ctxProviderChangeApproved,
       interactionMode: sendInteractionMode,
       interactionModeEnabled: sendInteractionModeEnabled,
     } = sendCtx;
@@ -1315,6 +1316,7 @@ export function useComposerSend(input: ComposerSendInput) {
             idleCompaction: "onReturn",
           },
           modelSelection: ctxSelectedModelSelection,
+          providerChangeApproved: ctxProviderChangeApproved,
           runtimeMode,
           interactionMode: sendInteractionMode,
         },
@@ -1377,6 +1379,7 @@ export function useComposerSend(input: ComposerSendInput) {
             }),
           },
           modelSelection: ctxSelectedModelSelection,
+          providerChangeApproved: ctxProviderChangeApproved,
           titleSeed: title,
           runtimeMode,
           interactionMode: sendInteractionMode,

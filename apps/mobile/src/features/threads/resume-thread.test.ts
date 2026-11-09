@@ -26,6 +26,7 @@ function setup(options: { readonly startTurnFails?: boolean } = {}) {
     runtimeMode: "full-access",
     interactionMode: "default",
     modelSelection: null,
+    providerChangeApproved: false,
     messageId: MessageId.make("message"),
     createdAt: "2026-10-30T00:00:00.000Z",
     setRuntimeMode: record("setRuntimeMode"),

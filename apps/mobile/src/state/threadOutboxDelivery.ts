@@ -891,6 +891,7 @@ export function createThreadOutboxDelivery(): {
             idleCompaction: "onReturn",
           },
           modelSelection: sendSettings.modelSelection,
+          providerChangeApproved: queuedMessage.providerChangeApproved === true,
           runtimeMode: sendSettings.runtimeMode,
           interactionMode: sendSettings.interactionMode,
           createdAt: queuedMessage.createdAt,
@@ -926,6 +927,7 @@ export function createThreadOutboxDelivery(): {
           attachments: prepared.attachments,
         },
         modelSelection: sendSettings.modelSelection,
+        providerChangeApproved: queuedMessage.providerChangeApproved === true,
         titleSeed: deriveThreadTitleSeed({
           text: queuedMessage.text,
           attachments: queuedMessage.attachments,

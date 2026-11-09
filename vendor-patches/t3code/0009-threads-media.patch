@@ -1602,7 +1602,7 @@ index a6312466d9747ce40a6e94b4c8de347f10ea29c7..bc252f14144748deae98fab3bcf615ee
      if (
        !supportsProviderSwitchingViaHandoff &&
 diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
-index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..12b2319d5bc8c7c9566e2db76d0c1d9afd4cb80a 100644
+index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c9317377743994da6a50688c804d79cda0b800a9 100644
 --- a/apps/web/src/components/chat/useComposerSend.ts
 +++ b/apps/web/src/components/chat/useComposerSend.ts
 @@ -125,6 +125,7 @@ import {
@@ -1613,7 +1613,31 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..12b2319d5bc8c7c9566e2db76d0c1d9a
  import type {
    EnvironmentProject,
    EnvironmentThreadShell,
-@@ -1413,6 +1414,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -594,6 +595,7 @@ export function useComposerSend(input: ComposerSendInput) {
+       selectedProviderModels: ctxSelectedProviderModels,
+       selectedPromptEffort: ctxSelectedPromptEffort,
+       selectedModelSelection: ctxSelectedModelSelection,
++      providerChangeApproved: ctxProviderChangeApproved,
+       interactionMode: sendInteractionMode,
+       interactionModeEnabled: sendInteractionModeEnabled,
+     } = sendCtx;
+@@ -1314,6 +1316,7 @@ export function useComposerSend(input: ComposerSendInput) {
+             idleCompaction: "onReturn",
+           },
+           modelSelection: ctxSelectedModelSelection,
++          providerChangeApproved: ctxProviderChangeApproved,
+           runtimeMode,
+           interactionMode: sendInteractionMode,
+         },
+@@ -1376,6 +1379,7 @@ export function useComposerSend(input: ComposerSendInput) {
+             }),
+           },
+           modelSelection: ctxSelectedModelSelection,
++          providerChangeApproved: ctxProviderChangeApproved,
+           titleSeed: title,
+           runtimeMode,
+           interactionMode: sendInteractionMode,
+@@ -1413,6 +1417,11 @@ export function useComposerSend(input: ComposerSendInput) {
          failure = startResult;
        } else {
          turnStartSucceeded = true;
@@ -1775,7 +1799,7 @@ index fd0dca831e06dc2631771913901aebc90f1b1863..ca3206bb572903486d5efb75011e53b1
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index 5c430ef75581a165d94ce16c7369c0245bdef5d8..584d24f4cb855e473be434c5cf5ae45489b3b659 100644
+index 5c430ef75581a165d94ce16c7369c0245bdef5d8..a6fa8210135da3efe7d614692a29568bc1835f47 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -1353,6 +1353,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
@@ -1787,6 +1811,37 @@ index 5c430ef75581a165d94ce16c7369c0245bdef5d8..584d24f4cb855e473be434c5cf5ae454
  });
  export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
  
+@@ -3148,7 +3150,9 @@ export const OrchestrationV2Command = Schema.Union([
+     type: Schema.Literal("thread.model-selection.set"),
+     commandId: CommandId,
+     threadId: ThreadId,
+-    modelSelection: ModelSelection,
++    modelSelection:
++      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+   }),
+   Schema.Struct({
+     type: Schema.Literal("provider-session.detach"),
+@@ -3176,6 +3180,8 @@ export const OrchestrationV2Command = Schema.Union([
+     attachments: Schema.Array(ChatAttachment),
+     titleSeed: Schema.optional(TrimmedNonEmptyString),
+     modelSelection: Schema.optional(ModelSelection),
++    /** The user picked `modelSelection`'s provider for this thread; without it a started thread keeps its driver. */
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+     sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
+     restartContinuationOfRunId: Schema.optional(RunId),
+     usageLimitContinuationOfRunId: Schema.optional(RunId),
+@@ -3383,7 +3389,9 @@ export const OrchestrationV2Command = Schema.Union([
+     type: Schema.Literal("provider.switch"),
+     commandId: CommandId,
+     threadId: ThreadId,
+-    modelSelection: ModelSelection,
++    modelSelection:
++      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+   }),
+ ]);
+ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
 diff --git a/packages/shared/package.json b/packages/shared/package.json
 index 5d9a87ac7719dbf0e6a24460bdd4a2e8e790c10c..ed8bda7978989717f3ec382d9fb19586212ba9ae 100644
 --- a/packages/shared/package.json

@@ -1308,6 +1308,10 @@ export default function ChatView(props: ChatViewProps) {
     ],
     lockedProvider,
     lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
+    handoffInstanceId:
+      supportsProviderSwitchingViaHandoff && composerModelSelectionExplicit
+        ? selectedProviderByThreadId
+        : null,
   });
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
@@ -3714,6 +3718,7 @@ export default function ChatView(props: ChatViewProps) {
                                 defaultRuntimeMode={defaultRuntimeMode}
                                 interactionMode={interactionMode}
                                 lockedProvider={modelPickerLockedProvider}
+                                threadProvider={lockedProvider}
                                 providerStatuses={providerStatuses as ServerProvider[]}
                                 providerCatalogKnown={serverConfig !== null}
                                 activeProjectDefaultModelSelection={
