@@ -102,7 +102,10 @@ export const createPillGhost = (input: {
     if (live()) window!.destroy();
     window = null;
   };
-  /** A key or click after `since`: the tick moved while the pointer stayed put (a move alone is not a skip). */
+  /**
+   * A click or key while the ghost plays pastes at once: the tick moved while the pointer stayed put (a move alone is
+   * not a skip). Edge: a plain key (Enter included) still reaches the field just before the paste; no hook swallows it.
+   */
   const skipped = (stopAt: Promise<void>) =>
     new Promise<void>((resolve) => {
       let done = false;
@@ -172,7 +175,7 @@ export const createPillGhost = (input: {
         `window.ghost.cleanup(${JSON.stringify(raw)},${JSON.stringify(clean)})`,
       );
       const fade = 300;
-      const total = typeof ms === "number" ? ms : 0;
+      const total = typeof ms === "number" ? Math.min(ms, 3_000) : 0;
       let end = () => undefined as void;
       const over = new Promise<void>((resolve) => {
         const t = setTimeout(resolve, Math.max(0, total - fade));

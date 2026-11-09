@@ -493,6 +493,8 @@ import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
+/** The longest the paste waits for the ghost in his field. */
+const GHOST_WAIT_MS = 3_000;
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: BatonFocusTarget = {
   producer: "desktop",
@@ -663,7 +665,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cues: "normal",
   holdKeyCues: false,
   showWords: true,
-  pillStyle: "field",
+  // The pill until D has been tried on Windows; the text box is opt-in under Settings → Dictation → Pill style.
+  pillStyle: "pill",
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
   conversationOpenMs: 30_000,
@@ -768,7 +771,7 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       showWords: saved["showWords"] !== false,
-      pillStyle: saved["pillStyle"] === "pill" ? "pill" : "field",
+      pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
       pronounce: pronounceFrom(saved["pronounce"]),
@@ -1782,9 +1785,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
   const oneShot = createOneShot<FocusedApp>({
+    // A hung ghost page never stops the paste: past GHOST_WAIT_MS the words land anyway.
     beforePaste: (raw, text) =>
-      ghost.play(raw, text).then((played) => {
+      Promise.race([
+        ghost.play(raw, text),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), GHOST_WAIT_MS).unref()),
+      ]).then((played) => {
         ghostPlayed = played;
+        if (!played) ghost.stop();
       }),
     save: (chunks) => {
       try {
