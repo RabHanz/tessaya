@@ -7,6 +7,10 @@
 export const LIVE_THREAD_PREFIX = "baton-live";
 export const LIVE_INSTANCE = "baton-live";
 
+/** What an error calls a provider instance: the live one by its display name, never its internal id. */
+export const instanceLabel = (instanceId: string): string =>
+  instanceId === LIVE_INSTANCE ? "Terminal session" : instanceId;
+
 export const isLiveThreadId = (threadId: string): boolean =>
   threadId.startsWith(LIVE_THREAD_PREFIX);
 

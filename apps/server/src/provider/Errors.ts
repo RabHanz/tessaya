@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
 
 export class ProviderInstanceNotFoundError extends Schema.TaggedError<ProviderInstanceNotFoundError>()(
   "ProviderInstanceNotFoundError",
@@ -8,7 +9,7 @@ export class ProviderInstanceNotFoundError extends Schema.TaggedError<ProviderIn
   },
 ) {
   override get message(): string {
-    return `No provider instance bound to id '${this.instanceId}'`;
+    return `No provider instance bound to id '${instanceLabel(this.instanceId)}'`;
   }
 }
 

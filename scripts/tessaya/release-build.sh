@@ -2,7 +2,7 @@
 #
 # Build the Linux CLI archive a box runs, the way upstream builds its release.
 #
-#   scripts/tessaya/release-build.sh <version>      e.g. 0.0.45-baton.21
+#   scripts/tessaya/release-build.sh <version>      e.g. 0.1.5-tessaya.1
 #
 # Writes release-cli/t3-<version>-linux-x64.tar.gz and smoke-tests it. The package.json version
 # bump is release-time only and is put back afterwards, so the tree stays PIN + series.

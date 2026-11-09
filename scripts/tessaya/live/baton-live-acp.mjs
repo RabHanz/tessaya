@@ -26,7 +26,12 @@ import { CARD_REF, parsePanePrompt, parseWaitingScreen } from "./pane-prompt.mjs
 
 const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
-const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
+const localBin = (name) => NodePath.join(NodeOS.homedir(), ".local", "bin", name);
+// A box whose launchers predate the rename has only `baton`.
+const BATON =
+  process.env.TESSAYA_BIN ??
+  process.env.BATON_BIN ??
+  (NodeFS.existsSync(localBin("tessaya")) ? localBin("tessaya") : localBin("baton"));
 const ATTACHMENT_ENTER_MS = Number(process.env.BATON_LIVE_ATTACHMENT_ENTER_MS ?? 1_500);
 const PROMPT_CLEAR_TRIES = Number(process.env.BATON_LIVE_PROMPT_CLEAR_TRIES ?? 30);
 const UNBOUND = "baton-unbound";
@@ -845,7 +850,7 @@ async function adopt(sessionId, live) {
   if (alive(live.pid)) return { error: "It did not exit, so it was left as it was." };
   const out = await run(BATON, ["--resume", sessionId, live.cwd], 30_000);
   if (!/running in (\S+) pane (\S+)/.test(out.out))
-    return { error: `baton --resume said: ${out.out.slice(0, 200)}` };
+    return { error: `tessaya --resume said: ${out.out.slice(0, 200)}` };
   for (let i = 0; i < 60; i += 1) {
     const next = findLiveSession(sessionId);
     if (next?.pane && next.status !== "busy") return { live: next };

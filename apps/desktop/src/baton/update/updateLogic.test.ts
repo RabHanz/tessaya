@@ -32,11 +32,12 @@ const state = (over: Partial<DesktopUpdateState> = {}): DesktopUpdateState => ({
 });
 
 describe("versions", () => {
-  it("orders releases, prereleases and the -baton.N builds the way semver does", () => {
+  it("orders releases, prereleases and the -baton.N and -tessaya.N builds the way semver does", () => {
     expect(isNewer("0.1.5", "0.1.4")).toBe(true);
     expect(isNewer("0.1.10", "0.1.9")).toBe(true);
     expect(isNewer("0.1.2", "0.1.2-baton.41")).toBe(true);
     expect(isNewer("0.1.2-baton.41", "0.1.2-baton.9")).toBe(true);
+    expect(isNewer("0.1.2-tessaya.1", "0.1.2-baton.49")).toBe(true);
     expect(isNewer("0.1.4", "0.1.4")).toBe(false);
     expect(isNewer("0.1.3", "0.1.4")).toBe(false);
     expect(compareVersions("v1.0.0", "1.0.0")).toBe(0);

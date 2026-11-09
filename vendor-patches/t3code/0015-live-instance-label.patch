@@ -1,0 +1,94 @@
+Live instance label (Tessaya rename): errors that name a provider instance call the live one "Terminal session",
+its display name, not its internal id baton-live.
+
+diff --git a/apps/server/src/orchestration-v2/CommandPolicy.ts b/apps/server/src/orchestration-v2/CommandPolicy.ts
+index 02f329e536feb328e1c34674c7506023f2b916a2..2e88271a7b4a018a6bcfe87f1787ec779719c3ef 100644
+--- a/apps/server/src/orchestration-v2/CommandPolicy.ts
++++ b/apps/server/src/orchestration-v2/CommandPolicy.ts
+@@ -14,6 +14,7 @@ import * as Context from "effect/Context";
+ import * as Effect from "effect/Effect";
+ import * as Layer from "effect/Layer";
+ import * as Schema from "effect/Schema";
++import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+ 
+ export const SteeringExecutionPolicyV2 = Schema.Literals(["active_steering", "interrupt_restart"]);
+ export type SteeringExecutionPolicyV2 = typeof SteeringExecutionPolicyV2.Type;
+@@ -46,7 +47,7 @@ export class CommandPolicyCapabilityUnsupportedError extends Schema.TaggedError<
+   },
+ ) {
+   override get message(): string {
+-    return `${this.providerInstanceId} cannot satisfy ${this.capability} for command ${this.commandId}: ${this.detail}`;
++    return `${instanceLabel(this.providerInstanceId)} cannot satisfy ${this.capability} for command ${this.commandId}: ${this.detail}`;
+   }
+ }
+ 
+diff --git a/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts b/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
+index a04c1df8872779c19f2d2aecad2e767433365671..c253c25eb148723470e7b174ebc50bac5a2a427d 100644
+--- a/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
++++ b/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
+@@ -12,6 +12,7 @@ import * as Scope from "effect/Scope";
+ import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+ import { ProviderAdapterDriverCreateError } from "@t3tools/provider-core/server/adapterDriver";
+ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
++import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+ 
+ const isProviderSetupError = Schema.is(ProviderSetupError);
+ 
+@@ -22,7 +23,7 @@ export class ProviderAdapterRegistryLookupError extends Schema.TaggedError<Provi
+   },
+ ) {
+   override get message(): string {
+-    return `No orchestration provider adapter is registered for ${this.instanceId}.`;
++    return `No orchestration provider adapter is registered for ${instanceLabel(this.instanceId)}.`;
+   }
+ }
+ 
+diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
+index b36119eb581d9e9b8837e340dbfaffa2809643ed..72784831ef02835369204b34be841cb17ebee125 100644
+--- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
++++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
+@@ -53,6 +53,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
+ import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+ import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
+ import * as ProjectionStore from "./ProjectionStore.ts";
++import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+ 
+ const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+ const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
+@@ -88,7 +89,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
+   },
+ ) {
+   override get message(): string {
+-    return `Failed to open provider instance ${this.instanceId} session ${this.providerSessionId}.`;
++    return `Failed to open provider instance ${instanceLabel(this.instanceId)} session ${this.providerSessionId}.`;
+   }
+ }
+ 
+@@ -2571,7 +2572,7 @@ export const layerWithOptions = (
+                 releaseEntry({
+                   providerSessionId: entry.runtime.providerSessionId,
+                   reason: "manual_shutdown",
+-                  detail: `Provider instance ${instanceId} logged out.`,
++                  detail: `Provider instance ${instanceLabel(instanceId)} logged out.`,
+                 }).pipe(Effect.exit),
+               { concurrency: "unbounded" },
+             );
+diff --git a/apps/server/src/provider/Errors.ts b/apps/server/src/provider/Errors.ts
+index b1ef6192faf3be6b65f1dca2a10706d55b3907a7..bef64d54763cebea2bc353cfbc4fea13453cc6c3 100644
+--- a/apps/server/src/provider/Errors.ts
++++ b/apps/server/src/provider/Errors.ts
+@@ -1,4 +1,5 @@
+ import * as Schema from "effect/Schema";
++import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+ 
+ export class ProviderInstanceNotFoundError extends Schema.TaggedError<ProviderInstanceNotFoundError>()(
+   "ProviderInstanceNotFoundError",
+@@ -8,7 +9,7 @@ export class ProviderInstanceNotFoundError extends Schema.TaggedError<ProviderIn
+   },
+ ) {
+   override get message(): string {
+-    return `No provider instance bound to id '${this.instanceId}'`;
++    return `No provider instance bound to id '${instanceLabel(this.instanceId)}'`;
+   }
+ }
+ 
