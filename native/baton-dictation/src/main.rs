@@ -27,7 +27,7 @@ mod paste_tx;
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -41,7 +41,7 @@ use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
 use keys::PasteMethod;
-use live::{lift_gain, preview_due, words_after, ChunkParams, Chunker, Piece};
+use live::{join_pieces, lift_gain, meter_b64, preview_due, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
@@ -58,6 +58,14 @@ const MIN_SAMPLES: usize = 16_000 / 4;
 const MAX_RECORDING: Duration = Duration::from_secs(3600);
 /// Parakeet clips the last word without a little trailing silence.
 const TAIL_SAMPLES: usize = 16_000 / 5;
+
+/// An end line (`idle`, `error`) names the dictation it ends, so the desktop never pins it on the next one.
+fn of_dictation(mut event: Value, id: Option<u64>) -> Value {
+    if let Some(id) = id {
+        event["dictation"] = json!(id);
+    }
+    event
+}
 
 fn emit(event: Value) {
     let mut out = std::io::stdout().lock();
@@ -116,15 +124,21 @@ struct Config {
     /// His words in the pill as he speaks: previews of the words not yet cut, and the local model's words for the cloud.
     #[serde(default, rename = "liveWords")]
     live_words: bool,
+    /// Wake words are off, so no other mic reader feeds the pill's waveform: the recording sends `pcm` lines.
+    #[serde(default)]
+    meter: bool,
 }
 
 enum Msg {
     Line(String),
     Key { hold: bool, pressed: bool },
     MicFailed(String),
+    /// A block of the recording's audio for the pill's waveform, written out by the serve thread, never the audio's.
+    Meter(Vec<f32>),
     /// A fake microphone ran out of file, which stands in for releasing the key.
     FakeEnded,
-    Finished { id: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
+    /// `dictation`: the key dictation it answers (`Work::Begin`'s id); None for a clip.
+    Finished { id: Option<u64>, dictation: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
     /// A dictation paste's checks are back from their worker (`paste_checked`).
     PasteChecked { id: Option<u64>, text: String, why: &'static str, started: Instant },
 }
@@ -259,9 +273,10 @@ enum Work {
     Clip(Job),
     /// Load the model now, so the first real phrase does not wait behind it.
     Load { id: Option<u64>, model: PathBuf },
-    Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf>, keep: Option<PathBuf>, live: bool },
-    Audio(Vec<f32>),
-    End { target: Option<isize>, released: Instant, timing: Value },
+    /// Each dictation's messages carry its id: audio or an end meant for another one never reaches this one.
+    Begin { id: u64, model: PathBuf, language: Option<String>, external: Option<PathBuf>, keep: Option<PathBuf>, live: bool },
+    Audio(u64, Vec<f32>),
+    End { id: u64, target: Option<isize>, released: Instant, timing: Value },
     Abort,
     /// Dictation is bound to a key and heard here: the dictation model stays loaded, so a press never waits on a reload.
     Keep(bool),
@@ -356,6 +371,8 @@ fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -
 
 /// One recording on its way through the model.
 struct Live {
+    /// The dictation this is (`Work::Begin`'s id).
+    id: u64,
     chunker: Chunker,
     /// Everything heard: a piece that fails falls back to the whole recording.
     heard: Vec<f32>,
@@ -378,6 +395,7 @@ struct Live {
 impl Live {
     fn new(language: Option<String>, load_ms: u64, failed: Option<String>) -> Self {
         Self {
+            id: 0,
             external: None,
             keep: None,
             live_words: false,
@@ -403,7 +421,7 @@ impl Live {
                 self.text.push(text);
                 // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
                 // starts their cleanup then, so a release right after finds it done (never for the cloud's words).
-                emit(json!({"ev": "partial", "text": self.text.join(" "), "pause": at_pause && self.external.is_none()}));
+                emit(json!({"ev": "partial", "text": join_pieces(&self.text), "pause": at_pause && self.external.is_none()}));
             }
             Err(e) => self.failed = Some(e),
         }
@@ -414,7 +432,7 @@ impl Live {
 
     /// Audio in: a piece when the chunker cuts one, else a preview of the uncut words when one is due. Local
     /// recognition always decodes; the cloud's recording only for his live words.
-    fn hear(&mut self, session: Option<&mut Session>, pcm: &[f32]) {
+    fn hear(&mut self, session: Option<&mut Session>, pcm: &[f32], behind: bool) {
         self.heard.extend_from_slice(pcm);
         if self.failed.is_some() || (self.external.is_some() && !self.live_words) {
             return;
@@ -424,7 +442,7 @@ impl Live {
         if let Some(piece) = piece {
             return self.decode(session, piece);
         }
-        if !self.live_words || !preview_due(self.chunker.pending_len(), self.previewed, self.preview_ms) {
+        if behind || !self.live_words || !preview_due(self.chunker.pending_len(), self.previewed, self.preview_ms) {
             return;
         }
         let from = self.previewed;
@@ -433,13 +451,14 @@ impl Live {
         if self.chunker.quiet_since(from, &self.heard) {
             return;
         }
-        let Some(piece) = self.chunker.preview() else { return };
+        let Some(piece) = self.chunker.preview() else {
+            return;
+        };
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
         if let Ok(text) = decode_piece(session, piece, self.language.clone()) {
-            let words: Vec<&str> =
-                self.text.iter().map(String::as_str).chain([text.as_str()]).filter(|t| !t.is_empty()).collect();
-            emit(json!({"ev": "partial", "text": words.join(" "), "pause": false}));
+            let words: Vec<&str> = self.text.iter().map(String::as_str).chain([text.as_str()]).collect();
+            emit(json!({"ev": "partial", "text": join_pieces(&words), "pause": false}));
         }
         self.preview_ms = started.elapsed().as_millis() as u64;
     }
@@ -470,7 +489,7 @@ impl Live {
         let text = if self.failed.is_some() {
             infer(session, &mut self.heard, self.language.clone())?.0
         } else {
-            self.text.join(" ")
+            join_pieces(&self.text)
         };
         let audio = self.keep.as_deref().and_then(|dir| write_wav(dir, &self.heard).ok());
         Ok(Done {
@@ -576,6 +595,23 @@ fn path_of(slot: &Loaded) -> Option<&Path> {
     slot.as_ref().map(|(path, _)| path.as_path())
 }
 
+/// Takes every audio chunk already waiting into `pcm`. True when there was any: the engine is behind his voice, so
+/// no preview runs until it has caught up (a preview then only delays the real decode). Stops at the first other
+/// message, returned to be handled next, so the order holds.
+fn gather_audio(work: &Receiver<Work>, id: u64, pcm: &mut Vec<f32>) -> (bool, Option<Work>) {
+    let mut behind = false;
+    loop {
+        match work.try_recv() {
+            Ok(Work::Audio(of, more)) if of == id => {
+                pcm.extend_from_slice(&more);
+                behind = true;
+            }
+            Ok(other) => return (behind, Some(other)),
+            Err(_) => return (behind, None),
+        }
+    }
+}
+
 /// One thread owns the models. Each slot loads on first use and leaves after ten idle minutes of its own, because
 /// 16 GB is shared with everything else on the laptop; the dictation slot stays while dictation is bound (`Keep`).
 /// v3 held is about 1.2 GB.
@@ -589,8 +625,13 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
     let mut other_at = Instant::now();
     let mut live: Option<Live> = None;
     let mut keep = false;
+    // A message taken off the queue while gathering audio that was waiting, handled next.
+    let mut carried: Option<Work> = None;
     loop {
-        let message = work.recv_timeout(IDLE_TICK);
+        let message = match carried.take() {
+            Some(next) => Ok(next),
+            None => work.recv_timeout(IDLE_TICK),
+        };
         if live.is_none() && !keep && loaded_at.elapsed() >= IDLE_UNLOAD {
             loaded = None;
         }
@@ -628,7 +669,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         audio: None,
                     })
                 });
-                let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
+                let _ = out.send(Msg::Finished { id: job.id, dictation: None, dictated: job.dictated, target: job.target, result });
             }
             Ok(Work::Load { id, model }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
@@ -641,7 +682,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 };
                 emit(line);
             }
-            Ok(Work::Begin { model, language, external: Some(dir), live: words, .. }) => {
+            Ok(Work::Begin { id, model, language, external: Some(dir), live: words, .. }) => {
                 // Unloaded after idle: read again in the background for the next one; this one never waits for it.
                 if words && wanted.as_ref() == Some(&model) {
                     let _ = me.send(Work::Warm(model.clone()));
@@ -649,9 +690,9 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 // The cloud hears the recording. The local model shows his words as he speaks only when it is already
                 // loaded: never loaded for them, so the key's release never waits on a load.
                 let words = words && path_of(&loaded) == Some(model.as_path());
-                live = Some(Live { external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
+                live = Some(Live { id, external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { model, language, external: None, keep, live: words }) => {
+            Ok(Work::Begin { id, model, language, external: None, keep, live: words }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
                 }
@@ -663,19 +704,26 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         Live::new(language, 0, Some(e))
                     }
                 };
-                live = Some(Live { keep, live_words: words, ..fresh });
+                live = Some(Live { id, keep, live_words: words, ..fresh });
             }
-            Ok(Work::Audio(pcm)) => {
+            Ok(Work::Audio(id, mut pcm)) => {
                 loaded_at = Instant::now();
-                let Some(current) = live.as_mut() else { continue };
-                current.hear(loaded.as_mut().map(|(_, session)| session), &pcm);
+                let (behind, next) = gather_audio(&work, id, &mut pcm);
+                carried = next;
+                let Some(current) = live.as_mut().filter(|l| l.id == id) else {
+                    continue;
+                };
+                current.hear(loaded.as_mut().map(|(_, session)| session), &pcm, behind);
             }
-            Ok(Work::End { target, released, timing }) => {
-                let Some(current) = live.take() else { continue };
-                let result = current
-                    .finish(loaded.as_mut().map(|(_, session)| session), released)
-                    .map(|done| Done { timing: Some(timing), ..done });
-                let _ = out.send(Msg::Finished { id: None, dictated: true, target, result });
+            Ok(Work::End { id, target, released, timing }) => {
+                // Only its own recording answers a dictation; any other is never handed over as its words.
+                let result = match live.take_if(|l| l.id == id) {
+                    Some(current) => current
+                        .finish(loaded.as_mut().map(|(_, session)| session), released)
+                        .map(|done| Done { timing: Some(timing), ..done }),
+                    None => Err("That dictation's recording was lost, so nothing was written.".to_string()),
+                };
+                let _ = out.send(Msg::Finished { id: None, dictation: Some(id), dictated: true, target, result });
             }
             Ok(Work::Abort) => live = None,
             Ok(Work::Warm(model)) => {
@@ -816,9 +864,43 @@ fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String>
 
 /// Hands the microphone to the engine as it arrives.
 struct LiveSink {
+    dictation: u64,
     work: Sender<Work>,
     samples: Arc<AtomicUsize>,
     first_audio: Arc<OnceLock<Instant>>,
+    /// The serve thread, which writes the waveform's `pcm` lines: stdout is never touched from the audio callback.
+    out: Sender<Msg>,
+    /// Config's `meter`, read live so turning wake words on or off mid-recording takes effect.
+    meter_on: Arc<AtomicBool>,
+    meter: Meter,
+}
+
+/// Shortest gap between two waveform blocks: about 30 a second.
+const METER_GAP: Duration = Duration::from_millis(33);
+
+/// Audio not yet sent for the pill's waveform, and when the last block went.
+#[derive(Default)]
+struct Meter {
+    pending: Vec<f32>,
+    sent: Option<Instant>,
+}
+
+impl Meter {
+    /// The newest whole block once one is due; a burst of audio sends its last block, never a backlog.
+    fn feed(&mut self, more: &[f32], now: Instant) -> Option<Vec<f32>> {
+        self.pending.extend_from_slice(more);
+        let whole = self.pending.len() / METER_SAMPLES * METER_SAMPLES;
+        if whole == 0 || self.sent.is_some_and(|at| now.saturating_duration_since(at) < METER_GAP) {
+            // Only the newest block is ever drawn: older audio is let go.
+            let keep = self.pending.len().saturating_sub(METER_SAMPLES);
+            self.pending.drain(..keep);
+            return None;
+        }
+        let block = self.pending[whole - METER_SAMPLES..whole].to_vec();
+        self.pending.drain(..whole);
+        self.sent = Some(now);
+        Some(block)
+    }
 }
 
 impl Sink for LiveSink {
@@ -827,8 +909,13 @@ impl Sink for LiveSink {
         if !samples.is_empty() {
             let _ = self.first_audio.set(Instant::now());
         }
+        if self.meter_on.load(Ordering::Relaxed) {
+            if let Some(block) = self.meter.feed(&samples, Instant::now()) {
+                let _ = self.out.send(Msg::Meter(block));
+            }
+        }
         self.samples.fetch_add(samples.len(), Ordering::Relaxed);
-        let _ = self.work.send(Work::Audio(samples));
+        let _ = self.work.send(Work::Audio(self.dictation, samples));
     }
 }
 
@@ -838,6 +925,8 @@ enum Source {
 }
 
 struct Recording {
+    /// This dictation's id, on every message it sends the engine.
+    id: u64,
     source: Source,
     samples: Arc<AtomicUsize>,
     started: Instant,
@@ -865,6 +954,7 @@ fn fake_mic() -> Option<PathBuf> {
 
 fn play_fake(
     path: &Path,
+    dictation: u64,
     work: Sender<Work>,
     samples: Arc<AtomicUsize>,
     first_audio: Arc<OnceLock<Instant>>,
@@ -882,7 +972,7 @@ fn play_fake(
             }
             let _ = first_audio.set(Instant::now());
             samples.fetch_add(chunk.len(), Ordering::Relaxed);
-            let _ = work.send(Work::Audio(chunk.to_vec()));
+            let _ = work.send(Work::Audio(dictation, chunk.to_vec()));
         }
         let _ = tx.send(Msg::FakeEnded);
     });
@@ -941,7 +1031,9 @@ fn window_rect(window: isize) -> Value {
     use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
     let mut r = RECT::default();
     match unsafe { GetWindowRect(HWND(window as *mut _), &mut r) } {
-        Ok(()) => json!({"x": r.left, "y": r.top, "width": r.right - r.left, "height": r.bottom - r.top}),
+        Ok(()) => {
+            json!({"x": r.left, "y": r.top, "width": r.right - r.left, "height": r.bottom - r.top})
+        }
         Err(_) => Value::Null,
     }
 }
@@ -1238,6 +1330,7 @@ fn serve() {
     let mut toggle_down = false;
     // The desktop's voice dictation is running (it says so with `voice`): a key press is its ✓.
     let mut voice_on = false;
+    let meter_on = Arc::new(AtomicBool::new(false));
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
     // `via`: the hold key, the toggle key, or `start` (a held mouse button or the desktop), for the timing line.
@@ -1250,7 +1343,10 @@ fn serve() {
             emit(json!({"ev": "error", "message": "no model configured"}));
             return;
         };
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
         let _ = job_tx.send(Work::Begin {
+            id,
             model,
             language: config.language.clone(),
             external: config.external.clone(),
@@ -1262,12 +1358,20 @@ fn serve() {
         let opened = match fake_mic() {
             Some(path) => {
                 let stop = Arc::new(AtomicBool::new(false));
-                play_fake(&path, job_tx.clone(), samples.clone(), first_audio.clone(), stop.clone(), tx.clone())
+                play_fake(&path, id, job_tx.clone(), samples.clone(), first_audio.clone(), stop.clone(), tx.clone())
                     .map(|()| Source::Fake(stop))
             }
             None => {
                 let open = |fresh: bool| {
-                    let sink = LiveSink { work: job_tx.clone(), samples: samples.clone(), first_audio: first_audio.clone() };
+                    let sink = LiveSink {
+                        dictation: id,
+                        work: job_tx.clone(),
+                        samples: samples.clone(),
+                        first_audio: first_audio.clone(),
+                        out: tx.clone(),
+                        meter_on: meter_on.clone(),
+                        meter: Meter::default(),
+                    };
                     let tx = tx.clone();
                     recorder_config(config.device.as_deref(), config.channel, fresh).and_then(|cfg| {
                         let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
@@ -1288,17 +1392,19 @@ fn serve() {
                 let (app, title) = window_app(target);
                 let mic_ms = pressed.elapsed().as_millis() as u64;
                 *recording =
-                    Some(Recording { source, samples, started: Instant::now(), target, pressed, mic_ms, first_audio, via });
-                emit(json!({"ev": "recording", "app": app, "title": title, "micMs": mic_ms}));
+                    Some(Recording { id, source, samples, started: Instant::now(), target, pressed, mic_ms, first_audio, via });
+                emit(json!({"ev": "recording", "app": app, "title": title, "micMs": mic_ms, "dictation": id}));
             }
             Err(message) => {
                 let _ = job_tx.send(Work::Abort);
-                emit(json!({"ev": "error", "message": message}));
+                emit(of_dictation(json!({"ev": "error", "message": message}), Some(id)));
             }
         }
     };
     let finish = |recording: &mut Option<Recording>, job_tx: &Sender<Work>, paste: bool| {
-        let Some(current) = recording.take() else { return };
+        let Some(current) = recording.take() else {
+            return;
+        };
         let released = Instant::now();
         let held_for = current.started.elapsed();
         // A fake microphone must never reach his keyboard.
@@ -1318,15 +1424,15 @@ fn serve() {
                     "firstAudioMs": current.first_audio.get().map(|at| since(*at)),
                     "releasedMs": since(released),
                 });
-                let _ = job_tx.send(Work::End { target, released, timing });
+                let _ = job_tx.send(Work::End { id: current.id, target, released, timing });
             }
             Ok(()) => {
                 let _ = job_tx.send(Work::Abort);
-                emit(json!({"ev": "idle"}));
+                emit(of_dictation(json!({"ev": "idle"}), Some(current.id)));
             }
             Err(message) => {
                 let _ = job_tx.send(Work::Abort);
-                emit(json!({"ev": "error", "message": message}));
+                emit(of_dictation(json!({"ev": "error", "message": message}), Some(current.id)));
             }
         }
     };
@@ -1352,6 +1458,7 @@ fn serve() {
                             Ok(next) => {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
+                                meter_on.store(config.meter, Ordering::Relaxed);
                                 let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
                                 let local = config.model.is_some() && (config.external.is_none() || config.live_words);
                                 let _ = job_tx.send(Work::Keep(config.keep_loaded && bound && local));
@@ -1366,11 +1473,11 @@ fn serve() {
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
                                     // Nothing can stop a recording once its keys are gone.
-                                    if recording.take().is_some() {
+                                    if let Some(stopped) = recording.take() {
                                         let _ = job_tx.send(Work::Abort);
                                         held = false;
                                         taps = PushToTalk::default();
-                                        emit(json!({"ev": "idle"}));
+                                        emit(of_dictation(json!({"ev": "idle"}), Some(stopped.id)));
                                     }
                                     keys = None;
                                     thread::sleep(Duration::from_millis(30));
@@ -1511,11 +1618,11 @@ fn serve() {
                         }
                     }
                     "cancel" => {
-                        recording = None;
+                        let stopped = recording.take().map(|r| r.id);
                         let _ = job_tx.send(Work::Abort);
                         held = false;
                         taps = PushToTalk::default();
-                        emit(json!({"ev": "idle"}));
+                        emit(of_dictation(json!({"ev": "idle"}), stopped));
                     }
                     "transcribe" => {
                         let id = value["id"].as_u64();
@@ -1598,9 +1705,9 @@ fn serve() {
                         // An accidental tap: what little was heard is dropped, not transcribed.
                         Out::Cancel => {
                             held = false;
-                            recording = None;
+                            let stopped = recording.take().map(|r| r.id);
                             let _ = job_tx.send(Work::Abort);
-                            emit(json!({"ev": "idle"}));
+                            emit(of_dictation(json!({"ev": "idle"}), stopped));
                         }
                         Out::Latch | Out::Unlatch => {}
                     }
@@ -1618,6 +1725,7 @@ fn serve() {
             }
             Msg::Key { hold: false, pressed: false } => toggle_down = false,
             Msg::FakeEnded => finish(&mut recording, &job_tx, true),
+            Msg::Meter(block) => emit(json!({"ev": "pcm", "b64": meter_b64(&block)})),
             Msg::PasteChecked { id, text, why, started } => {
                 // Past the deadline the desktop has kept the words already; pasting them now would type them twice.
                 let why = if why == "ok" && started.elapsed() >= PASTE_DEADLINE { "late" } else { why };
@@ -1634,13 +1742,13 @@ fn serve() {
                 emit(line);
             }
             Msg::MicFailed(message) => {
-                recording = None;
+                let stopped = recording.take().map(|r| r.id);
                 let _ = job_tx.send(Work::Abort);
                 held = false;
                 taps = PushToTalk::default();
-                emit(json!({"ev": "error", "message": message}));
+                emit(of_dictation(json!({"ev": "error", "message": message}), stopped));
             }
-            Msg::Finished { id, dictated, target, result } => match result {
+            Msg::Finished { id, dictation, dictated, target, result } => match result {
                 Ok(done) => {
                     let mut pasted_error = None;
                     let mut paste_ms = None;
@@ -1651,14 +1759,14 @@ fn serve() {
                         paste_ms = Some(started.elapsed().as_millis() as u64);
                     }
                     emit(json!({
-                        "ev": "text", "id": id, "text": done.text, "audioMs": done.audio_ms,
+                        "ev": "text", "id": id, "dictation": dictation, "text": done.text, "audioMs": done.audio_ms,
                         "inferMs": done.infer_ms, "loadMs": done.load_ms, "pasteError": pasted_error,
                         "dictated": dictated, "pasted": paste, "target": target,
                         "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav, "model": done.model,
                         "timing": done.timing, "pasteMs": paste_ms, "audio": done.audio,
                     }));
                 }
-                Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": dictated})),
+                Err(message) => emit(json!({"ev": "text", "id": id, "dictation": dictation, "error": message, "dictated": dictated})),
             },
         }
     }
@@ -1745,7 +1853,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
         if let Some(piece) = last {
             text.push(decode_piece(&mut session, piece, language.clone())?);
         }
-        emit(json!({"file": file, "text": text.join(" "), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
+        emit(json!({"file": file, "text": join_pieces(&text), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
             "finalMs": released.elapsed().as_millis() as u64, "lastSeconds": last_seconds, "pieces": text.len()}));
     }
     Ok(())
@@ -1844,6 +1952,22 @@ mod tests {
     }
 
     #[test]
+    fn the_waveform_sends_at_most_one_newest_block_per_gap() {
+        let (mut meter, t0) = (Meter::default(), Instant::now());
+        // Not a whole block yet.
+        assert!(meter.feed(&vec![0.1; METER_SAMPLES / 2], t0).is_none());
+        // A burst of three blocks sends only the newest one.
+        let mut burst = vec![0.1; METER_SAMPLES / 2];
+        burst.extend(vec![0.2; METER_SAMPLES * 2]);
+        burst.extend(vec![0.3; METER_SAMPLES]);
+        assert_eq!(meter.feed(&burst, t0), Some(vec![0.3; METER_SAMPLES]));
+        // Within the gap nothing goes, and the backlog never grows past a block.
+        assert!(meter.feed(&vec![0.4; METER_SAMPLES * 3], t0 + Duration::from_millis(10)).is_none());
+        assert!(meter.pending.len() <= METER_SAMPLES);
+        assert_eq!(meter.feed(&[], t0 + METER_GAP), Some(vec![0.4; METER_SAMPLES]));
+    }
+
+    #[test]
     fn the_wake_path_and_dictation_keep_their_own_models_and_never_load_one_twice() {
         let (v3, fast) = (Path::new("v3.gguf"), Path::new("fast.gguf"));
         // [the wake path asked, what Main holds, what Wake holds, the model wanted, the slot]
@@ -1882,14 +2006,65 @@ mod tests {
     fn the_cloud_recording_reaches_the_local_model_only_for_live_words() {
         let speech: Vec<f32> = (0..16_000).map(|i| (i as f32 * 0.3).sin() * 0.2).collect();
         let mut quiet = Live { external: Some(std::env::temp_dir()), ..Live::new(None, 0, None) };
-        quiet.hear(None, &speech);
+        quiet.hear(None, &speech, false);
         assert_eq!((quiet.heard.len(), quiet.chunker.pending_len()), (16_000, 0));
         let mut shown = Live { external: Some(std::env::temp_dir()), live_words: true, ..Live::new(None, 0, None) };
-        shown.hear(None, &speech);
+        shown.hear(None, &speech, false);
         assert_eq!((shown.heard.len(), shown.chunker.pending_len()), (16_000, 16_000));
         let mut local = Live::new(None, 0, None);
-        local.hear(None, &speech);
+        local.hear(None, &speech, false);
         assert_eq!(local.chunker.pending_len(), 16_000);
+    }
+
+    #[test]
+    fn audio_waiting_behind_a_chunk_is_taken_with_it_and_the_next_message_kept() {
+        let (tx, rx) = channel::<Work>();
+        let mut pcm = vec![0.1; 4];
+        assert!(matches!(gather_audio(&rx, 1, &mut pcm), (false, None)));
+        tx.send(Work::Audio(1, vec![0.2; 3])).unwrap();
+        tx.send(Work::Audio(1, vec![0.3; 2])).unwrap();
+        tx.send(Work::Abort).unwrap();
+        tx.send(Work::Audio(1, vec![0.4; 1])).unwrap();
+        let (behind, next) = gather_audio(&rx, 1, &mut pcm);
+        assert!(behind && matches!(next, Some(Work::Abort)));
+        assert_eq!(pcm.len(), 9);
+        // What follows the other message stays queued, in order.
+        assert!(matches!(rx.try_recv(), Ok(Work::Audio(1, rest)) if rest.len() == 1));
+        // Another dictation's audio is never gathered into this one's.
+        tx.send(Work::Audio(2, vec![0.5; 1])).unwrap();
+        assert!(matches!(gather_audio(&rx, 1, &mut pcm), (false, Some(Work::Audio(2, _)))));
+    }
+
+    #[test]
+    fn a_dictation_never_answers_with_another_ones_recording() {
+        let (job_tx, job_rx) = channel::<Work>();
+        let (out_tx, out_rx) = channel::<Msg>();
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, out_tx, me));
+        let dir = std::env::temp_dir().join(format!("tessaya-ids-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let begin = |id| Work::Begin {
+            id,
+            model: PathBuf::from("parakeet-test.gguf"),
+            language: None,
+            external: Some(dir.clone()),
+            keep: None,
+            live: false,
+        };
+        let end = |id| Work::End { id, target: None, released: Instant::now(), timing: json!({}) };
+        job_tx.send(begin(1)).unwrap();
+        job_tx.send(Work::Audio(1, vec![0.1; 32_000])).unwrap();
+        // The second starts before the first's end arrives; the first's late audio and end must not reach it.
+        job_tx.send(begin(2)).unwrap();
+        job_tx.send(Work::Audio(2, vec![0.1; 16_000])).unwrap();
+        job_tx.send(Work::Audio(1, vec![0.1; 8_000])).unwrap();
+        job_tx.send(end(1)).unwrap();
+        job_tx.send(end(2)).unwrap();
+        let first = out_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(first, Msg::Finished { dictation: Some(1), result: Err(_), .. }));
+        let second = out_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(second, Msg::Finished { dictation: Some(2), result: Ok(Done { audio_ms: 1_000, .. }), .. }));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -1920,9 +2095,9 @@ mod tests {
         });
         let dir = std::env::temp_dir().join(format!("tessaya-warm-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        job_tx.send(Work::Begin { model, language: None, external: Some(dir.clone()), keep: None, live: true }).unwrap();
-        job_tx.send(Work::Audio(vec![0.1; 16_000])).unwrap();
-        job_tx.send(Work::End { target: None, released: Instant::now(), timing: json!({}) }).unwrap();
+        job_tx.send(Work::Begin { id: 1, model, language: None, external: Some(dir.clone()), keep: None, live: true }).unwrap();
+        job_tx.send(Work::Audio(1, vec![0.1; 16_000])).unwrap();
+        job_tx.send(Work::End { id: 1, target: None, released: Instant::now(), timing: json!({}) }).unwrap();
         let finished = out_rx.recv_timeout(Duration::from_secs(5)).expect("the release waited on the load");
         assert!(matches!(finished, Msg::Finished { result: Ok(Done { wav: Some(_), .. }), .. }));
         unblock.send(()).unwrap();

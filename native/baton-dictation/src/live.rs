@@ -194,6 +194,53 @@ pub fn preview_due(pending: usize, previewed: usize, last_ms: u64) -> bool {
     }
 }
 
+/// One-dot abbreviations whose dot is part of the word, never a sentence's end.
+const ABBREVIATIONS: &[&str] = &["etc", "vs", "mr", "mrs", "ms", "dr", "st", "inc", "ltd", "jr", "sr", "approx"];
+
+/// The pieces' words as one text. Each piece is decoded alone, so the model ends it with a full stop even where he did
+/// not stop: a stop before a piece that starts in lower case was a cut mid-sentence (the model capitalises a real
+/// sentence start), and is dropped. An abbreviation's own dot ("e.g.", "U.S.") stays, and so does a stop before a
+/// brand that starts in lower case ("iPhone", "eBay").
+pub fn join_pieces<S: AsRef<str>>(pieces: &[S]) -> String {
+    let mut out = String::new();
+    for piece in pieces.iter().map(|p| p.as_ref().trim()).filter(|p| !p.is_empty()) {
+        if !out.is_empty() {
+            let first = piece.split_whitespace().next().unwrap_or("");
+            let lower =
+                first.chars().next().is_some_and(|c| c.is_lowercase()) && !first.chars().any(|c| c.is_uppercase());
+            let last = out.rsplit(char::is_whitespace).next().unwrap_or("");
+            let abbreviation = last.strip_suffix('.').is_some_and(|w| {
+                w.contains('.')
+                    || ABBREVIATIONS
+                        .contains(&w.trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase().as_str())
+            });
+            if lower && out.ends_with('.') && !abbreviation {
+                out.pop();
+            }
+            out.push(' ');
+        }
+        out.push_str(piece);
+    }
+    out
+}
+
+/// Samples per `pcm` line the recording sends the desktop for the pill's waveform: 40 ms.
+pub const METER_SAMPLES: usize = RATE / 25;
+
+/// The microphone's samples as 16-bit little-endian PCM in base64, the waveform's input when no other mic reader runs.
+pub fn meter_b64(pcm: &[f32]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes: Vec<u8> = pcm.iter().flat_map(|s| ((s.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()).collect();
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            out.push(if i <= c.len() { ABC[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+    out
+}
+
 /// Words that start after the context. A word straddling the seam belongs to the piece that
 /// heard it whole, which is this one, so the boundary sits slightly before the seam.
 pub fn words_after<'a>(words: impl Iterator<Item = (i64, &'a str)>, context_ms: i64) -> String {
@@ -304,6 +351,28 @@ mod tests {
         pcm.extend_from_slice(&soft);
         assert!(chunker.push(&soft).is_none());
         assert!(!chunker.pending_is_quiet(&pcm));
+    }
+
+    #[test]
+    fn a_stop_the_cut_put_mid_sentence_is_dropped() {
+        assert_eq!(
+            join_pieces(&["It is not very smooth.", "of the words appearing.", "", "Because the cursor stays."]),
+            "It is not very smooth of the words appearing. Because the cursor stays."
+        );
+        assert_eq!(join_pieces(&["Is it?", "yes.", "Wait...", "then go"]), "Is it? yes. Wait... then go");
+        // An abbreviation keeps its dot; a brand in lower case is not a cut mid-sentence.
+        assert_eq!(join_pieces(&["Fruit, e.g.", "apples"]), "Fruit, e.g. apples");
+        assert_eq!(join_pieces(&["Pens, paper etc.", "and so on"]), "Pens, paper etc. and so on");
+        assert_eq!(join_pieces(&["Made in the U.S.", "by hand"]), "Made in the U.S. by hand");
+        assert_eq!(join_pieces(&["I bought one.", "iPhone for her"]), "I bought one. iPhone for her");
+        assert_eq!(join_pieces(&["Sold it.", "eBay took a cut"]), "Sold it. eBay took a cut");
+    }
+
+    #[test]
+    fn the_meter_is_little_endian_pcm_in_base64() {
+        // 0x0000, 0x7fff, 0x8001 -> bytes 00 00 ff 7f 01 80
+        assert_eq!(meter_b64(&[0.0, 1.0, -1.0]), "AAD/fwGA");
+        assert_eq!(meter_b64(&[1.0]), "/38=");
     }
 
     #[test]

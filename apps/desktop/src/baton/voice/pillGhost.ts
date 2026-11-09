@@ -20,45 +20,69 @@ type Box = {
 /** What the sidecar reads at the caret, in physical screen pixels; the font size in points (0: not said). */
 export type CaretGeometry = { readonly caret: Box; readonly field: Box; readonly fontPt: number };
 
-const LINES = 12;
+/** Lines of his field the ghost may cover above the caret and below it; a taller field scrolls inside this. */
+const ABOVE = 12;
+const BELOW = 30;
 /** A field's text sits a little inside its box; the field does not say how far. */
 const INSET = 8;
+/** Narrower than this many average characters, or shorter than two lines, the field is no place to flow his words. */
+const MIN_CHARS = 24;
 /** How often a key or click is looked for while the ghost plays. */
 const SKIP_POLL_MS = 50;
 
-/** Where the ghost window goes and how it sets its words, in DIP; null when there is no sensible place. */
+/**
+ * Where the ghost window goes and how it sets its words, in DIP; null when there is no sensible place (the pill shows
+ * them). The window is the field's text box, so his words wrap at the field's width, not from the caret, and scroll
+ * up from its bottom edge; `top` is how far down that box the caret's line is.
+ */
 export const ghostPlacement = (g: CaretGeometry) => {
   const line = Math.round(g.caret.height);
   const left = g.field.x + INSET;
   const width = Math.round(g.field.width - 2 * INSET);
   const indent = Math.round(g.caret.x - left);
-  if (line < 8 || line > 80 || width < 120 || indent < 0 || indent > width) return null;
+  const fontPx = g.fontPt > 0 ? Math.round((g.fontPt * 4) / 3) : Math.round(line * 0.72);
+  const boxTop = Math.round(Math.max(g.field.y, g.caret.y - ABOVE * line));
+  const boxBottom = Math.round(Math.min(g.field.y + g.field.height, g.caret.y + BELOW * line));
+  const top = Math.round(g.caret.y) - boxTop;
+  const height = boxBottom - boxTop;
+  if (line < 8 || line > 80 || indent < 0 || indent > width) return null;
+  if (
+    width < Math.max(120, fontPx * 0.5 * MIN_CHARS) ||
+    height < 2 * line ||
+    top < 0 ||
+    top + line > height + line / 2
+  )
+    return null;
   return {
-    bounds: { x: Math.round(left), y: Math.round(g.caret.y), width, height: line * LINES },
-    fontPx: g.fontPt > 0 ? Math.round((g.fontPt * 4) / 3) : Math.round(line * 0.72),
+    bounds: { x: Math.round(left), y: boxTop, width, height },
+    fontPx,
     linePx: line,
     width,
     indent,
+    top,
+    height,
   };
 };
 
 const GHOST_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-:root{--field-ink:#e9e9ee;--ghost:rgba(233,233,238,.84);--ghost-drop:rgba(233,233,238,.5);--sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
-@media (prefers-color-scheme:light){:root{--field-ink:#17181b;--ghost:rgba(23,24,27,.82);--ghost-drop:rgba(23,24,27,.5)}}
-html,body{margin:0;overflow:hidden;background:transparent;-webkit-font-smoothing:antialiased}
+:root{--field-bg:#1f1f23;--field-ink:#e9e9ee;--ghost:rgba(233,233,238,.84);--ghost-drop:rgba(233,233,238,.5);--sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+@media (prefers-color-scheme:light){:root{--field-bg:#fff;--field-ink:#17181b;--ghost:rgba(23,24,27,.82);--ghost-drop:rgba(23,24,27,.5)}}
+html,body{margin:0;height:100%;overflow:hidden;background:transparent;-webkit-font-smoothing:antialiased}
 #vp{position:absolute;left:0;top:0;pointer-events:none}
 #vp span{position:absolute;left:0;top:0;white-space:pre;text-decoration:underline dotted color-mix(in srgb,currentColor 55%,transparent);text-underline-offset:4px}
 #vp span.m span{position:static}
 #vp span.m .slot{position:relative;display:inline-block;vertical-align:top;height:1em}
 #vp span.m .g{position:absolute;left:0;top:0;transform-origin:0 85%}
 #mE{position:absolute;visibility:hidden;left:0;top:0}
+#cr{position:absolute;left:0;top:0;width:1.5px;background:var(--field-ink);opacity:0}
+#bg{position:absolute;inset:0;background:var(--field-bg);opacity:0;border-radius:4px}
 #mE span{display:inline-block;vertical-align:top;white-space:pre}
-</style></head><body><div id="vp" aria-hidden="true"></div><div id="mE" aria-hidden="true"></div><script>
+</style></head><body><div id="bg" aria-hidden="true"></div><div id="vp" aria-hidden="true"></div><div id="mE" aria-hidden="true"></div><script>
 const $=i=>document.getElementById(i);
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
 const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
 ${wordsScript("D")}
-window.ghost={start(f){setField(f.fontPx,f.linePx,f.width,f.indent);island.start();},words(t){island.words(t);},release(){island.release();},cleanup(r,c){return island.cleanup(r,c);},stop(){island.stop();}};
+window.ghost={start(f){setField(f.fontPx,f.linePx,f.width,f.indent,f.top,f.height);island.start();},words(t){island.words(t);},release(){island.release();},cleanup(r,c){return island.cleanup(r,c);},stop(){island.stop();}};
 </script></body></html>`;
 
 export interface PillGhost {
@@ -166,7 +190,7 @@ export const createPillGhost = (input: {
         })
         .catch(() => undefined);
       void call(
-        `window.ghost.start(${JSON.stringify({ fontPx: placed.fontPx, linePx: placed.linePx, width: placed.width, indent: placed.indent })})`,
+        `window.ghost.start(${JSON.stringify({ fontPx: placed.fontPx, linePx: placed.linePx, width: placed.width, indent: placed.indent, top: placed.top, height: placed.height })})`,
       );
       return true;
     },

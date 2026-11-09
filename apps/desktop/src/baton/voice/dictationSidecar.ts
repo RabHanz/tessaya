@@ -45,6 +45,8 @@ export interface DictationConfig {
   readonly keepLoaded?: boolean;
   /** His words in the pill as he speaks: a quick decode of the words not yet cut, and the local model's words for the cloud too. */
   readonly liveWords?: boolean;
+  /** Wake words are off: the recording sends its audio (`pcm`) for the pill's waveform. */
+  readonly meter?: boolean;
 }
 
 /**
@@ -79,6 +81,29 @@ export const recordingAfter = (ev: DictationEvent["ev"], was: boolean): boolean 
   ev === "recording" || ev === "transcribing" || ev === "idle" || ev === "error"
     ? ev === "recording"
     : was;
+
+/** One helper recording the desktop waits on words for (`dictation`: the sidecar's id; null from an older sidecar). */
+export interface RecordingEntry {
+  readonly id: number;
+  readonly dictation: number | null;
+  readonly app: FocusedApp;
+  heard: "stop" | null;
+  discarded: boolean;
+}
+
+/**
+ * The recording an end (text, idle or error) answers, taken out with any older one it outlived. Matched on the
+ * sidecar's id; an end without one takes the oldest, as before ids. An id we do not hold takes nothing, so a stray end
+ * never takes the next dictation's window or discard.
+ */
+export const takeRecording = (
+  recordings: Array<RecordingEntry>,
+  dictation: number | undefined,
+): RecordingEntry | undefined => {
+  if (dictation === undefined) return recordings.shift();
+  const at = recordings.findIndex((r) => r.dictation === dictation);
+  return at < 0 ? undefined : recordings.splice(0, at + 1).at(-1);
+};
 
 export interface FocusedApp {
   readonly exe: string;
@@ -157,17 +182,24 @@ export type DictationEvent =
   | { readonly ev: "configured"; readonly mouse?: boolean }
   /** A mouse binding fired; `id` is the action of the Keyboard and mouse page. */
   | { readonly ev: "binding"; readonly id: string; readonly up?: boolean }
-  | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
+  | {
+      readonly ev: "recording";
+      readonly app?: string;
+      readonly title?: string;
+      readonly dictation?: number;
+    }
   | { readonly ev: "transcribing" }
   /** The words so far, at a pause while the key is still held. */
   /** Every decoded piece; `pause` when it ended at a pause (an older sidecar sends only those, unmarked). */
   | { readonly ev: "partial"; readonly text: string; readonly pause?: boolean }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
-  | { readonly ev: "idle" }
+  /** 40 ms of the recording's audio (16-bit PCM, base64): the pill's waveform when no wake-word mic runs. */
+  | { readonly ev: "pcm"; readonly b64: string }
+  | { readonly ev: "idle"; readonly dictation?: number }
   /** A key was held for dictation `id`'s paste (`holdKeys`): paste now. */
   | { readonly ev: "held_key"; readonly id: number }
-  | { readonly ev: "error"; readonly message: string }
+  | { readonly ev: "error"; readonly message: string; readonly dictation?: number }
   /** Just before the chord, what the clipboard held (ours or something else); when settled, whether it was read. */
   | {
       readonly ev: "paste_check";
@@ -184,6 +216,10 @@ export type DictationEvent =
   | {
       readonly ev: "text";
       readonly id: number | null;
+      /** The key dictation it answers (its `recording`'s); absent for a clip and from an older sidecar. */
+      readonly dictation?: number;
+      /** Set by the desktop: its dictation is no longer waited on, so its words are kept, never pasted. */
+      readonly unmatched?: boolean;
       /** Set by the desktop as the event arrives: its recording's window, and whether it was discarded. */
       readonly app?: FocusedApp;
       readonly discarded?: boolean;

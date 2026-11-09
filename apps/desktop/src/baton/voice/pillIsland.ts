@@ -36,6 +36,40 @@ export const ISLAND_HTML = `<div id="vp" aria-hidden="true"></div>`;
 export const ISLAND_MEASURE = `<div id="mE" aria-hidden="true"></div>`;
 
 /**
+ * D's words as a field lays them out: from the caret's place on its line (`indent`), each word on the line while it
+ * fits in the text box's `width`, else at the start of the next. A word wider than the box keeps a line of its own.
+ * Self-contained: it runs in the ghost's page too.
+ */
+export const flowWords = (
+  widths: ReadonlyArray<number>,
+  space: number,
+  width: number,
+  indent: number,
+  line: number,
+): Array<{ x: number; y: number; w: number }> => {
+  let x = indent;
+  let y = 0;
+  return widths.map((w) => {
+    if (x > 0 && x + w > width) {
+      x = 0;
+      y += line;
+    }
+    const at = { x, y, w };
+    x += w + space;
+    return at;
+  });
+};
+
+/**
+ * How far D's text scrolls up so its last line stays in the field, in whole lines, as a textarea does: its first line
+ * starts `top` down the box, and the box is `height` tall.
+ */
+export const ghostScroll = (lines: number, top: number, line: number, height: number): number => {
+  const over = top + lines * line - height;
+  return over <= 0 ? 0 : Math.ceil(over / line) * line;
+};
+
+/**
  * "E" draws the words in the pill's capsule (needs the page's `$` and `isCalm`, and #p, #dx, #dv, #w); "D" draws
  * them where they will land, in a ghost window over his field (`setField` gives its font, line and width).
  */
@@ -43,13 +77,18 @@ export const wordsScript = (variant: "E" | "D"): string => `
 const {clamp,prog,EMPH,DECEL,ACCEL,MD,FLOW,EXPAND_MS,SMOOTH,springAt,align,cleanupTimes,stepWidth}=(${pillEngine.toString()})();
 const D=${variant === "D"},PH=34,PBASE=124,LIVE_LINES=D?99:5,PAD=12,MAXW=${ISLAND_WIDTH},TMAX=MAXW-32,FLOW01=[{at:0,to:0},{at:0,to:1}];
 const SHRINK_MS=D?0:600;
-let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0;
-// D: the field's own font, line height, text width and where the caret sits on its line.
-const setField=(fontPx,linePx,width,indent)=>{LINE=linePx;FW=width;INDENT=indent;for(const el of[vp,mE])el.style.font='400 '+fontPx+'px/'+linePx+'px var(--sans)';};
+const flowWords=${flowWords.toString()},ghostScroll=${ghostScroll.toString()};
+let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0,TOP=0,BOXH=0,FONT=14;
+// D: the field's own font, line height, text width, where the caret sits on its line, and the text box it scrolls in.
+const setField=(fontPx,linePx,width,indent,top,height)=>{LINE=linePx;FW=width;INDENT=indent;TOP=top;BOXH=height;FONT=fontPx;for(const el of[vp,mE])el.style.font='400 '+fontPx+'px/'+linePx+'px var(--sans)';};
+const scD=lines=>ghostScroll(lines,TOP,LINE,BOXH);
 const vp=$('vp'),mE=$('mE');
 const measure=(words,width)=>{mE.textContent='';mE.style.width=width===null?'auto':width+'px';mE.style.whiteSpace=width===null?'nowrap':'normal';mE.style.textIndent=width===null?'0':INDENT+'px';
  return words.map((w,i)=>{if(i)mE.appendChild(document.createTextNode(' '));const s=document.createElement('span');s.textContent=w;mE.appendChild(s);return s;});};
-const lay=(words,width)=>measure(words,width).map(s=>({x:s.offsetLeft,y:s.offsetTop}));
+// D lays the words out itself (flowWords) from their measured widths, so they wrap as his field does.
+const layD=(words,width)=>{const sp=measure(words,null),ws=sp.map(s=>s.offsetWidth);
+ const gap=sp.length>1?sp[1].offsetLeft-sp[0].offsetLeft-ws[0]:FONT*.28;return flowWords(ws,gap,width,INDENT,LINE);};
+const lay=(words,width)=>D?layD(words,width):measure(words,width).map(s=>({x:s.offsetLeft,y:s.offsetTop}));
 const layLine=words=>measure(words,null).map(s=>s.offsetLeft);
 const oneLine=words=>{measure(words,null);return mE.offsetWidth;};
 const linesOf=pos=>pos.length?Math.round(pos[pos.length-1].y/LINE)+1:0;
@@ -71,12 +110,12 @@ const setWords=(next,now)=>{let k=0;while(k<next.length&&k<I.raw.length&&next[k]
  for(let i=k;i<next.length;i++){I.rawS.push(mk(next[i]));I.appear.push(now);}
  I.raw=next;I.tw=D?FW:stepWidth(I.tw,oneLine(next),TMAX);const pos=lay(next,I.tw),lines=linesOf(pos);
  I.steps.push({t:now,n:next.length,width:I.tw,pos,lines});
- I.W.push({at:now,to:wOf(I.tw)});I.Hh.push({at:now,to:Math.min(LIVE_LINES,lines)*LINE+PAD});I.Sc.push({at:now,to:Math.max(0,lines-LIVE_LINES)*LINE});
+ I.W.push({at:now,to:wOf(I.tw)});I.Hh.push({at:now,to:Math.min(LIVE_LINES,lines)*LINE+PAD});I.Sc.push({at:now,to:D?scD(lines):Math.max(0,lines-LIVE_LINES)*LINE});
  kickI(now+1200);};
 const island={
  on:()=>I!==null,
  start(){island.stop();I={raw:[],appear:[],rawS:[],steps:[],tw:0,W:[{at:0,to:PBASE}],Hh:[{at:0,to:0}],Sc:[{at:0,to:0}],R:null,C:null,P:Infinity,rawLines:0,until:0};kickI(performance.now()+50);},
- stop(){I=null;cancelAnimationFrame(iraf);iraf=0;vp.textContent='';if(D)return;const p=$('p');for(const k of['left','width','height','borderRadius'])p.style[k]='';
+ stop(){I=null;cancelAnimationFrame(iraf);iraf=0;vp.textContent='';if(D){vp.appendChild(Object.assign(document.createElement('i'),{id:'cr'}));return;}const p=$('p');for(const k of['left','width','height','borderRadius'])p.style[k]='';
   for(const id of['dx','dv','w']){const s=$(id).style;s.opacity='';s.transform='';s.color='';}},
  words(text){if(!I||I.R!==null)return;setWords(text.split(/\\s+/).filter(Boolean),performance.now());},
  // His ✓ (or the key's release): the pill opens to every line and the view scrolls back to the top, 0.75 s.
@@ -124,6 +163,9 @@ const island={
     k.morph={el,slot,o,n,wo:o.offsetWidth,wn:n.offsetWidth,end:suf===0};}});
   kickI(I.P+C.OUT_D+SHRINK_MS);return Math.ceil(I.P+C.OUT_D+SHRINK_MS-now);},
 };
+// D's caret, after the last word: it follows the end of the text, still (no blink).
+const caretAt=(pos,o)=>{const cr=$('cr');if(!cr)return;if(!pos||pos.w===undefined){cr.style.opacity='0';return;}
+ cr.style.height=LINE+'px';place(cr,pos.x+pos.w+1,pos.y,o);};
 const morphAt=(M,q)=>{M.slot.style.width=(M.wo+(M.wn-M.wo)*q).toFixed(2)+'px';
  if(M.end){M.o.style.transform='scale('+(1-.4*q).toFixed(3)+')';M.n.style.transform='scale('+(.6+.4*q).toFixed(3)+')';}
  else{M.o.style.transform='translateY('+(-.35*q).toFixed(3)+'em)';M.n.style.transform='translateY('+(.35*(1-q)).toFixed(3)+'em)';}
@@ -139,7 +181,15 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
   // From ✓ the capsule opens and the scroll returns to the top on one curve from where they were.
   else{const qo=calm?1:SMOOTH(prog(t,R,EXPAND_MS)),hAtR=Math.max(0,springAt(L.HhLive,R,calm));h=hAtR+(hRaw-hAtR)*qo;sc=springAt(L.ScLive,R,calm)*(1-qo);}}
  const ww=w;
- if(D){vp.style.width=FW+'px';vp.style.height='auto';}else{
+ if(D){vp.style.width=FW+'px';
+  // The text scrolls as a field does: the newest line stays in the box, and the cleanup's lines settle the same way.
+  const sD=t<R||!C?springAt(L.Sc,t,calm):scD(L.rawLines)+(scD(L.linesB)-scD(L.rawLines))*pp;vp.style.transform='translateY('+(TOP-sD).toFixed(2)+'px)';sc=0;
+  // His own text cannot scroll with it, so once it does the field's lines under it are covered, as a textarea's would go.
+  const bg=$('bg');if(bg)bg.style.opacity=String(clamp(sD/LINE)*(C&&t>=P?1-ACCEL(prog(t,P,C.OUT_D)):1));
+  // A line scrolled half past the box's top fades over half a line, not cut in half; only the words fade, never #bg.
+  // vp is tall enough to hold the box in its own coordinates, so its mask reaches every word on show.
+  const top=sD-TOP;vp.style.height=(sD+BOXH).toFixed(2)+'px';
+  vp.style.maskImage=vp.style.webkitMaskImage=sD>0?'linear-gradient(180deg,transparent 0,transparent '+top.toFixed(2)+'px,#000 '+(top+LINE/2).toFixed(2)+'px)':'';}else{
  p_.style.left=((MAXW-ww)/2).toFixed(2)+'px';p_.style.width=ww.toFixed(2)+'px';p_.style.height=(PH+h).toFixed(2)+'px';p_.style.borderRadius=(PH/2-clamp(h/24))+'px';
  const tuck=t<R?0:t<P?(calm?1:EMPH(prog(t,R,MD.medium2))):(calm?0:1-EMPH(prog(t,P,MD.medium2)));
  for(const id of['dx','w','dv'])$(id).style.opacity=String(1-.65*tuck);
@@ -152,8 +202,10 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
  if(!C){// While he talks, and after ✓ until the clean text: the newest partial's layout, each word arriving with a decelerated fade, rise and unblur.
   let s=L.steps[0];for(const x of L.steps)if(x.t<=t)s=x;if(!s)return;
   L.rawS.forEach((sp,i)=>{if(t<L.appear[i]||i>=s.n){hide(sp);return;}const p=calm?1:DECEL(prog(t,L.appear[i],MD.medium4));sp.style.color=liveC;sp.style.backgroundImage='';place(sp,s.pos[i].x,s.pos[i].y-sc+6*(1-p),p,3*(1-p));});
+  if(D)caretAt(s.pos[s.n-1],1);
   return;}
  const c=t-R,fade=t<P?1:calm?0:1-ACCEL(prog(t,P,C.OUT_D));
+ if(D){const e=L.toks.reduce((a,k)=>k.j>a.j?k:a,L.toks[0]);caretAt(pp>0?e&&e.B:L.rawP[L.rawP.length-1],fade);}
  // Reduced motion: his raw words until the cut, then the clean paragraph, with no movement between.
  if(calm){const clean=c>=C.CUT;L.rawS.forEach(hide);L.toks.forEach(k=>{hide(k.subS);hide(k.landS);if(k.morph)hide(k.morph.el);});
   if(!clean)L.rawS.forEach((sp,i)=>{sp.style.backgroundImage='';sp.style.color=c>=C.LIT&&!L.drops.includes(i)?textC:greyC;place(sp,L.rawP[i].x,L.rawP[i].y,fade);});
