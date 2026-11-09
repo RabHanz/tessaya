@@ -4,6 +4,12 @@
  * (`baton-live-acp.mjs`, installed beside this file) and the server's mirror both parse with it.
  */
 import * as NodeCrypto from "node:crypto";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+/** Where the live agent runs Herdr from; the server checks the same path before it offers sending. */
+export const herdrBin = (env = process.env) =>
+  env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
 
 /**
  * A permission card's question ends with a short id of the prompt it was read from. T3 sends the question back with

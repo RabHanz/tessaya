@@ -7,6 +7,7 @@ import {
   MessageId,
   OrchestrationV2UserInputQuestion,
   ProjectId,
+  ProviderInstanceConfig,
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -578,6 +579,7 @@ describe("media that only appears in text is not shown", () => {
 });
 
 const decodeAcpSettings = Schema.decodeUnknownSync(AcpRegistrySettings);
+const decodeInstanceConfig = Schema.decodeSync(ProviderInstanceConfig);
 
 describe("liveProviderInstance", () => {
   it("decodes as the acpRegistry driver's settings, so the instance and its adapter register", () => {
@@ -600,5 +602,7 @@ describe("liveProviderInstance", () => {
     ]);
     expect(decodeAcpSettings(off.config).commandPath).toBe("C:/T3/Tessaya.exe");
     expect("environment" in liveProviderInstance("/usr/bin/node", "/x.mjs")).toBe(false);
+    // Settings hand it back decoded; it must compare equal, or the desktop rewrites settings every start.
+    expect(JSON.stringify(decodeInstanceConfig(off))).toBe(JSON.stringify(off));
   });
 });

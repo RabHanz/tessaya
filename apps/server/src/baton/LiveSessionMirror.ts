@@ -141,10 +141,11 @@ export const liveProviderInstance = (
 ) => ({
   driver: DRIVER,
   displayName: "Terminal session",
-  enabled: options.enabled ?? true,
+  // Schema key order: the settings comparison below is by JSON, so a reordered copy would be rewritten every start.
   ...(options.electron === true
     ? { environment: [{ name: "ELECTRON_RUN_AS_NODE", value: "1", sensitive: false }] }
     : {}),
+  enabled: options.enabled ?? true,
   config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
 });
 
@@ -152,15 +153,8 @@ export const liveProviderInstance = (
 const isElectronNode = (node: string): boolean =>
   process.env.ELECTRON_RUN_AS_NODE === "1" && node === process.execPath;
 
-/** Herdr where the agent looks for it (BATON_HERDR_BIN, ~/.local/bin) or on PATH. */
-const herdrPresent = (): boolean =>
-  [
-    process.env.BATON_HERDR_BIN,
-    NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr"),
-    ...(process.env.PATH ?? "").split(NodePath.delimiter).map((dir) => NodePath.join(dir, "herdr")),
-  ].some(
-    (candidate) => candidate !== undefined && candidate !== "" && NodeFS.existsSync(candidate),
-  );
+const herdrPresent = (): boolean => NodeFS.existsSync(panePrompt.herdrBin());
+
 /**
  * Id namespace of live threads. "baton-live" (2026-10-27 rounds 1–2) back-filled older history
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
