@@ -303,6 +303,8 @@ export interface StandingRunJob {
   readonly from: "him" | "device";
   readonly tools: ReadonlyArray<string>;
   readonly judge: (tool: string) => { readonly verdict: string; readonly why?: string };
+  /** The persona that owns it (the one he set it up with): who it answers as and what it may recall. */
+  readonly persona: Persona;
 }
 
 /** What Baton can do beyond talking, supplied by the voice side. */
@@ -2798,10 +2800,11 @@ export const startScreenCompanion = (input: {
           persona:
             standing === undefined
               ? "Tessaya, for a paired device"
-              : `Tessaya, for your standing job "${standing.title}"`,
+              : `${standing.persona.name}, for your standing job "${standing.title}"`,
           ...entry,
         }),
       jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
+      ...(standing === undefined ? {} : { agent: standing.persona.id }),
     });
     const gate: Gate = standing === undefined ? slot.gate : standingGate(slot.gate, standing);
     let mine: BatonMcp | null = null;
@@ -2828,7 +2831,12 @@ export const startScreenCompanion = (input: {
         }),
       conversation: createConversationLog({ file }),
       clockLine: () => clockLine(new Date()),
-      notes: () => assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))),
+      notes: async () => {
+        const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
+        // A standing job gets its persona's standing memory, as his own session does; a device gets none.
+        const kept = standing === undefined ? "" : await slot.memory.standing(standing.persona.id);
+        return kept === "" ? frame : `${frame}\n\n${kept}`;
+      },
       recall: (text, project) => slot.memory.forSentence(text, project),
       beginTurn: slot.beginTurn,
     });
@@ -2880,7 +2888,11 @@ export const startScreenCompanion = (input: {
         timeout.addEventListener("abort", stop, { once: true });
         signal.addEventListener("abort", stop, { once: true });
         try {
-          const reply = await once.say(standingTurnText(job), { window: null, session: null });
+          const reply = await once.say(standingTurnText(job), {
+            window: null,
+            session: null,
+            persona: { id: job.persona.id, name: job.persona.name, role: job.persona.role },
+          });
           // One model turn, and one more for each tool call it made (the turn record counts them).
           return {
             status: "ok" as const,

@@ -29,6 +29,8 @@ export const createOutsideSlot = (input: {
   readonly record: GateInput["record"];
   readonly jobProjects?: GateInput["jobProjects"];
   readonly chrome?: GateInput["chrome"];
+  /** A standing job's owning persona: its memory view. A device's turn has none. */
+  readonly agent?: string;
 }) => {
   const taint = createTaint();
   // Once he speaks the turn is over: nothing it started may go on acting.
@@ -42,11 +44,11 @@ export const createOutsideSlot = (input: {
     );
     return work;
   };
-  // No persona: the walled view, whoever is speaking to him at the time.
+  // A device's turn has no persona: the walled view, whoever is speaking to him at the time.
   const memory = createDesktopMemory({
     call: input.memoryCall,
     notes: input.notes,
-    agent: () => undefined,
+    agent: () => input.agent,
   });
   // No plan grant, no typing grant and no "act without asking": every allow but Tessaya's own reads becomes an ask.
   const judge = createAgentGate({

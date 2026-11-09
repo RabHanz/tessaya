@@ -4873,6 +4873,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             from: job.from,
             tools: job.tools,
             judge: (tool) => standingVerdict(tool, owner),
+            persona: owner,
           },
           pass.signal,
           STANDING_RUN_TIMEOUT_MS,
