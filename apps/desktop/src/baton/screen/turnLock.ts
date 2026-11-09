@@ -61,6 +61,8 @@ export const createTurnLock = () => {
       chain = next.catch(() => undefined);
       return next;
     },
+    /** His Stop: ends the device turn that is running, if any, without starting a turn of his. */
+    stopDevice: (): void => device?.cancel(),
     /** Whether a device turn holds the lock now: only then is the running turn a device's. */
     deviceRunning: (): boolean => device !== null,
   };

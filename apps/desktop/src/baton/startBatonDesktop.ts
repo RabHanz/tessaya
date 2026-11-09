@@ -613,9 +613,9 @@ export const startBatonDesktop = Effect.gen(function* () {
         screen?.cutIn();
       },
       onDuck: (on) => voicePlayer.duck?.(on),
-      onDismiss: () => {
+      onStop: (quiet) => {
         speaker.cancel();
-        screen?.dismissQuietly();
+        screen?.stop(quiet);
       },
       audition: (name) => {
         const picked = (name ?? screen?.voice() ?? "anna") as PocketVoice | "system";
@@ -626,10 +626,6 @@ export const startBatonDesktop = Effect.gen(function* () {
         void speaker.sample(chooseVoice(picked), AUDITION_LINE);
       },
       warmAssistant: () => screen?.warmAssistant(),
-      onSpokenStop: () => {
-        speaker.cancel();
-        screen?.dismiss();
-      },
       openMainWindow,
       dictationBinary: resolveDictationBinary({
         resourcesPath,

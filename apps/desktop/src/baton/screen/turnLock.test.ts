@@ -42,6 +42,19 @@ describe("one turn at a time with a paired device", () => {
     end();
   });
 
+  it("a Stop ends a running device or standing-job turn without starting his", async () => {
+    const lock = createTurnLock();
+    lock.stopDevice();
+    const device = deviceTurn(lock, [], "device");
+    await device.started;
+    lock.stopDevice();
+    expect(await device.result).toBe(INTERRUPTED);
+    expect(lock.deviceRunning()).toBe(false);
+    const next = deviceTurn(lock, [], "next");
+    next.release();
+    expect(await next.result).toBe("next answered");
+  });
+
   it("a cancel before the device turn names its stop still stops it", async () => {
     const lock = createTurnLock();
     const ready = deferred();
