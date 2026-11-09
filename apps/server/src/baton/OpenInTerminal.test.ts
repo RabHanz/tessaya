@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import { it } from "@effect/vitest";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -35,7 +36,7 @@ const fixture = (
     shell: () => Effect.succeed({ running: over.running ?? false }),
     home: () => Effect.succeed(over.home === undefined ? HOME : over.home),
     stopTurn: () => Effect.sync(() => (calls.push("stop"), over.stops ?? true)),
-    toTerminal: () => Effect.sync(() => void calls.push("to-terminal")),
+    toTerminal: () => Effect.sync(() => (calls.push("to-terminal"), true)),
     back: () => Effect.sync(() => void calls.push("back")),
     held: () => Effect.succeed(over.held ?? false),
     detach: (id) => Effect.sync(() => void calls.push(`detach:${id}`)),

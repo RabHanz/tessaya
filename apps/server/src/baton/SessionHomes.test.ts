@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import { it } from "@effect/vitest";
 import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import type { OrchestrationV2DomainEvent } from "@t3tools/contracts";

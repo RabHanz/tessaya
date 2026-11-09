@@ -26,7 +26,7 @@ import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
-import { TessayaToolkit } from "./tools.ts";
+import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
 
 const decodeAsked = Schema.decodeUnknownOption(
   Schema.Struct({
@@ -253,7 +253,10 @@ export const layer = McpToolAccess.toLayer(
               scope.thread?.threadId === input.threadId
                 ? handlers[BATON_SESSIONS_WS_METHODS.openInTerminal]({
                     threadId: input.threadId,
-                  }).pipe(Effect.mapError(failed))
+                  }).pipe(
+                    Effect.mapError(failed),
+                    Effect.map((opened): typeof OpenInTerminalReply.Type => opened),
+                  )
                 : askHim(
                     `Open the Tessaya thread ${input.threadId} in a terminal (thread_open_in_terminal): its session moves to a Herdr pane until the pane closes.`,
                   ),
