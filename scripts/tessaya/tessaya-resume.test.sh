@@ -54,3 +54,26 @@ grep -q "proj server" "$HERDR_LOG" || fail "the space's server is started"
 grep -q "pane run" "$HERDR_LOG" && fail "a restored session got a second copy"
 grep -q "running in fab-proj pane w1:p9" "$work/out" || fail "a restored session is reported as running: $(cat "$work/out")"
 ok "a session the restore brings back is not started twice, and is reported as running"
+
+# 4. `tessaya resume <thread>`: from the server's file, on the thread's login; Tessaya's SDK process is never doubled.
+touch "$HERDR_UP"
+mkdir -p "$work/cfg/sessions"
+printf '{"version":1,"threads":[{"threadId":"t-1","title":"Pricing page","sessionId":"dddd-4","cwd":"%s","configDir":"%s","instanceId":"claude-work","model":"m","inTerminal":false,"openedAt":0}]}' \
+  "$work/proj" "$work/cfg" > "$work/sessions.json"
+export TESSAYA_SESSIONS_FILE="$work/sessions.json"
+: > "$HERDR_LOG"
+bash "$script" resume pricing > "$work/out" 2>&1 < /dev/null || fail "resume by title words: $(cat "$work/out")"
+grep -q "pane run w1:p1 CLAUDE_CONFIG_DIR=$work/cfg claude --resume dddd-4" "$HERDR_LOG" ||
+  fail "the pane runs on the thread's login: $(cat "$HERDR_LOG")"
+ok "tessaya resume finds the thread in the file and resumes it on its own login"
+HERDR_SESSION=fab-proj HERDR_PANE_ID=w1:p9 sleep 120 &
+sdk=$!
+printf '{"pid":%s,"sessionId":"dddd-4","kind":"interactive","entrypoint":"sdk-ts"}' "$sdk" > "$work/cfg/sessions/$sdk.json"
+: > "$HERDR_LOG"
+bash "$script" resume t-1 > "$work/out" 2>&1 < /dev/null && fail "a session Tessaya hosts was resumed a second time"
+grep -q "pane run" "$HERDR_LOG" && fail "a session Tessaya hosts got a pane"
+grep -q "Tessaya is hosting this session" "$work/out" || fail "says why: $(cat "$work/out")"
+bash "$script" resume t-1 --force > "$work/out" 2>&1 < /dev/null || true
+kill -0 "$sdk" 2> /dev/null && fail "--force stops Tessaya's process"
+grep -q "pane run w1:p1 CLAUDE_CONFIG_DIR=$work/cfg claude --resume dddd-4" "$HERDR_LOG" || fail "--force then resumes it"
+ok "a session Tessaya hosts is refused, and --force stops that process first"

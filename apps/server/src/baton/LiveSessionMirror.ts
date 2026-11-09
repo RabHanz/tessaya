@@ -72,6 +72,7 @@ import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
 import * as DateTime from "effect/DateTime";
 
 import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
+import { makeSessionHomes } from "./SessionHomes.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -923,6 +924,17 @@ const make = Effect.gen(function* () {
     appendResumeLog(NodePath.join(logsDir, "baton-mirror.ndjson"), record);
   };
 
+  const homes = makeSessionHomes({
+    engine,
+    stateDir,
+    instances: settings.getSettings.pipe(
+      Effect.map((current) => current.providerInstances),
+      Effect.orElseSucceed(() => ({})),
+    ),
+    log: (record) => mirrorLog(null, record),
+    live: { driver: DRIVER, model: MODEL },
+  });
+
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
   const owned = new Set<string>();
@@ -1692,13 +1704,17 @@ const make = Effect.gen(function* () {
 
   const startFollowing = (session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      const threadId = liveThreadId(session.sessionId);
+      // A Tessaya thread's own session, open in a terminal: that thread, which already holds its history.
+      const home = homes.ofSession(session.sessionId);
+      const threadId =
+        home === null ? liveThreadId(session.sessionId) : ThreadId.make(home.threadId);
       const path = transcriptPath(session);
       const size = path === null ? 0 : NodeFS.statSync(path).size;
       // Long tool-heavy sessions hold few messages per megabyte: read back until there are enough.
       let from = size;
       let history: Array<LiveTranscriptMessage> = [];
       while (
+        home === null &&
         path !== null &&
         from > 0 &&
         history.length < FIRST_MESSAGES &&
@@ -1913,6 +1929,7 @@ const make = Effect.gen(function* () {
 
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
+    yield* homes.refresh.pipe(Effect.andThen(homes.link(live)), Effect.ignoreCause({ log: true }));
     // Before any heal rewrites a thread's native id, so kept messages still find their thread.
     yield* stampKept(engine, weave).pipe(Effect.ignoreCause);
     mirrorLog("live-set", {

@@ -149,7 +149,48 @@ function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: s
             </MenuItem>
           </MenuGroup>
         )}
-        <MenuItem onClick={() => void moveIntoTessaya()}>Move into Tessaya…</MenuItem>
+        {isLiveThreadId(props.threadRef.threadId) ? (
+          <MenuItem onClick={() => void moveIntoTessaya()}>Move into Tessaya…</MenuItem>
+        ) : null}
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/** A Tessaya Claude thread's way out to a terminal: its own session in a Herdr pane, handed back when that closes. */
+function OpenInTerminalMenu(props: { readonly threadRef: ScopedThreadRef }) {
+  const open = useAtomCommand(batonWorkSessions.sessionsOpenInTerminal, { reportFailure: false });
+  const openInTerminal = async () => {
+    const result = await open({
+      environmentId: props.threadRef.environmentId,
+      input: { threadId: props.threadRef.threadId },
+    });
+    toastManager.add(
+      result._tag === "Success" && result.value.state === "opened"
+        ? { type: "success", title: "Opened in a terminal", description: result.value.detail }
+        : {
+            type: "error",
+            title: "Not opened",
+            ...(result._tag === "Success" ? { description: result.value.detail } : {}),
+          },
+    );
+  };
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Session actions"
+            data-testid="thread-session-menu"
+          />
+        }
+      >
+        <EllipsisIcon />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        <MenuItem onClick={() => void openInTerminal()}>Open in terminal</MenuItem>
       </MenuPopup>
     </Menu>
   );
@@ -160,8 +201,13 @@ export function BatonThreadHeader(props: {
   readonly shell: EnvironmentThreadShell;
   readonly pane: string | null;
 }) {
-  const terminal =
-    isLiveThreadId(props.threadRef.threadId) && props.shell.providerInstanceId === LIVE_INSTANCE;
+  // A Tessaya thread open in a terminal is on the live instance too, under its own id.
+  const terminal = props.shell.providerInstanceId === LIVE_INSTANCE;
+  const claude = useBatonAccounts(props.threadRef.environmentId).some(
+    (account) =>
+      account.driver === "claudeAgent" &&
+      account.instanceIds.includes(props.shell.providerInstanceId),
+  );
   return (
     <>
       {terminal ? (
@@ -172,7 +218,13 @@ export function BatonThreadHeader(props: {
         </span>
       ) : null}
       <LimitChip threadRef={props.threadRef} shell={props.shell} terminal={terminal} />
-      {terminal ? <PaneMenu threadRef={props.threadRef} pane={props.pane} /> : null}
+      {terminal ? (
+        props.pane !== null || isLiveThreadId(props.threadRef.threadId) ? (
+          <PaneMenu threadRef={props.threadRef} pane={props.pane} />
+        ) : null
+      ) : claude ? (
+        <OpenInTerminalMenu threadRef={props.threadRef} />
+      ) : null}
     </>
   );
 }

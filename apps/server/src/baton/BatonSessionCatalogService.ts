@@ -25,6 +25,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -47,6 +48,9 @@ import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { BatonAccounts } from "./BatonAccounts.ts";
 import { endClaudeTerminal } from "./HerdrRespawn.ts";
+import { openInTerminal, type OpenResult } from "./OpenInTerminal.ts";
+import { claudeHomeOf } from "./TessayaSessionsFile.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   instanceForLogin,
   moveIntoTessaya,
@@ -56,7 +60,7 @@ import {
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
-import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
+import { isTessayaOwnFolder, sessionHolderPid } from "./ClaudeLiveSessions.ts";
 import {
   autoResumeAllowed,
   autoResumedWithin,
@@ -85,7 +89,7 @@ import {
 } from "@t3tools/baton-shared/watch";
 import { turnsInFlight } from "@t3tools/baton-shared/turnsInFlight";
 import { createSessionCatalog, sendOutcome, type CatalogPorts } from "./SessionCatalog.ts";
-import { realCatalogPorts } from "./SessionCatalogLive.ts";
+import { realCatalogPorts, TESSAYA_CLI } from "./SessionCatalogLive.ts";
 
 export class BatonSessionCatalogService extends Context.Service<
   BatonSessionCatalogService,
@@ -148,6 +152,7 @@ export class BatonSessionCatalogService extends Context.Service<
       cwd?: string;
       confirmPane?: string;
     }) => Effect.Effect<typeof BatonReattachResult.Type>;
+    readonly openInTerminal: (input: { threadId: string }) => Effect.Effect<OpenResult>;
     readonly moveIntoTessaya: (input: {
       threadId: string;
       providerChangeApproved?: boolean;
@@ -225,6 +230,7 @@ export const layer = Layer.effect(
     const engine = yield* Effect.serviceOption(BatonEngine);
     const record = yield* Effect.serviceOption(BatonRecordService);
     const accounts = yield* Effect.serviceOption(BatonAccounts);
+    const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
     const registry = yield* Effect.serviceOption(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
@@ -775,6 +781,108 @@ export const layer = Layer.effect(
             state: "not-running" as const,
             pane: null,
             detail: "Could not reattach this thread.",
+          }),
+        ),
+      ),
+      openInTerminal: Effect.fn("BatonSessionCatalogService.openInTerminal")(
+        function* (input: { threadId: string }) {
+          if (Option.isNone(engine) || noHerdr)
+            return { state: "refused", pane: null, detail: "No Herdr here." } as const;
+          const e = engine.value;
+          const result = yield* openInTerminal(
+            {
+              shell: (threadId) =>
+                e.threadShell(ThreadId.make(threadId)).pipe(
+                  Effect.map((shell) =>
+                    shell === null
+                      ? null
+                      : {
+                          running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+                        },
+                  ),
+                ),
+              home: Effect.fn("BatonSessionCatalogService.openHome")(function* (threadId) {
+                const id = ThreadId.make(threadId);
+                const shell = yield* e.threadShell(id);
+                const active = yield* e.activeProviderThread(id);
+                const sessionId = active?.nativeThreadRef?.nativeId ?? null;
+                if (shell === null || active?.driver !== "claudeAgent" || sessionId === null)
+                  return null;
+                const cwd =
+                  shell.worktreePath ??
+                  (yield* e.projects).find((p) => p.id === shell.projectId)?.workspaceRoot ??
+                  null;
+                if (cwd === null) return null;
+                const instances = Option.isSome(serverSettings)
+                  ? yield* serverSettings.value.getSettings.pipe(
+                      Effect.map((current) => current.providerInstances),
+                      Effect.orElseSucceed(() => ({})),
+                    )
+                  : {};
+                return {
+                  sessionId,
+                  cwd,
+                  configDir: claudeHomeOf(instances[String(shell.providerInstanceId)]),
+                };
+              }),
+              detach: (threadId) =>
+                e.detachSessions({ tag: "open-in-terminal", threadId: ThreadId.make(threadId) }),
+              released: (sessionId) =>
+                Effect.promise(async () => {
+                  for (let i = 0; i < 60; i += 1) {
+                    if (sessionHolderPid(sessionId) === null) return true;
+                    await new Promise((resolve) => setTimeout(resolve, 250));
+                  }
+                  return false;
+                }),
+              launch: (home) =>
+                Effect.promise(
+                  () =>
+                    new Promise<{ pane: string | null; detail: string }>((resolve) =>
+                      NodeChildProcess.execFile(
+                        TESSAYA_CLI,
+                        ["--resume", home.sessionId, home.cwd],
+                        {
+                          timeout: 60_000,
+                          env: {
+                            ...process.env,
+                            // The pane's command runs on this login (tessaya-claude seeds the session's dir from it).
+                            TESSAYA_RESUME_CONFIG_DIR: home.configDir,
+                            PATH: `${NodePath.dirname(TESSAYA_CLI)}:${process.env["PATH"] ?? ""}`,
+                          },
+                        },
+                        (_error, stdout, stderr) => {
+                          const out = `${stdout}${stderr}`;
+                          const pane = /running in (\S+) pane (\S+)/.exec(out);
+                          resolve(
+                            pane === null
+                              ? { pane: null, detail: `tessaya said: ${out.trim().slice(0, 200)}` }
+                              : {
+                                  pane: `${pane[1]}~${pane[2]}`,
+                                  detail: `Open in Herdr ${pane[1]}. Closing it hands the thread back.`,
+                                },
+                          );
+                        },
+                      ),
+                    ),
+                ),
+            },
+            input,
+          );
+          appendResumeLog(
+            NodePath.join(
+              Option.isSome(config) ? config.value.logsDir : NodeOS.tmpdir(),
+              "baton-mirror.ndjson",
+            ),
+            { event: "open-in-terminal", thread: input.threadId, ...result },
+          );
+          return result;
+        },
+        Effect.catchCause((cause) =>
+          Effect.succeed({
+            state: "refused" as const,
+            pane: null,
+            detail: `Not opened: ${String(cause).slice(0, 200)}`,
           }),
         ),
       ),

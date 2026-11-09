@@ -260,3 +260,27 @@ export const readClaudeLiveSessions = (input: {
     }
     return sessions.toSorted((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
   });
+
+/** The pid of any live Claude process holding this session, Tessaya's own SDK ones included; null when none does. */
+export const sessionHolderPid = (sessionId: string): number | null => {
+  for (const dir of [...claudeConfigDirs(), ...threadConfigDirs()]) {
+    let names: Array<string>;
+    try {
+      names = NodeFS.readdirSync(NodePath.join(dir, "sessions")).filter((n) =>
+        /^\d+\.json$/.test(n),
+      );
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      try {
+        const d = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "sessions", name), "utf8")) as {
+          sessionId?: unknown;
+          pid?: unknown;
+        };
+        if (d.sessionId === sessionId && typeof d.pid === "number" && alive(d.pid)) return d.pid;
+      } catch {}
+    }
+  }
+  return null;
+};
