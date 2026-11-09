@@ -342,6 +342,7 @@ import {
   type DeviceChoice,
 } from "./audioDeviceSelection.ts";
 import { makeClipboardInjection } from "./clipboardInjection.ts";
+import { makeFramer, pcmOf } from "./pcm.ts";
 import {
   desktopVoiceContext,
   makeVoiceIntentClient,
@@ -1923,7 +1924,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .caretAt()
       .catch(() => null)
       .then((at) => {
-        if (at !== null && (keyRecording() || dictatingByVoice)) ghost.start(at);
+        if (at === null || !(keyRecording() || dictatingByVoice)) return;
+        // The boxes the field gave (no words): how its ghost was laid out, for the turn log.
+        input.onNote?.("ghost_start", { ...at, shown: ghost.start(at) });
       });
   };
   const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
@@ -3569,11 +3572,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (entry === "hold_up") heldByButton = false;
     return step;
   };
+  const recordingFramer = makeFramer((frame) => {
+    const level = frameLevel(frame);
+    pill.micLevel(level, pillGain(level), frame);
+  });
   /** How long the sidecar has been reading the speech model, from its "loading" lines (0 when it is not). */
   let speechLoadMs = 0;
   /** What Tessaya plays, against what the microphone hears, so his voice over hers can be told apart. */
   const echoGuard = createEchoGuard();
   const onDictation = (event: DictationEvent) => {
+    if (event.ev === "pcm") {
+      // With wake words off no mic loop runs, so the recording's own audio is all the waveform has.
+      if (loop === null) recordingFramer(pcmOf(event.b64));
+      return;
+    }
     if (event.ev === "loading") {
       if (speechLoadMs === 0) step("speech-model-loading");
       speechLoadMs = event.elapsedMs;
@@ -3870,7 +3882,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? insert
             ? sidecar?.finish()
             : discardKeyDictation()
-          : undefined,
+          : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
+            !insert && sidecarBusy
+            ? void (discardKeyText = true)
+            : undefined,
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
     showWords: () => settings.showWords && !ghost.active(),

@@ -164,6 +164,8 @@ export type DictationEvent =
   | { readonly ev: "partial"; readonly text: string; readonly pause?: boolean }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
+  /** 40 ms of the recording's audio (16-bit PCM, base64): the pill's waveform when no wake-word mic runs. */
+  | { readonly ev: "pcm"; readonly b64: string }
   | { readonly ev: "idle" }
   /** A key was held for dictation `id`'s paste (`holdKeys`): paste now. */
   | { readonly ev: "held_key"; readonly id: number }

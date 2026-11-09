@@ -41,7 +41,7 @@ use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
 use keys::PasteMethod;
-use live::{lift_gain, preview_due, words_after, ChunkParams, Chunker, Piece};
+use live::{join_pieces, lift_gain, meter_b64, preview_due, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
@@ -403,7 +403,7 @@ impl Live {
                 self.text.push(text);
                 // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
                 // starts their cleanup then, so a release right after finds it done (never for the cloud's words).
-                emit(json!({"ev": "partial", "text": self.text.join(" "), "pause": at_pause && self.external.is_none()}));
+                emit(json!({"ev": "partial", "text": join_pieces(&self.text), "pause": at_pause && self.external.is_none()}));
             }
             Err(e) => self.failed = Some(e),
         }
@@ -414,7 +414,7 @@ impl Live {
 
     /// Audio in: a piece when the chunker cuts one, else a preview of the uncut words when one is due. Local
     /// recognition always decodes; the cloud's recording only for his live words.
-    fn hear(&mut self, session: Option<&mut Session>, pcm: &[f32]) {
+    fn hear(&mut self, session: Option<&mut Session>, pcm: &[f32], behind: bool) {
         self.heard.extend_from_slice(pcm);
         if self.failed.is_some() || (self.external.is_some() && !self.live_words) {
             return;
@@ -424,7 +424,7 @@ impl Live {
         if let Some(piece) = piece {
             return self.decode(session, piece);
         }
-        if !self.live_words || !preview_due(self.chunker.pending_len(), self.previewed, self.preview_ms) {
+        if behind || !self.live_words || !preview_due(self.chunker.pending_len(), self.previewed, self.preview_ms) {
             return;
         }
         let from = self.previewed;
@@ -437,9 +437,8 @@ impl Live {
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
         if let Ok(text) = decode_piece(session, piece, self.language.clone()) {
-            let words: Vec<&str> =
-                self.text.iter().map(String::as_str).chain([text.as_str()]).filter(|t| !t.is_empty()).collect();
-            emit(json!({"ev": "partial", "text": words.join(" "), "pause": false}));
+            let words: Vec<&str> = self.text.iter().map(String::as_str).chain([text.as_str()]).collect();
+            emit(json!({"ev": "partial", "text": join_pieces(&words), "pause": false}));
         }
         self.preview_ms = started.elapsed().as_millis() as u64;
     }
@@ -470,7 +469,7 @@ impl Live {
         let text = if self.failed.is_some() {
             infer(session, &mut self.heard, self.language.clone())?.0
         } else {
-            self.text.join(" ")
+            join_pieces(&self.text)
         };
         let audio = self.keep.as_deref().and_then(|dir| write_wav(dir, &self.heard).ok());
         Ok(Done {
@@ -576,6 +575,23 @@ fn path_of(slot: &Loaded) -> Option<&Path> {
     slot.as_ref().map(|(path, _)| path.as_path())
 }
 
+/// Takes every audio chunk already waiting into `pcm`. True when there was any: the engine is behind his voice, so
+/// no preview runs until it has caught up (a preview then only delays the real decode). Stops at the first other
+/// message, returned to be handled next, so the order holds.
+fn gather_audio(work: &Receiver<Work>, pcm: &mut Vec<f32>) -> (bool, Option<Work>) {
+    let mut behind = false;
+    loop {
+        match work.try_recv() {
+            Ok(Work::Audio(more)) => {
+                pcm.extend_from_slice(&more);
+                behind = true;
+            }
+            Ok(other) => return (behind, Some(other)),
+            Err(_) => return (behind, None),
+        }
+    }
+}
+
 /// One thread owns the models. Each slot loads on first use and leaves after ten idle minutes of its own, because
 /// 16 GB is shared with everything else on the laptop; the dictation slot stays while dictation is bound (`Keep`).
 /// v3 held is about 1.2 GB.
@@ -589,8 +605,13 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
     let mut other_at = Instant::now();
     let mut live: Option<Live> = None;
     let mut keep = false;
+    // A message taken off the queue while gathering audio that was waiting, handled next.
+    let mut carried: Option<Work> = None;
     loop {
-        let message = work.recv_timeout(IDLE_TICK);
+        let message = match carried.take() {
+            Some(next) => Ok(next),
+            None => work.recv_timeout(IDLE_TICK),
+        };
         if live.is_none() && !keep && loaded_at.elapsed() >= IDLE_UNLOAD {
             loaded = None;
         }
@@ -665,10 +686,12 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 };
                 live = Some(Live { keep, live_words: words, ..fresh });
             }
-            Ok(Work::Audio(pcm)) => {
+            Ok(Work::Audio(mut pcm)) => {
                 loaded_at = Instant::now();
+                let (behind, next) = gather_audio(&work, &mut pcm);
+                carried = next;
                 let Some(current) = live.as_mut() else { continue };
-                current.hear(loaded.as_mut().map(|(_, session)| session), &pcm);
+                current.hear(loaded.as_mut().map(|(_, session)| session), &pcm, behind);
             }
             Ok(Work::End { target, released, timing }) => {
                 let Some(current) = live.take() else { continue };
@@ -819,6 +842,8 @@ struct LiveSink {
     work: Sender<Work>,
     samples: Arc<AtomicUsize>,
     first_audio: Arc<OnceLock<Instant>>,
+    /// Audio not yet sent as a `pcm` line: the pill's waveform, which nothing else feeds while wake words are off.
+    meter: Vec<f32>,
 }
 
 impl Sink for LiveSink {
@@ -826,6 +851,11 @@ impl Sink for LiveSink {
         let samples = chunk.samples[..chunk.valid_frames].to_vec();
         if !samples.is_empty() {
             let _ = self.first_audio.set(Instant::now());
+        }
+        self.meter.extend_from_slice(&samples);
+        while self.meter.len() >= METER_SAMPLES {
+            let block: Vec<f32> = self.meter.drain(..METER_SAMPLES).collect();
+            emit(json!({"ev": "pcm", "b64": meter_b64(&block)}));
         }
         self.samples.fetch_add(samples.len(), Ordering::Relaxed);
         let _ = self.work.send(Work::Audio(samples));
@@ -1267,7 +1297,12 @@ fn serve() {
             }
             None => {
                 let open = |fresh: bool| {
-                    let sink = LiveSink { work: job_tx.clone(), samples: samples.clone(), first_audio: first_audio.clone() };
+                    let sink = LiveSink {
+                        work: job_tx.clone(),
+                        samples: samples.clone(),
+                        first_audio: first_audio.clone(),
+                        meter: Vec::new(),
+                    };
                     let tx = tx.clone();
                     recorder_config(config.device.as_deref(), config.channel, fresh).and_then(|cfg| {
                         let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
@@ -1745,7 +1780,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
         if let Some(piece) = last {
             text.push(decode_piece(&mut session, piece, language.clone())?);
         }
-        emit(json!({"file": file, "text": text.join(" "), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
+        emit(json!({"file": file, "text": join_pieces(&text), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
             "finalMs": released.elapsed().as_millis() as u64, "lastSeconds": last_seconds, "pieces": text.len()}));
     }
     Ok(())
@@ -1882,14 +1917,30 @@ mod tests {
     fn the_cloud_recording_reaches_the_local_model_only_for_live_words() {
         let speech: Vec<f32> = (0..16_000).map(|i| (i as f32 * 0.3).sin() * 0.2).collect();
         let mut quiet = Live { external: Some(std::env::temp_dir()), ..Live::new(None, 0, None) };
-        quiet.hear(None, &speech);
+        quiet.hear(None, &speech, false);
         assert_eq!((quiet.heard.len(), quiet.chunker.pending_len()), (16_000, 0));
         let mut shown = Live { external: Some(std::env::temp_dir()), live_words: true, ..Live::new(None, 0, None) };
-        shown.hear(None, &speech);
+        shown.hear(None, &speech, false);
         assert_eq!((shown.heard.len(), shown.chunker.pending_len()), (16_000, 16_000));
         let mut local = Live::new(None, 0, None);
-        local.hear(None, &speech);
+        local.hear(None, &speech, false);
         assert_eq!(local.chunker.pending_len(), 16_000);
+    }
+
+    #[test]
+    fn audio_waiting_behind_a_chunk_is_taken_with_it_and_the_next_message_kept() {
+        let (tx, rx) = channel::<Work>();
+        let mut pcm = vec![0.1; 4];
+        assert!(matches!(gather_audio(&rx, &mut pcm), (false, None)));
+        tx.send(Work::Audio(vec![0.2; 3])).unwrap();
+        tx.send(Work::Audio(vec![0.3; 2])).unwrap();
+        tx.send(Work::Abort).unwrap();
+        tx.send(Work::Audio(vec![0.4; 1])).unwrap();
+        let (behind, next) = gather_audio(&rx, &mut pcm);
+        assert!(behind && matches!(next, Some(Work::Abort)));
+        assert_eq!(pcm.len(), 9);
+        // What follows the other message stays queued, in order.
+        assert!(matches!(rx.try_recv(), Ok(Work::Audio(rest)) if rest.len() == 1));
     }
 
     #[test]
