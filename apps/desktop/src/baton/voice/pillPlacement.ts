@@ -215,6 +215,23 @@ export const baseOf = (bounds: Area, height: number, down: boolean): Area => ({
   height,
 });
 
+/**
+ * The acrylic window under the island, in screen DIP: the capsule pulled in 3 px, so the system's 8 px corners stay
+ * inside its 17 px ones. Null when the capsule is too small to frost.
+ */
+export const frostBounds = (window: Area, capsule: Area): Area | null => {
+  const inset = 3;
+  const width = Math.round(capsule.width) - 2 * inset;
+  const height = Math.round(capsule.height) - 2 * inset;
+  if (width < 16 || height < 16) return null;
+  return {
+    x: Math.round(window.x + capsule.x) + inset,
+    y: Math.round(window.y + capsule.y) + inset,
+    width,
+    height,
+  };
+};
+
 /** Lowering the pill waits while its cleanup plays; anything raising it drops the wait. */
 export const createLowerHold = (io: {
   readonly now: () => number;

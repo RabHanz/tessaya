@@ -105,7 +105,10 @@ describe("a twelve-minute dictation, all at once", () => {
         return { text: raw, stage: "model" };
       },
       fit: async (text) => text,
-      paste: async (text, app) => (pasted.push([text, app.exe]), true),
+      // Keys held for a dictation's ghost are its own, and go only once its paste has landed.
+      beforePaste: async (_raw, _text, app) => void pasted.push(["hold", app.exe]),
+      paste: async (text, app) => (pasted.push([text, app.exe]), app.exe === "notepad.exe"),
+      afterPaste: (app) => void pasted.push(["release", app.exe]),
     });
     oneShot.push("first");
     const a = oneShot.flush({ exe: "notepad.exe" });
@@ -115,9 +118,13 @@ describe("a twelve-minute dictation, all at once", () => {
     (slow as (() => void) | null)?.();
     await Promise.all([a, b]);
     expect(pasted).toEqual([
+      ["hold", "notepad.exe"],
       ["first", "notepad.exe"],
+      ["release", "notepad.exe"],
+      ["hold", "code.exe"],
       ["second", "code.exe"],
+      ["release", "code.exe"],
     ]);
-    expect(oneShot.pending()).toEqual([]);
+    expect(oneShot.pending()).toEqual(["second"]);
   });
 });

@@ -15,7 +15,9 @@ export interface OneShotIo<App> {
   readonly fit: (text: string, app: App) => Promise<string>;
   readonly paste: (text: string, app: App) => Promise<boolean>;
   /** Runs just before the paste (the ghost's cleanup in his field); the paste waits for it. */
-  readonly beforePaste?: (raw: string, text: string) => Promise<void>;
+  readonly beforePaste?: (raw: string, text: string, app: App) => Promise<void>;
+  /** Runs once the paste has landed or failed, before the next dictation's `beforePaste`. */
+  readonly afterPaste?: (app: App) => void;
 }
 
 export interface OneShotResult {
@@ -69,8 +71,9 @@ export const createOneShot = <App>(io: OneShotIo<App>) => {
         const cleaned = await io.clean(raw, app).catch(() => null);
         const { text, failed } = settleOneShot(raw, cleaned);
         const fitted = await io.fit(text, app).catch(() => text);
-        await io.beforePaste?.(raw, fitted).catch(() => undefined);
+        await io.beforePaste?.(raw, fitted, app).catch(() => undefined);
         const pasted = await io.paste(fitted, app).catch(() => false);
+        io.afterPaste?.(app);
         // The chunks stay on disk until the paste has landed; words of a newer dictation stay after them.
         if (pasted) release(taken);
         return {

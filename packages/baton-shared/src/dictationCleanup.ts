@@ -268,6 +268,19 @@ const isCommand = (text: string): boolean =>
   oneSentence(text) && (PROGRAM.test(text) || new RegExp(CODE_TOKEN.source).test(text));
 
 /** Everything code can decide, in well under a millisecond. Raw is left exactly as heard. */
+/** Verbs a run-on request goes on with ("first? And also send me..."); anything else after the "and" stays split. */
+const RUN_ON_VERBS =
+  "send|check|tell|ask|book|order|make|add|put|get|give|call|email|text|ping|let|show|bring|take|fix|update|move|copy|share|sort|set|write|find|look|grab|forward|remind|schedule|review|run|push|pull|merge|deploy|start|stop|open|close|save|delete|remove|change|read|reply|post|pay|print|buy|pick|drop|fill|sign|confirm|prepare|draft|finish|clean|tidy|test|build|keep|include|mention|attach|upload|download|follow|chase|loop";
+/**
+ * A question the recogniser ended at a pause that runs on with "and", "and also" or "or" into more of the same
+ * request ("first? And also send me the report. The one with the charts."), as the prompt's rule joins it. Only when
+ * what follows is a request (a verb, after an optional "also"); a statement or "!" stays as said.
+ */
+const RUN_ON_QUESTION = new RegExp(
+  `\\?\\s+(and|or)\\s+((?:also\\s+)?(?:${RUN_ON_VERBS})\\b[^.?!\\n]*)(?:\\.\\s+(the ones?\\b[^.?!\\n]*))?(?:[.?]|$)`,
+  "gi",
+);
+
 export const localClean = (
   raw: string,
   mode: DictationMode,
@@ -295,6 +308,11 @@ export const localClean = (
     );
   text = tidy(applyDictionary(text, dictionary));
   if (mode === "code") return isCommand(text) ? text.replace(/\.$/, "") : text;
+  text = text.replace(
+    RUN_ON_QUESTION,
+    (_, join: string, rest: string, appended?: string) =>
+      ` ${join.toLowerCase()} ${rest.trim()}${appended === undefined ? "" : `, ${appended.charAt(0).toLowerCase()}${appended.slice(1).trim()}`}?`,
+  );
   text = capitaliseSentences(text);
   if (mode === "email") text = emailShape(text);
   if (mode === "chat" && oneSentence(text)) text = text.replace(/\.$/, "");

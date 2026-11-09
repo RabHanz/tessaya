@@ -3,6 +3,9 @@
 //! See docs/baton/VOICE.md. Run with no arguments it serves; the subcommands are for voice-lab.
 #[cfg(unix)]
 mod desktop_unix;
+mod keygate;
+#[cfg(windows)]
+mod keygate_windows;
 mod keys;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod mouse;
@@ -38,7 +41,7 @@ use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
 use keys::PasteMethod;
-use live::{lift_gain, words_after, ChunkParams, Chunker, Piece};
+use live::{lift_gain, preview_due, words_after, ChunkParams, Chunker, Piece};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
@@ -110,6 +113,9 @@ struct Config {
     /// The desktop says this machine has the memory to keep the dictation model loaded between dictations.
     #[serde(default, rename = "keepLoaded")]
     keep_loaded: bool,
+    /// His words in the pill as he speaks: previews of the words not yet cut, and the local model's words for the cloud.
+    #[serde(default, rename = "liveWords")]
+    live_words: bool,
 }
 
 enum Msg {
@@ -253,12 +259,41 @@ enum Work {
     Clip(Job),
     /// Load the model now, so the first real phrase does not wait behind it.
     Load { id: Option<u64>, model: PathBuf },
-    Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf>, keep: Option<PathBuf> },
+    Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf>, keep: Option<PathBuf>, live: bool },
     Audio(Vec<f32>),
     End { target: Option<isize>, released: Instant, timing: Value },
     Abort,
     /// Dictation is bound to a key and heard here: the dictation model stays loaded, so a press never waits on a reload.
     Keep(bool),
+    /// Cloud live words want this model read in the background (`warm_needed`); a cloud Begin asks again.
+    Warm(PathBuf),
+    /// The model `warm_in_background` loaded for cloud dictation's live words (None: it would not load); taken only
+    /// into an empty slot.
+    Warmed(PathBuf, Option<Session>),
+}
+
+/// A background read of `wanted` is due: it is on disk, no slot holds it and none is running. After an idle unload
+/// the slot is empty again, so the next ask reads it again; a model already in either slot is never read twice.
+fn warm_needed(wanted: &Path, main: Option<&Path>, other: Option<&Path>, warming: bool, on_disk: bool) -> bool {
+    on_disk && !warming && main != Some(wanted) && other != Some(wanted)
+}
+
+/// Cloud dictation's live words need the local model, but a recording must never wait for it: it is read here, on a
+/// low-priority thread of its own, and handed to the engine when ready. Until then the pill shows only its bars.
+fn warm_in_background(
+    model: PathBuf,
+    job_tx: Sender<Work>,
+    loader: impl FnOnce(&Path) -> Result<(Session, u64), String> + Send + 'static,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        #[cfg(windows)]
+        unsafe {
+            use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
+            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
+        }
+        let session = loader(&model).ok().map(|(session, _)| session);
+        let _ = job_tx.send(Work::Warmed(model, session));
+    })
 }
 
 /// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
@@ -334,6 +369,10 @@ struct Live {
     external: Option<PathBuf>,
     /// He keeps the audio of dictations: the recording is also written here for History, beside its text.
     keep: Option<PathBuf>,
+    /// Previews of the words not yet cut go to the pill (`preview_due`): where the last one reached, and its time.
+    live_words: bool,
+    previewed: usize,
+    preview_ms: u64,
 }
 
 impl Live {
@@ -341,6 +380,9 @@ impl Live {
         Self {
             external: None,
             keep: None,
+            live_words: false,
+            previewed: 0,
+            preview_ms: 0,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -360,13 +402,46 @@ impl Live {
             Ok(text) => {
                 self.text.push(text);
                 // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
-                // starts their cleanup then, so a release right after finds it done.
-                emit(json!({"ev": "partial", "text": self.text.join(" "), "pause": at_pause}));
+                // starts their cleanup then, so a release right after finds it done (never for the cloud's words).
+                emit(json!({"ev": "partial", "text": self.text.join(" "), "pause": at_pause && self.external.is_none()}));
             }
             Err(e) => self.failed = Some(e),
         }
+        self.previewed = 0;
         self.infer_ms += started.elapsed().as_millis() as u64;
         self.pieces += 1;
+    }
+
+    /// Audio in: a piece when the chunker cuts one, else a preview of the uncut words when one is due. Local
+    /// recognition always decodes; the cloud's recording only for his live words.
+    fn hear(&mut self, session: Option<&mut Session>, pcm: &[f32]) {
+        self.heard.extend_from_slice(pcm);
+        if self.failed.is_some() || (self.external.is_some() && !self.live_words) {
+            return;
+        }
+        let piece = self.chunker.push(pcm);
+        let Some(session) = session else { return };
+        if let Some(piece) = piece {
+            return self.decode(session, piece);
+        }
+        if !self.live_words || !preview_due(self.chunker.pending_len(), self.previewed, self.preview_ms) {
+            return;
+        }
+        let from = self.previewed;
+        self.previewed = self.chunker.pending_len();
+        // Nothing said since the last look: no decode.
+        if self.chunker.quiet_since(from, &self.heard) {
+            return;
+        }
+        let Some(piece) = self.chunker.preview() else { return };
+        let started = Instant::now();
+        // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
+        if let Ok(text) = decode_piece(session, piece, self.language.clone()) {
+            let words: Vec<&str> =
+                self.text.iter().map(String::as_str).chain([text.as_str()]).filter(|t| !t.is_empty()).collect();
+            emit(json!({"ev": "partial", "text": words.join(" "), "pause": false}));
+        }
+        self.preview_ms = started.elapsed().as_millis() as u64;
     }
 
     fn finish(mut self, session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
@@ -504,7 +579,10 @@ fn path_of(slot: &Loaded) -> Option<&Path> {
 /// One thread owns the models. Each slot loads on first use and leaves after ten idle minutes of its own, because
 /// 16 GB is shared with everything else on the laptop; the dictation slot stays while dictation is bound (`Keep`).
 /// v3 held is about 1.2 GB.
-fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
+fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
+    // Cloud live words: the model to read in the background, and whether a read is running.
+    let mut wanted: Option<PathBuf> = None;
+    let mut warming = false;
     let mut loaded: Loaded = None;
     let mut other: Loaded = None;
     let mut loaded_at = Instant::now();
@@ -563,10 +641,17 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 };
                 emit(line);
             }
-            Ok(Work::Begin { external: Some(dir), language, .. }) => {
-                live = Some(Live { external: Some(dir), ..Live::new(language, 0, None) });
+            Ok(Work::Begin { model, language, external: Some(dir), live: words, .. }) => {
+                // Unloaded after idle: read again in the background for the next one; this one never waits for it.
+                if words && wanted.as_ref() == Some(&model) {
+                    let _ = me.send(Work::Warm(model.clone()));
+                }
+                // The cloud hears the recording. The local model shows his words as he speaks only when it is already
+                // loaded: never loaded for them, so the key's release never waits on a load.
+                let words = words && path_of(&loaded) == Some(model.as_path());
+                live = Some(Live { external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { model, language, external: None, keep }) => {
+            Ok(Work::Begin { model, language, external: None, keep, live: words }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
                 }
@@ -578,17 +663,12 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                         Live::new(language, 0, Some(e))
                     }
                 };
-                live = Some(Live { keep, ..fresh });
+                live = Some(Live { keep, live_words: words, ..fresh });
             }
             Ok(Work::Audio(pcm)) => {
                 loaded_at = Instant::now();
                 let Some(current) = live.as_mut() else { continue };
-                current.heard.extend_from_slice(&pcm);
-                if current.failed.is_none() && current.external.is_none() {
-                    if let (Some(piece), Some((_, session))) = (current.chunker.push(&pcm), loaded.as_mut()) {
-                        current.decode(session, piece);
-                    }
-                }
+                current.hear(loaded.as_mut().map(|(_, session)| session), &pcm);
             }
             Ok(Work::End { target, released, timing }) => {
                 let Some(current) = live.take() else { continue };
@@ -598,6 +678,20 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 let _ = out.send(Msg::Finished { id: None, dictated: true, target, result });
             }
             Ok(Work::Abort) => live = None,
+            Ok(Work::Warm(model)) => {
+                if warm_needed(&model, path_of(&loaded), path_of(&other), warming, model.is_file()) {
+                    warming = true;
+                    warm_in_background(model.clone(), me.clone(), |m| load(m));
+                }
+                wanted = Some(model);
+            }
+            Ok(Work::Warmed(path, session)) => {
+                warming = false;
+                if let Some(session) = session.filter(|_| loaded.is_none()) {
+                    loaded = Some((path, session));
+                    loaded_at = Instant::now();
+                }
+            }
             Ok(Work::Keep(on)) => {
                 keep = on;
                 loaded_at = Instant::now();
@@ -1120,7 +1214,8 @@ fn serve() {
     let (job_tx, job_rx) = channel::<Work>();
     {
         let tx = tx.clone();
-        thread::spawn(move || engine_thread(job_rx, tx));
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, tx, me));
     }
     {
         let tx = tx.clone();
@@ -1160,6 +1255,7 @@ fn serve() {
             language: config.language.clone(),
             external: config.external.clone(),
             keep: config.keep_audio.clone(),
+            live: config.live_words,
         });
         let samples = Arc::new(AtomicUsize::new(0));
         let first_audio = Arc::new(OnceLock::new());
@@ -1257,8 +1353,15 @@ fn serve() {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
                                 let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
-                                let local = config.model.is_some() && config.external.is_none();
+                                let local = config.model.is_some() && (config.external.is_none() || config.live_words);
                                 let _ = job_tx.send(Work::Keep(config.keep_loaded && bound && local));
+                                // Live words with the cloud: the local model, only if it is on disk (never downloaded
+                                // for this), read in the background once.
+                                if let (true, Some(_), Some(model)) =
+                                    (config.live_words, config.external.as_ref(), config.model.as_ref())
+                                {
+                                    let _ = job_tx.send(Work::Warm(model.clone()));
+                                }
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
@@ -1394,6 +1497,19 @@ fn serve() {
                         taps = PushToTalk::default();
                     }
                     "voice" => voice_on = value["on"].as_bool().unwrap_or(false),
+                    // Typing keys he presses while the ghost plays wait for that dictation's paste (Windows only).
+                    "hold_keys" => {
+                        #[cfg(windows)]
+                        if let (Some(id), Some(window)) = (value["id"].as_u64(), value["window"].as_i64()) {
+                            keygate_windows::hold(id, window as isize);
+                        }
+                    }
+                    "release_keys" => {
+                        #[cfg(windows)]
+                        if let Some(id) = value["id"].as_u64() {
+                            keygate_windows::release(id);
+                        }
+                    }
                     "cancel" => {
                         recording = None;
                         let _ = job_tx.send(Work::Abort);
@@ -1760,6 +1876,58 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(back.len(), 4);
         assert!((back[1] - 0.5).abs() < 0.001 && (back[3] - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn the_cloud_recording_reaches_the_local_model_only_for_live_words() {
+        let speech: Vec<f32> = (0..16_000).map(|i| (i as f32 * 0.3).sin() * 0.2).collect();
+        let mut quiet = Live { external: Some(std::env::temp_dir()), ..Live::new(None, 0, None) };
+        quiet.hear(None, &speech);
+        assert_eq!((quiet.heard.len(), quiet.chunker.pending_len()), (16_000, 0));
+        let mut shown = Live { external: Some(std::env::temp_dir()), live_words: true, ..Live::new(None, 0, None) };
+        shown.hear(None, &speech);
+        assert_eq!((shown.heard.len(), shown.chunker.pending_len()), (16_000, 16_000));
+        let mut local = Live::new(None, 0, None);
+        local.hear(None, &speech);
+        assert_eq!(local.chunker.pending_len(), 16_000);
+    }
+
+    #[test]
+    fn the_background_read_never_loads_a_model_twice_and_runs_again_after_an_unload() {
+        let m = Path::new("parakeet.gguf");
+        assert!(warm_needed(m, None, None, false, true));
+        assert!(!warm_needed(m, Some(m), None, false, true));
+        assert!(!warm_needed(m, Some(Path::new("wake.gguf")), Some(m), false, true));
+        assert!(!warm_needed(m, None, None, true, true));
+        // Not on disk: never downloaded for this.
+        assert!(!warm_needed(m, None, None, false, false));
+        // Unloaded after idle, the slot is empty again: the next ask reads it again.
+        assert!(warm_needed(m, None, Some(Path::new("wake.gguf")), false, true));
+    }
+
+    #[test]
+    fn a_cloud_dictation_never_waits_on_the_live_words_load() {
+        let (job_tx, job_rx) = channel::<Work>();
+        let (out_tx, out_rx) = channel::<Msg>();
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, out_tx, me));
+        // A load that takes as long as the test does: the recording must finish without it.
+        let (unblock, blocked) = channel::<()>();
+        let model = PathBuf::from("parakeet-test.gguf");
+        let warm = warm_in_background(model.clone(), job_tx.clone(), move |_| {
+            let _ = blocked.recv();
+            Err("stopped".to_string())
+        });
+        let dir = std::env::temp_dir().join(format!("tessaya-warm-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        job_tx.send(Work::Begin { model, language: None, external: Some(dir.clone()), keep: None, live: true }).unwrap();
+        job_tx.send(Work::Audio(vec![0.1; 16_000])).unwrap();
+        job_tx.send(Work::End { target: None, released: Instant::now(), timing: json!({}) }).unwrap();
+        let finished = out_rx.recv_timeout(Duration::from_secs(5)).expect("the release waited on the load");
+        assert!(matches!(finished, Msg::Finished { result: Ok(Done { wav: Some(_), .. }), .. }));
+        unblock.send(()).unwrap();
+        warm.join().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
