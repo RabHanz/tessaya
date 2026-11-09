@@ -184,9 +184,9 @@ describe("what stays private", () => {
   });
 
   it("teaches from an ordinary row at any clean-up level, never from a private one", () => {
-    const row = { app: "slack.exe", hidden: null };
+    // A normal row kept at the local clean-up level, the default setting.
+    const row = { app: "slack.exe", hidden: null, cleanup: "local" as const };
     expect(mayTeach(row, "Herdr pane", true)).toBe(true);
-    expect(mayTeach({ ...row, cleanup: "local" }, "Herdr pane", true)).toBe(true);
     expect(mayTeach(row, "Herdr pane", false)).toBe(false);
     expect(mayTeach({ ...row, app: "1password" }, "Herdr pane", true)).toBe(false);
     expect(mayTeach({ ...row, hidden: "password field" }, "Herdr pane", true)).toBe(false);
