@@ -516,8 +516,8 @@ impl Live {
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
         if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
-            // Only quiet since the last preview: its words are the rest, and nothing is decoded at release.
-            let reuse = self.preview.is_some() && self.chunker.quiet_after(self.previewed, &self.heard, REUSE_FLAT);
+            // No speech since the last preview: its words are the rest, and nothing is decoded at release.
+            let reuse = self.preview.is_some() && !self.chunker.speech_after(self.previewed, &self.heard);
             if let (true, Some(text)) = (reuse, self.preview.take()) {
                 self.chunker.finish();
                 if !text.is_empty() {

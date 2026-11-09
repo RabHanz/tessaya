@@ -9,6 +9,11 @@ const FRAME: usize = RATE / 50;
 const PAUSE_FRAMES: usize = 10;
 /// The longest tail release may skip: a pause cut leaves half its pause behind.
 const QUIET_TAIL_MAX: usize = RATE * 3 / 4;
+/// A frame this many times its recording's noise floor (12 dB) is speech; his release tails (a breath, the key) peaked
+/// at 4 to 12 dB over it.
+const SPEECH_OVER_FLOOR: f32 = 3.98;
+/// For this many frames in a row (60 ms): a click is shorter.
+const SPEECH_RUN: usize = 3;
 /// How uneven the quiet after a pause preview may be for the release to take the preview's words (`quiet_after`).
 pub const REUSE_FLAT: f32 = 4.0;
 /// Quiet this long after speech is a pause worth a preview (`Chunker::paused_since`): about where he lets go.
@@ -171,6 +176,19 @@ impl Chunker {
 
     /// Nothing but quiet since the last cut: short, below the recording's speech, and flat in its own levels, so a
     /// soft word after a pause is still heard. The words before it are decoded, so release has nothing to wait for.
+    /// Speech anywhere in the uncut audio from `from` on: `SPEECH_RUN` frames in a row `SPEECH_OVER_FLOOR` above the
+    /// recording's own noise floor (its quietest tenth; his is about -67 dBFS). Relative to the floor, not to his
+    /// speech, so a soft last sentence after loud ones still counts. A release takes a preview's words only without it.
+    pub fn speech_after(&self, from: usize, heard: &[f32]) -> bool {
+        let floor = percentile(&frame_levels(heard), 0.1).max(SILENCE);
+        let over = floor * SPEECH_OVER_FLOOR;
+        let mut run = 0;
+        frame_levels(&self.pending[from.min(self.pending.len())..]).iter().any(|level| {
+            run = if *level > over { run + 1 } else { 0 };
+            run >= SPEECH_RUN
+        })
+    }
+
     /// Capped at `QUIET_TAIL_MAX`: a longer tail may be a quiet last sentence, and is decoded.
     pub fn pending_is_quiet(&self, heard: &[f32], flat: f32) -> bool {
         self.pending.len() <= QUIET_TAIL_MAX && self.quiet_after(0, heard, flat)
@@ -392,6 +410,50 @@ mod tests {
         heard.extend_from_slice(&soft);
         chunker.push(&soft);
         assert!(!chunker.quiet_after(reached, &heard, REUSE_FLAT));
+    }
+
+    /// Deterministic noise at an RMS level, for a room's floor.
+    fn noise(seconds: f32, rms: f32) -> Vec<f32> {
+        let mut seed = 7u32;
+        (0..(seconds * RATE as f32) as usize)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                ((seed >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0) * rms * 1.732
+            })
+            .collect()
+    }
+
+    fn db(level: f32) -> f32 {
+        10f32.powf(level / 20.0)
+    }
+
+    #[test]
+    fn a_soft_last_sentence_after_loud_speech_is_speech_but_his_breath_is_not() {
+        let mix = |a: Vec<f32>, b: &[f32]| a.iter().zip(b).map(|(x, y)| x + y).collect::<Vec<f32>>();
+        // Loud speech at -20 dBFS, a pause, then a soft sentence at -50 dBFS, all over his -67 dBFS room.
+        let loud = mix(tone(3.0, db(-20.0) * 1.414), &noise(3.0, db(-67.0)));
+        let pause = noise(0.6, db(-67.0));
+        let soft = mix(tone(1.5, db(-50.0) * 1.414), &noise(1.5, db(-67.0)));
+        let mut chunker = Chunker::new(ChunkParams { min_samples: 30 * RATE, ..PARAMS });
+        let mut heard = loud.clone();
+        heard.extend_from_slice(&pause);
+        chunker.push(&heard);
+        let previewed = chunker.pending_len();
+        heard.extend_from_slice(&soft);
+        chunker.push(&soft);
+        assert!(chunker.speech_after(previewed, &heard), "the soft sentence must be decoded");
+        // His release tail: the room, and a breath 9 dB over it for 200 ms. Nothing to decode.
+        let mut quiet = Chunker::new(ChunkParams { min_samples: 30 * RATE, ..PARAMS });
+        let mut tail = noise(1.0, db(-67.0));
+        tail.extend(noise(0.2, db(-58.0)));
+        tail.extend(noise(0.8, db(-67.0)));
+        let mut heard = loud;
+        heard.extend_from_slice(&pause);
+        quiet.push(&heard);
+        let previewed = quiet.pending_len();
+        heard.extend_from_slice(&tail);
+        quiet.push(&tail);
+        assert!(!quiet.speech_after(previewed, &heard));
     }
 
     #[test]
