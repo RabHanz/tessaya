@@ -5,7 +5,7 @@
  */
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
-import { liveChangeRoute, withRealEffort } from "@t3tools/baton-shared/liveModel";
+import { keepsDraft, liveChangeRoute, withRealEffort } from "@t3tools/baton-shared/liveModel";
 import { LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -246,7 +246,7 @@ export function useLiveTraits(
           persistSticky: true,
         });
       if (route.kind === "session") apply(route.change, keep);
-      else if (route.kind === "draft") keep();
+      else if (keepsDraft(route)) keep();
     },
   };
 }

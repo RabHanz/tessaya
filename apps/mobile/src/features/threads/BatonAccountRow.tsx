@@ -5,8 +5,7 @@
  */
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccountRecord } from "@t3tools/baton-contracts";
-import { liveChangeRoute } from "@t3tools/baton-shared/liveModel";
-import { sessionLoginKey } from "@t3tools/baton-shared/accounts";
+import { keepsDraft, liveChangeRoute } from "@t3tools/baton-shared/liveModel";
 import {
   maskedEmail,
   queuedText,
@@ -35,7 +34,7 @@ import { useNowMinuteMs } from "../../lib/clock";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { accountPickOption } from "./batonCatalog";
+import { accountPickOption, loadedLoginKey, type SessionLogin } from "./batonCatalog";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
 const NOTHING = Atom.make(AsyncResult.initial<never, never>(false));
@@ -147,7 +146,10 @@ export function useLiveSheetChange(
           ? { relation: "unknown", key: null }
           : { relation: login.key === loginKey ? "same" : "other", key: login.key },
     });
-    if (route.kind === "draft") return false;
+    if (keepsDraft(route)) {
+      keep();
+      return true;
+    }
     if (route.kind === "account") moveTo(route.key);
     else if (route.kind === "continue-in")
       Dialog.alert(
@@ -194,21 +196,24 @@ export function useSessionLoginKey(
     live ? batonWorkSessions.accountPoolQuery({ environmentId, input: {} }) : NOTHING,
   );
   const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
-  const [login, setLogin] = useState<string | null>(null);
+  const [read, setRead] = useState<SessionLogin | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's session catalog for this session's login
   useEffect(() => {
     if (environmentId === null || sessionId === null) return;
     let cancelled = false;
     void list({ environmentId, input: { query: sessionId, limit: 10 } }).then((result) => {
       if (cancelled || result._tag !== "Success") return;
-      setLogin(result.value.sessions.find((row) => row.id === sessionId)?.account ?? null);
+      setRead({
+        sessionId,
+        login: result.value.sessions.find((row) => row.id === sessionId)?.account ?? null,
+      });
     });
     return () => {
       cancelled = true;
     };
   }, [environmentId, list, sessionId]);
   if (!live) return null;
-  return sessionLoginKey(Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [], login);
+  return loadedLoginKey(read, sessionId, Option.getOrNull(AsyncResult.value(pool))?.accounts ?? []);
 }
 
 function Badge(props: { readonly label: string; readonly tone?: "info" | "warn" | "error" }) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   effortCommand,
+  keepsDraft,
   liveChangeRoute,
   modelCommand,
   readBack,
@@ -238,6 +239,9 @@ describe("where a pick on a terminal thread goes", () => {
       change: { model: "claude-sonnet-4-6" },
     });
     expect(route({})).toEqual({ kind: "none" });
+    // Another option, same model and effort: kept in the draft, never dropped.
+    expect(keepsDraft(route({}))).toBe(true);
+    expect(keepsDraft(route({ effort: "max" }))).toBe(false);
     expect(route({ effort: "session" })).toEqual({ kind: "none" });
   });
 

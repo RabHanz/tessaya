@@ -7,12 +7,12 @@ import { threadAccount } from "@t3tools/baton-shared/accounts";
 import { roomDetail, roomTone } from "@t3tools/baton-shared/accountRoom";
 import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
-import { StackActions, useNavigation } from "@react-navigation/native";
 
 import type { AppBarAction } from "../../components/ui/AppBar.types";
 import { useNowMinuteMs } from "../../lib/clock";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useEffect, useEffectEvent } from "react";
 import { useBatonAccounts, useSessionLoginKey } from "./BatonAccountRow";
 
 const TONE_COLOR = {
@@ -20,6 +20,21 @@ const TONE_COLOR = {
   warn: "--color-warning-foreground",
   limit: "--color-danger-foreground",
 } as const;
+
+const settingsOpeners = new Map<string, () => void>();
+
+/** The thread composer registers its settings opener here, for the header's limit chip. */
+export function useBatonSettingsOpener(threadKey: string, open: () => void) {
+  const run = useEffectEvent(open);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the mounted composer's opener for the header chip
+  useEffect(() => {
+    const opener = () => run();
+    settingsOpeners.set(threadKey, opener);
+    return () => {
+      if (settingsOpeners.get(threadKey) === opener) settingsOpeners.delete(threadKey);
+    };
+  }, [threadKey]);
+}
 
 export function useBatonThreadHeader(
   thread: {
@@ -33,7 +48,6 @@ export function useBatonThreadHeader(
   const loginKey = useSessionLoginKey(thread?.environmentId ?? null, thread?.id ?? null);
   const now = useNowMinuteMs();
   const theme = useUniwindTheme();
-  const navigation = useNavigation();
   if (thread === null) return { subtitle: null, action: null };
   const terminal = isLiveThreadId(thread.id) && thread.providerInstanceId === LIVE_INSTANCE;
   const account = threadAccount(accounts, thread.modelSelection.instanceId, loginKey);
@@ -53,14 +67,8 @@ export function useBatonThreadHeader(
       icon: terminal ? "terminal" : "chart.bar.xaxis",
       tintColor: theme[TONE_COLOR[roomTone(account)]],
       separateBackground: false,
-      onPress: () =>
-        navigation.dispatch(
-          StackActions.push("ThreadSettingsSheet", {
-            environmentId: thread.environmentId,
-            threadId: thread.id,
-            draftKey: scopedThreadKey(thread.environmentId, thread.id),
-          }),
-        ),
+      // Through the composer's own opener, so its presented-route guard holds against a double tap.
+      onPress: () => settingsOpeners.get(scopedThreadKey(thread.environmentId, thread.id))?.(),
     },
   };
 }

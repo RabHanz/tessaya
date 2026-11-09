@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ProviderInstanceId } from "@t3tools/contracts";
 
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { accountPickOption, batonProviderGroups, liveTraits } from "./batonCatalog";
+import { accountPickOption, batonProviderGroups, liveTraits, loadedLoginKey } from "./batonCatalog";
 
 const group = (
   providerKey: string,
@@ -93,5 +93,18 @@ describe("a terminal thread's effort", () => {
     expect(liveTraits(capabilities, selection("claudeAgent"), "high").selections).toEqual([
       { id: "effort", value: "session" },
     ]);
+  });
+});
+
+describe("a terminal session's login", () => {
+  const pool = [
+    { key: "1", email: "work@example.com", active: true },
+    { key: "2", email: "home@example.com", active: false },
+  ];
+
+  it("is unknown until the catalog answers for this session, never cswap's active login", () => {
+    expect(loadedLoginKey(null, "abc", pool)).toBeNull();
+    expect(loadedLoginKey({ sessionId: "old", login: "home" }, "abc", pool)).toBeNull();
+    expect(loadedLoginKey({ sessionId: "abc", login: "home" }, "abc", pool)).toBe("2");
   });
 });

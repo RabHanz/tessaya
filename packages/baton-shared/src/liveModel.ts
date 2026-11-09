@@ -312,3 +312,7 @@ export const liveChangeRoute = (input: {
   };
   return Object.keys(change).length === 0 ? { kind: "none" } : { kind: "session", change };
 };
+
+/** Nothing to type into the session: the pick (another option, or the same model) still belongs in the draft. */
+export const keepsDraft = (route: LiveChangeRoute): boolean =>
+  route.kind === "draft" || route.kind === "none";

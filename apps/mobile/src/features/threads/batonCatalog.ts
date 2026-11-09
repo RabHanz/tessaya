@@ -3,7 +3,7 @@
  * login, with Terminal its own group. The other logins of a provider become account rows under its header.
  */
 import type { BatonAccountRecord } from "@t3tools/baton-contracts";
-import { oneEntryPerProvider, pickModelFor } from "@t3tools/baton-shared/accounts";
+import { oneEntryPerProvider, pickModelFor, sessionLoginKey } from "@t3tools/baton-shared/accounts";
 import { withRealEffort } from "@t3tools/baton-shared/liveModel";
 import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import type { ModelCapabilities, ModelSelection } from "@t3tools/contracts";
@@ -80,3 +80,19 @@ export const liveTraits = (
   );
   return { capabilities: real.models[0]?.capabilities, selections: real.options };
 };
+
+/** The session catalog's answer for one session: the login it names, or null when it names none. */
+export type SessionLogin = { readonly sessionId: string; readonly login: string | null };
+
+/**
+ * The cswap key a terminal session runs as, only once the catalog has answered for this very session: before that a
+ * pick would route on whatever login cswap has active, which may not be the session's.
+ */
+export const loadedLoginKey = (
+  read: SessionLogin | null,
+  sessionId: string | null,
+  pool: Parameters<typeof sessionLoginKey>[0],
+): string | null =>
+  read === null || sessionId === null || read.sessionId !== sessionId
+    ? null
+    : sessionLoginKey(pool, read.login);
