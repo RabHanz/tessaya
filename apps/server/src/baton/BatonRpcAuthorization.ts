@@ -352,13 +352,16 @@ export const HIS_OWN_METHODS: ReadonlySet<string> = new Set([
 export const refusedAsDevice = (
   tag: string,
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
-): boolean => HIS_OWN_METHODS.has(tag) && askSourceOf(session) !== "phone";
+): boolean =>
+  HIS_OWN_METHODS.has(BATON_METHOD_OF.get(tag) ?? tag) && askSourceOf(session) !== "phone";
 
 export const layer = (
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject" | "sessionId">,
 ) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
-    if (refusedAsDevice(rpc._tag, session)) {
+    // A tessaya.* alias passes every check as the method it stands for.
+    const tag = BATON_METHOD_OF.get(rpc._tag) ?? rpc._tag;
+    if (refusedAsDevice(tag, session)) {
       return Effect.fail(
         new EnvironmentAuthorizationError({
           message:
@@ -367,7 +370,7 @@ export const layer = (
         }),
       );
     }
-    const missing = missingBatonScope(rpc._tag, session.scopes, payload);
+    const missing = missingBatonScope(tag, session.scopes, payload);
     return missing === null
       ? effect.pipe(
           Effect.provideService(AskSource, askSourceOf(session)),
