@@ -8,6 +8,7 @@
  * scope table does not list; Baton's table is `BATON_RPC_REQUIRED_SCOPES` below.
  */
 import {
+  DictationCleanupError,
   EnvironmentAuthorizationError,
   OrchestrationDispatchCommandError,
 } from "@t3tools/contracts";
@@ -113,6 +114,12 @@ import {
   BatonRecordListResult,
 } from "./record.ts";
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
+import {
+  BATON_DICTATION_WS_METHODS,
+  BatonDictationCleanupInput,
+  BatonDictationCleanupResult,
+  BatonDictationCleanupStatus,
+} from "./dictation.ts";
 import {
   BATON_JOB_WS_METHODS,
   BatonJobGrantInput,
@@ -742,6 +749,18 @@ const WsBatonRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonDictationCleanupApiRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupApi, {
+  payload: BatonDictationCleanupInput,
+  success: BatonDictationCleanupResult,
+  error: Schema.Union([DictationCleanupError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonDictationCleanupApiStatusRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupApiStatus, {
+  payload: Schema.Struct({}),
+  success: BatonDictationCleanupStatus,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
@@ -924,6 +943,8 @@ const BATON_RPCS = [
   WsBatonWatchGetRpc,
   WsBatonRecordListRpc,
   WsBatonRecordAppendRpc,
+  WsBatonDictationCleanupApiRpc,
+  WsBatonDictationCleanupApiStatusRpc,
   WsBatonWeaveSendRpc,
   WsBatonWeaveListRpc,
   WsBatonWeaveTickRpc,

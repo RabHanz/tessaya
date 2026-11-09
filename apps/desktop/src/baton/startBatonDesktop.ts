@@ -598,6 +598,24 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       mainWindowUp: t3Up,
       direct,
+      // His Anthropic key answers first when he saved one; any failure falls back to the subscription session.
+      cleanupApi: async (system, message, maxTokens) => {
+        try {
+          const answer = (await direct("baton.dictation.cleanupApi", {
+            system,
+            message,
+            maxTokens,
+          })) as {
+            readonly configured?: boolean;
+            readonly text?: unknown;
+          };
+          return answer?.configured === true && typeof answer.text === "string"
+            ? answer.text
+            : null;
+        } catch {
+          return null;
+        }
+      },
       ...(screen === null ? {} : { extras: screen }),
       sessions,
       catalog,

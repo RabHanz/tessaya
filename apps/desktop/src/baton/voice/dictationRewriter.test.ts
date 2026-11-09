@@ -30,6 +30,42 @@ describe("makeRewriter", () => {
     expect(prompts[1]).toContain("Tessaya");
   });
 
+  it("cleans through his API key when one is saved, and through the subscription session when not", async () => {
+    let saved = true;
+    const sessionAsked: string[] = [];
+    const apiAsked: string[] = [];
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: "haiku",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      start: (): VisionSession => ({
+        ask: async (content) => {
+          sessionAsked.push(content[0]?.type === "text" ? content[0].text : "");
+          return "from the session";
+        },
+        alive: () => true,
+        dispose: () => {},
+      }),
+      api: async (system, message, maxTokens) => {
+        apiAsked.push(message);
+        expect(system.length).toBeGreaterThan(0);
+        expect(maxTokens).toBeGreaterThan(64);
+        return saved ? "from the api" : null;
+      },
+    });
+    const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
+    expect((await rewriter.clean(said)).text).toBe("from the api");
+    expect(sessionAsked).toHaveLength(0);
+    saved = false;
+    expect((await rewriter.clean(said)).text).toBe("from the session");
+    expect(apiAsked).toHaveLength(2);
+    rewriter.dispose();
+  });
+
   it("keeps a session up while it should stay warm: a used-up or dead one is replaced at once", async () => {
     let started = 0;
     let alive = true;

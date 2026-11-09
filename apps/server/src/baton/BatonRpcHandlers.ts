@@ -26,6 +26,7 @@ import {
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  BATON_DICTATION_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonJobPlacementError,
@@ -44,7 +45,7 @@ import { fleetForOutside } from "@t3tools/baton-shared/fleetForOutside";
 import { batonProjectKey, handoffTarget } from "@t3tools/baton-shared/jobPlacement";
 import { workAccount } from "@t3tools/baton-shared/batonProjects";
 import { watchFleet } from "@t3tools/baton-shared/watch";
-import { type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import { DictationCleanupError, type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -73,6 +74,7 @@ import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import { BatonPhoneInbox, phoneCall } from "./BatonPhoneInbox.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
+import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
@@ -116,6 +118,7 @@ export type BatonServices =
   | BatonMemorySync
   | BatonCommitmentService
   | BatonRecordService
+  | DictationCleanupApi
   | BatonPhoneInbox
   | BatonWeaveService
   | BatonCloudService
@@ -565,6 +568,22 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(BatonRecordService, (record) =>
           Effect.as(record.appendFromClient(input), {}),
+        ),
+      ),
+    [BATON_DICTATION_WS_METHODS.cleanupApi]: (input) =>
+      run(
+        Effect.flatMap(DictationCleanupApi, (api) => api.cleanup(input)).pipe(
+          Effect.catchTags({
+            ServerSettingsError: () =>
+              Effect.fail(new DictationCleanupError({ reason: "unreadable-key" })),
+          }),
+        ),
+      ),
+    [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: () =>
+      run(
+        Effect.flatMap(DictationCleanupApi, (api) => api.configured).pipe(
+          Effect.map((configured) => ({ configured })),
+          Effect.orElseSucceed(() => ({ configured: false })),
         ),
       ),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>

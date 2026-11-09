@@ -28,6 +28,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import type * as NetAddress from "effect/net/NetAddress";
 import * as SpeechService from "./SpeechService.ts";
 import * as CloudSpeech from "./CloudSpeech.ts";
+import * as DictationCleanupApi from "./DictationCleanupApi.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -49,6 +50,7 @@ const principal = (...scopes: AuthEnvironmentScope[]) =>
 
 const dependencies = Layer.mergeAll(
   Layer.mock(CloudSpeech.CloudSpeech)({}),
+  Layer.mock(DictationCleanupApi.DictationCleanupApi)({}),
   Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
   Layer.mock(ServerSettings.ServerSettingsService)({
     getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
@@ -160,12 +162,21 @@ effectIt.effect(
           return Effect.fail(new CloudSpeechError({ provider, reason: "rejected-key" }));
         },
       });
+      let cleanupKey: unknown = null;
+      const cleanupApi = Layer.mock(DictationCleanupApi.DictationCleanupApi)({
+        configured: Effect.sync(() => cleanupKey !== null),
+        setKey: (key) =>
+          Effect.sync(() => {
+            cleanupKey = key;
+          }),
+      });
       const { handler, dispose } = HttpRouter.toWebHandler(
         HttpApiBuilder.layer(HttpApi.make("environment").add(EnvironmentVoiceHttpApi)).pipe(
           Layer.provide(speechHttpApiLayer),
           Layer.provide(principal(AuthOrchestrationOperateScope, AuthSettingsWriteScope)),
           Layer.provide(Layer.mock(SpeechService.SpeechService)({})),
           Layer.provide(cloud),
+          Layer.provide(cleanupApi),
           Layer.provide(dependencies),
           Layer.provide(HttpServer.layerServices),
           Layer.provide(NodeServices.layer),
@@ -196,6 +207,23 @@ effectIt.effect(
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ key }),
         });
+      const cleanup = (path: string, init?: RequestInit) =>
+        Effect.promise(() =>
+          handler(new Request(`http://localhost/api/voice/cleanup/${path}`, init), context),
+        );
+      expect(
+        (yield* cleanup("anthropic/key", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ key: "sk-ant-fixture" }),
+        })).status,
+      ).toBe(204);
+      expect(Redacted.isRedacted(cleanupKey)).toBe(true);
+      // Whether a key is saved, never the key.
+      const keysResponse = yield* cleanup("keys");
+      const cleanupKeys = yield* Effect.promise(() => keysResponse.text());
+      expect(JSON.parse(cleanupKeys)).toEqual({ anthropic: true });
+      expect(cleanupKeys).not.toContain("sk-ant");
       expect((yield* setReference(reference)).status).toBe(204);
       expect(save).toHaveBeenLastCalledWith("xai", reference);
       expect((yield* setReference(reference.reference)).status).toBe(400);

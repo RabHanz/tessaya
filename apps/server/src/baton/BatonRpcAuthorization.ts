@@ -18,6 +18,7 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
+  BATON_DICTATION_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
@@ -87,6 +88,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.
   [BATON_RECORD_WS_METHODS.append]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  // It spends his saved Anthropic key: the desktop app's own session only.
+  [BATON_DICTATION_WS_METHODS.cleanupApi]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobList]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobTeam]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobStart]: AuthOrchestrationOperateScope,
@@ -235,6 +239,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_WATCH_WS_METHODS.watchGet,
   BATON_RECORD_WS_METHODS.list,
   BATON_RECORD_WS_METHODS.append,
+  BATON_DICTATION_WS_METHODS.cleanupApi,
+  BATON_DICTATION_WS_METHODS.cleanupApiStatus,
   BATON_COMMITMENT_WS_METHODS.list,
   BATON_COMMITMENT_WS_METHODS.upsert,
   BATON_WEAVE_WS_METHODS.send,
