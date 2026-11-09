@@ -4,18 +4,10 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..da7bf8339bb0ca264b107788cc67fb76ddbe7462 100644
+index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..16d4218f45941546e44856bbbfc04e0dc95037ba 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -381,6 +381,7 @@ const EMPTY_PROVIDERS: ServerProvider[] = [];
- const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
- const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
- import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
-+import { displayThreadTitle } from "@t3tools/baton-shared/liveThread";
- 
- const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
- const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
-@@ -1308,6 +1309,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1308,6 +1308,10 @@ export default function ChatView(props: ChatViewProps) {
      ],
      lockedProvider,
      lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
@@ -26,7 +18,7 @@ index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..da7bf8339bb0ca264b107788cc67fb76
    });
    const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
    const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-@@ -1812,7 +1817,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1812,7 +1816,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -35,7 +27,7 @@ index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..da7bf8339bb0ca264b107788cc67fb76
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2685,8 +2690,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2685,8 +2689,9 @@ export default function ChatView(props: ChatViewProps) {
    // composer effect above.
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
    useEffect(() => {
@@ -47,7 +39,7 @@ index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..da7bf8339bb0ca264b107788cc67fb76
  
    const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
      terminalFocus: getTerminalFocusOwner() !== null,
-@@ -2776,12 +2782,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2776,12 +2781,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -63,7 +55,7 @@ index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..da7bf8339bb0ca264b107788cc67fb76
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3327,7 +3334,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3327,7 +3333,7 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -72,7 +64,7 @@ index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..da7bf8339bb0ca264b107788cc67fb76
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3360,13 +3367,15 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3360,7 +3366,9 @@ export default function ChatView(props: ChatViewProps) {
                  className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
                />
              ) : null}
@@ -83,14 +75,7 @@ index ff4a642b5c31d8710855b985b4fab7f13e8a57d5..da7bf8339bb0ca264b107788cc67fb76
              {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
-               activeThreadId={activeThread.id}
-               isServerThread={isServerThread}
--              activeThreadTitle={activeThread.title}
-+              activeThreadTitle={displayThreadTitle(activeThread.id, activeThread.title)}
-               activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
-               activeProject={activeProject ?? null}
-               parentThreadLink={headerParentThreadLink}
-@@ -3710,6 +3719,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3710,6 +3718,7 @@ export default function ChatView(props: ChatViewProps) {
                                  defaultRuntimeMode={defaultRuntimeMode}
                                  interactionMode={interactionMode}
                                  lockedProvider={modelPickerLockedProvider}

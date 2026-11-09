@@ -8,6 +8,8 @@ import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread"
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { EllipsisIcon } from "lucide-react";
 
+import { useComposerHandleContext } from "../../composerHandleContext";
+import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import { Badge } from "../ui/badge";
@@ -26,6 +28,7 @@ function LimitChip(props: {
   readonly shell: EnvironmentThreadShell;
 }) {
   const now = Date.parse(`${useNowMinute()}:00Z`);
+  const composer = useComposerHandleContext();
   const accounts = useBatonAccounts(props.threadRef.environmentId);
   const login = useLiveAccounts(props.threadRef).find((entry) => entry.active);
   const instanceId = props.shell.modelSelection.instanceId;
@@ -38,7 +41,19 @@ function LimitChip(props: {
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<Badge variant={TONE_VARIANT[roomTone(account)]} data-testid="thread-limit-chip" />}
+        render={
+          <Badge
+            variant={TONE_VARIANT[roomTone(account)]}
+            data-testid="thread-limit-chip"
+            render={
+              <button
+                type="button"
+                aria-label={`${account.label}: open the picker on its accounts`}
+                onClick={() => composer?.current?.openModelPicker()}
+              />
+            }
+          />
+        }
       >
         {room === null ? account.label : `${account.label} · ${room}`}
       </TooltipTrigger>
@@ -55,15 +70,13 @@ function LimitChip(props: {
   );
 }
 
-const copy = (text: string, title: string) =>
-  void navigator.clipboard.writeText(text).then(
-    () => toastManager.add({ type: "success", title }),
-    () => toastManager.add({ type: "error", title: "Could not copy" }),
-  );
-
 /** The Herdr pane, its id to copy, and a terminal to attach from: kept out of the header line. */
 function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: string }) {
   const herdrSession = props.pane.split("~")[0] ?? props.pane;
+  const { copyToClipboard } = useCopyToClipboard<string>({
+    onCopy: (title) => toastManager.add({ type: "success", title }),
+    onError: () => toastManager.add({ type: "error", title: "Could not copy" }),
+  });
   return (
     <Menu>
       <MenuTrigger
@@ -81,12 +94,17 @@ function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: s
       <MenuPopup align="end">
         <MenuGroup>
           <MenuGroupLabel>Herdr pane {props.pane}</MenuGroupLabel>
-          <MenuItem onClick={() => copy(props.pane, "Pane id copied")}>Copy pane id</MenuItem>
+          <MenuItem onClick={() => copyToClipboard(props.pane, "Pane id copied")}>
+            Copy pane id
+          </MenuItem>
           <MenuItem
             onClick={() => {
               // T3's terminal cannot be started on a command, so it opens with the attach line ready to paste.
               useTerminalUiStateStore.getState().setTerminalOpen(props.threadRef, true);
-              copy(`herdr session attach ${herdrSession}`, "Attach command copied: paste it here");
+              copyToClipboard(
+                `herdr session attach ${herdrSession}`,
+                "Attach command copied: paste it here",
+              );
             }}
           >
             Open in terminal

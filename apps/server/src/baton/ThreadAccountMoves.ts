@@ -5,7 +5,7 @@
  */
 import {
   BATON_DEFAULT_CLAUDE_INSTANCE,
-  type BatonLiveQueued,
+  BatonLiveQueued,
   type BatonThreadAccountUseResult,
 } from "@t3tools/baton-contracts";
 import { liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
@@ -70,15 +70,27 @@ export interface ThreadAccountMovesShape {
     sessionId: string,
     change: BatonLiveQueued,
   ) => Effect.Effect<BatonLiveQueued>;
-  readonly liveQueued: (sessionId: string) => Effect.Effect<BatonLiveQueued | null>;
+  /** The change waiting, and why the last one could not be applied. */
+  readonly liveQueued: (sessionId: string) => Effect.Effect<{
+    readonly queued: BatonLiveQueued | null;
+    readonly failure: string | null;
+  }>;
   readonly cancelLive: (sessionId: string) => Effect.Effect<boolean>;
 }
 
-/** Tells a terminal session a queued change: "busy" keeps it waiting, anything else is its answer. */
+/** Tells a terminal session a queued change: "busy" keeps it waiting, "failed" says why it was not applied. */
 export type ApplyLive = (
   sessionId: string,
   change: BatonLiveQueued,
-) => Effect.Effect<"busy" | "done">;
+) => Effect.Effect<
+  { readonly state: "busy" | "done" } | { readonly state: "failed"; readonly detail: string }
+>;
+
+const decodeQueued = Schema.decodeUnknownOption(Schema.fromJsonString(BatonLiveQueued));
+const decodeQueuedOrNull = (json: string) => {
+  const decoded = decodeQueued(json);
+  return decoded._tag === "Some" ? decoded.value : null;
+};
 
 export class ThreadAccountMoves extends Context.Service<
   ThreadAccountMoves,
@@ -162,21 +174,72 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     ),
   );
 
-  // shortcut: in memory, so a server restart drops a queued live change; persist it if that bites.
-  const live = new Map<string, BatonLiveQueued>();
-  const queueLive = (sessionId: string, change: BatonLiveQueued) =>
-    Effect.sync(() => {
-      // A later pick replaces the waiting one field by field, as the thread's own move does.
-      const merged = { ...live.get(sessionId), ...change };
-      live.set(sessionId, merged);
-      return merged;
-    });
+  // Queued terminal session changes: kept in baton.sqlite so a restart still applies them.
+  const queuedRows = yield* sql<{ readonly session_id: string; readonly change_json: string }>`
+    SELECT session_id, change_json FROM tessaya_live_queue
+  `;
+  const live = new Map(
+    queuedRows.flatMap((row) => {
+      const change = decodeQueuedOrNull(row.change_json);
+      return change === null ? [] : [[row.session_id, change] as const];
+    }),
+  );
+  const failures = new Map<string, string>();
+  // Taken out while it is being told; a cancel then lands here, so a busy answer does not put it back.
+  const applying = new Map<string, { cancelled: boolean }>();
+  const store = (sessionId: string, change: BatonLiveQueued | null) =>
+    change === null
+      ? sql`DELETE FROM tessaya_live_queue WHERE session_id = ${sessionId}`
+      : sql`INSERT INTO tessaya_live_queue (session_id, change_json) VALUES (${sessionId}, ${JSON.stringify(change)})
+          ON CONFLICT (session_id) DO UPDATE SET change_json = excluded.change_json`;
+
+  const queueLive = Effect.fn("ThreadAccountMoves.queueLive")(function* (
+    sessionId: string,
+    change: BatonLiveQueued,
+  ) {
+    // A later pick replaces the waiting one field by field, as the thread's own move does.
+    const merged = { ...live.get(sessionId), ...change };
+    live.set(sessionId, merged);
+    failures.delete(sessionId);
+    yield* store(sessionId, merged);
+    return merged;
+  }, Effect.orDie);
+
+  const cancelLive = Effect.fn("ThreadAccountMoves.cancelLive")(function* (sessionId: string) {
+    const inFlight = applying.get(sessionId);
+    if (inFlight !== undefined) inFlight.cancelled = true;
+    const had = live.delete(sessionId) || inFlight !== undefined;
+    yield* store(sessionId, null);
+    return had;
+  }, Effect.orDie);
+
   const applyLiveWhenIdle = Effect.fn("ThreadAccountMoves.applyLiveWhenIdle")(
     function* (sessionId: string, change: BatonLiveQueued) {
-      if ((yield* applyLive(sessionId, change)) === "busy") return;
-      // Only the change that was applied is forgotten; one queued meanwhile waits for the next idle.
-      if (live.get(sessionId) === change) live.delete(sessionId);
-      yield* Effect.logInfo("Tessaya applied a queued terminal session change", { sessionId });
+      if (applying.has(sessionId)) return;
+      live.delete(sessionId);
+      const flight = { cancelled: false };
+      applying.set(sessionId, flight);
+      const outcome = yield* applyLive(sessionId, change).pipe(
+        Effect.catchCause((cause) =>
+          Effect.succeed({ state: "failed" as const, detail: String(cause).slice(0, 300) }),
+        ),
+        Effect.ensuring(Effect.sync(() => applying.delete(sessionId))),
+      );
+      const replaced = live.has(sessionId);
+      if (outcome.state === "busy") {
+        // Back in the queue only when nothing replaced it and he did not cancel it meanwhile.
+        if (!replaced && !flight.cancelled) live.set(sessionId, change);
+        return;
+      }
+      if (outcome.state === "failed") {
+        failures.set(sessionId, outcome.detail);
+        yield* Effect.logWarning("Tessaya could not apply a queued terminal session change", {
+          sessionId,
+          detail: outcome.detail,
+        });
+      } else
+        yield* Effect.logInfo("Tessaya applied a queued terminal session change", { sessionId });
+      if (!replaced) yield* store(sessionId, null);
     },
     Effect.ignoreCause({ log: true }),
   );
@@ -217,8 +280,12 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     kept,
     keep,
     queueLive,
-    liveQueued: (sessionId: string) => Effect.sync(() => live.get(sessionId) ?? null),
-    cancelLive: (sessionId: string) => Effect.sync(() => live.delete(sessionId)),
+    liveQueued: (sessionId: string) =>
+      Effect.sync(() => ({
+        queued: live.get(sessionId) ?? null,
+        failure: failures.get(sessionId) ?? null,
+      })),
+    cancelLive,
     pendingThreadIds: () => [...pending.keys()],
   };
 });
