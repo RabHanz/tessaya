@@ -5,6 +5,7 @@ import {
   bindingOf,
   pinnedLiveSelection,
   classifierStopReason,
+  displayThreadTitle,
   livePick,
   liveSessionKey,
   liveThreadSwitchRefusal,
@@ -30,6 +31,11 @@ describe("a mirrored live thread", () => {
     // A thread already moved to a handoff session cannot wake it again.
     expect(ok(live, "claudeAgent", "claudeAgent")).toContain("handoff session");
     expect(ok("import:claudeAgent:x", "claudeAgent", "codex")).toBeNull();
+  });
+  it("shows its title without the account and machine the mirror appends, and leaves other titles alone", () => {
+    expect(displayThreadTitle(live, "Pricing copy · someone · box1")).toBe("Pricing copy");
+    expect(displayThreadTitle(live, "Pricing copy")).toBe("Pricing copy");
+    expect(displayThreadTitle("thread-1", "Pricing · copy")).toBe("Pricing · copy");
   });
 });
 

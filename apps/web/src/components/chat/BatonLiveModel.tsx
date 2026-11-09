@@ -62,6 +62,9 @@ export function useLiveState(threadRef: ScopedThreadRef | null) {
 /** The login each live session runs as, from the session catalog the header's binding reads (by session id). */
 export const liveLoginAtom = Atom.family((_sessionId: string) => Atom.make<string | null>(null));
 
+/** The Herdr pane each live session runs in, from the same catalog read (by session id). */
+export const livePaneAtom = Atom.family((_sessionId: string) => Atom.make<string | null>(null));
+
 /**
  * The machine logins (cswap) on a live thread's environment, with `active` marking the session's own login once the
  * catalog has named it (a session in its own config dir can run on any of them); empty elsewhere.

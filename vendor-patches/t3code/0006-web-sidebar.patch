@@ -8207,18 +8207,19 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
        ) : null}
      </span>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 41cb733daff152035d24c8e88f39e72b2b711816..8df179be3821181be444d864ca67fc0de498933d 100644
+index 41cb733daff152035d24c8e88f39e72b2b711816..33cae5c0e9a24c7417a3a62ab05b036dd8217e37 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -109,6 +109,7 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
+@@ -109,6 +109,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
  import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
 +import { BatonLiveBadge } from "./BatonLiveBadge";
++import { displayThreadTitle } from "@t3tools/baton-shared/liveThread";
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
  import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
  import { InlineButton } from "../ui/button";
-@@ -533,6 +534,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
+@@ -533,6 +535,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
  
  type SidebarThreadRowProps = {
    thread: SidebarThreadSummary;
@@ -8227,7 +8228,16 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..8df179be3821181be444d864ca67fc0d
    // "folder" is a one-line row inside a boring sidebar project folder;
    // "folder-multiline" adds the card's branch and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
-@@ -1175,6 +1178,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1044,7 +1048,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+       )}
+       dir={textDirection(thread.title)}
+     >
+-      {thread.title}
++      {displayThreadTitle(thread.id, thread.title)}
+     </span>
+   );
+   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
+@@ -1175,6 +1179,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          aria-hidden
          className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
        >
@@ -8235,7 +8245,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..8df179be3821181be444d864ca67fc0d
          {remoteMachineIcon}
          <SidebarProviderStack
            thread={thread}
-@@ -1185,6 +1189,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1185,6 +1190,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    );
    const titleLineIcons = metaLineEmpty ? (
      <span aria-hidden className="inline-flex shrink-0 items-center gap-1">

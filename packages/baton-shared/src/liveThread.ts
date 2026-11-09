@@ -15,6 +15,13 @@ export const instanceLabel = (instanceId: string): string =>
 export const liveSessionIdOf = (threadId: string): string | null =>
   /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;
 
+/**
+ * A live thread's title as shown: the session's name without the " · <account> · <box>" the mirror stores for T3's
+ * own lists (liveThreadTitle). Display only; the stored title is left as it is.
+ */
+export const displayThreadTitle = (threadId: string, title: string): string =>
+  isLiveThreadId(threadId) && title.includes(" · ") ? title.split(" · ")[0]! : title;
+
 export const isLiveThreadId = (threadId: string): boolean =>
   threadId.startsWith(LIVE_THREAD_PREFIX);
 
