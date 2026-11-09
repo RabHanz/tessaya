@@ -12,6 +12,7 @@
 import { teamBoard } from "./BatonTeamBoard.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
+  BATON_ACCOUNTS_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
@@ -56,6 +57,8 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
+import { BatonAccounts } from "./BatonAccounts.ts";
+import { liveSwitchRefusal } from "@t3tools/baton-shared/accounts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -94,6 +97,7 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 export type BatonServices =
   | WorkSessionService
   | AccountPoolService
+  | BatonAccounts
   | AccountRotationPolicy
   | OrchestrationRuleService
   | BatonOrchestrationReactor
@@ -236,6 +240,8 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(ProviderRegistry.ProviderRegistry, (registry) => registry.getProviders),
       ).pipe(Effect.map((providers) => ({ instances: instancesWeekly(providers, input.driver) }))),
+    [BATON_ACCOUNTS_WS_METHODS.list]: () =>
+      run(Effect.flatMap(BatonAccounts, (accounts) => accounts.list)),
     [BATON_ACCOUNT_WS_METHODS.threadKept]: (input) =>
       run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.kept(input.threadId))).pipe(
         Effect.map((keep) => ({ keep })),
@@ -318,13 +324,20 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_LIVE_WS_METHODS.liveAdopt]: (input) => liveAdopt(input),
     [BATON_LIVE_WS_METHODS.liveSetAccount]: (input) =>
       run(
-        Effect.flatMap(AccountPoolService, (pool) =>
-          pool.read(ProviderDriverKind.make("claudeAgent")),
-        ).pipe(
-          Effect.map((read) => read.accounts),
-          Effect.orElseSucceed(() => []),
-          Effect.flatMap((accounts) => liveSetAccount(input, accounts)),
-        ),
+        Effect.gen(function* () {
+          const refusal = liveSwitchRefusal(
+            (yield* (yield* BatonAccounts).list).accounts,
+            input.accountKey,
+          );
+          if (refusal !== null) return { state: "refused" as const, detail: refusal };
+          const accounts = yield* (yield* AccountPoolService)
+            .read(ProviderDriverKind.make("claudeAgent"))
+            .pipe(
+              Effect.map((read) => read.accounts),
+              Effect.orElseSucceed(() => []),
+            );
+          return yield* liveSetAccount(input, accounts);
+        }),
       ),
     [BATON_LIVE_WS_METHODS.liveSetModel]: (input) =>
       run(

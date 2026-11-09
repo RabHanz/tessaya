@@ -1,4 +1,5 @@
 export * from "./accountPool.ts";
+export * from "./accounts.ts";
 export * from "./adoptedSession.ts";
 export * from "./capability.ts";
 export * from "./context.ts";

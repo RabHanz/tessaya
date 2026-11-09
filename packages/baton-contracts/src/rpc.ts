@@ -71,6 +71,11 @@ import {
   BatonThreadKeptInput,
 } from "./accountPool.ts";
 import {
+  BATON_ACCOUNTS_WS_METHODS,
+  BatonAccountsListInput,
+  BatonAccountsListResult,
+} from "./accounts.ts";
+import {
   BATON_WS_METHODS,
   WorkSessionAttachThreadInput,
   WorkSessionCreateInput,
@@ -271,6 +276,12 @@ const WsBatonThreadKeepRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKeep, {
 const WsBatonAccountWeeklyRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.weekly, {
   payload: BatonAccountWeeklyInput,
   success: BatonAccountWeeklyResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonAccountsListRpc = Rpc.make(BATON_ACCOUNTS_WS_METHODS.list, {
+  payload: BatonAccountsListInput,
+  success: BatonAccountsListResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -837,6 +848,7 @@ const BATON_RPCS = [
   WsBatonThreadKeptRpc,
   WsBatonThreadKeepRpc,
   WsBatonAccountWeeklyRpc,
+  WsBatonAccountsListRpc,
   WsBatonWorkSessionListRpc,
   WsBatonWorkSessionCreateRpc,
   WsBatonWorkSessionUpdateRpc,

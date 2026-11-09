@@ -22,6 +22,7 @@ import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
 import * as AccountPoolService from "./AccountPoolService.ts";
+import * as BatonAccounts from "./BatonAccounts.ts";
 import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
 import * as BatonMemorySync from "./BatonMemorySync.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
@@ -134,6 +135,7 @@ const servicesInner = IntentService.layer.pipe(
       BatonMemorySync.layer.pipe(Layer.provide(memoryLayer)),
       readClaudeAccountInstances,
       AccountPoolService.layer,
+      BatonAccounts.layer.pipe(Layer.provide(AccountPoolService.layer)),
       AccountRotationPolicy.layer,
       ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
       // The adapter is provided here so the one place that talks to another program stays
