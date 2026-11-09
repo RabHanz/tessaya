@@ -183,11 +183,11 @@ describe("what stays private", () => {
     expect(mayPasteInto("", "chrome.exe")).toBe(false);
   });
 
-  it("teaches from an edit only where learning from the field would, and never from a row kept local", () => {
-    const row = { app: "slack.exe", cleanup: "claude" as const, hidden: null };
+  it("teaches from an ordinary row at any clean-up level, never from a private one", () => {
+    const row = { app: "slack.exe", hidden: null };
     expect(mayTeach(row, "Herdr pane", true)).toBe(true);
+    expect(mayTeach({ ...row, cleanup: "local" }, "Herdr pane", true)).toBe(true);
     expect(mayTeach(row, "Herdr pane", false)).toBe(false);
-    expect(mayTeach({ ...row, cleanup: "local" }, "Herdr pane", true)).toBe(false);
     expect(mayTeach({ ...row, app: "1password" }, "Herdr pane", true)).toBe(false);
     expect(mayTeach({ ...row, hidden: "password field" }, "Herdr pane", true)).toBe(false);
     expect(mayTeach(row, "The password is hunter-fake-77.", true)).toBe(false);

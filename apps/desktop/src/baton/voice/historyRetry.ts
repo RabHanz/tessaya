@@ -118,16 +118,15 @@ export const privateReason = (
 export const mayPasteInto = (turnApp: string, nowExe: string): boolean =>
   turnApp !== "" && turnApp.toLowerCase() === nowExe.toLowerCase();
 
-/** Edit and teach learns from his fix under the same rules as a fix in the field, and never from a row kept local. */
+/** Edit and teach learns from his fix unless the row is private: hidden, a secret, or said into a private app. */
 export const mayTeach = (
-  turn: Pick<HistoryTurn, "app" | "cleanup" | "hidden">,
+  turn: Pick<HistoryTurn, "app" | "hidden">,
   meant: string,
   learnWords: boolean,
 ): boolean =>
   learnWords &&
   turn.hidden === null &&
-  turn.cleanup !== "local" &&
-  cleanupLevelFor("claude", { exe: turn.app, title: "" }) === "claude" &&
+  privateReason({ exe: turn.app, title: "" }, false) === null &&
   detectSecret(meant) === null;
 
 export interface Retried {
