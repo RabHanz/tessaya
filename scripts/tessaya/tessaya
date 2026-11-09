@@ -135,14 +135,22 @@ if ((${#agent[@]} > 0)) && [[ "${agent[1]:-}" == "--resume" ]]; then
       echo "tessaya: Tessaya is hosting this session (pid $holder_pid). Use Open in terminal in Tessaya, or add --force to stop its turn and open it here." >&2
       exit 1
     fi
-    # A running server stops the turn and opens the terminal itself; it takes the request by removing it.
+    # A running server stops the turn and opens the terminal itself: it renames the request `.taken`, acts, then
+    # answers in `.result`, which is what is printed here. Mode 0600 and this user's: the server acts on nothing else.
     mkdir -p "$requests"
-    request="$requests/open-$$.json"
-    printf '{"threadId":"%s"}' "$thread_id" > "$request"
+    request="$requests/open-$$-${RANDOM}${RANDOM}.json"
+    answer="${request%.json}.result"
+    trap 'rm -f "$request" "$answer"' EXIT INT TERM
+    (umask 077 && printf '{"threadId":"%s"}' "$thread_id" > "$request")
     for _ in $(seq 1 40); do [[ -f "$request" ]] || break; sleep 0.25; done
     if [[ ! -f "$request" ]]; then
-      echo "tessaya: Tessaya is stopping its turn and opening this session in a terminal"
-      exit 0
+      echo "tessaya: Tessaya is stopping its turn and opening this session in a terminal..."
+      for _ in $(seq 1 360); do [[ -f "$answer" ]] && break; sleep 0.5; done
+      [[ -f "$answer" ]] || { echo "tessaya: Tessaya took the request but has not answered in 3 minutes" >&2; exit 1; }
+      outcome="$(python3 -I -c 'import json, sys; a = json.load(open(sys.argv[1])); print(a.get("state", "")); print(a.get("detail", ""))' "$answer")"
+      echo "tessaya: $(sed -n 2p <<< "$outcome")"
+      [[ "$(head -1 <<< "$outcome")" == "opened" ]]
+      exit $?
     fi
     # No server took it: the process outlived its server, so it is stopped here (holder() verified the pid).
     rm -f "$request"

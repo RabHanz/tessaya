@@ -40,10 +40,6 @@ export const respawnPlan = (paneRef: string, sessionId: string, claude = claudeC
   return {
     prefix,
     pane,
-    exit: [
-      [...prefix, "pane", "send-text", pane, "/exit"],
-      [...prefix, "pane", "send-keys", pane, "enter"],
-    ],
     probe: [...prefix, "pane", "process-info", "--pane", pane],
     resume: [...prefix, "pane", "run", pane, `${claude} --resume ${sessionId}`],
   };
@@ -58,7 +54,9 @@ export const respawnClaudeInPane = (input: {
       return { respawned: false, detail: "not a Claude session id" };
     }
     const plan = respawnPlan(input.paneRef, input.sessionId);
-    for (const args of plan.exit) await run(args);
+    // Never /exit typed into the pane: it could submit his draft. SIGTERM to the verified pid instead.
+    if (!(await Effect.runPromise(endClaudeTerminal(input.sessionId))))
+      return { respawned: false, detail: "the session did not exit within 15 s; left as it was" };
     for (let i = 0; i < 40; i += 1) {
       await sleep(250);
       const info = await run(plan.probe);

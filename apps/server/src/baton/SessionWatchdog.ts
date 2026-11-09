@@ -14,7 +14,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
-import { takeOpenRequests } from "./TessayaSessionsFile.ts";
+import { answerOpenRequest, takeOpenRequests } from "./TessayaSessionsFile.ts";
 
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
@@ -31,18 +31,27 @@ export const layer = Layer.effectDiscard(
         Effect.forever(
           Effect.sleep("2 seconds").pipe(
             Effect.andThen(
-              Effect.forEach(
-                takeOpenRequests(stateDir),
-                (threadId) =>
-                  catalog.openInTerminal({ threadId, stopTurn: true }).pipe(
-                    Effect.tap((result) =>
-                      Effect.logInfo("Tessaya opened a thread in a terminal on request", {
-                        threadId,
-                        state: result.state,
-                      }),
+              Effect.suspend(() =>
+                Effect.forEach(
+                  takeOpenRequests(stateDir, Date.now()),
+                  (request) =>
+                    catalog.openInTerminal({ threadId: request.threadId, stopTurn: true }).pipe(
+                      // Acted on first; only then the answer the CLI prints.
+                      Effect.tap((result) =>
+                        Effect.sync(() => answerOpenRequest(stateDir, request.id, result)),
+                      ),
+                      Effect.catchCause((cause) =>
+                        Effect.sync(() =>
+                          answerOpenRequest(stateDir, request.id, {
+                            state: "refused",
+                            detail: `Tessaya could not open it: ${String(cause).slice(0, 200)}`,
+                          }),
+                        ),
+                      ),
+                      Effect.ignoreCause,
                     ),
-                  ),
-                { discard: true },
+                  { discard: true },
+                ),
               ),
             ),
           ),

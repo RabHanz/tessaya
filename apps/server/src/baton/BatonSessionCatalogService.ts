@@ -893,6 +893,7 @@ export const layer = Layer.effect(
               }),
               detach: (threadId) =>
                 e.detachSessions({ tag: "open-in-terminal", threadId: ThreadId.make(threadId) }),
+              held: (sessionId) => Effect.sync(() => sessionHolderPid(sessionId) !== null),
               released: (sessionId) =>
                 Effect.promise(async () => {
                   for (let i = 0; i < 60; i += 1) {

@@ -70,6 +70,23 @@ export const layer = McpToolAccess.toLayer(
     const ownerOf = Effect.map(McpInvocationContext.McpInvocationContext, (scope) =>
       (scope.client?.sessionId ?? "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 24),
     );
+    // A request for the Director, filed as this agent's (an outside client's session, or a thread agent's thread).
+    const askHim = Effect.fn("TessayaMcp.askHim")(function* (text: string) {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const owner = (scope.client?.sessionId ?? `t${scope.thread?.threadId ?? "unknown"}`)
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(0, 24);
+      const id = `mcp-${owner}-${yield* random.uuidV4()}`;
+      const asked = yield* phone("ask", { id, text }).pipe(
+        Effect.provideService(AskOwner, owner),
+        Effect.mapError(failed),
+      );
+      return {
+        id: asked?.ok === false ? null : id,
+        status: asked?.status ?? "not asked",
+        line: asked?.line ?? "Nothing was asked.",
+      };
+    });
     // The same handlers as the clients' RPC, behind T3's read check for this credential.
     const call = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       readCaller().pipe(
@@ -219,22 +236,28 @@ export const layer = McpToolAccess.toLayer(
           ),
         { linkedCallers: "allowed" },
       ),
-      // The service refuses a busy session and a move without the user's approval; the agent's word is passed as is.
+      // Never the move itself: a request he answers on his own screen, where the desktop's gate asks him every time.
       tessaya_move_into_tessaya: McpToolAccess.writesThreads(
         (input) => [input.threadId],
         (input) =>
-          handlers[BATON_SESSIONS_WS_METHODS.moveIntoTessaya]({
-            threadId: input.threadId,
-            ...(input.providerChangeApproved === undefined
-              ? {}
-              : { providerChangeApproved: input.providerChangeApproved }),
-          }).pipe(Effect.mapError(failed)),
+          askHim(
+            `Move the Terminal thread ${input.threadId} into Tessaya (thread_move_into_tessaya): its terminal session ends and the same conversation continues in Tessaya.`,
+          ),
       ),
+      // Its own thread opens at once; anyone else's is the Director's to approve, on his screen.
       tessaya_open_in_terminal: McpToolAccess.writesThreads(
         (input) => [input.threadId],
         (input) =>
-          handlers[BATON_SESSIONS_WS_METHODS.openInTerminal]({ threadId: input.threadId }).pipe(
-            Effect.mapError(failed),
+          McpInvocationContext.McpInvocationContext.pipe(
+            Effect.flatMap((scope) =>
+              scope.thread?.threadId === input.threadId
+                ? handlers[BATON_SESSIONS_WS_METHODS.openInTerminal]({
+                    threadId: input.threadId,
+                  }).pipe(Effect.mapError(failed))
+                : askHim(
+                    `Open the Tessaya thread ${input.threadId} in a terminal (thread_open_in_terminal): its session moves to a Herdr pane until the pane closes.`,
+                  ),
+            ),
           ),
       ),
       weave_list: McpToolAccess.reads((input) =>

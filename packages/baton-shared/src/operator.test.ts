@@ -182,6 +182,14 @@ describe("Baton's own tools (D143)", () => {
         off,
       ).verdict,
     ).toBe("ask");
+    // A session move asks him every time, and no standing setting or plan covers it.
+    expect(
+      judgeToolCall({ tool: "mcp__baton__thread_move_into_tessaya", input: { thread: "t1" } }, off),
+    ).toMatchObject({ verdict: "ask", risky: true });
+    expect(
+      judgeToolCall({ tool: "mcp__baton__thread_open_in_terminal", input: { thread: "t1" } }, off)
+        .verdict,
+    ).toBe("ask");
     expect(
       judgeToolCall({ tool: "mcp__baton__skill_draft", input: { id: "j1" } }, off).verdict,
     ).toBe("allow");

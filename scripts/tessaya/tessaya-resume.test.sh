@@ -80,14 +80,29 @@ grep -q "pane run" "$HERDR_LOG" && fail "a session Tessaya hosts got a pane"
 grep -q "Tessaya is hosting this session" "$work/out" || fail "says why: $(cat "$work/out")"
 ok "a session Tessaya hosts is refused without --force"
 
-# 5. --force with the server up: the request is the server's to act on; nothing is killed from here.
-( for _ in $(seq 1 300); do f="$(ls "$work"/tessaya-requests/open-*.json 2> /dev/null | head -1 || true)"; [[ -n "$f" ]] && { cp "$f" "$work/taken.json"; rm -f "$f"; exit 0; }; sleep 0.1; done ) &
+# 5. --force with the server up: the server takes the request (only its owner's, mode 0600), acts, then answers; the CLI
+# prints that answer, and nothing is killed from here.
+( for _ in $(seq 1 300); do
+    f="$(ls "$work"/tessaya-requests/open-*.json 2> /dev/null | head -1 || true)"
+    if [[ -n "$f" ]]; then
+      stat -c %a "$f" > "$work/mode"
+      cp "$f" "$work/taken.json"
+      mv "$f" "${f%.json}.taken"
+      printf '{"state":"opened","detail":"Open in Herdr fab-proj."}' > "${f%.json}.result"
+      rm -f "${f%.json}.taken"
+      exit 0
+    fi
+    sleep 0.1
+  done ) &
 : > "$HERDR_LOG"
 bash "$script" resume t-1 --force > "$work/out" 2>&1 < /dev/null || fail "--force with the server up: $(cat "$work/out")"
 kill -0 "$sdk" 2> /dev/null || fail "the server's process is not killed from outside: $(cat "$work/out")"
 grep -q '"threadId":"t-1"' "$work/taken.json" || fail "the server is asked for this thread"
+[[ "$(cat "$work/mode")" == 600 ]] || fail "the request is the user's alone: $(cat "$work/mode")"
+grep -q "Open in Herdr fab-proj." "$work/out" || fail "the server's answer is printed: $(cat "$work/out")"
 grep -q "pane run" "$HERDR_LOG" && fail "the server opens the pane, not the CLI"
-ok "--force with the server up asks the server to stop the turn and open it"
+ls "$work"/tessaya-requests/ | grep -q . && fail "nothing is left behind: $(ls "$work"/tessaya-requests/)"
+ok "--force with the server up asks the server, which acts and answers, and the CLI prints its answer"
 
 # 6. --force with no server: the request goes unanswered, so the verified process is stopped, then resumed.
 bash "$script" resume t-1 --force > "$work/out" 2>&1 < /dev/null || true

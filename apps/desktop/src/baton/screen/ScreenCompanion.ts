@@ -604,6 +604,18 @@ const DEVICE_INTERRUPTED =
 const DEVICE_BUSY =
   "Tessaya is in the middle of something with the Director (a lesson, a drive or a look). Ask again later.";
 
+/** Reached only after his yes (the gate asks every time), which is the approval a provider change needs. */
+const threadSessionVia =
+  (direct: (method: string, body: unknown) => Promise<unknown>) =>
+  async (op: "move" | "open", threadId: string): Promise<string> => {
+    const answer = (await (
+      op === "move"
+        ? direct("baton.sessions.moveintotessaya", { threadId, providerChangeApproved: true })
+        : direct("baton.sessions.openinterminal", { threadId })
+    ).catch(() => null)) as { readonly detail?: unknown } | null;
+    return typeof answer?.detail === "string" ? answer.detail : "That could not be done.";
+  };
+
 const lateCatalog = (get: () => ToolHost["catalog"]): NonNullable<ToolHost["catalog"]> => {
   const NOT_READY = "The session list is not ready yet.";
   return {
@@ -2519,6 +2531,7 @@ export const startScreenCompanion = (input: {
       await driverFor().press(keys);
       return "Pressed.";
     },
+    ...(input.direct === undefined ? {} : { threadSession: threadSessionVia(input.direct) }),
     sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
     ...(input.catalog === undefined ? {} : { catalog: lateCatalog(input.catalog) }),
     session: async (id) =>
