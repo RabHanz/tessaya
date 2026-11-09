@@ -6,6 +6,7 @@ import {
   pinnedLiveSelection,
   classifierStopReason,
   displayThreadTitle,
+  knownTitleSuffixes,
   livePick,
   liveSessionKey,
   liveThreadSwitchRefusal,
@@ -32,12 +33,18 @@ describe("a mirrored live thread", () => {
     expect(ok(live, "claudeAgent", "claudeAgent")).toContain("handoff session");
     expect(ok("import:claudeAgent:x", "claudeAgent", "codex")).toBeNull();
   });
-  it("shows its title without the account and machine the mirror appends, and leaves other titles alone", () => {
-    expect(displayThreadTitle(live, "Pricing copy · someone · box1")).toBe("Pricing copy");
-    expect(displayThreadTitle(live, "Pricing copy")).toBe("Pricing copy");
-    expect(displayThreadTitle(live, "Pricing copy · box1")).toBe("Pricing copy");
-    expect(displayThreadTitle(live, "Plan · step 2 · someone · box1")).toBe("Plan · step 2");
-    expect(displayThreadTitle("thread-1", "Pricing · copy")).toBe("Pricing · copy");
+  it("shows its title without the account and machine the mirror appends, and never cuts real text", () => {
+    const known = knownTitleSuffixes({
+      accounts: [{ label: "Work", email: "someone@example.com" }],
+      environmentLabels: ["box-prod.local"],
+    });
+    expect(displayThreadTitle(live, "Pricing · someone · box-prod", known)).toBe("Pricing");
+    expect(displayThreadTitle(live, "Pricing · box-prod", known)).toBe("Pricing");
+    expect(displayThreadTitle(live, "Fix A · B bug", known)).toBe("Fix A · B bug");
+    expect(displayThreadTitle(live, "Plan · step 2 · Work · box-prod", known)).toBe(
+      "Plan · step 2",
+    );
+    expect(displayThreadTitle("thread-1", "Pricing · box-prod", known)).toBe("Pricing · box-prod");
   });
 });
 

@@ -21,7 +21,7 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { BatonLiveStatus } from "./BatonLiveStatus";
-import { displayThreadTitle } from "@t3tools/baton-shared/liveThread";
+import { useDisplayThreadTitle } from "./BatonThreadTitle";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -86,7 +86,11 @@ export const ChatHeader = memo(function ChatHeader({
   onOpenProjectSettings,
   onFindInThread,
 }: ChatHeaderProps) {
-  const activeThreadTitle = displayThreadTitle(activeThreadId, storedThreadTitle);
+  const activeThreadTitle = useDisplayThreadTitle(
+    activeThreadEnvironmentId,
+    activeThreadId,
+    storedThreadTitle,
+  );
   const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
