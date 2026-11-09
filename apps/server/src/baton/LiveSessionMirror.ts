@@ -960,6 +960,11 @@ const make = Effect.gen(function* () {
       }
     })(),
   };
+  const saveMainPane = (pane: string): void => {
+    try {
+      NodeFS.writeFileSync(mainFile, JSON.stringify({ pane }));
+    } catch {}
+  };
   const trackMain = (mainThreadId: string | null, live: ReadonlyArray<ClaudeLiveSession>) =>
     Effect.gen(function* () {
       const shell =
@@ -991,9 +996,7 @@ const make = Effect.gen(function* () {
       const pane = live.find((s) => s.sessionId === main.sessionId)?.herdrPane ?? null;
       if (pane !== null && pane !== main.pane) {
         main.pane = pane;
-        try {
-          NodeFS.writeFileSync(mainFile, JSON.stringify({ pane }));
-        } catch {}
+        saveMainPane(pane);
       }
     });
 

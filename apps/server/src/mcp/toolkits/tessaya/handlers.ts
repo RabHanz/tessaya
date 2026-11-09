@@ -272,7 +272,7 @@ export const layer = McpToolAccess.toLayer(
           }).pipe(Effect.mapError(failed)),
       ),
       tessaya_session_defaults: McpToolAccess.reads(() =>
-        handlers[BATON_SESSIONS_WS_METHODS.sessionDefaults]({}).pipe(Effect.mapError(failed)),
+        handlers[BATON_SESSIONS_WS_METHODS.sessionDefaults]().pipe(Effect.mapError(failed)),
       ),
       weave_list: McpToolAccess.reads((input) =>
         call(

@@ -379,7 +379,7 @@ export const layer = Layer.effect(
     const newSessionsInTerminal: CatalogPorts["newSessionsInTerminal"] = () =>
       noHerdr || Option.isNone(serverSettings)
         ? Promise.resolve(false)
-        : Effect.runPromise(
+        : Effect.runPromiseWith(services)(
             serverSettings.value.getSettings.pipe(
               Effect.map((current) => current.newSessionsRun === "terminal"),
               Effect.orElseSucceed(() => false),
@@ -688,18 +688,21 @@ export const layer = Layer.effect(
       }
       return { enabled, resumed, skipped };
     };
-    const defaults = (
-      Option.isSome(serverSettings)
-        ? serverSettings.value.getSettings.pipe(
-            Effect.map((current) => ({
-              newSessionsRun: current.newSessionsRun,
-              mainThreadId: current.mainThreadId,
-            })),
-          )
-        : Effect.fail("no settings")
-    ).pipe(
-      Effect.orElseSucceed(() => ({ newSessionsRun: "tessaya" as const, mainThreadId: null })),
-    );
+    const fallbackDefaults: typeof BatonSessionDefaultsResult.Type = {
+      newSessionsRun: "tessaya",
+      mainThreadId: null,
+    };
+    const defaults: Effect.Effect<typeof BatonSessionDefaultsResult.Type> = Option.isSome(
+      serverSettings,
+    )
+      ? serverSettings.value.getSettings.pipe(
+          Effect.map((current) => ({
+            newSessionsRun: current.newSessionsRun,
+            mainThreadId: current.mainThreadId,
+          })),
+          Effect.orElseSucceed(() => fallbackDefaults),
+        )
+      : Effect.succeed(fallbackDefaults);
     return BatonSessionCatalogService.of({
       list: Effect.fn("BatonSessionCatalogService.list")(function* (input: {
         query?: string;
