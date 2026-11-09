@@ -48,15 +48,19 @@ import { appendResumeLog } from "./ResumeLog.ts";
 import { BatonAccounts } from "./BatonAccounts.ts";
 import { endClaudeTerminal } from "./HerdrRespawn.ts";
 import {
-  instanceForLogin,
+  claudeHomeOf,
+  instancesForLogin,
   moveIntoTessaya,
+  resumeInstance,
   pointAtSessionEvents,
   type MoveResult,
 } from "./MoveIntoTessaya.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
-import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
+import { isTessayaOwnFolder, sessionHolderPid } from "./ClaudeLiveSessions.ts";
+import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   autoResumeAllowed,
   autoResumedWithin,
@@ -74,7 +78,7 @@ import {
 } from "./AutoResume.ts";
 import { classifyHelperThread } from "./HelperThreads.ts";
 import * as ProviderInstanceRegistryModule from "../provider/ProviderInstanceRegistry.ts";
-import { BATON_DEFAULT_CLAUDE_INSTANCE, isProviderAvailable } from "@t3tools/baton-contracts";
+import { isProviderAvailable } from "@t3tools/baton-contracts";
 import { herdrSend } from "./HerdrSend.ts";
 import {
   OUTCOME_MEMORY_MS,
@@ -225,6 +229,7 @@ export const layer = Layer.effect(
     const engine = yield* Effect.serviceOption(BatonEngine);
     const record = yield* Effect.serviceOption(BatonRecordService);
     const accounts = yield* Effect.serviceOption(BatonAccounts);
+    const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
     const registry = yield* Effect.serviceOption(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
@@ -807,23 +812,75 @@ export const layer = Layer.effect(
               session: (sessionId) =>
                 liveNow(sessionId).pipe(
                   Effect.map((s) =>
-                    s === null ? null : { status: s.status, pane: s.herdrPane, account: s.account },
+                    s === null
+                      ? null
+                      : {
+                          status: s.status,
+                          pane: s.herdrPane,
+                          account: s.account,
+                          configDir: s.configDir ?? null,
+                        },
                   ),
                 ),
-              target: Effect.fn("BatonSessionCatalogService.moveTarget")(function* (login) {
+              target: Effect.fn("BatonSessionCatalogService.moveTarget")(function* (target) {
+                const id = ThreadId.make(target.threadId);
+                const shell = yield* e.threadShell(id);
+                const live = yield* liveNow(target.sessionId);
+                const cwd =
+                  live?.cwd ??
+                  shell?.worktreePath ??
+                  (yield* e.projects).find((p) => p.id === shell?.projectId)?.workspaceRoot ??
+                  null;
+                if (cwd === null) return { refused: "the session's folder is not known." };
                 const list = Option.isSome(accounts) ? (yield* accounts.value.list).accounts : [];
-                const instanceId = instanceForLogin(list, login, BATON_DEFAULT_CLAUDE_INSTANCE);
-                if (instanceId === null) return null;
+                const instances = Option.isSome(serverSettings)
+                  ? yield* serverSettings.value.getSettings.pipe(
+                      Effect.map((current) => current.providerInstances),
+                      Effect.orElseSucceed(() => ({})),
+                    )
+                  : {};
+                const candidates = instancesForLogin(list, target.login);
+                if (candidates.length === 0)
+                  return {
+                    refused: "no Claude account in Tessaya signs in as this session's login.",
+                  };
+                const instanceId = resumeInstance({
+                  candidates: candidates.map((candidate) => ({
+                    instanceId: candidate,
+                    home: claudeHomeOf(instances[candidate]),
+                  })),
+                  sessionConfigDir: target.running
+                    ? (target.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"))
+                    : null,
+                  transcript: (home) =>
+                    NodePath.join(
+                      home,
+                      "projects",
+                      claudeProjectSlug(cwd),
+                      `${target.sessionId}.jsonl`,
+                    ),
+                  realpath: (path) => {
+                    try {
+                      return NodeFS.realpathSync(path);
+                    } catch {
+                      return null;
+                    }
+                  },
+                  exists: (path) => NodeFS.existsSync(path),
+                });
+                if (instanceId === null)
+                  return {
+                    refused:
+                      "no Claude account in Tessaya reaches this session's transcript, so it would start empty. The terminal was left running.",
+                  };
                 return {
                   instanceId,
                   model:
                     DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] ?? "default",
                 };
               }),
-              endTerminal: (sessionId) =>
-                liveNow(sessionId).pipe(
-                  Effect.flatMap((s) => (s === null ? Effect.succeed(true) : endClaudeTerminal(s))),
-                ),
+              endTerminal: (sessionId) => endClaudeTerminal(sessionId),
+              held: (sessionId) => Effect.sync(() => sessionHolderPid(sessionId) !== null),
               point: Effect.fn("BatonSessionCatalogService.movePoint")(function* (target) {
                 const threadId = ThreadId.make(target.threadId);
                 const thread = yield* e.appThread(threadId);

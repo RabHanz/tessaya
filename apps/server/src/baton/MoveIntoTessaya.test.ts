@@ -5,8 +5,9 @@ import * as Effect from "effect/Effect";
 import { describe, expect } from "vite-plus/test";
 
 import {
-  instanceForLogin,
+  instancesForLogin,
   moveIntoTessaya,
+  resumeInstance,
   pointAtSessionEvents,
   type MovePorts,
 } from "./MoveIntoTessaya.ts";
@@ -17,9 +18,15 @@ const fixture = (
   over: Partial<{
     instance: string;
     running: boolean;
-    session: { status: string | null; pane: string | null; account: string | null } | null;
-    target: { instanceId: string; model: string } | null;
+    session: {
+      status: string | null;
+      pane: string | null;
+      account: string | null;
+      configDir: string | null;
+    } | null;
+    target: { instanceId: string; model: string } | { refused: string } | null;
     exits: boolean;
+    held: boolean;
     pointFails: boolean;
   }> = {},
 ) => {
@@ -30,17 +37,20 @@ const fixture = (
     session: () =>
       Effect.succeed(
         over.session === undefined
-          ? { status: "idle", pane: "fab-x~w1:p1", account: "work" }
+          ? { status: "idle", pane: "fab-x~w1:p1", account: "work", configDir: "/cfg/work" }
           : over.session,
       ),
-    target: (login) =>
+    target: (input) =>
       Effect.sync(() => {
-        calls.push(`target:${login}`);
-        return over.target === undefined
-          ? { instanceId: "claude-work", model: "claude-opus" }
+        calls.push(`target:${input.login}`);
+        return over.target === undefined || over.target === null
+          ? over.target === null
+            ? { refused: "no account" }
+            : { instanceId: "claude-work", model: "claude-opus" }
           : over.target;
       }),
     endTerminal: (id) => Effect.sync(() => (calls.push(`end:${id}`), over.exits ?? true)),
+    held: () => Effect.sync(() => (calls.push("held?"), over.held ?? false)),
     point: (input) =>
       over.pointFails === true
         ? Effect.fail("write failed")
@@ -62,7 +72,12 @@ describe("moving a Terminal thread into Tessaya", () => {
           providerChangeApproved: true,
         });
         expect(result.state).toBe("moved");
-        expect(f.calls).toEqual(["target:work", "end:cc828d1b", "point:claude-work:cc828d1b"]);
+        expect(f.calls).toEqual([
+          "target:work",
+          "end:cc828d1b",
+          "held?",
+          "point:claude-work:cc828d1b",
+        ]);
       }),
   );
 
@@ -90,7 +105,9 @@ describe("moving a Terminal thread into Tessaya", () => {
             providerChangeApproved: c.approved,
           });
           expect(result.state).toBe(c.state);
-          expect(f.calls.filter((call) => !call.startsWith("target:"))).toEqual([]);
+          expect(
+            f.calls.filter((call) => call.startsWith("end:") || call.startsWith("point:")),
+          ).toEqual([]);
         }
       }),
   );
@@ -108,12 +125,26 @@ describe("moving a Terminal thread into Tessaya", () => {
   );
 
   it.effect(
+    "never switches while any process still holds the session after the terminal ended",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture({ held: true });
+        const result = yield* moveIntoTessaya(f.ports, {
+          threadId: THREAD,
+          providerChangeApproved: true,
+        });
+        expect(result.state).toBe("refused");
+        expect(f.calls.some((call) => call.startsWith("point:"))).toBe(false);
+      }),
+  );
+
+  it.effect(
     "a stopped session needs no exit, and a failed switch says the terminal already ended",
     () =>
       Effect.gen(function* () {
         const stopped = fixture({ session: null });
         yield* moveIntoTessaya(stopped.ports, { threadId: THREAD, providerChangeApproved: true });
-        expect(stopped.calls).toEqual(["target:null", "point:claude-work:cc828d1b"]);
+        expect(stopped.calls).toEqual(["target:null", "held?", "point:claude-work:cc828d1b"]);
         const failed = fixture({ pointFails: true });
         const result = yield* moveIntoTessaya(failed.ports, {
           threadId: THREAD,
@@ -145,11 +176,37 @@ describe("the instance a moved session continues on", () => {
       methods: [],
     },
   ];
-  it("is the session's own login, never another account's", () => {
-    expect(instanceForLogin(accounts, "work", "claudeAgent")).toBe("claude-work");
-    expect(instanceForLogin(accounts, "home", "claudeAgent")).toBeNull();
-    expect(instanceForLogin(accounts, "stranger", "claudeAgent")).toBeNull();
-    expect(instanceForLogin(accounts, null, "claudeAgent")).toBe("claudeAgent");
+  it("is one of the session's own login's instances, never another account's", () => {
+    expect(instancesForLogin(accounts, "work")).toEqual(["claude-work", "claudeAgent"]);
+    expect(instancesForLogin(accounts, "home")).toEqual([]);
+    expect(instancesForLogin(accounts, "stranger")).toEqual([]);
+  });
+
+  it("is the one whose projects folder is the session's and holds its transcript, or none (nothing ends)", () => {
+    // Two homes link one projects folder; a third has its own.
+    const real: Record<string, string> = {
+      "/term/projects": "/shared/projects",
+      "/a/projects": "/own/projects",
+      "/b/projects": "/shared/projects",
+    };
+    const pick = (sessionConfigDir: string | null, files: ReadonlyArray<string>) =>
+      resumeInstance({
+        candidates: [
+          { instanceId: "a", home: "/a" },
+          { instanceId: "b", home: "/b" },
+        ],
+        sessionConfigDir,
+        transcript: (home) => `${home}/projects/slug/s.jsonl`,
+        realpath: (path) => real[path] ?? null,
+        exists: (path) => files.includes(path),
+      });
+    const both = ["/a/projects/slug/s.jsonl", "/b/projects/slug/s.jsonl"];
+    expect(pick("/term", both)).toBe("b");
+    expect(pick("/term", ["/a/projects/slug/s.jsonl"])).toBeNull();
+    expect(pick("/unknown", both)).toBeNull();
+    // Not running: any home that has the transcript.
+    expect(pick(null, ["/b/projects/slug/s.jsonl"])).toBe("b");
+    expect(pick(null, [])).toBeNull();
   });
 });
 
