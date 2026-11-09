@@ -72,6 +72,22 @@ describe("the vocabulary", () => {
     expect(NodeFS.readFileSync(`${settings}.bad`, "utf8")).toBe('{"holdKey":"F9",');
   });
 
+  it("moves the old default hold key once and keeps a key he chose", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "holdkey-"));
+    const settings = NodePath.join(dir, "fabric-voice.json");
+    NodeFS.writeFileSync(settings, '{"holdKey":"Ctrl+Alt+Space"}');
+    expect(readSettings(settings).holdKey).toBe("Ctrl+Shift+Win");
+    expect(JSON.parse(NodeFS.readFileSync(settings, "utf8"))).toMatchObject({
+      holdKey: "Ctrl+Shift+Win",
+      holdKeyDefaults: 2,
+    });
+    // Moved once: choosing the old chord again afterwards is his choice.
+    NodeFS.writeFileSync(settings, '{"holdKey":"Ctrl+Alt+Space","holdKeyDefaults":2}');
+    expect(readSettings(settings).holdKey).toBe("Ctrl+Alt+Space");
+    NodeFS.writeFileSync(settings, '{"holdKey":"F9"}');
+    expect(readSettings(settings).holdKey).toBe("F9");
+  });
+
   it("reads Wispr's table once, read-only: heard forms onto his words, snippets to his snippets", async () => {
     const { DatabaseSync } = await import("node:sqlite");
     const appData = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "wispr-"));

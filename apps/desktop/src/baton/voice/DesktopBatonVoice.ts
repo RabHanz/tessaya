@@ -667,9 +667,28 @@ interface VoiceSettings {
   readonly wakeWords: ReadonlyArray<WakeWordSetting>;
   /** The default wake-word set this file has been given (wakeDefaults.ts). */
   readonly wakeDefaults: number;
+  /** The default hold key this file has been moved to (`HOLD_KEY_DEFAULTS`). */
+  readonly holdKeyDefaults: number;
   /** Keys and mouse buttons he set for actions; an action not listed has its default (D141). */
   readonly bindings: ReadonlyArray<Binding>;
 }
+
+/**
+ * Hold to dictate. No Alt, which arms Windows' menus and right-click menus; Win with Ctrl and Shift held is masked by
+ * the hook, so Start never opens. Clear of Wispr Flow's defaults: Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win.
+ */
+export const HOLD_KEY = "Ctrl+Shift+Win";
+/** Bumped when the default hold key moves: a file still on an older default is moved once, a key he chose is kept. */
+const HOLD_KEY_DEFAULTS = 2;
+const OLD_HOLD_KEYS: ReadonlyArray<string> = ["Ctrl+Alt+Space"];
+
+/** His hold key after this file's one move: an old default becomes the new one, anything else is his and stays. */
+export const holdKeyFrom = (saved: Record<string, unknown>): string => {
+  const held = typeof saved["holdKey"] === "string" ? saved["holdKey"] : HOLD_KEY;
+  return saved["holdKeyDefaults"] !== HOLD_KEY_DEFAULTS && OLD_HOLD_KEYS.includes(held)
+    ? HOLD_KEY
+    : held;
+};
 
 const DEFAULT_SETTINGS: VoiceSettings = {
   enabled: false,
@@ -727,8 +746,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   pillEdge: "bottom",
   dictation: "baton",
   speechModel: "v3",
-  // Clear of Wispr Flow's defaults: Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win.
-  holdKey: "Ctrl+Alt+Space",
+  holdKey: HOLD_KEY,
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   languages: ["en"],
@@ -742,6 +760,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   appModes: {},
   wakeWords: FRESH_WAKE_WORDS,
   wakeDefaults: WAKE_DEFAULTS,
+  holdKeyDefaults: HOLD_KEY_DEFAULTS,
   bindings: [],
 };
 
@@ -773,14 +792,22 @@ export const readSettings = (path: string): VoiceSettings => {
     const saved = createJsonStore<Record<string, unknown> | null>(path, null, isRecord).read();
     if (saved === null) return DEFAULT_SETTINGS;
     const wakeWords = wakeWordsFor(saved);
-    // The file records what was resolved (the one-time default set too), not only memory.
+    const holdKey = holdKeyFrom(saved);
+    // The file records what was resolved (the one-time defaults too), not only memory.
     if (
       saved["wakeDefaults"] !== WAKE_DEFAULTS ||
+      saved["holdKeyDefaults"] !== HOLD_KEY_DEFAULTS ||
       (JSON.stringify(wakeWords) !== JSON.stringify(saved["wakeWords"]) &&
         Array.isArray(saved["wakeWords"]))
     ) {
       try {
-        writeJsonFile(path, { ...saved, wakeWords, wakeDefaults: WAKE_DEFAULTS });
+        writeJsonFile(path, {
+          ...saved,
+          wakeWords,
+          wakeDefaults: WAKE_DEFAULTS,
+          holdKey,
+          holdKeyDefaults: HOLD_KEY_DEFAULTS,
+        });
       } catch {
         // The file is the user's; if it cannot be written the memory copy is still right.
       }
@@ -791,6 +818,8 @@ export const readSettings = (path: string): VoiceSettings => {
       // After the spread: it carries every saved field raw, and these are the resolved ones.
       wakeWords,
       wakeDefaults: WAKE_DEFAULTS,
+      holdKey,
+      holdKeyDefaults: HOLD_KEY_DEFAULTS,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       showWords: saved["showWords"] !== false,
@@ -2078,7 +2107,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               ? `${name} changed while you spoke`
               : keptWhy === "secret"
                 ? "That box is for a password"
-                : `${name} did not take it`,
+                : keptWhy === "nofield"
+                  ? "No text box was selected"
+                  : `${name} did not take it`,
       );
     }
     noteTiming();
@@ -3640,6 +3671,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
       takeRecording(recordings, event.dictation);
+      // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
+      if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
       showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();

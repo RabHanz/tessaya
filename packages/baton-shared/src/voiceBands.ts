@@ -19,9 +19,13 @@ const PAUSE_FRAMES = 10;
 /** Below this a band is not adapted up to full height: a silent band stays short. */
 const MIN_PEAK = 0.002;
 /** Nor below this share of the frame's loudest band, so hiss in a band his voice leaves empty stays short too. */
-const TOP_SHARE = 0.05;
+const TOP_SHARE = 0.1;
 /** Every bar keeps this share of the overall level, so a quiet band still shows he is talking. */
 const BASE = 0.15;
+/** A band's share of its peak as an ear hears it: in decibels over this range, so 10 dB down still shows half. */
+const RANGE_DB = 20;
+const heard = (share: number): number =>
+  share <= 0 ? 0 : Math.max(0, Math.min(1, 1 + (20 * Math.log10(share)) / RANGE_DB));
 
 const HANN = Float32Array.from(
   { length: FFT_SIZE },
@@ -120,7 +124,7 @@ export const createBandGain = (count = PILL_BANDS) => {
     for (let i = 0; i < count; i += 1) {
       const value = bands[i] ?? 0;
       peaks[i] = Math.max(value, peaks[i]! * PEAK_FALL, MIN_PEAK, top * TOP_SHARE);
-      out[i] = Math.min(1, gate * (BASE + (1 - BASE) * (value / Math.max(peaks[i]!, onset))));
+      out[i] = Math.min(1, gate * (BASE + (1 - BASE) * heard(value / Math.max(peaks[i]!, onset))));
     }
     return out;
   };

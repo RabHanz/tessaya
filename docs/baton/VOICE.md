@@ -105,7 +105,7 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | Setting in `<state dir>/fabric-voice.json` | Default                                                                                                     | Also in the tray        |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `dictation`                                | `baton`; `wispr` holds no key                                                                               | Dictation               |
-| `holdKey`, `toggleKey`                     | `Ctrl+Alt+Space`, `Ctrl+Alt+Shift+Space`                                                                    |                         |
+| `holdKey`, `toggleKey`                     | `Ctrl+Shift+Win`, `Ctrl+Alt+Shift+Space`                                                                    |                         |
 | `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v`                                                                    |                         |
 | `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold                                                | Wake words              |
 | `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker                                                                  | Dictation               |

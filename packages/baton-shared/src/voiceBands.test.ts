@@ -55,7 +55,7 @@ describe("createBandGain", () => {
     expect(highShown[loudest(highPart)]).toBeGreaterThan(0.7);
     expect(lowShown[loudest(lowPart)]).toBeGreaterThan(0.7);
     // Each frame shows its own shape: the sounding band is tall, the other short.
-    expect(highShown[loudest(lowPart)]).toBeLessThan(0.4);
+    expect(highShown[loudest(lowPart)]).toBeLessThan(0.5);
     expect(Math.max(...lowShown, ...highShown)).toBeLessThanOrEqual(0.8 + 1e-6);
     // Hiss under his voice is not lifted: the bands only the hiss reaches stay short.
     const hissy = createBandGain();

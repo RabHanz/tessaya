@@ -18,6 +18,8 @@ export interface DictationTimingLine {
   readonly loadMs: number;
   readonly inferMs: number | null;
   readonly pieces: number | null;
+  /** The words came from the preview at his last pause, so release decoded nothing. */
+  readonly reused: boolean | null;
   readonly audioMs: number | null;
   /** Text → cleaned, → fitted to the caret, → pasted, → pill gone; null for a stage that did not happen. */
   readonly cleanupMs: number | null;
@@ -88,6 +90,7 @@ export const startDictationTiming = (
         loadMs: event.loadMs ?? 0,
         inferMs: event.inferMs ?? null,
         pieces: event.pieces ?? null,
+        reused: timing?.reused ?? null,
         audioMs: event.audioMs ?? null,
         cleanupMs: since(cleanedAt, textAt),
         cleanup,
