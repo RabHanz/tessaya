@@ -14,6 +14,7 @@
  */
 import {
   BATON_ACCOUNT_WS_METHODS,
+  BATON_ACCOUNTS_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
@@ -431,6 +432,12 @@ export function createBatonWorkSessionAtoms<R, E>(
     accountPoolQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:baton:account-pool-query",
       tag: BATON_ACCOUNT_WS_METHODS.accountPool,
+      staleTimeMs: 30_000,
+      refreshIntervalMs: 60_000,
+    }),
+    accountsQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:accounts-query",
+      tag: BATON_ACCOUNTS_WS_METHODS.list,
       staleTimeMs: 30_000,
       refreshIntervalMs: 60_000,
     }),

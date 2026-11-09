@@ -12,6 +12,7 @@
 import { teamBoard } from "./BatonTeamBoard.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
+  BATON_ACCOUNTS_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
@@ -56,6 +57,7 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
+import { BatonAccounts } from "./BatonAccounts.ts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -94,6 +96,7 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 export type BatonServices =
   | WorkSessionService
   | AccountPoolService
+  | BatonAccounts
   | AccountRotationPolicy
   | OrchestrationRuleService
   | BatonOrchestrationReactor
@@ -236,6 +239,8 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(ProviderRegistry.ProviderRegistry, (registry) => registry.getProviders),
       ).pipe(Effect.map((providers) => ({ instances: instancesWeekly(providers, input.driver) }))),
+    [BATON_ACCOUNTS_WS_METHODS.list]: () =>
+      run(Effect.flatMap(BatonAccounts, (accounts) => accounts.list)),
     [BATON_ACCOUNT_WS_METHODS.threadKept]: (input) =>
       run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.kept(input.threadId))).pipe(
         Effect.map((keep) => ({ keep })),
