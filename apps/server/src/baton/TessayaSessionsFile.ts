@@ -5,8 +5,6 @@
  * The server rewrites it when it changes; the file is a convenience copy, the database stays the record.
  */
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
 
 export interface SessionHome {
   readonly threadId: string;
@@ -72,24 +70,6 @@ export const writeSessionsFile = (path: string, homes: Iterable<SessionHome>): b
   NodeFS.writeFileSync(tmp, text, { mode: 0o600 });
   NodeFS.renameSync(tmp, path);
   return true;
-};
-
-/** The Claude config dir an instance runs with: its home path, else its CLAUDE_CONFIG_DIR, else ~/.claude. */
-export const claudeHomeOf = (
-  instance:
-    | {
-        readonly config?: unknown;
-        readonly environment?: ReadonlyArray<{ readonly name: string; readonly value: unknown }>;
-      }
-    | undefined,
-  home = NodeOS.homedir(),
-): string => {
-  const config = instance?.config as { readonly homePath?: unknown } | undefined;
-  const homePath = typeof config?.homePath === "string" ? config.homePath.trim() : "";
-  if (homePath.length > 0) return NodePath.resolve(homePath.replace(/^~(?=$|\/)/, home));
-  const fromEnv = instance?.environment?.find((v) => v.name === "CLAUDE_CONFIG_DIR")?.value;
-  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) return NodePath.resolve(fromEnv);
-  return NodePath.join(home, ".claude");
 };
 
 /** A terminal that never showed up within this long after opening counts as closed. */

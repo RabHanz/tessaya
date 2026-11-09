@@ -2,11 +2,11 @@ import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { describe, expect } from "vite-plus/test";
 
+import { claudeHomeOf } from "./MoveIntoTessaya.ts";
 import { openInTerminal, type OpenPorts } from "./OpenInTerminal.ts";
 import {
   CLOSED_GRACE_MS,
   OPEN_GRACE_MS,
-  claudeHomeOf,
   handBackDue,
   parseSessionsFile,
   renderSessionsFile,

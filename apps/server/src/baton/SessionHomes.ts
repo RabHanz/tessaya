@@ -13,10 +13,9 @@ import * as Effect from "effect/Effect";
 import * as NodePath from "node:path";
 
 import type { BatonEngineShape } from "./BatonEngine.ts";
-import { pointAtSessionEvents } from "./MoveIntoTessaya.ts";
+import { claudeHomeOf, pointAtSessionEvents } from "./MoveIntoTessaya.ts";
 import {
   SESSIONS_FILE,
-  claudeHomeOf,
   handBackDue,
   readSessionsFile,
   writeSessionsFile,
