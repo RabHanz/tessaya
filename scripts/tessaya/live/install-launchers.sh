@@ -18,8 +18,9 @@ echo "installed $bin/tessaya-claude"
 new="$(mktemp)"
 cp "$here/../tessaya" "$new"
 # The box's own roots= line lives in whichever file it was installed as, tessaya or (before the rename) baton.
+# -f follows a link, so a baton that links to a file outside this checkout still gives its line.
 prev="$bin/tessaya"
-[[ -f "$prev" || -L "$bin/baton" || ! -f "$bin/baton" ]] || prev="$bin/baton"
+[[ -f "$prev" ]] || prev="$bin/baton"
 if [[ -f "$prev" ]]; then
   roots="$(grep -m1 '^roots=' "$prev" || true)"
   [[ -z "$roots" ]] || sed -i "s|^roots=.*|$(printf '%s' "$roots" | sed 's/[&|]/\\&/g')|" "$new"
