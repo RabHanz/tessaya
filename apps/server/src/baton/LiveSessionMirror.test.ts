@@ -19,6 +19,7 @@ import {
   askQuestion,
   askRunId,
   keepAsk,
+  promptReadDue,
   parsePanePrompt,
   endedMirrorThreads,
   forgetUnarchived,
@@ -79,8 +80,8 @@ describe("a terminal permission prompt's card", () => {
   });
 
   it("a card closed while its prompt still shows comes back only after an answer that pressed nothing, once", () => {
-    const first = { at: 1_000, again: false };
-    const answered = { pending: false, answered: true, answeredAt: 5_000 };
+    const first = { at: 1_000, again: false, updatedAt: "t1" };
+    const answered = { pending: false, answered: true, answeredAt: 5_000, updatedAt: "t1" };
     expect(keepAsk(first, { ...answered, pending: true })).toBe(true);
     // Dismissed or expired: no answer, so it stays closed.
     expect(keepAsk(first, { ...answered, answered: false })).toBe(true);
@@ -89,7 +90,21 @@ describe("a terminal permission prompt's card", () => {
     expect(keepAsk(first, { ...answered, answeredAt: 500 })).toBe(true);
     expect(keepAsk(first, answered)).toBe(false);
     // The card raised again is not raised a third time.
-    expect(keepAsk({ at: 6_000, again: true }, { ...answered, answeredAt: 9_000 })).toBe(true);
+    const again = { at: 6_000, again: true, updatedAt: "t1" };
+    expect(keepAsk(again, { ...answered, answeredAt: 9_000 })).toBe(true);
+    // The session wrote its descriptor since: the same command asking again is a new ask and gets its card.
+    expect(keepAsk(again, { ...answered, answeredAt: 9_000, updatedAt: "t2" })).toBe(false);
+  });
+
+  it("an answer the bridge finished makes the next tick read the pane, so a card whose prompt is gone closes", () => {
+    const read = { updatedAt: "t1", at: 1_000 };
+    const none = () => null;
+    expect(promptReadDue(read, "t1", 2_000, none)).toBe(false);
+    expect(promptReadDue(read, "t1", 2_000, () => 500)).toBe(false);
+    expect(promptReadDue(read, "t1", 2_000, () => 1_500)).toBe(true);
+    expect(promptReadDue(read, "t2", 2_000, none)).toBe(true);
+    expect(promptReadDue(read, "t1", 11_000, none)).toBe(true);
+    expect(promptReadDue(null, "t1", 2_000, none)).toBe(true);
   });
 });
 
