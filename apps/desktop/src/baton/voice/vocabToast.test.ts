@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { cardDocument, learnedText } from "./vocabToast.ts";
+import { acrylicSupported, cardDocument, learnedText } from "./vocabToast.ts";
 
 describe("the card beside the pill", () => {
   it("says what was learned in one line, however many words", () => {
@@ -21,5 +21,14 @@ describe("the card beside the pill", () => {
     );
     expect(cardDocument({ kind: "learned", words: ["A"] })).toContain('id="discard"');
     expect(cardDocument({ kind: "copy", why: "w", text: "t" })).not.toContain('id="discard"');
+  });
+  it("is frosted only where Windows draws acrylic: Windows 11 22H2 on, Windows 10 and elsewhere the tint", () => {
+    expect(acrylicSupported("win32", "10.0.22621")).toBe(true);
+    expect(acrylicSupported("win32", "10.0.26100")).toBe(true);
+    expect(acrylicSupported("win32", "10.0.22000")).toBe(false);
+    expect(acrylicSupported("win32", "10.0.19045")).toBe(false);
+    expect(acrylicSupported("darwin", "24.0.0")).toBe(false);
+    expect(cardDocument({ kind: "learned", words: ["A"] }, true)).toContain('class="frost"');
+    expect(cardDocument({ kind: "learned", words: ["A"] })).not.toContain('class="frost"');
   });
 });
