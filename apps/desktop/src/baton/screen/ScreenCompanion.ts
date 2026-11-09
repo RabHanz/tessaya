@@ -607,11 +607,12 @@ const DEVICE_BUSY =
 /** Reached only after his yes (the gate asks every time), which is the approval a provider change needs. */
 const threadSessionVia =
   (direct: (method: string, body: unknown) => Promise<unknown>) =>
-  async (op: "move", threadId: string): Promise<string> => {
-    const method = { move: "baton.sessions.moveintotessaya" }[op];
-    const answer = (await direct(method, { threadId, providerChangeApproved: true }).catch(
-      () => null,
-    )) as { readonly detail?: unknown } | null;
+  async (op: "move" | "open", threadId: string): Promise<string> => {
+    const answer = (await (
+      op === "move"
+        ? direct("baton.sessions.moveintotessaya", { threadId, providerChangeApproved: true })
+        : direct("baton.sessions.openinterminal", { threadId })
+    ).catch(() => null)) as { readonly detail?: unknown } | null;
     return typeof answer?.detail === "string" ? answer.detail : "That could not be done.";
   };
 

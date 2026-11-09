@@ -26,7 +26,7 @@ import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
-import { TessayaToolkit } from "./tools.ts";
+import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
 
 const decodeAsked = Schema.decodeUnknownOption(
   Schema.Struct({
@@ -242,6 +242,25 @@ export const layer = McpToolAccess.toLayer(
         (input) =>
           askHim(
             `Move the Terminal thread ${input.threadId} into Tessaya (thread_move_into_tessaya): its terminal session ends and the same conversation continues in Tessaya.`,
+          ),
+      ),
+      // Its own thread opens at once; anyone else's is the Director's to approve, on his screen.
+      tessaya_open_in_terminal: McpToolAccess.writesThreads(
+        (input) => [input.threadId],
+        (input) =>
+          McpInvocationContext.McpInvocationContext.pipe(
+            Effect.flatMap((scope) =>
+              scope.thread?.threadId === input.threadId
+                ? handlers[BATON_SESSIONS_WS_METHODS.openInTerminal]({
+                    threadId: input.threadId,
+                  }).pipe(
+                    Effect.mapError(failed),
+                    Effect.map((opened): typeof OpenInTerminalReply.Type => opened),
+                  )
+                : askHim(
+                    `Open the Tessaya thread ${input.threadId} in a terminal (thread_open_in_terminal): its session moves to a Herdr pane until the pane closes.`,
+                  ),
+            ),
           ),
       ),
       weave_list: McpToolAccess.reads((input) =>

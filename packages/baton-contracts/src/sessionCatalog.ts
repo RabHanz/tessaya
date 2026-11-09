@@ -18,6 +18,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   retireHandoff: "baton.sessions.retirehandoff",
   reattach: "baton.sessions.reattach",
   moveIntoTessaya: "baton.sessions.moveintotessaya",
+  openInTerminal: "baton.sessions.openinterminal",
   kept: "baton.sessions.kept",
   waiting: "baton.sessions.waiting",
   across: "baton.sessions.across",
@@ -264,6 +265,16 @@ export const BatonMoveIntoTessayaResult = Schema.Struct({
   state: Schema.Literals(["moved", "refused", "busy"]),
   detail: Schema.String,
   instanceId: Schema.NullOr(Schema.String),
+});
+
+/** Open a Tessaya (claudeAgent) thread's session in a Herdr pane; the thread follows it there until it closes. */
+export const BatonOpenInTerminalInput = Schema.Struct({
+  threadId: Schema.String.check(Schema.isMaxLength(120)),
+});
+export const BatonOpenInTerminalResult = Schema.Struct({
+  state: Schema.Literals(["opened", "refused", "busy"]),
+  pane: Schema.NullOr(Schema.String),
+  detail: Schema.String,
 });
 
 /** The messages a thread kept because it had no session, and a Retry that sends one (or the oldest) back through it. */

@@ -8,6 +8,7 @@ import {
   BatonCatalogListResult,
   BatonFleetResult,
   BatonJobListResult,
+  BatonOpenInTerminalResult,
   BatonMemorySearchResult,
   BatonMemoryHistoryResult,
   BatonRecordListInput,
@@ -285,6 +286,20 @@ const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+/** Opened (its own thread), or the request the Director answers (anyone else's). */
+export const OpenInTerminalReply = Schema.Union([BatonOpenInTerminalResult, AskResult]);
+const OpenInTerminalTool = Tool.make("tessaya_open_in_terminal", {
+  ...shared,
+  description:
+    "Open a Tessaya Claude thread's session in a Herdr terminal pane on the thread's own login; the thread follows the pane and comes back when it closes. On your own thread it opens at once. On any other thread it only files a request the Director answers on his screen (an id for `tessaya_ask_status`). Refused while a turn runs.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: OpenInTerminalReply,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -302,4 +317,5 @@ export const TessayaToolkit = Toolkit.make(
   WeaveListTool,
   StateTool,
   MoveIntoTessayaTool,
+  OpenInTerminalTool,
 );

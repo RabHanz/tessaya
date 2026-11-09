@@ -115,6 +115,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_SESSIONS_WS_METHODS.retireHandoff]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.reattach]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.moveIntoTessaya]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.openInTerminal]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.kept]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.waiting]: AuthOrchestrationOperateScope,
   // Whether anything is mid-turn: titles only, a read.

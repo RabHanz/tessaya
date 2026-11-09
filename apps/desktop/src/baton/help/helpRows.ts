@@ -77,6 +77,10 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
     "Move that terminal session into Tessaya",
     "Ends it in the terminal; the same conversation continues here. Asks first.",
   ],
+  thread_open_in_terminal: [
+    "Open that thread in a terminal",
+    "Its session moves to a Herdr pane until the pane closes. Asks first.",
+  ],
   skill_draft: ["Turn that job into a skill", "Writes a draft you review."],
   watch_report: ["What is stuck?", "Sessions that failed, stalled or wait for you."],
   approvals_list: ["What is waiting for my yes?", "Everything that needs an answer."],

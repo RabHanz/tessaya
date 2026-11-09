@@ -115,7 +115,7 @@ export interface ToolHost {
     readonly savePending: (name: string, category: string) => Promise<string>;
   };
   /** A thread's session between a terminal and Tessaya (the server's own guards apply; he is asked first). */
-  readonly threadSession?: (op: "move", threadId: string) => Promise<string>;
+  readonly threadSession?: (op: "move" | "open", threadId: string) => Promise<string>;
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
@@ -1330,6 +1330,17 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         text:
           (await host.threadSession?.("move", str(a, "thread", 120))) ??
           "Moving sessions is not available here.",
+      }),
+    },
+    {
+      name: "thread_open_in_terminal",
+      description:
+        "Open a Tessaya Claude thread's session in a Herdr terminal pane on its own login; the thread follows the pane and comes back when it closes. He is asked first. Refused while a turn runs. `thread` is the thread id an agent's request named.",
+      inputSchema: object({ thread: { type: "string" } }, ["thread"]),
+      run: async (a) => ({
+        text:
+          (await host.threadSession?.("open", str(a, "thread", 120))) ??
+          "Opening sessions in a terminal is not available here.",
       }),
     },
     {

@@ -409,3 +409,41 @@ it.effect(
       expect(Object.keys(tool.parametersSchema.fields)).toEqual(["threadId"]);
     }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );
+
+it.effect(
+  "an agent opens its own thread in a terminal at once; anyone else's thread is a request he answers",
+  () =>
+    Effect.gen(function* () {
+      const catalog = BatonSessionCatalogService.of({
+        openInTerminal: () =>
+          Effect.succeed({ state: "busy", pane: null, detail: "A turn is running." }),
+      } as never);
+      const result = yield* callTool(
+        "thread",
+        Context.make(BatonSessionCatalogService, catalog) as never,
+        "tessaya_open_in_terminal",
+        { threadId: thread },
+      );
+      expect(result.result).toMatchObject({ state: "busy" });
+    }),
+);
+
+it.effect("an outside agent's open in terminal on a thread files a request and opens nothing", () =>
+  Effect.gen(function* () {
+    const inbox = yield* BatonPhoneInbox;
+    yield* inbox.take;
+    const opened: Array<unknown> = [];
+    const catalog = BatonSessionCatalogService.of({
+      openInTerminal: (input: unknown) => Effect.sync(() => (opened.push(input), {})),
+    } as never);
+    const runtime = Context.mergeAll(
+      Context.make(BatonPhoneInbox, inbox),
+      Context.make(BatonSessionCatalogService, catalog),
+    ) as never;
+    const asked = yield* callTool("full-access", runtime, "tessaya_open_in_terminal", {
+      threadId: thread,
+    });
+    expect(asked.result).toMatchObject({ status: "queued" });
+    expect(opened).toEqual([]);
+  }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);

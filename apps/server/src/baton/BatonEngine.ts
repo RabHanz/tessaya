@@ -172,6 +172,11 @@ export interface BatonEngineShape {
     readonly tag: string;
     readonly threadId: ThreadId;
   }) => Effect.Effect<boolean>;
+  /** Upstream's `provider-session.detach` for each of the thread's running provider sessions; how many. */
+  readonly detachSessions: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<number, BatonEngineError>;
   /** Upstream's `thread.delete`. */
   readonly deleteThread: (input: {
     readonly tag: string;
@@ -432,6 +437,28 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
+  const detachSessions: BatonEngineShape["detachSessions"] = (input) =>
+    Effect.gen(function* () {
+      const records = yield* orchestrator.getThreadRecords(input.threadId, ["providerSessions"]);
+      const running = records.providerSessions.filter(
+        (session) => session.status !== "stopped" && session.status !== "error",
+      );
+      for (const session of running) {
+        yield* orchestrator.dispatch({
+          type: "provider-session.detach",
+          commandId: yield* commandId(`${input.tag}:detach`),
+          threadId: input.threadId,
+          providerSessionId: session.id,
+          reason: "Opened in a terminal.",
+        });
+      }
+      return running.length;
+    }).pipe(
+      Effect.mapError(
+        (cause) => new BatonEngineError({ operation: "session.detach", detail: String(cause) }),
+      ),
+    );
+
   const settleThread: BatonEngineShape["settleThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -639,6 +666,7 @@ export const make = Effect.gen(function* () {
     setThreadSelection,
     setInteractionMode,
     interruptThread,
+    detachSessions,
     settleThread,
   } satisfies BatonEngineShape;
 });
@@ -690,6 +718,7 @@ export const layerStatic = (input: {
         return true;
       }),
     settleThread: () => Effect.succeed(true),
+    detachSessions: () => Effect.succeed(0),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
     threadRuns: (threadId) => Effect.succeed((input.runs?.get(threadId) ?? []) as never),

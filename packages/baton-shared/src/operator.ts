@@ -196,6 +196,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_retry",
   "job_handoff",
   "thread_move_into_tessaya",
+  "thread_open_in_terminal",
   "job_update",
   "job_delete",
   "skill_draft",
@@ -395,6 +396,9 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
         why: "It would end a terminal session and continue it in Tessaya.",
         risky: true,
       };
+    case "thread_open_in_terminal":
+      // An agent asked on its behalf: it moves a thread's session out of Tessaya, so it asks every time.
+      return { verdict: "ask", why: "It would open a thread's session in a terminal." };
     case "job_update":
     case "job_delete":
       // Changing or removing one of his own jobs is his to say, every time: read text could otherwise rewrite one.
