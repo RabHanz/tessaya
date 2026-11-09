@@ -126,6 +126,18 @@ describe("deriveComposerSendState", () => {
     expect(state.expiredTerminalContextCount).toBe(1);
     expect(state.hasSendableContent).toBe(true);
   });
+
+  it("names image and file chips whose attachment is no longer in the draft", () => {
+    const state = deriveComposerSendState({
+      prompt:
+        "see ![shot.png](t3-context://v1/image/image_kept) ![image.png](t3-context://v1/image/image_gone) [notes.txt](t3-context://v1/file/file_gone)",
+      imageCount: 1,
+      attachments: [{ type: "image", id: "kept" }],
+      terminalContexts: [],
+    });
+
+    expect(state.unattachedLabels).toEqual(["image.png", "notes.txt"]);
+  });
 });
 
 describe("buildExpiredTerminalContextToastCopy", () => {

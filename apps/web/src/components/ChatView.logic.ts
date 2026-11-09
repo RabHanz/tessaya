@@ -88,6 +88,10 @@ import {
   stripInlineContextReferences,
 } from "~/lib/composerContextReferences";
 import {
+  collectComposerContextReferences,
+  toKindScopedComposerContextId,
+} from "@t3tools/shared/composerContextReferences";
+import {
   previewAnnotationContextLabel,
   reviewCommentContextLabel,
   terminalContextReference,
@@ -761,6 +765,8 @@ export function deriveComposerSendState(options: {
   prompt: string;
   imageCount: number;
   existingAttachmentCount?: number;
+  /** The draft's images and files; image and file chips without one here are listed as unattached. */
+  attachments?: ReadonlyArray<{ type: "image" | "file"; id: string }>;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   elementContextCount?: number;
 }): {
@@ -768,13 +774,31 @@ export function deriveComposerSendState(options: {
   sendableTerminalContexts: TerminalContextDraft[];
   expiredTerminalContextCount: number;
   hasSendableContent: boolean;
+  unattachedLabels: string[];
 } {
   const trimmedPrompt = stripInlineContextReferences(options.prompt).trim();
   const sendableTerminalContexts = filterTerminalContextsWithText(options.terminalContexts);
   const expiredTerminalContextCount =
     options.terminalContexts.length - sendableTerminalContexts.length;
   const elementContextCount = options.elementContextCount ?? 0;
+  const attachedIds = new Set<string>(
+    (options.attachments ?? []).map((attachment) =>
+      toKindScopedComposerContextId(attachment.type, attachment.id),
+    ),
+  );
+  // A chip can outlive its attachment (a reload drops images that never reached storage);
+  // sending it would deliver the text without the image.
+  const unattachedLabels = options.attachments
+    ? collectComposerContextReferences(options.prompt)
+        .filter(
+          (occurrence) =>
+            (occurrence.kind === "image" || occurrence.kind === "file") &&
+            !attachedIds.has(occurrence.contextId),
+        )
+        .map((occurrence) => occurrence.label)
+    : [];
   return {
+    unattachedLabels: [...new Set(unattachedLabels)],
     trimmedPrompt,
     sendableTerminalContexts,
     expiredTerminalContextCount,

@@ -655,9 +655,11 @@ export function useComposerSend(input: ComposerSendInput) {
       sendableTerminalContexts: sendableComposerTerminalContexts,
       expiredTerminalContextCount,
       hasSendableContent,
+      unattachedLabels,
     } = deriveComposerSendState({
       prompt: promptForSend,
       imageCount: composerImages.length + composerFiles.length,
+      attachments: [...composerImages, ...composerFiles],
       terminalContexts: composerTerminalContexts,
       elementContextCount:
         composerPreviewAnnotations.length +
@@ -665,6 +667,16 @@ export function useComposerSend(input: ComposerSendInput) {
         composerThreadContexts.length +
         composerEnvironmentContexts.length,
     });
+    if (unattachedLabels.length > 0) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: `${unattachedLabels.map((label) => `"${label}"`).join(", ")} ${unattachedLabels.length === 1 ? "is" : "are"} no longer attached`,
+          description: "Attach it again or remove its chip, then send.",
+        }),
+      );
+      return;
+    }
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&

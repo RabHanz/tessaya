@@ -1602,7 +1602,7 @@ index a6312466d9747ce40a6e94b4c8de347f10ea29c7..bc252f14144748deae98fab3bcf615ee
      if (
        !supportsProviderSwitchingViaHandoff &&
 diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
-index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c9317377743994da6a50688c804d79cda0b800a9 100644
+index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c7f0ba22a1f79a3b6efc67e970c318060f2ac0e5 100644
 --- a/apps/web/src/components/chat/useComposerSend.ts
 +++ b/apps/web/src/components/chat/useComposerSend.ts
 @@ -125,6 +125,7 @@ import {
@@ -1621,7 +1621,36 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c9317377743994da6a50688c804d79cd
        interactionMode: sendInteractionMode,
        interactionModeEnabled: sendInteractionModeEnabled,
      } = sendCtx;
-@@ -1314,6 +1316,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -653,9 +655,11 @@ export function useComposerSend(input: ComposerSendInput) {
+       sendableTerminalContexts: sendableComposerTerminalContexts,
+       expiredTerminalContextCount,
+       hasSendableContent,
++      unattachedLabels,
+     } = deriveComposerSendState({
+       prompt: promptForSend,
+       imageCount: composerImages.length + composerFiles.length,
++      attachments: [...composerImages, ...composerFiles],
+       terminalContexts: composerTerminalContexts,
+       elementContextCount:
+         composerPreviewAnnotations.length +
+@@ -663,6 +667,16 @@ export function useComposerSend(input: ComposerSendInput) {
+         composerThreadContexts.length +
+         composerEnvironmentContexts.length,
+     });
++    if (unattachedLabels.length > 0) {
++      toastManager.add(
++        stackedThreadToast({
++          type: "warning",
++          title: `${unattachedLabels.map((label) => `"${label}"`).join(", ")} ${unattachedLabels.length === 1 ? "is" : "are"} no longer attached`,
++          description: "Attach it again or remove its chip, then send.",
++        }),
++      );
++      return;
++    }
+     const feedbackCommand =
+       ctxSelectedProvider === "codex" &&
+       composerImages.length === 0 &&
+@@ -1314,6 +1328,7 @@ export function useComposerSend(input: ComposerSendInput) {
              idleCompaction: "onReturn",
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1629,7 +1658,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c9317377743994da6a50688c804d79cd
            runtimeMode,
            interactionMode: sendInteractionMode,
          },
-@@ -1376,6 +1379,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1376,6 +1391,7 @@ export function useComposerSend(input: ComposerSendInput) {
              }),
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1637,7 +1666,7 @@ index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c9317377743994da6a50688c804d79cd
            titleSeed: title,
            runtimeMode,
            interactionMode: sendInteractionMode,
-@@ -1413,6 +1417,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1413,6 +1429,11 @@ export function useComposerSend(input: ComposerSendInput) {
          failure = startResult;
        } else {
          turnStartSucceeded = true;

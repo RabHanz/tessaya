@@ -365,10 +365,29 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..53df100b31f29111ea6c1b6a71345293
              creationSource: "web",
              commandId: CommandId.make("command:provider-switch:legacy-import:recovery"),
 diff --git a/apps/web/src/components/ChatView.logic.test.ts b/apps/web/src/components/ChatView.logic.test.ts
-index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..8d883034861c6d50de485e968c9ee4735e4ac457 100644
+index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..0747ff54cd5c56db55e01e8080aa488e54c62303 100644
 --- a/apps/web/src/components/ChatView.logic.test.ts
 +++ b/apps/web/src/components/ChatView.logic.test.ts
-@@ -596,6 +596,30 @@ describe("resolveComposerProviderSelection", () => {
+@@ -126,6 +126,18 @@ describe("deriveComposerSendState", () => {
+     expect(state.expiredTerminalContextCount).toBe(1);
+     expect(state.hasSendableContent).toBe(true);
+   });
++
++  it("names image and file chips whose attachment is no longer in the draft", () => {
++    const state = deriveComposerSendState({
++      prompt:
++        "see ![shot.png](t3-context://v1/image/image_kept) ![image.png](t3-context://v1/image/image_gone) [notes.txt](t3-context://v1/file/file_gone)",
++      imageCount: 1,
++      attachments: [{ type: "image", id: "kept" }],
++      terminalContexts: [],
++    });
++
++    expect(state.unattachedLabels).toEqual(["image.png", "notes.txt"]);
++  });
+ });
+ 
+ describe("buildExpiredTerminalContextToastCopy", () => {
+@@ -596,6 +608,30 @@ describe("resolveComposerProviderSelection", () => {
      },
    );
  
@@ -400,10 +419,21 @@ index 2e772cc0998c07ba9c3d80547c4bc61e5943a57a..8d883034861c6d50de485e968c9ee473
      const signedOutEntry = entry("antigravity", "google_work", {
        status: "error",
 diff --git a/apps/web/src/components/ChatView.logic.ts b/apps/web/src/components/ChatView.logic.ts
-index d4b54a7e5a84800802f427863210cda70c8bc6f1..8aaef626bdc1549141f67e3d30feac10a72c096e 100644
+index d4b54a7e5a84800802f427863210cda70c8bc6f1..5923962ae42c6258d29fdac35edeb401e057b264 100644
 --- a/apps/web/src/components/ChatView.logic.ts
 +++ b/apps/web/src/components/ChatView.logic.ts
-@@ -488,6 +488,8 @@ export function resolveComposerProviderSelection(input: {
+@@ -87,6 +87,10 @@ import {
+   removeInlineContextReference,
+   stripInlineContextReferences,
+ } from "~/lib/composerContextReferences";
++import {
++  collectComposerContextReferences,
++  toKindScopedComposerContextId,
++} from "@t3tools/shared/composerContextReferences";
+ import {
+   previewAnnotationContextLabel,
+   reviewCommentContextLabel,
+@@ -488,6 +492,8 @@ export function resolveComposerProviderSelection(input: {
    candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
    lockedProvider: ProviderDriverKind | null;
    lockedInstanceId: ProviderInstanceId | null | undefined;
@@ -412,7 +442,7 @@ index d4b54a7e5a84800802f427863210cda70c8bc6f1..8aaef626bdc1549141f67e3d30feac10
  }) {
    const requestedInstanceId = input.candidateInstanceIds.find(
      (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
-@@ -512,7 +514,15 @@ export function resolveComposerProviderSelection(input: {
+@@ -512,7 +518,15 @@ export function resolveComposerProviderSelection(input: {
        (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
        (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
    );
@@ -428,6 +458,47 @@ index d4b54a7e5a84800802f427863210cda70c8bc6f1..8aaef626bdc1549141f67e3d30feac10
      input.candidateInstanceIds
        .map((candidate) =>
          compatibleEntries.find(
+@@ -751,6 +765,8 @@ export function deriveComposerSendState(options: {
+   prompt: string;
+   imageCount: number;
+   existingAttachmentCount?: number;
++  /** The draft's images and files; image and file chips without one here are listed as unattached. */
++  attachments?: ReadonlyArray<{ type: "image" | "file"; id: string }>;
+   terminalContexts: ReadonlyArray<TerminalContextDraft>;
+   elementContextCount?: number;
+ }): {
+@@ -758,13 +774,31 @@ export function deriveComposerSendState(options: {
+   sendableTerminalContexts: TerminalContextDraft[];
+   expiredTerminalContextCount: number;
+   hasSendableContent: boolean;
++  unattachedLabels: string[];
+ } {
+   const trimmedPrompt = stripInlineContextReferences(options.prompt).trim();
+   const sendableTerminalContexts = filterTerminalContextsWithText(options.terminalContexts);
+   const expiredTerminalContextCount =
+     options.terminalContexts.length - sendableTerminalContexts.length;
+   const elementContextCount = options.elementContextCount ?? 0;
++  const attachedIds = new Set<string>(
++    (options.attachments ?? []).map((attachment) =>
++      toKindScopedComposerContextId(attachment.type, attachment.id),
++    ),
++  );
++  // A chip can outlive its attachment (a reload drops images that never reached storage);
++  // sending it would deliver the text without the image.
++  const unattachedLabels = options.attachments
++    ? collectComposerContextReferences(options.prompt)
++        .filter(
++          (occurrence) =>
++            (occurrence.kind === "image" || occurrence.kind === "file") &&
++            !attachedIds.has(occurrence.contextId),
++        )
++        .map((occurrence) => occurrence.label)
++    : [];
+   return {
++    unattachedLabels: [...new Set(unattachedLabels)],
+     trimmedPrompt,
+     sendableTerminalContexts,
+     expiredTerminalContextCount,
 diff --git a/apps/web/src/components/chat/useComposerProviderModel.ts b/apps/web/src/components/chat/useComposerProviderModel.ts
 index 7d36d56b08922f0365f7ed06b8663a2abfc5e252..22612d06c321ab81698edcc64d23b388d8026e4e 100644
 --- a/apps/web/src/components/chat/useComposerProviderModel.ts
