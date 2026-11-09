@@ -1,4 +1,7 @@
 import { it } from "@effect/vitest";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import { describe, expect } from "vite-plus/test";
 
@@ -10,24 +13,36 @@ import {
   handBackDue,
   parseSessionsFile,
   renderSessionsFile,
+  takeOpenRequests,
   type SessionHome,
 } from "./TessayaSessionsFile.ts";
 
 const HOME = { sessionId: "s-1", cwd: "/work/app", configDir: "/cfg/work" };
 
 const fixture = (
-  over: Partial<{ running: boolean; home: typeof HOME | null; released: boolean }> = {},
+  over: Partial<{
+    running: boolean;
+    stops: boolean;
+    home: typeof HOME | null;
+    released: boolean;
+    pane: string | null;
+  }> = {},
 ) => {
   const calls: string[] = [];
   const ports: OpenPorts = {
     shell: () => Effect.succeed({ running: over.running ?? false }),
     home: () => Effect.succeed(over.home === undefined ? HOME : over.home),
+    stopTurn: () => Effect.sync(() => (calls.push("stop"), over.stops ?? true)),
+    toTerminal: () => Effect.sync(() => void calls.push("to-terminal")),
+    back: () => Effect.sync(() => void calls.push("back")),
     detach: (id) => Effect.sync(() => void calls.push(`detach:${id}`)),
     released: () => Effect.sync(() => (calls.push("released?"), over.released ?? true)),
     launch: (home) =>
       Effect.sync(() => {
         calls.push(`launch:${home.sessionId}:${home.configDir}`);
-        return { pane: "fab-app~w1:p2", detail: "ok" };
+        return over.pane === null
+          ? { pane: null, detail: "herdr said no" }
+          : { pane: "fab-app~w1:p2", detail: "ok" };
       }),
   };
   return { ports, calls };
@@ -35,13 +50,13 @@ const fixture = (
 
 describe("opening a Tessaya thread in a terminal", () => {
   it.effect(
-    "lets go of the session before the terminal resumes it, on the thread's own login",
+    "puts the thread on its terminal and lets go of the session before the terminal resumes it",
     () =>
       Effect.gen(function* () {
         const f = fixture();
         const result = yield* openInTerminal(f.ports, { threadId: "t1" });
         expect(result).toMatchObject({ state: "opened", pane: "fab-app~w1:p2" });
-        expect(f.calls).toEqual(["detach:t1", "released?", "launch:s-1:/cfg/work"]);
+        expect(f.calls).toEqual(["to-terminal", "detach:t1", "released?", "launch:s-1:/cfg/work"]);
       }),
   );
 
@@ -56,6 +71,29 @@ describe("opening a Tessaya thread in a terminal", () => {
         expect((yield* openInTerminal(f.ports, { threadId: "t1" })).state).toBe(state);
         expect(f.calls.some((call) => call.startsWith("launch:"))).toBe(false);
       }
+    }),
+  );
+
+  it.effect("gives the thread back to Tessaya when the terminal could not be opened", () =>
+    Effect.gen(function* () {
+      for (const over of [{ released: false }, { pane: null }] as const) {
+        const f = fixture(over);
+        expect((yield* openInTerminal(f.ports, { threadId: "t1" })).state).toBe("refused");
+        expect(f.calls.at(-1)).toBe("back");
+      }
+    }),
+  );
+
+  it.effect("stops a running turn through the server only when asked, and waits for it", () =>
+    Effect.gen(function* () {
+      const asked = fixture({ running: true });
+      yield* openInTerminal(asked.ports, { threadId: "t1", stopTurn: true });
+      expect(asked.calls.slice(0, 2)).toEqual(["stop", "to-terminal"]);
+      const stuck = fixture({ running: true, stops: false });
+      expect((yield* openInTerminal(stuck.ports, { threadId: "t1", stopTurn: true })).state).toBe(
+        "busy",
+      );
+      expect(stuck.calls).toEqual(["stop"]);
     }),
   );
 });
@@ -105,5 +143,24 @@ describe("the thread → session file", () => {
     expect(due({ seenRunning: false })).toBe(false);
     expect(due({ seenRunning: false, nowMs: home.openedAt + OPEN_GRACE_MS })).toBe(true);
     expect(due({ home: { ...home, inTerminal: false }, missingSince: 0 })).toBe(false);
+  });
+});
+
+describe("a --force request from the CLI", () => {
+  it("is taken once, by removing it, and names only a thread", () => {
+    const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-req-"));
+    NodeFS.mkdirSync(NodePath.join(stateDir, "tessaya-requests"));
+    const write = (name: string, text: string) =>
+      NodeFS.writeFileSync(NodePath.join(stateDir, "tessaya-requests", name), text);
+    write("open-1.json", '{"threadId":"t-1"}');
+    write("open-2.json", "not json");
+    write("other.json", '{"threadId":"t-2"}');
+    expect(takeOpenRequests(stateDir)).toEqual(["t-1"]);
+    expect(takeOpenRequests(stateDir)).toEqual([]);
+    expect(NodeFS.readdirSync(NodePath.join(stateDir, "tessaya-requests"))).toEqual([
+      "open-2.json",
+      "other.json",
+    ]);
+    NodeFS.rmSync(stateDir, { recursive: true, force: true });
   });
 });

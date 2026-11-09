@@ -5,6 +5,7 @@
  * The server rewrites it when it changes; the file is a convenience copy, the database stays the record.
  */
 import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
 export interface SessionHome {
   readonly threadId: string;
@@ -94,3 +95,31 @@ export const handBackDue = (input: {
   (input.seenRunning
     ? input.missingSince !== null && input.nowMs - input.missingSince >= CLOSED_GRACE_MS
     : input.nowMs - input.home.openedAt >= OPEN_GRACE_MS);
+
+export const REQUESTS_DIR = "tessaya-requests";
+
+/**
+ * `tessaya resume <thread> --force` with the server up: the CLI leaves `open-*.json` ({"threadId"}) here and the server
+ * stops the thread's turn and opens it in a terminal itself, so its SDK process is never killed from outside. Each
+ * request is removed as it is read, which is how the CLI knows the server took it.
+ */
+export const takeOpenRequests = (stateDir: string): ReadonlyArray<string> => {
+  const dir = NodePath.join(stateDir, REQUESTS_DIR);
+  let names: Array<string>;
+  try {
+    names = NodeFS.readdirSync(dir).filter((name) => /^open-[\w.-]+\.json$/.test(name));
+  } catch {
+    return [];
+  }
+  const threads: Array<string> = [];
+  for (const name of names) {
+    const file = NodePath.join(dir, name);
+    try {
+      const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as { threadId?: unknown };
+      NodeFS.rmSync(file, { force: true });
+      if (typeof parsed.threadId === "string" && parsed.threadId.length <= 120)
+        threads.push(parsed.threadId);
+    } catch {}
+  }
+  return threads;
+};

@@ -36,7 +36,9 @@ import { AgentSessionImporter } from "../project/AgentSessionImporter.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 
 import {
+  LIVE_DRIVER,
   LIVE_INSTANCE_ID,
+  LIVE_MODEL,
   liveThreadId,
   rebindThread,
   supersedeLiveHandoffs,
@@ -154,7 +156,10 @@ export class BatonSessionCatalogService extends Context.Service<
       cwd?: string;
       confirmPane?: string;
     }) => Effect.Effect<typeof BatonReattachResult.Type>;
-    readonly openInTerminal: (input: { threadId: string }) => Effect.Effect<OpenResult>;
+    readonly openInTerminal: (input: {
+      threadId: string;
+      stopTurn?: boolean;
+    }) => Effect.Effect<OpenResult>;
     readonly moveIntoTessaya: (input: {
       threadId: string;
       providerChangeApproved?: boolean;
@@ -787,10 +792,33 @@ export const layer = Layer.effect(
         ),
       ),
       openInTerminal: Effect.fn("BatonSessionCatalogService.openInTerminal")(
-        function* (input: { threadId: string }) {
+        function* (input: { threadId: string; stopTurn?: boolean }) {
           if (Option.isNone(engine) || noHerdr)
             return { state: "refused", pane: null, detail: "No Herdr here." } as const;
           const e = engine.value;
+          const id = ThreadId.make(input.threadId);
+          const before = yield* e.threadShell(id);
+          const sessionOf = e
+            .activeProviderThread(id)
+            .pipe(Effect.map((active) => active?.nativeThreadRef?.nativeId ?? null));
+          const pointTo = Effect.fn("BatonSessionCatalogService.openPoint")(function* (target: {
+            driver: string;
+            instanceId: string;
+            model: string;
+            sessionId: string;
+          }) {
+            const thread = yield* e.appThread(id);
+            if (thread === null) return yield* Effect.fail("no thread record");
+            yield* e.writeEvents({
+              events: pointAtSessionEvents({
+                thread,
+                ...target,
+                now: yield* DateTime.now,
+                stamp: Date.now(),
+              }),
+            });
+          });
+          let sessionId: string | null = null;
           const result = yield* openInTerminal(
             {
               shell: (threadId) =>
@@ -826,6 +854,42 @@ export const layer = Layer.effect(
                   cwd,
                   configDir: claudeHomeOf(instances[String(shell.providerInstanceId)]),
                 };
+              }),
+              stopTurn: Effect.fn("BatonSessionCatalogService.openStopTurn")(function* (threadId) {
+                yield* e.interruptThread({
+                  tag: "open-in-terminal",
+                  threadId: ThreadId.make(threadId),
+                });
+                for (let i = 0; i < 60; i += 1) {
+                  const shell = yield* e.threadShell(ThreadId.make(threadId));
+                  if (
+                    shell === null ||
+                    shell.activeRunId === null ||
+                    shell.activeRunId === undefined
+                  )
+                    return true;
+                  yield* Effect.sleep("250 millis");
+                }
+                return false;
+              }),
+              toTerminal: Effect.fn("BatonSessionCatalogService.openToTerminal")(function* () {
+                sessionId = yield* sessionOf;
+                if (sessionId === null) return yield* Effect.fail("no session");
+                yield* pointTo({
+                  driver: LIVE_DRIVER,
+                  instanceId: LIVE_INSTANCE_ID,
+                  model: LIVE_MODEL,
+                  sessionId,
+                });
+              }),
+              back: Effect.fn("BatonSessionCatalogService.openBack")(function* () {
+                if (before === null || sessionId === null) return;
+                yield* pointTo({
+                  driver: "claudeAgent",
+                  instanceId: String(before.providerInstanceId),
+                  model: before.modelSelection.model,
+                  sessionId,
+                });
               }),
               detach: (threadId) =>
                 e.detachSessions({ tag: "open-in-terminal", threadId: ThreadId.make(threadId) }),
