@@ -70,3 +70,31 @@ export const respawnClaudeInPane = (input: {
     }
     return { respawned: false, detail: "the session did not exit within 10 s; left as it was" };
   });
+
+const isAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Ends a Claude session's terminal process: `/exit` typed into its Herdr pane, or SIGTERM to the pid its own
+ * descriptor names when it has no pane. True once that process is gone (within 15 s).
+ */
+export const endClaudeTerminal = (session: {
+  readonly pid: number;
+  readonly sessionId: string;
+  readonly herdrPane: string | null;
+}): Effect.Effect<boolean> =>
+  Effect.promise(async () => {
+    if (session.herdrPane !== null) {
+      for (const args of respawnPlan(session.herdrPane, session.sessionId).exit) await run(args);
+    } else if (isAlive(session.pid)) {
+      process.kill(session.pid, "SIGTERM");
+    }
+    for (let i = 0; i < 60 && isAlive(session.pid); i += 1) await sleep(250);
+    return !isAlive(session.pid);
+  });

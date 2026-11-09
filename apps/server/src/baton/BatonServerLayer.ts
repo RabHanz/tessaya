@@ -122,6 +122,7 @@ const servicesInner = IntentService.layer.pipe(
         Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
         Layer.provide(BatonEngine.layer),
         Layer.provide(weaveLayer),
+        Layer.provide(BatonAccounts.layer.pipe(Layer.provide(AccountPoolService.layer))),
       ),
       weaveLayer,
       // This server's live sessions and each linked environment's, for the desktop with T3's window closed (GEN-6).

@@ -7,6 +7,7 @@ import {
   MessageId,
   OrchestrationV2UserInputQuestion,
   ProjectId,
+  ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -161,9 +162,10 @@ describe("a title someone set", () => {
 
 describe("the thread list stays clean", () => {
   const at = (iso: string) => ({ updatedAt: DateTime.makeUnsafe(iso) });
-  const t = (id: string, projectId: string, iso: string) => ({
+  const t = (id: string, projectId: string, iso: string, instance = "baton-live") => ({
     id: ThreadId.make(id),
     projectId: ProjectId.make(projectId),
+    providerInstanceId: ProviderInstanceId.make(instance),
     archivedAt: null,
     ...at(iso),
   });
@@ -173,6 +175,8 @@ describe("the thread list stays clean", () => {
       t(String(liveThreadId("ended")), "p", "2026-11-01T10:00:00Z"),
       t(String(liveThreadId("live")), "p", "2026-11-01T10:00:00Z"),
       t("import:x:old", "p", "2026-11-01T10:00:00Z"),
+      // Moved into Tessaya: no terminal session, and none expected.
+      t(String(liveThreadId("moved")), "p", "2026-11-01T10:00:00Z", "claudeAgent"),
     ];
     const now = Date.parse("2026-11-01T10:10:00Z");
     const missing = new Map<ThreadId, number>();

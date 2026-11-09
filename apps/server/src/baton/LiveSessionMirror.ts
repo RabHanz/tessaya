@@ -571,14 +571,18 @@ const MISSING_GRACE_MS = 3 * 60_000;
  * caller's memory across ticks of when each thread's session was first seen missing; this updates it.
  */
 export const endedMirrorThreads = (
-  shells: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "updatedAt">>,
+  shells: ReadonlyArray<
+    Pick<OrchestrationV2ThreadShell, "id" | "updatedAt" | "providerInstanceId">
+  >,
   liveSessionIds: ReadonlySet<string>,
   missingSince: Map<ThreadId, number>,
   nowMs: number,
 ): ReadonlyArray<ThreadId> => {
+  // A thread moved into Tessaya is off the live instance and continues without a terminal.
   const missing = shells.filter(
     (t) =>
       String(t.id).startsWith(`${PREFIX}:`) &&
+      t.providerInstanceId === LIVE_INSTANCE_ID &&
       !liveSessionIds.has(String(t.id).slice(PREFIX.length + 1)),
   );
   const ids = new Set(missing.map((t) => t.id));

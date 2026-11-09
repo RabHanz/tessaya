@@ -150,6 +150,8 @@ import {
   BatonCatalogAutoResumeResult,
   BatonRetireHandoffInput,
   BatonReattachInput,
+  BatonMoveIntoTessayaInput,
+  BatonMoveIntoTessayaResult,
   BatonKeptInput,
   BatonKeptResult,
   BatonReattachResult,
@@ -523,6 +525,11 @@ const WsBatonSessionsRetireHandoffRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.retir
 const WsBatonSessionsReattachRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.reattach, {
   payload: BatonReattachInput,
   success: BatonReattachResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsMoveIntoTessayaRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.moveIntoTessaya, {
+  payload: BatonMoveIntoTessayaInput,
+  success: BatonMoveIntoTessayaResult,
   error: CatalogErrors,
 });
 const WsBatonSessionsKeptRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.kept, {
@@ -910,6 +917,7 @@ const BATON_RPCS = [
   WsBatonSessionsAutoResumeRpc,
   WsBatonSessionsRetireHandoffRpc,
   WsBatonSessionsReattachRpc,
+  WsBatonSessionsMoveIntoTessayaRpc,
   WsBatonSessionsKeptRpc,
   WsBatonSessionsWaitingRpc,
   WsBatonSessionsInFlightRpc,
