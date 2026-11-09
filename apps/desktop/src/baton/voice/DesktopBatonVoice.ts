@@ -323,7 +323,6 @@ import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { createDictationHold } from "./dictationHold.ts";
-import { showCleanup } from "./cleanupCard.ts";
 import * as Electron from "electron";
 
 import {
@@ -534,6 +533,8 @@ interface VoiceSettings {
   readonly cues: CueLevel;
   /** Hold-key dictation plays no cue unless he asks. */
   readonly holdKeyCues: boolean;
+  /** His words in the pill as he dictates, and their cleanup after the paste. */
+  readonly showWords: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
   /** How long it listens after the wake word with nothing said, in ms. */
@@ -658,6 +659,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   hideFromCapture: false,
   cues: "normal",
   holdKeyCues: false,
+  showWords: true,
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
   conversationOpenMs: 30_000,
@@ -761,6 +763,7 @@ export const readSettings = (path: string): VoiceSettings => {
       wakeDefaults: WAKE_DEFAULTS,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
+      showWords: saved["showWords"] !== false,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
       pronounce: pronounceFrom(saved["pronounce"]),
@@ -1772,8 +1775,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       app.window === undefined
         ? Promise.resolve(text)
         : fitToCaret(text, app).then((t) => (dictationTimer?.fitted(), t)),
-    preview: (raw, text) =>
-      showCleanup({ anchor: pill.anchor(), raw, clean: text, motion: settings.motion }),
     paste: (text, app) =>
       noteNext
         ? Promise.resolve(
@@ -1820,10 +1821,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
    * `target` is the window that dictation started in, read when it ended: never one a newer dictation started in.
    * Flushes run in turn inside `oneShot`, each with its own window. A key flush shows no preview card (`preview`).
    */
-  const flushDictation = async (
-    target: Promise<FocusedApp | null> | null,
-    options: { readonly preview?: boolean } = {},
-  ) => {
+  const flushDictation = async (target: Promise<FocusedApp | null> | null) => {
     if (!dictatingByVoice) collecting = false;
     if (oneShot.pending().length === 0 || sidecar === null) return;
     // The window it was started in, never wherever the keyboard went since (LIVE-2240).
@@ -1831,7 +1829,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turnId = openTurn;
     openTurn = null;
     if (app.window !== undefined) showDictation("Tidying…", true);
-    const result = await oneShot.flush(app, options);
+    const result = await oneShot.flush(app);
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     lastDictation = result.text;
@@ -1849,6 +1847,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : null,
     });
     if (result.status === "pasted") {
+      // Pasted already: the pill plays the cleanup over his words afterwards, so it never holds the paste up.
+      pill.cleanup(result.raw, result.text);
       learnWording(result.text);
       learnFromEdits(result.text, turnId, app);
       if (result.failed) {
@@ -1923,8 +1923,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (collecting) {
         oneShot.push(request.text);
         const joined = oneShot.pending().join(" ");
-        if (dictatingByVoice)
+        if (dictatingByVoice) {
           pill.on({ type: "dictating", caption: dictationCaption(dictatingInto, joined) });
+          pill.words(joined);
+        }
         if (openTurn === null) {
           openTurn = record({
             kind: "dictation",
@@ -3297,7 +3299,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       cleanup: "local",
     });
     oneShot.push(words);
-    void flushDictation(Promise.resolve(app), { preview: false });
+    void flushDictation(Promise.resolve(app));
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
   const offerSmarterCleanup = () => {
@@ -3360,8 +3362,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
+      pill.words(event.text);
       const app = focusedApp;
-      if (settings.dictationCleanup === "claude")
+      if (settings.dictationCleanup === "claude" && event.pause !== false)
         void levelNow(app).then((level) =>
           rewriter.speculate({
             raw: event.text,
@@ -3611,6 +3614,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : undefined,
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
+    showWords: () => settings.showWords,
     workArea: () => workRect,
     onDismiss: () => {
       // Spoken dictation ends only by its ✓, ✕, Esc or "stop dictation", never a stray click on the pill.
@@ -5662,6 +5666,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.learnWords,
       },
       {
+        id: "v.showWords",
+        section: "Dictation",
+        label: "Show words as you speak",
+        hint: "Your words appear in the pill as Tessaya hears them, and after the paste it shows what the cleanup changed.",
+        kind: "toggle",
+        on: settings.showWords,
+      },
+      {
         id: "v.copyLast",
         section: "Dictation",
         label: "Last transcript",
@@ -6794,6 +6806,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ hideFromCapture: on });
       setHideFromCapture(on);
     } else if (id === "v.learnWords") save({ learnWords: on });
+    else if (id === "v.showWords") save({ showWords: on });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });
       configureDictation();

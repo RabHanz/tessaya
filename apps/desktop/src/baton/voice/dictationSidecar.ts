@@ -139,7 +139,8 @@ export type DictationEvent =
   | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
   | { readonly ev: "transcribing" }
   /** The words so far, at a pause while the key is still held. */
-  | { readonly ev: "partial"; readonly text: string }
+  /** Every decoded piece; `pause` when it ended at a pause (an older sidecar sends only those, unmarked). */
+  | { readonly ev: "partial"; readonly text: string; readonly pause?: boolean }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
   | { readonly ev: "idle" }
