@@ -877,13 +877,17 @@ export const startScreenCompanion = (input: {
   };
   /**
    * Every Stop (Esc, the pill's ✕, the tray, the Stop key or button, a spoken or typed "stop"): the talking, his drive
-   * or lesson, the assistant's turn, and a paired device's or standing job's turn. `quiet` is Esc's: nothing said.
+   * or lesson, the assistant's turn, and a paired device's or standing job's turn. `quiet` (Esc, a click, "never
+   * mind") says nothing and leaves a device's or standing job's turn running.
    */
   const stopAll = (quiet = false) => {
-    const busy = runningMode() !== null || answering > 0 || turnLock.deviceRunning();
+    const busy = runningMode() !== null || answering > 0 || (!quiet && turnLock.deviceRunning());
     hush();
+    // The answering turn does nothing more (stopsOnCutIn), as when he talks over her.
+    if (answering > 0) cutIns.cut();
     input.onDismissed?.();
-    turnLock.stopDevice();
+    // Closing the pill is not a Stop: a device's or standing job's turn goes on unless he really stops.
+    if (!quiet) turnLock.stopDevice();
     dropOperator();
     if (busy && !quiet) say("Stopped.");
     if (runningMode() !== null) end();

@@ -9,6 +9,8 @@ export const createTurnLock = () => {
   const idle: Array<() => void> = [];
   let device: { readonly cancel: () => void; readonly done: Promise<unknown> } | null = null;
   let chain: Promise<unknown> = Promise.resolve();
+  /** Bumped by his Stop: a device turn queued before it never starts. */
+  let stops = 0;
   const hisDone = () =>
     his === 0 ? Promise.resolve() : new Promise<void>((resolve) => idle.push(resolve));
   return {
@@ -32,8 +34,10 @@ export const createTurnLock = () => {
     device: <A>(
       run: (onCancel: (stop: () => void) => void) => Promise<A>,
     ): Promise<A | typeof INTERRUPTED> => {
+      const queuedAt = stops;
       const next = chain.then(async () => {
         while (his > 0) await hisDone();
+        if (stops !== queuedAt) return INTERRUPTED;
         let interrupted = false;
         let stop = () => {};
         // A cancel that came before the turn named its stop (a cold start) takes effect when it does.
@@ -61,8 +65,11 @@ export const createTurnLock = () => {
       chain = next.catch(() => undefined);
       return next;
     },
-    /** His Stop: ends the device turn that is running, if any, without starting a turn of his. */
-    stopDevice: (): void => device?.cancel(),
+    /** His Stop: ends the device turn that is running and those queued behind it, without starting a turn of his. */
+    stopDevice: (): void => {
+      stops += 1;
+      device?.cancel();
+    },
     /** Whether a device turn holds the lock now: only then is the running turn a device's. */
     deviceRunning: (): boolean => device !== null,
   };

@@ -46,9 +46,12 @@ describe("one turn at a time with a paired device", () => {
     const lock = createTurnLock();
     lock.stopDevice();
     const device = deviceTurn(lock, [], "device");
+    const queued = deviceTurn(lock, [], "queued");
     await device.started;
     lock.stopDevice();
     expect(await device.result).toBe(INTERRUPTED);
+    // One waiting behind it never starts: Stop means nothing more from them now.
+    expect(await queued.result).toBe(INTERRUPTED);
     expect(lock.deviceRunning()).toBe(false);
     const next = deviceTurn(lock, [], "next");
     next.release();

@@ -4905,6 +4905,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             detail: `${result.text.slice(0, 1_900)}${usedLine(result.model, result.turns)}`,
           })
           .catch(() => undefined);
+        // He stopped it or took the turn: the rest of this pass waits for the next tick.
+        if (result.status === "cancelled") break;
       }
     } finally {
       clearTimeout(budget);
