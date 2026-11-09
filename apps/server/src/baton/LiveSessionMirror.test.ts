@@ -12,6 +12,7 @@ import {
 import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
+import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
 
 import {
   askQuestion,
@@ -26,6 +27,7 @@ import {
   takeTouched,
   toolShots,
   withoutRepeatedMedia,
+  liveProviderInstance,
   liveThreadId,
   liveThreadTitle,
   mirrorTitle,
@@ -552,5 +554,14 @@ describe("media that only appears in text is not shown", () => {
     const pane = unreadPrompt({ sessionId: "s1", herdrPane: "p1" }, "Proceed? (y/n)");
     expect(pane.question).toContain("Proceed? (y/n)");
     expect(pane.options.map((o) => o.label)).toEqual(["I'll answer it in the terminal"]);
+  });
+});
+
+const decodeAcpSettings = Schema.decodeUnknownSync(AcpRegistrySettings);
+
+describe("liveProviderInstance", () => {
+  it("decodes as the acpRegistry driver's settings, so the instance and its adapter register", () => {
+    const { config } = liveProviderInstance("/usr/bin/node", "/x/baton-live-acp.mjs");
+    expect(decodeAcpSettings(config).customModels).toEqual(["live"]);
   });
 });

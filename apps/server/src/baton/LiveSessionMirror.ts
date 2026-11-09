@@ -110,6 +110,18 @@ import { stateFile } from "@t3tools/baton-shared/stateDir";
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);
 const DRIVER = ProviderDriverKind.make("acpRegistry");
 const MODEL = "live";
+
+/**
+ * The "Terminal session" instance. Its config must decode as AcpRegistrySettings, whose customModels are bare slugs:
+ * an instance that fails to decode is dropped, and every live thread then fails with "no adapter registered".
+ * The agent script itself names the model "Claude Code".
+ */
+export const liveProviderInstance = (node: string, script: string) => ({
+  driver: DRIVER,
+  displayName: "Terminal session",
+  enabled: true,
+  config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
+});
 /**
  * Id namespace of live threads. "baton-live" (2026-10-27 rounds 1–2) back-filled older history
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
@@ -942,18 +954,7 @@ const make = Effect.gen(function* () {
       });
       return;
     }
-    const wanted = {
-      driver: DRIVER,
-      // Named for what is there: a Claude Code session in a terminal, never the internal slug.
-      displayName: "Terminal session",
-      enabled: true,
-      config: {
-        source: "local",
-        commandPath: node,
-        commandArgs: [script],
-        customModels: [{ slug: MODEL, name: "Claude Code" }],
-      },
-    };
+    const wanted = liveProviderInstance(node, script);
     const current = (yield* settings.getSettings).providerInstances[LIVE_INSTANCE_ID];
     // @effect-diagnostics-next-line globalJsonInEffect:off - settings values, always serialisable.
     if (JSON.stringify(current) === JSON.stringify(wanted)) return;
