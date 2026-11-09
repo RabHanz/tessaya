@@ -58,6 +58,7 @@ import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { BatonAccounts } from "./BatonAccounts.ts";
+import { liveSwitchRefusal } from "@t3tools/baton-shared/accounts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -331,6 +332,11 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_LIVE_WS_METHODS.liveSetAccount]: (input) =>
       run(
         Effect.gen(function* () {
+          const refusal = liveSwitchRefusal(
+            (yield* (yield* BatonAccounts).list).accounts,
+            input.accountKey,
+          );
+          if (refusal !== null) return { state: "refused" as const, detail: refusal };
           const accounts = yield* (yield* AccountPoolService)
             .read(ProviderDriverKind.make("claudeAgent"))
             .pipe(
