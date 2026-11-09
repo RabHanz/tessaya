@@ -8,7 +8,6 @@ import {
   BatonCatalogListResult,
   BatonFleetResult,
   BatonJobListResult,
-  BatonMoveIntoTessayaResult,
   BatonOpenInTerminalResult,
   BatonSessionDefaultsResult,
   BatonMemorySearchResult,
@@ -279,27 +278,24 @@ const StateTool = Tool.make("tessaya_state", {
 const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   ...shared,
   description:
-    "Move a Terminal thread's Claude session into Tessaya: its terminal process exits and the same conversation continues as a Tessaya thread on the session's own login. Refused while it works. It changes the thread's provider, so set providerChangeApproved only when the user asked for this move in so many words; without it nothing changes.",
-  parameters: Schema.Struct({
-    threadId: ThreadId,
-    providerChangeApproved: Schema.optional(Schema.Boolean),
-  }),
-  success: BatonMoveIntoTessayaResult,
+    "Ask the Director to move a Terminal thread's Claude session into Tessaya: its terminal process ends and the same conversation continues as a Tessaya thread. It only files the request: he approves or refuses it on his own screen, and nothing moves before that. Returns an id; outside agents follow it with `tessaya_ask_status`.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: AskResult,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
 const OpenInTerminalTool = Tool.make("tessaya_open_in_terminal", {
   ...shared,
   description:
-    "Open a Tessaya Claude thread's session in a Herdr terminal pane on the thread's own login. Tessaya lets go of the session first; the thread follows the pane as a Terminal thread and comes back when the pane closes. Refused while a turn runs.",
+    "Open a Tessaya Claude thread's session in a Herdr terminal pane on the thread's own login; the thread follows the pane and comes back when it closes. On your own thread it opens at once. On any other thread it only files a request the Director answers on his screen (an id for `tessaya_ask_status`). Refused while a turn runs.",
   parameters: Schema.Struct({ threadId: ThreadId }),
-  success: BatonOpenInTerminalResult,
+  success: Schema.Union([BatonOpenInTerminalResult, AskResult]),
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 

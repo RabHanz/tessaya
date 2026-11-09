@@ -14,6 +14,7 @@ import {
   parseSessionsFile,
   renderSessionsFile,
   takeOpenRequests,
+  answerOpenRequest,
   type SessionHome,
 } from "./TessayaSessionsFile.ts";
 
@@ -26,6 +27,7 @@ const fixture = (
     home: typeof HOME | null;
     released: boolean;
     pane: string | null;
+    held: boolean;
   }> = {},
 ) => {
   const calls: string[] = [];
@@ -35,6 +37,7 @@ const fixture = (
     stopTurn: () => Effect.sync(() => (calls.push("stop"), over.stops ?? true)),
     toTerminal: () => Effect.sync(() => void calls.push("to-terminal")),
     back: () => Effect.sync(() => void calls.push("back")),
+    held: () => Effect.succeed(over.held ?? false),
     detach: (id) => Effect.sync(() => void calls.push(`detach:${id}`)),
     released: () => Effect.sync(() => (calls.push("released?"), over.released ?? true)),
     launch: (home) =>
@@ -81,6 +84,15 @@ describe("opening a Tessaya thread in a terminal", () => {
         expect((yield* openInTerminal(f.ports, { threadId: "t1" })).state).toBe("refused");
         expect(f.calls.at(-1)).toBe("back");
       }
+    }),
+  );
+
+  it.effect("leaves the thread on its terminal when something holds the session after all", () =>
+    Effect.gen(function* () {
+      const f = fixture({ pane: null, held: true });
+      const result = yield* openInTerminal(f.ports, { threadId: "t1" });
+      expect(result.state).toBe("refused");
+      expect(f.calls).not.toContain("back");
     }),
   );
 
@@ -147,20 +159,36 @@ describe("the thread → session file", () => {
 });
 
 describe("a --force request from the CLI", () => {
-  it("is taken once, by removing it, and names only a thread", () => {
+  it("is taken only fresh, mode 0600 and its owner's, then answered once acted on", () => {
     const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-req-"));
-    NodeFS.mkdirSync(NodePath.join(stateDir, "tessaya-requests"));
-    const write = (name: string, text: string) =>
-      NodeFS.writeFileSync(NodePath.join(stateDir, "tessaya-requests", name), text);
+    const dir = NodePath.join(stateDir, "tessaya-requests");
+    NodeFS.mkdirSync(dir);
+    const write = (name: string, text: string, mode = 0o600) => {
+      NodeFS.writeFileSync(NodePath.join(dir, name), text);
+      NodeFS.chmodSync(NodePath.join(dir, name), mode);
+    };
     write("open-1.json", '{"threadId":"t-1"}');
-    write("open-2.json", "not json");
-    write("other.json", '{"threadId":"t-2"}');
-    expect(takeOpenRequests(stateDir)).toEqual(["t-1"]);
-    expect(takeOpenRequests(stateDir)).toEqual([]);
-    expect(NodeFS.readdirSync(NodePath.join(stateDir, "tessaya-requests"))).toEqual([
-      "open-2.json",
-      "other.json",
-    ]);
+    // The files' own clock: a request is judged by its mtime.
+    const now = NodeFS.statSync(NodePath.join(dir, "open-1.json")).mtimeMs;
+    write("open-2.json", '{"threadId":"t-2"}', 0o644);
+    write("open-3.json", "not json");
+    write("open-4.json", '{"threadId":"t-4"}');
+    const old = (now - 20_000) / 1000;
+    NodeFS.utimesSync(NodePath.join(dir, "open-4.json"), old, old);
+    const uid = process.getuid?.() ?? null;
+    expect(takeOpenRequests(stateDir, now, uid)).toEqual([{ id: "1", threadId: "t-1" }]);
+    // Taken: renamed, so the CLI knows the server has it; the others were removed unread.
+    expect(NodeFS.readdirSync(dir)).toEqual(["open-1.taken"]);
+    expect(takeOpenRequests(stateDir, now, uid)).toEqual([]);
+    // Another user's request is never acted on.
+    write("open-5.json", '{"threadId":"t-5"}');
+    expect(takeOpenRequests(stateDir, now, (uid ?? 0) + 1)).toEqual([]);
+    answerOpenRequest(stateDir, "1", { state: "opened", detail: "Open in Herdr." });
+    expect(NodeFS.readdirSync(dir)).toEqual(["open-1.result"]);
+    expect(JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "open-1.result"), "utf8"))).toEqual({
+      state: "opened",
+      detail: "Open in Herdr.",
+    });
     NodeFS.rmSync(stateDir, { recursive: true, force: true });
   });
 });

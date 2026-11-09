@@ -20,6 +20,8 @@ export interface OpenPorts {
   /** Puts it back on its own instance when the terminal could not be opened. */
   readonly back: (threadId: string) => Effect.Effect<void, unknown>;
   readonly detach: (threadId: string) => Effect.Effect<void, unknown>;
+  /** Any verified process holds the session now (a terminal that did start, or one no scan lists). */
+  readonly held: (sessionId: string) => Effect.Effect<boolean>;
   /** True once no process holds the session. */
   readonly released: (sessionId: string) => Effect.Effect<boolean>;
   readonly launch: (home: {
@@ -56,13 +58,24 @@ export const openInTerminal = Effect.fn("OpenInTerminal.open")(function* (
       detail: "Only a Claude thread that has started its session can open in a terminal.",
     } satisfies OpenResult;
   yield* ports.toTerminal(input.threadId);
+  // Back to Tessaya only when nothing holds the session; otherwise the thread stays with whatever runs it.
   const giveBack = (detail: string) =>
-    ports
-      .back(input.threadId)
-      .pipe(
-        Effect.ignore,
-        Effect.as({ state: "refused", pane: null, detail } satisfies OpenResult),
-      );
+    ports.held(home.sessionId).pipe(
+      Effect.flatMap((held) =>
+        held
+          ? Effect.succeed({
+              state: "refused",
+              pane: null,
+              detail: `${detail} Something still runs the session, so the thread stays on its terminal.`,
+            } satisfies OpenResult)
+          : ports
+              .back(input.threadId)
+              .pipe(
+                Effect.ignore,
+                Effect.as({ state: "refused", pane: null, detail } satisfies OpenResult),
+              ),
+      ),
+    );
   yield* ports.detach(input.threadId);
   if (!(yield* ports.released(home.sessionId)))
     return yield* giveBack("Tessaya is still holding the session. Try again in a moment.");

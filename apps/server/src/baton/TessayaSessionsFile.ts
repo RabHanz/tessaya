@@ -97,29 +97,62 @@ export const handBackDue = (input: {
     : input.nowMs - input.home.openedAt >= OPEN_GRACE_MS);
 
 export const REQUESTS_DIR = "tessaya-requests";
+/** A request older than this is the leftover of a CLI that gave up; it is never acted on. */
+export const REQUEST_MAX_AGE_MS = 15_000;
 
 /**
- * `tessaya resume <thread> --force` with the server up: the CLI leaves `open-*.json` ({"threadId"}) here and the server
- * stops the thread's turn and opens it in a terminal itself, so its SDK process is never killed from outside. Each
- * request is removed as it is read, which is how the CLI knows the server took it.
+ * `tessaya resume <thread> --force` with the server up: the CLI leaves `open-<id>.json` ({"threadId"}) here, mode 0600
+ * and owned by this server's own user, and the server stops the thread's turn and opens it in a terminal itself, so its
+ * SDK process is never killed from outside. A request is renamed `.taken` as it is read (how the CLI knows the server
+ * has it), and answered in `open-<id>.result` once acted on. Stale, foreign or unreadable requests are removed unread.
  */
-export const takeOpenRequests = (stateDir: string): ReadonlyArray<string> => {
+export const takeOpenRequests = (
+  stateDir: string,
+  nowMs: number,
+  uid: number | null = process.getuid?.() ?? null,
+): ReadonlyArray<{ readonly id: string; readonly threadId: string }> => {
   const dir = NodePath.join(stateDir, REQUESTS_DIR);
   let names: Array<string>;
   try {
-    names = NodeFS.readdirSync(dir).filter((name) => /^open-[\w.-]+\.json$/.test(name));
+    names = NodeFS.readdirSync(dir).filter((name) => /^open-[\w-]+\.json$/.test(name));
   } catch {
     return [];
   }
-  const threads: Array<string> = [];
+  const taken: Array<{ id: string; threadId: string }> = [];
   for (const name of names) {
     const file = NodePath.join(dir, name);
+    const id = name.slice("open-".length, -".json".length);
     try {
+      const stat = NodeFS.statSync(file);
+      const own = (uid === null || stat.uid === uid) && (stat.mode & 0o077) === 0;
       const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as { threadId?: unknown };
+      if (
+        !own ||
+        nowMs - stat.mtimeMs > REQUEST_MAX_AGE_MS ||
+        typeof parsed.threadId !== "string" ||
+        parsed.threadId.length > 120
+      ) {
+        NodeFS.rmSync(file, { force: true });
+        continue;
+      }
+      NodeFS.renameSync(file, NodePath.join(dir, `open-${id}.taken`));
+      taken.push({ id, threadId: parsed.threadId });
+    } catch {
       NodeFS.rmSync(file, { force: true });
-      if (typeof parsed.threadId === "string" && parsed.threadId.length <= 120)
-        threads.push(parsed.threadId);
-    } catch {}
+    }
   }
-  return threads;
+  return taken;
+};
+
+/** What the server did about a request, for the CLI to print; the `.taken` mark goes once it is written. */
+export const answerOpenRequest = (
+  stateDir: string,
+  id: string,
+  result: { readonly state: string; readonly detail: string },
+): void => {
+  const dir = NodePath.join(stateDir, REQUESTS_DIR);
+  const tmp = NodePath.join(dir, `.open-${id}.result.tmp`);
+  NodeFS.writeFileSync(tmp, JSON.stringify(result), { mode: 0o600 });
+  NodeFS.renameSync(tmp, NodePath.join(dir, `open-${id}.result`));
+  NodeFS.rmSync(NodePath.join(dir, `open-${id}.taken`), { force: true });
 };
