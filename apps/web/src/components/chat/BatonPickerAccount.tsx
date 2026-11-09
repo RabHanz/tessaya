@@ -10,6 +10,8 @@ import {
   type BatonAccountRecord,
 } from "@t3tools/baton-contracts";
 import {
+  accountPickHint,
+  accountPickTarget,
   accountTicks,
   oneEntryPerProvider,
   pickModelFor,
@@ -190,6 +192,7 @@ function AccountRow(props: {
   readonly account: BatonAccountRecord;
   readonly current: boolean;
   readonly next: boolean;
+  readonly hint: string | null;
   readonly onPick: (() => void) | null;
 }) {
   const { account } = props;
@@ -233,6 +236,9 @@ function AccountRow(props: {
             {props.current && props.next ? "Current · " : ""}
             {maskedEmail(account.email)}
           </span>
+        )}
+        {props.hint === null ? null : (
+          <span className="truncate text-2xs text-muted-foreground">{props.hint}</span>
         )}
       </span>
       <BatonRoom account={account} />
@@ -461,9 +467,8 @@ export function BatonPickerAccount(props: {
     return <ContinueInNote name={entry.displayName} />;
   }
   if (terminal !== null) return terminal;
-  const mine = accounts.filter(
-    (account) => account.driver === entry.driverKind && account.instanceIds.length > 0,
-  );
+  // cswap-only logins too, so he sees them and how to add one.
+  const mine = accounts.filter((account) => account.driver === entry.driverKind);
   if (mine.length === 0) return null;
   return <InstanceAccounts {...props} mine={mine} />;
 }
@@ -491,20 +496,18 @@ function InstanceAccounts(props: {
     <Section>
       {mine.map((account) => {
         const current = account.instanceIds.includes(props.threadInstanceId);
-        const target =
-          account.methods.find((method) => method.liveSwitch)?.instanceId ??
-          account.instanceIds[0] ??
-          null;
+        const target = accountPickTarget(account);
         return (
           <AccountRow
             key={account.id}
             account={account}
             current={current}
             next={false}
+            hint={accountPickHint(target, current)}
             onPick={
               current || target === null
                 ? null
-                : () => props.onPickInstance(ProviderInstanceId.make(target))
+                : () => props.onPickInstance(ProviderInstanceId.make(target.instanceId))
             }
           />
         );

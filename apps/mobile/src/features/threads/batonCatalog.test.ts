@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ProviderInstanceId } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
 import {
@@ -60,7 +60,13 @@ describe("the sheet's providers", () => {
 });
 
 describe("an account tap", () => {
-  const account = (instanceId: string) => ({ instanceIds: [instanceId], methods: [] });
+  const account = (instanceId: string) => ({
+    driver: ProviderDriverKind.make(instanceId.startsWith("claude") ? "claudeAgent" : "codex"),
+    email: null,
+    active: false,
+    instanceIds: [instanceId],
+    methods: [],
+  });
 
   it("keeps the thread's model on its own provider and takes the default on another", () => {
     const thread = { driver: "claudeAgent", model: "opus" };

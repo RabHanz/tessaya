@@ -23,30 +23,41 @@ import * as Layer from "effect/Layer";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService, makeTokenStatusReader } from "./AccountPoolService.ts";
 
-/** Each Claude instance's own stored credential kind, read from its config dir's file shape (never its value). */
-const instanceCredentialKinds = (
-  providers: ReadonlyArray<ServerProvider>,
-): Record<string, CredentialKind | null> =>
-  Object.fromEntries(
-    providers
-      .filter((provider) => provider.driver === "claudeAgent")
-      .map((provider) => {
-        const home =
-          provider.runtimePaths?.homePath ??
-          (String(provider.instanceId) === provider.driver
-            ? (process.env.CLAUDE_CONFIG_DIR ?? NodePath.join(NodeOS.homedir(), ".claude"))
-            : null);
-        if (home === null) return [provider.instanceId, null];
-        try {
-          const stored: unknown = JSON.parse(
-            NodeFS.readFileSync(NodePath.join(home, ".credentials.json"), "utf8"),
-          );
-          return [provider.instanceId, credentialKind(stored)];
-        } catch {
-          return [provider.instanceId, null];
-        }
-      }),
-  );
+const readJson = (file: string): unknown => JSON.parse(NodeFS.readFileSync(file, "utf8"));
+
+/**
+ * Each Claude instance's login as its config dir shows it, never a value: the kind of its stored credential (null
+ * for a file that exists but holds none) and, for a non-default instance, the address its .claude.json names. A
+ * missing or unreadable file is left out, as unknown: macOS keeps the login in the Keychain, some setups in the env.
+ */
+const instanceLogins = (providers: ReadonlyArray<ServerProvider>) => {
+  const credentialKinds: Record<string, CredentialKind | null> = {};
+  const loginEmails: Record<string, string | null> = {};
+  for (const provider of providers) {
+    if (provider.driver !== "claudeAgent") continue;
+    const isDefault = String(provider.instanceId) === provider.driver;
+    const home =
+      provider.runtimePaths?.homePath ??
+      (isDefault
+        ? (process.env.CLAUDE_CONFIG_DIR ?? NodePath.join(NodeOS.homedir(), ".claude"))
+        : null);
+    if (home === null) continue;
+    try {
+      credentialKinds[provider.instanceId] = credentialKind(
+        readJson(NodePath.join(home, ".credentials.json")),
+      );
+    } catch {}
+    if (isDefault) continue;
+    try {
+      const config = readJson(NodePath.join(home, ".claude.json")) as {
+        readonly oauthAccount?: { readonly emailAddress?: unknown };
+      };
+      const email = config.oauthAccount?.emailAddress;
+      if (typeof email === "string") loginEmails[provider.instanceId] = email;
+    } catch {}
+  }
+  return { credentialKinds, loginEmails };
+};
 
 export class BatonAccounts extends Context.Service<
   BatonAccounts,
@@ -77,7 +88,7 @@ export const layer = Layer.effect(
           providers,
           pool: logins,
           slots: BATON_CLAUDE_ACCOUNT_INSTANCES,
-          credentialKinds: instanceCredentialKinds(providers),
+          ...instanceLogins(providers),
           slotKinds: logins === null ? {} : yield* slotKinds,
         }),
       };

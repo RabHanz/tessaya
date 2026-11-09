@@ -81,17 +81,19 @@ export function unifyAccounts(input: {
   readonly credentialKinds?: Readonly<Record<string, CredentialKind | null>>;
   /** Each cswap slot's stored credential, as cswapTokenKinds reads it. */
   readonly slotKinds?: Readonly<Record<string, CredentialKind>>;
+  /** The address each non-default instance last signed in as (its own .claude.json), when its probe has none. */
+  readonly loginEmails?: Readonly<Record<string, string | null>>;
 }): ReadonlyArray<BatonAccountRecord> {
   const pool = input.pool ?? [];
   const active = pool.find((account) => account.active);
-  // The default instance runs as cswap's active login only when nothing says otherwise: an instance that reports
-  // another address is another person's login, and must never take the active slot (or merge with it).
+  // The default instance takes the active slot only when its own address confirms it: unconfirmed, it is "this
+  // machine's login", never a guessed account, and an instance reporting another address never takes the slot.
   const slotOf = (instanceId: string | null, ownEmail: string | null = null): string | null => {
     if (instanceId === null) return null;
     const pinned = input.slots[instanceId];
     if (pinned !== undefined) return pinned;
     if (instanceId !== BATON_DEFAULT_CLAUDE_INSTANCE || active === undefined) return null;
-    return ownEmail === null || ownEmail === realEmail(active.email) ? active.key : null;
+    return ownEmail !== null && ownEmail === realEmail(active.email) ? active.key : null;
   };
   const groups = new Map<string, Group>();
   const groupFor = (driver: Group["driver"], identity: string, email: string | null) => {
@@ -114,18 +116,13 @@ export function unifyAccounts(input: {
 
   for (const provider of input.providers) {
     if (provider.instanceId === LIVE_INSTANCE) continue;
-    const ownEmail = realEmail(provider.auth.email);
+    const ownEmail =
+      realEmail(provider.auth.email) ??
+      (String(provider.instanceId) === provider.driver
+        ? null
+        : realEmail(input.loginEmails?.[provider.instanceId]));
     const slot = slotOf(provider.instanceId, ownEmail);
-    // A login with no address of its own and no slot is matched to cswap's by name ("Optima" is cswap's "optima"),
-    // for its address only: it keeps its own credential, so it does not take the slot.
-    const slotAccount =
-      slot === null
-        ? ownEmail === null && provider.displayName !== undefined
-          ? pool.find(
-              (account) => account.label.toLowerCase() === provider.displayName!.toLowerCase(),
-            )
-          : undefined
-        : pool.find((account) => account.key === slot);
+    const slotAccount = slot === null ? undefined : pool.find((account) => account.key === slot);
     const email = ownEmail ?? realEmail(slotAccount?.email);
     const identity = email ?? (slot === null ? provider.instanceId : `slot:${slot}`);
     const group = groupFor(provider.driver, identity, email);
@@ -190,12 +187,19 @@ export function unifyAccounts(input: {
     );
     const alias = group.pool[0]?.label;
     // cswap's alias is lowercase ("signzart"); an account reads as a name.
-    const label =
-      named?.displayName ??
-      (alias === undefined ? undefined : alias.charAt(0).toUpperCase() + alias.slice(1)) ??
-      group.providers[0]?.displayName ??
-      group.email?.split("@")[0] ??
-      group.id;
+    // A default instance's name ("Rabee" on the laptop) is not its login: it runs whatever the machine has.
+    const machineOnly =
+      group.email === null &&
+      group.pool.length === 0 &&
+      group.providers.length > 0 &&
+      group.providers.every((provider) => String(provider.instanceId) === provider.driver);
+    const label = machineOnly
+      ? "This machine's login"
+      : (named?.displayName ??
+        (alias === undefined ? undefined : alias.charAt(0).toUpperCase() + alias.slice(1)) ??
+        group.email?.split("@")[0] ??
+        group.providers[0]?.displayName ??
+        group.id);
     const rooms = [...group.providers.map(providerRoom), ...group.pool.map(poolRoom)]
       .filter((room): room is Room => room !== null)
       .toSorted((a, b) => (b.checkedAt ?? "").localeCompare(a.checkedAt ?? ""));
@@ -210,6 +214,7 @@ export function unifyAccounts(input: {
       isDefault: group.providers.some(
         (provider) => String(provider.instanceId) === provider.driver,
       ),
+      active: group.pool.some((account) => account.active),
       methods,
       liveSwitchKey,
       health,
@@ -395,3 +400,37 @@ export function withProviderModels<K extends string, M>(
   }
   return filled;
 }
+
+/**
+ * The instance a tick on an account sends the thread to: one of its own, never the default Claude instance, which
+ * runs whatever cswap's active login is and would follow a rotation. The default is offered only for the login it
+ * runs as right now, and says so (runsAsActive). Null when this machine has no instance for it.
+ */
+export const accountPickTarget = (
+  account: Pick<BatonAccountRecord, "driver" | "email" | "instanceIds" | "methods" | "active">,
+): { readonly instanceId: string; readonly runsAsActive: boolean } | null => {
+  const ordered = [
+    account.methods.find((method) => method.liveSwitch)?.instanceId ?? null,
+    ...account.instanceIds,
+  ].filter((id): id is string => id !== null);
+  if (account.driver !== "claudeAgent")
+    return ordered[0] === undefined ? null : { instanceId: ordered[0], runsAsActive: false };
+  const own = ordered.find((id) => id !== BATON_DEFAULT_CLAUDE_INSTANCE);
+  if (own !== undefined) return { instanceId: own, runsAsActive: false };
+  const machineLogin =
+    account.email === null && account.instanceIds.includes(BATON_DEFAULT_CLAUDE_INSTANCE);
+  return account.active === true || machineLogin
+    ? { instanceId: BATON_DEFAULT_CLAUDE_INSTANCE, runsAsActive: true }
+    : null;
+};
+
+/** The line under an account row: how a pick runs, or why it cannot be picked here. */
+export const accountPickHint = (
+  target: ReturnType<typeof accountPickTarget>,
+  current: boolean,
+): string | null =>
+  target?.runsAsActive === true
+    ? "Runs as this machine's active login"
+    : target === null && !current
+      ? "No instance here: add one in Settings"
+      : null;

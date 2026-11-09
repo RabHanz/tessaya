@@ -8,6 +8,8 @@ import {
   pickModelFor,
   sessionLoginKey,
   threadAccount,
+  accountPickHint,
+  accountPickTarget,
   accountTicks,
   credentialKind,
   cswapTokenKinds,
@@ -295,10 +297,10 @@ describe("his real logins", () => {
     });
   });
 
-  it("merges the laptop's logins into one row each, as tokens that switch live", () => {
-    const accounts = unifyAccounts({
+  const laptop = (loginEmails: Record<string, string>, defaultEmail?: string) =>
+    unifyAccounts({
       providers: [
-        provider("claudeAgent", { displayName: "Rabee", email: "signzart@example.com" }),
+        provider("claudeAgent", { displayName: "Rabee", email: defaultEmail }),
         provider("claudeAgent_optima", { displayName: "Optima" }),
         provider("claudeAgent_signzart", { displayName: "Signzart" }),
       ],
@@ -314,19 +316,95 @@ describe("his real logins", () => {
         claudeAgent_signzart: null,
       },
       slotKinds: cswapTokenKinds(tokenStatus),
+      loginEmails,
     });
-    expect(
-      accounts.map((account) => [
-        account.label,
-        account.instanceIds,
-        account.methods.map((method) => method.kind),
-        account.liveSwitchKey,
-      ]),
-    ).toEqual([
-      ["Signzart", ["claudeAgent", "claudeAgent_signzart"], ["setup-token"], "6"],
-      ["Optima", ["claudeAgent_optima"], ["setup-token"], "5"],
-      ["Rabee", [], ["setup-token"], "4"],
+  const rows = (accounts: ReturnType<typeof laptop>) =>
+    accounts.map((account) => [
+      account.label,
+      account.instanceIds,
+      account.methods.map((method) => method.kind),
+      account.liveSwitchKey,
+      accountPickTarget(account),
     ]);
+
+  it("merges the laptop's logins by the address each instance signed in as, as tokens that switch live", () => {
+    expect(
+      rows(
+        laptop(
+          {
+            claudeAgent_optima: "optima@example.com",
+            claudeAgent_signzart: "signzart@example.com",
+          },
+          "signzart@example.com",
+        ),
+      ),
+    ).toEqual([
+      [
+        "Signzart",
+        ["claudeAgent", "claudeAgent_signzart"],
+        ["setup-token"],
+        "6",
+        { instanceId: "claudeAgent_signzart", runsAsActive: false },
+      ],
+      [
+        "Optima",
+        ["claudeAgent_optima"],
+        ["setup-token"],
+        "5",
+        { instanceId: "claudeAgent_optima", runsAsActive: false },
+      ],
+      ["Rabee", [], ["setup-token"], "4", null],
+    ]);
+  });
+
+  it("never merges by name, and never names or routes an unconfirmed default as an account", () => {
+    // No address anywhere: "Optima" the instance and "optima" the slot stay apart; the default is the machine's.
+    expect(rows(laptop({}))).toEqual([
+      [
+        "This machine's login",
+        ["claudeAgent"],
+        ["setup-token"],
+        null,
+        { instanceId: "claudeAgent", runsAsActive: true },
+      ],
+      [
+        "Optima",
+        ["claudeAgent_optima"],
+        [],
+        null,
+        { instanceId: "claudeAgent_optima", runsAsActive: false },
+      ],
+      [
+        "Signzart",
+        ["claudeAgent_signzart"],
+        [],
+        null,
+        { instanceId: "claudeAgent_signzart", runsAsActive: false },
+      ],
+      ["Rabee", [], ["setup-token"], "4", null],
+      ["Optima", [], ["setup-token"], "5", null],
+      // Active, with no instance of its own: a tick runs as the machine's active login, and says so.
+      ["Signzart", [], ["setup-token"], "6", { instanceId: "claudeAgent", runsAsActive: true }],
+    ]);
+    expect(accountPickHint({ instanceId: "claudeAgent", runsAsActive: true }, false)).toBe(
+      "Runs as this machine's active login",
+    );
+    expect(accountPickHint(null, false)).toBe("No instance here: add one in Settings");
+  });
+
+  it("does not send a tick to the default once its login is no longer cswap's active one", () => {
+    // The default last reported Signzart, but cswap has rotated to Rabee: Signzart has no instance of its own here.
+    const accounts = unifyAccounts({
+      providers: [provider("claudeAgent", { email: "signzart@example.com" })],
+      pool: [
+        { ...slot("4", "rabee@example.com", true), label: "rabee" },
+        { ...slot("6", "signzart@example.com"), label: "signzart" },
+      ],
+      slots: {},
+    });
+    const signzart = accounts.find((account) => account.email === "signzart@example.com")!;
+    expect(signzart.instanceIds).toEqual(["claudeAgent"]);
+    expect(accountPickTarget(signzart)).toBeNull();
   });
 
   it("lists the provider's models for a login whose instance has none, picks still going to that login", () => {

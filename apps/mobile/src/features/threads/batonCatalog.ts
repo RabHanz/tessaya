@@ -3,7 +3,12 @@
  * login, with Terminal its own group. The other logins of a provider become account rows under its header.
  */
 import type { BatonAccountRecord } from "@t3tools/baton-contracts";
-import { oneEntryPerProvider, pickModelFor, sessionLoginKey } from "@t3tools/baton-shared/accounts";
+import {
+  accountPickTarget,
+  oneEntryPerProvider,
+  pickModelFor,
+  sessionLoginKey,
+} from "@t3tools/baton-shared/accounts";
 import { withRealEffort } from "@t3tools/baton-shared/liveModel";
 import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import type { ModelCapabilities, ModelSelection } from "@t3tools/contracts";
@@ -59,12 +64,11 @@ export const accountsFilterKey = (
 
 /** The model a tap on an account lands on, or null when the sheet does not list that login. */
 export const accountPickOption = (
-  account: Pick<BatonAccountRecord, "instanceIds" | "methods">,
+  account: Pick<BatonAccountRecord, "driver" | "email" | "instanceIds" | "methods" | "active">,
   groups: ReadonlyArray<ProviderGroup>,
   thread: { readonly driver: string; readonly model: string },
 ): ModelOption | null => {
-  const target =
-    account.methods.find((method) => method.liveSwitch)?.instanceId ?? account.instanceIds[0];
+  const target = accountPickTarget(account)?.instanceId;
   const group = groups.find((candidate) => candidate.providerKey === target);
   if (group === undefined) return null;
   const slug = pickModelFor(
