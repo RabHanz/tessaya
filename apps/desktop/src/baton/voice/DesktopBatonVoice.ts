@@ -1983,7 +1983,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const app = (await target) ?? { exe: "", title: "" };
     const turnId = openTurn;
     openTurn = null;
-    keptWhy = "refused";
+    // The paste below sets it again; the cast keeps TypeScript from narrowing past that closure.
+    keptWhy = "refused" as Exclude<PasteVerdict, "ok">;
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
@@ -2064,7 +2065,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const discarded = openTurn;
         void dictationHold
           .target()
-          .then((app) => app !== null && hideIfPrivate(discarded, app, false));
+          ?.then((app) => app !== null && hideIfPrivate(discarded, app, false));
       }
       openTurn = null;
     }
