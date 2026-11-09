@@ -408,7 +408,13 @@ function BatonPane(props: {
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           {view ??
             (loading ? (
-              <PaneLoading />
+              <PaneLoading
+                connectingTo={
+                  environmentState === "connecting" || environmentState === "retrying"
+                    ? environmentLabel
+                    : null
+                }
+              />
             ) : (
               <PaneUnavailable
                 title={title}
@@ -516,14 +522,14 @@ function PaneElsewhere(props: { readonly onBringHere: () => void }) {
   );
 }
 
-function PaneLoading() {
+function PaneLoading(props: { readonly connectingTo?: string | null }) {
   return (
     <p
       role="status"
       data-testid="baton-pane-loading"
       className="m-auto px-4 text-center text-sm text-muted-foreground"
     >
-      Loading thread…
+      {props.connectingTo ? `Connecting to ${props.connectingTo}…` : "Loading thread…"}
     </p>
   );
 }
