@@ -146,7 +146,8 @@ export function unifyAccounts(input: {
       liveSwitch: index === live,
     }));
     const named = group.providers.find(
-      (provider) => provider.instanceId !== provider.driver && provider.displayName !== undefined,
+      (provider) =>
+        String(provider.instanceId) !== provider.driver && provider.displayName !== undefined,
     );
     const label =
       named?.displayName ??
@@ -165,7 +166,9 @@ export function unifyAccounts(input: {
       label,
       email: group.email,
       instanceIds,
-      isDefault: group.providers.some((provider) => provider.instanceId === provider.driver),
+      isDefault: group.providers.some(
+        (provider) => String(provider.instanceId) === provider.driver,
+      ),
       methods,
       liveSwitchKey,
       health,
