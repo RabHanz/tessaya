@@ -22,7 +22,7 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 
-import { CARD_REF, parsePanePrompt } from "./pane-prompt.mjs";
+import { CARD_REF, parsePanePrompt, parseWaitingScreen } from "./pane-prompt.mjs";
 
 const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
@@ -621,13 +621,13 @@ export async function sendToStopped(dir, sessionId, item, deps) {
   return { state: "resumed" };
 }
 
-/** The prompt on the pane's screen now, or null. */
-export async function readPanePrompt(paneRef) {
+/** The prompt on the pane's screen now, or null. `waiting`: a screen it has no reader for is Enter and Esc. */
+export async function readPanePrompt(paneRef, waiting = false) {
   const read = await run(
     HERDR,
     herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "80"]),
   );
-  return read.ok ? parsePanePrompt(read.out) : null;
+  return read.ok ? (waiting ? parseWaitingScreen : parsePanePrompt)(read.out) : null;
 }
 
 /**
@@ -664,7 +664,7 @@ export const isRefAnswer = (text) => {
 };
 
 async function answerNow(sessionId, paneRef, text) {
-  const shown = await readPanePrompt(paneRef);
+  const shown = await readPanePrompt(paneRef, true);
   const forThis = shown !== null && isCardAnswer(text, shown);
   // A permission card's answer for another dialog presses nothing and is never typed as a message.
   const stale = !forThis && isRefAnswer(text);
@@ -680,7 +680,8 @@ async function answerNow(sessionId, paneRef, text) {
 }
 
 /** True while the pane still shows the dialog `shown` was read from. */
-const stillShows = async (paneRef, shown) => (await readPanePrompt(paneRef))?.key === shown.key;
+const stillShows = async (paneRef, shown) =>
+  (await readPanePrompt(paneRef, true))?.key === shown.key;
 
 async function pressAnswer(sessionId, paneRef, text, shown) {
   const answer = answerFrom(text, shown);
@@ -1043,7 +1044,7 @@ async function prompt(params) {
       say(
         sessionId,
         live.status === "waiting"
-          ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
+          ? questionWaitingNote((await readPanePrompt(live.pane, true))?.question, count)
           : queuedNote("earlier messages are still waiting.", count),
       );
       return { stopReason: "end_turn" };
@@ -1068,7 +1069,7 @@ async function prompt(params) {
       say(
         sessionId,
         failure === BLOCKED_NOTE
-          ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
+          ? questionWaitingNote((await readPanePrompt(live.pane, true))?.question, count)
           : queuedNote("Herdr did not take it yet.", count),
       );
       return { stopReason: "end_turn" };

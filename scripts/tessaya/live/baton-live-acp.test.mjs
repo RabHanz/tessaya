@@ -52,7 +52,12 @@ import {
   run,
   sendFailure,
 } from "./baton-live-acp.mjs";
-import { parsePanePrompt, parseReviewScreen, screenTail } from "./pane-prompt.mjs";
+import {
+  parsePanePrompt,
+  parseReviewScreen,
+  parseWaitingScreen,
+  screenTail,
+} from "./pane-prompt.mjs";
 
 const AGENT = NodePath.join(
   NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
@@ -154,6 +159,41 @@ NodeTest.test("unnumbered options are read too, and a plain screen has no prompt
   });
   NodeAssert.equal(parsePanePrompt("❯ hello\n───────\n  ⏵⏵ bypass permissions on"), null);
 });
+
+NodeTest.test(
+  "a screen with no reader offers its own key hints, and Enter and Esc without them",
+  () => {
+    const draft = parsePanePrompt(fixture("pane-feedback-draft.txt"));
+    NodeAssert.equal(plain(draft.question), "You have 1 unsent feedback draft");
+    NodeAssert.deepEqual(
+      draft.options.map((o) => [o.label, o.description]),
+      [
+        ["Review & send (Enter)", ""],
+        ["Discard and exit (Esc)", "Warning: this may end the session."],
+      ],
+    );
+    NodeAssert.deepEqual(answerKeys(draft, "Discard and exit (Esc)"), {
+      keys: ["esc"],
+      text: null,
+    });
+    NodeAssert.ok(isCardAnswer(`${draft.question}\nReview & send (Enter)`, draft));
+
+    const unknown = parseWaitingScreen("Something new happened\n\nPress on");
+    NodeAssert.equal(parsePanePrompt("Something new happened\n\nPress on"), null);
+    NodeAssert.match(unknown.question, /didn't recognise/);
+    NodeAssert.deepEqual(
+      unknown.options.map((o) => [o.label, o.keys]),
+      [
+        ["Enter", ["enter"]],
+        ["Esc", ["esc"]],
+      ],
+    );
+    NodeAssert.equal(
+      parseWaitingScreen("● Done.\n\n──────────\n❯ \n──────────\n  ? for shortcuts"),
+      null,
+    );
+  },
+);
 
 NodeTest.test("only the user's words reach Claude, never T3's instruction wrappers", () => {
   const first =
@@ -1275,5 +1315,8 @@ NodeTest.test("a dialog that is not a permission prompt never gets Allow pressed
     "",
     " Esc to cancel",
   ].join("\n");
-  NodeAssert.equal(parsePanePrompt(screen), null);
+  NodeAssert.deepEqual(
+    parsePanePrompt(screen).options.map((o) => o.label),
+    ["Cancel (Esc)"],
+  );
 });

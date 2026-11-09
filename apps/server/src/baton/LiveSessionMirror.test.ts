@@ -34,7 +34,7 @@ import {
   projectForDirectory,
   sentFromT3,
   sweepVictims,
-  unreadPrompt,
+  waitingPrompt,
 } from "./LiveSessionMirror.ts";
 
 const project = (id: string, workspaceRoot: string, canonicalKey?: string) => ({
@@ -548,12 +548,18 @@ describe("media that only appears in text is not shown", () => {
     expect(second).toBe("Done.");
   });
 
-  it("a waiting session with nothing readable still gets a question in its thread", () => {
-    const plain = unreadPrompt({ sessionId: "s1", herdrPane: null }, "");
-    expect(plain.options.map((o) => o.label)).toEqual(["Bring it into Herdr"]);
-    const pane = unreadPrompt({ sessionId: "s1", herdrPane: "p1" }, "Proceed? (y/n)");
-    expect(pane.question).toContain("Proceed? (y/n)");
-    expect(pane.options.map((o) => o.label)).toEqual(["I'll answer it in the terminal"]);
+  it("a waiting session's card comes from its screen, and goes once the screen is gone", () => {
+    const plain = waitingPrompt({ sessionId: "s1", herdrPane: null }, null);
+    expect(plain?.options.map((o) => o.label)).toEqual(["Bring it into Herdr"]);
+    const pane = { sessionId: "s1", herdrPane: "p1" };
+    expect(waitingPrompt(pane, "Proceed? (y/n)")?.options.map((o) => o.label)).toEqual([
+      "Enter",
+      "Esc",
+    ]);
+    // Back at its input box, or unreadable: no card, so the one raised earlier expires.
+    const inputBox = "● Done.\n\n────────────\n❯ \n────────────\n  ? for shortcuts";
+    expect(waitingPrompt(pane, inputBox)).toBeNull();
+    expect(waitingPrompt(pane, null)).toBeNull();
   });
 });
 
