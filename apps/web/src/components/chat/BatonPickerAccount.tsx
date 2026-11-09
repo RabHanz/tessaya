@@ -21,21 +21,13 @@ import {
   accountRow,
   maskedEmail,
   queuedText,
-  resetLabel,
   returnsLabel,
   roomDetail,
   roomText,
   roomTone,
 } from "@t3tools/baton-shared/accountRoom";
-import { isLiveThreadId, LIVE_INSTANCE, liveThreadIdOf } from "@t3tools/baton-shared/liveThread";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import {
-  type EnvironmentId,
-  ProviderInstanceId,
-  type ScopedThreadRef,
-  ThreadId,
-} from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
+import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { type EnvironmentId, ProviderInstanceId, type ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
 import {
@@ -49,7 +41,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
 import type { ProviderInstanceEntry } from "../../providerInstances";
-import { buildThreadRouteParams } from "../../threadRoutes";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useQuietThreadShell } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -284,86 +275,13 @@ function ContinueInNote({ name }: { readonly name: string }) {
   );
 }
 
-type TerminalRow = {
-  readonly id: string;
-  readonly project: string;
-  readonly title: string;
-  readonly pane: string | null;
-  readonly lastActivityAt: string | null;
-};
-
-/** The Terminal group: the Claude sessions running in a terminal on this environment; a pick opens its thread. */
-function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
-  const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
-  const navigate = useNavigate();
-  const now = useNow();
-  const [rows, setRows] = useState<ReadonlyArray<TerminalRow> | null>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's session catalog while the picker shows Terminal
-  useEffect(() => {
-    let cancelled = false;
-    void list({ environmentId: props.environmentId, input: { limit: 30 } }).then((result) => {
-      if (cancelled || result._tag !== "Success") return;
-      setRows(
-        result.value.sessions
-          .filter((session) => session.state === "running" && session.source === "live")
-          .map((session) => ({
-            id: session.id,
-            project: session.project,
-            title: session.title,
-            pane: session.pane ?? null,
-            lastActivityAt: session.lastActivityAt,
-          })),
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [list, props.environmentId]);
-  if (rows === null) return null;
+/** Terminal on the rail: what it is. Its sessions are reached from the sidebar, not listed here. */
+function TerminalNote() {
   return (
-    <div
-      data-testid="model-picker-terminal-sessions"
-      className="border-b border-border/70 px-1.5 py-1.5 [contain:inline-size]"
-    >
-      <div className="px-1.5 pb-1 text-2xs font-medium text-muted-foreground">
-        Terminal · sessions running in a terminal. Tessaya types into them.
-      </div>
-      {rows.length === 0 ? (
-        <p className="px-1.5 py-1 text-xs text-muted-foreground">None running here now.</p>
-      ) : (
-        rows.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            data-testid="model-picker-terminal-session"
-            className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-start text-xs hover:bg-accent"
-            onClick={() =>
-              void navigate({
-                to: "/$environmentId/$threadId",
-                params: buildThreadRouteParams(
-                  scopeThreadRef(props.environmentId, ThreadId.make(liveThreadIdOf(row.id))),
-                ),
-              })
-            }
-          >
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate font-medium text-foreground">{row.project}</span>
-              <span className="truncate text-2xs text-muted-foreground">{row.title}</span>
-            </span>
-            <span className="shrink-0 text-2xs text-muted-foreground">
-              {[
-                row.pane?.split("~").at(-1),
-                row.lastActivityAt === null
-                  ? null
-                  : `active ${resetLabel(row.lastActivityAt, now)}`,
-              ]
-                .filter((part) => part)
-                .join(" · ")}
-            </span>
-          </button>
-        ))
-      )}
-    </div>
+    <Note>
+      <span className="font-medium text-foreground/80">Terminal</span>: Claude sessions running in a
+      terminal. Open one from the sidebar.
+    </Note>
   );
 }
 
@@ -449,10 +367,7 @@ export function BatonPickerAccount(props: {
     threadRef !== null &&
     isLiveThreadId(threadRef.threadId) &&
     (storedInstanceId ?? props.threadInstanceId) === LIVE_INSTANCE;
-  const terminal =
-    entry.instanceId === LIVE_INSTANCE && props.environmentId !== null ? (
-      <TerminalSessions environmentId={props.environmentId} />
-    ) : null;
+  const terminal = entry.instanceId === LIVE_INSTANCE ? <TerminalNote /> : null;
   if (onLiveThread) {
     if (entry.instanceId === LIVE_INSTANCE || entry.driverKind === "claudeAgent")
       return (
