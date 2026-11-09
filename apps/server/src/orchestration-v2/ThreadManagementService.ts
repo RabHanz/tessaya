@@ -2,6 +2,11 @@ import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
 } from "@t3tools/contracts";
+import {
+  BATON_LIVE_INSTANCE,
+  liveSendingRefusal,
+  liveSendingUnavailableReason,
+} from "../baton/BatonLiveInstance.ts";
 import type {
   ProjectionRecordField,
   ProjectionRecordFilter,
@@ -322,6 +327,9 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
   },
 ) {
   override get message(): string {
+    // Tessaya: the Terminal instance is off only where sending cannot work; say why in his words.
+    if (this.instanceId === BATON_LIVE_INSTANCE)
+      return liveSendingRefusal(liveSendingUnavailableReason());
     return `Provider instance "${instanceLabel(this.instanceId)}" is disabled for project ${this.projectId}.`;
   }
 }

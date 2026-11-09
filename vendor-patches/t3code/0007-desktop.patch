@@ -52,10 +52,10 @@ index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc4
            }
          }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
 diff --git a/apps/desktop/src/backend/DesktopBackendConfiguration.ts b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..e5400f60c263aa47476fe3fb183418ec2dca6bdc 100644
+index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..4f4c652794e5c14b9a2d40914e6a8a51bb1da04e 100644
 --- a/apps/desktop/src/backend/DesktopBackendConfiguration.ts
 +++ b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-@@ -535,6 +535,15 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
+@@ -535,6 +535,21 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
          ...backendChildEnvPatch(),
          ELECTRON_RUN_AS_NODE: "1",
          T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
@@ -65,6 +65,12 @@ index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..e5400f60c263aa47476fe3fb183418ec
 +              TESSAYA_MEMORY_MODEL_DIR: environment.path.join(
 +                environment.resourcesPath,
 +                "memory-model",
++              ),
++              // Terminal threads: the agent that types into a session, run by this same executable as Node.
++              BATON_LIVE_ACP: environment.path.join(
++                environment.resourcesPath,
++                "baton-live",
++                "baton-live-acp.mjs",
 +              ),
 +            }
 +          : {}),

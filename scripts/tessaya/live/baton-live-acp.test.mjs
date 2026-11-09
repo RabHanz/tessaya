@@ -8,6 +8,8 @@ import * as NodeReadline from "node:readline";
 import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
+import { herdrBin } from "./pane-prompt.mjs";
+
 import { LIVE_EFFORT_CHOICES } from "../../../packages/baton-shared/src/liveModel.ts";
 import {
   effortConfigOption,
@@ -72,6 +74,14 @@ const fixture = (name) =>
     NodePath.join(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "__fixtures__", name),
     "utf8",
   );
+
+NodeTest.test("herdrBin is BATON_HERDR_BIN or ~/.local/bin/herdr, never PATH", () => {
+  NodeAssert.equal(herdrBin({ BATON_HERDR_BIN: "/opt/herdr" }), "/opt/herdr");
+  NodeAssert.equal(
+    herdrBin({ PATH: "/usr/bin" }),
+    NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr"),
+  );
+});
 
 NodeTest.test("a permission dialog on the screen is read with its options (D88)", () => {
   const prompt = parsePanePrompt(fixture("pane-permission.txt"));

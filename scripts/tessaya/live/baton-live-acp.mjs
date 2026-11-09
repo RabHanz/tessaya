@@ -22,10 +22,9 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 
-import { CARD_REF, parsePanePrompt, parseWaitingScreen } from "./pane-prompt.mjs";
+import { CARD_REF, herdrBin, parsePanePrompt, parseWaitingScreen } from "./pane-prompt.mjs";
 
-const HERDR =
-  process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
+const HERDR = herdrBin();
 const localBin = (name) => NodePath.join(NodeOS.homedir(), ".local", "bin", name);
 // A box whose launchers predate the rename has only `baton`.
 const BATON =

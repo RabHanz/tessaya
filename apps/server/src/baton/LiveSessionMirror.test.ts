@@ -7,6 +7,7 @@ import {
   MessageId,
   OrchestrationV2UserInputQuestion,
   ProjectId,
+  ProviderInstanceConfig,
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -593,10 +594,30 @@ describe("media that only appears in text is not shown", () => {
 });
 
 const decodeAcpSettings = Schema.decodeUnknownSync(AcpRegistrySettings);
+const decodeInstanceConfig = Schema.decodeSync(ProviderInstanceConfig);
 
 describe("liveProviderInstance", () => {
   it("decodes as the acpRegistry driver's settings, so the instance and its adapter register", () => {
     const { config } = liveProviderInstance("/usr/bin/node", "/x/baton-live-acp.mjs");
     expect(decodeAcpSettings(config).customModels).toEqual(["live"]);
+  });
+
+  it("is registered off where sending cannot work, and runs on Electron as Node on the desktop", () => {
+    const off = liveProviderInstance(
+      "C:/T3/Tessaya.exe",
+      "C:/T3/resources/baton-live/baton-live-acp.mjs",
+      {
+        enabled: false,
+        electron: true,
+      },
+    );
+    expect(off.enabled).toBe(false);
+    expect(off.environment).toEqual([
+      { name: "ELECTRON_RUN_AS_NODE", value: "1", sensitive: false },
+    ]);
+    expect(decodeAcpSettings(off.config).commandPath).toBe("C:/T3/Tessaya.exe");
+    expect("environment" in liveProviderInstance("/usr/bin/node", "/x.mjs")).toBe(false);
+    // Settings hand it back decoded; it must compare equal, or the desktop rewrites settings every start.
+    expect(JSON.stringify(decodeInstanceConfig(off))).toBe(JSON.stringify(off));
   });
 });
