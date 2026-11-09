@@ -28,10 +28,12 @@ A live thread mirrors one running terminal session (`baton-live4:<session id>`).
    server's drainer, the thread (unbound rows), or the sessions list (`catalog` rows, sent on a send or Resume). A
    `<session id>.server` file marks a session the server owns; the bridge's drainer never types for it. One server owns
    a live-queue folder at a time (`.server.lock`); a server on another base dir (a dev worktree) uses its own folder.
-8. One writer per conversation across Tessaya and a terminal. Move into Tessaya ends the terminal process before the
-   thread's provider thread is pointed at the same session id on claudeAgent; a live thread whose active native id is
-   its own session id is then ordinary (`movedIntoTessaya`), while a twin (another session id) is still refused. Open
-   in terminal detaches the thread's provider sessions and waits until no process holds the session (any descriptor,
-   SDK ones included) before `tessaya --resume`; `tessaya resume <thread>` refuses a session Tessaya's SDK process holds
-   unless `--force`. The mirror links a Tessaya thread's session wherever it runs (`SessionHomes`, by session id from
-   `tessaya-sessions.json` in the state dir) and hands it back to its own instance when the terminal closes.
+8. One writer per conversation across Tessaya and a terminal. A pid is signalled only while its descriptor still
+   names it (claude on its command line, Claude's recorded `procStart`), and only with SIGTERM, never by typing.
+   Move into Tessaya picks an account whose `projects/` is the session's own and holds the transcript before anything
+   ends, ends the terminal, and switches only once no verified process holds the session. Open in terminal puts the
+   thread on the live instance first (so no turn can start an SDK resume), detaches, waits until nothing holds the
+   session, then runs `tessaya --resume`; a failure puts it back. `tessaya resume <thread>` refuses a session Tessaya's
+   SDK process holds; `--force` asks the running server (`tessaya-requests/open-*.json`) to stop the turn and open it,
+   and stops the process itself only when no server takes the request. The mirror links a Tessaya thread's session
+   wherever it runs (`SessionHomes`, `tessaya-sessions.json`) and hands it back when the terminal closes.

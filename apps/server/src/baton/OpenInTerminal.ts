@@ -13,6 +13,12 @@ export interface OpenPorts {
     readonly cwd: string;
     readonly configDir: string;
   } | null>;
+  /** Stops the thread's running turn through the orchestrator; true once it is no longer running. */
+  readonly stopTurn: (threadId: string) => Effect.Effect<boolean>;
+  /** Puts the thread on its terminal session (the live instance), so no message can start an SDK resume beside it. */
+  readonly toTerminal: (threadId: string) => Effect.Effect<void, unknown>;
+  /** Puts it back on its own instance when the terminal could not be opened. */
+  readonly back: (threadId: string) => Effect.Effect<void, unknown>;
   readonly detach: (threadId: string) => Effect.Effect<void, unknown>;
   /** True once no process holds the session. */
   readonly released: (sessionId: string) => Effect.Effect<boolean>;
@@ -31,12 +37,12 @@ export interface OpenResult {
 
 export const openInTerminal = Effect.fn("OpenInTerminal.open")(function* (
   ports: OpenPorts,
-  input: { readonly threadId: string },
+  input: { readonly threadId: string; readonly stopTurn?: boolean },
 ) {
   const shell = yield* ports.shell(input.threadId);
   if (shell === null)
     return { state: "refused", pane: null, detail: "No such thread." } satisfies OpenResult;
-  if (shell.running)
+  if (shell.running && !(input.stopTurn === true && (yield* ports.stopTurn(input.threadId))))
     return {
       state: "busy",
       pane: null,
@@ -49,16 +55,18 @@ export const openInTerminal = Effect.fn("OpenInTerminal.open")(function* (
       pane: null,
       detail: "Only a Claude thread that has started its session can open in a terminal.",
     } satisfies OpenResult;
+  yield* ports.toTerminal(input.threadId);
+  const giveBack = (detail: string) =>
+    ports
+      .back(input.threadId)
+      .pipe(
+        Effect.ignore,
+        Effect.as({ state: "refused", pane: null, detail } satisfies OpenResult),
+      );
   yield* ports.detach(input.threadId);
   if (!(yield* ports.released(home.sessionId)))
-    return {
-      state: "refused",
-      pane: null,
-      detail: "Tessaya is still holding the session. Try again in a moment.",
-    } satisfies OpenResult;
+    return yield* giveBack("Tessaya is still holding the session. Try again in a moment.");
   const launched = yield* ports.launch(home);
-  return {
-    state: launched.pane === null ? "refused" : "opened",
-    ...launched,
-  } satisfies OpenResult;
+  if (launched.pane === null) return yield* giveBack(launched.detail);
+  return { state: "opened", ...launched } satisfies OpenResult;
 });

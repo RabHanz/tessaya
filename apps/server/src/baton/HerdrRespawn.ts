@@ -17,6 +17,7 @@ import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 
+import { sessionHolderPid, sessionHolders } from "./ClaudeLiveSessions.ts";
 import { parseHerdrForeground, splitPaneRef } from "./HerdrAdapterLive.ts";
 
 const run = (args: ReadonlyArray<string>): Promise<{ ok: boolean; stdout: string }> =>
@@ -71,30 +72,20 @@ export const respawnClaudeInPane = (input: {
     return { respawned: false, detail: "the session did not exit within 10 s; left as it was" };
   });
 
-const isAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 /**
- * Ends a Claude session's terminal process: `/exit` typed into its Herdr pane, or SIGTERM to the pid its own
- * descriptor names when it has no pane. True once that process is gone (within 15 s).
+ * Ends a Claude session's terminal process with SIGTERM to each pid whose descriptor still checks out (claude, same
+ * start time), never by typing into the pane, which could submit a draft. True only once no verified process holds the
+ * session (within 15 s); false at once when one of them is an SDK process, which is not a terminal's to end.
  */
-export const endClaudeTerminal = (session: {
-  readonly pid: number;
-  readonly sessionId: string;
-  readonly herdrPane: string | null;
-}): Effect.Effect<boolean> =>
+export const endClaudeTerminal = (sessionId: string): Effect.Effect<boolean> =>
   Effect.promise(async () => {
-    if (session.herdrPane !== null) {
-      for (const args of respawnPlan(session.herdrPane, session.sessionId).exit) await run(args);
-    } else if (isAlive(session.pid)) {
-      process.kill(session.pid, "SIGTERM");
+    const holders = sessionHolders(sessionId).filter((h) => h.verified);
+    if (holders.some((h) => h.sdk)) return false;
+    for (const holder of holders) {
+      try {
+        process.kill(holder.pid, "SIGTERM");
+      } catch {}
     }
-    for (let i = 0; i < 60 && isAlive(session.pid); i += 1) await sleep(250);
-    return !isAlive(session.pid);
+    for (let i = 0; i < 60 && sessionHolderPid(sessionId) !== null; i += 1) await sleep(250);
+    return sessionHolderPid(sessionId) === null;
   });

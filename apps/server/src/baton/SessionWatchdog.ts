@@ -11,6 +11,10 @@ import {
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+
+import * as ServerConfig from "../config.ts";
+import { takeOpenRequests } from "./TessayaSessionsFile.ts";
 
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
@@ -19,6 +23,32 @@ import * as FleetQuery from "./FleetQuery.ts";
 export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const catalog = yield* BatonSessionCatalogService;
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    // `tessaya resume --force` with the server up asks here; the turn is stopped through the orchestrator.
+    if (Option.isSome(config)) {
+      const stateDir = config.value.stateDir;
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.sleep("2 seconds").pipe(
+            Effect.andThen(
+              Effect.forEach(
+                takeOpenRequests(stateDir),
+                (threadId) =>
+                  catalog.openInTerminal({ threadId, stopTurn: true }).pipe(
+                    Effect.tap((result) =>
+                      Effect.logInfo("Tessaya opened a thread in a terminal on request", {
+                        threadId,
+                        state: result.state,
+                      }),
+                    ),
+                  ),
+                { discard: true },
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     const record = yield* BatonRecordService;
     let state = watchRecordStart(
       yield* record

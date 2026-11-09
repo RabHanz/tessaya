@@ -112,8 +112,10 @@ import { wentIdle } from "@t3tools/baton-shared/liveModel";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);
-const DRIVER = ProviderDriverKind.make("acpRegistry");
-const MODEL = "live";
+export const LIVE_DRIVER = ProviderDriverKind.make("acpRegistry");
+const DRIVER = LIVE_DRIVER;
+export const LIVE_MODEL = "live";
+const MODEL = LIVE_MODEL;
 
 /**
  * The "Terminal session" instance. Its config must decode as AcpRegistrySettings, whose customModels are bare slugs:

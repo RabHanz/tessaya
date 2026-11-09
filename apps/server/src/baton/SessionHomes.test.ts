@@ -1,6 +1,7 @@
 import { it } from "@effect/vitest";
 import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import type { OrchestrationV2DomainEvent } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -62,5 +63,40 @@ describe("a Tessaya thread whose session runs in a terminal", () => {
         expect(written).toHaveLength(2);
         NodeFS.rmSync(stateDir, { recursive: true, force: true });
       }),
+  );
+});
+
+describe("a thread Open in terminal already put on its terminal session", () => {
+  it.effect("stays that thread's home, now in a terminal, instead of being forgotten", () =>
+    Effect.gen(function* () {
+      const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-homes-"));
+      writeSessionsFile(NodePath.join(stateDir, "tessaya-sessions.json"), [home]);
+      const engine = {
+        threadShells: Effect.succeed([
+          {
+            id: "t1",
+            title: "Pricing",
+            projectId: "p",
+            worktreePath: "/work/app",
+            providerInstanceId: "baton-live",
+            modelSelection: { instanceId: "baton-live", model: "live" },
+            updatedAt: DateTime.makeUnsafe("2026-11-09T10:00:00Z"),
+          },
+        ]),
+        projects: Effect.succeed([]),
+        activeProviderThread: () =>
+          Effect.succeed({ driver: "acpRegistry", nativeThreadRef: { nativeId: "s-1" } }),
+      } as unknown as BatonEngineShape;
+      const homes = makeSessionHomes({
+        engine,
+        stateDir,
+        instances: Effect.succeed({}),
+        log: () => {},
+        live: { driver: "acpRegistry", model: "live" },
+      });
+      yield* homes.refresh;
+      expect(readSessionsFile(homes.path)[0]).toMatchObject({ threadId: "t1", inTerminal: true });
+      NodeFS.rmSync(stateDir, { recursive: true, force: true });
+    }),
   );
 });

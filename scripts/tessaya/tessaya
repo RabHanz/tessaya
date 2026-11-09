@@ -37,10 +37,11 @@ if len(hits) != 1:
     for t in hits[:10]:
         print(f"  {t['threadId']}  {t.get('title', '')}", file=sys.stderr)
     sys.exit(1)
-print(hits[0]["sessionId"], hits[0]["configDir"], hits[0]["cwd"], sep="\t")
+print(hits[0]["threadId"], hits[0]["sessionId"], hits[0]["configDir"], hits[0]["cwd"], sep="\t")
 PY
   )" || exit 1
-  IFS=$'\t' read -r thread_session thread_config thread_cwd <<< "$found"
+  IFS=$'\t' read -r thread_id thread_session thread_config thread_cwd <<< "$found"
+  requests="$(dirname "$file")/tessaya-requests"
   export TESSAYA_RESUME_CONFIG_DIR="$thread_config"
   from_thread=1
   set -- --resume "$thread_session" "$thread_cwd"
@@ -81,13 +82,28 @@ name="fab-$(basename "$dir" | tr -c 'A-Za-z0-9_\n-' '-')"
 running() { herdr session list 2>/dev/null | awk -v n="$name" '$1 == n && $2 == "running" { found = 1 } END { exit !found }'; }
 
 # A live Claude process already holds this conversation (any account's sessions folder).
+# The pid still runs the Claude process its descriptor names: claude on its command line, and the start time Claude
+# recorded (procStart, /proc/<pid>/stat field 22), so a pid reused by another process is never taken for it.
+verified() {
+  local pid="$1" f="$2" want stat start began boot
+  tr '\0' ' ' 2> /dev/null < "/proc/$pid/cmdline" | grep -qi claude || return 1
+  stat="$(cat "/proc/$pid/stat" 2> /dev/null)" || return 1
+  start="$(cut -d' ' -f20 <<< "${stat##*) }")"
+  want="$(grep -o '"procStart":"[0-9]*"' "$f" | grep -o '[0-9][0-9]*')"
+  [[ -z "$want" ]] || { [[ "$start" == "$want" ]]; return; }
+  # Older descriptors: the process must not have started after the session did (100 ticks a second).
+  began="$(grep -o '"startedAt":[0-9]*' "$f" | grep -o '[0-9][0-9]*')"
+  [[ -n "$began" ]] || return 1
+  boot="$(awk '/^btime/ {print $2}' /proc/stat)"
+  ((boot * 1000 + start * 10 <= began + 2000))
+}
 holder() {
   local f
   for f in "$HOME"/.claude/sessions/*.json "$HOME"/.claude-*/sessions/*.json \
     "$HOME"/.local/share/claude-swap/sessions/*/sessions/*.json \
     "${TESSAYA_CLAUDE_THREADS:-$HOME/.local/share/tessaya/claude-threads}"/*/sessions/*.json \
     "${TESSAYA_RESUME_CONFIG_DIR:-/nonexistent}"/sessions/*.json; do
-    [[ -f "$f" ]] && grep -q "\"sessionId\":\"$1\"" "$f" && kill -0 "$(basename "$f" .json)" 2> /dev/null &&
+    [[ -f "$f" ]] && grep -q "\"sessionId\":\"$1\"" "$f" && verified "$(basename "$f" .json)" "$f" &&
       holder_pid="$(basename "$f" .json)" && holder_file="$f" && return 0
   done
   return 1
@@ -116,9 +132,20 @@ if ((${#agent[@]} > 0)) && [[ "${agent[1]:-}" == "--resume" ]]; then
   # Tessaya's own SDK process holds a thread's session: stop it only when asked (--force), never two writers.
   if ((from_thread)) && holder "${agent[2]}" && grep -q '"entrypoint":"sdk' "$holder_file"; then
     if ((!force)); then
-      echo "tessaya: Tessaya is hosting this session (pid $holder_pid). Use Open in terminal in Tessaya, or add --force to stop it here." >&2
+      echo "tessaya: Tessaya is hosting this session (pid $holder_pid). Use Open in terminal in Tessaya, or add --force to stop its turn and open it here." >&2
       exit 1
     fi
+    # A running server stops the turn and opens the terminal itself; it takes the request by removing it.
+    mkdir -p "$requests"
+    request="$requests/open-$$.json"
+    printf '{"threadId":"%s"}' "$thread_id" > "$request"
+    for _ in $(seq 1 40); do [[ -f "$request" ]] || break; sleep 0.25; done
+    if [[ ! -f "$request" ]]; then
+      echo "tessaya: Tessaya is stopping its turn and opening this session in a terminal"
+      exit 0
+    fi
+    # No server took it: the process outlived its server, so it is stopped here (holder() verified the pid).
+    rm -f "$request"
     kill -TERM "$holder_pid" 2> /dev/null || true
     for _ in $(seq 1 60); do kill -0 "$holder_pid" 2> /dev/null || break; sleep 0.25; done
     kill -0 "$holder_pid" 2> /dev/null && { echo "tessaya: pid $holder_pid did not stop" >&2; exit 1; }

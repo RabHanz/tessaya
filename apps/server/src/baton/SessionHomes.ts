@@ -13,10 +13,9 @@ import * as Effect from "effect/Effect";
 import * as NodePath from "node:path";
 
 import type { BatonEngineShape } from "./BatonEngine.ts";
-import { pointAtSessionEvents } from "./MoveIntoTessaya.ts";
+import { claudeHomeOf, pointAtSessionEvents } from "./MoveIntoTessaya.ts";
 import {
   SESSIONS_FILE,
-  claudeHomeOf,
   handBackDue,
   readSessionsFile,
   writeSessionsFile,
@@ -101,6 +100,16 @@ export const makeSessionHomes = (input: {
       const sessionId = active?.nativeThreadRef?.nativeId ?? null;
       const cwd =
         shell.worktreePath ?? projects.find((p) => p.id === shell.projectId)?.workspaceRoot ?? null;
+      const known = homes.get(id);
+      // Open in terminal put it on its terminal session first: it is that thread in a terminal now, not gone.
+      if (
+        known !== undefined &&
+        String(shell.providerInstanceId) === BATON_LIVE_INSTANCE &&
+        sessionId === known.sessionId
+      ) {
+        homes.set(id, { ...known, inTerminal: true, openedAt: Date.now() });
+        continue;
+      }
       if (active?.driver !== "claudeAgent" || sessionId === null || cwd === null) {
         homes.delete(id);
         continue;

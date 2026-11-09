@@ -15,13 +15,15 @@ import {
 } from "@t3tools/contracts";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
 import type * as DateTime from "effect/DateTime";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 
 /**
- * The Claude instance that signs in as `login` (an address before its `@`), picked the way the account picker does;
- * with no login known, the default Claude instance. Null when Tessaya has no account for that login.
+ * The Claude instances that sign in as `login` (an address before its `@`), the account picker's choice first; with no
+ * login known, every Claude instance. Empty when Tessaya has no account for that login.
  */
-export const instanceForLogin = (
+export const instancesForLogin = (
   accounts: ReadonlyArray<{
     readonly driver: string;
     readonly email: string | null;
@@ -33,39 +35,77 @@ export const instanceForLogin = (
     }>;
   }>,
   login: string | null,
-  defaultInstance: string,
-): string | null => {
-  if (login === null) return defaultInstance;
-  const account = accounts.find(
+): ReadonlyArray<string> => {
+  const usable = accounts.filter(
     (candidate) =>
       candidate.driver === "claudeAgent" &&
       candidate.health !== "paused" &&
-      candidate.email?.split("@")[0]?.toLowerCase() === login.toLowerCase(),
+      (login === null || candidate.email?.split("@")[0]?.toLowerCase() === login.toLowerCase()),
   );
-  if (account === undefined) return null;
+  return [
+    ...new Set(
+      usable.flatMap((account) => [
+        ...account.methods.flatMap((m) =>
+          m.liveSwitch && m.instanceId !== null ? [m.instanceId] : [],
+        ),
+        ...account.instanceIds,
+      ]),
+    ),
+  ];
+};
+
+/**
+ * The first candidate whose config dir reaches the session's transcript: its `projects/` resolves to the same folder
+ * as the session's own config dir (when that is known), and the transcript file is there. A resume anywhere else would
+ * start an empty conversation under the same id.
+ */
+export const resumeInstance = (input: {
+  readonly candidates: ReadonlyArray<{ readonly instanceId: string; readonly home: string }>;
+  /** The session's own config dir, or null when it is not running. */
+  readonly sessionConfigDir: string | null;
+  readonly transcript: (home: string) => string;
+  readonly realpath: (path: string) => string | null;
+  readonly exists: (path: string) => boolean;
+}): string | null => {
+  const wanted =
+    input.sessionConfigDir === null ? null : input.realpath(`${input.sessionConfigDir}/projects`);
+  if (input.sessionConfigDir !== null && wanted === null) return null;
   return (
-    account.methods.find((method) => method.liveSwitch && method.instanceId !== null)?.instanceId ??
-    account.instanceIds[0] ??
-    null
+    input.candidates.find(
+      (c) =>
+        (wanted === null || input.realpath(`${c.home}/projects`) === wanted) &&
+        input.exists(input.transcript(c.home)),
+    )?.instanceId ?? null
   );
 };
 
 export interface MovePorts {
-  readonly shell: (
-    threadId: string,
-  ) => Effect.Effect<{ readonly instanceId: string; readonly running: boolean } | null>;
+  readonly shell: (threadId: string) => Effect.Effect<{
+    readonly instanceId: string;
+    readonly running: boolean;
+  } | null>;
   /** The session running under this id now, or null. */
   readonly session: (sessionId: string) => Effect.Effect<{
     readonly status: string | null;
     readonly pane: string | null;
     readonly account: string | null;
+    /** Its config dir; null for ~/.claude. */
+    readonly configDir: string | null;
   } | null>;
-  /** The Claude instance for a login (null: the default one) and the model to resume on. */
-  readonly target: (
-    account: string | null,
-  ) => Effect.Effect<{ readonly instanceId: string; readonly model: string } | null>;
-  /** Asks the terminal process to end (/exit in its pane, else SIGTERM); true once it is gone. */
+  /** The Claude instance that reaches this session's transcript on its login, and the model to resume on. */
+  readonly target: (input: {
+    readonly threadId: string;
+    readonly sessionId: string;
+    readonly login: string | null;
+    readonly configDir: string | null;
+    readonly running: boolean;
+  }) => Effect.Effect<
+    { readonly instanceId: string; readonly model: string } | { readonly refused: string }
+  >;
+  /** Ends the terminal process (SIGTERM to its verified pid); true once no verified process holds the session. */
   readonly endTerminal: (sessionId: string) => Effect.Effect<boolean>;
+  /** Any verified process still holds the session (one this did not end, or one no scan lists as interactive). */
+  readonly held: (sessionId: string) => Effect.Effect<boolean>;
   readonly point: (input: {
     readonly threadId: string;
     readonly instanceId: string;
@@ -102,13 +142,31 @@ export const moveIntoTessaya = Effect.fn("MoveIntoTessaya.move")(function* (
   const session = yield* ports.session(sessionId);
   if (session !== null && session.status !== "idle")
     return no("busy", "The session is working. Move it when it is idle.");
-  const target = yield* ports.target(session?.account ?? null);
-  if (target === null)
-    return no("refused", "Not moved: no Claude account in Tessaya can take this session.");
+  // Decided before anything ends: with no account that reaches the transcript, the terminal is left running.
+  const target = yield* ports.target({
+    threadId: input.threadId,
+    sessionId,
+    login: session?.account ?? null,
+    configDir: session?.configDir ?? null,
+    running: session !== null,
+  });
+  if ("refused" in target) return no("refused", `Not moved: ${target.refused}`);
   if (session !== null && !(yield* ports.endTerminal(sessionId)))
     return no("refused", "Not moved: the terminal session did not exit; it was left as it was.");
+  if (yield* ports.held(sessionId))
+    return no(
+      "refused",
+      session === null
+        ? "Not moved: another process holds this session."
+        : "The terminal session ended, but another process still holds the session, so the thread was not switched.",
+    );
   const pointed = yield* Effect.exit(
-    ports.point({ threadId: input.threadId, ...target, sessionId }),
+    ports.point({
+      threadId: input.threadId,
+      instanceId: target.instanceId,
+      model: target.model,
+      sessionId,
+    }),
   );
   if (pointed._tag === "Failure")
     return no(
@@ -188,4 +246,22 @@ export const pointAtSessionEvents = (input: {
       },
     },
   ] as ReadonlyArray<OrchestrationV2DomainEvent>;
+};
+
+/** The Claude config dir an instance runs with: its home path, else its CLAUDE_CONFIG_DIR, else ~/.claude. */
+export const claudeHomeOf = (
+  instance:
+    | {
+        readonly config?: unknown;
+        readonly environment?: ReadonlyArray<{ readonly name: string; readonly value: unknown }>;
+      }
+    | undefined,
+  home = NodeOS.homedir(),
+): string => {
+  const config = instance?.config as { readonly homePath?: unknown } | undefined;
+  const homePath = typeof config?.homePath === "string" ? config.homePath.trim() : "";
+  if (homePath.length > 0) return NodePath.resolve(homePath.replace(/^~(?=$|\/)/, home));
+  const fromEnv = instance?.environment?.find((v) => v.name === "CLAUDE_CONFIG_DIR")?.value;
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) return NodePath.resolve(fromEnv);
+  return NodePath.join(home, ".claude");
 };

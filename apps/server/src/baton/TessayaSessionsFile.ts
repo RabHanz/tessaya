@@ -5,7 +5,6 @@
  * The server rewrites it when it changes; the file is a convenience copy, the database stays the record.
  */
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 export interface SessionHome {
@@ -74,24 +73,6 @@ export const writeSessionsFile = (path: string, homes: Iterable<SessionHome>): b
   return true;
 };
 
-/** The Claude config dir an instance runs with: its home path, else its CLAUDE_CONFIG_DIR, else ~/.claude. */
-export const claudeHomeOf = (
-  instance:
-    | {
-        readonly config?: unknown;
-        readonly environment?: ReadonlyArray<{ readonly name: string; readonly value: unknown }>;
-      }
-    | undefined,
-  home = NodeOS.homedir(),
-): string => {
-  const config = instance?.config as { readonly homePath?: unknown } | undefined;
-  const homePath = typeof config?.homePath === "string" ? config.homePath.trim() : "";
-  if (homePath.length > 0) return NodePath.resolve(homePath.replace(/^~(?=$|\/)/, home));
-  const fromEnv = instance?.environment?.find((v) => v.name === "CLAUDE_CONFIG_DIR")?.value;
-  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) return NodePath.resolve(fromEnv);
-  return NodePath.join(home, ".claude");
-};
-
 /** A terminal that never showed up within this long after opening counts as closed. */
 export const OPEN_GRACE_MS = 90_000;
 /** And a running one must be gone from every read for this long before the thread goes back. */
@@ -114,3 +95,31 @@ export const handBackDue = (input: {
   (input.seenRunning
     ? input.missingSince !== null && input.nowMs - input.missingSince >= CLOSED_GRACE_MS
     : input.nowMs - input.home.openedAt >= OPEN_GRACE_MS);
+
+export const REQUESTS_DIR = "tessaya-requests";
+
+/**
+ * `tessaya resume <thread> --force` with the server up: the CLI leaves `open-*.json` ({"threadId"}) here and the server
+ * stops the thread's turn and opens it in a terminal itself, so its SDK process is never killed from outside. Each
+ * request is removed as it is read, which is how the CLI knows the server took it.
+ */
+export const takeOpenRequests = (stateDir: string): ReadonlyArray<string> => {
+  const dir = NodePath.join(stateDir, REQUESTS_DIR);
+  let names: Array<string>;
+  try {
+    names = NodeFS.readdirSync(dir).filter((name) => /^open-[\w.-]+\.json$/.test(name));
+  } catch {
+    return [];
+  }
+  const threads: Array<string> = [];
+  for (const name of names) {
+    const file = NodePath.join(dir, name);
+    try {
+      const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as { threadId?: unknown };
+      NodeFS.rmSync(file, { force: true });
+      if (typeof parsed.threadId === "string" && parsed.threadId.length <= 120)
+        threads.push(parsed.threadId);
+    } catch {}
+  }
+  return threads;
+};

@@ -261,8 +261,54 @@ export const readClaudeLiveSessions = (input: {
     return sessions.toSorted((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
   });
 
-/** The pid of any live Claude process holding this session, Tessaya's own SDK ones included; null when none does. */
-export const sessionHolderPid = (sessionId: string): number | null => {
+/** What a session descriptor says about its process, for checking a pid before any signal. */
+export interface DescriptorProcess {
+  readonly pid: number;
+  /** /proc/<pid>/stat start time as Claude recorded it, when it did. */
+  readonly procStart?: string | undefined;
+  /** When the session started, ms. */
+  readonly startedAt?: number | undefined;
+}
+
+/**
+ * The pid still belongs to the Claude process the descriptor names, not a later process that reused the number:
+ * its command line runs claude, and its start time is the recorded one (or, without it, not after the session began).
+ */
+export const isDescriptorProcess = (
+  d: DescriptorProcess,
+  proc: { readonly cmdline: string | null; readonly stat: string | null; readonly bootMs: number },
+): boolean => {
+  if (proc.cmdline === null || proc.stat === null || !/claude/i.test(proc.cmdline)) return false;
+  const fields = proc.stat.slice(proc.stat.lastIndexOf(")") + 2).split(" ");
+  const start = fields[19];
+  if (start === undefined) return false;
+  if (d.procStart !== undefined) return start === d.procStart;
+  if (d.startedAt === undefined) return false;
+  // Clock ticks are 100 a second on Linux; a process starts just before it writes its descriptor.
+  return proc.bootMs + Number(start) * 10 <= d.startedAt + 2_000;
+};
+
+const readProc = (pid: number) => {
+  const read = (file: string) => {
+    try {
+      return NodeFS.readFileSync(`/proc/${pid}/${file}`, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  let bootMs = 0;
+  try {
+    const btime = /^btime (\d+)$/m.exec(NodeFS.readFileSync("/proc/stat", "utf8"));
+    bootMs = btime === null ? 0 : Number(btime[1]) * 1000;
+  } catch {}
+  return { cmdline: read("cmdline")?.replace(/\0/g, " ") ?? null, stat: read("stat"), bootMs };
+};
+
+/** Every live process whose descriptor holds this session, Tessaya's own SDK ones included, and whether it checks out. */
+export const sessionHolders = (
+  sessionId: string,
+): ReadonlyArray<{ readonly pid: number; readonly verified: boolean; readonly sdk: boolean }> => {
+  const found: Array<{ pid: number; verified: boolean; sdk: boolean }> = [];
   for (const dir of [...claudeConfigDirs(), ...threadConfigDirs()]) {
     let names: Array<string>;
     try {
@@ -277,10 +323,30 @@ export const sessionHolderPid = (sessionId: string): number | null => {
         const d = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "sessions", name), "utf8")) as {
           sessionId?: unknown;
           pid?: unknown;
+          procStart?: unknown;
+          startedAt?: unknown;
+          entrypoint?: unknown;
         };
-        if (d.sessionId === sessionId && typeof d.pid === "number" && alive(d.pid)) return d.pid;
+        if (d.sessionId !== sessionId || typeof d.pid !== "number" || !alive(d.pid)) continue;
+        if (found.some((f) => f.pid === d.pid)) continue;
+        found.push({
+          pid: d.pid,
+          verified: isDescriptorProcess(
+            {
+              pid: d.pid,
+              procStart: typeof d.procStart === "string" ? d.procStart : undefined,
+              startedAt: typeof d.startedAt === "number" ? d.startedAt : undefined,
+            },
+            readProc(d.pid),
+          ),
+          sdk: typeof d.entrypoint === "string" && d.entrypoint.startsWith("sdk"),
+        });
       } catch {}
     }
   }
-  return null;
+  return found;
 };
+
+/** The pid of a verified live process holding this session, or null when none does. */
+export const sessionHolderPid = (sessionId: string): number | null =>
+  sessionHolders(sessionId).find((h) => h.verified)?.pid ?? null;
