@@ -34,7 +34,11 @@ import { sessionEffort, setLiveModel, transcriptModel } from "@t3tools/baton-sha
 import { herdrSend } from "./HerdrSend.ts";
 import { TESSAYA_CLI } from "./SessionCatalogLive.ts";
 
-import { ProviderDriverKind, type BatonLiveQueued } from "@t3tools/baton-contracts";
+import {
+  ProviderDriverKind,
+  type BatonLiveQueued,
+  type ServerProvider,
+} from "@t3tools/baton-contracts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
@@ -164,6 +168,14 @@ const transcriptPath = (session: {
 
 const TAIL_BYTES = 512 * 1024;
 
+const readText = (path: string): string | null => {
+  try {
+    return NodeFS.readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+};
+
 const readTail = (path: string): string => {
   try {
     const bytes = NodeFS.readFileSync(path);
@@ -175,26 +187,17 @@ const readTail = (path: string): string => {
 
 /** A Claude model's default effort, from T3's own model capabilities. */
 export const defaultEffortOf = (
-  providers: ReadonlyArray<{
-    readonly driver: string;
-    readonly models: ReadonlyArray<{
-      readonly slug: string;
-      readonly capabilities: {
-        readonly optionDescriptors?: ReadonlyArray<{
-          readonly id: string;
-          readonly options?: ReadonlyArray<{ readonly id: string; readonly isDefault?: boolean }>;
-        }>;
-      } | null;
-    }>;
-  }>,
+  providers: ReadonlyArray<ServerProvider>,
   model: string | null,
 ): string | null =>
   providers
     .filter((provider) => provider.driver === "claudeAgent")
     .flatMap((provider) => provider.models)
     .find((candidate) => candidate.slug === model)
-    ?.capabilities?.optionDescriptors?.find((descriptor) => descriptor.id === "effort")
-    ?.options?.find((option) => option.isDefault === true)?.id ?? null;
+    ?.capabilities?.optionDescriptors?.flatMap((descriptor) =>
+      descriptor.id === "effort" && descriptor.type === "select" ? descriptor.options : [],
+    )
+    .find((option) => option.isDefault === true)?.id ?? null;
 
 /** The effort a live session really runs at (never the composer's "as it is"), for the picker (ACCOUNTS-2). */
 export const liveEffort = (
@@ -205,18 +208,9 @@ export const liveEffort = (
     const found = (yield* readAllProfileLiveSessions()).find((s) => s.sessionId === sessionId);
     if (found === undefined) return null;
     const tail = readTail(transcriptPath(found));
-    let settingsJson: string | null = null;
-    try {
-      settingsJson = NodeFS.readFileSync(
-        NodePath.join(
-          found.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"),
-          "settings.json",
-        ),
-        "utf8",
-      );
-    } catch {
-      settingsJson = null;
-    }
+    const settingsJson = readText(
+      NodePath.join(found.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"), "settings.json"),
+    );
     return sessionEffort({
       transcriptTail: tail,
       settingsJson,
