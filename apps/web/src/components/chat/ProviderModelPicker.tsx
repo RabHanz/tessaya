@@ -116,10 +116,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
-  // Opened from the header's account chip, it hangs under that chip instead of the composer.
-  const batonAnchor = useBatonPickerAnchor();
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
+  // Opened from the header's account chip, it hangs under that chip instead of the composer.
+  const batonAnchor = useBatonPickerAnchor(isMenuOpen);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);

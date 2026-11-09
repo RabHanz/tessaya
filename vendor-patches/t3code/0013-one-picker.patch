@@ -437,7 +437,7 @@ index f040df764cda9188e68a9f70ee639d3a258d98ae..c3beb2b97ba09e89a51e21e1b1233944
                listRef={modelListRef}
                itemKeys={filteredItemKeys}
 diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
-index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..f380c66bd1f65aa5fb0596d71af68019b341509d 100644
+index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..d45cfcd096769e2b2194efd928c1639e7be19130 100644
 --- a/apps/web/src/components/chat/ProviderModelPicker.tsx
 +++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
 @@ -12,6 +12,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -448,18 +448,20 @@ index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..f380c66bd1f65aa5fb0596d71af68019
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
  import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
-@@ -112,8 +113,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+@@ -112,10 +113,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     */
    effortColumn?: ReactNode;
    footer?: ReactNode;
 +  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
  }) {
    const composerFloatingLayerProps = useComposerMenuProps();
-+  // Opened from the header's account chip, it hangs under that chip instead of the composer.
-+  const batonAnchor = useBatonPickerAnchor();
    const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
    const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
++  // Opened from the header's account chip, it hangs under that chip instead of the composer.
++  const batonAnchor = useBatonPickerAnchor(isMenuOpen);
    const searchInputRef = useRef<HTMLInputElement>(null);
+   const triggerRef = useRef<HTMLButtonElement>(null);
+   const popupRef = useRef<HTMLDivElement | null>(null);
 @@ -274,6 +278,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
            : (props.getModelDisabledReason?.(instanceId, model) ?? null)
        }

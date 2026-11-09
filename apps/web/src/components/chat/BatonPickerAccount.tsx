@@ -38,7 +38,7 @@ import {
   LockIcon,
   LockOpenIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
 import type { ProviderInstanceEntry } from "../../providerInstances";
@@ -72,8 +72,15 @@ export const batonPickerFocusAtom = Atom.make<{
 } | null>(null);
 
 /** The picker popup's placement while the header chip opened it: under the chip, not over the composer. */
-export function useBatonPickerAnchor() {
+export function useBatonPickerAnchor(open: boolean) {
   const focus = useAtomValue(batonPickerFocusAtom);
+  const setFocus = useAtomSet(batonPickerFocusAtom);
+  const wasOpen = useRef(open);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- forgets the chip's request held outside React when the picker closes
+  useEffect(() => {
+    if (wasOpen.current && !open) setFocus(null);
+    wasOpen.current = open;
+  }, [open, setFocus]);
   return focus === null
     ? {}
     : {
@@ -101,13 +108,6 @@ function useFocusRequestedRow(accountIds: ReadonlyArray<string>) {
     }, 0);
     return () => clearTimeout(timer);
   }, [accountId, shown]);
-}
-
-/** The chip's request lives as long as the picker that answered it, whichever provider it ends on. */
-function useForgetFocusOnClose() {
-  const setFocus = useAtomSet(batonPickerFocusAtom);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears a request held outside React when the picker unmounts
-  useEffect(() => () => setFocus(null), [setFocus]);
 }
 
 /** One record per real account on the thread's environment (baton.accounts.list). */
@@ -417,7 +417,6 @@ export function BatonPickerAccount(props: {
   readonly onPickInstance: (instanceId: ProviderInstanceId) => void;
 }) {
   const { entry, threadRef } = props;
-  useForgetFocusOnClose();
   const accounts = useBatonAccounts(props.environmentId);
   // The thread's own instance decides, not a pick waiting in the composer: the header chip reads the same.
   const storedInstanceId = useQuietThreadShell(threadRef)?.modelSelection.instanceId;
