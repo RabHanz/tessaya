@@ -1,4 +1,5 @@
 import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
+import { providerChangeRefusal } from "@t3tools/baton-shared/providerChange";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -5871,6 +5872,40 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandType: command.type,
         cause: liveRefusal,
       });
+    }
+    if (modelSelection.instanceId !== projection.thread.providerInstanceId) {
+      const providerThreads = projection.providerThreads;
+      const driverOf = (instanceId: ProviderInstanceId) =>
+        providerAdapters.get(instanceId).pipe(
+          Effect.map((adapter): string | null => adapter.driver),
+          Effect.orElseSucceed(
+            () =>
+              providerThreads.find((thread) => thread.providerInstanceId === instanceId)?.driver ??
+              null,
+          ),
+        );
+      const targetDriver = yield* driverOf(modelSelection.instanceId);
+      const changeRefusal =
+        targetDriver === null
+          ? null
+          : providerChangeRefusal({
+              started: providerThreads.length > 0,
+              currentDriver: yield* driverOf(projection.thread.providerInstanceId),
+              targetDriver,
+              approved: command.providerChangeApproved === true,
+            });
+      if (changeRefusal !== null) {
+        yield* Effect.logWarning("provider-change-blocked", {
+          threadId: command.threadId,
+          from: projection.thread.providerInstanceId,
+          to: modelSelection.instanceId,
+        });
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: changeRefusal,
+        });
+      }
     }
     let dispatchMode = resolveMessageDispatchIntent(
       projection,

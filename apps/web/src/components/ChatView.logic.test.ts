@@ -596,6 +596,30 @@ describe("resolveComposerProviderSelection", () => {
     },
   );
 
+  it("keeps a thread on its missing instance under handoff until the user picks another", () => {
+    const codex = entry("codex");
+    const claude = entry("claudeAgent");
+    const missingInstanceId = ProviderInstanceId.make("baton-live");
+    const thread = importedThread(missingInstanceId);
+    const resolve = (handoffInstanceId: ProviderInstanceId | null) =>
+      resolveComposerProviderSelection({
+        entries: [codex, claude],
+        candidateInstanceIds: [handoffInstanceId, missingInstanceId, codex.instanceId],
+        lockedProvider: deriveLockedProvider({
+          thread,
+          selectedProvider: handoffInstanceId,
+          threadProvider: missingInstanceId,
+          providers: [codex.snapshot, claude.snapshot],
+        }),
+        lockedInstanceId: missingInstanceId,
+        handoffInstanceId,
+      });
+
+    expect(resolve(null).selectedProviderEntry).toBeUndefined();
+    expect(resolve(null).unavailableProviderInstanceId).toBe(missingInstanceId);
+    expect(resolve(claude.instanceId).selectedProviderEntry?.instanceId).toBe(claude.instanceId);
+  });
+
   it("keeps a signed-out selection instead of silently switching providers", () => {
     const signedOutEntry = entry("antigravity", "google_work", {
       status: "error",

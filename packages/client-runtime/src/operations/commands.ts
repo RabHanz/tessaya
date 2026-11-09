@@ -177,6 +177,8 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
     readonly idleCompaction?: import("@t3tools/contracts").OrchestrationV2IdleCompaction;
   };
   readonly modelSelection?: ModelSelection;
+  /** The user picked `modelSelection`'s provider; the server keeps a started thread's driver without it. */
+  readonly providerChangeApproved?: boolean;
   readonly titleSeed?: string;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
@@ -751,6 +753,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
         : { idleCompaction: input.message.idleCompaction }),
       attachments,
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+      ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
       ...(input.sourceProposedPlan === undefined
         ? {}
         : { sourcePlanRef: input.sourceProposedPlan }),
@@ -778,6 +781,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
     attachments,
     ...(input.titleSeed === undefined ? {} : { titleSeed: input.titleSeed }),
     ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+    ...(input.providerChangeApproved ? { providerChangeApproved: true } : {}),
     ...(input.sourceProposedPlan === undefined ? {} : { sourcePlanRef: input.sourceProposedPlan }),
     ...(input.freshContext ? { freshContext: true } : {}),
     ...(requestedMode !== "queue" ? { deliveryIntent: requestedMode } : {}),
