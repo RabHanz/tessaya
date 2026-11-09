@@ -545,7 +545,7 @@ interface VoiceSettings {
   readonly showWords: boolean;
   /** "field": his words at the caret of the field they go into when it says where; "pill": always in the pill. */
   readonly pillStyle: "pill" | "field";
-  /** Windows 11's acrylic behind the cards beside the pill; off by default. */
+  /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
   readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
@@ -1835,16 +1835,29 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
   };
   const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
+  /** The dictation whose ghost holds his typing keys until its paste lands (the sidecar's `hold_keys`); 0 for none. */
+  let keyHold = 0;
+  let keyHolds = 0;
   const oneShot = createOneShot<FocusedApp>({
     // A hung ghost page never stops the paste: past GHOST_WAIT_MS the words land anyway.
-    beforePaste: (raw, text) =>
-      Promise.race([
+    beforePaste: (raw, text, app) => {
+      // Enter pressed while the ghost plays must land after the words, so typing keys wait for this paste.
+      if (ghost.active() && app.window !== undefined && sidecar !== null) {
+        keyHold = ++keyHolds;
+        sidecar.holdKeys(keyHold, app.window);
+      }
+      return Promise.race([
         ghost.play(raw, text),
         new Promise<boolean>((resolve) => setTimeout(() => resolve(false), GHOST_WAIT_MS).unref()),
       ]).then((played) => {
         ghostPlayed = played;
         if (!played) ghost.stop();
-      }),
+      });
+    },
+    afterPaste: () => {
+      if (keyHold !== 0) sidecar?.releaseKeys(keyHold);
+      keyHold = 0;
+    },
     save: (chunks) => {
       try {
         NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
@@ -3192,6 +3205,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
       // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
+      liveWords: settings.showWords,
     });
     syncCleanupSession();
   };
@@ -3493,6 +3507,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       showDictation("Esc twice discards");
       startGhost();
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
+    else if (event.ev === "held_key" && event.id === keyHold) ghost.skip();
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
@@ -3754,6 +3769,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
     showWords: () => settings.showWords && !ghost.active(),
+    frosted: () => settings.frosted && acrylicSupported(input.platform, NodeOS.release()),
     dictationMessage: () => dictationMessage,
     workArea: () => workRect,
     onDismiss: () => {
@@ -6047,7 +6063,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.frosted",
         section: "On screen",
         label: "Frosted glass",
-        hint: "Windows 11 blurs what is behind the cards beside the pill. Off, or on Windows 10, they keep their tinted glass.",
+        hint: "Windows 11 blurs what is behind the pill's words and the cards beside it. Off, or on Windows 10, they keep their tinted glass.",
         kind: "toggle",
         on: settings.frosted,
         more: true,
@@ -6969,8 +6985,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ hideFromCapture: on });
       setHideFromCapture(on);
     } else if (id === "v.learnWords") save({ learnWords: on });
-    else if (id === "v.showWords") save({ showWords: on });
-    else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
+    else if (id === "v.showWords") {
+      save({ showWords: on });
+      configureDictation();
+    } else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
       save({ pillStyle: value });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });

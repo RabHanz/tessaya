@@ -129,6 +129,33 @@ impl Chunker {
         None
     }
 
+    /// Samples heard since the last cut.
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// The audio since the last cut, with its context, left in place: a quick look at words not yet cut.
+    pub fn preview(&self) -> Option<Piece> {
+        if self.pending.is_empty() {
+            return None;
+        }
+        let mut pcm = self.tail.clone();
+        pcm.extend_from_slice(&self.pending);
+        Some(Piece { pcm, context: self.tail.len(), at_pause: false })
+    }
+
+    /// Nothing but quiet in the uncut audio from `from` on, against the whole recording's floor and speech: a preview
+    /// of it would only decode silence.
+    pub fn quiet_since(&self, from: usize, heard: &[f32]) -> bool {
+        let levels = frame_levels(heard);
+        let (floor, loud) = (percentile(&levels, 0.1), percentile(&levels, 0.9));
+        if loud < floor * 2.0 {
+            return loud < SILENCE;
+        }
+        let quiet = floor + (loud - floor) * 0.1;
+        frame_levels(&self.pending[from.min(self.pending.len())..]).iter().all(|l| *l <= quiet)
+    }
+
     /// What is left at key release.
     pub fn finish(&mut self) -> Option<Piece> {
         if self.pending.is_empty() {
@@ -153,6 +180,17 @@ impl Chunker {
         let own = frame_levels(&self.pending);
         let (own_floor, own_loud) = (percentile(&own, 0.1), percentile(&own, 1.0));
         own.iter().all(|l| *l <= quiet) && own_loud <= own_floor * 2.0 + SILENCE
+    }
+}
+
+/// A preview of the uncut words is due: half a second heard, then each second more, and never more than half the time
+/// spent decoding (`last_ms` is the last preview's), so a slow machine previews less often instead of falling behind.
+pub fn preview_due(pending: usize, previewed: usize, last_ms: u64) -> bool {
+    let step = RATE.max(last_ms as usize * 2 * RATE / 1000);
+    if previewed == 0 {
+        pending >= RATE / 2
+    } else {
+        pending >= previewed + step
     }
 }
 
@@ -266,6 +304,45 @@ mod tests {
         pcm.extend_from_slice(&soft);
         assert!(chunker.push(&soft).is_none());
         assert!(!chunker.pending_is_quiet(&pcm));
+    }
+
+    #[test]
+    fn a_preview_looks_at_the_uncut_words_without_taking_them() {
+        let mut chunker = Chunker::new(PARAMS);
+        assert!(chunker.preview().is_none());
+        let speech = tone(1.0, 0.2);
+        assert!(chunker.push(&speech).is_none());
+        let piece = chunker.preview().unwrap();
+        assert_eq!((piece.pcm.len(), piece.context, piece.at_pause), (RATE, 0, false));
+        assert_eq!(chunker.pending_len(), RATE);
+        assert_eq!(chunker.finish().unwrap().pcm.len(), RATE);
+    }
+
+    #[test]
+    fn a_preview_of_silence_is_skipped() {
+        let mut heard = tone(1.0, 0.2);
+        let mut chunker = Chunker::new(PARAMS);
+        chunker.push(&heard);
+        assert!(!chunker.quiet_since(0, &heard));
+        let hush = tone(0.6, 0.2 / 300.0);
+        heard.extend_from_slice(&hush);
+        chunker.push(&hush);
+        assert!(chunker.quiet_since(RATE, &heard));
+        let zeros = tone(1.0, 0.0);
+        let mut silent = Chunker::new(PARAMS);
+        silent.push(&zeros);
+        assert!(silent.quiet_since(0, &zeros));
+    }
+
+    #[test]
+    fn previews_come_each_second_and_back_off_on_a_slow_machine() {
+        assert!(!preview_due(RATE / 4, 0, 0));
+        assert!(preview_due(RATE / 2, 0, 0));
+        assert!(!preview_due(RATE, RATE / 2, 200));
+        assert!(preview_due(RATE * 3 / 2, RATE / 2, 200));
+        // A preview that took 1.5 s waits for 3 s more audio, so decoding never takes more than half the time.
+        assert!(!preview_due(RATE * 3, RATE / 2, 1_500));
+        assert!(preview_due(RATE * 7 / 2, RATE / 2, 1_500));
     }
 
     #[test]

@@ -42,6 +42,7 @@ export const ISLAND_MEASURE = `<div id="mE" aria-hidden="true"></div>`;
 export const wordsScript = (variant: "E" | "D"): string => `
 const {clamp,prog,EMPH,DECEL,ACCEL,MD,FLOW,EXPAND_MS,SMOOTH,springAt,align,cleanupTimes,stepWidth}=(${pillEngine.toString()})();
 const D=${variant === "D"},PH=34,PBASE=124,LIVE_LINES=D?99:5,PAD=12,MAXW=${ISLAND_WIDTH},TMAX=MAXW-32,FLOW01=[{at:0,to:0},{at:0,to:1}];
+const SHRINK_MS=D?0:600;
 let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0;
 // D: the field's own font, line height, text width and where the caret sits on its line.
 const setField=(fontPx,linePx,width,indent)=>{LINE=linePx;FW=width;INDENT=indent;for(const el of[vp,mE])el.style.font='400 '+fontPx+'px/'+linePx+'px var(--sans)';};
@@ -110,6 +111,8 @@ const island={
   ALL_LINES=Math.min(roomLines(),Math.max(7,Math.min(12,Math.max(rawLines,usedA.length,linesB))));
   const C=cleanupTimes(Math.max(rawLines>LIVE_LINES?EXPAND_MS:0,now-I.R));
   Object.assign(I,{C,P:I.R+C.PASTE,toks,rawP,linesB,clean,drops:ops.filter(o=>o.op==='drop').map(o=>o.i)});
+  // Once the words have gone the capsule springs back to the plain pill, as the prototype ends.
+  I.W.push({at:I.P+C.OUT_D,to:PBASE});
   // One span per new spelling, one landing copy per wrapped or inserted word; a punctuation or case change morphs
   // only the characters that change, in a slot whose width follows them.
   toks.forEach(k=>{if(k.sub)k.subS=mk(k.text);if(k.i===null||k.change)k.landS=mk(k.text);
@@ -119,7 +122,7 @@ const island={
     const slot=part(''),o=part(a.slice(pre,a.length-suf)),n=part(b.slice(pre,b.length-suf));slot.className='slot';o.className='g';n.className='g';
     slot.append(o,n);el.append(part(a.slice(0,pre)),slot,part(a.slice(a.length-suf)));vp.appendChild(el);
     k.morph={el,slot,o,n,wo:o.offsetWidth,wn:n.offsetWidth,end:suf===0};}});
-  kickI(I.P+C.OUT_D+50);return Math.ceil(I.P+C.OUT_D-now);},
+  kickI(I.P+C.OUT_D+SHRINK_MS);return Math.ceil(I.P+C.OUT_D+SHRINK_MS-now);},
 };
 const morphAt=(M,q)=>{M.slot.style.width=(M.wo+(M.wn-M.wo)*q).toFixed(2)+'px';
  if(M.end){M.o.style.transform='scale('+(1-.4*q).toFixed(3)+')';M.n.style.transform='scale('+(.6+.4*q).toFixed(3)+')';}
@@ -131,7 +134,8 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
  const w=springAt(L.W,t,calm);let h,sc;
  if(t<R){h=Math.max(0,springAt(L.Hh,t,calm));sc=springAt(L.Sc,t,calm);}
  else{const hRaw=hOf(L.rawLines);
-  if(C&&t>=R+C.MOVE_T){h=hRaw+(hOf(L.linesB)-hRaw)*pp;sc=0;}
+  if(C&&t>=P){h=Math.max(0,springAt([{at:0,to:hOf(L.linesB)},{at:P+C.OUT_D,to:0}],t,calm));sc=0;}
+  else if(C&&t>=R+C.MOVE_T){h=hRaw+(hOf(L.linesB)-hRaw)*pp;sc=0;}
   // From ✓ the capsule opens and the scroll returns to the top on one curve from where they were.
   else{const qo=calm?1:SMOOTH(prog(t,R,EXPAND_MS)),hAtR=Math.max(0,springAt(L.HhLive,R,calm));h=hAtR+(hRaw-hAtR)*qo;sc=springAt(L.ScLive,R,calm)*(1-qo);}}
  const ww=w;
@@ -139,7 +143,7 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
  p_.style.left=((MAXW-ww)/2).toFixed(2)+'px';p_.style.width=ww.toFixed(2)+'px';p_.style.height=(PH+h).toFixed(2)+'px';p_.style.borderRadius=(PH/2-clamp(h/24))+'px';
  const tuck=t<R?0:t<P?(calm?1:EMPH(prog(t,R,MD.medium2))):(calm?0:1-EMPH(prog(t,P,MD.medium2)));
  for(const id of['dx','w','dv'])$(id).style.opacity=String(1-.65*tuck);
- $('dv').style.color=t>=R?'var(--accent)':'';
+ $('dv').style.color=t>=R&&t<P+200?'var(--accent)':'';
  $('dx').style.transform='translate(5px,3px)';$('dv').style.transform='translate('+(ww-33).toFixed(2)+'px,3px)';$('w').style.transform='translate('+(ww/2-27).toFixed(2)+'px,9px)';
  const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(16px,'+(PH-4)+'px)';
  vp.style.clipPath='inset(0 '+Math.max(0,16+TMAX-(ww-14)).toFixed(2)+'px '+Math.max(0,vh-(h-PAD+4)).toFixed(2)+'px 0)';
@@ -177,8 +181,9 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
    const in_=inOf(k);
    if(k.morph){hide(k.landS);k.morph.el.style.color=vis[vis.length-1][2];place(k.morph.el,k.B.x-dir*8*(1-in_),k.B.y,in_*fade,3*(1-in_));morphAt(k.morph,morphQ);continue;}
    k.landS.style.color=vis[vis.length-1][2];place(k.landS,k.B.x-dir*8*(1-in_),k.B.y,in_*fade,3*(1-in_));continue;}
-  const x=k.from.x+(k.B.x-k.from.x)*p,y=k.from.y+(k.B.y-k.from.y)*p-sc;
-  for(const [s,op,cl] of vis){s.style.color=cl;place(s,x,y,op*fade);}}};
+  // Words first heard in the final piece (after ✓) arrive with the same fade as live words, never all at once.
+  const x=k.from.x+(k.B.x-k.from.x)*p,y=k.from.y+(k.B.y-k.from.y)*p-sc,late=L.appear[k.i]>R?DECEL(prog(t,L.appear[k.i],MD.medium4)):1;
+  for(const [s,op,cl] of vis){s.style.color=cl;place(s,x,y,op*fade*late);}}};
 `;
 
 export const ISLAND_SCRIPT = wordsScript("E");
