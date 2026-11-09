@@ -1011,7 +1011,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               onTouchStart={(e) => e.stopPropagation()}
             />
 
-            {detailEntry ? props.renderInstanceDetail?.(detailEntry) : null}
+            {detailEntry ? (
+              // Scrolls on its own past half the column, so neither its last rows nor the models fall under the footer.
+              <div className="max-h-1/2 min-h-0 shrink-0 overflow-y-auto overscroll-y-contain">
+                {props.renderInstanceDetail?.(detailEntry)}
+              </div>
+            ) : null}
             <ModelPickerList
               listRef={modelListRef}
               itemKeys={filteredItemKeys}

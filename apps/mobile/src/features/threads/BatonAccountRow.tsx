@@ -7,19 +7,8 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { accountForInstance, type BatonAccountRecord } from "@t3tools/baton-contracts";
 import { keepsDraft, liveChangeRoute } from "@t3tools/baton-shared/liveModel";
 import { accountPickHint, accountPickTarget, accountTicks } from "@t3tools/baton-shared/accounts";
-import {
-  maskedEmail,
-  queuedText,
-  resetLabel,
-  roomText,
-  roomTone,
-} from "@t3tools/baton-shared/accountRoom";
-import {
-  isLiveThreadId,
-  LIVE_INSTANCE,
-  liveSessionIdOf,
-  liveThreadIdOf,
-} from "@t3tools/baton-shared/liveThread";
+import { maskedEmail, queuedText, roomText, roomTone } from "@t3tools/baton-shared/accountRoom";
+import { isLiveThreadId, LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
@@ -36,7 +25,6 @@ import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { accountPickOption, loadedLoginKey, type SessionLogin } from "./batonCatalog";
-import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
 const NOTHING = Atom.make(AsyncResult.initial<never, never>(false));
 
@@ -323,79 +311,12 @@ function Card(props: { readonly title: string; readonly children: React.ReactNod
   );
 }
 
-type TerminalRow = {
-  readonly id: string;
-  readonly project: string;
-  readonly title: string;
-  readonly pane: string | null;
-  readonly lastActivityAt: string | null;
-};
-
-/** The Terminal group's sessions running here now; a tap opens its thread. */
-function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
-  const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
-  const open = useOpenLinkedThread();
-  const now = useNowMinuteMs();
-  const [rows, setRows] = useState<ReadonlyArray<TerminalRow> | null>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's session catalog while the sheet shows Terminal
-  useEffect(() => {
-    let cancelled = false;
-    void list({ environmentId: props.environmentId, input: { limit: 30 } }).then((result) => {
-      if (cancelled || result._tag !== "Success") return;
-      setRows(
-        result.value.sessions
-          .filter((session) => session.state === "running" && session.source === "live")
-          .map((session) => ({
-            id: session.id,
-            project: session.project,
-            title: session.title,
-            pane: session.pane ?? null,
-            lastActivityAt: session.lastActivityAt,
-          })),
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [list, props.environmentId]);
-  if (rows === null) return null;
+/** Terminal in the sheet: what it is. Its sessions are reached from the thread list, not listed here. */
+function TerminalNote() {
   return (
-    <Card title="Sessions running in a terminal. Tessaya types into them.">
-      {rows.length === 0 ? (
-        <Text className="px-4 py-3 text-sm text-foreground-muted">None running here now.</Text>
-      ) : (
-        rows.map((row, index) => (
-          <Pressable
-            key={row.id}
-            accessibilityRole="button"
-            onPress={() =>
-              open({ environmentId: props.environmentId, threadId: liveThreadIdOf(row.id) })
-            }
-            className={cn(
-              "min-h-11 flex-row items-center gap-2 px-4 py-1.5 active:opacity-60",
-              index < rows.length - 1 && "border-b border-border-subtle",
-            )}
-          >
-            <View className="min-w-0 flex-1">
-              <Text className="text-sm font-t3-medium text-foreground" numberOfLines={1}>
-                {row.project}
-              </Text>
-              <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
-                {row.title}
-              </Text>
-            </View>
-            <Text className="text-2xs text-foreground-muted">
-              {[
-                row.pane?.split("~").at(-1),
-                row.lastActivityAt === null ? null : resetLabel(row.lastActivityAt, now),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </Text>
-          </Pressable>
-        ))
-      )}
-    </Card>
+    <Text className="mx-5 mb-1 mt-1 text-2xs text-foreground-muted">
+      Terminal: Claude sessions running in a terminal. Open one from the thread list.
+    </Text>
   );
 }
 
@@ -508,10 +429,7 @@ export function BatonAccountRow(props: {
   const loginKey = useSessionLoginKey(props.environmentId, props.threadId);
   if (props.environmentId === null) return null;
   const sessionId = props.threadId === null ? null : liveSessionIdOf(props.threadId);
-  const terminal =
-    props.provider.key === LIVE_INSTANCE ? (
-      <TerminalSessions environmentId={props.environmentId} />
-    ) : null;
+  const terminal = props.provider.key === LIVE_INSTANCE ? <TerminalNote /> : null;
   if (sessionId !== null && props.appliedInstanceId === LIVE_INSTANCE) {
     // Once, under Terminal: the session's logins are its own, not the Claude group's.
     if (props.provider.key !== LIVE_INSTANCE) return null;

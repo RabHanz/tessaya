@@ -408,7 +408,7 @@ index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2da8aad7e2f5b5f9e648115a659998b0
    );
  }
 diff --git a/apps/web/src/components/chat/ModelPickerContent.tsx b/apps/web/src/components/chat/ModelPickerContent.tsx
-index f040df764cda9188e68a9f70ee639d3a258d98ae..c3beb2b97ba09e89a51e21e1b123394491913bf2 100644
+index f040df764cda9188e68a9f70ee639d3a258d98ae..364a458468670e49e80bbcf6c2e49dc2810ab0e4 100644
 --- a/apps/web/src/components/chat/ModelPickerContent.tsx
 +++ b/apps/web/src/components/chat/ModelPickerContent.tsx
 @@ -368,6 +368,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
@@ -428,11 +428,16 @@ index f040df764cda9188e68a9f70ee639d3a258d98ae..c3beb2b97ba09e89a51e21e1b1233944
    const providerSetupEntries =
      !isSearching && canOpenProviderSetup
        ? instanceEntries.filter(
-@@ -1008,6 +1011,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+@@ -1008,6 +1011,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                onTouchStart={(e) => e.stopPropagation()}
              />
  
-+            {detailEntry ? props.renderInstanceDetail?.(detailEntry) : null}
++            {detailEntry ? (
++              // Scrolls on its own past half the column, so neither its last rows nor the models fall under the footer.
++              <div className="max-h-1/2 min-h-0 shrink-0 overflow-y-auto overscroll-y-contain">
++                {props.renderInstanceDetail?.(detailEntry)}
++              </div>
++            ) : null}
              <ModelPickerList
                listRef={modelListRef}
                itemKeys={filteredItemKeys}
