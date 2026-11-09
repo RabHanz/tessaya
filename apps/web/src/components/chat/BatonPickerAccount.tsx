@@ -71,6 +71,11 @@ export const batonPickerFocusAtom = Atom.make<{
   readonly accountId: string;
 } | null>(null);
 
+const accountRow = (accountId: string) =>
+  document.querySelector<HTMLElement>(
+    `[data-testid="model-picker-account"][data-account-id="${CSS.escape(accountId)}"]`,
+  );
+
 /** The picker popup's placement while the header chip opened it: under the chip, not over the composer. */
 export function useBatonPickerAnchor(open: boolean) {
   const focus = useAtomValue(batonPickerFocusAtom);
@@ -91,20 +96,18 @@ export function useBatonPickerAnchor(open: boolean) {
       };
 }
 
-/** Scrolls to and focuses the chip's account row once the picker shows it, and forgets the request on close. */
+/** Scrolls to the chip's account row once the picker shows it, and forgets the request on close. */
 function useFocusRequestedRow(accountIds: ReadonlyArray<string>) {
   const focus = useAtomValue(batonPickerFocusAtom);
   const accountId = focus?.accountId ?? null;
   const shown = accountId !== null && accountIds.includes(accountId);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves DOM focus to the requested row after the popup's own initial focus
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the requested row into view once the popup lays it out
   useEffect(() => {
     if (!shown || accountId === null) return;
     const timer = setTimeout(() => {
-      const row = document.querySelector<HTMLElement>(
-        `[data-testid="model-picker-account"][data-account-id="${CSS.escape(accountId)}"]`,
-      );
+      const row = accountRow(accountId);
+      // The thread's own row is disabled (it is already current), so it is shown, not focused.
       row?.scrollIntoView({ block: "nearest" });
-      row?.focus();
     }, 0);
     return () => clearTimeout(timer);
   }, [accountId, shown]);
