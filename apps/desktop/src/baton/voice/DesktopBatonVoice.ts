@@ -1812,16 +1812,29 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
   };
   const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
+  /** The dictation whose ghost holds his typing keys until its paste lands (the sidecar's `hold_keys`); 0 for none. */
+  let keyHold = 0;
+  let keyHolds = 0;
   const oneShot = createOneShot<FocusedApp>({
     // A hung ghost page never stops the paste: past GHOST_WAIT_MS the words land anyway.
-    beforePaste: (raw, text) =>
-      Promise.race([
+    beforePaste: (raw, text, app) => {
+      // Enter pressed while the ghost plays must land after the words, so typing keys wait for this paste.
+      if (ghost.active() && app.window !== undefined && sidecar !== null) {
+        keyHold = ++keyHolds;
+        sidecar.holdKeys(keyHold, app.window);
+      }
+      return Promise.race([
         ghost.play(raw, text),
         new Promise<boolean>((resolve) => setTimeout(() => resolve(false), GHOST_WAIT_MS).unref()),
       ]).then((played) => {
         ghostPlayed = played;
         if (!played) ghost.stop();
-      }),
+      });
+    },
+    afterPaste: () => {
+      if (keyHold !== 0) sidecar?.releaseKeys(keyHold);
+      keyHold = 0;
+    },
     save: (chunks) => {
       try {
         NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
@@ -1894,8 +1907,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
-    // The paste has landed (or never will): the keys he pressed meanwhile go now, in order.
-    sidecar?.holdKeys(false);
     if (result.status !== "pasted") ghost.stop();
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
@@ -3381,8 +3392,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       cleanup: "local",
     });
     oneShot.push(words);
-    // Enter pressed while the ghost plays must land after the words: keys wait for the paste (flushDictation).
-    if (ghost.active()) sidecar?.holdKeys(true);
     void flushDictation(Promise.resolve(app));
   };
   /** Once ever, at the local level: Claude can also fix the grammar and the false starts. */
@@ -3476,7 +3485,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       showDictation("Esc twice discards");
       startGhost();
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
-    else if (event.ev === "held_key") ghost.skip();
+    else if (event.ev === "held_key" && event.id === keyHold) ghost.skip();
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();

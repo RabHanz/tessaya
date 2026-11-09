@@ -165,8 +165,8 @@ export type DictationEvent =
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
   | { readonly ev: "idle" }
-  /** A key was held for the paste (`holdKeys`): paste now. */
-  | { readonly ev: "held_key" }
+  /** A key was held for dictation `id`'s paste (`holdKeys`): paste now. */
+  | { readonly ev: "held_key"; readonly id: number }
   | { readonly ev: "error"; readonly message: string }
   /** Just before the chord, what the clipboard held (ours or something else); when settled, whether it was read. */
   | {
@@ -244,8 +244,10 @@ export interface DictationSidecar {
   readonly finish: () => void;
   /** The desktop's voice dictation is on: a dictation key press is its ✓, not a second recording. */
   readonly voice: (on: boolean) => void;
-  /** While the ghost plays, keys he presses wait for the paste (Windows); off sends them, in order, after it. */
-  readonly holdKeys: (on: boolean) => void;
+  /** While dictation `id`'s ghost plays, typing keys for `window` wait for its paste (Windows). */
+  readonly holdKeys: (id: number, window: number) => void;
+  /** Dictation `id`'s paste landed: its held keys go, in order. */
+  readonly releaseKeys: (id: number) => void;
   readonly cancel: () => void;
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
   /** `model`: a model file of its own (the wake path's); dictation's when absent or null. */
@@ -567,7 +569,8 @@ export const startDictationSidecar = (input: {
     start: () => send({ cmd: "start" }),
     finish: () => send({ cmd: "finish" }),
     voice: (on) => send({ cmd: "voice", on }),
-    holdKeys: (on) => send({ cmd: "hold_keys", on }),
+    holdKeys: (id, window) => send({ cmd: "hold_keys", id, window }),
+    releaseKeys: (id) => send({ cmd: "release_keys", id }),
     cancel: () => send({ cmd: "cancel" }),
     devices: () =>
       new Promise((resolve) => {

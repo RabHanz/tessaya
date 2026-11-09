@@ -144,6 +144,18 @@ impl Chunker {
         Some(Piece { pcm, context: self.tail.len(), at_pause: false })
     }
 
+    /// Nothing but quiet in the uncut audio from `from` on, against the whole recording's floor and speech: a preview
+    /// of it would only decode silence.
+    pub fn quiet_since(&self, from: usize, heard: &[f32]) -> bool {
+        let levels = frame_levels(heard);
+        let (floor, loud) = (percentile(&levels, 0.1), percentile(&levels, 0.9));
+        if loud < floor * 2.0 {
+            return loud < SILENCE;
+        }
+        let quiet = floor + (loud - floor) * 0.1;
+        frame_levels(&self.pending[from.min(self.pending.len())..]).iter().all(|l| *l <= quiet)
+    }
+
     /// What is left at key release.
     pub fn finish(&mut self) -> Option<Piece> {
         if self.pending.is_empty() {
@@ -304,6 +316,22 @@ mod tests {
         assert_eq!((piece.pcm.len(), piece.context, piece.at_pause), (RATE, 0, false));
         assert_eq!(chunker.pending_len(), RATE);
         assert_eq!(chunker.finish().unwrap().pcm.len(), RATE);
+    }
+
+    #[test]
+    fn a_preview_of_silence_is_skipped() {
+        let mut heard = tone(1.0, 0.2);
+        let mut chunker = Chunker::new(PARAMS);
+        chunker.push(&heard);
+        assert!(!chunker.quiet_since(0, &heard));
+        let hush = tone(0.6, 0.2 / 300.0);
+        heard.extend_from_slice(&hush);
+        chunker.push(&hush);
+        assert!(chunker.quiet_since(RATE, &heard));
+        let zeros = tone(1.0, 0.0);
+        let mut silent = Chunker::new(PARAMS);
+        silent.push(&zeros);
+        assert!(silent.quiet_since(0, &zeros));
     }
 
     #[test]

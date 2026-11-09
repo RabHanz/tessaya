@@ -398,9 +398,14 @@ impl Live {
         if !self.live_words || !preview_due(self.chunker.pending_len(), self.previewed, self.preview_ms) {
             return;
         }
+        let from = self.previewed;
+        self.previewed = self.chunker.pending_len();
+        // Nothing said since the last look: no decode.
+        if self.chunker.quiet_since(from, &self.heard) {
+            return;
+        }
         let Some(piece) = self.chunker.preview() else { return };
         let started = Instant::now();
-        self.previewed = self.chunker.pending_len();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
         if let Ok(text) = decode_piece(session, piece, self.language.clone()) {
             let words: Vec<&str> =
@@ -605,14 +610,9 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 emit(line);
             }
             Ok(Work::Begin { model, language, external: Some(dir), live: words, .. }) => {
-                // The cloud hears the recording; the local model only shows his words as he speaks, if it loads.
-                let words = words && {
-                    if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
-                        std::mem::swap(&mut loaded, &mut other);
-                    }
-                    loaded_at = Instant::now();
-                    ensure_loaded(&mut loaded, &model).is_ok()
-                };
+                // The cloud hears the recording. The local model shows his words as he speaks only when it is already
+                // loaded: never loaded for them, so the key's release never waits on a load.
+                let words = words && path_of(&loaded) == Some(model.as_path());
                 live = Some(Live { external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
             }
             Ok(Work::Begin { model, language, external: None, keep, live: words }) => {
@@ -1439,10 +1439,18 @@ fn serve() {
                         taps = PushToTalk::default();
                     }
                     "voice" => voice_on = value["on"].as_bool().unwrap_or(false),
-                    // Keys he presses while the ghost plays wait for its paste, then go in order (Windows only).
+                    // Typing keys he presses while the ghost plays wait for that dictation's paste (Windows only).
                     "hold_keys" => {
                         #[cfg(windows)]
-                        keygate_windows::hold(value["on"].as_bool().unwrap_or(false));
+                        if let (Some(id), Some(window)) = (value["id"].as_u64(), value["window"].as_i64()) {
+                            keygate_windows::hold(id, window as isize);
+                        }
+                    }
+                    "release_keys" => {
+                        #[cfg(windows)]
+                        if let Some(id) = value["id"].as_u64() {
+                            keygate_windows::release(id);
+                        }
                     }
                     "cancel" => {
                         recording = None;
