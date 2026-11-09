@@ -23,7 +23,7 @@ import {
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
@@ -544,14 +544,21 @@ export function BatonAccountRow(props: {
         const current = account.instanceIds.includes(applied);
         const option = accountPickOption(account, props.groups, thread);
         return (
-          <AccountRow
-            key={account.id}
-            account={account}
-            current={current}
-            next={!current && account.instanceIds.includes(shown)}
-            isLast={index === mine.length - 1 && !pinnable}
-            onPick={current || option === null ? null : () => props.onPick(option)}
-          />
+          <Fragment key={account.id}>
+            <AccountRow
+              account={account}
+              current={current}
+              next={!current && account.instanceIds.includes(shown)}
+              isLast={index === mine.length - 1 && !pinnable && (current || option !== null)}
+              onPick={current || option === null ? null : () => props.onPick(option)}
+            />
+            {/* Its instance lists no models (signed out or not probed), so a tap would land nowhere. */}
+            {current || option !== null ? null : (
+              <Text className="px-4 pb-2 text-2xs text-warning-foreground">
+                Sign in to use {account.label}: Settings → Accounts & providers.
+              </Text>
+            )}
+          </Fragment>
         );
       })}
       {pinnable && props.threadId !== null ? (

@@ -189,6 +189,14 @@ const runCswapWith =
       return { stdout: stdout ?? "", stderr: stderr ?? "", code: exitCode };
     }).pipe(Effect.scoped);
 
+/** `cswap list --token-status`: each slot's credential described (kind, expiry, refresh token), never its value. */
+export const makeTokenStatusReader =
+  (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => (): Effect.Effect<string> =>
+    runCswapWith(spawner)(["list", "--token-status"]).pipe(
+      Effect.map((result) => (result.code === 0 ? result.stdout : "")),
+      Effect.orElseSucceed(() => ""),
+    );
+
 /** Reads cswap's pool. Exported for the provider snapshot, which needs the same reading (D92). */
 export const makePoolReader =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => (driver: ProviderDriverKind) =>

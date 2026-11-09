@@ -34,6 +34,7 @@ import {
   BatonPickerAccount,
   BatonUsageDetails,
   batonPickModel,
+  batonModelOptions,
   batonRailEntries,
 } from "./BatonPickerAccount";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
@@ -235,7 +236,7 @@ export function ComposerControlsBar(props: {
       lockedContinuationGroupKey={lockedContinuationGroupKey}
       instanceEntries={railEntries}
       keybindings={keybindings}
-      modelOptionsByInstance={modelOptionsByInstance}
+      modelOptionsByInstance={batonModelOptions(modelOptionsByInstance, providerInstanceEntries)}
       size={controlSize}
       triggerClassName={cn(
         "group/model-trigger",

@@ -9,7 +9,12 @@ import {
   type BatonAccount,
   type BatonAccountRecord,
 } from "@t3tools/baton-contracts";
-import { accountTicks, pickModelFor, oneEntryPerProvider } from "@t3tools/baton-shared/accounts";
+import {
+  accountTicks,
+  oneEntryPerProvider,
+  pickModelFor,
+  withProviderModels,
+} from "@t3tools/baton-shared/accounts";
 import {
   accountRow,
   maskedEmail,
@@ -71,7 +76,7 @@ export const batonPickerFocusAtom = Atom.make<{
   readonly accountId: string;
 } | null>(null);
 
-const accountRow = (accountId: string) =>
+const accountRowElement = (accountId: string) =>
   document.querySelector<HTMLElement>(
     `[data-testid="model-picker-account"][data-account-id="${CSS.escape(accountId)}"]`,
   );
@@ -105,7 +110,7 @@ function useFocusRequestedRow(accountIds: ReadonlyArray<string>) {
   useEffect(() => {
     if (!shown || accountId === null) return;
     const timer = setTimeout(() => {
-      const row = accountRow(accountId);
+      const row = accountRowElement(accountId);
       // The thread's own row is disabled (it is already current), so it is shown, not focused.
       row?.scrollIntoView({ block: "nearest" });
     }, 0);
@@ -127,6 +132,16 @@ export function useBatonAccounts(
 
 /** The rail's one entry per provider, with Terminal its own group. */
 export const batonPickModel = pickModelFor;
+
+/** Each login's models, a login with none of its own showing its provider's (withProviderModels). */
+export const batonModelOptions = <M,>(
+  byInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<M>>,
+  entries: ReadonlyArray<ProviderInstanceEntry>,
+) =>
+  withProviderModels(
+    byInstance,
+    (instanceId) => entries.find((entry) => entry.instanceId === instanceId)?.driverKind,
+  );
 
 export const batonRailEntries = (
   entries: ReadonlyArray<ProviderInstanceEntry>,
@@ -462,6 +477,12 @@ function InstanceAccounts(props: {
 }) {
   const { entry, threadRef, mine } = props;
   useFocusRequestedRow(mine.map((account) => account.id));
+  const browsed = mine.find((account) => account.instanceIds.includes(entry.instanceId));
+  // Its models are the provider's until it signs in (batonModelOptions); a send would fail, so it says so.
+  const signIn =
+    browsed !== undefined && (browsed.health === "signed-out" || entry.models.length === 0)
+      ? browsed.label
+      : null;
   const pinnable =
     threadRef !== null &&
     entry.driverKind === "claudeAgent" &&
@@ -488,6 +509,11 @@ function InstanceAccounts(props: {
           />
         );
       })}
+      {signIn === null ? null : (
+        <p className="px-1.5 pt-1 text-2xs text-warning-foreground" data-testid="account-sign-in">
+          Sign in to use {signIn}: Settings → Accounts & providers.
+        </p>
+      )}
       {pinnable ? (
         <div className="flex justify-end">
           <KeepToggle threadRef={threadRef} />

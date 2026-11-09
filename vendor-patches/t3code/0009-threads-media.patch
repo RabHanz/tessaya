@@ -592,10 +592,10 @@ index c810890ebf96b1c7112c721575303c5f7ed7a435..e59f34cb462f6a4ce5aeaed355d4a1c1
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
 diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
-index 0002beeaf9fef7dd2c9920799430367027b4c23b..1c923265e84f96f371b870a6a5e64e3d22a5fde8 100644
+index 0002beeaf9fef7dd2c9920799430367027b4c23b..e48c5389977868c5fa2c63f8a433ebd97799b5ef 100644
 --- a/apps/web/src/components/chat/ComposerControlsBar.tsx
 +++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
-@@ -27,6 +27,15 @@ import {
+@@ -27,6 +27,16 @@ import {
    ComposerPickerFooter,
    describeComposerEffort,
  } from "./ComposerModelEffort";
@@ -606,12 +606,13 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..1c923265e84f96f371b870a6a5e64e3d
 +  BatonPickerAccount,
 +  BatonUsageDetails,
 +  batonPickModel,
++  batonModelOptions,
 +  batonRailEntries,
 +} from "./BatonPickerAccount";
  import type { useComposerProviderModel } from "./useComposerProviderModel";
  import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
  
-@@ -88,6 +97,7 @@ export function ComposerControlsBar(props: {
+@@ -88,6 +98,7 @@ export function ComposerControlsBar(props: {
    onModelPickerOpenChange: (open: boolean) => void;
    modelPickerIconClassName: string | undefined;
    getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
@@ -619,7 +620,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..1c923265e84f96f371b870a6a5e64e3d
  }) {
    const {
      environmentId,
-@@ -152,20 +162,25 @@ export function ComposerControlsBar(props: {
+@@ -152,20 +163,25 @@ export function ComposerControlsBar(props: {
      measuredHiddenBlockCount,
    });
    const controlSize = composerControlsCollapsed ? "xs" : "sm";
@@ -658,7 +659,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..1c923265e84f96f371b870a6a5e64e3d
    const restingBlockDefs = showModeBlock
      ? [
          {
-@@ -200,7 +215,12 @@ export function ComposerControlsBar(props: {
+@@ -200,7 +216,12 @@ export function ComposerControlsBar(props: {
        multipleModelSelections={multipleModelSelections}
        onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
        selectedModelSelection={selectedModelSelection}
@@ -672,16 +673,18 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..1c923265e84f96f371b870a6a5e64e3d
        activeInstanceId={
          providerCatalogPending
            ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
-@@ -213,7 +233,7 @@ export function ComposerControlsBar(props: {
+@@ -213,16 +234,24 @@ export function ComposerControlsBar(props: {
        }
        lockedProvider={lockedProvider}
        lockedContinuationGroupKey={lockedContinuationGroupKey}
 -      instanceEntries={providerInstanceEntries}
 +      instanceEntries={railEntries}
        keybindings={keybindings}
-       modelOptionsByInstance={modelOptionsByInstance}
+-      modelOptionsByInstance={modelOptionsByInstance}
++      modelOptionsByInstance={batonModelOptions(modelOptionsByInstance, providerInstanceEntries)}
        size={controlSize}
-@@ -222,7 +242,15 @@ export function ComposerControlsBar(props: {
+       triggerClassName={cn(
+         "group/model-trigger",
          MODEL_TRIGGER_STATES,
          composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
        )}
@@ -698,7 +701,7 @@ index 0002beeaf9fef7dd2c9920799430367027b4c23b..1c923265e84f96f371b870a6a5e64e3d
        triggerDetail={effort.detail}
        triggerShortcuts={
          pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
-@@ -234,8 +262,33 @@ export function ComposerControlsBar(props: {
+@@ -234,8 +263,33 @@ export function ComposerControlsBar(props: {
            runtimeMode={compatibleRuntimeMode}
            runtimeModeOptions={compatibleRuntimeModeOptions}
            onRuntimeModeChange={handleRuntimeModeChange}

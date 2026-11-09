@@ -49,7 +49,7 @@ describe("the sheet's providers", () => {
     const shown = batonProviderGroups(groups, "claude_home");
     expect(shown.map((entry) => [entry.providerKey, entry.providerLabel])).toEqual([
       ["baton-live", "Terminal"],
-      ["claudeAgent", "Work"],
+      ["claudeAgent", "Claude"],
       ["codex", "Codex"],
       ["acp_cursor", "Cursor"],
       ["acp_grok", "Grok"],
