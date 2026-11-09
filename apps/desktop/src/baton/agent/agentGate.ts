@@ -143,6 +143,20 @@ const OUTSIDE_READS: ReadonlySet<string> = new Set([
   "approvals_list",
 ]);
 
+/**
+ * A drive's or lesson's differences from his assistant's gate: his approved plan is not its grant, the keys it is
+ * allowed are its own (its harness never uses his input driver), and once it has read something its words are
+ * never taken for his, so it asks before it types.
+ */
+export const forOperator = (input: {
+  readonly taint: TurnTaint;
+  readonly textIsHis: (text: string) => boolean;
+}) => ({
+  inPlan: () => null,
+  keysAllowed: () => undefined,
+  textIsHis: (text: string) => !input.taint.on() && input.textIsHis(text),
+});
+
 export const createAgentGate = (input: {
   readonly actWithoutAsking: () => boolean;
   readonly taint: TurnTaint;

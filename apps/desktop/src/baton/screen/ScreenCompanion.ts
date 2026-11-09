@@ -113,6 +113,7 @@ import {
   createAgentGate,
   createCutInMark,
   createTaint,
+  forOperator,
   stopsOnCutIn,
   type Gate,
   type TurnTaint,
@@ -1339,6 +1340,8 @@ export const startScreenCompanion = (input: {
   let operator: { session: VisionSession; lastAt: number; home: string } | null = null;
   /** The drive's or lesson's own taint: once it has run a tool, what comes next may be following its output. */
   const operatorTaint = createTaint();
+  /** What he asked this drive or lesson for: typing it is typing his own words, until the drive has read something. */
+  let operatorGoal = "";
   /** A call is announced before its own request reaches the gate: only the next one is tainted. */
   let toolsThisTurn = 0;
   const dropOperator = () => {
@@ -1398,7 +1401,9 @@ export const startScreenCompanion = (input: {
       operator = { session: operatorSession(home), lastAt: Date.now(), home };
     }
     const current = operator;
-    operatorTaint.reset(goal);
+    // His goal counts as his words through forOperator, which stops counting it once the drive is tainted.
+    operatorTaint.reset();
+    operatorGoal = goal;
     toolsThisTurn = 0;
     answering += 1;
     try {
@@ -1841,6 +1846,7 @@ export const startScreenCompanion = (input: {
   const gateFor = (
     taint: TurnTaint,
     record: (entry: Readonly<Record<string, unknown>>) => void,
+    own: Partial<Parameters<typeof createAgentGate>[0]> = {},
   ): Gate =>
     createAgentGate({
       actWithoutAsking: () => settings.actWithoutAsking,
@@ -1888,6 +1894,7 @@ export const startScreenCompanion = (input: {
         keysAllowed = { ...at, ...(plan === null ? {} : { clipboard: plan.clipboard }) };
       },
       record,
+      ...own,
     });
   const agentGate = gateFor(agentTaint, (entry) => {
     if (typeof entry["tool"] === "string") {
@@ -1900,8 +1907,17 @@ export const startScreenCompanion = (input: {
     }
     input.onAction?.({ by: "assistant", persona: face.name, ...entry });
   });
-  const operatorGate = gateFor(operatorTaint, (entry) =>
-    input.onAction?.({ by: settings.operator, persona: face.name, ...entry }),
+  const operatorGate = gateFor(
+    operatorTaint,
+    (entry) => input.onAction?.({ by: settings.operator, persona: face.name, ...entry }),
+    forOperator({
+      taint: operatorTaint,
+      textIsHis: (text) =>
+        textIsFromConversation(text, [
+          { said: operatorGoal, reply: "" },
+          ...conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
+        ]),
+    }),
   );
 
   // Remote hands: its own gate and taint. The caller is a session the Director gave baton:hands, so what it read is not
