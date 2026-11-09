@@ -180,7 +180,10 @@ function AccountRow(props: {
 
 function Section(props: { readonly children: React.ReactNode }) {
   return (
-    <div data-testid="model-picker-accounts" className="border-b border-border/70 px-1.5 py-1.5">
+    <div
+      data-testid="model-picker-accounts"
+      className="border-b border-border/70 px-1.5 py-1.5 [contain:inline-size]"
+    >
       <div className="flex items-center justify-between px-1.5 pb-1 text-2xs font-medium text-muted-foreground">
         <span>Account</span>
         <span>used</span>
@@ -194,7 +197,7 @@ function Note({ children }: { readonly children: React.ReactNode }) {
   return (
     <p
       data-testid="model-picker-live-note"
-      className="border-b border-border/70 px-3 py-1.5 text-2xs leading-4 text-muted-foreground"
+      className="border-b border-border/70 px-3 py-1.5 text-2xs leading-4 text-muted-foreground [contain:inline-size]"
     >
       {children}
     </p>
@@ -264,7 +267,7 @@ function TerminalSessions(props: { readonly environmentId: EnvironmentId }) {
   return (
     <div
       data-testid="model-picker-terminal-sessions"
-      className="border-b border-border/70 px-1.5 py-1.5"
+      className="border-b border-border/70 px-1.5 py-1.5 [contain:inline-size]"
     >
       <div className="px-1.5 pb-1 text-2xs font-medium text-muted-foreground">
         Terminal · sessions running in a terminal. Tessaya types into them.
