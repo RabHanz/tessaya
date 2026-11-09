@@ -181,13 +181,15 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
   // From ✓ the capsule opens and the scroll returns to the top on one curve from where they were.
   else{const qo=calm?1:SMOOTH(prog(t,R,EXPAND_MS)),hAtR=Math.max(0,springAt(L.HhLive,R,calm));h=hAtR+(hRaw-hAtR)*qo;sc=springAt(L.ScLive,R,calm)*(1-qo);}}
  const ww=w;
- if(D){vp.style.width=FW+'px';vp.style.height='auto';
+ if(D){vp.style.width=FW+'px';
   // The text scrolls as a field does: the newest line stays in the box, and the cleanup's lines settle the same way.
   const sD=t<R||!C?springAt(L.Sc,t,calm):scD(L.rawLines)+(scD(L.linesB)-scD(L.rawLines))*pp;vp.style.transform='translateY('+(TOP-sD).toFixed(2)+'px)';sc=0;
   // His own text cannot scroll with it, so once it does the field's lines under it are covered, as a textarea's would go.
   const bg=$('bg');if(bg)bg.style.opacity=String(clamp(sD/LINE)*(C&&t>=P?1-ACCEL(prog(t,P,C.OUT_D)):1));
-  // Lines scrolled past the box's top fade into its padding instead of showing cut in half.
-  document.documentElement.style.maskImage=sD>0&&TOP>0?'linear-gradient(180deg,transparent 0,#000 '+TOP+'px)':'';}else{
+  // A line scrolled half past the box's top fades over half a line, not cut in half; only the words fade, never #bg.
+  // vp is tall enough to hold the box in its own coordinates, so its mask reaches every word on show.
+  const top=sD-TOP;vp.style.height=(sD+BOXH).toFixed(2)+'px';
+  vp.style.maskImage=vp.style.webkitMaskImage=sD>0?'linear-gradient(180deg,transparent 0,transparent '+top.toFixed(2)+'px,#000 '+(top+LINE/2).toFixed(2)+'px)':'';}else{
  p_.style.left=((MAXW-ww)/2).toFixed(2)+'px';p_.style.width=ww.toFixed(2)+'px';p_.style.height=(PH+h).toFixed(2)+'px';p_.style.borderRadius=(PH/2-clamp(h/24))+'px';
  const tuck=t<R?0:t<P?(calm?1:EMPH(prog(t,R,MD.medium2))):(calm?0:1-EMPH(prog(t,P,MD.medium2)));
  for(const id of['dx','w','dv'])$(id).style.opacity=String(1-.65*tuck);

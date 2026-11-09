@@ -13,7 +13,9 @@ import {
   resolveDictationBinary,
   restartDelayMs,
   startDictationSidecar,
+  takeRecording,
   type DictationEvent,
+  type RecordingEntry,
   type DictationSidecar,
   makeSidecarStt,
 } from "./dictationSidecar.ts";
@@ -37,6 +39,33 @@ describe("recordingAfter", () => {
     expect(busyAfter("text", true)).toBe(true);
     expect(busyAfter("idle", true)).toBe(false);
     expect(busyAfter("error", true)).toBe(false);
+  });
+});
+
+describe("takeRecording", () => {
+  const entry = (id: number, dictation: number | null): RecordingEntry => ({
+    id,
+    dictation,
+    app: { exe: `app${id}.exe`, title: "" },
+    heard: null,
+    discarded: false,
+  });
+  it("gives each end its own dictation's window and discard, never the next one's", () => {
+    const recordings = [entry(1, 7), entry(2, 8)];
+    // ✕ while 7 was written out, then 8 started: the discard stays 7's.
+    recordings[0]!.discarded = true;
+    // An end for a dictation no longer held takes nothing.
+    expect(takeRecording(recordings, 6)).toBeUndefined();
+    expect(recordings).toHaveLength(2);
+    expect(takeRecording(recordings, 7)).toMatchObject({ dictation: 7, discarded: true });
+    expect(takeRecording(recordings, 8)).toMatchObject({ dictation: 8, discarded: false });
+  });
+  it("lets an answered dictation take older ones that never ended, and an older sidecar's end the oldest", () => {
+    const recordings = [entry(1, 7), entry(2, 8), entry(3, 9)];
+    expect(takeRecording(recordings, 8)?.id).toBe(2);
+    expect(recordings.map((r) => r.id)).toEqual([3]);
+    const old = [entry(1, null), entry(2, null)];
+    expect(takeRecording(old, undefined)?.id).toBe(1);
   });
 });
 

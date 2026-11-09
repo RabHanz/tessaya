@@ -363,10 +363,12 @@ import {
   recordingAfter,
   restartDelayMs,
   startDictationSidecar,
+  takeRecording,
   type DictationEvent,
   type DictationSidecar,
   type PasteVerdict,
   type FocusedApp,
+  type RecordingEntry,
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
@@ -3313,6 +3315,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
       liveWords: settings.showWords,
+      meter: loop === null,
     });
     syncCleanupSession();
   };
@@ -3436,20 +3439,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         hearingCommand = false;
       });
   };
-  /** Esc twice (or ✕) during a key dictation: its words are held for undo when they come, not pasted. */
-  let discardKeyText = false;
   /**
-   * Each helper recording, oldest first: its id, its window, and a command heard while it recorded. Its words take
-   * the first one when they arrive, however soon the next recording starts.
+   * Each helper recording, oldest first: our id, the sidecar's (`dictation`; null from an older one), its window, a
+   * command heard while it recorded, and Esc twice or ✕ on it (its words are then held for undo, not pasted).
    */
-  const recordings: Array<{ id: number; app: FocusedApp; heard: "stop" | null }> = [];
+  const recordings: Array<RecordingEntry> = [];
   let recordingSeq = 0;
   /** A text event with its recording's window, discard and heard command on it, taken once, as it arrives. */
   const withRecording = <
     E extends {
+      readonly dictation?: number;
       readonly app?: FocusedApp;
       readonly discarded?: boolean;
       readonly heard?: "stop" | null;
+      readonly unmatched?: boolean;
     },
   >(
     event: E,
@@ -3457,19 +3460,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly app?: FocusedApp;
     readonly discarded?: boolean;
     readonly heard?: "stop" | null;
+    readonly unmatched?: boolean;
   } => {
-    if (event.app !== undefined) return event;
-    const recording = recordings.shift();
-    const discarded = discardKeyText;
-    discardKeyText = false;
-    return {
-      ...event,
-      ...(recording === undefined ? {} : { app: recording.app, heard: recording.heard }),
-      discarded,
-    };
+    if (event.app !== undefined || event.unmatched !== undefined) return event;
+    const recording = takeRecording(recordings, event.dictation);
+    // Words for a recording we no longer hold: never the next one's window, so they are kept, not pasted.
+    if (recording === undefined)
+      return { ...event, unmatched: event.dictation !== undefined, discarded: false };
+    return { ...event, app: recording.app, heard: recording.heard, discarded: recording.discarded };
+  };
+  /** The newest recording: the one recording, or the one being written out, that ✕ or Esc twice throws away. */
+  const discardNewest = () => {
+    const last = recordings.at(-1);
+    if (last !== undefined) last.discarded = true;
   };
   const discardKeyDictation = () => {
-    discardKeyText = true;
+    discardNewest();
     sidecar?.finish();
   };
   /** One stray Esc must not lose his words, as in spoken dictation: the first asks, the second discards. */
@@ -3615,8 +3621,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
       // Each recording's window goes with its own words, however soon the next starts.
       recordingSeq += 1;
-      recordings.push({ id: recordingSeq, app: focusedApp, heard: null });
-      discardKeyText = false;
+      recordings.push({
+        id: recordingSeq,
+        dictation: event.dictation ?? null,
+        app: focusedApp,
+        heard: null,
+        discarded: false,
+      });
       escArmedUntil = 0;
       if (settings.dictationCleanup === "claude") rewriter.warm();
       if (keptTimer !== null) clearTimeout(keptTimer);
@@ -3628,13 +3639,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
-      recordings.shift();
-      discardKeyText = false;
+      takeRecording(recordings, event.dictation);
       showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();
-      recordings.shift();
-      discardKeyText = false;
+      takeRecording(recordings, event.dictation);
       note = event.message;
       showDictation(null);
       toast.show({ kind: "error", message: event.message });
@@ -3696,6 +3705,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       if (event.dictated === true && event.error === undefined) {
         const own = withRecording(event);
+        if (own.unmatched === true) return keepText("Not pasted", text);
         // The voice path drops a lone breath the same way (core.ts DICTATION_FILLER); here it never reaches the buffer.
         if (isLoneBreath(text)) {
           input.onNote?.("dictation_dropped", { reason: "breath", chars: text.length });
@@ -3884,7 +3894,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             : discardKeyDictation()
           : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
             !insert && sidecarBusy
-            ? void (discardKeyText = true)
+            ? discardNewest()
             : undefined,
     // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
     voiceDictating: () => dictatingByVoice || keyRecording(),
@@ -4450,6 +4460,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       throw error;
     });
     step("loop-started");
+    // The wake mic now feeds the waveform: the recording stops sending its own audio.
+    configureDictation();
     // Not at his first wake: a cold start then cost the first turn 27 s (0.1.68).
     if (launchWarm === null)
       launchWarm = setTimeout(() => {
@@ -4476,6 +4488,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     await loop?.stop();
     if (loop === null) core?.dispose();
     loop = null;
+    configureDictation();
     core = null;
     if (contextTimer !== null) clearInterval(contextTimer);
     contextTimer = null;

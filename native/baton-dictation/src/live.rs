@@ -194,15 +194,27 @@ pub fn preview_due(pending: usize, previewed: usize, last_ms: u64) -> bool {
     }
 }
 
+/// One-dot abbreviations whose dot is part of the word, never a sentence's end.
+const ABBREVIATIONS: &[&str] = &["etc", "vs", "mr", "mrs", "ms", "dr", "st", "inc", "ltd", "jr", "sr", "approx"];
+
 /// The pieces' words as one text. Each piece is decoded alone, so the model ends it with a full stop even where he did
 /// not stop: a stop before a piece that starts in lower case was a cut mid-sentence (the model capitalises a real
-/// sentence start), and is dropped.
+/// sentence start), and is dropped. An abbreviation's own dot ("e.g.", "U.S.") stays, and so does a stop before a
+/// brand that starts in lower case ("iPhone", "eBay").
 pub fn join_pieces<S: AsRef<str>>(pieces: &[S]) -> String {
     let mut out = String::new();
     for piece in pieces.iter().map(|p| p.as_ref().trim()).filter(|p| !p.is_empty()) {
         if !out.is_empty() {
-            let lower = piece.chars().next().is_some_and(|c| c.is_lowercase());
-            if lower && out.ends_with('.') && !out.ends_with("..") {
+            let first = piece.split_whitespace().next().unwrap_or("");
+            let lower =
+                first.chars().next().is_some_and(|c| c.is_lowercase()) && !first.chars().any(|c| c.is_uppercase());
+            let last = out.rsplit(char::is_whitespace).next().unwrap_or("");
+            let abbreviation = last.strip_suffix('.').is_some_and(|w| {
+                w.contains('.')
+                    || ABBREVIATIONS
+                        .contains(&w.trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase().as_str())
+            });
+            if lower && out.ends_with('.') && !abbreviation {
                 out.pop();
             }
             out.push(' ');
@@ -348,6 +360,12 @@ mod tests {
             "It is not very smooth of the words appearing. Because the cursor stays."
         );
         assert_eq!(join_pieces(&["Is it?", "yes.", "Wait...", "then go"]), "Is it? yes. Wait... then go");
+        // An abbreviation keeps its dot; a brand in lower case is not a cut mid-sentence.
+        assert_eq!(join_pieces(&["Fruit, e.g.", "apples"]), "Fruit, e.g. apples");
+        assert_eq!(join_pieces(&["Pens, paper etc.", "and so on"]), "Pens, paper etc. and so on");
+        assert_eq!(join_pieces(&["Made in the U.S.", "by hand"]), "Made in the U.S. by hand");
+        assert_eq!(join_pieces(&["I bought one.", "iPhone for her"]), "I bought one. iPhone for her");
+        assert_eq!(join_pieces(&["Sold it.", "eBay took a cut"]), "Sold it. eBay took a cut");
     }
 
     #[test]
