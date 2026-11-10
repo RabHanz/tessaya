@@ -51,6 +51,11 @@ const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
 const API_REST_MS = 60_000;
+/**
+ * Once his key answers, release waits this long for what is left, then pastes the local text. His key's Haiku took
+ * 761 ms at p50 and 975 ms at p90 for a sentence under 15 words (2026-11-10), so most tails land inside it.
+ */
+const RELEASE_BUDGET_MS = 900;
 const API_SLOW_REST_MS = 15_000;
 
 interface CleanInput {
@@ -83,6 +88,8 @@ export const makeRewriter = (input: {
   readonly dictionary: () => ReadonlyArray<DictionaryEntry>;
   /** Replaces `hardLimitMs`, for the lab and for tests. */
   readonly limitMs?: number;
+  /** Replaces `RELEASE_BUDGET_MS`, for the lab and for tests. */
+  readonly releaseBudgetMs?: number;
   readonly start?: typeof startVisionSession;
   readonly always?: boolean;
   /**
@@ -190,14 +197,17 @@ export const makeRewriter = (input: {
       return null;
     }
   };
-  /** Only the final clean after release goes to the paid API; the guesses while he speaks use the subscription. */
+  /**
+   * The clean after release goes to his key; the guesses while he speaks too once it has answered (about 0.8 s against
+   * the session's 1.4 s), so release finds his finished sentences already cleaned. Before that, the subscription.
+   */
   const send = async (
     text: string,
     mode: DictationMode,
     final: boolean,
     context?: DictationContext,
   ): Promise<string> => {
-    const paid = final ? await viaApi(text, mode, context) : null;
+    const paid = final || apiAnswers ? await viaApi(text, mode, context) : null;
     return paid === null ? viaSession(text, mode, context) : paid.trim();
   };
   /** The real clean's question, against a deadline counted from when `clean` was called. */
@@ -291,7 +301,10 @@ export const makeRewriter = (input: {
     },
     clean: async (c) => {
       const started = Date.now();
-      const deadline = started + (input.limitMs ?? hardLimitMs(c.raw));
+      const limit = input.limitMs ?? hardLimitMs(c.raw);
+      const deadline =
+        started +
+        (apiAnswers ? Math.min(limit, input.releaseBudgetMs ?? RELEASE_BUDGET_MS) : limit);
       // The real clean goes before any guess still waiting.
       queue = [];
       const ready = new Map(guesses);

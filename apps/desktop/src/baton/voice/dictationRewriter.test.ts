@@ -93,11 +93,19 @@ describe("makeRewriter", () => {
       },
     });
     const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
-    // A guess while he speaks goes to the subscription session only.
+    // Until his key has answered, a guess while he speaks goes to the subscription session.
     rewriter.speculate({ ...said, raw: "we should go home" });
     await vi.waitFor(() => expect(apiAsked).toHaveLength(0));
     expect((await rewriter.clean(said)).text).toBe("from the api");
     expect(apiAsked).toHaveLength(1);
+    // Once it has, his finished sentences are cleaned through it while he speaks, so release has only the rest.
+    rewriter.speculate({ ...said, raw: "we should go home. And then eat", pause: false });
+    await vi.waitFor(() => expect(apiAsked).toHaveLength(2));
+    expect((await rewriter.clean({ ...said, raw: "we should go home." })).text).toBe(
+      "from the api",
+    );
+    expect(apiAsked).toHaveLength(2);
+    apiAsked.length = 1;
     // A refused key: this dictation and the next minute's go through the session, with no paid try.
     refuse = true;
     expect((await rewriter.clean(said)).text).toBe("from the session");
@@ -112,6 +120,35 @@ describe("makeRewriter", () => {
     now += 16_000;
     failWith = null;
     expect((await rewriter.clean(said)).text).toBe("from the api");
+    rewriter.dispose();
+  });
+
+  it("never holds release past its budget once his key answers: the local text goes in", async () => {
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: "haiku",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      releaseBudgetMs: 0,
+      start: (): VisionSession => ({
+        ask: async () => "from the session",
+        alive: () => true,
+        dispose: () => {},
+      }),
+      api: async () => "from the api",
+    });
+    const said = {
+      raw: "um we should go home now please",
+      mode: "default",
+      level: "claude",
+    } as const;
+    // The first answer is waited for in full: until his key has answered, nothing says it is fast.
+    expect((await rewriter.clean(said)).text).toBe("from the api");
+    const late = await rewriter.clean(said);
+    expect(late).toMatchObject({ stage: "fallback", text: "We should go home now please" });
     rewriter.dispose();
   });
 
