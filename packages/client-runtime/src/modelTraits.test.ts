@@ -33,4 +33,33 @@ describe("buildTraitsTriggerDisplay", () => {
     ).toBe(input.label);
     expect(getDescriptorStringValue(descriptor)).toBe(input.value);
   });
+
+  // Web and mobile both label the composer with this; builds before it said "Ultracode Off".
+  it.each([
+    [undefined, "Medium"],
+    [false, "Medium"],
+    [true, "Medium · Ultracode"],
+  ])("names Ultracode only when it is on (%s)", (currentValue, label) => {
+    const display = buildTraitsTriggerDisplay({
+      provider: ProviderDriverKind.make("claudeAgent"),
+      descriptors: [
+        {
+          id: "effort",
+          label: "Effort",
+          type: "select",
+          options: [{ id: "medium", label: "Medium", isDefault: true }],
+        },
+        {
+          id: "ultracode",
+          label: "Ultracode",
+          type: "boolean",
+          ...(currentValue === undefined ? {} : { currentValue }),
+        },
+      ],
+      primarySelectDescriptorId: "effort",
+      ultrathinkPromptControlled: false,
+    });
+    expect(display.label).toBe(label);
+    expect(display.ultracode).toBe(currentValue === true);
+  });
 });
