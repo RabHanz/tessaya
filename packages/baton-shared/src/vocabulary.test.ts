@@ -109,6 +109,25 @@ describe("his taught words", () => {
     ];
     for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
   });
+
+  it("never puts a taught word over an everyday word he said, however Wispr learned it (0.1.92 feelIt)", () => {
+    const his = parseVocabulary([
+      { phrase: "feelIt", replacement: null, heard: ["It"] },
+      { phrase: "Hex", replacement: null, heard: ["Have"] },
+      { phrase: "UltraThink", replacement: null, heard: ["Think"] },
+    ]);
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      [
+        "It will overlap with it and it will look a bit weird.",
+        "It will overlap with it and it will look a bit weird.",
+      ],
+      ["Talk to have and then go.", "Talk to have and then go."],
+      ["Run it with think and see.", "Run it with think and see."],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
+    // Nor is the model told that "It" may be one of his words (0.1.92: "part of feelIt" on the Claude path).
+    expect(promptTerms(his).join(" ")).not.toMatch(/heard as "(It|Have|Think)"/);
+  });
 });
 
 describe("Wispr's dictionary", () => {

@@ -290,9 +290,9 @@ export const localClean = (
   let text = raw
     .replace(FILLERS, "$1")
     .replace(FILLER_PHRASES, "$1")
-    // "So" and "Like," only open the sentence; "so far" and "so that" mean something, so the next word must start one.
+    // "Like," only opens the sentence; the next word must start one. "So" is his and stays (0.1.92 dropped it).
     .replace(
-      /(^|[.?!]\s+)(?:so,?|like,)\s+(?=(?:i|i'm|i've|we|you|he|she|it|they|the|this|that|these|those|my|our|now|let's|let|if|when|what|how|why|can|could|should|would|do|does|is|are|please|make|maybe|yes|no|then|there|here|in|for|after|before)\b)/gi,
+      /(^|[.?!]\s+)like,\s+(?=(?:i|i'm|i've|we|you|he|she|it|they|the|this|that|these|those|my|our|now|let's|let|if|when|what|how|why|can|could|should|would|do|does|is|are|please|make|maybe|yes|no|then|there|here|in|for|after|before)\b)/gi,
       (_, lead: string) => lead,
     )
     .replace(STUTTER, "$1")

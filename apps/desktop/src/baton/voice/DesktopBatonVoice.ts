@@ -1495,9 +1495,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mode: chooseMode(app, settings.appModes),
       level,
     });
-    // A name the model brought in is refused; the turn log keeps which, so a wrong refusal can be told from a right one.
-    if (out.stage === "fallback" && out.why?.startsWith("new name") === true)
-      input.onNote?.("dictation_cleanup", { fallback: out.why });
+    // Every fallback keeps its reason (a refused name, a timeout, the API's error), so a slow or failed clean-up can be
+    // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
+    if (out.stage === "fallback")
+      input.onNote?.("dictation_cleanup", { fallback: out.why ?? "unknown" });
     const styled =
       chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw"
         ? out.text
@@ -3666,12 +3667,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "partial") {
       dictationWords(event.text);
       const app = focusedApp;
-      if (settings.dictationCleanup === "claude" && event.pause !== false)
+      // Each finished sentence is cleaned as he speaks, and at a pause the last one too.
+      if (settings.dictationCleanup === "claude")
         void levelNow(app).then((level) =>
           rewriter.speculate({
             raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
+            pause: event.pause !== false,
           }),
         );
       return;

@@ -97,9 +97,13 @@ describe("localClean", () => {
     ).toBe("Give him medieval armour and a mustache comb, but bigger.");
   });
 
-  it("drops a So or a Like, that only opens a sentence", () => {
+  it("drops a Like, that only opens a sentence, and keeps his So", () => {
     expect(localClean("So we ship it today. Like, what is left?", "default")).toBe(
-      "We ship it today. What is left?",
+      "So we ship it today. What is left?",
+    );
+    // 0.1.92 dropped it here.
+    expect(localClean("So does it have all the learnings built into it now?", "default")).toBe(
+      "So does it have all the learnings built into it now?",
     );
     expect(localClean("Like a sword, but blunt. It is so good.", "default")).toBe(
       "Like a sword, but blunt. It is so good.",

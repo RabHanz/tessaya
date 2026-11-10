@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { DictionaryEntry } from "@t3tools/baton-shared/dictationCleanup";
 
 import type { VisionSession } from "../screen/claudeVision.ts";
-import { makeRewriter } from "./dictationRewriter.ts";
+import { dictationPieces, makeRewriter } from "./dictationRewriter.ts";
 
 describe("makeRewriter", () => {
   it("starts a session with the new dictionary as soon as he teaches a word", () => {
@@ -70,6 +70,7 @@ describe("makeRewriter", () => {
     let now = 1_000_000;
     using _now = vi.spyOn(Date, "now").mockImplementation(() => now);
     let refuse = false;
+    let failWith: string | null = null;
     const apiAsked: string[] = [];
     const rewriter = makeRewriter({
       claudeBinary: "claude",
@@ -87,6 +88,7 @@ describe("makeRewriter", () => {
       api: async (_system, message) => {
         apiAsked.push(message);
         if (refuse) throw new Error("invalid-key");
+        if (failWith !== null) throw new Error(failWith);
         return "from the api";
       },
     });
@@ -103,6 +105,12 @@ describe("makeRewriter", () => {
     expect(apiAsked).toHaveLength(2);
     now += 61_000;
     refuse = false;
+    expect((await rewriter.clean(said)).text).toBe("from the api");
+    // A timeout rests it for 15 s only.
+    failWith = "timeout";
+    expect((await rewriter.clean(said)).text).toBe("from the session");
+    now += 16_000;
+    failWith = null;
     expect((await rewriter.clean(said)).text).toBe("from the api");
     rewriter.dispose();
   });
@@ -222,6 +230,34 @@ describe("makeRewriter", () => {
     expect(s.asked).toHaveLength(2);
     expect(s.most()).toBe(1);
     s.rewriter.dispose();
+  });
+
+  it("cleans each finished sentence while he speaks, so release cleans only the last", async () => {
+    const s = held();
+    // Mid-speech: the finished sentence is guessed, the growing one is not.
+    s.rewriter.speculate({ ...said, raw: "we should go now. then we", pause: false });
+    await s.answerNext();
+    expect(s.asked).toHaveLength(1);
+    const cleaned = s.rewriter.clean({ ...said, raw: "we should go now. then we eat at home." });
+    await s.answerNext();
+    expect(await cleaned).toMatchObject({
+      text: "WE SHOULD GO NOW. THEN WE EAT AT HOME.",
+      stage: "model",
+      speculated: false,
+    });
+    // Two turns in all: the first sentence while he spoke, the last one after release.
+    expect(s.asked).toHaveLength(2);
+    expect(s.asked[1]).toContain("Then we eat at home.");
+    expect(s.asked[1]).not.toContain("should go now");
+    s.rewriter.dispose();
+  });
+
+  it("splits after a full stop, never after a question or inside an email", () => {
+    expect(
+      dictationPieces("Go now. Then eat! Can you check? And also send it.", "default"),
+    ).toEqual(["Go now.", "Then eat!", "Can you check? And also send it."]);
+    expect(dictationPieces("Hi Sam. Thanks.", "email")).toEqual(["Hi Sam. Thanks."]);
+    expect(dictationPieces("  ", "default")).toEqual([]);
   });
 
   it("asks again when the guess fell back, and never guesses below the Claude level", async () => {

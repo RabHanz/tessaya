@@ -28,12 +28,23 @@ import {
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 
+/**
+ * A dictation in the pieces cleaned on their own while he speaks: split after a full stop or "!". Never after "?",
+ * since a question often runs on with "and also"; never in an email, whose greeting and sign-off need the whole.
+ */
+export const dictationPieces = (raw: string, mode: DictationMode): ReadonlyArray<string> => {
+  const text = raw.trim();
+  if (text === "") return [];
+  return mode === "email" ? [text] : text.split(/(?<=[.!])\s+(?=\S)/);
+};
+
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
 export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + text.length * 8);
 const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
 const API_REST_MS = 60_000;
+const API_SLOW_REST_MS = 15_000;
 
 interface CleanInput {
   readonly raw: string;
@@ -45,10 +56,10 @@ export interface Rewriter {
   /** Called when recording starts, so the session is up by the time he stops. */
   readonly warm: () => void;
   /**
-   * The words so far, at a pause while he still holds the key: cleaned now, so a `clean` of the same words after
-   * release takes this answer instead of waiting a turn (about 1.2 s through the CLI).
+   * The words so far while he still holds the key: each finished sentence is cleaned now, and at a pause (`pause`,
+   * the default) the last one too, so after release only what changed since is left to clean (about 1 s a turn).
    */
-  readonly speculate: (input: CleanInput) => void;
+  readonly speculate: (input: CleanInput & { readonly pause?: boolean }) => void;
   readonly clean: (
     input: CleanInput,
   ) => Promise<CleanedText & { readonly ms: number; readonly speculated: boolean }>;
@@ -132,18 +143,24 @@ export const makeRewriter = (input: {
   };
   /** After a refused key or a rate limit the paid path rests for a minute, so a bad key costs one try, not every one. */
   let apiRestsUntil = 0;
+  /** His key answered the last paid clean: release then asks it again rather than wait for a running guess. */
+  let apiAnswers = false;
   const viaApi = async (text: string, mode: DictationMode): Promise<string | null> => {
     if (input.api === undefined || Date.now() < apiRestsUntil) return null;
     try {
-      return await input.api(
+      const answer = await input.api(
         rewriteSystemPrompt(input.dictionary()),
         rewriteMessage(text, mode),
         64 + Math.ceil(text.length / 2),
       );
+      apiAnswers = answer !== null;
+      return answer;
     } catch (error) {
-      if (/invalid-key|rate-limit/.test(error instanceof Error ? error.message : "")) {
-        apiRestsUntil = Date.now() + API_REST_MS;
-      }
+      apiAnswers = false;
+      // A slow or unreachable API rests too, for less: each try costs his dictation up to 1.5 s before the session.
+      const why = error instanceof Error ? error.message : "";
+      apiRestsUntil =
+        Date.now() + (/invalid-key|rate-limit/.test(why) ? API_REST_MS : API_SLOW_REST_MS);
       return null;
     }
   };
@@ -198,63 +215,103 @@ export const makeRewriter = (input: {
       ask,
       ...(input.always === undefined ? {} : { always: input.always }),
     });
-  const keyOf = (c: CleanInput) => `${c.level}\n${c.mode}\n${c.raw.trim()}`;
-  /** The latest guess started, one at most in flight, and the newest waiting behind it; older ones are never asked. */
-  let guess: { readonly key: string; readonly cleaned: Promise<CleanedText> } | null = null;
+  const keyOf = (c: CleanInput, piece: string) => `${c.level}\n${c.mode}\n${piece.trim()}`;
+  /** Pieces cleaned or being cleaned while he speaks, by their words; one runs at a time, the rest wait in order. */
+  const guesses = new Map<string, Promise<CleanedText>>();
+  /** The guesses already answered, so release can take them without waiting. */
+  const answered = new Map<string, CleanedText>();
+  let queue: Array<{ readonly key: string; readonly input: CleanInput }> = [];
   let guessing = false;
-  let waiting: CleanInput | null = null;
-  const startGuess = (c: CleanInput) => {
-    const key = keyOf(c);
-    guessing = true;
+  const nextGuess = () => {
+    const job = queue.shift();
+    guessing = job !== undefined;
+    if (job === undefined) return;
     // A guess is not counted against the session's turns, and is never timed out here: the session's own limit holds.
-    const cleaned = run(c, (text, mode) =>
-      busy.then(() =>
-        guess?.key === key ? send(text, mode, false) : Promise.reject(new Error("stale")),
-      ),
-    );
-    guess = { key, cleaned };
+    const cleaned = run(job.input, (text, mode) => busy.then(() => send(text, mode, false)));
+    guesses.set(job.key, cleaned);
     void cleaned
+      .then((answer) => void answered.set(job.key, answer))
       .catch(() => undefined)
-      .then(() => {
-        guessing = false;
-        const next = waiting;
-        waiting = null;
-        if (next !== null) startGuess(next);
-      });
+      .then(nextGuess);
   };
+  /** Until the words before it are, nothing of a guess is taken: an answer that fell back is asked again. */
+  const usable = (cleaned: CleanedText | null) =>
+    cleaned !== null && (cleaned.stage === "model" || cleaned.stage === "local");
 
   return {
     warm,
-    speculate: (c) => {
+    speculate: ({ pause = true, ...c }) => {
       if (c.level !== "claude") return;
-      const key = keyOf(c);
-      if (guess?.key === key || (waiting !== null && keyOf(waiting) === key)) return;
-      if (guessing) waiting = c;
-      else startGuess(c);
+      const pieces = dictationPieces(c.raw, c.mode);
+      const keys = new Set(pieces.map((piece) => keyOf(c, piece)));
+      // Waiting guesses his newer words no longer hold are never asked.
+      queue = queue.filter((job) => keys.has(job.key));
+      // Mid-speech the last sentence is still growing; at a pause it may be all of it.
+      for (const piece of pause ? pieces : pieces.slice(0, -1)) {
+        const key = keyOf(c, piece);
+        if (guesses.has(key) || queue.some((job) => job.key === key)) continue;
+        queue.push({ key, input: { ...c, raw: piece } });
+      }
+      if (!guessing) nextGuess();
     },
     clean: async (c) => {
       const started = Date.now();
       const deadline = started + (input.limitMs ?? hardLimitMs(c.raw));
-      // The real clean goes before any guess still waiting, and only a guess for these exact words is taken.
-      waiting = null;
-      const ready = guess?.key === keyOf(c) ? guess.cleaned : null;
-      guess = null;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const guessed =
-        ready === null
-          ? null
-          : await Promise.race([
-              ready.catch(() => null),
-              new Promise<null>((resolve) => {
-                timer = setTimeout(() => resolve(null), deadline - Date.now());
-              }),
-            ]);
-      clearTimeout(timer);
-      const cleaned =
-        guessed !== null && (guessed.stage === "model" || guessed.stage === "local")
-          ? guessed
-          : await run(c, askBy(deadline));
-      return { ...cleaned, ms: Date.now() - started, speculated: cleaned === guessed };
+      // The real clean goes before any guess still waiting.
+      queue = [];
+      const ready = new Map(guesses);
+      const done = new Map(answered);
+      guesses.clear();
+      answered.clear();
+      const waitFor = async (cleaned: Promise<CleanedText>) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const answer = await Promise.race([
+          cleaned.catch(() => null),
+          new Promise<null>((resolve) => {
+            timer = setTimeout(() => resolve(null), deadline - Date.now());
+          }),
+        ]);
+        clearTimeout(timer);
+        return answer;
+      };
+      // Each piece cleaned while he spoke is taken as it is; the pieces left, side by side, are cleaned together now.
+      const parts: CleanedText[] = [];
+      let left: string[] = [];
+      let guessedAll = true;
+      const cleanLeft = async () => {
+        if (left.length === 0) return;
+        parts.push(await run({ ...c, raw: left.join(" ") }, askBy(deadline)));
+        left = [];
+        guessedAll = false;
+      };
+      for (const piece of dictationPieces(c.raw, c.mode)) {
+        const key = keyOf(c, piece);
+        const guess = ready.get(key);
+        // A guess still running is waited for on the subscription, where a new ask would queue behind it anyway; with
+        // his key the piece is asked again at once instead, which is faster than the session's turn.
+        const guessed =
+          done.get(key) ?? (guess === undefined || apiAnswers ? null : await waitFor(guess));
+        if (guessed === null || !usable(guessed)) {
+          left.push(piece);
+          continue;
+        }
+        await cleanLeft();
+        parts.push(guessed);
+      }
+      await cleanLeft();
+      if (parts.length === 0) parts.push(await run(c, askBy(deadline)));
+      const fellBack = parts.find((part) => part.stage === "fallback");
+      const cleaned: CleanedText = {
+        text: parts
+          .map((part) => part.text.trim())
+          .filter((text) => text !== "")
+          .join(" "),
+        stage:
+          fellBack?.stage ??
+          (parts.some((part) => part.stage === "model") ? "model" : parts[0]!.stage),
+        ...(fellBack?.why === undefined ? {} : { why: fellBack.why }),
+      };
+      return { ...cleaned, ms: Date.now() - started, speculated: guessedAll };
     },
     dispose: drop,
   };

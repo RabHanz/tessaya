@@ -98,8 +98,10 @@ export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyAr
       const term = entry.replacement ?? entry.phrase;
       // An everyday-looking form ("button", "venture OS") as a hint makes the model swap every "button" and "venture";
       // those are put back in code, only where the name fits.
+      // Nor an everyday word, however it is capitalised: "feelIt (heard as "It")" made the model write "part of
+      // feelIt" (0.1.92).
       const heard = (entry.heard ?? [])
-        .filter((h) => /^\p{Lu}/u.test(h))
+        .filter((h) => /^\p{Lu}/u.test(h) && !everydayForm(h))
         .map((h) => `"${h}"`)
         .join(", ");
       return heard.length === 0 ? term : `${term} (heard as ${heard})`;
@@ -584,11 +586,32 @@ const NAME_SLOT_AFTER = new Set(
  * A form he taught (from Wispr or a correction) that is an everyday word ("button" for Baton) changes only in the
  * bare slot after a preposition, with no article, and only when what follows is not more of a noun phrase.
  */
+/**
+ * Everyday words a taught form must never be, however it was learned: "feelIt" taught from "It" turned "overlap with it
+ * and" into "overlap with feelIt and" (0.1.92). Such a form is left to the model, which sees the whole sentence.
+ */
+const EVERYDAY_FORMS = new Set(
+  (
+    "i me my we us our you your he him his she her it its they them their this that these those there here " +
+    "a an the and or but so if then than as of in on at to for from by with about into over after before " +
+    "is am are was were be been being have has had do does did will would can could should may might must shall " +
+    "not no yes all any some one two each every more most much many few what which who when where why how " +
+    "get got make made go went say said see saw know think take come want look use find give tell work call try ask " +
+    "need feel leave put mean keep let seem help show hear play run move like live hold bring write sit stand pay " +
+    "meet set learn change lead read add grow open win love buy wait send build stay fall cut reach good new first " +
+    "last long great little own other old right big high small large next early young important few public bad same able"
+  ).split(" "),
+);
+
+/** A heard form too ordinary to stand for one of his words anywhere: short, or a word everyone says. */
+const everydayForm = (form: string): boolean =>
+  form.length < 3 || everyday(form) || EVERYDAY_FORMS.has(form.toLowerCase());
+
 const applyTaughtForms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
   let out = text;
   for (const e of entries)
     for (const form of e.heard ?? []) {
-      if (!/^\p{L}+$/u.test(form)) continue;
+      if (!/^\p{L}+$/u.test(form) || everydayForm(form)) continue;
       const term = e.replacement ?? e.phrase;
       out = out.replace(
         new RegExp(`${WORD_START}${escapeRegExp(form)}${WORD_END}`, "giu"),
