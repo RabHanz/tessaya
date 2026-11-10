@@ -47,7 +47,7 @@ const BUSY_BACKLOG_MS: u64 = 1_000;
 const LOCAL_RTF: f64 = 0.3;
 
 impl Health {
-    /// The CPU's busy share is not part of it: a recogniser given CPU priority over the rest of the machine (onnyx)
+    /// The CPU's busy share is not part of it: a recogniser given CPU priority over the rest of the machine
     /// decoded at 0.24 with its CPU 99% busy, so only its own measured speed says whether it can beat the laptop.
     fn can_beat_local(&self) -> bool {
         self.backlog_ms < BUSY_BACKLOG_MS && self.rtf.is_none_or(|rtf| rtf < LOCAL_RTF)
