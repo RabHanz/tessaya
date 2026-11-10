@@ -1889,6 +1889,8 @@ fn serve() {
                 }
             }
             Msg::Key { hold: true, pressed, at } => {
+                // Raw edges, so a press that "did not fire" can be told from one let go within SHORT_TAP_MS.
+                emit(json!({"ev": "key_edge", "down": pressed, "at": at.round()}));
                 for out in taps.step(pressed, at, config.latch) {
                     match out {
                         Out::Start => match dictation_press(recording.is_some(), voice_on) {
@@ -1900,6 +1902,8 @@ fn serve() {
                             }
                             _ => {
                                 held = true;
+                                // Before the microphone opens (80 to 140 ms), so the pill shows on the press itself.
+                                emit(json!({"ev": "pressed"}));
                                 begin(&config, &mut recording, &tx, &job_tx, "hold");
                                 take_escape(&tx, recording.is_some());
                             }

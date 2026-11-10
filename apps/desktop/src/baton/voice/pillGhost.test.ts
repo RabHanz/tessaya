@@ -12,6 +12,8 @@ describe("the ghost at the caret", () => {
       ghostPlacement({ caret: { x: 300, y: 240, width: 0, height: 22 }, field, fontPt: 11.25 }),
     ).toEqual({
       bounds: { x: 108, y: 200, width: 584, height: 300 },
+      font: null,
+      empty: false,
       fontPx: 15,
       linePx: 22,
       width: 584,
@@ -51,7 +53,17 @@ describe("the ghost at the caret", () => {
         field: composer,
         fontPt: 10.5,
       }),
-    ).toMatchObject({ indent: 0, linePx: 20, fontPx: 14, top: 8 });
+    ).toMatchObject({ indent: 0, linePx: 20, fontPx: 14, top: 8, empty: true });
+  });
+  it("covers an empty field's placeholder and writes in the field's own font, never one that breaks the CSS", () => {
+    const caret = { x: 300, y: 240, width: 0, height: 22 };
+    expect(ghostPlacement({ caret, field, fontPt: 11, fontName: "Inter Variable" })).toMatchObject({
+      font: "Inter Variable",
+      empty: false,
+    });
+    expect(
+      ghostPlacement({ caret, field, fontPt: 11, fontName: 'x";}body{display:none' }),
+    ).toMatchObject({ font: null });
   });
   it("flows words from the caret and wraps each at the box's width, never one word a line", () => {
     // Box 100 wide, caret 60 in: the first fits after it, the next goes to a new line, which holds three.
@@ -111,5 +123,12 @@ describe("the ghost at the caret", () => {
         rtl: true,
       })?.rtl,
     ).toBe(true);
+    expect(
+      caretGeometry({
+        caret: { x: 1, y: 2, width: 0, height: 20 },
+        field: { x: 0, y: 0, width: 9, height: 9 },
+        fontName: "Segoe UI",
+      })?.fontName,
+    ).toBe("Segoe UI");
   });
 });

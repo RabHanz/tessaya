@@ -138,6 +138,9 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       out({ ev: "loading", elapsedMs: ++n * 100 });
       if (n === 4) { clearInterval(t); loaded = true; out({ ev: "model_ready", id: m.id, loadMs: 400 }); for (const q of queue) out({ ev: "text", id: q, text: "heard it" }); queue = []; }
     }, 100);
+  } else if (m.cmd === "paste_checked") {
+    // The clipboard's restore ran long: a paste that landed, answered after the old 1.5 s wait.
+    setTimeout(() => out({ ev: "paste_checked", id: m.id, why: "ok", pasteMs: 1800 }), 1800);
   } else if (m.cmd === "transcribe") { if (loaded) out({ ev: "text", id: m.id, text: "heard it", model: m.model ?? "dictation.gguf" }); else queue.push(m.id); }
 });
 `,
@@ -164,6 +167,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       // The wake path asks for its own model, and the log names the one that recognised each clip.
       expect(await sidecar.transcribe("z.wav", "/m/fast.gguf")).toBe("heard it");
       expect(models.slice(-2)).toEqual(["dictation.gguf", "/m/fast.gguf"]);
+      // A late "ok" is a paste that landed: never "refused", so no copy card and no "Not pasted".
+      expect(await sidecar.pasteChecked("words", 1, "T3")).toBe("ok");
     } finally {
       sidecar.dispose();
     }

@@ -68,7 +68,14 @@ export const caretGeometry = (event: Record<string, unknown>): CaretGeometry | n
   const field = boxOf(event["field"]);
   const fontPt = typeof event["fontPt"] === "number" ? event["fontPt"] : 0;
   if (caret === null || field === null) return null;
-  return event["rtl"] === true ? { caret, field, fontPt, rtl: true } : { caret, field, fontPt };
+  const fontName = typeof event["fontName"] === "string" ? event["fontName"] : "";
+  return {
+    caret,
+    field,
+    fontPt,
+    ...(fontName === "" ? {} : { fontName }),
+    ...(event["rtl"] === true ? { rtl: true } : {}),
+  };
 };
 
 export const busyAfter = (ev: DictationEvent["ev"], was: boolean): boolean =>
@@ -208,9 +215,15 @@ export type DictationEvent =
       readonly dictation?: number;
       readonly tap?: boolean;
       readonly discarded?: boolean;
+      /** Another key joined the hold chord. */
+      readonly joined?: boolean;
     }
   /** A key was held for dictation `id`'s paste (`holdKeys`): paste now. */
   | { readonly ev: "held_key"; readonly id: number }
+  /** The hold key went down and a recording starts: the pill shows now, before the microphone opens. */
+  | { readonly ev: "pressed" }
+  /** Every raw edge of the hold key, ms on the helper's clock, for the turn log. */
+  | { readonly ev: "key_edge"; readonly down: boolean; readonly at: number }
   | { readonly ev: "error"; readonly message: string; readonly dictation?: number }
   /** Just before the chord, what the clipboard held (ours or something else); when settled, whether it was read. */
   | {
@@ -274,8 +287,11 @@ export interface SidecarTiming {
 
 /** `nofield`: the keyboard was on icons, a list or a button, where a paste lands nowhere. */
 export type PasteVerdict = "ok" | "gone" | "changed" | "secret" | "nofield" | "refused";
-/** The helper checks and pastes within this (its own deadline is the same); after it nothing is pasted. */
-export const PASTE_CHECK_MS = 1_500;
+/**
+ * How long the helper's answer is awaited. It decides to paste only within its own 1.5 s deadline, but the paste itself
+ * (the clipboard's snapshot and restore) can run past that, so a late "ok" is a paste that landed, not a refusal.
+ */
+export const PASTE_CHECK_MS = 4_000;
 /** What the helper said stopped a checked paste; anything else, a late answer included, is "refused". */
 export const pasteVerdictOf = (why: unknown): PasteVerdict =>
   why === "ok" || why === "gone" || why === "changed" || why === "secret" || why === "nofield"

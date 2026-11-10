@@ -518,8 +518,6 @@ import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
-/** The longest the paste waits for the ghost in his field. */
-const GHOST_WAIT_MS = 3_000;
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: BatonFocusTarget = {
   producer: "desktop",
@@ -1957,10 +1955,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const ghost = createPillGhost({
     look: () => ({ motion: settings.motion, glass: settings.glass }),
-    lastInput: () => sidecar?.lastInput().catch(() => null) ?? Promise.resolve(null),
     windows: input.platform === "win32",
   });
-  /** The ghost played this flush's cleanup in his field, so the pill does not play it again. */
+  /** The ghost showed this flush's words in his field, so the pill does not play the cleanup again. */
   let ghostPlayed = false;
   /** As a dictation starts: the words go at the caret when the field says where it is, else in the pill. */
   const startGhost = () => {
@@ -1982,24 +1979,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let keyHold = 0;
   let keyHolds = 0;
   const oneShot = createOneShot<FocusedApp>({
-    // A hung ghost page never stops the paste: past GHOST_WAIT_MS the words land anyway.
-    beforePaste: (raw, text, app) => {
-      // Enter pressed while the ghost plays must land after the words, so typing keys wait for this paste.
-      if (ghost.active() && app.window !== undefined && sidecar !== null) {
+    // The paste never waits for the ghost (it held every paste ~2.8 s): its words go as the cleaned ones land.
+    beforePaste: async (_raw, _text, app) => {
+      ghostPlayed = ghost.active();
+      // Enter pressed while the ghost is up must land after the words, so typing keys wait for this paste.
+      if (ghostPlayed && app.window !== undefined && sidecar !== null) {
         keyHold = ++keyHolds;
         sidecar.holdKeys(keyHold, app.window);
       }
-      return Promise.race([
-        ghost.play(raw, text),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), GHOST_WAIT_MS).unref()),
-      ]).then((played) => {
-        ghostPlayed = played;
-        if (!played) ghost.stop();
-      });
     },
     afterPaste: () => {
       if (keyHold !== 0) sidecar?.releaseKeys(keyHold);
       keyHold = 0;
+      ghost.stop();
     },
     save: (chunks) => {
       try {
@@ -3650,6 +3642,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
+    if (event.ev === "key_edge")
+      return input.onNote?.("key_edge", { down: event.down, at: event.at });
+    // The pill on the press itself; the microphone opens 80 to 140 ms later (`recording`).
+    if (event.ev === "pressed") return showDictation("Esc twice discards");
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
       dictationWords(event.text);
@@ -3692,13 +3688,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       keyHeldToTalk = false;
       showDictation("Esc twice discards");
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
-    else if (event.ev === "held_key" && event.id === keyHold) ghost.skip();
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
       takeRecording(recordings, event.dictation);
       // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
+      if (event.joined === true) input.onNote?.("dictation_dropped", { reason: "chord_joined" });
       if (event.discarded === true) input.onNote?.("dictation_dropped", { reason: "esc_held" });
       showDictation(null);
     } else if (event.ev === "error") {
@@ -3763,6 +3759,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         keepText(`Heard as ${languageName(outside)}, not pasted`, text);
         return void heardOutside(outside);
       }
+      // A hold that leaves nothing: why, so it is never a silent loss.
+      if (event.dictated === true && (event.error !== undefined || text.trim() === ""))
+        input.onNote?.("dictation_dropped", {
+          reason: event.error === undefined ? "no_text" : "error",
+          audioMs: event.audioMs ?? null,
+          ...(event.error === undefined ? {} : { error: event.error }),
+        });
       if (event.dictated === true && event.error === undefined) {
         const own = withRecording(event);
         if (own.unmatched === true) return keepText("Not pasted", text);

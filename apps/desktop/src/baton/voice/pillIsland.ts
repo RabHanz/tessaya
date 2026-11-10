@@ -79,7 +79,7 @@ const {clamp,prog,EMPH,DECEL,ACCEL,MD,FLOW,EXPAND_MS,SMOOTH,springAt,align,clean
 const D=${variant === "D"},PH=34,PBASE=124,LIVE_LINES=D?99:5,PAD=12,MAXW=${ISLAND_WIDTH},TMAX=MAXW-32,FLOW01=[{at:0,to:0},{at:0,to:1}];
 const SHRINK_MS=D?0:600;
 const flowWords=${flowWords.toString()},ghostScroll=${ghostScroll.toString()};
-let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0,TOP=0,BOXH=0,FONT=14;
+let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0,TOP=0,BOXH=0,FONT=14,EMPTY=false;
 // D: the field's own font, line height, text width, where the caret sits on its line, and the text box it scrolls in.
 const setField=(fontPx,linePx,width,indent,top,height)=>{LINE=linePx;FW=width;INDENT=indent;TOP=top;BOXH=height;FONT=fontPx;for(const el of[vp,mE])el.style.font='400 '+fontPx+'px/'+linePx+'px var(--sans)';};
 const scD=lines=>ghostScroll(lines,TOP,LINE,BOXH);
@@ -185,8 +185,9 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
  if(D){vp.style.width=FW+'px';
   // The text scrolls as a field does: the newest line stays in the box, and the cleanup's lines settle the same way.
   const sD=t<R||!C?springAt(L.Sc,t,calm):scD(L.rawLines)+(scD(L.linesB)-scD(L.rawLines))*pp;vp.style.transform='translateY('+(TOP-sD).toFixed(2)+'px)';sc=0;
-  // His own text cannot scroll with it, so once it does the field's lines under it are covered, as a textarea's would go.
-  const bg=$('bg');if(bg)bg.style.opacity=String(clamp(sD/LINE)*(C&&t>=P?1-ACCEL(prog(t,P,C.OUT_D)):1));
+  // His own text cannot scroll with it, so once it does the field's lines under it are covered, as a textarea's would go;
+  // an empty field's placeholder is covered from the start (EMPTY), and shows again when the ghost window goes.
+  const bg=$('bg');if(bg)bg.style.opacity=String(Math.max(EMPTY?1:0,clamp(sD/LINE))*(C&&t>=P?1-ACCEL(prog(t,P,C.OUT_D)):1));
   // A line scrolled half past the box's top fades over half a line, not cut in half; only the words fade, never #bg.
   // vp is tall enough to hold the box in its own coordinates, so its mask reaches every word on show.
   const top=sD-TOP;vp.style.height=(sD+BOXH).toFixed(2)+'px';
