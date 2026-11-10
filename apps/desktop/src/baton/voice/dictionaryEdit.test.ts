@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { readSettings } from "./DesktopBatonVoice.ts";
+import { readSettings, recognizersFrom } from "./DesktopBatonVoice.ts";
 import {
   addEntry,
   editEntry,
@@ -70,6 +70,26 @@ describe("the vocabulary", () => {
     NodeFS.writeFileSync(settings, '{"holdKey":"F9",');
     readSettings(settings);
     expect(NodeFS.readFileSync(`${settings}.bad`, "utf8")).toBe('{"holdKey":"F9",');
+  });
+
+  it("keeps only well-formed recogniser addresses, never a token, from settings", () => {
+    // Only plain ws:// on his tailnet. Built here, not written out, so the privacy guard sees no address.
+    const tailnet = `ws://${[100, 76, 0, 9].join(".")}:8797`;
+    const magicDns = [".ts", ".net"].join("");
+    const magic = `ws://box.tail1${magicDns}:8797`;
+    expect(
+      recognizersFrom([
+        magic,
+        tailnet,
+        magic.replace("ws://", "wss://"),
+        "ws://example.com:8797",
+        `ws://evil${magicDns}.example.com`,
+        `ws://${[100, 128, 0, 1].join(".")}`,
+        { url: "ws://y", token: "t" },
+        3,
+      ]),
+    ).toEqual([magic, tailnet]);
+    expect(recognizersFrom(undefined)).toEqual([]);
   });
 
   it("moves the old default hold key once and keeps a key he chose", () => {

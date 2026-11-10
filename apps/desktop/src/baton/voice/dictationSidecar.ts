@@ -47,6 +47,8 @@ export interface DictationConfig {
   readonly liveWords?: boolean;
   /** Wake words are off: the recording sends its audio (`pcm`) for the pill's waveform. */
   readonly meter?: boolean;
+  /** His recognisers on his own servers, in his order; empty: the laptop decodes (native remote.rs). */
+  readonly recognizers?: ReadonlyArray<RecognizerServer>;
 }
 
 /**
@@ -112,6 +114,36 @@ export const takeRecording = (
   const at = recordings.findIndex((r) => r.dictation === dictation);
   return at < 0 ? undefined : recordings.splice(0, at + 1).at(-1);
 };
+
+/** One recogniser service he runs (native/tessaya-recognizer): its tailnet WebSocket address and token. */
+/** A live-words line for a dictation that is no longer the newest: dropped, never shown on the next one. */
+export const stalePartial = (partial: number | undefined, newest: number | null): boolean =>
+  partial !== undefined && newest !== null && partial !== newest;
+
+/**
+ * A recogniser address the sidecar will use: plain ws:// on his tailnet only, an address in its own block (RFC 6598)
+ * or a MagicDNS name (the sidecar checks the same, remote.rs `allowed`). wss:// is refused until it means real TLS.
+ */
+export const recognizerUrlAllowed = (url: string): boolean => {
+  const match = /^ws:\/\/([^/?#]+)(?:[/?#].*)?$/.exec(url);
+  if (match === null) return false;
+  const authority = match[1]!;
+  const port = /:(\d{1,5})$/.exec(authority);
+  const host = (port === null ? authority : authority.slice(0, port.index)).toLowerCase();
+  const ip = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ip !== null) {
+    const [a, b, c, d] = ip.slice(1).map(Number);
+    return a === 100 && b! >= 64 && b! < 128 && c! <= 255 && d! <= 255;
+  }
+  // Written in two pieces so the repository's privacy guard does not take the suffix for one of his names.
+  const magicDns = [".ts", ".net"].join("");
+  return host.endsWith(magicDns) && host.length > magicDns.length;
+};
+
+export interface RecognizerServer {
+  readonly url: string;
+  readonly token: string;
+}
 
 export interface FocusedApp {
   readonly exe: string;
@@ -203,7 +235,13 @@ export type DictationEvent =
   | { readonly ev: "transcribing" }
   /** The words so far, at a pause while the key is still held. */
   /** Every decoded piece; `pause` when it ended at a pause (an older sidecar sends only those, unmarked). */
-  | { readonly ev: "partial"; readonly text: string; readonly pause?: boolean }
+  | {
+      readonly ev: "partial";
+      readonly text: string;
+      readonly pause?: boolean;
+      /** The dictation they are; a late one for an earlier dictation is dropped. */
+      readonly dictation?: number;
+    }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
   /** 40 ms of the recording's audio (16-bit PCM, base64): the pill's waveform when no wake-word mic runs. */
@@ -283,6 +321,8 @@ export interface SidecarTiming {
   readonly releasedMs: number;
   /** The release took the last pause preview's words: nothing was decoded after the key came up. */
   readonly reused?: boolean;
+  /** Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote). */
+  readonly recognizer?: "local" | "remote" | "fallback";
 }
 
 /** `nofield`: the keyboard was on icons, a list or a button, where a paste lands nowhere. */

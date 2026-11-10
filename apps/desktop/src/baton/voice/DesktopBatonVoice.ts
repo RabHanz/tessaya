@@ -365,10 +365,13 @@ import {
   restartDelayMs,
   startDictationSidecar,
   takeRecording,
+  recognizerUrlAllowed,
+  stalePartial,
   type DictationEvent,
   type DictationSidecar,
   type PasteVerdict,
   type FocusedApp,
+  type RecognizerServer,
   type RecordingEntry,
   type PasteMethod,
   type SidecarDevice,
@@ -660,6 +663,10 @@ interface VoiceSettings {
   readonly cloudProvider: CloudSttProvider;
   /** The provider's model; null is its recommended one. */
   readonly cloudModel: string | null;
+  /** His recogniser services, first choice first; each one's token is kept encrypted (`recognizer-keys.json`). */
+  readonly recognizers: ReadonlyArray<string>;
+  /** "Recognise on my servers": off by default; on, a dictation goes to the first healthy one, this machine last. */
+  readonly recognizeOnServers: boolean;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
   /** He picked it himself; a value this branch saved for him does not count (D114). */
@@ -761,6 +768,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   recognition: "local",
   cloudProvider: "openai",
   cloudModel: null,
+  recognizers: [],
+  recognizeOnServers: false,
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
@@ -793,6 +802,12 @@ const MIC_POLL_MS = 5_000;
 /** The pointer does not wait on a slow accessibility tree. */
 const LOCATE_TIMEOUT_MS = 1_500;
 const LOCATE_MAX_DIP = 160;
+
+/** Only ws:// addresses on his tailnet (`recognizerUrlAllowed`); a token is never read from settings. */
+export const recognizersFrom = (value: unknown): ReadonlyArray<string> =>
+  Array.isArray(value)
+    ? value.filter((url): url is string => typeof url === "string" && recognizerUrlAllowed(url))
+    : [];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -856,6 +871,8 @@ export const readSettings = (path: string): VoiceSettings => {
         typeof saved["cloudModel"] === "string" && saved["cloudModel"] !== ""
           ? saved["cloudModel"]
           : null,
+      recognizers: recognizersFrom(saved["recognizers"]),
+      recognizeOnServers: saved["recognizeOnServers"] === true,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -3106,20 +3123,32 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The provider's own HTTPS API on his key; plain fetch, as the adapters are pure and take any fetch. */
   // @effect-diagnostics-next-line globalFetch:off
   const cloudFetch = (url: string, init: RequestInit) => fetch(url, init);
+  // Linux's basic_text backend is a fixed key, not encryption: no key is kept there (as memory sync).
+  const osProtection = () =>
+    Electron.safeStorage.isEncryptionAvailable() &&
+    (input.platform !== "linux" ||
+      Electron.safeStorage.getSelectedStorageBackend() !== "basic_text")
+      ? {
+          protect: (plain: string) => Electron.safeStorage.encryptString(plain).toString("base64"),
+          unprotect: (wrapped: string) =>
+            Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64")),
+        }
+      : null;
   const cloudKeys = createCloudKeys(
     NodePath.join(input.stateDir, "voice", "cloud-keys.json"),
-    // Linux's basic_text backend is a fixed key, not encryption: no key is kept there (as memory sync).
-    () =>
-      Electron.safeStorage.isEncryptionAvailable() &&
-      (input.platform !== "linux" ||
-        Electron.safeStorage.getSelectedStorageBackend() !== "basic_text")
-        ? {
-            protect: (plain) => Electron.safeStorage.encryptString(plain).toString("base64"),
-            unprotect: (wrapped) =>
-              Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64")),
-          }
-        : null,
+    osProtection,
   );
+  /** His recogniser tokens, by server address, encrypted like the cloud keys; never in the settings file. */
+  const recognizerKeys = createCloudKeys<string>(
+    NodePath.join(input.stateDir, "voice", "recognizer-keys.json"),
+    osProtection,
+  );
+  /** The servers he turned on that have a token kept; one without is skipped, never tried open. */
+  const recognizersWithTokens = (): ReadonlyArray<RecognizerServer> =>
+    settings.recognizers.flatMap((url) => {
+      const token = recognizerKeys.get(url);
+      return token === null ? [] : [{ url, token }];
+    });
   const cloudModelOf = (provider: CloudSttProvider) =>
     (settings.cloudProvider === provider ? settings.cloudModel : null) ??
     RECOMMENDED[provider].model;
@@ -3373,6 +3402,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
       liveWords: settings.showWords,
       meter: loop === null,
+      recognizers: settings.recognizeOnServers ? recognizersWithTokens() : [],
     });
     syncCleanupSession();
   };
@@ -3665,6 +3695,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "pressed") return pressGate.press();
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
+      // Words for a dictation that is no longer the newest (late from his server after a new key press) are dropped.
+      if (stalePartial(event.dictation, recordings.at(-1)?.dictation ?? null)) return;
       dictationWords(event.text);
       const app = focusedApp;
       // Each finished sentence is cleaned as he speaks, and at a pause the last one too.
@@ -6028,6 +6060,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         addLabel: "Add",
       },
       {
+        id: "v.recognizeOnServers",
+        section: "Dictation",
+        label: "Recognise on my servers",
+        hint: "While you hold the key, your words are recognised on the first of your own servers that answers, over your private network, and this computer only steps in if none does. Audio is never kept on the servers.",
+        kind: "toggle",
+        on: settings.recognizeOnServers,
+      },
+      {
+        id: "v.recognizer",
+        section: "Dictation",
+        label: "My recognition servers",
+        hint: "Add one as its address and token, separated by a space (ws://host:port token). The token is encrypted on this computer and never shown again.",
+        kind: "list",
+        secret: true,
+        items: settings.recognizers,
+        placeholder: "ws://host:port token",
+        addLabel: "Add",
+      },
+      {
         id: "v.doubleTap",
         section: "Dictation",
         label: "Double-tap to keep talking",
@@ -7208,7 +7259,31 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
     } else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
       save({ pillStyle: value });
-    else if (id === "v.doubleTap") {
+    else if (id === "v.recognizeOnServers") {
+      save({ recognizeOnServers: on });
+      configureDictation();
+    } else if (id === "v.recognizer:add" && typeof value === "string") {
+      const [url = "", token = ""] = value.trim().split(/\s+/);
+      if (!recognizerUrlAllowed(url) || token === "")
+        note =
+          "Give a ws:// address on your tailnet (its own address or MagicDNS name) and the token: ws://host:port token";
+      else {
+        try {
+          recognizerKeys.set(url, token);
+          save({ recognizers: [...settings.recognizers.filter((u) => u !== url), url] });
+          note = null;
+        } catch (error) {
+          note = error instanceof Error ? error.message : String(error);
+        }
+      }
+      configureDictation();
+      render();
+    } else if (id === "v.recognizer:rm" && typeof value === "string") {
+      recognizerKeys.clear(value);
+      save({ recognizers: settings.recognizers.filter((u) => u !== value) });
+      configureDictation();
+      render();
+    } else if (id === "v.doubleTap") {
       save({ doubleTap: on });
       configureDictation();
     } else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
