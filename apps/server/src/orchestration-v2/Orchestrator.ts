@@ -1,5 +1,9 @@
 import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
-import { providerChangeRefusal, providerIdentity } from "@t3tools/baton-shared/providerChange";
+import {
+  instanceName,
+  providerChangeRefusal,
+  providerIdentity,
+} from "@t3tools/baton-shared/providerChange";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -1130,6 +1134,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const providerAdapters = yield* ProviderAdapterRegistryV2;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
   // The driver, or an ACP agent's continuation key; from the thread's provider threads once the instance is gone.
   const providerIdentityOf = (
     instanceId: ProviderInstanceId,
@@ -1161,17 +1166,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly approved: boolean;
   }) {
     if (input.targetInstanceId === input.currentInstanceId) return;
+    // Where its last turn ran: Open in terminal points a Claude thread at the live instance between turns.
+    const lastTurnInstanceId = input.providerThreads
+      .filter((thread) => thread.lastRunOrdinal !== null)
+      .toSorted((a, b) => (b.lastRunOrdinal ?? 0) - (a.lastRunOrdinal ?? 0))[0]?.providerInstanceId;
+    const { providerInstances } = yield* serverSettings.getSettings.pipe(Effect.orDie);
     const refusal = providerChangeRefusal({
       started: input.providerThreads.length > 0,
       approved: input.approved,
       current: {
-        instance: input.currentInstanceId,
+        name: instanceName(input.currentInstanceId, providerInstances[input.currentInstanceId]),
         provider: yield* providerIdentityOf(input.currentInstanceId, input.providerThreads),
       },
       target: {
-        instance: input.targetInstanceId,
+        name: instanceName(input.targetInstanceId, providerInstances[input.targetInstanceId]),
         provider: yield* providerIdentityOf(input.targetInstanceId, input.providerThreads),
       },
+      lastTurnProvider:
+        lastTurnInstanceId === undefined
+          ? null
+          : yield* providerIdentityOf(lastTurnInstanceId, input.providerThreads),
     });
     if (refusal === null) return;
     yield* Effect.logWarning("provider-change-blocked", {
@@ -1188,7 +1202,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const providerSessions = yield* ProviderSessionManagerV2;
   const providerSwitchService = yield* ProviderSwitchServiceV2;
-  const serverSettings = yield* ServerSettings.ServerSettingsService;
   const runtimePolicy = yield* RuntimePolicyV2;
   const threadForkService = yield* ThreadForkServiceV2;
   const threadDispatch = yield* ThreadCommandExecutor.ThreadCommandExecutor;
