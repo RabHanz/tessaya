@@ -2,7 +2,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { isElectron } from "../../env";
-import { COMPOSER_DRAFT_STORAGE_KEY, useComposerDraftStore } from "../../composerDraftStore";
+import {
+  COMPOSER_DRAFT_STORAGE_KEY,
+  resolveComposerDraftKey,
+  useComposerDraftStore,
+} from "../../composerDraftStore";
 import { resolveStorage } from "../../lib/storage";
 import type { ThreadRouteTarget } from "../../threadRoutes";
 import {
@@ -153,20 +157,34 @@ onThreadClaimed((key) => {
 
 // Every window writes the whole drafts blob, so it would overwrite what another window saved. A
 // window owns the drafts of the threads it holds and takes the rest from storage.
+export function adoptStoredComposerDrafts(): Promise<void> {
+  const before = useComposerDraftStore.getState();
+  // A held thread's composer can still write under its draft id until its promotion finalizes.
+  const mine = new Set(
+    useBatonPanesStore
+      .getState()
+      .slots.flatMap((slot) => [
+        paneTargetKey(slot.target),
+        resolveComposerDraftKey(
+          before,
+          slot.target.kind === "server" ? slot.target.threadRef : slot.target.draftId,
+        ) ?? "",
+      ]),
+  );
+  const keep = <A>(entries: Record<string, A>) =>
+    Object.fromEntries(Object.entries(entries).filter(([key]) => mine.has(key)));
+  const drafts = keep(before.draftsByThreadKey);
+  const sessions = keep(before.draftThreadsByThreadKey);
+  return Promise.resolve(useComposerDraftStore.persist.rehydrate()).then(() => {
+    useComposerDraftStore.setState((state) => ({
+      draftsByThreadKey: { ...state.draftsByThreadKey, ...drafts },
+      draftThreadsByThreadKey: { ...state.draftThreadsByThreadKey, ...sessions },
+    }));
+  });
+}
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
-    if (event.key !== COMPOSER_DRAFT_STORAGE_KEY) return;
-    const drafts = useComposerDraftStore.getState().draftsByThreadKey;
-    const mine = useBatonPanesStore.getState().slots.flatMap((slot) => {
-      const key = paneTargetKey(slot.target);
-      const draft = drafts[key];
-      return draft === undefined ? [] : [[key, draft] as const];
-    });
-    void Promise.resolve(useComposerDraftStore.persist.rehydrate()).then(() =>
-      useComposerDraftStore.setState((state) => ({
-        draftsByThreadKey: { ...state.draftsByThreadKey, ...Object.fromEntries(mine) },
-      })),
-    );
+    if (event.key === COMPOSER_DRAFT_STORAGE_KEY) void adoptStoredComposerDrafts();
   });
 }
 
