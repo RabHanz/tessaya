@@ -3,9 +3,12 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  awaitPasteVerdict,
+  PASTE_CHECK_MS,
+  type PasteVerdict,
   pasteVerdictOf,
   focusedFrom,
   busyAfter,
@@ -214,6 +217,21 @@ describe("the wake path's own model", () => {
     );
     expect(r.asked).toEqual(["/m/fast.gguf"]);
     expect(r.failed).toEqual([]);
+  });
+});
+
+describe("a paste answer after the wait", () => {
+  it("is kept as refused at once, and its real answer still reaches onLate", async () => {
+    vi.useFakeTimers();
+    let answer: (why: PasteVerdict) => void = () => undefined;
+    const late = vi.fn();
+    const verdict = awaitPasteVerdict(new Promise((resolve) => (answer = resolve)), late);
+    vi.advanceTimersByTime(PASTE_CHECK_MS);
+    expect(await verdict).toBe("refused");
+    answer("ok");
+    await Promise.resolve();
+    expect(late).toHaveBeenCalledWith("ok");
+    vi.useRealTimers();
   });
 });
 

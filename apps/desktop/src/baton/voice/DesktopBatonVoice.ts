@@ -2034,7 +2034,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 // One helper call: its window forward, the same window and page checked (his words were not for
                 // another), then the paste.
                 const why = await side
-                  .pasteChecked(text, target, title)
+                  .pasteChecked(text, target, title, (late) => {
+                    if (late !== "ok") return;
+                    // It landed after all: its copy card would only invite a second paste.
+                    toast.retract(text);
+                    pill.on({ type: "done", label: "Pasted after all" });
+                    input.onNote?.("paste_late", { chars: text.length });
+                  })
                   .catch(() => "refused" as const);
                 if (why === "ok") return true;
                 keptWhy = why;

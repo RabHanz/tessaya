@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { caretGeometry } from "./dictationSidecar.ts";
-import { ghostPlacement } from "./pillGhost.ts";
+import { ghostPlacement, inDip } from "./pillGhost.ts";
 import { flowWords, ghostScroll } from "./pillIsland.ts";
 
 const field = { x: 100, y: 200, width: 600, height: 300 };
@@ -102,6 +102,23 @@ describe("the ghost at the caret", () => {
     expect(why({ caret: { ...caret, height: 0 }, field, fontPt: 0 })).toBe("caret line 0px");
     // The ghost lays words out left to right; Hebrew or Arabic before the caret stays in the pill.
     expect(why({ caret, field, fontPt: 11, rtl: true })).toBe("rtl");
+  });
+  it("keeps the field's font and its RTL flag when the boxes go to DIP", () => {
+    const half = (b: { x: number; y: number; width: number; height: number }) => ({
+      x: b.x / 2,
+      y: b.y / 2,
+      width: b.width / 2,
+      height: b.height / 2,
+    });
+    const g = {
+      caret: { x: 600, y: 480, width: 0, height: 44 },
+      field: { x: 200, y: 400, width: 1200, height: 600 },
+      fontPt: 11,
+    };
+    expect(ghostPlacement(inDip({ ...g, fontName: "Inter Variable" }, half))).toMatchObject({
+      font: "Inter Variable",
+    });
+    expect(ghostPlacement(inDip({ ...g, rtl: true }, half))).toEqual({ why: "rtl" });
   });
   it("reads the sidecar's caret only when it is whole: a secret field sends none", () => {
     expect(caretGeometry({ caret: null })).toBeNull();

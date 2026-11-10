@@ -292,6 +292,25 @@ export type PasteVerdict = "ok" | "gone" | "changed" | "secret" | "nofield" | "r
  * (the clipboard's snapshot and restore) can run past that, so a late "ok" is a paste that landed, not a refusal.
  */
 export const PASTE_CHECK_MS = 4_000;
+/** The helper's answer, or "refused" past `PASTE_CHECK_MS`; an answer after that still reaches `onLate`. */
+export const awaitPasteVerdict = (
+  answer: Promise<PasteVerdict>,
+  onLate?: (why: PasteVerdict) => void,
+): Promise<PasteVerdict> => {
+  let late = false;
+  void answer.then((why) => {
+    if (late) onLate?.(why);
+  });
+  return Promise.race([
+    answer,
+    new Promise<PasteVerdict>((resolve) =>
+      setTimeout(() => {
+        late = true;
+        resolve("refused");
+      }, PASTE_CHECK_MS),
+    ),
+  ]);
+};
 /** What the helper said stopped a checked paste; anything else, a late answer included, is "refused". */
 export const pasteVerdictOf = (why: unknown): PasteVerdict =>
   why === "ok" || why === "gone" || why === "changed" || why === "secret" || why === "nofield"
@@ -330,7 +349,13 @@ export interface DictationSidecar {
    * A dictation's paste in one call: that window brought forward, checked to be the same page and not a password box,
    * then pasted. Past `PASTE_CHECK_MS` (or from a helper that does not know the call) it is "refused", nothing pasted.
    */
-  readonly pasteChecked: (text: string, target: number, title: string) => Promise<PasteVerdict>;
+  readonly pasteChecked: (
+    text: string,
+    target: number,
+    title: string,
+    /** The helper answered after `PASTE_CHECK_MS`, when the words were already kept: what it said. */
+    onLate?: (why: PasteVerdict) => void,
+  ) => Promise<PasteVerdict>;
   readonly foreground: () => Promise<FocusedApp>;
   /** The top-level window under a physical point. */
   readonly windowAt: (point: {
@@ -661,15 +686,13 @@ export const startDictationSidecar = (input: {
     preload: () => call<number>({ cmd: "load" }, true),
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
-    pasteChecked: (text, target, title) =>
-      Promise.race([
+    pasteChecked: (text, target, title, onLate) =>
+      awaitPasteVerdict(
         call<PasteVerdict>({ cmd: "paste_checked", text, target, title }).catch(
           () => "refused" as const,
         ),
-        new Promise<PasteVerdict>((resolve) =>
-          setTimeout(() => resolve("refused"), PASTE_CHECK_MS),
-        ),
-      ]),
+        onLate,
+      ),
     foreground: () => call<FocusedApp>({ cmd: "foreground" }),
     windowAt: ({ x, y }) =>
       call<{ window: number; label: string } | null>({ cmd: "window_at", x, y }),

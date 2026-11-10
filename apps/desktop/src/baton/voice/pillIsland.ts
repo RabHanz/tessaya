@@ -11,8 +11,8 @@ export const ISLAND_WIDTH = 420;
 export const ISLAND_HEIGHT = 320;
 
 export const ISLAND_CSS = `
-:root{--glass:rgba(20,20,26,.58);--glass-solid:#14141a;--edge:rgba(255,255,255,.13);--itext:#fff;--grey:rgba(255,255,255,.46);--isoft:rgba(255,255,255,.62);--ibar:#ececef;--glow:rgba(236,236,239,.55);--accent:#5FB3B3}
-@media (prefers-color-scheme:light){:root{--glass:rgba(255,255,255,.82);--glass-solid:#fff;--edge:rgba(0,0,0,.16);--itext:#0f1012;--grey:rgba(15,16,18,.6);--isoft:rgba(15,16,18,.74);--ibar:#16171a;--glow:transparent;--accent:#14505A}}
+:root{--glass:rgba(20,20,26,.96);--glass-solid:#14141a;--edge:rgba(255,255,255,.13);--itext:#fff;--grey:rgba(255,255,255,.46);--isoft:rgba(255,255,255,.62);--ibar:#ececef;--glow:rgba(236,236,239,.55);--accent:#5FB3B3}
+@media (prefers-color-scheme:light){:root{--glass:rgba(255,255,255,.96);--glass-solid:#fff;--edge:rgba(0,0,0,.16);--itext:#0f1012;--grey:rgba(15,16,18,.6);--isoft:rgba(15,16,18,.74);--ibar:#16171a;--glow:transparent;--accent:#14505A}}
 #p.isl{position:absolute;left:0;bottom:28px;display:block;width:124px;height:34px;max-width:none;padding:0;border:0;border-radius:17px;overflow:hidden;background:var(--glass);box-shadow:inset 0 0 0 1px var(--edge);--text:var(--itext);--soft:var(--isoft);color:var(--text)}
 #p.isl[data-phase=dictating]{--bar:var(--ibar)}
 html.glass-reduced #p.isl,html.glass-off #p.isl{background:var(--glass-solid)}
@@ -194,7 +194,7 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
   vp.style.maskImage=vp.style.webkitMaskImage=sD>0?'linear-gradient(180deg,transparent 0,transparent '+top.toFixed(2)+'px,#000 '+(top+LINE/2).toFixed(2)+'px)':'';}else{
  p_.style.left=((MAXW-ww)/2).toFixed(2)+'px';p_.style.width=ww.toFixed(2)+'px';p_.style.height=(PH+h).toFixed(2)+'px';p_.style.borderRadius=(PH/2-clamp(h/24))+'px';
  const tuck=t<R?0:t<P?(calm?1:EMPH(prog(t,R,MD.medium2))):(calm?0:1-EMPH(prog(t,P,MD.medium2)));
- for(const id of['dx','w','dv'])$(id).style.opacity=String(1-.65*tuck);
+ for(const id of['dx','dv'])$(id).style.opacity=String(1-.65*tuck);
  $('dv').style.color=t>=R&&t<P+200?'var(--accent)':'';
  $('dx').style.transform='translate(5px,3px)';$('dv').style.transform='translate('+(ww-33).toFixed(2)+'px,3px)';$('w').style.transform='translate('+(ww/2-27).toFixed(2)+'px,9px)';
  const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(16px,'+(PH-4)+'px)';

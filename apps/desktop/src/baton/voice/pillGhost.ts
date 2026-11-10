@@ -78,6 +78,13 @@ export const ghostPlacement = (g: CaretGeometry) => {
   };
 };
 
+/** The sidecar's boxes in DIP; everything else it read (font, RTL) goes with them. */
+export const inDip = (g: CaretGeometry, scale: (b: Box) => Box): CaretGeometry => ({
+  ...g,
+  caret: scale(g.caret),
+  field: scale(g.field),
+});
+
 const GHOST_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
 :root{--field-bg:#1f1f23;--field-ink:#e9e9ee;--ghost:rgba(233,233,238,.84);--ghost-drop:rgba(233,233,238,.5);--sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
 @media (prefers-color-scheme:light){:root{--field-bg:#fff;--field-ink:#17181b;--ghost:rgba(23,24,27,.82);--ghost-drop:rgba(23,24,27,.5)}}
@@ -137,11 +144,7 @@ export const createPillGhost = (input: {
     start: (geometry) => {
       stop();
       const scale = (b: Box) => (input.windows ? Electron.screen.screenToDipRect(null, b) : b);
-      const placed = ghostPlacement({
-        caret: scale(geometry.caret),
-        field: scale(geometry.field),
-        fontPt: geometry.fontPt,
-      });
+      const placed = ghostPlacement(inDip(geometry, scale));
       if (placed.why !== undefined) return { why: placed.why };
       const win = new Electron.BrowserWindow({
         ...placed.bounds,
