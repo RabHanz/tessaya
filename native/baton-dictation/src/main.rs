@@ -417,16 +417,35 @@ fn infer(session: &mut Session, pcm: &mut Vec<f32>, language: Option<String>) ->
 
 /// The new words of one piece; the context before them only helps the model hear them.
 fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -> Result<String, String> {
+    decode_words(session, piece, language).map(|(text, _)| text)
+}
+
+/// A preview's words with where each ends, in samples of the uncut audio (`Live::preview_words`).
+type EndedWords = Vec<(usize, String)>;
+
+/// `decode_piece`, and each kept word with where it ends in the piece's new audio.
+fn decode_words(session: &mut Session, piece: Piece, language: Option<String>) -> Result<(String, EndedWords), String> {
     let Piece { mut pcm, context, .. } = piece;
     lift_gain(&mut pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
     let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
     let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+    let context_ms = context as i64 / 16;
+    let ended = result
+        .words
+        .iter()
+        .filter(|w| context == 0 || w.t0_ms >= context_ms - 80)
+        .filter(|w| !w.text.trim().is_empty())
+        .map(|w| (((w.t1_ms - context_ms).max(0) * 16) as usize, w.text.trim().to_string()))
+        .collect();
     if context == 0 || result.words.is_empty() {
-        return Ok(result.text.trim().to_string());
+        return Ok((result.text.trim().to_string(), ended));
     }
-    Ok(words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context as i64 / 16))
+    Ok((words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context_ms), ended))
 }
+
+/// A word ending this close to where a preview stopped may be cut off there: release decodes from before it.
+const PREVIEW_SAFE: usize = 16_000 * 2 / 5;
 
 /// One recording on its way through the model.
 struct Live {
@@ -452,6 +471,9 @@ struct Live {
     /// The last preview's words for the uncut audio up to `previewed`: with only quiet after it, the release takes
     /// them instead of decoding again (`reused`).
     preview: Option<String>,
+    /// That preview's words with where each ends: at release only what follows the last one ending well before the
+    /// preview did is decoded, so a long uncut stretch costs its last second or so, not all of it.
+    preview_words: EndedWords,
     /// Where the uncut audio was last checked for a pause (`Chunker::paused_since`), so the check runs every 100 ms.
     pause_checked: usize,
     reused: bool,
@@ -549,6 +571,7 @@ impl Live {
             previewed: 0,
             preview_ms: 0,
             preview: None,
+            preview_words: Vec::new(),
             pause_checked: 0,
             reused: false,
             remote: None,
@@ -589,6 +612,7 @@ impl Live {
         }
         self.previewed = 0;
         self.preview = None;
+        self.preview_words.clear();
         self.pause_checked = 0;
         self.infer_ms += started.elapsed().as_millis() as u64;
         self.pieces += 1;
@@ -643,7 +667,9 @@ impl Live {
         };
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
-        self.preview = decode_piece(session, piece, self.language.clone()).ok();
+        let decoded = decode_words(session, piece, self.language.clone()).ok();
+        self.preview_words = decoded.as_ref().map(|(_, words)| words.clone()).unwrap_or_default();
+        self.preview = decoded.map(|(text, _)| text);
         // At his pause the words may be all of it: the desktop starts their cleanup now, so a release finds it done.
         if let (true, Some(text)) = (self.live_words || paused, &self.preview) {
             let words: Vec<&str> = self.text.iter().map(String::as_str).chain([text.as_str()]).collect();
@@ -671,8 +697,18 @@ impl Live {
                 }
                 self.reused = true;
                 self.pieces += 1;
-            } else if let Some(piece) = self.chunker.finish() {
-                self.decode(session, piece);
+            } else {
+                // The preview's words that ended well before it stopped are kept; only what follows is decoded.
+                let safe = self.previewed.saturating_sub(PREVIEW_SAFE);
+                let kept: Vec<&(usize, String)> = self.preview_words.iter().take_while(|(end, _)| *end <= safe).collect();
+                if let Some(&&(end, _)) = kept.last() {
+                    let words = kept.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ");
+                    self.chunker.skip(end);
+                    self.text.push(words);
+                }
+                if let Some(piece) = self.chunker.finish() {
+                    self.decode(session, piece);
+                }
             }
         }
     }
