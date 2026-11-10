@@ -8,6 +8,7 @@
 import * as Electron from "electron";
 
 import { isCompanionWindow } from "./lastAppWindow.ts";
+import { captureDraftImageDrops } from "./health/draftImageDropLog.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -108,6 +109,11 @@ export const startBatonDesktop = Effect.gen(function* () {
       file: NodePath.join(environment.logDir, "baton-lifecycle.ndjson"),
       version: environment.appVersion,
     });
+    captureDraftImageDrops(
+      Electron.app,
+      Electron.webContents.getAllWebContents(),
+      environment.logDir,
+    );
     markPhase("start-guard:begin");
     // A version that fails to start twice is remembered, never installed again by itself, and he is told what worked.
     const guardPath = NodePath.join(environment.stateDir, "baton-start-guard.json");

@@ -1,4 +1,5 @@
 import type { ComposerImageAttachment, ComposerImageBackup } from "./composerDraftStore";
+import { logDraftImageDrops, watchDraftImageDrops } from "./composerImageDropLog";
 
 // Draft images also go to localStorage as data URLs, but that write can miss: one JSON blob
 // for every draft hits the quota, or a reload lands before the async serialization. IndexedDB
@@ -38,7 +39,10 @@ async function withStore<A>(
 
 interface DraftImageStore {
   getState(): {
-    draftsByThreadKey: Record<string, { images: ReadonlyArray<ComposerImageAttachment> }>;
+    draftsByThreadKey: Record<
+      string,
+      { prompt: string; images: ReadonlyArray<ComposerImageAttachment> }
+    >;
   };
   subscribe(
     listener: (
@@ -87,6 +91,7 @@ export function startComposerImageBackup(
     removed: (backup: ComposerImageBackup) => boolean,
   ) => ReadonlyArray<ComposerImageBackup>,
 ): void {
+  watchDraftImageDrops(store);
   if (typeof indexedDB === "undefined" || typeof localStorage === "undefined") return;
   const tracked = new Set<string>();
   const sync = (state: ReturnType<DraftImageStore["getState"]>) => {
@@ -135,9 +140,17 @@ export function startComposerImageBackup(
         typeof backup.threadKey === "string",
     );
     const tombstones = new Set(readTombstones());
-    for (const backup of restore(backups, (candidate) =>
-      tombstones.has(backupKey(candidate.threadKey, candidate.id)),
-    )) {
+    const removed = (candidate: ComposerImageBackup) =>
+      tombstones.has(backupKey(candidate.threadKey, candidate.id));
+    const stale = restore(backups, removed);
+    // Backed up, never sent or removed, yet its draft did not survive the reload.
+    logDraftImageDrops(
+      stale
+        .filter((backup) => !removed(backup))
+        .map((backup) => ({ key: backup.threadKey, imageId: backup.id, chip: false })),
+      "reload",
+    );
+    for (const backup of stale) {
       removeBackup(backupKey(backup.threadKey, backup.id));
     }
     // Tombstones whose backups are already gone have done their job.
