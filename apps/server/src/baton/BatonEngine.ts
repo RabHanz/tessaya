@@ -308,11 +308,14 @@ export const make = Effect.gen(function* () {
     .pipe(Effect.map((snapshot): Shells => snapshot.threads));
   // Under memory pressure one read took 15 s and every poll meanwhile queued another on the
   // reader pool, so callers share one read per event high-water mark; a caller leaving never cancels it.
-  let shared: { readonly sequence: number; readonly shells: Deferred.Deferred<Shells> } | undefined;
+  type ReadError = Effect.Error<typeof readShells>;
+  let shared:
+    | { readonly sequence: number; readonly shells: Deferred.Deferred<Shells, ReadError> }
+    | undefined;
   const sharedRead = (sequence: number) =>
     Effect.suspend(() => {
       if (shared?.sequence === sequence) return Deferred.await(shared.shells);
-      const entry = { sequence, shells: Deferred.makeUnsafe<Shells>() };
+      const entry = { sequence, shells: Deferred.makeUnsafe<Shells, ReadError>() };
       shared = entry;
       return readShells.pipe(
         Effect.onExit((exit) =>
