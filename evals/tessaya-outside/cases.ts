@@ -241,4 +241,35 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     calls: ["tessaya_desktop_settings"],
     callsMustNot: ["tessaya_ask"],
   },
+  {
+    id: "outside-sets-start-window",
+    source:
+      "Remote desktop settings: which windows open at start is set with tessaya_desktop_settings, not asked",
+    prompt:
+      "Stop the Tessaya window opening every time the app starts on the Director's laptop; keep the sessions window.",
+    answers: {
+      tessaya_desktop_settings: {
+        connected: true,
+        at: "2026-11-10T10:00:00.000Z",
+        effective: {
+          dictationCleanup: "local",
+          pillStyle: "pill",
+          showWords: true,
+          holdKey: "Ctrl+Shift+Win",
+          holdKeyCues: false,
+          frosted: false,
+          doubleTap: true,
+          learnWords: true,
+          duckWhileDictating: "off",
+          recognizeOnServers: false,
+          openTessayaOnStart: false,
+          openSessionsOnStart: true,
+        },
+        pending: null,
+        applied: true,
+      },
+    },
+    calls: ["tessaya_desktop_settings"],
+    callsMustNot: ["tessaya_ask"],
+  },
 ];

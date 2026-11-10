@@ -260,7 +260,7 @@ const MemoryHistoryTool = Tool.make("tessaya_memory_history", {
 const StateTool = Tool.make("tessaya_state", {
   ...shared,
   description:
-    "How Tessaya is set up on the Director's computer, one section at a time: `settings` (how she answers and what she may do unasked), `voice` (voice, recognition local or cloud, languages, wake words), `personas`, `skills`, or `diagnostics` (versions, each connection, recent error codes, the brain and voice engines). Not for what is running, stuck or waiting: that is `tessaya_watch` and `tessaya_jobs`. Read only, and never keys, the vault or anything said: dictation settings change with `tessaya_desktop_settings`; to change anything else, ask with `tessaya_ask`. When her desktop app is not connected, only this server's own facts come back.",
+    "How Tessaya is set up on the Director's computer, one section at a time: `settings` (how she answers and what she may do unasked), `voice` (voice, recognition local or cloud, languages, wake words), `personas`, `skills`, or `diagnostics` (versions, each connection, recent error codes, the brain and voice engines). Not for what is running, stuck or waiting: that is `tessaya_watch` and `tessaya_jobs`. Read only, and never keys, the vault or anything said: dictation and start-up settings change with `tessaya_desktop_settings`; to change anything else, ask with `tessaya_ask`. When her desktop app is not connected, only this server's own facts come back.",
   parameters: Schema.Struct({ section: Schema.Literals(DESKTOP_STATE_SECTIONS) }),
   success: Schema.Struct({
     connected: Schema.Boolean,
@@ -280,7 +280,7 @@ const StateTool = Tool.make("tessaya_state", {
 const DesktopSettingsTool = Tool.make("tessaya_desktop_settings", {
   ...shared,
   description:
-    "Read or change Tessaya's dictation settings on the Director's desktop app: `dictationCleanup` (claude uses his own Claude or saved Anthropic key, local is code only, off), `pillStyle` (pill or field), `showWords`, `holdKey` (one of Ctrl+Shift+Win, F9, F8, Ctrl+Shift+Space, Pause), `holdKeyCues`, `frosted`, `doubleTap`, `learnWords`, `duckWhileDictating` (off, lower, mute), `recognizeOnServers` (recognise on his own servers instead of this computer). Without `set` it only reads. With `set`, only the fields given change; the app applies them live and the reply's `effective` is what it then runs with (`applied` false: the app has not taken it yet and `pending` waits for it). Only for changes the Director asked for.",
+    "Read or change Tessaya's dictation and start-up settings on the Director's desktop app: `dictationCleanup` (claude uses his own Claude or saved Anthropic key, local is code only, off), `pillStyle` (pill or field), `showWords`, `holdKey` (one of Ctrl+Shift+Win, F9, F8, Ctrl+Shift+Space, Pause), `holdKeyCues`, `frosted`, `doubleTap`, `learnWords`, `duckWhileDictating` (off, lower, mute), `recognizeOnServers` (recognise on his own servers instead of this computer), `openTessayaOnStart` and `openSessionsOnStart` (which windows open when the app starts; with both off it starts in the background). Without `set` it only reads. With `set`, only the fields given change; the app applies them live and the reply's `effective` is what it then runs with (`applied` false: the app has not taken it yet and `pending` waits for it). Only for changes the Director asked for.",
   parameters: Schema.Struct({ set: Schema.optional(DesktopVoiceSettingsPatch) }),
   success: DesktopSettingsView,
 })

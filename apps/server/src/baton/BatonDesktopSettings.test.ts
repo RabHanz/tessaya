@@ -26,6 +26,8 @@ const before: DesktopVoiceSettings = {
   learnWords: true,
   duckWhileDictating: "off",
   recognizeOnServers: false,
+  openTessayaOnStart: false,
+  openSessionsOnStart: true,
 };
 
 const layer = it.layer(

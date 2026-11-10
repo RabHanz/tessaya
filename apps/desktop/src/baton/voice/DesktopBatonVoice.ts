@@ -712,7 +712,7 @@ export const holdKeyFrom = (saved: Record<string, unknown>): string => {
 const DEFAULT_SETTINGS: VoiceSettings = {
   enabled: false,
   openAtLogin: false,
-  openTessayaOnStart: true,
+  openTessayaOnStart: false,
   openSessionsOnStart: true,
   pinnedLabel: null,
   modelsDir: null,
@@ -855,7 +855,7 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       showWords: saved["showWords"] !== false,
-      openTessayaOnStart: saved["openTessayaOnStart"] !== false,
+      openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       frosted: saved["frosted"] === true,
