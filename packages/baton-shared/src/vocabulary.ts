@@ -450,6 +450,11 @@ const OWN_HEARD: ReadonlyArray<{
     form,
   })),
   { to: "Baton", form: "Buton" },
+  // The dictation app he measures against, as Parakeet writes it.
+  ...["WhisperFlow", "Whisper Flow", "Wisper Flow", "WisprFlow"].map((form) => ({
+    to: "Wispr Flow",
+    form,
+  })),
   { to: "T3", form: "T three" },
   { to: "T3", form: "D3", after: ["code", "codes", "chat", "sessions", "s"] },
 ];

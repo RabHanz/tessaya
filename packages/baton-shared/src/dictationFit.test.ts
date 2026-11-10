@@ -31,6 +31,13 @@ describe("fitInsertion", () => {
     ["First part ", "second part", "and middle", "and middle "],
     ["First part", " second", "and middle", " and middle"],
     ["Ends with.", "tail", "Next", " Next "],
+    // An empty editor that reports a placeholder or zero-width mark is still empty (0.1.91: " this is a test").
+    ["\ufffc", "", "this is a test", "This is a test"],
+    ["\u200b", "", "this is a test", "This is a test"],
+    ["\u00a0", "", "this is a test", "This is a test"],
+    ["Line one\r\n", "", "this is a test", "This is a test"],
+    // Mid-sentence only after a letter or digit: after another mark his capitals stay.
+    ["Up 5%", "", "This is more", " This is more"],
   ];
   it.each(rows)("%j | %j + %j -> %j", (before, after, inserted, expected) => {
     expect(fitInsertion({ before, after }, inserted)).toBe(expected);
