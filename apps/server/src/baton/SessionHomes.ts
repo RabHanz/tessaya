@@ -6,7 +6,7 @@
  * when the terminal closes. The thread → session map is kept in a file (TessayaSessionsFile) for the CLI.
  */
 import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
-import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
+import { BATON_LIVE_INSTANCE, liveSendingUnavailableReason } from "./BatonLiveInstance.ts";
 import { ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -132,9 +132,12 @@ export const makeSessionHomes = (input: {
   /** Puts threads on their terminal sessions when those run, and back on Tessaya when they close. */
   const link = Effect.fn("SessionHomes.link")(function* (live: ReadonlyArray<ClaudeLiveSession>) {
     const now = Date.now();
+    // Where the Terminal session instance cannot send (Windows, no Herdr), a thread there could not take a message:
+    // it stays on Tessaya, and one put there before goes back.
+    const sendable = liveSendingUnavailableReason() === null;
     // Only existing keys are set while iterating, which a Map allows.
     for (const home of homes.values()) {
-      const running = live.some((s) => s.sessionId === home.sessionId);
+      const running = sendable && live.some((s) => s.sessionId === home.sessionId);
       if (running) {
         seenRunning.add(home.threadId);
         missing.delete(home.threadId);

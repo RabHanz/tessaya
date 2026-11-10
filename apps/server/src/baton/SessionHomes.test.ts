@@ -10,6 +10,7 @@ import * as NodePath from "node:path";
 import { describe, expect } from "vite-plus/test";
 
 import type { BatonEngineShape } from "./BatonEngine.ts";
+import { noteLiveSendingUnavailable } from "./BatonLiveInstance.ts";
 import { makeSessionHomes } from "./SessionHomes.ts";
 import { readSessionsFile, writeSessionsFile, type SessionHome } from "./TessayaSessionsFile.ts";
 
@@ -64,6 +65,36 @@ describe("a Tessaya thread whose session runs in a terminal", () => {
         expect(written).toHaveLength(2);
         NodeFS.rmSync(stateDir, { recursive: true, force: true });
       }),
+  );
+});
+
+describe("a Tessaya thread on a computer whose terminal sessions cannot take messages", () => {
+  it.effect("stays on its own instance while its session runs in a terminal", () =>
+    Effect.gen(function* () {
+      const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-homes-"));
+      writeSessionsFile(NodePath.join(stateDir, "tessaya-sessions.json"), [home]);
+      const written: Array<OrchestrationV2DomainEvent> = [];
+      const engine = {
+        threadShell: () => Effect.succeed({ activeRunId: null }),
+        appThread: () => Effect.succeed({ id: "t1" }),
+        writeEvents: (input: { events: ReadonlyArray<OrchestrationV2DomainEvent> }) =>
+          Effect.sync(() => (written.push(...input.events), input.events.length)),
+      } as unknown as BatonEngineShape;
+      const homes = makeSessionHomes({
+        engine,
+        stateDir,
+        instances: Effect.succeed({}),
+        log: () => {},
+        live: { driver: "acpRegistry", model: "live" },
+      });
+      noteLiveSendingUnavailable("Herdr does not run on Windows");
+      yield* homes
+        .link([session])
+        .pipe(Effect.ensuring(Effect.sync(() => noteLiveSendingUnavailable(null))));
+      expect(written).toEqual([]);
+      expect(readSessionsFile(homes.path)[0]?.inTerminal).toBe(false);
+      NodeFS.rmSync(stateDir, { recursive: true, force: true });
+    }),
   );
 });
 

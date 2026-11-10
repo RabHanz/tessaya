@@ -602,10 +602,12 @@ index 54b16d7aa2aef6d888a9b5eecb787bac19eaa0e6..e3e955efd3e550c4b96debe9d184b292
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd57dca599 100644
+index 46ea45431055488dec1344429bcc791bb4be1f19..57a86594cb3eaad55464fe8872a5f835cfd08880 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-@@ -2,6 +2,11 @@ import type {
+@@ -1,7 +1,13 @@
++import { pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
+ import type {
    OrchestrationV2SearchThreadInput,
    OrchestrationV2SearchThreadResult,
  } from "@t3tools/contracts";
@@ -617,7 +619,7 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd
  import type {
    ProjectionRecordField,
    ProjectionRecordFilter,
-@@ -61,11 +66,13 @@ import * as Orchestrator from "./Orchestrator.ts";
+@@ -61,11 +67,13 @@ import * as Orchestrator from "./Orchestrator.ts";
  import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
  import { projectedRowEncodedBytes } from "./threadHistoryPaging.ts";
  import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -631,7 +633,7 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd
  
  export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
  
-@@ -320,7 +327,10 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
+@@ -320,7 +328,10 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
    },
  ) {
    override get message(): string {
@@ -643,7 +645,7 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd
    }
  }
  
-@@ -670,9 +680,21 @@ const make = Effect.gen(function* () {
+@@ -670,9 +681,21 @@ const make = Effect.gen(function* () {
        Effect.andThen(orchestrator.getCheckpointContext(threadId)),
      );
  
@@ -665,7 +667,7 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd
      );
    const getThreadTranscript = Effect.fn("orchestrationV2.threadManagement.getThreadTranscript")(
      function* (threadId: ThreadId) {
-@@ -706,6 +728,7 @@ const make = Effect.gen(function* () {
+@@ -706,6 +729,7 @@ const make = Effect.gen(function* () {
    ) =>
      ensureProjectionTranscript(threadId).pipe(
        Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),
@@ -673,6 +675,20 @@ index 46ea45431055488dec1344429bcc791bb4be1f19..1f8fc06b1016a692b6fcf9cae7ab2bdd
      );
  
    const assertDispatchTargetEnabled = (command: OrchestrationV2ServerCommand) => {
+@@ -716,7 +740,12 @@ const make = Effect.gen(function* () {
+             assertProviderInstanceEnabled({
+               projectId: projection.thread.projectId,
+               commandId: command.commandId,
+-              instanceId: (command.modelSelection ?? projection.thread.modelSelection).instanceId,
++              // The instance the turn runs on: the orchestrator pins it the same way.
++              instanceId: pinnedLiveSelection(
++                command.threadId,
++                command.modelSelection ?? projection.thread.modelSelection,
++                projection.thread.modelSelection,
++              ).instanceId,
+             }),
+           ),
+         );
 diff --git a/apps/server/src/peer/RemoteDelegation.test.ts b/apps/server/src/peer/RemoteDelegation.test.ts
 index 00b7b5d6f696378289518117804f4554a5ff7d6d..29364365cb47d0b00349c596806d666ecde70433 100644
 --- a/apps/server/src/peer/RemoteDelegation.test.ts

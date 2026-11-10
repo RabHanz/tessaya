@@ -137,15 +137,22 @@ export const classifierStopReason = (lastReply: string | null): string | null =>
     : null;
 
 /**
- * A turn on a live thread still on its session goes to that session, whatever the composer remembered: another model
- * would restart it as a "live -> live" handoff, and another instance is a stale picker, never a handoff the user chose
- * (that is `provider.switch`, still refused). Model changes go into the session itself.
+ * A live thread on its session takes turns only there: another model or instance is a stale picker (a real handoff is
+ * `provider.switch`). Any other thread not on the Terminal session never goes there from a send, since only Open in
+ * terminal puts it there; a composer naming it is stale, and on Windows that instance cannot send at all.
  */
 export const pinnedLiveSelection = <S extends { readonly instanceId: string }>(
   threadId: string,
   requested: S,
   current: S,
-): S => (isLiveThreadId(threadId) && current.instanceId === LIVE_INSTANCE ? current : requested);
+): S =>
+  isLiveThreadId(threadId)
+    ? current.instanceId === LIVE_INSTANCE
+      ? current
+      : requested
+    : requested.instanceId === LIVE_INSTANCE && current.instanceId !== LIVE_INSTANCE
+      ? current
+      : requested;
 
 /**
  * The banner for a live thread whose session is not running: `null` while it runs or its state is unknown, "missing"
