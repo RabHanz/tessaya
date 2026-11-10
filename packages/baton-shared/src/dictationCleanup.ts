@@ -189,8 +189,8 @@ const CORRECTION_MARK =
   /\b(no,? (actually|wait|sorry)|actually,? no|i mean|sorry,|or rather|scratch that|wait,|make that|let me rephrase|what i meant|i meant|strike that|no,? (?:that'?s )?(?:a )?(?:terrible|bad|stupid|dumb|silly) idea)\b/i;
 
 const FILLERS = /(^|[\s,.;:!?])(?:um+|uh+|erm*|hmm+|mhm)(?![\w-])[,.]?(?=\s|$)/gi;
-/** Said to fill a pause, set off by a comma: "you know, the usual". */
-const FILLER_PHRASES = /(^|[\s,.;:!?])(?:you know|sort of like|kind of like|i guess),\s*/gi;
+/** Said to fill a pause, set off by a comma: "you know, the usual". A hedge ("I guess", "kind of") is what he meant. */
+const FILLER_PHRASES = /(^|[\s,.;:!?])(?:you know),\s*/gi;
 /** Words nobody doubles on purpose. "had had" and "no no no" are left alone. */
 const STUTTER = /\b(i|the|a|an|to|and|of|we|it|in|on|for|is|you)(?:[,]?\s+\1)+\b/gi;
 /** Only on their own, so "add a new paragraph to the doc" stays a sentence. */

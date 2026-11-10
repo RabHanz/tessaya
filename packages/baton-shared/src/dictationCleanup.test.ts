@@ -46,8 +46,9 @@ describe("localClean", () => {
 
   it("drops a spoken filler phrase, so a short dictation pasted without the model has none", () => {
     expect(localClean("you know, the usual", "default")).toBe("The usual");
-    expect(localClean("it was, sort of like, fine", "default")).toBe("It was, fine");
-    expect(localClean("I guess, we go.", "default")).toBe("We go.");
+    // A hedge is what he meant, not filler (0.1.91 dropped his "I guess").
+    expect(localClean("it was, sort of like, fine", "default")).toBe("It was, sort of like, fine");
+    expect(localClean("I guess, we go.", "default")).toBe("I guess, we go.");
     expect(localClean("do you know the way", "default")).toBe("Do you know the way");
   });
 
