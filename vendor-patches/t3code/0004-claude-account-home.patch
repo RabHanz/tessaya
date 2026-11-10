@@ -3,7 +3,7 @@ Subject: providers: a second Claude account home shares the primary's (D52)
 One call when the Claude adapter is created; the work is in provider/Drivers/ClaudeAccountHome.ts.
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index d7d03c779b4bba2b8409e52090e75a8bacb74b72..6e6042a4b87dc14ab25a2bca61ff699482fdd2f1 100644
+index d7d03c779b4bba2b8409e52090e75a8bacb74b72..7d8cc2c1f4f9a86be624913dd3744a07307355be 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -3159,6 +3159,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
@@ -29,7 +29,7 @@ index d7d03c779b4bba2b8409e52090e75a8bacb74b72..6e6042a4b87dc14ab25a2bca61ff6994
 +  it.effect("fails the turn when Claude exits before it, as on a missing conversation", () =>
 +    Effect.scoped(
 +      Effect.gen(function* () {
-+        const harness = yield* makeWakeHarnessWithOptions({ displayName: "Signzart" });
++        const harness = yield* makeWakeHarnessWithOptions({ displayName: "Second account" });
 +        // The CLI's whole output when --resume names a transcript its config dir does not hold.
 +        yield* Queue.offer(
 +          harness.sdkMessages,
@@ -60,7 +60,7 @@ index d7d03c779b4bba2b8409e52090e75a8bacb74b72..6e6042a4b87dc14ab25a2bca61ff6994
 +        assert.equal(terminal.status, "failed");
 +        assert.equal(
 +          terminal.failure?.message,
-+          `This conversation couldn't be resumed on Signzart: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
++          `This conversation couldn't be resumed on Second account: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
 +        );
 +        assert.lengthOf(harness.offeredMessages, 0);
 +      }).pipe(

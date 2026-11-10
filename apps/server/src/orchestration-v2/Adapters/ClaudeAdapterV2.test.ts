@@ -10359,7 +10359,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   it.effect("fails the turn when Claude exits before it, as on a missing conversation", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const harness = yield* makeWakeHarnessWithOptions({ displayName: "Signzart" });
+        const harness = yield* makeWakeHarnessWithOptions({ displayName: "Second account" });
         // The CLI's whole output when --resume names a transcript its config dir does not hold.
         yield* Queue.offer(
           harness.sdkMessages,
@@ -10390,7 +10390,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         assert.equal(terminal.status, "failed");
         assert.equal(
           terminal.failure?.message,
-          `This conversation couldn't be resumed on Signzart: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
+          `This conversation couldn't be resumed on Second account: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
         );
         assert.lengthOf(harness.offeredMessages, 0);
       }).pipe(
