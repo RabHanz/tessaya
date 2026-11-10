@@ -375,6 +375,7 @@ import {
 import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createLastLanded } from "./lastLanded.ts";
+import { createPressGate } from "./pressGate.ts";
 import {
   dictationStep,
   heldToTalk,
@@ -518,6 +519,8 @@ import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
+/** How long the hold key is down before its pill shows. */
+const PRESS_SHOW_MS = 150;
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: BatonFocusTarget = {
   producer: "desktop",
@@ -3598,6 +3601,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (id === "toggle") return void moveDictation("toggle");
     bindingHandlers?.[id]?.();
   };
+  /** A tap under PRESS_SHOW_MS never shows the pill; the microphone opened on the press all the same. */
+  const pressGate = createPressGate(PRESS_SHOW_MS, () => showDictation("Esc twice discards"));
   /** The helper is recording a key or button dictation (its Esc is held while it does). */
   const keyRecording = () => releaseRecordingEscape !== null;
   /** That recording is held to talk (`heldToTalk`), until a double tap latches it. */
@@ -3645,7 +3650,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "key_edge")
       return input.onNote?.("key_edge", { down: event.down, at: event.at });
     // The pill on the press itself; the microphone opens 80 to 140 ms later (`recording`).
-    if (event.ev === "pressed") return showDictation("Esc twice discards");
+    if (event.ev === "pressed") return pressGate.press();
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
       dictationWords(event.text);
@@ -3682,7 +3687,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (settings.dictationCleanup === "claude") rewriter.warm();
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
-      showDictation("Esc twice discards");
+      pressGate.want();
       startGhost();
     } else if (event.ev === "latched") {
       keyHeldToTalk = false;
@@ -3696,9 +3701,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
       if (event.joined === true) input.onNote?.("dictation_dropped", { reason: "chord_joined" });
       if (event.discarded === true) input.onNote?.("dictation_dropped", { reason: "esc_held" });
-      showDictation(null);
+      // A tap whose pill never showed ends with nothing on screen to take away.
+      if (!pressGate.cancel()) showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();
+      pressGate.cancel();
       takeRecording(recordings, event.dictation);
       note = event.message;
       showDictation(null);
