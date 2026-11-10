@@ -29,14 +29,19 @@ import {
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 
+/** He is about to list things ("a few things", "two problems", "firstly… secondly…", "here's what"). */
+const LIST_CUE =
+  /\b(?:a (?:few|couple of)|several|two|three|four|five|six|some|these|the following|multiple) (?:things|problems|issues|questions|points|reasons|steps|items|changes|bugs|tasks|ideas|types|options|features|parts)\b|\bhere(?:'s| is) what\b|\b(?:first(?:ly)?|number one)\b[\s\S]*\b(?:second(?:ly)?|number two)\b/i;
+
 /**
  * A dictation in the pieces cleaned on their own while he speaks: split after a full stop or "!". Never after "?",
- * since a question often runs on with "and also"; never in an email, whose greeting and sign-off need the whole.
+ * since a question often runs on with "and also"; never in an email, whose greeting and sign-off need the whole, or in
+ * a list, which spans its sentences.
  */
 export const dictationPieces = (raw: string, mode: DictationMode): ReadonlyArray<string> => {
   const text = raw.trim();
   if (text === "") return [];
-  return mode === "email" ? [text] : text.split(/(?<=[.!])\s+(?=\S)/);
+  return mode === "email" || LIST_CUE.test(text) ? [text] : text.split(/(?<=[.!])\s+(?=\S)/);
 };
 
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */

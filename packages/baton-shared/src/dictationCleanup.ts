@@ -519,13 +519,17 @@ export type RewriteVerdict =
  * The model's answer is a claim, so it is checked. `input` is what it was given. Failing means the
  * local text is pasted, which is why this leans towards refusing.
  */
+/** A list's "1. " and "- " are layout, not his words: they are checked as the text without them. */
+const LIST_MARK = /^[ \t]*(?:[-*•]|\d{1,2}[.)])[ \t]+/gm;
+
 export const checkRewrite = (
   input: string,
-  output: string,
+  answer: string,
   dictionary: ReadonlyArray<DictionaryEntry> = [],
   context: DictationContext = {},
 ): RewriteVerdict => {
   const fail = (reason: string): RewriteVerdict => ({ ok: false, reason });
+  const output = answer.replace(LIST_MARK, "");
   if (output.trim().length === 0) return fail("empty");
   if (/<\/?dictation>/i.test(output)) return fail("leaked its wrapper");
   if (REPLY.test(output.trim()) && !REPLY.test(input.trim()))
@@ -678,7 +682,8 @@ Always:
 - He writes with few commas: add one only where a reader needs it, and none before an "and", "so" or "or" that joins two short clauses. A word he doubles for emphasis stays doubled with no comma between ("really really good").
 - British spelling.
 - "Like", "basically" and "honestly" stay when they carry meaning; never replace a word with another ("like 3%" stays "like 3%").
-- Break a long dictation into paragraphs where the topic turns, without changing a word to do it.`;
+- Break a long dictation into paragraphs where the topic turns, without changing a word to do it.
+- Lists. Whenever he names things he wants, asks, sees or has to do, and there are three or more of them, or he counts them ("two problems", "a few things", "a few issues", "firstly… secondly…"), the answer must set them out as a list, even when he said them in one long sentence joined by "and", "and also" or commas. The words that introduce them end with a colon, then a blank line, then one item a line, each starting "1. " when he counted them or they are steps in order, otherwise "- ". Each item keeps his words; drop only what joined them ("and", "also", "secondly", a repeated "we should" or "make sure"). An item that is a full sentence starts with a capital; a fragment that finishes the introducing words stays in small letters. What he says after the list is a paragraph of its own. Two things only, never counted, stay as prose. This is the one change of layout that never counts as changing his wording.`;
 
 const MODE_RULES: Readonly<Record<Exclude<DictationMode, "raw">, string>> = {
   default: "default: only the rules above. Nothing about the style changes.",
@@ -689,7 +694,7 @@ const MODE_RULES: Readonly<Record<Exclude<DictationMode, "raw">, string>> = {
     "document: formal writing. Full sentences and full grammar, contractions expanded, slang and chatty asides made plain, every fact kept.",
   code: "code: he is in a terminal or an editor, usually writing to a coding agent in ordinary sentences, which keep their capitals and full stops. Keep identifiers, paths, flags, commands and casing exactly. Put nothing in backticks unless he asked. A bare command on one line has no full stop.",
   notes:
-    "notes: for his own reference. Three or more listed things always become a hyphen bullet list in his words, one item a line, each keeping its capitals; otherwise plain short paragraphs. Keep every item.",
+    'notes: for his own reference. Lists as above, always with "- "; otherwise plain short paragraphs. Keep every item.',
 };
 
 const EXAMPLES = `Examples, all mode default:
@@ -707,6 +712,23 @@ Can you ask the team to check the logs first and also send me the report, the on
 Did the deploy finish? And did anyone tell Priya?
 <dictation>this code is a right dog's dinner mate</dictation>
 This code is a right dog's dinner, mate.
+<dictation>I want you to pick up a few things from the store. Bread for sandwiches, potato chips, vanilla ice cream.</dictation>
+I want you to pick up a few things from the store:
+
+- Bread for sandwiches
+- Potato chips
+- Vanilla ice cream
+<dictation>it is deployed but the same issues still persist especially the currency not being applied and also the currency drop down is still messed up and the logo is still blurry</dictation>
+It is deployed, but the same issues still persist, especially:
+
+- the currency not being applied
+- the currency drop-down still being messed up
+- the logo still being blurry
+<dictation>there are two problems first the login still goes to the apply page and secondly the currency selector is still broken</dictation>
+There are two problems:
+
+1. The login still goes to the apply page.
+2. The currency selector is still broken.
 <dictation>put a fountain in the middle of the garden and a big statue. No terrible idea. A bench, but wider. Like an eighteenth century park bench</dictation>
 Put a fountain in the middle of the garden and a bench, but wider. Like an 18th-century park bench.`;
 
