@@ -5,9 +5,19 @@ name: Tessaya dictation build
 on:
   push:
     branches: [main]
-    paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
+    paths:
+      [
+        "native/baton-dictation/**",
+        "native/tessaya-recognizer/**",
+        ".github/workflows/baton-dictation-build.yml",
+      ]
   pull_request:
-    paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
+    paths:
+      [
+        "native/baton-dictation/**",
+        "native/tessaya-recognizer/**",
+        ".github/workflows/baton-dictation-build.yml",
+      ]
 
 permissions:
   contents: read
@@ -68,6 +78,25 @@ jobs:
           path: |
             native/baton-dictation/target/release/tessaya-voice
             ldd.txt
+
+  recognizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the recogniser service
+        env:
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
+        run: |
+          cargo test --release --locked --manifest-path native/tessaya-recognizer/Cargo.toml
+          cargo build --release --locked --examples --manifest-path native/tessaya-recognizer/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tessaya-recognizer-linux-x64
+          path: |
+            native/tessaya-recognizer/target/release/tessaya-recognizer
+            native/tessaya-recognizer/target/release/examples/replay
 
   macos:
     runs-on: macos-latest
