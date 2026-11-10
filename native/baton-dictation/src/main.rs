@@ -1024,8 +1024,8 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                     if gpu.is_none() && model.is_file() {
                         gpu_warming = true;
                         let (model, mode, me) = (model.clone(), *mode, me.clone());
+                        // Normal priority: at the lowest, his busy CPU starved it (156 s, and never under load).
                         thread::spawn(move || {
-                            lower_priority();
                             let session = match gpu::load(&model, mode) {
                                 Ok((session, device)) => {
                                     emit(json!({"ev": "gpu", "ready": true, "device": device}));

@@ -80,7 +80,8 @@ pub fn load(model: &Path, mode: Mode) -> Result<(Session, String), String> {
     let started = Instant::now();
     let options = ModelOptions { backend: Backend::Vulkan, device: Some(device), ..Default::default() };
     let mut session = Model::load_with(model, &options)
-        .and_then(|m| m.session_with(&SessionOptions::default()))
+        // The library's default is every core, spinning beside his work; the CPU path's count did 6x better under load.
+        .and_then(|m| m.session_with(&SessionOptions { n_threads: crate::default_threads(crate::usable_cores()), ..Default::default() }))
         .map_err(|e| format!("{name}: {e}"))?;
     // Quiet noise, not silence: a silent clip can end before the decoder's shaders are reached.
     let noise = |seconds: usize| -> Vec<f32> {
