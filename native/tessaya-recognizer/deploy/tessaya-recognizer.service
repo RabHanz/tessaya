@@ -1,0 +1,27 @@
+# Tessaya's recogniser as a service (native/tessaya-recognizer). Install: the binary and the TDT v3 GGUF under
+# /opt/tessaya-recognizer, a token file readable only by the service user, /etc/tessaya-recognizer.env with
+# RECOGNIZER_ADDR (this machine's tailnet address and port), RECOGNIZER_MODEL, RECOGNIZER_TOKEN_FILE and
+# RECOGNIZER_THREADS, then the drop-in for this machine (primary.conf or second.conf) in
+# /etc/systemd/system/tessaya-recognizer.service.d/. Audio is held in memory only, never written.
+[Unit]
+Description=Tessaya dictation recogniser
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/tessaya-recognizer.env
+ExecStart=/opt/tessaya-recognizer/tessaya-recognizer
+Restart=always
+RestartSec=2
+# His dictation goes first on this machine: a key-up waits on this process.
+Nice=-5
+CPUWeight=1000
+IOWeight=1000
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/opt/tessaya-recognizer
+
+[Install]
+WantedBy=multi-user.target
