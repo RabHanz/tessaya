@@ -1,3 +1,4 @@
+import { pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -739,7 +740,12 @@ const make = Effect.gen(function* () {
             assertProviderInstanceEnabled({
               projectId: projection.thread.projectId,
               commandId: command.commandId,
-              instanceId: (command.modelSelection ?? projection.thread.modelSelection).instanceId,
+              // The instance the turn runs on: the orchestrator pins it the same way.
+              instanceId: pinnedLiveSelection(
+                command.threadId,
+                command.modelSelection ?? projection.thread.modelSelection,
+                projection.thread.modelSelection,
+              ).instanceId,
             }),
           ),
         );
