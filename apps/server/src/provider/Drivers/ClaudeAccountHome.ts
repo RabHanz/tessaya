@@ -26,6 +26,8 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off - Effect's symlink has no type argument, and Windows needs a junction to link without elevation.
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
+// @effect-diagnostics-next-line nodeBuiltinImport:off - the merge below is one promise run under a directory lock.
+import * as NodePath from "node:path";
 
 import { type ClaudeSettings } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
@@ -38,6 +40,94 @@ import { expandHomePath as expandHomePathFrom } from "@t3tools/provider-core/ser
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 const expandHomePath = (value: string): string => expandHomePathFrom(value, NodeOS.homedir());
+
+const MERGE_LOCK_STALE_MS = 10 * 60_000;
+
+const errorCode = (cause: unknown): unknown =>
+  typeof cause === "object" && cause !== null && "code" in cause ? cause.code : undefined;
+
+const missing = (cause: unknown) => {
+  if (errorCode(cause) === "ENOENT") return undefined;
+  throw cause;
+};
+
+/**
+ * Moves the conversations `from` holds into `to` and returns the paths both held. A hard link
+ * cannot replace an existing name, so a merge racing another (or Claude writing) never overwrites.
+ * On a clash the newer transcript (then the larger) ends in `to`; the other stays in `from`, which
+ * the caller keeps. Links are left where they are and never followed.
+ */
+const mergeConversations = async (
+  from: string,
+  to: string,
+  clashes: Array<string>,
+): Promise<void> => {
+  await NodeFSP.mkdir(to, { recursive: true });
+  for (const name of await NodeFSP.readdir(from)) {
+    const source = NodePath.join(from, name);
+    const destination = NodePath.join(to, name);
+    const sourceStat = await NodeFSP.lstat(source);
+    if (sourceStat.isDirectory()) {
+      const destinationStat = await NodeFSP.lstat(destination).catch(missing);
+      if (destinationStat === undefined || destinationStat.isDirectory()) {
+        await mergeConversations(source, destination, clashes);
+      } else {
+        clashes.push(destination);
+      }
+      continue;
+    }
+    if (!sourceStat.isFile()) continue;
+    try {
+      await NodeFSP.link(source, destination);
+      await NodeFSP.unlink(source);
+      continue;
+    } catch (cause) {
+      if (errorCode(cause) !== "EEXIST") throw cause;
+    }
+    clashes.push(destination);
+    const destinationStat = await NodeFSP.lstat(destination);
+    const sourceWins =
+      destinationStat.isFile() &&
+      (sourceStat.mtimeMs > destinationStat.mtimeMs ||
+        (sourceStat.mtimeMs === destinationStat.mtimeMs && sourceStat.size > destinationStat.size));
+    if (!sourceWins) continue;
+    // The shared copy is linked into the kept folder before the newer one replaces it.
+    await NodeFSP.link(destination, `${source}.shared-older`);
+    await NodeFSP.rename(source, destination);
+  }
+};
+
+/** One merge into a shared store at a time; a lock older than ten minutes is from a crash. */
+const mergeConversationsLocked = async (
+  from: string,
+  to: string,
+): Promise<ReadonlyArray<string>> => {
+  const lock = `${to}.merge.lock`;
+  const take = () =>
+    NodeFSP.mkdir(lock).then(
+      () => true,
+      (cause: unknown) => {
+        if (errorCode(cause) === "EEXIST") return false;
+        throw cause;
+      },
+    );
+  if (!(await take())) {
+    const lockStat = await NodeFSP.stat(lock).catch(missing);
+    // @effect-diagnostics-next-line globalDate:off - compared with a file's mtime, which is wall-clock.
+    if (lockStat !== undefined && Date.now() - lockStat.mtimeMs < MERGE_LOCK_STALE_MS) {
+      throw new Error(`Another merge into ${to} is running (${lock}).`);
+    }
+    await NodeFSP.rmdir(lock).catch(missing);
+    if (!(await take())) throw new Error(`Another merge into ${to} is running (${lock}).`);
+  }
+  try {
+    const clashes: Array<string> = [];
+    await mergeConversations(from, to, clashes);
+    return clashes;
+  } finally {
+    await NodeFSP.rmdir(lock).catch(missing);
+  }
+};
 
 /**
  * What belongs to the account and must never be shared.
@@ -275,24 +365,6 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
 
   const isWindows = yield* HostProcess.isWindows;
 
-  // Moves what `from` holds and `to` lacks into `to`; a name both hold stays in `from`.
-  const mergeInto: (from: string, to: string) => Effect.Effect<void, PlatformError.PlatformError> =
-    Effect.fn("ClaudeAccountHome.mergeInto")(function* (from: string, to: string) {
-      yield* fileSystem.makeDirectory(to, { recursive: true });
-      for (const name of yield* fileSystem.readDirectory(from)) {
-        const source = path.join(from, name);
-        const destination = path.join(to, name);
-        if (!(yield* fileSystem.exists(destination))) {
-          yield* fileSystem.rename(source, destination);
-        } else if (
-          (yield* fileSystem.stat(source)).type === "Directory" &&
-          (yield* fileSystem.stat(destination)).type === "Directory"
-        ) {
-          yield* mergeInto(source, destination);
-        }
-      }
-    });
-
   const linkEntry = Effect.fn("ClaudeAccountHome.linkEntry")(function* (
     entryName: (typeof CLAUDE_SHARED_ENTRIES)[number],
   ) {
@@ -304,11 +376,15 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
       // projects/ holds the conversations, and one left here strands them on this account: every account must
       // resume every thread. They join the shared store; a name both hold stays in the kept copy.
       if (entryName === "projects") {
-        yield* mergeInto(link, target).pipe(
-          Effect.catchTags({
-            PlatformError: (cause) => fail("rename", link, entryName)(cause),
-          }),
-        );
+        const clashes = yield* Effect.tryPromise({
+          try: () => mergeConversationsLocked(link, target),
+          catch: fail("rename", link, entryName),
+        });
+        if (clashes.length > 0) {
+          yield* Effect.logWarning("Conversations both accounts held; the newer is shared", {
+            clashes,
+          });
+        }
       }
       // The one case this must never do quietly: replace a real file the
       // account has been writing to. Two configurations have forked, and

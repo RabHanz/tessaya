@@ -3159,6 +3159,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly freshQueueOnReopen?: boolean;
     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
     readonly allocateSessionId?: Effect.Effect<string>;
+    readonly displayName?: string;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -3214,6 +3215,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
       const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+        displayName: options?.displayName,
         settings: options?.settings ?? DEFAULT_CLAUDE_SETTINGS,
         ...(options?.modelCatalog === undefined ? {} : { modelCatalog: options.modelCatalog }),
         environment: options?.environment ?? {},
@@ -10357,7 +10359,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   it.effect("fails the turn when Claude exits before it, as on a missing conversation", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const harness = yield* makeWakeHarness;
+        const harness = yield* makeWakeHarnessWithOptions({ displayName: "Signzart" });
         // The CLI's whole output when --resume names a transcript its config dir does not hold.
         yield* Queue.offer(
           harness.sdkMessages,
@@ -10388,7 +10390,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         assert.equal(terminal.status, "failed");
         assert.equal(
           terminal.failure?.message,
-          `This conversation couldn't be resumed on ${ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID}: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
+          `This conversation couldn't be resumed on Signzart: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
         );
         assert.lengthOf(harness.offeredMessages, 0);
       }).pipe(

@@ -3,17 +3,33 @@ Subject: providers: a second Claude account home shares the primary's (D52)
 One call when the Claude adapter is created; the work is in provider/Drivers/ClaudeAccountHome.ts.
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index d7d03c779b4bba2b8409e52090e75a8bacb74b72..21b12f9ee74738ea4f1514776441dd30dbe21a33 100644
+index d7d03c779b4bba2b8409e52090e75a8bacb74b72..6e6042a4b87dc14ab25a2bca61ff699482fdd2f1 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-@@ -10354,6 +10354,56 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3159,6 +3159,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+     readonly freshQueueOnReopen?: boolean;
+     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
+     readonly allocateSessionId?: Effect.Effect<string>;
++    readonly displayName?: string;
+   }) =>
+     Effect.gen(function* () {
+       const fileSystem = yield* FileSystem.FileSystem;
+@@ -3214,6 +3215,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+       let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
+       const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
+         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
++        displayName: options?.displayName,
+         settings: options?.settings ?? DEFAULT_CLAUDE_SETTINGS,
+         ...(options?.modelCatalog === undefined ? {} : { modelCatalog: options.modelCatalog }),
+         environment: options?.environment ?? {},
+@@ -10354,6 +10356,56 @@ describe("ClaudeAdapterV2 background wake turns", () => {
        ),
    );
  
 +  it.effect("fails the turn when Claude exits before it, as on a missing conversation", () =>
 +    Effect.scoped(
 +      Effect.gen(function* () {
-+        const harness = yield* makeWakeHarness;
++        const harness = yield* makeWakeHarnessWithOptions({ displayName: "Signzart" });
 +        // The CLI's whole output when --resume names a transcript its config dir does not hold.
 +        yield* Queue.offer(
 +          harness.sdkMessages,
@@ -44,7 +60,7 @@ index d7d03c779b4bba2b8409e52090e75a8bacb74b72..21b12f9ee74738ea4f1514776441dd30
 +        assert.equal(terminal.status, "failed");
 +        assert.equal(
 +          terminal.failure?.message,
-+          `This conversation couldn't be resumed on ${ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID}: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
++          `This conversation couldn't be resumed on Signzart: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
 +        );
 +        assert.lengthOf(harness.offeredMessages, 0);
 +      }).pipe(
@@ -64,7 +80,7 @@ index d7d03c779b4bba2b8409e52090e75a8bacb74b72..21b12f9ee74738ea4f1514776441dd30
      Effect.scoped(
        Effect.gen(function* () {
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd47f52c06 100644
+index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..3670f79cb06787ead8c8d29d28c36663388aaad0 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -182,6 +182,7 @@ import {
@@ -75,28 +91,38 @@ index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd
  import {
    BUNDLED_CLAUDE_MODEL_CATALOG,
    resolveClaudeCatalogContextWindowTokens,
-@@ -4449,6 +4450,20 @@ interface ClaudeLiveQueryContext {
+@@ -4449,6 +4450,21 @@ interface ClaudeLiveQueryContext {
    // Per process, not per session: a relative temp dir follows the cwd this CLI
    // was launched in, and a later turn's cwd can differ.
    readonly taskOutputRoot: string | undefined;
 +  readonly resumed: boolean;
 +  // An error result from before any turn attached: a missing --resume transcript, for one.
 +  exitedBeforeTurn: string | undefined;
++  exited: boolean;
 +}
 +
 +// Claude Code reports a --resume it cannot load as one error result and exits without reading the prompt.
 +function claudeExitedBeforeTurnMessage(
 +  query: Pick<ClaudeLiveQueryContext, "resumed" | "exitedBeforeTurn">,
-+  instanceId: string,
++  account: string,
 +): string {
 +  const reason = query.exitedBeforeTurn ?? "Claude Code exited before reading the message.";
 +  return query.resumed
-+    ? `This conversation couldn't be resumed on ${instanceId}: ${reason}`
++    ? `This conversation couldn't be resumed on ${account}: ${reason}`
 +    : `Claude Code exited before the turn started: ${reason}`;
  }
  
  interface ActiveClaudeToolCall {
-@@ -8383,6 +8398,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -4841,6 +4857,8 @@ function claudeProposedPlan(input: unknown): string | null {
+ 
+ export interface ClaudeAdapterV2Options {
+   readonly instanceId: ProviderInstanceId;
++  // The account name users see, for messages that name the account.
++  readonly displayName?: string | undefined;
+   readonly settings: ClaudeSettings;
+   readonly modelCatalog?: Effect.Effect<ClaudeModelCatalog>;
+   readonly environment: NodeJS.ProcessEnv;
+@@ -8383,6 +8401,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                      failure: makeProviderFailure({
                        cause: cause === undefined ? undefined : Cause.squash(cause),
                        class: "transport_error",
@@ -105,22 +131,23 @@ index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd
 +                        : {
 +                            message: claudeExitedBeforeTurnMessage(
 +                              closedQuery,
-+                              adapterOptions.instanceId,
++                              adapterOptions.displayName ?? adapterOptions.instanceId,
 +                            ),
 +                          }),
                      }),
                    }),
              });
-@@ -11018,6 +11041,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -11018,6 +11044,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resolvedTurnCwd,
                hostPlatform,
              ),
 +            resumed: queryOptions.resume !== undefined,
 +            exitedBeforeTurn: undefined,
++            exited: false,
            };
            // One step, so the replaced process cannot exit between the install and the handoff.
            yield* Ref.update(queryContext, (replaced) => {
-@@ -11051,6 +11076,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -11051,6 +11080,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                    ) {
                      context.permissionMode = message.permissionMode;
                    }
@@ -131,16 +158,25 @@ index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd
                    if (message.type === "result") {
                      const ledger = claudeModelLedger(message.modelUsage);
                      const growth = claudeLedgerDelta(context.modelLedger, ledger);
-@@ -11294,7 +11323,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -11083,6 +11116,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+                 ) {
+                   yield* releaseHeldRootFrames(heldContext);
+                 }
++                context.exited = true;
+                 const ownsLiveQuery = yield* Ref.modify(queryContext, (current) =>
+                   current?.query === querySession ? [true, null] : [false, current],
+                 );
+@@ -11294,7 +11328,29 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                });
              });
              if (userMessage !== null) {
 -              yield* attachTurn;
 +              const exitedBeforeTurn = yield* sdkMessageLock.withPermits(1)(
 +                Effect.gen(function* () {
-+                  const live = (yield* Ref.get(queryContext))?.query === querySession.query;
 +                  yield* attachTurn;
-+                  if (live) return false;
++                  if (!querySession.exited && querySession.exitedBeforeTurn === undefined) {
++                    return false;
++                  }
 +                  // The process is gone, so its exit cannot settle this turn; settle it here.
 +                  yield* finalizeActiveTurn({
 +                    context,
@@ -150,7 +186,7 @@ index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd
 +                      class: "provider_error",
 +                      message: claudeExitedBeforeTurnMessage(
 +                        querySession,
-+                        adapterOptions.instanceId,
++                        adapterOptions.displayName ?? adapterOptions.instanceId,
 +                      ),
 +                    }),
 +                  });
@@ -161,7 +197,16 @@ index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd
                yield* startUserTurnForWakeReports(nativeThreadId);
                yield* Effect.uninterruptibleMask((restore) =>
                  restore(
-@@ -12368,6 +12418,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -12355,7 +12411,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
+     hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
+   ) {
+-    const { instanceId, environment, enabled, config } = input;
++    const { instanceId, displayName, environment, enabled, config } = input;
+     const fileSystem = yield* FileSystem.FileSystem;
+     const hostEnvironment = yield* HostProcess.Environment;
+     const idAllocator = yield* IdAllocator.IdAllocatorV2;
+@@ -12368,6 +12424,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
        hostEnvironment,
      );
      const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
@@ -170,6 +215,14 @@ index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd
      const path = yield* Path.Path;
      const random = yield* SecureRandom.SecureRandom;
      const binaryPath = yield* resolveClaudeSdkExecutablePath(
+@@ -12376,6 +12434,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+     );
+     return yield* makeClaudeAdapterV2({
+       instanceId,
++      displayName,
+       settings: { ...config, enabled, binaryPath },
+       environment: claudeEnvironment,
+       attachmentsDir: serverConfig.attachmentsDir,
 diff --git a/apps/server/src/provider/Drivers/ClaudeHome.test.ts b/apps/server/src/provider/Drivers/ClaudeHome.test.ts
 index c772b79efe18454931dc07aa6a773570168d13a3..4417243509e8c98719eab8e71935562c6bfb4bed 100644
 --- a/apps/server/src/provider/Drivers/ClaudeHome.test.ts

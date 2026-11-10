@@ -4453,16 +4453,17 @@ interface ClaudeLiveQueryContext {
   readonly resumed: boolean;
   // An error result from before any turn attached: a missing --resume transcript, for one.
   exitedBeforeTurn: string | undefined;
+  exited: boolean;
 }
 
 // Claude Code reports a --resume it cannot load as one error result and exits without reading the prompt.
 function claudeExitedBeforeTurnMessage(
   query: Pick<ClaudeLiveQueryContext, "resumed" | "exitedBeforeTurn">,
-  instanceId: string,
+  account: string,
 ): string {
   const reason = query.exitedBeforeTurn ?? "Claude Code exited before reading the message.";
   return query.resumed
-    ? `This conversation couldn't be resumed on ${instanceId}: ${reason}`
+    ? `This conversation couldn't be resumed on ${account}: ${reason}`
     : `Claude Code exited before the turn started: ${reason}`;
 }
 
@@ -4856,6 +4857,8 @@ function claudeProposedPlan(input: unknown): string | null {
 
 export interface ClaudeAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
+  // The account name users see, for messages that name the account.
+  readonly displayName?: string | undefined;
   readonly settings: ClaudeSettings;
   readonly modelCatalog?: Effect.Effect<ClaudeModelCatalog>;
   readonly environment: NodeJS.ProcessEnv;
@@ -8403,7 +8406,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                         : {
                             message: claudeExitedBeforeTurnMessage(
                               closedQuery,
-                              adapterOptions.instanceId,
+                              adapterOptions.displayName ?? adapterOptions.instanceId,
                             ),
                           }),
                     }),
@@ -11043,6 +11046,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ),
             resumed: queryOptions.resume !== undefined,
             exitedBeforeTurn: undefined,
+            exited: false,
           };
           // One step, so the replaced process cannot exit between the install and the handoff.
           yield* Ref.update(queryContext, (replaced) => {
@@ -11112,6 +11116,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ) {
                   yield* releaseHeldRootFrames(heldContext);
                 }
+                context.exited = true;
                 const ownsLiveQuery = yield* Ref.modify(queryContext, (current) =>
                   current?.query === querySession ? [true, null] : [false, current],
                 );
@@ -11325,9 +11330,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             if (userMessage !== null) {
               const exitedBeforeTurn = yield* sdkMessageLock.withPermits(1)(
                 Effect.gen(function* () {
-                  const live = (yield* Ref.get(queryContext))?.query === querySession.query;
                   yield* attachTurn;
-                  if (live) return false;
+                  if (!querySession.exited && querySession.exitedBeforeTurn === undefined) {
+                    return false;
+                  }
                   // The process is gone, so its exit cannot settle this turn; settle it here.
                   yield* finalizeActiveTurn({
                     context,
@@ -11337,7 +11343,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                       class: "provider_error",
                       message: claudeExitedBeforeTurnMessage(
                         querySession,
-                        adapterOptions.instanceId,
+                        adapterOptions.displayName ?? adapterOptions.instanceId,
                       ),
                     }),
                   });
@@ -12405,7 +12411,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
     hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
   ) {
-    const { instanceId, environment, enabled, config } = input;
+    const { instanceId, displayName, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;
     const hostEnvironment = yield* HostProcess.Environment;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -12428,6 +12434,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     );
     return yield* makeClaudeAdapterV2({
       instanceId,
+      displayName,
       settings: { ...config, enabled, binaryPath },
       environment: claudeEnvironment,
       attachmentsDir: serverConfig.attachmentsDir,
