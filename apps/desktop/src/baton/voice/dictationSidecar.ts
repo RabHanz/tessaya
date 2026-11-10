@@ -47,6 +47,8 @@ export interface DictationConfig {
   readonly liveWords?: boolean;
   /** Wake words are off: the recording sends its audio (`pcm`) for the pill's waveform. */
   readonly meter?: boolean;
+  /** His other plugged-in mics in his order: tried when `device` will not open, and heard beside it at each press. */
+  readonly fallbacks?: ReadonlyArray<string>;
   /** His recognisers on his own servers, in his order; empty: the laptop decodes (native remote.rs). */
   readonly recognizers?: ReadonlyArray<RecognizerServer>;
   readonly gpu?: GpuRecognition;
@@ -261,6 +263,14 @@ export type DictationEvent =
   | { readonly ev: "held_key"; readonly id: number }
   /** The hold key went down and a recording starts: the pill shows now, before the microphone opens. */
   | { readonly ev: "pressed" }
+  /** The dictation moved to another of his mics: `device` was missing, or heard nothing while this one heard him. */
+  | {
+      readonly ev: "mic_switched";
+      readonly dictation: number;
+      readonly from: string | null;
+      readonly to: string;
+      readonly why: "missing" | "silent";
+    }
   /** Every raw edge of the hold key, ms on the helper's clock, for the turn log. */
   | { readonly ev: "key_edge"; readonly down: boolean; readonly at: number }
   | { readonly ev: "error"; readonly message: string; readonly dictation?: number }

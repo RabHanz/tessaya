@@ -96,14 +96,19 @@ describe("the vocabulary", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "holdkey-"));
     const settings = NodePath.join(dir, "fabric-voice.json");
     NodeFS.writeFileSync(settings, '{"holdKey":"Ctrl+Alt+Space"}');
-    expect(readSettings(settings).holdKey).toBe("Ctrl+Shift+Win");
+    expect(readSettings(settings).holdKey).toBe("Alt+Win");
     expect(JSON.parse(NodeFS.readFileSync(settings, "utf8"))).toMatchObject({
-      holdKey: "Ctrl+Shift+Win",
-      holdKeyDefaults: 2,
+      holdKey: "Alt+Win",
+      holdKeyDefaults: 3,
     });
-    // Moved once: choosing the old chord again afterwards is his choice.
+    // 0.1.98's default moves to Alt+Win; the older one chosen again under 0.1.98 was his choice and stays.
+    NodeFS.writeFileSync(settings, '{"holdKey":"Ctrl+Shift+Win","holdKeyDefaults":2}');
+    expect(readSettings(settings).holdKey).toBe("Alt+Win");
     NodeFS.writeFileSync(settings, '{"holdKey":"Ctrl+Alt+Space","holdKeyDefaults":2}');
     expect(readSettings(settings).holdKey).toBe("Ctrl+Alt+Space");
+    // Moved once: choosing the old chord again afterwards is his choice.
+    NodeFS.writeFileSync(settings, '{"holdKey":"Ctrl+Shift+Win","holdKeyDefaults":3}');
+    expect(readSettings(settings).holdKey).toBe("Ctrl+Shift+Win");
     NodeFS.writeFileSync(settings, '{"holdKey":"F9"}');
     expect(readSettings(settings).holdKey).toBe("F9");
   });
