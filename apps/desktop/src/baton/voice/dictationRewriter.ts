@@ -44,6 +44,7 @@ const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
 const API_REST_MS = 60_000;
+const API_SLOW_REST_MS = 15_000;
 
 interface CleanInput {
   readonly raw: string;
@@ -156,9 +157,10 @@ export const makeRewriter = (input: {
       return answer;
     } catch (error) {
       apiAnswers = false;
-      if (/invalid-key|rate-limit/.test(error instanceof Error ? error.message : "")) {
-        apiRestsUntil = Date.now() + API_REST_MS;
-      }
+      // A slow or unreachable API rests too, for less: each try costs his dictation up to 1.5 s before the session.
+      const why = error instanceof Error ? error.message : "";
+      apiRestsUntil =
+        Date.now() + (/invalid-key|rate-limit/.test(why) ? API_REST_MS : API_SLOW_REST_MS);
       return null;
     }
   };

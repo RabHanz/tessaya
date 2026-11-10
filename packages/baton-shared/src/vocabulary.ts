@@ -98,8 +98,10 @@ export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyAr
       const term = entry.replacement ?? entry.phrase;
       // An everyday-looking form ("button", "venture OS") as a hint makes the model swap every "button" and "venture";
       // those are put back in code, only where the name fits.
+      // Nor an everyday word, however it is capitalised: "feelIt (heard as "It")" made the model write "part of
+      // feelIt" (0.1.92).
       const heard = (entry.heard ?? [])
-        .filter((h) => /^\p{Lu}/u.test(h))
+        .filter((h) => /^\p{Lu}/u.test(h) && !everydayForm(h))
         .map((h) => `"${h}"`)
         .join(", ");
       return heard.length === 0 ? term : `${term} (heard as ${heard})`;
@@ -601,17 +603,15 @@ const EVERYDAY_FORMS = new Set(
   ).split(" "),
 );
 
+/** A heard form too ordinary to stand for one of his words anywhere: short, or a word everyone says. */
+const everydayForm = (form: string): boolean =>
+  form.length < 3 || everyday(form) || EVERYDAY_FORMS.has(form.toLowerCase());
+
 const applyTaughtForms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
   let out = text;
   for (const e of entries)
     for (const form of e.heard ?? []) {
-      if (
-        !/^\p{L}+$/u.test(form) ||
-        form.length < 3 ||
-        everyday(form) ||
-        EVERYDAY_FORMS.has(form.toLowerCase())
-      )
-        continue;
+      if (!/^\p{L}+$/u.test(form) || everydayForm(form)) continue;
       const term = e.replacement ?? e.phrase;
       out = out.replace(
         new RegExp(`${WORD_START}${escapeRegExp(form)}${WORD_END}`, "giu"),

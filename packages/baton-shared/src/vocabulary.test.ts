@@ -125,6 +125,8 @@ describe("his taught words", () => {
       ["Run it with think and see.", "Run it with think and see."],
     ];
     for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
+    // Nor is the model told that "It" may be one of his words (0.1.92: "part of feelIt" on the Claude path).
+    expect(promptTerms(his).join(" ")).not.toMatch(/heard as "(It|Have|Think)"/);
   });
 });
 

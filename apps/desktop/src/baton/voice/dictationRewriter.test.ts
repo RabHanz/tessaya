@@ -70,6 +70,7 @@ describe("makeRewriter", () => {
     let now = 1_000_000;
     using _now = vi.spyOn(Date, "now").mockImplementation(() => now);
     let refuse = false;
+    let failWith: string | null = null;
     const apiAsked: string[] = [];
     const rewriter = makeRewriter({
       claudeBinary: "claude",
@@ -87,6 +88,7 @@ describe("makeRewriter", () => {
       api: async (_system, message) => {
         apiAsked.push(message);
         if (refuse) throw new Error("invalid-key");
+        if (failWith !== null) throw new Error(failWith);
         return "from the api";
       },
     });
@@ -103,6 +105,12 @@ describe("makeRewriter", () => {
     expect(apiAsked).toHaveLength(2);
     now += 61_000;
     refuse = false;
+    expect((await rewriter.clean(said)).text).toBe("from the api");
+    // A timeout rests it for 15 s only.
+    failWith = "timeout";
+    expect((await rewriter.clean(said)).text).toBe("from the session");
+    now += 16_000;
+    failWith = null;
     expect((await rewriter.clean(said)).text).toBe("from the api");
     rewriter.dispose();
   });
