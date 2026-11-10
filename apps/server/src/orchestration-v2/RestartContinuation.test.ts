@@ -237,7 +237,9 @@ it.effect.each(["completed", "waiting", "cancelled"] as const)(
     }),
 );
 
+// undefined: a settings file that never chose, so a turn an update or crash cut off continues.
 it.effect.each([
+  [undefined, undefined],
   [false, undefined],
   [true, undefined],
   [false, true],
@@ -251,7 +253,7 @@ it.effect.each([
         Effect.provide(
           Layer.mergeAll(
             ServerSettings.layerTest({
-              continueThreadsAfterServerUpdate: enabled,
+              ...(enabled === undefined ? {} : { continueThreadsAfterServerUpdate: enabled }),
               projectSettingsOverrides:
                 projectOverride === undefined
                   ? {}
@@ -288,8 +290,8 @@ it.effect.each([
           (event) => event.type === "run.updated" && event.payload.status === "cancelled",
         ),
       );
-      assert.lengthOf(committed!.effects, (projectOverride ?? enabled) ? 1 : 0);
-      if (projectOverride ?? enabled)
+      assert.lengthOf(committed!.effects, (projectOverride ?? enabled ?? true) ? 1 : 0);
+      if (projectOverride ?? enabled ?? true)
         assert.deepEqual(committed!.effects[0]?.request, {
           type: "provider-runtime.continue",
           sourceRunId: runId,
