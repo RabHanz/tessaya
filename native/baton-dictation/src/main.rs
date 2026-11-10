@@ -1292,7 +1292,7 @@ impl Tap {
 struct Probe {
     rank: usize,
     name: String,
-    recorder: Recorder<LiveSink>,
+    source: Source,
     tap: Arc<Mutex<Tap>>,
 }
 
@@ -1326,7 +1326,12 @@ impl Meter {
 
 impl Sink for LiveSink {
     fn process_chunk(&mut self, chunk: AudioChunk<'_>) {
-        let samples = chunk.samples[..chunk.valid_frames].to_vec();
+        self.deliver(chunk.samples[..chunk.valid_frames].to_vec());
+    }
+}
+
+impl LiveSink {
+    fn deliver(&mut self, samples: Vec<f32>) {
         let mut tap = self.tap.lock().unwrap_or_else(|e| e.into_inner());
         if tap.heard.len() < micprobe::PROBE_SAMPLES {
             tap.heard.extend_from_slice(&samples);
@@ -1372,9 +1377,9 @@ struct Recording {
     decided: bool,
 }
 
-impl Drop for Recording {
+impl Drop for Source {
     fn drop(&mut self) {
-        if let Source::Fake(stop) = &self.source {
+        if let Source::Fake(stop) = self {
             stop.store(true, Ordering::Relaxed);
         }
     }
@@ -1386,15 +1391,14 @@ fn fake_mic() -> Option<PathBuf> {
     std::env::var_os("BATON_FAKE_MIC").map(PathBuf::from)
 }
 
-fn play_fake(
-    path: &Path,
-    dictation: u64,
-    work: Sender<Work>,
-    samples: Arc<AtomicUsize>,
-    first_audio: Arc<OnceLock<Instant>>,
-    stop: Arc<AtomicBool>,
-    tx: Sender<Msg>,
-) -> Result<(), String> {
+/// BATON_FAKE_PROBE=<wav>: with a fake mic, a second fake one listening beside it (micprobe.rs), so moving to a mic that
+/// hears him is measured with nobody speaking.
+fn fake_probe() -> Option<PathBuf> {
+    std::env::var_os("BATON_FAKE_PROBE").map(PathBuf::from)
+}
+
+/// `ended`: told when the file runs out, which stands in for releasing the key (the recording's own mic only).
+fn play_fake(path: &Path, mut sink: LiveSink, stop: Arc<AtomicBool>, ended: Option<Sender<Msg>>) -> Result<(), String> {
     let pcm = read_wav(path)?;
     thread::spawn(move || {
         let started = Instant::now();
@@ -1404,11 +1408,11 @@ fn play_fake(
             if stop.load(Ordering::Relaxed) {
                 return;
             }
-            let _ = first_audio.set(Instant::now());
-            samples.fetch_add(chunk.len(), Ordering::Relaxed);
-            let _ = work.send(Work::Audio(dictation, chunk.to_vec()));
+            sink.deliver(chunk.to_vec());
         }
-        let _ = tx.send(Msg::FakeEnded);
+        if let Some(tx) = ended {
+            let _ = tx.send(Msg::FakeEnded);
+        }
     });
     Ok(())
 }
@@ -1809,7 +1813,7 @@ fn open_probes(id: u64, others: Vec<(usize, String)>, sinks: Vec<LiveSink>, tx: 
         let tap = sink.tap.clone();
         let Ok(recorder) = Recorder::open(config) else { continue };
         if recorder.start(sink).is_ok() {
-            let _ = tx.send(Msg::Probe(id, Probe { rank, name, recorder, tap }));
+            let _ = tx.send(Msg::Probe(id, Probe { rank, name, source: Source::Mic(recorder), tap }));
         }
     }
 }
@@ -1853,7 +1857,7 @@ fn judge_mics(r: &mut Recording, config: &Config, job_tx: &Sender<Work>, lead: &
             *lead.borrow_mut() = Some(probe.name.clone());
             r.mic = Some(probe.name);
             r.tap = probe.tap;
-            r.source = Source::Mic(probe.recorder);
+            r.source = probe.source;
             r.decided = true;
         }
     }
@@ -1914,23 +1918,30 @@ fn serve() {
         let tap = Tap::new(true);
         let samples = Arc::new(AtomicUsize::new(0));
         let first_audio = Arc::new(OnceLock::new());
+        let sink = |tap: Arc<Mutex<Tap>>| LiveSink {
+            dictation: id,
+            work: job_tx.clone(),
+            samples: samples.clone(),
+            first_audio: first_audio.clone(),
+            out: tx.clone(),
+            meter_on: meter_on.clone(),
+            meter: Meter::default(),
+            tap,
+        };
         let opened = match fake_mic() {
             Some(path) => {
                 let stop = Arc::new(AtomicBool::new(false));
-                play_fake(&path, id, job_tx.clone(), samples.clone(), first_audio.clone(), stop.clone(), tx.clone())
-                    .map(|()| Source::Fake(stop))
+                let opened = play_fake(&path, sink(tap.clone()), stop.clone(), Some(tx.clone())).map(|()| Source::Fake(stop));
+                if let (Ok(_), Some(probe)) = (&opened, fake_probe()) {
+                    let (stop, tap) = (Arc::new(AtomicBool::new(false)), Tap::new(false));
+                    if play_fake(&probe, sink(tap.clone()), stop.clone(), None).is_ok() {
+                        let name = "fake probe".to_string();
+                        let _ = tx.send(Msg::Probe(id, Probe { rank: 1, name, source: Source::Fake(stop), tap }));
+                    }
+                }
+                opened
             }
             None => {
-                let sink = |tap: Arc<Mutex<Tap>>| LiveSink {
-                    dictation: id,
-                    work: job_tx.clone(),
-                    samples: samples.clone(),
-                    first_audio: first_audio.clone(),
-                    out: tx.clone(),
-                    meter_on: meter_on.clone(),
-                    meter: Meter::default(),
-                    tap,
-                };
                 let open = |name: Option<&str>, fresh: bool| {
                     let tx = tx.clone();
                     // The channel is the chosen device's (one input of his interface), never another mic's.
