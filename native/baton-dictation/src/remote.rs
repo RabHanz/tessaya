@@ -268,6 +268,14 @@ impl Warm {
         Some((chosen, socket, answers[chosen].1?))
     }
 
+    /// The first server's socket and last ping whatever they say, for measuring it (the replay).
+    fn take_first(&self) -> Option<(Socket, Health)> {
+        let (health, _) = self.links.first()?.health.lock().unwrap().take()?;
+        let socket = self.links[0].socket.lock().unwrap().take()?;
+        let _ = self.wakes[0].send(());
+        Some((socket, health))
+    }
+
     /// Whether every server that can be used has a fresh ping (the replay waits for this between recordings).
     fn ready(&self) -> bool {
         self.links.iter().zip(&self.servers).all(|(link, server)| !allowed(&server.url) || link.health.lock().unwrap().is_some())
@@ -445,11 +453,12 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
             thread::sleep(Duration::from_millis(50));
         }
         let health_at = Instant::now();
-        let taken = warm.take();
+        // The server is used even when the app would pass it over, so its speed is measured either way.
+        let taken = warm.take_first();
         let health_ms = health_at.elapsed().as_millis() as u64;
-        let health = taken.as_ref().map(|(_, _, h)| *h);
+        let health = taken.as_ref().map(|(_, h)| *h);
         let started = match taken {
-            Some((_, socket, _)) => Dictation::begin(socket, None),
+            Some((socket, _)) => Dictation::begin(socket, None),
             None => Err("no open connection with a fresh ping".to_string()),
         };
         let line = match started {
@@ -482,8 +491,10 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
                     "backlogMs": health.map(|h| h.backlog_ms),
                     "rtf": health.and_then(|h| h.rtf),
                     "cpuPct": health.map(|h| h.cpu_pct),
+                    "appWouldSkip": health.map(|h| !h.can_beat_local()),
                     "rtf": health.and_then(|h| h.rtf),
                     "cpuPct": health.map(|h| h.cpu_pct),
+                    "appWouldSkip": health.map(|h| !h.can_beat_local()),
                     "releaseToTextMs": released.elapsed().as_millis() as u64,
                     "firstUpdateMs": updates.first(),
                     "updateGapsMs": gaps,
