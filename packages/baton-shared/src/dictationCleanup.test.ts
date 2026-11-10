@@ -198,6 +198,25 @@ describe("checkRewrite", () => {
     expect(refused(input.replace("packages/ui/foo.ts", "the file"))).toBe(false);
   });
 
+  it("passes his words set out as a list, and still refuses a list that changed a number", () => {
+    const said =
+      "Now ensure a few things, load up the design skill and make sure the pricing page works on mobile, and check all 3 forms.";
+    const listed =
+      "Now ensure a few things:\n\n1. Load up the design skill\n2. Make sure the pricing page works on mobile\n3. Check all 3 forms";
+    expect(checkRewrite(said, listed)).toEqual({ ok: true });
+    expect(checkRewrite(said, listed.replace("all 3", "all 4")).ok).toBe(false);
+    const bullets =
+      "I want you to pick up a few things from the store:\n\n- Bread for sandwiches\n- Potato chips";
+    expect(
+      checkRewrite(
+        "I want you to pick up a few things from the store. Bread for sandwiches, potato chips.",
+        bullets,
+      ),
+    ).toEqual({
+      ok: true,
+    });
+  });
+
   it("treats a name's capitals as part of the name", () => {
     expect(checkRewrite(input, input.replace("Freya", "freya")).ok).toBe(false);
     const known = [{ phrase: "freya", replacement: null }];
