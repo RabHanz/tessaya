@@ -47,6 +47,8 @@ export interface DictationConfig {
   readonly liveWords?: boolean;
   /** Wake words are off: the recording sends its audio (`pcm`) for the pill's waveform. */
   readonly meter?: boolean;
+  /** His recognisers on his own servers, in his order; empty: the laptop decodes (native remote.rs). */
+  readonly recognizers?: ReadonlyArray<RecognizerServer>;
 }
 
 /**
@@ -112,6 +114,12 @@ export const takeRecording = (
   const at = recordings.findIndex((r) => r.dictation === dictation);
   return at < 0 ? undefined : recordings.splice(0, at + 1).at(-1);
 };
+
+/** One recogniser service he runs (native/tessaya-recognizer): its tailnet WebSocket address and token. */
+export interface RecognizerServer {
+  readonly url: string;
+  readonly token: string;
+}
 
 export interface FocusedApp {
   readonly exe: string;
@@ -283,6 +291,8 @@ export interface SidecarTiming {
   readonly releasedMs: number;
   /** The release took the last pause preview's words: nothing was decoded after the key came up. */
   readonly reused?: boolean;
+  /** Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote). */
+  readonly recognizer?: "local" | "remote" | "fallback";
 }
 
 /** `nofield`: the keyboard was on icons, a list or a button, where a paste lands nowhere. */

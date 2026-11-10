@@ -369,6 +369,7 @@ import {
   type DictationSidecar,
   type PasteVerdict,
   type FocusedApp,
+  type RecognizerServer,
   type RecordingEntry,
   type PasteMethod,
   type SidecarDevice,
@@ -660,6 +661,11 @@ interface VoiceSettings {
   readonly cloudProvider: CloudSttProvider;
   /** The provider's model; null is its recommended one. */
   readonly cloudModel: string | null;
+  /**
+   * His recognisers on his own servers, first choice first ({url, token}); empty keeps recognition on this machine.
+   * shortcut: the token sits in this settings file; move it to the settings secret store before others use it.
+   */
+  readonly recognizers: ReadonlyArray<RecognizerServer>;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
   /** He picked it himself; a value this branch saved for him does not count (D114). */
@@ -761,6 +767,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   recognition: "local",
   cloudProvider: "openai",
   cloudModel: null,
+  recognizers: [],
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
@@ -793,6 +800,20 @@ const MIC_POLL_MS = 5_000;
 /** The pointer does not wait on a slow accessibility tree. */
 const LOCATE_TIMEOUT_MS = 1_500;
 const LOCATE_MAX_DIP = 160;
+
+/** Only well-formed entries: a ws:// address and a token. */
+export const recognizersFrom = (value: unknown): ReadonlyArray<RecognizerServer> =>
+  Array.isArray(value)
+    ? value.flatMap((entry: unknown) =>
+        isRecord(entry) &&
+        typeof entry["url"] === "string" &&
+        /^wss?:\/\//.test(entry["url"]) &&
+        typeof entry["token"] === "string" &&
+        entry["token"] !== ""
+          ? [{ url: entry["url"], token: entry["token"] }]
+          : [],
+      )
+    : [];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -856,6 +877,7 @@ export const readSettings = (path: string): VoiceSettings => {
         typeof saved["cloudModel"] === "string" && saved["cloudModel"] !== ""
           ? saved["cloudModel"]
           : null,
+      recognizers: recognizersFrom(saved["recognizers"]),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -3373,6 +3395,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
       liveWords: settings.showWords,
       meter: loop === null,
+      recognizers: settings.recognizers,
     });
     syncCleanupSession();
   };

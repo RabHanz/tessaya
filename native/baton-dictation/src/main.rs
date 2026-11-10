@@ -24,6 +24,7 @@ mod input_windows;
 mod live;
 #[cfg(windows)]
 mod paste_windows;
+mod remote;
 #[cfg(any(windows, test))]
 mod paste_tx;
 
@@ -129,6 +130,10 @@ struct Config {
     /// His words in the pill as he speaks: previews of the words not yet cut, and the local model's words for the cloud.
     #[serde(default, rename = "liveWords")]
     live_words: bool,
+    /// His recognisers on his own servers, in his order: while the key is held the audio goes to the first healthy one
+    /// and the laptop only decodes if none answers or one stalls (remote.rs).
+    #[serde(default)]
+    recognizers: Vec<remote::Server>,
     /// Wake words are off, so no other mic reader feeds the pill's waveform: the recording sends `pcm` lines.
     #[serde(default)]
     meter: bool,
@@ -173,6 +178,8 @@ struct Done {
     audio: Option<String>,
     /// The release took the last preview's words: nothing was decoded after the key came up.
     reused: bool,
+    /// Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote).
+    via: &'static str,
 }
 
 struct Job {
@@ -288,7 +295,16 @@ enum Work {
     /// Load the model now, so the first real phrase does not wait behind it.
     Load { id: Option<u64>, model: PathBuf },
     /// Each dictation's messages carry its id: audio or an end meant for another one never reaches this one.
-    Begin { id: u64, model: PathBuf, language: Option<String>, external: Option<PathBuf>, keep: Option<PathBuf>, live: bool },
+    Begin {
+        id: u64,
+        model: PathBuf,
+        language: Option<String>,
+        external: Option<PathBuf>,
+        keep: Option<PathBuf>,
+        live: bool,
+        /// His recognisers to try first (`Config::recognizers`); empty: the laptop decodes.
+        remote: Vec<remote::Server>,
+    },
     Audio(u64, Vec<f32>),
     End { id: u64, target: Option<isize>, released: Instant, timing: Value },
     Abort,
@@ -410,6 +426,78 @@ struct Live {
     /// Where the uncut audio was last checked for a pause (`Chunker::paused_since`), so the check runs every 100 ms.
     pause_checked: usize,
     reused: bool,
+    /// His server is recognising this dictation; the laptop keeps every sample and decodes only if it fails.
+    remote: Option<Remote>,
+    /// Who wrote the words, for the timing line: "local", "remote", or "fallback" (the server failed, the laptop wrote).
+    via: &'static str,
+}
+
+/// How long a connection to his server may take before the laptop decodes instead.
+const REMOTE_CONNECT: Duration = Duration::from_millis(400);
+/// How long release waits for his server's text before the laptop decodes everything it kept.
+const REMOTE_TEXT: Duration = Duration::from_millis(2_000);
+
+/// One dictation on his server: connecting in the background while the key is held, then streaming.
+struct Remote {
+    connecting: Option<Receiver<Option<remote::Dictation>>>,
+    dictation: Option<remote::Dictation>,
+    /// Samples of `heard` already sent.
+    sent: usize,
+}
+
+impl Remote {
+    /// Picks the server and opens the dictation off the engine's thread; audio waits in `heard` meanwhile.
+    fn connect(servers: Vec<remote::Server>, language: Option<String>) -> Remote {
+        let (tx, rx) = channel();
+        thread::spawn(move || {
+            let chosen = remote::pick(&servers, REMOTE_CONNECT)
+                .and_then(|i| remote::Dictation::start(&servers[i], language, REMOTE_CONNECT).ok());
+            let _ = tx.send(chosen);
+        });
+        Remote { connecting: Some(rx), dictation: None, sent: 0 }
+    }
+
+    /// Sends what is new and passes its live words on. False: the server failed or never answered.
+    fn step(&mut self, heard: &[f32]) -> bool {
+        if let Some(rx) = &self.connecting {
+            match rx.try_recv() {
+                Ok(Some(dictation)) => {
+                    self.dictation = Some(dictation);
+                    self.connecting = None;
+                }
+                Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => return false,
+                Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            }
+        }
+        let Some(dictation) = &self.dictation else { return true };
+        if heard.len() > self.sent {
+            dictation.audio(&heard[self.sent..]);
+            self.sent = heard.len();
+        }
+        while let Ok(event) = dictation.events.try_recv() {
+            match event {
+                remote::Event::Partial { text, pause } => emit(json!({"ev": "partial", "text": text, "pause": pause})),
+                remote::Event::Failed(_) => return false,
+                remote::Event::Text { .. } => {}
+            }
+        }
+        true
+    }
+
+    /// The release: the rest of the audio, then its text within `REMOTE_TEXT`. None: the laptop decodes.
+    fn finish(mut self, heard: &[f32]) -> Option<(String, u64, bool)> {
+        if let Some(rx) = self.connecting.take() {
+            self.dictation = rx.recv_timeout(REMOTE_CONNECT).ok().flatten();
+        }
+        let dictation = self.dictation?;
+        if heard.len() > self.sent {
+            dictation.audio(&heard[self.sent..]);
+        }
+        dictation.end();
+        dictation
+            .text(REMOTE_TEXT, |text, pause| emit(json!({"ev": "partial", "text": text, "pause": pause})))
+            .ok()
+    }
 }
 
 impl Live {
@@ -424,6 +512,8 @@ impl Live {
             preview: None,
             pause_checked: 0,
             reused: false,
+            remote: None,
+            via: "local",
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -462,7 +552,18 @@ impl Live {
         if self.failed.is_some() || (self.external.is_some() && !self.live_words) {
             return;
         }
-        let piece = self.chunker.push(pcm);
+        // On his server the laptop only keeps the audio. If the server fails mid-dictation the laptop takes over at
+        // once with everything heard so far, and the live words come from here.
+        let fresh = match &mut self.remote {
+            Some(remote) if remote.step(&self.heard) => return,
+            Some(_) => {
+                self.remote = None;
+                self.via = "fallback";
+                self.heard.clone()
+            }
+            None => pcm.to_vec(),
+        };
+        let piece = self.chunker.push(&fresh);
         let Some(session) = session else { return };
         if let Some(piece) = piece {
             return self.decode(session, piece);
@@ -501,7 +602,7 @@ impl Live {
         self.preview_ms = started.elapsed().as_millis() as u64;
     }
 
-    fn finish(mut self, session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
+    fn finish(mut self, mut session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
         let audio_ms = self.heard.len() as u64 / 16;
         if let Some(dir) = &self.external {
             let wav = write_wav(dir, &self.heard)?;
@@ -517,7 +618,33 @@ impl Live {
                 timing: None,
                 audio: None,
                 reused: false,
+                via: "local",
             });
+        }
+        if let Some(remote) = self.remote.take() {
+            if let Some((text, infer_ms, reused)) = remote.finish(&self.heard) {
+                let audio = self.keep.as_deref().and_then(|dir| write_wav(dir, &self.heard).ok());
+                return Ok(Done {
+                    text,
+                    audio_ms,
+                    infer_ms,
+                    load_ms: self.load_ms,
+                    release_ms: Some(released.elapsed().as_millis() as u64),
+                    pieces: 0,
+                    wav: None,
+                    model: None,
+                    timing: None,
+                    audio,
+                    reused,
+                    via: "remote",
+                });
+            }
+            // His server did not answer in time: the laptop decodes all it kept.
+            self.via = "fallback";
+            let heard = self.heard.clone();
+            if let (Some(piece), Some(session)) = (self.chunker.push(&heard), session.as_deref_mut()) {
+                self.decode(session, piece);
+            }
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
         if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
@@ -552,6 +679,7 @@ impl Live {
             timing: None,
             audio,
             reused: self.reused,
+            via: self.via,
         })
     }
 }
@@ -717,6 +845,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         timing: None,
                         audio: None,
                         reused: false,
+                        via: "local",
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictation: None, dictated: job.dictated, target: job.target, result });
@@ -742,7 +871,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let words = words && path_of(&loaded) == Some(model.as_path());
                 live = Some(Live { id, external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { id, model, language, external: None, keep, live: words }) => {
+            Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
                 }
@@ -754,7 +883,8 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         Live::new(language, 0, Some(e))
                     }
                 };
-                live = Some(Live { id, keep, live_words: words, ..fresh });
+                let remote = (!servers.is_empty()).then(|| Remote::connect(servers, fresh.language.clone()));
+                live = Some(Live { id, keep, live_words: words, remote, ..fresh });
             }
             Ok(Work::Audio(id, mut pcm)) => {
                 loaded_at = Instant::now();
@@ -773,6 +903,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         .map(|done| {
                             let mut timing = timing;
                             timing["reused"] = json!(done.reused);
+                            timing["recognizer"] = json!(done.via);
                             Done { timing: Some(timing), ..done }
                         }),
                     None => Err("That dictation's recording was lost, so nothing was written.".to_string()),
@@ -1549,6 +1680,7 @@ fn serve() {
             external: config.external.clone(),
             keep: config.keep_audio.clone(),
             live: config.live_words,
+            remote: config.recognizers.clone(),
         });
         let samples = Arc::new(AtomicUsize::new(0));
         let first_audio = Arc::new(OnceLock::new());
@@ -2308,6 +2440,7 @@ mod tests {
             external: Some(dir.clone()),
             keep: None,
             live: false,
+            remote: vec![],
         };
         let end = |id| Work::End { id, target: None, released: Instant::now(), timing: json!({}) };
         job_tx.send(begin(1)).unwrap();
@@ -2353,7 +2486,17 @@ mod tests {
         });
         let dir = std::env::temp_dir().join(format!("tessaya-warm-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        job_tx.send(Work::Begin { id: 1, model, language: None, external: Some(dir.clone()), keep: None, live: true }).unwrap();
+        job_tx
+            .send(Work::Begin {
+                id: 1,
+                model,
+                language: None,
+                external: Some(dir.clone()),
+                keep: None,
+                live: true,
+                remote: vec![],
+            })
+            .unwrap();
         job_tx.send(Work::Audio(1, vec![0.1; 16_000])).unwrap();
         job_tx.send(Work::End { id: 1, target: None, released: Instant::now(), timing: json!({}) }).unwrap();
         let finished = out_rx.recv_timeout(Duration::from_secs(5)).expect("the release waited on the load");

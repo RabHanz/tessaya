@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { readSettings } from "./DesktopBatonVoice.ts";
+import { readSettings, recognizersFrom } from "./DesktopBatonVoice.ts";
 import {
   addEntry,
   editEntry,
@@ -70,6 +70,18 @@ describe("the vocabulary", () => {
     NodeFS.writeFileSync(settings, '{"holdKey":"F9",');
     readSettings(settings);
     expect(NodeFS.readFileSync(`${settings}.bad`, "utf8")).toBe('{"holdKey":"F9",');
+  });
+
+  it("keeps only well-formed recognisers: a ws address and a token", () => {
+    expect(
+      recognizersFrom([
+        { url: "ws://recognizer.example:8797", token: "t" },
+        { url: "http://x", token: "t" },
+        { url: "ws://y" },
+        "z",
+      ]),
+    ).toEqual([{ url: "ws://recognizer.example:8797", token: "t" }]);
+    expect(recognizersFrom(undefined)).toEqual([]);
   });
 
   it("moves the old default hold key once and keeps a key he chose", () => {
