@@ -22,15 +22,10 @@ const chipIds = (draft: DropDraft | undefined) =>
   );
 
 /**
- * Images that left a draft without going anywhere else. A remove or a send takes the chip with it,
- * so a setter's drop counts only while its chip stays; `anyDrop` paths (storage event, reload)
- * count every one.
+ * Images that left a draft without going anywhere else while their chip stayed. A remove or a
+ * send, here or in another window, takes the chip with it.
  */
-export function findDraftImageDrops(
-  before: Drafts,
-  after: Drafts,
-  anyDrop: boolean,
-): DraftImageDrop[] {
+export function findDraftImageDrops(before: Drafts, after: Drafts): DraftImageDrop[] {
   const stillHeld = new Set(
     Object.values(after).flatMap((draft) => draft.images.map((image) => image.id)),
   );
@@ -38,8 +33,7 @@ export function findDraftImageDrops(
     const chips = chipIds(after[key]);
     return draft.images.flatMap((image) => {
       if (stillHeld.has(image.id)) return [];
-      const chip = chips.has(`image_${image.id}`);
-      return chip || anyDrop ? [{ key, imageId: image.id, chip }] : [];
+      return chips.has(`image_${image.id}`) ? [{ key, imageId: image.id, chip: true }] : [];
     });
   });
 }
@@ -122,7 +116,7 @@ export function watchDraftImageDrops(
     noteAttached(state.draftsByThreadKey);
     if (quietSource !== null) return;
     logDraftImageDrops(
-      findDraftImageDrops(previous.draftsByThreadKey, state.draftsByThreadKey, false),
+      findDraftImageDrops(previous.draftsByThreadKey, state.draftsByThreadKey),
       "setter",
       log,
     );

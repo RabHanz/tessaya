@@ -184,16 +184,26 @@ export function adoptStoredComposerDrafts(): Promise<void> {
     withDraftChangeSource("storage-event", () => useComposerDraftStore.persist.rehydrate()),
   ).then(() => {
     withDraftChangeSource("storage-event", () =>
-      useComposerDraftStore.setState((state) => ({
-        draftsByThreadKey: { ...state.draftsByThreadKey, ...drafts },
-        draftThreadsByThreadKey: { ...state.draftThreadsByThreadKey, ...sessions },
-      })),
+      useComposerDraftStore.setState((state) => {
+        // A draft id stays ours only while storage still has it unpromoted; otherwise another
+        // window promoted or sent it, and keeping it would bring the draft back.
+        const ours = (key: string) =>
+          before.draftThreadsByThreadKey[key] === undefined ||
+          (state.draftThreadsByThreadKey[key] !== undefined &&
+            state.draftThreadsByThreadKey[key].promotedTo == null);
+        const only = <A>(entries: Record<string, A>) =>
+          Object.fromEntries(Object.entries(entries).filter(([key]) => ours(key)));
+        return {
+          draftsByThreadKey: { ...state.draftsByThreadKey, ...only(drafts) },
+          draftThreadsByThreadKey: { ...state.draftThreadsByThreadKey, ...only(sessions) },
+        };
+      }),
     );
+    // An image whose chip left too was sent or removed in the other window.
     logDraftImageDrops(
       findDraftImageDrops(
         before.draftsByThreadKey,
         useComposerDraftStore.getState().draftsByThreadKey,
-        true,
       ),
       "storage-event",
     );
