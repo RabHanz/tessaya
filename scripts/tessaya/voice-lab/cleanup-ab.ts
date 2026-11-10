@@ -1,4 +1,4 @@
-// @effect-diagnostics globalConsole:off globalDate:off nodeBuiltinImport:off
+// @effect-diagnostics globalConsole:off globalDate:off nodeBuiltinImport:off globalTimers:off globalFetch:off
 /* oxlint-disable t3code/no-global-process-runtime -- a lab script run by hand, like cleanup-lab.ts */
 /**
  * Dictation cleanup A/B on rows kept outside the repo: `cleanup-ab.ts <rows.jsonl> <outdir> <arm> [count] [dict.json]`.
