@@ -193,6 +193,8 @@ import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
+import { makeStyleIndex } from "@t3tools/baton-shared/stylePairs";
+import { historyPairs, loadStylePairs } from "./stylePairsStore.ts";
 import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
@@ -1431,6 +1433,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     platform: input.platform,
     clipboard: Electron.clipboard,
   });
+  /** His past dictations most like the one being cleaned, as the model's examples; built once at start. */
+  let styleIndex: ReturnType<typeof makeStyleIndex> | null = null;
   const rewriter = makeRewriter({
     claudeBinary: settings.claudeBinary,
     model: settings.cleanupModel,
@@ -1440,6 +1444,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     dictionary: () => dictionary,
     keepWarm: () => cleanupStaysWarm(),
     ...(input.cleanupApi === undefined ? {} : { api: input.cleanupApi }),
+    examples: (text, mode) => styleIndex?.nearest(text, mode, 4) ?? [],
   });
   /** Held to where the words came from and where he is now. Unknown counts as secret. */
   const levelNow = async (spokenIn: { readonly exe: string; readonly title: string }) => {
@@ -3979,6 +3984,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           snippets.put({ cue: cue.toLowerCase(), text, apps: [] });
       },
     });
+    void loadStylePairs({ stateDir: input.stateDir, appData: input.env["APPDATA"] }).then(
+      (pairs) => {
+        styleIndex = makeStyleIndex([
+          ...pairs,
+          ...historyPairs(history?.list({ limit: 5_000 }) ?? []),
+        ]);
+      },
+    );
     markPhase("dictation-devices:begin");
     devices = await listSidecarDevices();
     markPhase("dictation-devices:end");
