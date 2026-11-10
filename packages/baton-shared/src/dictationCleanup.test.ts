@@ -148,6 +148,35 @@ describe("localClean", () => {
     );
   });
 
+  it("writes punctuation, file names and addresses he speaks, and leaves the words when they are words", () => {
+    const clean = (said: string, mode: "default" | "code" = "default") => localClean(said, mode);
+    expect(clean("Status question mark")).toBe("Status?");
+    expect(clean("Question mark.")).toBe("?");
+    expect(clean("That is brilliant exclamation mark")).toBe("That is brilliant!");
+    expect(clean("Ship it full stop then tell Sam")).toBe("Ship it. Then tell Sam");
+    expect(clean("I put the password in the dot env as the last line.")).toBe(
+      "I put the password in the .env as the last line.",
+    );
+    expect(clean("How is the package dot json version so old?")).toBe(
+      "How is the package.json version so old?",
+    );
+    expect(clean("remote hyphen test dot ahk", "code")).toBe("remote-test.ahk");
+    expect(clean("one nine two dot one six eight dot ten dot one")).toBe("192.168.10.1");
+    expect(clean("one ninety two dot one hundred sixty eight dot ten dot one")).toBe(
+      "192.168.10.1",
+    );
+    expect(clean("My router is at ten dot one.")).toBe("My router is at 10.1.");
+    // Words, not marks.
+    for (const said of [
+      "Make the dot between Robby and Dev more prominent.",
+      "Put a comma after it.",
+      "The question mark icon is too small.",
+      "We need a full stop to this.",
+      "From the three months period.",
+    ])
+      expect(clean(said)).toBe(said);
+  });
+
   it("is exact in raw, and each mode keeps to its shape", () => {
     const raw = "um, the the  thing, no no.";
     expect(localClean(raw, "raw")).toBe(raw);
