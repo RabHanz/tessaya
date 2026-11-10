@@ -618,7 +618,8 @@ function UltracodeControl(props: { traits: TraitsSelectionInput }) {
   if (traits.modelIsUnavailable || !ultracodeToggle) return null;
   const on = ultracodeToggle.currentValue === true;
   return (
-    <div className="flex rounded-lg bg-input/40 p-0.5">
+    // No filled track: a lone button on one reads as switched on even when it is off.
+    <div className="flex p-0.5">
       <button
         type="button"
         aria-pressed={on}
