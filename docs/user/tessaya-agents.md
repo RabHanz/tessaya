@@ -12,7 +12,7 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 - `tessaya_fleet`: what is live right now: each piece of work and its state, the Herdr panes and the running Claude Code processes.
 - `tessaya_memory_search`: what Tessaya remembers.
 - `tessaya_state`: how Tessaya is set up on your computer, one part at a time: settings, voice (including whether speech recognition is local or cloud), personas, skills, or diagnostics (versions, connections, recent error codes). Never a key, the vault or anything you said. It needs Tessaya's desktop app to be connected; to change any other setting, an agent asks with `tessaya_ask`.
-- `tessaya_desktop_settings`: reads or changes your dictation settings in the desktop app (Clean up with AI, pill style, show words, the hold key from the safe list, cues, frosted glass, double tap, learning words, quieting other sounds). The app applies a change within a few seconds, without a restart, and the agent sees what it then runs with. Only an agent with full access can use it; nothing else in your settings, and no key, is reachable this way.
+- `tessaya_desktop_settings`: reads or changes your dictation settings in the desktop app (Clean up with AI, pill style, show words, the hold key from the safe list, cues, frosted glass, double tap, learning words, quieting other sounds). The app applies a change within a few seconds, without a restart (one not taken within 15 seconds is dropped, so it never lands late), and the agent sees what it then runs with. Only an agent with full access can use it; nothing else in your settings, and no key, is reachable this way.
 
 ## Asking her to do something
 

@@ -22,6 +22,7 @@ import { recordText } from "@t3tools/baton-shared/audit";
 import { clientMessageFrom, withAgentMessageFrom } from "../../../baton/AgentMessageFrom.ts";
 import { gateMessage } from "../../../baton/AgentMessageGate.ts";
 import { AskOwner } from "../../../baton/BatonPhoneInbox.ts";
+import { DesktopSettingsCaller } from "../../../baton/BatonDesktopSettings.ts";
 import packageJson from "../../../../package.json" with { type: "json" };
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -189,10 +190,19 @@ export const layer = McpToolAccess.toLayer(
       ),
       // A full-access outside client only: it changes the desktop without asking him, so it is for what he asked for.
       tessaya_desktop_settings: McpToolAccess.writesEnvironment((input) =>
-        call(
-          input.set === undefined
-            ? handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.get]()
-            : handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.set]({ patch: input.set }),
+        McpInvocationContext.McpInvocationContext.pipe(
+          Effect.flatMap((scope) =>
+            call(
+              input.set === undefined
+                ? handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.get]()
+                : handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.set]({ patch: input.set }).pipe(
+                    Effect.provideService(DesktopSettingsCaller, {
+                      actor: `outside:${quoted(scope.client?.label ?? "unknown")}`,
+                      scope: `mcp ${scope.client?.access ?? "unknown"}: ${[...scope.capabilities].join(",")}`,
+                    }),
+                  ),
+            ),
+          ),
         ),
       ),
       // Only this agent's own requests: another agent's, the phone's and the web bar's are not its to read.

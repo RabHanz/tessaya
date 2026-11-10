@@ -1,6 +1,7 @@
 /**
  * The desktop's dictation settings, changed from outside: a change waits here until the desktop's next sync takes it,
- * and the desktop reports what it then runs with. In memory only; the desktop's own file stays the truth.
+ * and the desktop reports what it then runs with. In memory only; the desktop's own file stays the truth. Each set is a
+ * Record row: who, the change, and the values before and after.
  */
 import type {
   DesktopSettingsView,
@@ -16,10 +17,24 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-/** The desktop syncs every few seconds; quieter than this, it is gone. */
+import { BatonRecordService } from "./BatonRecordService.ts";
+
+/** A sync with nothing to take waits this long for a change, so an idle desktop asks about twice a minute. */
+export const SYNC_HOLD = Duration.seconds(25);
+/** Quieter than a held sync and its gap, the desktop is gone. */
 const CONNECTED_MS = 60_000;
-/** How long a set waits for the desktop to apply it before answering with it still pending. */
+/** How long a set waits for the desktop to apply it; a change not taken by then is dropped, never applied late. */
 export const APPLY_WAIT = Duration.seconds(15);
+/** No change older than this is handed out, whatever kept it, so a woken laptop never undoes his own edits. */
+const STALE_MS = 2 * 60_000;
+
+/** Who asked for a change, for the Record: the RPC needs hands-host, so unset is the desktop app's own session. */
+export const DesktopSettingsCaller = Context.Reference<{
+  readonly actor: string;
+  readonly scope: string;
+}>("t3/baton/BatonDesktopSettings/Caller", {
+  defaultValue: () => ({ actor: "desktop app", scope: "hands-host" }),
+});
 
 export class BatonDesktopSettings extends Context.Service<
   BatonDesktopSettings,
@@ -27,7 +42,10 @@ export class BatonDesktopSettings extends Context.Service<
     readonly get: Effect.Effect<DesktopSettingsView>;
     /** Merges into any change still waiting, then waits for the desktop to apply it. */
     readonly set: (patch: DesktopVoiceSettingsPatch) => Effect.Effect<DesktopSettingsView>;
-    /** The desktop's report: its values and the last change it applied; answers with the change it should apply. */
+    /**
+     * The desktop's report: its values and the last change it applied; answers with the change it should apply, held
+     * open up to SYNC_HOLD while there is none.
+     */
     readonly sync: (input: {
       readonly effective: DesktopVoiceSettings;
       readonly applied: number;
@@ -41,17 +59,28 @@ export class BatonDesktopSettings extends Context.Service<
 >()("t3/baton/BatonDesktopSettings") {}
 
 const make = Effect.gen(function* () {
+  const record = yield* Effect.serviceOption(BatonRecordService);
   let reported: { readonly at: number; readonly effective: DesktopVoiceSettings } | null = null;
-  let pending: { readonly version: number; readonly patch: DesktopVoiceSettingsPatch } | null =
-    null;
+  let pending: {
+    readonly version: number;
+    readonly at: number;
+    readonly patch: DesktopVoiceSettingsPatch;
+  } | null = null;
   // From the clock, so a desktop still holding a version from before this server restarted is always behind.
   let version = yield* Clock.currentTimeMillis;
   const waiters: Array<{
     readonly version: number;
     readonly done: Deferred.Deferred<void>;
   }> = [];
+  /** Opened by the next set, for the syncs held waiting on one. */
+  let wake = yield* Deferred.make<void>();
 
-  const view = Effect.map(Clock.currentTimeMillis, (now): DesktopSettingsView => ({
+  const fresh = Effect.map(Clock.currentTimeMillis, (now) => {
+    if (pending !== null && now - pending.at > STALE_MS) pending = null;
+    return now;
+  });
+
+  const view = Effect.map(fresh, (now): DesktopSettingsView => ({
     connected: reported !== null && now - reported.at < CONNECTED_MS,
     at: reported === null ? null : DateTime.formatIso(DateTime.makeUnsafe(reported.at)),
     effective: reported?.effective ?? null,
@@ -59,36 +88,64 @@ const make = Effect.gen(function* () {
   }));
 
   const set = Effect.fn("BatonDesktopSettings.set")(function* (patch: DesktopVoiceSettingsPatch) {
+    const by = yield* DesktopSettingsCaller;
+    const before = reported?.effective ?? null;
     version += 1;
-    pending = { version, patch: { ...pending?.patch, ...patch } };
+    const mine = version;
+    pending = { version: mine, at: yield* fresh, patch: { ...pending?.patch, ...patch } };
     const done = yield* Deferred.make<void>();
-    const waiter = { version, done };
+    const waiter = { version: mine, done };
     waiters.push(waiter);
-    const applied = yield* Deferred.await(done).pipe(
-      Effect.timeoutOption(APPLY_WAIT),
-      Effect.ensuring(
-        Effect.sync(() => {
-          const at = waiters.indexOf(waiter);
-          if (at >= 0) waiters.splice(at, 1);
-        }),
+    yield* Deferred.succeed(wake, undefined);
+    wake = yield* Deferred.make<void>();
+    const applied = Option.isSome(
+      yield* Deferred.await(done).pipe(
+        Effect.timeoutOption(APPLY_WAIT),
+        Effect.ensuring(
+          Effect.sync(() => {
+            const at = waiters.indexOf(waiter);
+            if (at >= 0) waiters.splice(at, 1);
+            // Not taken in time (or the caller left): dropped, unless a later set has replaced it.
+            if (pending?.version === mine) pending = null;
+          }),
+        ),
       ),
     );
-    return { ...(yield* view), applied: Option.isSome(applied) };
+    const answer = { ...(yield* view), applied };
+    if (record._tag === "Some") {
+      yield* record.value
+        .append({
+          kind: "desktop_settings",
+          actor: by.actor,
+          subject: `Dictation settings: ${toJson(patch)}`,
+          outcome: applied ? "applied" : "not applied",
+          detail: toJson({ scope: by.scope, before, after: answer.effective }),
+        })
+        .pipe(Effect.ignoreCause);
+    }
+    return answer;
   });
 
   const sync = Effect.fn("BatonDesktopSettings.sync")(function* (input: {
     readonly effective: DesktopVoiceSettings;
     readonly applied: number;
   }) {
-    reported = { at: yield* Clock.currentTimeMillis, effective: input.effective };
+    reported = { at: yield* fresh, effective: input.effective };
     if (pending !== null && input.applied >= pending.version) pending = null;
     for (const waiter of waiters.filter((w) => input.applied >= w.version)) {
       yield* Deferred.succeed(waiter.done, undefined);
+    }
+    if (pending === null) {
+      yield* Deferred.await(wake).pipe(Effect.timeoutOption(SYNC_HOLD));
+      yield* fresh;
     }
     return { change: pending };
   });
 
   return BatonDesktopSettings.of({ get: view, set, sync });
 });
+
+// Plain settings values only, which always serialise.
+const toJson = (value: unknown): string => JSON.stringify(value);
 
 export const layer = Layer.effect(BatonDesktopSettings, make);

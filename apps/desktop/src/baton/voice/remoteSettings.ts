@@ -1,7 +1,7 @@
 /**
- * Dictation settings changed from outside (`tessaya_desktop_settings` on this machine's server): each sync reports what
- * this app runs with and takes any waiting change, which goes through the same Settings controls he uses, then reports
- * again so the agent sees the values it caused.
+ * Dictation settings changed from outside (`tessaya_desktop_settings` on this machine's server). Each sync, held on the
+ * server until a change comes, reports what this app runs with and takes any waiting change, which goes through the
+ * same Settings controls he uses; it then reports again so the agent sees the values it caused.
  */
 import {
   DesktopSettingsSyncResult,
