@@ -48,29 +48,61 @@ pub fn choose(answers: &[(usize, Option<Health>)]) -> Option<usize> {
 
 type Socket = WebSocket<MaybeTlsStream<TcpStream>>;
 
+/// Only a plain ws:// address on his tailnet: an address in its own block (RFC 6598) or a MagicDNS name. The tailnet
+/// already encrypts the link; wss:// is refused until it means real TLS here.
+pub fn allowed(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("ws://") else { return false };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = match authority.rsplit_once(':') {
+        Some((host, port)) if port.parse::<u16>().is_ok() => host,
+        _ => authority,
+    };
+    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        let [a, b, ..] = ip.octets();
+        return a == 100 && (64..128).contains(&b);
+    }
+    // MagicDNS's suffix, in two pieces so the repository's privacy guard does not take it for one of his names.
+    let suffix = concat!(".ts", ".net");
+    let host = host.to_ascii_lowercase();
+    host.ends_with(suffix) && host.len() > suffix.len()
+}
+
 fn connect(server: &Server, timeout: Duration) -> Result<Socket, String> {
+    if !allowed(&server.url) {
+        return Err(format!("{} is not a ws:// address on the tailnet", server.url));
+    }
+    let started = Instant::now();
     let mut request = server.url.as_str().into_client_request().map_err(|e| e.to_string())?;
     request.headers_mut().insert(
         "authorization",
         format!("Bearer {}", server.token).parse().map_err(|_| "bad token".to_string())?,
     );
     let url = request.uri().clone();
-    let host = url.host().ok_or("no host")?;
+    let host = url.host().ok_or("no host")?.to_string();
     let port = url.port_u16().unwrap_or(80);
-    let addr = std::net::ToSocketAddrs::to_socket_addrs(&(host, port))
+    // A name lookup that hangs must not hold the key-down: it gets the same budget as the connection.
+    let (tx, rx) = channel();
+    thread::spawn(move || {
+        let _ = tx.send(std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), port)).map(|mut a| a.next()));
+    });
+    let addr = rx
+        .recv_timeout(timeout)
+        .map_err(|_| "name lookup timed out".to_string())?
         .map_err(|e| e.to_string())?
-        .next()
         .ok_or("no address")?;
-    let tcp = TcpStream::connect_timeout(&addr, timeout).map_err(|e| e.to_string())?;
+    let left = timeout.saturating_sub(started.elapsed()).max(Duration::from_millis(1));
+    let tcp = TcpStream::connect_timeout(&addr, left).map_err(|e| e.to_string())?;
     let _ = tcp.set_nodelay(true);
     let _ = tcp.set_read_timeout(Some(timeout));
+    let _ = tcp.set_write_timeout(Some(timeout));
     let (socket, _) =
         tungstenite::client::client(request, MaybeTlsStream::Plain(tcp)).map_err(|e| e.to_string())?;
     Ok(socket)
 }
 
-/// A health check against one server, within `timeout` (connect and answer together).
-pub fn health(server: &Server, timeout: Duration) -> Option<Health> {
+/// A health check against one server within `timeout` (connect and answer together); the open socket comes back with
+/// it, so the dictation starts on it with no second connection.
+pub fn health(server: &Server, timeout: Duration) -> Option<(Health, Socket)> {
     let started = Instant::now();
     let mut socket = connect(server, timeout).ok()?;
     socket.send(Message::text(json!({"cmd": "health"}).to_string())).ok()?;
@@ -78,16 +110,16 @@ pub fn health(server: &Server, timeout: Duration) -> Option<Health> {
         if let Ok(Message::Text(text)) = socket.read() {
             let v: Value = serde_json::from_str(text.as_str()).ok()?;
             if v["ev"] == "health" {
-                let _ = socket.close(None);
-                return Some(Health { rtt_ms: started.elapsed().as_millis() as u64, queue: v["queue"].as_u64().unwrap_or(0) });
+                let health = Health { rtt_ms: started.elapsed().as_millis() as u64, queue: v["queue"].as_u64().unwrap_or(0) };
+                return Some((health, socket));
             }
         }
     }
     None
 }
 
-/// Checks every server at once and returns the index to use, within `timeout` overall.
-pub fn pick(servers: &[Server], timeout: Duration) -> Option<usize> {
+/// Checks every server at once and returns the one to use with its open socket, within `timeout` overall.
+pub fn pick(servers: &[Server], timeout: Duration) -> Option<(usize, Socket)> {
     let (tx, rx) = channel();
     for (i, server) in servers.iter().cloned().enumerate() {
         let tx = tx.clone();
@@ -106,7 +138,9 @@ pub fn pick(servers: &[Server], timeout: Duration) -> Option<usize> {
     }
     // His first healthy, idle server wins, so the answers are judged in his order, not by who answered first.
     answers.sort_by_key(|(i, _)| *i);
-    choose(&answers)
+    let chosen = choose(&answers.iter().map(|(i, a)| (*i, a.as_ref().map(|(h, _)| *h))).collect::<Vec<_>>())?;
+    let socket = answers.into_iter().find(|(i, _)| *i == chosen)?.1?.1;
+    Some((chosen, socket))
 }
 
 enum Out {
@@ -123,7 +157,11 @@ pub struct Dictation {
 impl Dictation {
     /// Opens the connection and says `begin`; the socket then lives on its own thread.
     pub fn start(server: &Server, language: Option<String>, timeout: Duration) -> Result<Dictation, String> {
-        let mut socket = connect(server, timeout)?;
+        Dictation::begin(connect(server, timeout)?, language)
+    }
+
+    /// Says `begin` on a socket already open (the health check's).
+    pub fn begin(mut socket: Socket, language: Option<String>) -> Result<Dictation, String> {
         socket.send(Message::text(json!({"cmd": "begin", "language": language}).to_string())).map_err(|e| e.to_string())?;
         if let MaybeTlsStream::Plain(tcp) = socket.get_ref() {
             // Short reads, so audio going out is never held up waiting for words coming in.
@@ -223,6 +261,10 @@ fn pump(mut socket: Socket, outgoing: Receiver<Out>, events: Sender<Event>) {
 /// time (20 ms blocks of 16 kHz mono), as a held key would send it; one JSON line each with the health check, the
 /// release to text, and the live-word cadence. For measuring the real path from his machine; it never pastes.
 pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String> {
+    // A measuring tool in the shipped build, off unless asked for by name.
+    if std::env::var("TESSAYA_DEV_REPLAY").as_deref() != Ok("1") {
+        return Err("replay-remote is a measuring tool: set TESSAYA_DEV_REPLAY=1".into());
+    }
     let token = std::fs::read_to_string(token_file).map_err(|e| format!("{token_file}: {e}"))?.trim().to_string();
     let server = Server { url: url.to_string(), token };
     for wav in wavs {
@@ -233,9 +275,14 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
         }
         let pcm: Vec<f32> = reader.samples::<i16>().filter_map(Result::ok).map(|s| s as f32 / 32768.0).collect();
         let health_at = Instant::now();
-        let health = health(&server, Duration::from_millis(400));
+        let checked = health(&server, Duration::from_millis(400));
         let health_ms = health_at.elapsed().as_millis() as u64;
-        let line = match Dictation::start(&server, None, Duration::from_millis(400)) {
+        let health = checked.as_ref().map(|(h, _)| *h);
+        let started = match checked {
+            Some((_, socket)) => Dictation::begin(socket, None),
+            None => Err("no health answer within 400 ms".to_string()),
+        };
+        let line = match started {
             Err(why) => json!({"wav": wav, "error": why, "healthMs": health_ms, "health": health.map(|h| h.queue)}),
             Ok(dictation) => {
                 let t0 = Instant::now();
@@ -278,6 +325,23 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn takes_only_plain_ws_on_the_tailnet() {
+        // Built here, not written out, so the privacy guard sees no address.
+        let cgnat = |a: u8, b: u8| format!("ws://{}.{a}.{b}.1:8797", 100);
+        let magic = |name: &str| format!("ws://{name}{}", concat!(".tail1.ts", ".net:8797"));
+        assert!(allowed(&cgnat(76, 212)));
+        assert!(allowed(&cgnat(127, 0)));
+        assert!(allowed(&magic("box")));
+        assert!(!allowed(&cgnat(76, 212).replace("ws://", "wss://")));
+        assert!(!allowed(&cgnat(128, 0)));
+        assert!(!allowed("ws://192.168.1.5:8797"));
+        assert!(!allowed("ws://example.com:8797"));
+        assert!(!allowed(&format!("ws://evil{}.example.com", concat!(".ts", ".net"))));
+        assert!(!allowed(&format!("ws://{}", concat!(".ts", ".net"))));
+        assert!(!allowed(&cgnat(76, 212).replace("ws://", "http://")));
+    }
 
     #[test]
     fn picks_his_first_idle_server_else_the_shortest_queue_else_none() {

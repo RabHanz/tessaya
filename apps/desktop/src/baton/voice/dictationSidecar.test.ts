@@ -17,6 +17,7 @@ import {
   restartDelayMs,
   startDictationSidecar,
   takeRecording,
+  stalePartial,
   type DictationEvent,
   type RecordingEntry,
   type DictationSidecar,
@@ -42,6 +43,15 @@ describe("recordingAfter", () => {
     expect(busyAfter("text", true)).toBe(true);
     expect(busyAfter("idle", true)).toBe(false);
     expect(busyAfter("error", true)).toBe(false);
+  });
+});
+
+describe("stalePartial", () => {
+  it("drops live words that came for an earlier dictation, and keeps unmarked ones from an older sidecar", () => {
+    expect(stalePartial(7, 8)).toBe(true);
+    expect(stalePartial(8, 8)).toBe(false);
+    expect(stalePartial(undefined, 8)).toBe(false);
+    expect(stalePartial(7, null)).toBe(false);
   });
 });
 

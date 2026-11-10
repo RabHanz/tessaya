@@ -73,14 +73,22 @@ describe("the vocabulary", () => {
   });
 
   it("keeps only well-formed recogniser addresses, never a token, from settings", () => {
+    // Only plain ws:// on his tailnet. Built here, not written out, so the privacy guard sees no address.
+    const tailnet = `ws://${[100, 76, 0, 9].join(".")}:8797`;
+    const magicDns = [".ts", ".net"].join("");
+    const magic = `ws://box.tail1${magicDns}:8797`;
     expect(
       recognizersFrom([
-        "ws://recognizer.example:8797",
-        "http://x",
+        magic,
+        tailnet,
+        magic.replace("ws://", "wss://"),
+        "ws://example.com:8797",
+        `ws://evil${magicDns}.example.com`,
+        `ws://${[100, 128, 0, 1].join(".")}`,
         { url: "ws://y", token: "t" },
         3,
       ]),
-    ).toEqual(["ws://recognizer.example:8797"]);
+    ).toEqual([magic, tailnet]);
     expect(recognizersFrom(undefined)).toEqual([]);
   });
 

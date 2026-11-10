@@ -365,6 +365,8 @@ import {
   restartDelayMs,
   startDictationSidecar,
   takeRecording,
+  recognizerUrlAllowed,
+  stalePartial,
   type DictationEvent,
   type DictationSidecar,
   type PasteVerdict,
@@ -801,10 +803,10 @@ const MIC_POLL_MS = 5_000;
 const LOCATE_TIMEOUT_MS = 1_500;
 const LOCATE_MAX_DIP = 160;
 
-/** Only well-formed addresses (ws:// or wss://); a token is never read from settings. */
+/** Only ws:// addresses on his tailnet (`recognizerUrlAllowed`); a token is never read from settings. */
 export const recognizersFrom = (value: unknown): ReadonlyArray<string> =>
   Array.isArray(value)
-    ? value.filter((url): url is string => typeof url === "string" && /^wss?:\/\/\S+$/.test(url))
+    ? value.filter((url): url is string => typeof url === "string" && recognizerUrlAllowed(url))
     : [];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -3693,6 +3695,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "pressed") return pressGate.press();
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
+      // Words for a dictation that is no longer the newest (late from his server after a new key press) are dropped.
+      if (stalePartial(event.dictation, recordings.at(-1)?.dictation ?? null)) return;
       dictationWords(event.text);
       const app = focusedApp;
       // Each finished sentence is cleaned as he speaks, and at a pause the last one too.
@@ -7260,8 +7264,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
     } else if (id === "v.recognizer:add" && typeof value === "string") {
       const [url = "", token = ""] = value.trim().split(/\s+/);
-      if (recognizersFrom([url]).length === 0 || token === "")
-        note = "Give the address and the token: ws://host:port token";
+      if (!recognizerUrlAllowed(url) || token === "")
+        note =
+          "Give a ws:// address on your tailnet (its own address or MagicDNS name) and the token: ws://host:port token";
       else {
         try {
           recognizerKeys.set(url, token);

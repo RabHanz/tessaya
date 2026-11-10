@@ -439,6 +439,8 @@ const REMOTE_TEXT: Duration = Duration::from_millis(2_000);
 
 /// One dictation on his server: connecting in the background while the key is held, then streaming.
 struct Remote {
+    /// The dictation this is: on each `partial`, so the desktop never shows one dictation's words on the next.
+    id: u64,
     connecting: Option<Receiver<Option<remote::Dictation>>>,
     dictation: Option<remote::Dictation>,
     /// Samples of `heard` already sent.
@@ -447,14 +449,15 @@ struct Remote {
 
 impl Remote {
     /// Picks the server and opens the dictation off the engine's thread; audio waits in `heard` meanwhile.
-    fn connect(servers: Vec<remote::Server>, language: Option<String>) -> Remote {
+    fn connect(id: u64, servers: Vec<remote::Server>, language: Option<String>) -> Remote {
         let (tx, rx) = channel();
         thread::spawn(move || {
+            // The health check's own socket begins the dictation, so the whole choice stays inside REMOTE_CONNECT.
             let chosen = remote::pick(&servers, REMOTE_CONNECT)
-                .and_then(|i| remote::Dictation::start(&servers[i], language, REMOTE_CONNECT).ok());
+                .and_then(|(_, socket)| remote::Dictation::begin(socket, language).ok());
             let _ = tx.send(chosen);
         });
-        Remote { connecting: Some(rx), dictation: None, sent: 0 }
+        Remote { id, connecting: Some(rx), dictation: None, sent: 0 }
     }
 
     /// Sends what is new and passes its live words on. False: the server failed or never answered.
@@ -476,7 +479,9 @@ impl Remote {
         }
         while let Ok(event) = dictation.events.try_recv() {
             match event {
-                remote::Event::Partial { text, pause } => emit(json!({"ev": "partial", "text": text, "pause": pause})),
+                remote::Event::Partial { text, pause } => {
+                    emit(json!({"ev": "partial", "text": text, "pause": pause, "dictation": self.id}))
+                }
                 remote::Event::Failed(_) => return false,
                 remote::Event::Text { .. } => {}
             }
@@ -494,8 +499,9 @@ impl Remote {
             dictation.audio(&heard[self.sent..]);
         }
         dictation.end();
+        let id = self.id;
         dictation
-            .text(REMOTE_TEXT, |text, pause| emit(json!({"ev": "partial", "text": text, "pause": pause})))
+            .text(REMOTE_TEXT, |text, pause| emit(json!({"ev": "partial", "text": text, "pause": pause, "dictation": id})))
             .ok()
     }
 }
@@ -534,7 +540,10 @@ impl Live {
                 self.text.push(text);
                 // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
                 // starts their cleanup then, so a release right after finds it done (never for the cloud's words).
-                emit(json!({"ev": "partial", "text": join_pieces(&self.text), "pause": at_pause && self.external.is_none()}));
+                emit(json!({
+                    "ev": "partial", "text": join_pieces(&self.text), "pause": at_pause && self.external.is_none(),
+                    "dictation": self.id,
+                }));
             }
             Err(e) => self.failed = Some(e),
         }
@@ -597,7 +606,10 @@ impl Live {
         // At his pause the words may be all of it: the desktop starts their cleanup now, so a release finds it done.
         if let (true, Some(text)) = (self.live_words || paused, &self.preview) {
             let words: Vec<&str> = self.text.iter().map(String::as_str).chain([text.as_str()]).collect();
-            emit(json!({"ev": "partial", "text": join_pieces(&words), "pause": paused && self.external.is_none()}));
+            emit(json!({
+                "ev": "partial", "text": join_pieces(&words), "pause": paused && self.external.is_none(),
+                "dictation": self.id,
+            }));
         }
         self.preview_ms = started.elapsed().as_millis() as u64;
     }
@@ -883,7 +895,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         Live::new(language, 0, Some(e))
                     }
                 };
-                let remote = (!servers.is_empty()).then(|| Remote::connect(servers, fresh.language.clone()));
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, fresh.language.clone()));
                 live = Some(Live { id, keep, live_words: words, remote, ..fresh });
             }
             Ok(Work::Audio(id, mut pcm)) => {
