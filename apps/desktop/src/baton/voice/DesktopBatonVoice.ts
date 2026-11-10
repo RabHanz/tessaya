@@ -3654,12 +3654,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "partial") {
       dictationWords(event.text);
       const app = focusedApp;
-      if (settings.dictationCleanup === "claude" && event.pause !== false)
+      // Each finished sentence is cleaned as he speaks, and at a pause the last one too.
+      if (settings.dictationCleanup === "claude")
         void levelNow(app).then((level) =>
           rewriter.speculate({
             raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
+            pause: event.pause !== false,
           }),
         );
       return;
