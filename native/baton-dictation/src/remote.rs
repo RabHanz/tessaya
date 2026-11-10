@@ -30,24 +30,35 @@ pub enum Event {
     Failed(String),
 }
 
-/// A server's last ping: its round trip, the dictations it is working on, and the audio it holds not yet decoded.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A server's last ping: its round trip, the dictations it is working on, the audio it holds not yet decoded, its
+/// recent decode speed (None: nothing decoded lately) and how busy its CPU was over the last second.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Health {
     pub rtt_ms: u64,
     pub queue: u64,
     pub backlog_ms: u64,
+    pub rtf: Option<f64>,
+    pub cpu_pct: u64,
 }
 
 /// Audio a server may hold undecoded and still be used: past it the laptop is quicker.
 const BUSY_BACKLOG_MS: u64 = 1_000;
+/// His laptop's own decode speed when idle (measured 0.31): a server decoding no faster cannot beat it.
+const LOCAL_RTF: f64 = 0.3;
+/// A CPU this full is decoding behind other work, whatever its last speed said.
+const BUSY_CPU_PCT: u64 = 90;
+
+impl Health {
+    fn can_beat_local(&self) -> bool {
+        self.backlog_ms < BUSY_BACKLOG_MS && self.rtf.is_none_or(|rtf| rtf < LOCAL_RTF) && self.cpu_pct < BUSY_CPU_PCT
+    }
+}
 
 /// The server to use: the first in his order that answered idle, else the one with the shortest queue, never one with
-/// a decode backlog. None when none qualifies: the laptop decodes.
+/// a backlog, a slow recent decode or a full CPU. None when none qualifies: the laptop decodes.
 pub fn choose(answers: &[(usize, Option<Health>)]) -> Option<usize> {
-    let healthy: Vec<(usize, Health)> = answers
-        .iter()
-        .filter_map(|(i, h)| h.filter(|h| h.backlog_ms < BUSY_BACKLOG_MS).map(|h| (*i, h)))
-        .collect();
+    let healthy: Vec<(usize, Health)> =
+        answers.iter().filter_map(|(i, h)| h.filter(Health::can_beat_local).map(|h| (*i, h))).collect();
     healthy
         .iter()
         .find(|(_, h)| h.queue == 0)
@@ -127,6 +138,8 @@ fn parse_health(text: &str, rtt: Duration) -> Option<Health> {
         rtt_ms: rtt.as_millis() as u64,
         queue: v["queue"].as_u64().unwrap_or(0),
         backlog_ms: v["backlogMs"].as_u64().unwrap_or(0),
+        rtf: v["rtf"].as_f64(),
+        cpu_pct: v["cpuPct"].as_u64().unwrap_or(0),
     })
 }
 
@@ -467,6 +480,10 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
                     "queue": health.map(|h| h.queue),
                     "rttMs": health.map(|h| h.rtt_ms),
                     "backlogMs": health.map(|h| h.backlog_ms),
+                    "rtf": health.and_then(|h| h.rtf),
+                    "cpuPct": health.map(|h| h.cpu_pct),
+                    "rtf": health.and_then(|h| h.rtf),
+                    "cpuPct": health.map(|h| h.cpu_pct),
                     "releaseToTextMs": released.elapsed().as_millis() as u64,
                     "firstUpdateMs": updates.first(),
                     "updateGapsMs": gaps,
@@ -504,12 +521,26 @@ mod tests {
 
     #[test]
     fn picks_his_first_idle_server_else_the_shortest_queue_else_none() {
-        let h = |queue| Some(Health { rtt_ms: 5, queue, backlog_ms: 0 });
-        let behind = |backlog_ms| Some(Health { rtt_ms: 5, queue: 0, backlog_ms });
+        let h = |queue| Some(Health { queue, ..Health::default() });
+        let behind = |backlog_ms| Some(Health { backlog_ms, ..Health::default() });
         // A backlog passes a server over, even his first; one under the limit is still idle.
         assert_eq!(choose(&[(0, behind(BUSY_BACKLOG_MS)), (1, h(1))]), Some(1));
         assert_eq!(choose(&[(0, behind(BUSY_BACKLOG_MS - 1)), (1, h(0))]), Some(0));
         assert_eq!(choose(&[(0, behind(5_000))]), None);
+        // So does a recent decode no faster than his laptop's, or a full CPU; no recent decode is judged on the CPU.
+        let rtf = |rtf| Some(Health { rtf: Some(rtf), ..Health::default() });
+        let cpu = |cpu_pct| Some(Health { cpu_pct, ..Health::default() });
+        assert_eq!(choose(&[(0, rtf(LOCAL_RTF)), (1, h(0))]), Some(1));
+        assert_eq!(choose(&[(0, rtf(0.1)), (1, h(0))]), Some(0));
+        assert_eq!(choose(&[(0, cpu(BUSY_CPU_PCT)), (1, cpu(40))]), Some(1));
+        assert_eq!(choose(&[(0, rtf(0.8)), (1, cpu(95))]), None);
+        // So does a recent decode no faster than his laptop's, or a full CPU; no recent decode is judged on the CPU.
+        let rtf = |rtf| Some(Health { rtf: Some(rtf), ..Health::default() });
+        let cpu = |cpu_pct| Some(Health { cpu_pct, ..Health::default() });
+        assert_eq!(choose(&[(0, rtf(LOCAL_RTF)), (1, h(0))]), Some(1));
+        assert_eq!(choose(&[(0, rtf(0.1)), (1, h(0))]), Some(0));
+        assert_eq!(choose(&[(0, cpu(BUSY_CPU_PCT)), (1, cpu(40))]), Some(1));
+        assert_eq!(choose(&[(0, rtf(0.8)), (1, cpu(95))]), None);
         // His first answered but is busy; the second is idle.
         assert_eq!(choose(&[(0, h(1)), (1, h(0))]), Some(1));
         // Both idle: his order wins.

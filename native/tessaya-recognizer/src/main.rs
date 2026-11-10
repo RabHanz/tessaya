@@ -5,7 +5,8 @@
 //!
 //! Protocol: the request carries `Authorization: Bearer <token>`. Text frames from the client: {"cmd":"health"},
 //! {"cmd":"begin","language":null}, {"cmd":"end"}; binary frames are PCM16 LE samples. From the server:
-//! {"ev":"health","queue":n,"busy":bool,"backlogMs":n} (audio received and not yet decoded), {"ev":"partial","text","pause"}, {"ev":"text","text","inferMs","pieces",
+//! {"ev":"health","queue":n,"busy":bool,"backlogMs":n,"rtf":x|null,"cpuPct":n} (audio received and not yet decoded;
+//! the recent decode speed, null when nothing was decoded in the last 2 minutes; the CPU busy over the last second), {"ev":"partial","text","pause"}, {"ev":"text","text","inferMs","pieces",
 //! "reused","releaseMs"}, {"ev":"error","message"}.
 #[path = "../../baton-dictation/src/live.rs"]
 #[allow(dead_code)]
@@ -13,7 +14,7 @@ mod live;
 mod engine;
 
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, sync_channel, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
@@ -37,6 +38,31 @@ const MAX_SAMPLES: usize = 120 * 16_000;
 /// Audio blocks waiting for the engine (about 10 s of 20 ms blocks); a fuller queue means it cannot keep up.
 const FEED_BOUND: usize = 500;
 
+/// The share of the CPU busy over the last second, every program and the hypervisor's steal included.
+static CPU_PCT: AtomicU64 = AtomicU64::new(0);
+
+/// Reads /proc/stat once a second: the cheapest live sign of a machine other work has filled, which the decode speed
+/// only shows once a dictation has run on it.
+fn probe_cpu() {
+    let sample = || -> Option<(u64, u64)> {
+        let stat = std::fs::read_to_string("/proc/stat").ok()?;
+        let fields: Vec<u64> = stat.lines().next()?.split_whitespace().skip(1).filter_map(|f| f.parse().ok()).collect();
+        // user nice system idle iowait irq softirq steal: idle and iowait are the CPU free.
+        let total: u64 = fields.iter().take(8).sum();
+        Some((total, total - fields.get(3)? - fields.get(4)?))
+    };
+    std::thread::spawn(move || {
+        let Some(mut last) = sample() else { return };
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let Some(now) = sample() else { return };
+            let (total, busy) = (now.0 - last.0, now.1 - last.1);
+            CPU_PCT.store(if total == 0 { 0 } else { busy * 100 / total }, Ordering::Relaxed);
+            last = now;
+        }
+    });
+}
+
 fn main() {
     let addr = std::env::var("RECOGNIZER_ADDR").unwrap_or_else(|_| "127.0.0.1:8791".to_string());
     let model = std::env::var("RECOGNIZER_MODEL").expect("RECOGNIZER_MODEL: the TDT v3 GGUF");
@@ -46,6 +72,7 @@ fn main() {
         .to_string();
     let threads: i32 = std::env::var("RECOGNIZER_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(4);
     let (jobs, queue) = engine::start(std::path::Path::new(&model), threads);
+    probe_cpu();
     let listener = TcpListener::bind(&addr).expect("bind");
     eprintln!("tessaya-recognizer listening on {addr}");
     accept_loop(listener, Arc::new(token), jobs, queue);
@@ -186,7 +213,8 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                 match value["cmd"].as_str() {
                     Some("health") => {
                         let busy = queue.load(Ordering::SeqCst);
-                        send(json!({"ev": "health", "queue": busy, "busy": busy > 0, "backlogMs": backlog_ms(&backlog)}));
+                        send(json!({"ev": "health", "queue": busy, "busy": busy > 0, "backlogMs": backlog_ms(&backlog),
+                            "rtf": engine::SPEED.recent(), "cpuPct": CPU_PCT.load(Ordering::Relaxed)}));
                     }
                     Some("begin") if dictation.is_some() => {
                         send(json!({"ev": "error", "message": "a dictation is already running on this connection"}));
@@ -298,6 +326,7 @@ mod tests {
         let answer = health();
         assert_eq!(answer["backlogMs"], 1_000);
         assert_eq!(answer["queue"], 1);
+        assert!(answer["cpuPct"].is_u64());
         // The engine takes it: nothing waits.
         assert!(matches!(job.audio.recv().unwrap(), Feed::Audio(_)));
         job.waiting.fetch_sub(16_000, Ordering::SeqCst);

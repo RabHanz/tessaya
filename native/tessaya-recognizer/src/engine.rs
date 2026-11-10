@@ -2,10 +2,11 @@
 //! main.rs `Live`): the same pieces, previews, pause preview and its reuse. Kept in step by hand until the sidecar's
 //! engine moves into a shared module; `live.rs` itself is shared source.
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
-use std::time::Instant;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use transcribe_cpp::{Model, RunOptions, Session, SessionOptions, TimestampKind};
 
@@ -16,6 +17,40 @@ use crate::live::{
 const RATE: usize = 16_000;
 /// Silence after the audio, as the sidecar pads it, so the last word is heard whole.
 const TAIL_SAMPLES: usize = RATE / 5;
+
+/// How fast this machine decodes now: a moving average of the real-time factor over the last few pieces.
+pub static SPEED: Speed = Speed { rtf_milli: AtomicU64::new(0), at_ms: AtomicU64::new(0) };
+/// An average older than this says nothing about the machine now (its load moves on); the CPU probe still does.
+const SPEED_FRESH: Duration = Duration::from_secs(120);
+
+pub struct Speed {
+    rtf_milli: AtomicU64,
+    /// When it was last measured, in ms since the first measurement plus one; 0: never.
+    at_ms: AtomicU64,
+}
+
+fn since_start() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+}
+
+impl Speed {
+    pub fn record(&self, took: Duration, samples: usize) {
+        let rtf = took.as_millis() as u64 * 1000 / (samples as u64 / 16).max(1);
+        let old = self.rtf_milli.load(Ordering::Relaxed);
+        let fresh = self.at_ms.load(Ordering::Relaxed) != 0;
+        // Weighted 3 in 10 to the newest piece: a few pieces turn it, one odd piece does not.
+        self.rtf_milli.store(if fresh { (old * 7 + rtf * 3) / 10 } else { rtf }, Ordering::Relaxed);
+        self.at_ms.store(since_start(), Ordering::Relaxed);
+    }
+
+    /// The recent real-time factor, or None when nothing was decoded lately.
+    pub fn recent(&self) -> Option<f64> {
+        let at = self.at_ms.load(Ordering::Relaxed);
+        (at != 0 && since_start() - at < SPEED_FRESH.as_millis() as u64)
+            .then(|| self.rtf_milli.load(Ordering::Relaxed) as f64 / 1000.0)
+    }
+}
 
 pub enum Feed {
     Audio(Vec<f32>),
@@ -48,8 +83,10 @@ pub fn start(model: &Path, threads: i32) -> (Sender<Job>, Arc<AtomicUsize>) {
         let queue = queue.clone();
         std::thread::spawn(move || {
             let mut session = session;
-            // Warm, off the clock.
+            // Warm, off the clock; it is also the first speed measured.
+            let started = Instant::now();
             let _ = session.run(&vec![0.0f32; RATE], &RunOptions::default());
+            SPEED.record(started.elapsed(), RATE);
             for job in incoming {
                 recognise(&mut session, job);
                 queue.fetch_sub(1, Ordering::SeqCst);
@@ -64,7 +101,9 @@ fn decode(session: &mut Session, piece: Piece, language: Option<String>) -> Resu
     lift_gain(&mut pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
     let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
+    let started = Instant::now();
     let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+    SPEED.record(started.elapsed(), pcm.len());
     if context == 0 || result.words.is_empty() {
         return Ok(result.text.trim().to_string());
     }
@@ -190,5 +229,24 @@ fn recognise(session: &mut Session, job: Job) {
             release_ms: at.elapsed().as_millis() as u64,
         });
         return;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn speed_follows_the_last_few_pieces() {
+        let speed = Speed { rtf_milli: AtomicU64::new(0), at_ms: AtomicU64::new(0) };
+        assert_eq!(speed.recent(), None);
+        speed.record(Duration::from_millis(100), RATE); // 0.1
+        assert_eq!(speed.recent(), Some(0.1));
+        // A slow piece moves it 3 in 10, three in a row most of the way.
+        speed.record(Duration::from_millis(1100), RATE);
+        assert_eq!(speed.recent(), Some(0.4));
+        speed.record(Duration::from_millis(1100), RATE);
+        speed.record(Duration::from_millis(1100), RATE);
+        assert!(speed.recent().unwrap() > 0.75);
     }
 }
