@@ -7,6 +7,11 @@ import {
   resolveComposerDraftKey,
   useComposerDraftStore,
 } from "../../composerDraftStore";
+import {
+  findDraftImageDrops,
+  logDraftImageDrops,
+  withDraftChangeSource,
+} from "../../composerImageDropLog";
 import { resolveStorage } from "../../lib/storage";
 import type { ThreadRouteTarget } from "../../threadRoutes";
 import {
@@ -175,11 +180,23 @@ export function adoptStoredComposerDrafts(): Promise<void> {
     Object.fromEntries(Object.entries(entries).filter(([key]) => mine.has(key)));
   const drafts = keep(before.draftsByThreadKey);
   const sessions = keep(before.draftThreadsByThreadKey);
-  return Promise.resolve(useComposerDraftStore.persist.rehydrate()).then(() => {
-    useComposerDraftStore.setState((state) => ({
-      draftsByThreadKey: { ...state.draftsByThreadKey, ...drafts },
-      draftThreadsByThreadKey: { ...state.draftThreadsByThreadKey, ...sessions },
-    }));
+  return Promise.resolve(
+    withDraftChangeSource("storage-event", () => useComposerDraftStore.persist.rehydrate()),
+  ).then(() => {
+    withDraftChangeSource("storage-event", () =>
+      useComposerDraftStore.setState((state) => ({
+        draftsByThreadKey: { ...state.draftsByThreadKey, ...drafts },
+        draftThreadsByThreadKey: { ...state.draftThreadsByThreadKey, ...sessions },
+      })),
+    );
+    logDraftImageDrops(
+      findDraftImageDrops(
+        before.draftsByThreadKey,
+        useComposerDraftStore.getState().draftsByThreadKey,
+        true,
+      ),
+      "storage-event",
+    );
   });
 }
 if (typeof window !== "undefined") {
