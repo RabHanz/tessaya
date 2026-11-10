@@ -8,7 +8,7 @@ import { pillEngine } from "./pillTimeline.ts";
 /** The pill window's width; the island is never wider. */
 export const ISLAND_WIDTH = 420;
 /** The window grows upward to this while the island is up: the head, 12 lines and their padding, over the margin. */
-export const ISLAND_HEIGHT = 290;
+export const ISLAND_HEIGHT = 280;
 /** The window's margin under the capsule, plain or island. */
 export const PILL_BELOW = 6;
 
@@ -78,7 +78,7 @@ export const ghostScroll = (lines: number, top: number, line: number, height: nu
  */
 export const wordsScript = (variant: "E" | "D"): string => `
 const {clamp,prog,EMPH,DECEL,ACCEL,MD,FLOW,EXPAND_MS,SMOOTH,springAt,align,cleanupTimes,stepWidth}=(${pillEngine.toString()})();
-const D=${variant === "D"},PH=26,PBASE=76,PVOICE=112,LIVE_LINES=D?99:5,PAD=12,MAXW=${ISLAND_WIDTH},TMAX=MAXW-32,FLOW01=[{at:0,to:0},{at:0,to:1}];
+const D=${variant === "D"},PH=26,PBASE=76,PVOICE=112,LIVE_LINES=D?99:5,PAD=8,MAXW=${ISLAND_WIDTH},TMAX=MAXW-24,FLOW01=[{at:0,to:0},{at:0,to:1}];
 const SHRINK_MS=D?0:600;
 const flowWords=${flowWords.toString()},ghostScroll=${ghostScroll.toString()};
 let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0,TOP=0,BOXH=0,FONT=14,EMPTY=false;
@@ -98,7 +98,7 @@ const linesOf=pos=>pos.length?Math.round(pos[pos.length-1].y/LINE)+1:0;
 // The lines the window has room for (a short screen gives the island less).
 const roomLines=()=>D?99:Math.max(1,Math.floor((innerHeight-${PILL_BELOW}-PH-PAD-6)/LINE));
 const hOf=lines=>lines>0?Math.min(ALL_LINES,lines)*LINE+PAD:0;
-const wOf=t=>Math.max(PBASE,t+32);
+const wOf=t=>Math.max(PBASE,t+24);
 const mk=t=>{const s=document.createElement('span');s.textContent=t;vp.appendChild(s);return s;};
 const textC=D?'var(--field-ink)':'var(--text)',greyC=D?'var(--ghost-drop)':'var(--grey)',liveC=D?'var(--ghost)':textC;
 const mix=a=>p=>p>=1?a:p<=0?greyC:'color-mix(in srgb,'+a+' '+Math.round(p*100)+'%,'+greyC+')',mixC=mix(textC),mixL=mix(liveC);
@@ -200,8 +200,8 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
  for(const id of['dx','dv'])$(id).style.opacity=String(1-.65*tuck);
  $('dv').style.color=t>=R&&t<P+200?'var(--accent)':'';
  $('dx').style.transform='translate(3px,2px)';$('dv').style.transform='translate('+(ww-25).toFixed(2)+'px,2px)';$('w').style.transform='translate('+(ww/2-27).toFixed(2)+'px,5px)';
- const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(16px,'+(PH-4)+'px)';
- vp.style.clipPath='inset(0 '+Math.max(0,16+TMAX-(ww-14)).toFixed(2)+'px '+Math.max(0,vh-(h-PAD+4)).toFixed(2)+'px 0)';
+ const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(12px,'+(PH-4)+'px)';
+ vp.style.clipPath='inset(0 '+Math.max(0,12+TMAX-(ww-10)).toFixed(2)+'px '+Math.max(0,vh-(h-PAD+4)).toFixed(2)+'px 0)';
  // The top edge fades while lines are scrolled out of view above it.
  const mkd=clamp(sc/LINE);vp.style.maskImage=vp.style.webkitMaskImage=mkd>.01?'linear-gradient(180deg,rgba(0,0,0,'+(1-.75*mkd).toFixed(3)+') 0,#000 14px)':'';}
  if(!C){// While he talks, and after ✓ until the clean text: the newest partial's layout, each word arriving with a decelerated fade, rise and unblur.

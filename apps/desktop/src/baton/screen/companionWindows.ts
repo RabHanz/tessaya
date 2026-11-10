@@ -43,12 +43,13 @@ addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-scree
 
 export const PROMPT_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
 html,body{overflow:hidden}
-body{padding:12px;box-sizing:border-box}
-#b{padding:15px 18px 14px;border-radius:16px}
+body{padding:6px;box-sizing:border-box}
+/* As wide as its words up to the window; a short shadow, so the window's margin around it stays small. */
+#b{width:fit-content;min-width:260px;max-width:100%;box-sizing:border-box;padding:12px 14px;border-radius:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.42),0 2px 5px rgba(0,0,0,.3)}
 h1{margin:0;font-size:15.5px;font-weight:600;line-height:1.35}
 p{margin:6px 0 0;color:var(--soft);font-size:13.5px;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere;max-height:320px;overflow:auto}
-nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
-button{all:unset;padding:6px 14px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--text);background:rgba(255,255,255,.1);cursor:default}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;min-height:32px;padding:6px 14px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--text);background:rgba(255,255,255,.1);cursor:default}
 button.main{background:#fff;color:#111}
 button:hover{background:rgba(255,255,255,.18)}
 button.main:hover{background:#e8e8ec}
@@ -63,7 +64,7 @@ window.fill=(o)=>{document.getElementById('h').textContent=o.title;document.getE
  let armed=!o.armMs;const ready=()=>{if(armed&&!more())m.disabled=false;};
  if(o.armMs)setTimeout(()=>{armed=true;ready();},o.armMs);
  if(more()||o.armMs){m.disabled=true;d.tabIndex=0;d.focus();d.addEventListener('scroll',ready);}else m.focus();
- return document.body.scrollHeight;};</script></body></html>`;
+ return [Math.ceil(document.getElementById('b').getBoundingClientRect().width)+12,document.body.scrollHeight];};</script></body></html>`;
 
 export interface PromptInput {
   readonly title: string;
@@ -201,14 +202,15 @@ export const createCompanionWindows = (input: {
             .then(() =>
               win.webContents.executeJavaScript(`window.fill(${JSON.stringify(options)})`),
             )
-            .then((height: number) => {
+            .then(([wide, height]: [number, number]) => {
               if (win.isDestroyed()) return;
               // A long plan scrolls inside the box; the buttons stay on the screen.
               const tall = Math.min(Math.ceil(height), area.height - 120);
+              const width = Math.min(PROMPT_WIDTH, Math.ceil(wide));
               win.setBounds({
-                x: Math.round(area.x + (area.width - PROMPT_WIDTH) / 2),
+                x: Math.round(area.x + (area.width - width) / 2),
                 y: Math.round(area.y + area.height - tall - CARD_ABOVE_WORK_AREA),
-                width: PROMPT_WIDTH,
+                width,
                 height: tall,
               });
               if (options.inactive === true) return win.showInactive();

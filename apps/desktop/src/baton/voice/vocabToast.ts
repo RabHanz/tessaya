@@ -10,12 +10,13 @@ import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
 
+/** The widest a card gets; a short one is as wide as its words (the page says its real size). */
 const WIDTH = 340;
-const GAP = 10;
+const GAP = 8;
 const LEAVE_MS = 8_000;
 const BATCH_MS = 1_200;
-/** Tall enough for the longest card (a reason and three lines); the page then says its real height. */
-const MAX_HEIGHT = 120;
+/** Tall enough for the longest card (a reason and three lines); the page then says its real size. */
+const MAX_HEIGHT = 110;
 
 export type Card =
   | { readonly kind: "learned"; readonly words: ReadonlyArray<string> }
@@ -47,13 +48,15 @@ export const cardDocument = (card: Card, frosted = false): string => {
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 @media (prefers-color-scheme:light){:root{--glass:rgba(255,255,255,.82);--edge:rgba(0,0,0,.16);--text:#0f1012;--soft:rgba(15,16,18,.74);--accent:#14505A;--danger:#b3261e}}
 html,body{margin:0;overflow:hidden;background:transparent;-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
-#t{box-sizing:border-box;width:100%;min-height:52px;border-radius:14px;background:var(--glass);box-shadow:inset 0 0 0 1px var(--edge);color:var(--text);padding:10px 8px 10px 14px;display:flex;gap:6px;align-items:flex-start;animation:in .2s cubic-bezier(.2,.8,.25,1) both}
+#t{box-sizing:border-box;width:max-content;max-width:100vw;min-width:160px;min-height:40px;border-radius:12px;background:var(--glass);box-shadow:inset 0 0 0 1px var(--edge);color:var(--text);padding:6px 4px 6px 12px;display:flex;gap:6px;align-items:flex-start;animation:in .2s cubic-bezier(.2,.8,.25,1) both}
 @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.body{flex:1;min-width:0;padding-top:4px}
+.body{flex:1 1 auto;min-width:0;padding-top:4px}
 .why{color:var(--soft);font:500 12px/1.35 var(--sans);margin-bottom:3px}
 .txt{font:500 14px/20px var(--sans);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .acts{display:flex;align-items:center;gap:2px;flex:none}
 .cb{position:relative;font:600 13px/1 var(--sans);border:0;background:transparent;color:var(--accent);min-width:28px;height:28px;padding:0 8px;cursor:pointer;border-radius:8px}
+/* 28 px to see, 32 px to hit. */
+.cb::before{content:"";position:absolute;inset:-2px}
 .cb:hover{color:var(--text)}
 .cb:focus{outline:none}
 .cb:focus-visible::after{content:"";position:absolute;left:8px;right:8px;bottom:3px;height:1.5px;border-radius:1px;background:currentColor}
@@ -122,17 +125,16 @@ export const createVocabToast = (input: {
     shown = card;
     const at = input.anchor();
     const area = Electron.screen.getDisplayMatching(at).workArea;
-    const x = Math.min(
-      Math.max(Math.round(at.x + at.width / 2 - WIDTH / 2), area.x),
-      area.x + area.width - WIDTH,
-    );
-    const place = (height: number) => {
+    const place = (height: number, width = WIDTH) => {
       const above = at.y - height - GAP;
       return {
-        x,
+        x: Math.min(
+          Math.max(Math.round(at.x + at.width / 2 - width / 2), area.x),
+          area.x + area.width - width,
+        ),
         y:
           above >= area.y ? above : Math.min(at.y + at.height + GAP, area.y + area.height - height),
-        width: WIDTH,
+        width,
         height,
       };
     };
@@ -156,10 +158,16 @@ export const createVocabToast = (input: {
     window = win;
     void win
       .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(cardDocument(card, frosted))}`)
-      .then(() => win.webContents.executeJavaScript("document.getElementById('t').offsetHeight"))
-      .then((height: unknown) => {
+      .then(() =>
+        win.webContents.executeJavaScript(
+          "(r=>[r.width,r.height])(document.getElementById('t').getBoundingClientRect())",
+        ),
+      )
+      .then((size: unknown) => {
         if (win.isDestroyed()) return;
-        if (typeof height === "number" && height > 0) win.setBounds(place(Math.ceil(height)));
+        const [width, height] = Array.isArray(size) ? size : [];
+        if (typeof width === "number" && typeof height === "number" && width > 0 && height > 0)
+          win.setBounds(place(Math.ceil(height), Math.min(WIDTH, Math.ceil(width))));
         win.showInactive();
       })
       .catch(() => undefined);
