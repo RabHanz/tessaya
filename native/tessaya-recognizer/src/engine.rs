@@ -83,10 +83,8 @@ pub fn start(model: &Path, threads: i32) -> (Sender<Job>, Arc<AtomicUsize>) {
         let queue = queue.clone();
         std::thread::spawn(move || {
             let mut session = session;
-            // Warm, off the clock; it is also the first speed measured.
-            let started = Instant::now();
+            // Warm, off the clock and out of the speed: a cold first run is several times slower than the rest.
             let _ = session.run(&vec![0.0f32; RATE], &RunOptions::default());
-            SPEED.record(started.elapsed(), RATE);
             for job in incoming {
                 recognise(&mut session, job);
                 queue.fetch_sub(1, Ordering::SeqCst);
