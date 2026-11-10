@@ -388,10 +388,20 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
                      disabled={
                        projectSelectionRequired ||
 diff --git a/apps/web/src/components/chat/ComposerModelEffort.tsx b/apps/web/src/components/chat/ComposerModelEffort.tsx
-index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2da8aad7e2f5b5f9e648115a659998b02284b4e3 100644
+index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2ad1dd5aaf5463d62e5a4ba9fdb51373bce0d92b 100644
 --- a/apps/web/src/components/chat/ComposerModelEffort.tsx
 +++ b/apps/web/src/components/chat/ComposerModelEffort.tsx
-@@ -681,6 +681,7 @@ export function ComposerPickerFooter(props: {
+@@ -618,7 +618,8 @@ function UltracodeControl(props: { traits: TraitsSelectionInput }) {
+   if (traits.modelIsUnavailable || !ultracodeToggle) return null;
+   const on = ultracodeToggle.currentValue === true;
+   return (
+-    <div className="flex rounded-lg bg-input/40 p-0.5">
++    // No filled track: a lone button on one reads as switched on even when it is off.
++    <div className="flex p-0.5">
+       <button
+         type="button"
+         aria-pressed={on}
+@@ -681,6 +682,7 @@ export function ComposerPickerFooter(props: {
    runtimeMode: RuntimeMode;
    runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
    onRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -399,7 +409,7 @@ index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2da8aad7e2f5b5f9e648115a659998b0
  }) {
    return (
      <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2">
-@@ -691,6 +692,7 @@ export function ComposerPickerFooter(props: {
+@@ -691,6 +693,7 @@ export function ComposerPickerFooter(props: {
          options={props.runtimeModeOptions}
          onChange={props.onRuntimeModeChange}
        />
