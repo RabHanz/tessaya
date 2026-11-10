@@ -31,6 +31,8 @@ pub enum Reply {
 
 pub struct Job {
     pub audio: Receiver<Feed>,
+    /// Samples sent to `audio` and not yet taken off it: the decode backlog the health answer reports.
+    pub waiting: Arc<AtomicUsize>,
     pub replies: Sender<Reply>,
     pub language: Option<String>,
 }
@@ -70,7 +72,7 @@ fn decode(session: &mut Session, piece: Piece, language: Option<String>) -> Resu
 }
 
 fn recognise(session: &mut Session, job: Job) {
-    let Job { audio, replies, language } = job;
+    let Job { audio, replies, language, waiting } = job;
     let mut chunker = Chunker::new(ChunkParams::from_env());
     let mut heard: Vec<f32> = Vec::new();
     let mut text: Vec<String> = Vec::new();
@@ -85,6 +87,7 @@ fn recognise(session: &mut Session, job: Job) {
         let mut behind = false;
         let take = |feed: Feed, block: &mut Vec<f32>| match feed {
             Feed::Audio(pcm) => {
+                waiting.fetch_sub(pcm.len(), Ordering::SeqCst);
                 block.extend(pcm);
                 None
             }

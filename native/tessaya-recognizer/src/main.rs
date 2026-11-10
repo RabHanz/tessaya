@@ -5,7 +5,7 @@
 //!
 //! Protocol: the request carries `Authorization: Bearer <token>`. Text frames from the client: {"cmd":"health"},
 //! {"cmd":"begin","language":null}, {"cmd":"end"}; binary frames are PCM16 LE samples. From the server:
-//! {"ev":"health","queue":n,"busy":bool}, {"ev":"partial","text","pause"}, {"ev":"text","text","inferMs","pieces",
+//! {"ev":"health","queue":n,"busy":bool,"backlogMs":n} (audio received and not yet decoded), {"ev":"partial","text","pause"}, {"ev":"text","text","inferMs","pieces",
 //! "reused","releaseMs"}, {"ev":"error","message"}.
 #[path = "../../baton-dictation/src/live.rs"]
 #[allow(dead_code)]
@@ -15,7 +15,7 @@ mod engine;
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, sync_channel, Sender, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -24,12 +24,14 @@ use tungstenite::{accept_hdr, Message};
 
 use engine::{Feed, Job, Reply};
 
-/// Connections served at once; more are closed at once. One person dictates, with a health check or two beside.
+/// Connections served at once; more are closed at once. Each of his desktops keeps one open.
 const MAX_CONNECTIONS: usize = 8;
 /// How long the opening handshake may take.
 const HANDSHAKE: Duration = Duration::from_secs(5);
 /// A dictation whose client sends nothing for this long is dropped: a laptop that slept or lost the network.
 const SILENCE: Duration = Duration::from_secs(2);
+/// A connection with no dictation that sends nothing for this long is closed; the desktop pings every 10 s.
+const IDLE: Duration = Duration::from_secs(30);
 /// The longest dictation taken, in samples (120 s); past it the dictation ends with an error.
 const MAX_SAMPLES: usize = 120 * 16_000;
 /// Audio blocks waiting for the engine (about 10 s of 20 ms blocks); a fuller queue means it cannot keep up.
@@ -49,16 +51,26 @@ fn main() {
     accept_loop(listener, Arc::new(token), jobs, queue);
 }
 
+/// Every dictation's undecoded audio, on whichever connection it runs.
+type Backlog = Arc<Mutex<Vec<Weak<AtomicUsize>>>>;
+
+fn backlog_ms(backlog: &Backlog) -> usize {
+    let mut all = backlog.lock().unwrap();
+    all.retain(|w| w.strong_count() > 0);
+    all.iter().filter_map(Weak::upgrade).map(|w| w.load(Ordering::SeqCst)).sum::<usize>() / 16
+}
+
 fn accept_loop(listener: TcpListener, token: Arc<String>, jobs: Sender<Job>, queue: Arc<AtomicUsize>) {
     let open = Arc::new(AtomicUsize::new(0));
+    let backlog = Backlog::default();
     for stream in listener.incoming().flatten() {
         if open.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
             open.fetch_sub(1, Ordering::SeqCst);
             continue;
         }
-        let (token, jobs, queue, open) = (token.clone(), jobs.clone(), queue.clone(), open.clone());
+        let (token, jobs, queue, open, backlog) = (token.clone(), jobs.clone(), queue.clone(), open.clone(), backlog.clone());
         std::thread::spawn(move || {
-            serve(stream, &token, jobs, queue);
+            serve(stream, &token, jobs, queue, backlog);
             open.fetch_sub(1, Ordering::SeqCst);
         });
     }
@@ -73,7 +85,7 @@ fn same_secret(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// One connection: health checks and dictations, one at a time.
-fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsize>) {
+fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsize>, backlog: Backlog) {
     let _ = stream.set_nodelay(true);
     // A client that connects and says nothing is not waited on.
     let _ = stream.set_read_timeout(Some(HANDSHAKE));
@@ -116,10 +128,10 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
             }
         });
     }
-    let mut dictation: Option<(SyncSender<Feed>, usize)> = None;
+    let mut dictation: Option<(SyncSender<Feed>, usize, Arc<AtomicUsize>)> = None;
     let mut heard_at = Instant::now();
-    let stop = |dictation: &mut Option<(SyncSender<Feed>, usize)>, why: &str| {
-        if let Some((feed, _)) = dictation.take() {
+    let stop = |dictation: &mut Option<(SyncSender<Feed>, usize, Arc<AtomicUsize>)>, why: &str| {
+        if let Some((feed, ..)) = dictation.take() {
             let _ = feed.try_send(Feed::Abort);
         }
         send(json!({"ev": "error", "message": why}));
@@ -141,13 +153,16 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                     stop(&mut dictation, "no audio for 2 s; dictation dropped");
                     break;
                 }
+                if dictation.is_none() && heard_at.elapsed() >= IDLE {
+                    break;
+                }
                 continue;
             }
             Err(_) => break,
         };
         match message {
             Message::Binary(bytes) => {
-                let Some((feed, samples)) = &mut dictation else { continue };
+                let Some((feed, samples, waiting)) = &mut dictation else { continue };
                 *samples += bytes.len() / 2;
                 if *samples > MAX_SAMPLES {
                     stop(&mut dictation, "dictation over 120 s; dropped");
@@ -155,9 +170,14 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                 }
                 let pcm: Vec<f32> =
                     bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+                let len = pcm.len();
+                waiting.fetch_add(len, Ordering::SeqCst);
                 match feed.try_send(Feed::Audio(pcm)) {
                     Ok(()) => {}
-                    Err(TrySendError::Full(_)) => stop(&mut dictation, "recogniser behind; dictation dropped"),
+                    Err(TrySendError::Full(_)) => {
+                        waiting.fetch_sub(len, Ordering::SeqCst);
+                        stop(&mut dictation, "recogniser behind; dictation dropped")
+                    }
                     Err(TrySendError::Disconnected(_)) => dictation = None,
                 }
             }
@@ -166,7 +186,7 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                 match value["cmd"].as_str() {
                     Some("health") => {
                         let busy = queue.load(Ordering::SeqCst);
-                        send(json!({"ev": "health", "queue": busy, "busy": busy > 0}));
+                        send(json!({"ev": "health", "queue": busy, "busy": busy > 0, "backlogMs": backlog_ms(&backlog)}));
                     }
                     Some("begin") if dictation.is_some() => {
                         send(json!({"ev": "error", "message": "a dictation is already running on this connection"}));
@@ -174,17 +194,19 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                     Some("begin") => {
                         let (feed, audio) = sync_channel(FEED_BOUND);
                         let language = value["language"].as_str().map(str::to_string);
+                        let waiting = Arc::new(AtomicUsize::new(0));
+                        backlog.lock().unwrap().push(Arc::downgrade(&waiting));
                         queue.fetch_add(1, Ordering::SeqCst);
-                        if jobs.send(Job { audio, replies: replies.clone(), language }).is_err() {
+                        if jobs.send(Job { audio, replies: replies.clone(), language, waiting: waiting.clone() }).is_err() {
                             queue.fetch_sub(1, Ordering::SeqCst);
                             send(json!({"ev": "error", "message": "recogniser stopped"}));
                             break;
                         }
-                        dictation = Some((feed, 0));
+                        dictation = Some((feed, 0, waiting));
                         heard_at = Instant::now();
                     }
                     Some("end") => {
-                        if let Some((feed, _)) = dictation.take() {
+                        if let Some((feed, ..)) = dictation.take() {
                             let _ = feed.send(Feed::End(Instant::now()));
                         }
                     }
@@ -196,7 +218,7 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
         }
     }
     // A connection that drops mid-dictation abandons it; the engine moves on.
-    if let Some((feed, _)) = dictation {
+    if let Some((feed, ..)) = dictation {
         let _ = feed.try_send(Feed::Abort);
     }
 }
@@ -259,6 +281,27 @@ mod tests {
         assert_eq!(reply["ev"], "error");
         assert!(started.elapsed() >= Duration::from_millis(1_900));
         assert!(matches!(job.audio.recv_timeout(Duration::from_secs(1)), Ok(Feed::Abort)));
+    }
+
+    #[test]
+    fn reports_the_audio_not_yet_decoded_in_each_health_answer() {
+        let (addr, jobs) = listen();
+        let mut socket = client(&addr, "secret").unwrap();
+        socket.send(Message::text(r#"{"cmd":"begin"}"#)).unwrap();
+        let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        socket.send(Message::binary(vec![0u8; 32_000])).unwrap(); // 1 s the engine has not taken
+        // One connection's frames are handled in order, so the ping sees the audio.
+        let mut health = || {
+            socket.send(Message::text(r#"{"cmd":"health"}"#)).unwrap();
+            next_text(&mut socket)
+        };
+        let answer = health();
+        assert_eq!(answer["backlogMs"], 1_000);
+        assert_eq!(answer["queue"], 1);
+        // The engine takes it: nothing waits.
+        assert!(matches!(job.audio.recv().unwrap(), Feed::Audio(_)));
+        job.waiting.fetch_sub(16_000, Ordering::SeqCst);
+        assert_eq!(health()["backlogMs"], 0);
     }
 
     #[test]

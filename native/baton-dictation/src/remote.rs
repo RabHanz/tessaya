@@ -1,9 +1,11 @@
 //! Dictation recognised on his own server (native/tessaya-recognizer) while the key is held: the microphone's audio
-//! goes there as it arrives and the words come back, live and at release. The server is picked at key-down by a health
-//! check (round trip and queue depth); one that does not answer in time, or stalls, is dropped and the local engine,
-//! which kept every sample, decodes instead. Audio travels only inside the tailnet connection and is never stored.
+//! goes there as it arrives and the words come back, live and at release. A connection to each server stays open while
+//! the app runs, pinged every 10 s, so key-down costs no handshake: the server is chosen from the last ping (round trip,
+//! queue, decode backlog) and `begin` goes out on its open socket. A server that is busy, unanswered or stalls is
+//! passed over and the local engine, which kept every sample, decodes instead. Audio is never stored.
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -28,17 +30,24 @@ pub enum Event {
     Failed(String),
 }
 
-/// A server's health at key-down: its round trip and how many dictations it is already working on.
+/// A server's last ping: its round trip, the dictations it is working on, and the audio it holds not yet decoded.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Health {
     pub rtt_ms: u64,
     pub queue: u64,
+    pub backlog_ms: u64,
 }
 
-/// The server to use: the first in his order that answered healthy and idle, else the one with the shortest queue.
-/// None when none answered: the laptop decodes.
+/// Audio a server may hold undecoded and still be used: past it the laptop is quicker.
+const BUSY_BACKLOG_MS: u64 = 1_000;
+
+/// The server to use: the first in his order that answered idle, else the one with the shortest queue, never one with
+/// a decode backlog. None when none qualifies: the laptop decodes.
 pub fn choose(answers: &[(usize, Option<Health>)]) -> Option<usize> {
-    let healthy: Vec<(usize, Health)> = answers.iter().filter_map(|(i, h)| h.map(|h| (*i, h))).collect();
+    let healthy: Vec<(usize, Health)> = answers
+        .iter()
+        .filter_map(|(i, h)| h.filter(|h| h.backlog_ms < BUSY_BACKLOG_MS).map(|h| (*i, h)))
+        .collect();
     healthy
         .iter()
         .find(|(_, h)| h.queue == 0)
@@ -58,6 +67,10 @@ pub fn allowed(url: &str) -> bool {
         _ => authority,
     };
     if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        // The tests' own servers.
+        if cfg!(test) && ip.is_loopback() {
+            return true;
+        }
         let [a, b, ..] = ip.octets();
         return a == 100 && (64..128).contains(&b);
     }
@@ -100,47 +113,191 @@ fn connect(server: &Server, timeout: Duration) -> Result<Socket, String> {
     Ok(socket)
 }
 
-/// A health check against one server within `timeout` (connect and answer together); the open socket comes back with
-/// it, so the dictation starts on it with no second connection.
-pub fn health(server: &Server, timeout: Duration) -> Option<(Health, Socket)> {
-    let started = Instant::now();
-    let mut socket = connect(server, timeout).ok()?;
-    socket.send(Message::text(json!({"cmd": "health"}).to_string())).ok()?;
-    while started.elapsed() < timeout {
-        if let Ok(Message::Text(text)) = socket.read() {
-            let v: Value = serde_json::from_str(text.as_str()).ok()?;
-            if v["ev"] == "health" {
-                let health = Health { rtt_ms: started.elapsed().as_millis() as u64, queue: v["queue"].as_u64().unwrap_or(0) };
-                return Some((health, socket));
-            }
-        }
-    }
-    None
+/// How often an open connection is pinged, and how long its answer may take before it is dropped and reopened.
+const PING: Duration = Duration::from_secs(10);
+const PING_WAIT: Duration = Duration::from_secs(3);
+/// A ping older than this says nothing about the server now.
+const STALE: Duration = Duration::from_secs(25);
+const CONNECT: Duration = Duration::from_secs(3);
+const MAX_BACKOFF: Duration = Duration::from_secs(10);
+
+fn parse_health(text: &str, rtt: Duration) -> Option<Health> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    (v["ev"] == "health").then(|| Health {
+        rtt_ms: rtt.as_millis() as u64,
+        queue: v["queue"].as_u64().unwrap_or(0),
+        backlog_ms: v["backlogMs"].as_u64().unwrap_or(0),
+    })
 }
 
-/// Checks every server at once and returns the one to use with its open socket, within `timeout` overall.
-pub fn pick(servers: &[Server], timeout: Duration) -> Option<(usize, Socket)> {
-    let (tx, rx) = channel();
-    for (i, server) in servers.iter().cloned().enumerate() {
-        let tx = tx.clone();
-        thread::spawn(move || {
-            let _ = tx.send((i, health(&server, timeout)));
-        });
+/// One server's open connection and its last ping.
+#[derive(Default)]
+struct Link {
+    socket: Mutex<Option<Socket>>,
+    health: Mutex<Option<(Health, Instant)>>,
+}
+
+impl Link {
+    fn drop_socket(&self) {
+        *self.socket.lock().unwrap() = None;
+        *self.health.lock().unwrap() = None;
     }
-    drop(tx);
-    let deadline = Instant::now() + timeout;
-    let mut answers = Vec::new();
-    while answers.len() < servers.len() {
-        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-            Ok(answer) => answers.push(answer),
-            Err(_) => break,
+
+    /// The server's answer to a ping. The socket is locked only per read, so a key-down never waits behind a ping;
+    /// if it takes the socket meanwhile, the answer arrives on the dictation, which ignores it.
+    fn ping(&self) -> Option<Health> {
+        let sent = Instant::now();
+        {
+            let mut slot = self.socket.lock().unwrap();
+            if slot.as_mut()?.send(Message::text(json!({"cmd": "health"}).to_string())).is_err() {
+                *slot = None;
+                return None;
+            }
+        }
+        while sent.elapsed() < PING_WAIT {
+            let mut slot = self.socket.lock().unwrap();
+            match slot.as_mut()?.read() {
+                Ok(Message::Text(text)) => {
+                    if let Some(health) = parse_health(text.as_str(), sent.elapsed()) {
+                        return Some(health);
+                    }
+                }
+                Ok(_) => {}
+                Err(tungstenite::Error::Io(e))
+                    if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(_) => break,
+            }
+        }
+        None
+    }
+}
+
+/// Keeps one server's connection open: connect, ping every `PING`, reopen with backoff when it fails. Woken early
+/// when a dictation took the socket or the network changed; ends when the pool is dropped.
+fn keep(server: Server, link: Arc<Link>, wake: Receiver<()>) {
+    let mut backoff = Duration::from_millis(500);
+    loop {
+        let open = link.socket.lock().unwrap().is_some()
+            || match connect(&server, CONNECT) {
+                Ok(socket) => {
+                    if let MaybeTlsStream::Plain(tcp) = socket.get_ref() {
+                        let _ = tcp.set_read_timeout(Some(Duration::from_millis(20)));
+                    }
+                    *link.socket.lock().unwrap() = Some(socket);
+                    true
+                }
+                Err(_) => false,
+            };
+        let healthy = open && link.ping().map(|health| *link.health.lock().unwrap() = Some((health, Instant::now()))).is_some();
+        let wait = if healthy {
+            backoff = Duration::from_millis(500);
+            PING
+        } else {
+            link.drop_socket();
+            let wait = backoff;
+            backoff = (backoff * 2).min(MAX_BACKOFF);
+            wait
+        };
+        if let Err(RecvTimeoutError::Disconnected) = wake.recv_timeout(wait) {
+            if let Some(socket) = link.socket.lock().unwrap().as_mut() {
+                let _ = socket.close(None);
+            }
+            return;
         }
     }
-    // His first healthy, idle server wins, so the answers are judged in his order, not by who answered first.
-    answers.sort_by_key(|(i, _)| *i);
-    let chosen = choose(&answers.iter().map(|(i, a)| (*i, a.as_ref().map(|(h, _)| *h))).collect::<Vec<_>>())?;
-    let socket = answers.into_iter().find(|(i, _)| *i == chosen)?.1?.1;
-    Some((chosen, socket))
+}
+
+/// An open connection to each of his servers, kept while the app runs.
+pub struct Warm {
+    servers: Vec<Server>,
+    links: Vec<Arc<Link>>,
+    wakes: Vec<Sender<()>>,
+}
+
+impl Warm {
+    pub fn start(servers: &[Server]) -> Warm {
+        let mut warm = Warm { servers: servers.to_vec(), links: Vec::new(), wakes: Vec::new() };
+        for server in servers {
+            let link = Arc::new(Link::default());
+            let (wake, woken) = channel();
+            // One that can never be used gets no connection; it stays in the list so the order still matches his.
+            if allowed(&server.url) {
+                let (server, link) = (server.clone(), link.clone());
+                thread::spawn(move || keep(server, link, woken));
+            }
+            warm.links.push(link);
+            warm.wakes.push(wake);
+        }
+        warm
+    }
+
+    /// Pings every server now: the network changed, so the open connections may be dead.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn check(&self) {
+        for wake in &self.wakes {
+            let _ = wake.send(());
+        }
+    }
+
+    /// The server to use now with its open socket and last ping, chosen from the pings alone: no network on this path.
+    /// Its connection is then reopened in the background for the next dictation.
+    pub fn take(&self) -> Option<(usize, Socket, Health)> {
+        let answers: Vec<(usize, Option<Health>)> = self
+            .links
+            .iter()
+            .enumerate()
+            .map(|(i, link)| (i, link.health.lock().unwrap().filter(|(_, at)| at.elapsed() < STALE).map(|(h, _)| h)))
+            .collect();
+        let chosen = choose(&answers)?;
+        let socket = self.links[chosen].socket.lock().unwrap().take()?;
+        *self.links[chosen].health.lock().unwrap() = None;
+        let _ = self.wakes[chosen].send(());
+        Some((chosen, socket, answers[chosen].1?))
+    }
+
+    /// Whether every server that can be used has a fresh ping (the replay waits for this between recordings).
+    fn ready(&self) -> bool {
+        self.links.iter().zip(&self.servers).all(|(link, server)| !allowed(&server.url) || link.health.lock().unwrap().is_some())
+    }
+}
+
+static POOL: Mutex<Option<Warm>> = Mutex::new(None);
+
+/// Keeps connections open to exactly these servers (his settings; empty closes them all).
+pub fn keep_warm(servers: &[Server]) {
+    let mut pool = POOL.lock().unwrap();
+    if pool.as_ref().map(|warm| warm.servers.as_slice()) != Some(servers) {
+        *pool = (!servers.is_empty()).then(|| Warm::start(servers));
+        if pool.is_some() {
+            watch_network();
+        }
+    }
+}
+
+/// The server and open socket for a dictation starting now, if one is ready.
+pub fn take_warm(servers: &[Server]) -> Option<(usize, Socket, Health)> {
+    keep_warm(servers);
+    POOL.lock().unwrap().as_ref()?.take()
+}
+
+/// When an address changes (Wi-Fi to cable, waking from sleep) every connection is pinged at once, not at its next turn.
+fn watch_network() {
+    #[cfg(windows)]
+    {
+        static WATCHING: std::sync::Once = std::sync::Once::new();
+        WATCHING.call_once(|| {
+            thread::spawn(|| loop {
+                // Blocks until an IPv4 address changes.
+                let changed = unsafe { windows::Win32::NetworkManagement::IpHelper::NotifyAddrChange(std::ptr::null_mut(), std::ptr::null()) };
+                if changed != 0 {
+                    return;
+                }
+                if let Some(warm) = POOL.lock().unwrap().as_ref() {
+                    warm.check();
+                }
+            });
+        });
+    }
 }
 
 enum Out {
@@ -155,12 +312,7 @@ pub struct Dictation {
 }
 
 impl Dictation {
-    /// Opens the connection and says `begin`; the socket then lives on its own thread.
-    pub fn start(server: &Server, language: Option<String>, timeout: Duration) -> Result<Dictation, String> {
-        Dictation::begin(connect(server, timeout)?, language)
-    }
-
-    /// Says `begin` on a socket already open (the health check's).
+    /// Says `begin` on a socket already open (the pool's).
     pub fn begin(mut socket: Socket, language: Option<String>) -> Result<Dictation, String> {
         socket.send(Message::text(json!({"cmd": "begin", "language": language}).to_string())).map_err(|e| e.to_string())?;
         if let MaybeTlsStream::Plain(tcp) = socket.get_ref() {
@@ -258,15 +410,15 @@ fn pump(mut socket: Socket, outgoing: Receiver<Out>, events: Sender<Event>) {
 }
 
 /// `tessaya-voice replay-remote <url> <token file> <wav>...`: each recording through this client to his server in real
-/// time (20 ms blocks of 16 kHz mono), as a held key would send it; one JSON line each with the health check, the
-/// release to text, and the live-word cadence. For measuring the real path from his machine; it never pastes.
+/// time (20 ms blocks of 16 kHz mono), as a held key would send it; one JSON line each with the last ping, the time to
+/// take the open connection, the release to text, and the live-word cadence. For measuring the real path from his machine; it never pastes.
 pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String> {
     // A measuring tool in the shipped build, off unless asked for by name.
     if std::env::var("TESSAYA_DEV_REPLAY").as_deref() != Ok("1") {
         return Err("replay-remote is a measuring tool: set TESSAYA_DEV_REPLAY=1".into());
     }
     let token = std::fs::read_to_string(token_file).map_err(|e| format!("{token_file}: {e}"))?.trim().to_string();
-    let server = Server { url: url.to_string(), token };
+    let warm = Warm::start(&[Server { url: url.to_string(), token }]);
     for wav in wavs {
         let mut reader = hound::WavReader::open(wav).map_err(|e| format!("{wav}: {e}"))?;
         let spec = reader.spec();
@@ -274,16 +426,21 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
             return Err(format!("{wav}: needs 16 kHz mono 16-bit"));
         }
         let pcm: Vec<f32> = reader.samples::<i16>().filter_map(Result::ok).map(|s| s as f32 / 32768.0).collect();
+        // As in the app: the connection is already open and pinged when the key goes down.
+        let opened = Instant::now();
+        while !warm.ready() && opened.elapsed() < Duration::from_secs(10) {
+            thread::sleep(Duration::from_millis(50));
+        }
         let health_at = Instant::now();
-        let checked = health(&server, Duration::from_millis(400));
+        let taken = warm.take();
         let health_ms = health_at.elapsed().as_millis() as u64;
-        let health = checked.as_ref().map(|(h, _)| *h);
-        let started = match checked {
-            Some((_, socket)) => Dictation::begin(socket, None),
-            None => Err("no health answer within 400 ms".to_string()),
+        let health = taken.as_ref().map(|(_, _, h)| *h);
+        let started = match taken {
+            Some((_, socket, _)) => Dictation::begin(socket, None),
+            None => Err("no open connection with a fresh ping".to_string()),
         };
         let line = match started {
-            Err(why) => json!({"wav": wav, "error": why, "healthMs": health_ms, "health": health.map(|h| h.queue)}),
+            Err(why) => json!({"wav": wav, "error": why, "healthMs": health_ms}),
             Ok(dictation) => {
                 let t0 = Instant::now();
                 let mut updates: Vec<u64> = Vec::new();
@@ -308,6 +465,8 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
                     "audioMs": pcm.len() / 16,
                     "healthMs": health_ms,
                     "queue": health.map(|h| h.queue),
+                    "rttMs": health.map(|h| h.rtt_ms),
+                    "backlogMs": health.map(|h| h.backlog_ms),
                     "releaseToTextMs": released.elapsed().as_millis() as u64,
                     "firstUpdateMs": updates.first(),
                     "updateGapsMs": gaps,
@@ -345,7 +504,12 @@ mod tests {
 
     #[test]
     fn picks_his_first_idle_server_else_the_shortest_queue_else_none() {
-        let h = |queue| Some(Health { rtt_ms: 5, queue });
+        let h = |queue| Some(Health { rtt_ms: 5, queue, backlog_ms: 0 });
+        let behind = |backlog_ms| Some(Health { rtt_ms: 5, queue: 0, backlog_ms });
+        // A backlog passes a server over, even his first; one under the limit is still idle.
+        assert_eq!(choose(&[(0, behind(BUSY_BACKLOG_MS)), (1, h(1))]), Some(1));
+        assert_eq!(choose(&[(0, behind(BUSY_BACKLOG_MS - 1)), (1, h(0))]), Some(0));
+        assert_eq!(choose(&[(0, behind(5_000))]), None);
         // His first answered but is busy; the second is idle.
         assert_eq!(choose(&[(0, h(1)), (1, h(0))]), Some(1));
         // Both idle: his order wins.
@@ -356,5 +520,45 @@ mod tests {
         assert_eq!(choose(&[(0, None), (1, h(0))]), Some(1));
         assert_eq!(choose(&[(0, None), (1, None)]), None);
         assert_eq!(choose(&[]), None);
+    }
+
+    /// A recogniser that answers pings with `backlog_ms` and says on `opened` each time a connection is accepted.
+    fn fake(backlog_ms: u64) -> (Server, Receiver<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let (opened, connections) = channel();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let _ = opened.send(());
+                thread::spawn(move || {
+                    let Ok(mut socket) = tungstenite::accept(stream) else { return };
+                    while let Ok(message) = socket.read() {
+                        if message.to_text().is_ok_and(|t| t.contains("health")) {
+                            let answer = json!({"ev": "health", "queue": 0, "backlogMs": backlog_ms});
+                            let _ = socket.send(Message::text(answer.to_string()));
+                        }
+                    }
+                });
+            }
+        });
+        (Server { url, token: "t".into() }, connections)
+    }
+
+    #[test]
+    fn takes_an_open_connection_from_the_pings_and_reopens_it_for_the_next() {
+        let (busy, _) = fake(5_000);
+        let (idle, idle_opened) = fake(0);
+        let warm = Warm::start(&[busy, idle]);
+        let opened = Instant::now();
+        while !warm.ready() && opened.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(warm.ready());
+        // His first server is behind, so the second is taken, with its last ping and no new connection.
+        let (chosen, _socket, health) = warm.take().unwrap();
+        assert_eq!((chosen, health.backlog_ms), (1, 0));
+        idle_opened.recv_timeout(Duration::from_secs(5)).unwrap();
+        // Taken means gone from the pool: the next dictation gets a fresh connection, opened in the background.
+        idle_opened.recv_timeout(Duration::from_secs(5)).unwrap();
     }
 }
