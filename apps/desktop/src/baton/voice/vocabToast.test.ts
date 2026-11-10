@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { acrylicSupported, cardDocument, learnedText } from "./vocabToast.ts";
+import { DEFAULT_LOOK } from "./pillLook.ts";
+import { acrylicSupported, cardDocument, learnedTitle } from "./vocabToast.ts";
 
 describe("the card beside the pill", () => {
   it("says what was learned in one line, however many words", () => {
-    expect(learnedText(["Kowalczyk"])).toBe("Learned “Kowalczyk”");
-    expect(learnedText(["A", "B"])).toBe("Learned “A”, “B”");
-    expect(learnedText(["A", "B", "C", "D"])).toBe("Learned 4 words");
+    expect(learnedTitle(["Kowalczyk"])).toBe("Kowalczyk");
+    expect(learnedTitle(["A", "B"])).toBe("A, B");
+    expect(learnedTitle(["A", "B", "C", "D"])).toBe("4 words");
   });
   it("puts his words in the page as text, never as markup", () => {
     const bad = "<img src=x onerror=1>";
@@ -28,7 +29,11 @@ describe("the card beside the pill", () => {
     expect(acrylicSupported("win32", "10.0.22000")).toBe(false);
     expect(acrylicSupported("win32", "10.0.19045")).toBe(false);
     expect(acrylicSupported("darwin", "24.0.0")).toBe(false);
-    expect(cardDocument({ kind: "learned", words: ["A"] }, true)).toContain('class="frost"');
-    expect(cardDocument({ kind: "learned", words: ["A"] })).not.toContain('class="frost"');
+    // Only Quiet is drawn over acrylic: Tessaya and Lively look the same on Windows 10 and 11.
+    const quiet = { ...DEFAULT_LOOK, design: "quiet" } as const;
+    const learned = { kind: "learned", words: ["A"] } as const;
+    expect(cardDocument(learned, { frosted: true, look: quiet })).toContain('class="frost"');
+    expect(cardDocument(learned, { frosted: true })).not.toContain('class="frost"');
+    expect(cardDocument(learned, { look: quiet })).not.toContain('class="frost"');
   });
 });

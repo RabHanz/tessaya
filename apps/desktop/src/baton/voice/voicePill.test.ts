@@ -72,6 +72,14 @@ vi.mock("./loadDocument.ts", () => ({ loadDocument: () => Promise.resolve(true) 
 vi.mock("../captureProtection.ts", () => ({ protectFromCapture: () => undefined }));
 vi.mock("../lastAppWindow.ts", () => ({ markCompanionWindow: () => undefined }));
 vi.mock("./voicePlayer.ts", () => ({ onAudioServiceGone: () => undefined }));
+vi.mock("./pillTheme.ts", async () => {
+  const { DEFAULT_LOOK } = await import("./pillLook.ts");
+  return {
+    onPillLook: () => () => undefined,
+    pillLook: () => DEFAULT_LOOK,
+    refreshPillTheme: () => Promise.resolve(),
+  };
+});
 
 import * as Electron from "electron";
 import { createVoicePill, wantsMoving } from "./voicePill.ts";
