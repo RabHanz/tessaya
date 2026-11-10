@@ -31,6 +31,7 @@ export const DesktopVoiceSettings = Schema.Struct({
   duckWhileDictating: Schema.Literals(["off", "lower", "mute"]),
   /** Recognise on his own servers (off by default); the servers and their tokens are set only on the desktop. */
   recognizeOnServers: Schema.Boolean,
+  gpuRecognition: Schema.Literals(["auto", "on", "off"]),
   /** Which windows open when the app starts; the first run opens both whatever these say. */
   openTessayaOnStart: Schema.Boolean,
   openSessionsOnStart: Schema.Boolean,
@@ -50,6 +51,7 @@ export const DesktopVoiceSettingsPatch = Schema.Struct({
   learnWords: Schema.optionalKey(fields.learnWords),
   duckWhileDictating: Schema.optionalKey(fields.duckWhileDictating),
   recognizeOnServers: Schema.optionalKey(fields.recognizeOnServers),
+  gpuRecognition: Schema.optionalKey(fields.gpuRecognition),
   openTessayaOnStart: Schema.optionalKey(fields.openTessayaOnStart),
   openSessionsOnStart: Schema.optionalKey(fields.openSessionsOnStart),
 });

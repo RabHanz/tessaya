@@ -14,6 +14,7 @@ const saved: DesktopVoiceSettings = {
   learnWords: true,
   duckWhileDictating: "off",
   recognizeOnServers: false,
+  gpuRecognition: "auto",
   openTessayaOnStart: false,
   openSessionsOnStart: true,
 };

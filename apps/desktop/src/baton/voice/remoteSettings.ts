@@ -23,6 +23,7 @@ export const remoteSettingsOf = (settings: DesktopVoiceSettings): DesktopVoiceSe
   learnWords: settings.learnWords,
   duckWhileDictating: settings.duckWhileDictating,
   recognizeOnServers: settings.recognizeOnServers,
+  gpuRecognition: settings.gpuRecognition,
   openTessayaOnStart: settings.openTessayaOnStart,
   openSessionsOnStart: settings.openSessionsOnStart,
 });
@@ -39,6 +40,7 @@ const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
   learnWords: "v.learnWords",
   duckWhileDictating: "v.duck",
   recognizeOnServers: "v.recognizeOnServers",
+  gpuRecognition: "v.gpu",
   openTessayaOnStart: "v.startHome",
   openSessionsOnStart: "v.startSessions",
 };

@@ -262,6 +262,7 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
           learnWords: true,
           duckWhileDictating: "off",
           recognizeOnServers: false,
+          gpuRecognition: "auto",
           openTessayaOnStart: false,
           openSessionsOnStart: true,
         },
