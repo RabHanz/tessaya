@@ -107,10 +107,15 @@ describe("the microphone order", () => {
     const devices = [remote, headset, dji, scarlett];
     // His case: the DJI receiver pinned, the Scarlett second in his order.
     const pin = { ...order, pinnedLabel: dji.label };
-    expect(backupMics(devices, pin, dji.label)).toEqual([scarlett.label]);
-    expect(backupMics(devices, order, scarlett.label)).toEqual([dji.label]);
-    // A mic missing from the list is not tried; nothing chosen (the system's) has nothing beside it.
-    expect(backupMics([remote, dji], pin, dji.label)).toEqual([]);
+    expect(backupMics(devices, pin, dji.label)).toEqual([scarlett.label, remote.label]);
+    expect(backupMics(devices, order, scarlett.label)).toEqual([dji.label, remote.label]);
+    // With no order at all (his file after 0.1.99), every other plugged-in mic is a backup, his order's first.
+    const mix = { deviceId: "m", label: "Stereo Mix (Realtek(R) Audio)" };
+    expect(backupMics([...devices, mix], { pinnedLabel: dji.label }, dji.label)).toEqual([
+      remote.label,
+      scarlett.label,
+    ]);
+    expect(backupMics([remote, dji], pin, dji.label)).toEqual([remote.label]);
     expect(backupMics(devices, order, null)).toEqual([]);
     expect(
       backupMics(
@@ -118,7 +123,7 @@ describe("the microphone order", () => {
         { pinnedLabel: headset.label, micOrder: ["Hands-Free", "Scarlett"] },
         dji.label,
       ),
-    ).toEqual([scarlett.label]);
+    ).toEqual([scarlett.label, remote.label]);
   });
 
   it("sets, swaps and clears a place in his order, keeping a mic's input", () => {

@@ -78,10 +78,13 @@ const findWanted = (
 };
 
 /**
- * His other mics that are plugged in, in his order: the dictation helper listens on them beside `chosen` and moves to one
+ * His other mics that are plugged in, his order first, then the rest: the dictation helper listens on them beside `chosen` and moves to one
  * that hears him when `chosen` hears nothing (a receiver whose transmitter is off). A hands-free headset is never opened
  * for this, since opening it drops his headphones to call quality.
  */
+/** Inputs that carry the computer's own sound, not a voice. */
+const LOOPBACK = /stereo mix|what u hear|wave out|cable output|virtual|loopback|voicemeeter/i;
+
 export const backupMics = (
   devices: ReadonlyArray<AudioInputDevice>,
   preference: DevicePreference,
@@ -92,7 +95,10 @@ export const backupMics = (
     (d) => !isHandsFree(d.label) && d.label !== chosen,
   );
   const found = wantsOf(preference).flatMap((label) => findWanted(candidates, label)?.label ?? []);
-  return [...new Set(found)];
+  // Then every other real mic: with no order set, a silent receiver still falls to whichever mic hears him.
+  const rest = candidates.map((d) => d.label).filter((label) => !LOOPBACK.test(label));
+  // Each one opens at every press for up to 4 s; three bound that cost.
+  return [...new Set([...found, ...rest])].slice(0, 3);
 };
 
 /** One mic by name, as his order names it: part of the device name is enough ("Scarlett Solo"). */
