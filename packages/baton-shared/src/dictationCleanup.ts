@@ -281,6 +281,80 @@ const RUN_ON_QUESTION = new RegExp(
   "gi",
 );
 
+const LIST_COUNTS: Readonly<Record<string, number>> = {
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  "a couple of": 2,
+};
+/** He announces a list: "two problems", "a few things", "the following questions". */
+const LIST_CUE =
+  /\b(two|three|four|five|six|a few(?: more)?|several|the following|a couple of)\s+(?:\w+\s+)?(?:things|problems|issues|questions|concerns|points|reasons|steps|items|changes|bugs|tasks|ideas|options|features|requests|fixes|parts|areas)\b/i;
+/** What opens the next item ("Also, …", "Secondly …", "The other one is …"); never "then", which narrates. */
+const NEXT_ITEM =
+  /^(?:and\s+)?(?:also|secondly|second|thirdly|third|the other(?: one)?(?: is)?|finally|lastly|plus|number (?:two|three|four|five))\b,?\s*/i;
+const FIRST_ITEM = /^(?:first(?:ly)?|number one|one is)\b,?\s*/i;
+
+const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+(?=\S)/).filter((s) => s.length > 0);
+const itemText = (item: string) => {
+  const bare = item.replace(NEXT_ITEM, "").replace(FIRST_ITEM, "").trim();
+  return bare.charAt(0).toUpperCase() + bare.slice(1);
+};
+
+/**
+ * A list he announced, set out as one before any model sees it ("two problems. X. Also, Y." → "…:\n\n1. X\n2. Y").
+ * Only with a cue and items it can find without guessing: a comma list of short items, items opened by "also" or
+ * "secondly", or exactly as many sentences as he counted. Anything else stays as said; the model may still list it.
+ */
+export const buildList = (text: string): string => {
+  const sentences = sentencesOf(text.trim());
+  const at = sentences.findIndex((s) => LIST_CUE.test(s));
+  if (at < 0) return text;
+  const cueSentence = sentences[at]!;
+  const cue = LIST_CUE.exec(cueSentence)!;
+  const count = LIST_COUNTS[cue[1]!.toLowerCase()];
+  const colon = cueSentence.indexOf(":", cue.index + cue[0].length);
+  const [intro, rest] =
+    colon >= 0
+      ? [
+          cueSentence.slice(0, colon),
+          [cueSentence.slice(colon + 1).trim(), ...sentences.slice(at + 1)],
+        ]
+      : [cueSentence.replace(/[.?!]$/, ""), sentences.slice(at + 1)];
+  if (rest.length === 0 || rest[0] === "") return text;
+  const head = [...sentences.slice(0, at), intro.trim().replace(/,$/, "")].join(" ");
+  const set = (items: ReadonlyArray<string>, after: ReadonlyArray<string>, numbered: boolean) =>
+    `${head}:\n\n${items.map((item, i) => `${numbered ? `${i + 1}.` : "-"} ${itemText(item)}`).join("\n")}${
+      after.length === 0 ? "" : `\n\n${after.join(" ")}`
+    }`;
+  // One sentence of short items: "bread for toast, oat milk, green apples".
+  const parts = rest[0]!
+    .replace(/[.?!]$/, "")
+    .split(/,\s*(?:and\s+)?/)
+    .filter((p) => p.trim() !== "");
+  if (
+    parts.length >= 3 &&
+    parts.every((p) => p.split(/\s+/).length <= 6) &&
+    (count === undefined || parts.length === count)
+  )
+    return set(parts, rest.slice(1), count !== undefined);
+  // Items opened by "also", "secondly", "the other one is".
+  const starts = [0, ...rest.flatMap((s, i) => (i > 0 && NEXT_ITEM.test(s) ? [i] : []))];
+  const wanted = count ?? starts.length;
+  if (wanted >= 2 && starts.length >= wanted) {
+    const end = starts[wanted] ?? rest.length;
+    if (count === undefined && end < rest.length) return text;
+    const items = starts
+      .slice(0, wanted)
+      .map((from, i) => rest.slice(from, starts[i + 1] ?? end).join(" "));
+    return set(items, rest.slice(end), true);
+  }
+  // As many sentences as he counted, and nothing after them.
+  return count !== undefined && rest.length === count ? set(rest, [], true) : text;
+};
+
 export const localClean = (
   raw: string,
   mode: DictationMode,
@@ -306,7 +380,7 @@ export const localClean = (
       (_, lead: string, kind: string) =>
         `${lead.trimEnd()}${kind.toLowerCase() === "paragraph" ? "\n\n" : "\n"}`,
     );
-  text = tidy(applyDictionary(text, dictionary));
+  text = buildList(tidy(applyDictionary(text, dictionary)));
   if (mode === "code") return isCommand(text) ? text.replace(/\.$/, "") : text;
   text = text.replace(
     RUN_ON_QUESTION,
