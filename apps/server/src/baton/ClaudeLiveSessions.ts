@@ -27,6 +27,10 @@ export const herdrPaneRef = (env: ReadonlyMap<string, string>): string | null =>
     : `${session}~${pane}`;
 };
 
+/** A session a program drives (SDK, or T3's own Claude turns, which set "t3-code"), not a terminal. */
+const programDriven = (entrypoint: unknown): boolean =>
+  typeof entrypoint === "string" && (entrypoint.startsWith("sdk") || entrypoint === "t3-code");
+
 /** One descriptor, or null when it is not a live interactive session. */
 export const parseClaudeSessionDescriptor = (
   json: string,
@@ -52,7 +56,7 @@ export const parseClaudeSessionDescriptor = (
   if (str(d["kind"]) !== "interactive") return null;
   // SDK-driven sessions belong to the program that runs them (T3 threads, automation);
   // nobody types into them and adopting one would kill its owner's work.
-  if ((str(d["entrypoint"]) ?? "").startsWith("sdk")) return null;
+  if (programDriven(d["entrypoint"])) return null;
   if (!input.alive(pid)) return null;
   const updated = d["updatedAt"];
   return {
@@ -339,7 +343,7 @@ export const sessionHolders = (
             },
             readProc(d.pid),
           ),
-          sdk: typeof d.entrypoint === "string" && d.entrypoint.startsWith("sdk"),
+          sdk: programDriven(d.entrypoint),
         });
       } catch {}
     }

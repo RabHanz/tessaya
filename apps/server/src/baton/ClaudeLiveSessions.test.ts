@@ -39,6 +39,8 @@ describe("live Claude Code sessions from their own descriptors (D68)", () => {
     expect(parseClaudeSessionDescriptor(descriptor(), { ...live, alive: () => false })).toBeNull();
     expect(parseClaudeSessionDescriptor("{nope", live)).toBeNull();
     expect(parseClaudeSessionDescriptor(descriptor({ entrypoint: "sdk-cli" }), live)).toBeNull();
+    // T3's own claudeAgent turns report kind "interactive" with this entrypoint.
+    expect(parseClaudeSessionDescriptor(descriptor({ entrypoint: "t3-code" }), live)).toBeNull();
   });
 
   it("knows which Herdr pane a session lives in", () => {
