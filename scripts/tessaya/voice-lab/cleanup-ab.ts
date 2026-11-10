@@ -18,6 +18,11 @@ import {
 } from "../../../packages/baton-shared/src/dictationCleanup.ts";
 import { makeRewriter } from "../../../apps/desktop/src/baton/voice/dictationRewriter.ts";
 import { biasTranscript } from "../../../packages/baton-shared/src/vocabulary.ts";
+import {
+  makeStyleIndex,
+  pairsFromWispr,
+  type WisprHistoryRow,
+} from "../../../packages/baton-shared/src/stylePairs.ts";
 
 const [rowsPath, outDir, arm, count, dictPath] = process.argv.slice(2);
 if (rowsPath === undefined || outDir === undefined || arm === undefined)
@@ -31,6 +36,31 @@ const dictionary: ReadonlyArray<DictionaryEntry> =
   dictPath === undefined
     ? []
     : (JSON.parse(NodeFS.readFileSync(dictPath, "utf8")) as DictionaryEntry[]);
+
+// STYLE_PAIRS=<his Wispr history rows, jsonl>: each dictation is shown its nearest past pairs, never its own.
+const stylePath = process.env["STYLE_PAIRS"];
+const style =
+  stylePath === undefined
+    ? null
+    : makeStyleIndex(
+        pairsFromWispr(
+          NodeFS.readFileSync(stylePath, "utf8")
+            .split("\n")
+            .filter((l) => l.trim() !== "")
+            .map((l) => JSON.parse(l) as WisprHistoryRow),
+        ),
+      );
+let current = "";
+const wordsOf = (t: string) => new Set(t.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []);
+// Held out: never the row's own pair, nor a near-repeat of it (he often says the same thing twice), so a row is never
+// shown its own answer.
+const repeats = (a: string, b: string) => {
+  const [x, y] = [wordsOf(a), wordsOf(b)];
+  const shared = [...x].filter((w) => y.has(w)).length;
+  return shared / Math.max(1, new Set([...x, ...y]).size) >= 0.6;
+};
+const examples = (text: string, mode: DictationMode) =>
+  (style?.nearest(text, mode, 8, current) ?? []).filter((p) => !repeats(p.raw, text)).slice(0, 4);
 
 const usage = { input: 0, cached: 0, output: 0 };
 /** The direct API arm: what the app's optional API path sends, timed from the request to the answer. */
@@ -56,7 +86,12 @@ const askApi = async (text: string, mode: DictationMode): Promise<string> => {
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: rewriteMessage(text, mode) }],
+      messages: [
+        {
+          role: "user",
+          content: rewriteMessage(text, mode, {}, text.includes("\n") ? [] : examples(text, mode)),
+        },
+      ],
     }),
     signal: AbortSignal.timeout(10_000),
   });
@@ -86,6 +121,7 @@ const rewriter =
         dictionary: () => dictionary,
         keepWarm: () => true,
         always: true,
+        examples,
       });
 rewriter?.warm();
 // The session is up before the first dictation, as it is while he holds the key.
@@ -95,6 +131,7 @@ NodeFS.mkdirSync(outDir, { recursive: true });
 const out: string[] = [];
 const times: number[] = [];
 for (const row of rows) {
+  current = row.id;
   const started = Date.now();
   const cleaned =
     rewriter === null
@@ -110,7 +147,9 @@ for (const row of rows) {
       : await rewriter.clean({ raw: row.raw, mode: row.mode ?? "default", level: "claude" });
   const ms = Date.now() - started;
   times.push(ms);
-  out.push(JSON.stringify({ id: row.id, text: cleaned.text, ms, stage: cleaned.stage }));
+  out.push(
+    JSON.stringify({ id: row.id, text: cleaned.text, ms, stage: cleaned.stage, why: cleaned.why }),
+  );
 }
 rewriter?.dispose();
 NodeFS.writeFileSync(NodePath.join(outDir, `${arm}.jsonl`), `${out.join("\n")}\n`);

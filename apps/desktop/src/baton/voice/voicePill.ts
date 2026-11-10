@@ -35,8 +35,8 @@ import { markCompanionWindow } from "../lastAppWindow.ts";
 import { loadDocument } from "./loadDocument.ts";
 import { onAudioServiceGone } from "./voicePlayer.ts";
 import { applyLookScript, lookClasses, type Glass, type Motion } from "../home/look.ts";
-import { LISTENING_WEBP, STING_WEBP } from "./pillMotionArt.ts";
-import { TRAY_PNG } from "./trayArt.ts";
+import { PILL_FACES } from "../home/fonts.ts";
+import { MARK_REVERSED_PATH } from "./trayArt.ts";
 import { isPillClick } from "./pillGesture.ts";
 import {
   ISLAND_CSS,
@@ -45,7 +45,12 @@ import {
   ISLAND_MEASURE,
   ISLAND_SCRIPT,
   PILL_BELOW,
+  PILL_HEIGHT,
+  PILL_LINE,
 } from "./pillIsland.ts";
+import { ICON, LOOK_TOKENS_CSS, applyLookScript as pillLookScript } from "./pillLook.ts";
+import { onPillLook, pillLook, refreshPillTheme } from "./pillTheme.ts";
+import { waveEngine } from "./waveform.ts";
 import {
   CUE_TAIL_MS,
   PILL_PARTIAL,
@@ -67,12 +72,11 @@ import {
   type TurnState,
   type WaveMode,
 } from "@t3tools/baton-shared/voiceTurn";
-import { PILL_BANDS, createBandGain, frameBands } from "@t3tools/baton-shared/voiceBands";
 
 // As wide as the island's words; outside the capsule the window is click-through (hitTest).
 const WIDTH = 420;
-/** The island's 26 px head and a little air: the Move pill check mark sits beside the capsule, not above it. */
-const HEIGHT = 40;
+/** The tallest capsule and a little air: the Move pill check mark sits beside the capsule, not above it. */
+const HEIGHT = PILL_HEIGHT;
 /** The capsule's bottom 58 px above the work area, clear of a dictation bar in Wispr's place, so both can show. */
 const ABOVE_WORK_AREA = 58 - PILL_BELOW;
 /** The capsule's top 24 px below the work area's top. */
@@ -99,113 +103,188 @@ const FROST_SETTLE_MS = 160;
 /** The phases that show a waveform and no word: his voice or Baton's, live. */
 const WAVE_PHASES = ["listening", "speaking", "dictating"];
 
+const MARK = `<svg viewBox="0 0 256 256" aria-hidden="true"><path fill="currentColor" d="${MARK_REVERSED_PATH}"/></svg>`;
+
 /**
- * The pill: black in every theme, 22 px tall, nothing it does not need. A live waveform while he or
- * Baton is speaking; otherwise one short word; soft text only for an error or where words go. No
- * icon, no button, no shadow beyond a hairline. The bars are a canvas that animates only while a live waveform is up.
+ * The pill, in the design and the theme of Settings → Appearance (pillLook.ts): Tessaya, Quiet or Lively, coloured
+ * by the app's theme. Each state is the drafts' (tessaya-ops drafts/pill-styles): the dictation pill with its dot
+ * and waveform, hands-free ✕ / waveform / ✓, processing dots, "Press Esc again", and Tessaya's own listening,
+ * working and speaking pills. A change of state morphs it by clip-path alone (Tessaya, Quiet) or pops its pebbles
+ * (Lively); the waveform is the only thing drawn every frame, and only while it is live.
  */
-export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-:root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--woad:#5FB3B3;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
---sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
-html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
-body{box-sizing:border-box;display:flex;align-items:flex-end;justify-content:center;padding-bottom:${PILL_BELOW}px}
-#p{box-sizing:border-box;display:flex;align-items:center;gap:6px;height:22px;max-width:${WIDTH - 16}px;padding:0 9px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 55%),var(--ink);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.16);color:var(--text);position:relative;touch-action:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s}
+export const PILL_DOCUMENT = `<!doctype html><html data-design="tessaya" data-theme="dark" data-wave="mound"><head><meta charset="utf-8"><style>
+${PILL_FACES.tessaya}${PILL_FACES.lively}${LOOK_TOKENS_CSS}
+html,body{height:100%;margin:0;overflow:hidden;background:transparent;-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
+body{font:var(--w-cap) 12px/1 var(--font);color:var(--fg)}
+:root[data-design=lively] body{font-variation-settings:"opsz" 14}
+#p{position:absolute;left:50%;bottom:${PILL_BELOW}px;translate:-50% 0;box-sizing:border-box;background:var(--surf);color:var(--fg);touch-action:none;opacity:0;transform:translateY(4px);
+ transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),clip-path var(--morph-ms) var(--morph);--text:var(--fg);--grey:color-mix(in srgb,var(--fg) 46%,transparent)}
 #p.on{opacity:1;transform:none}
-body.moving #p{cursor:grab;border:1px dashed var(--blue)}
-body.moving #p.drag{cursor:grabbing}
-#ok{display:none;position:absolute;left:0;top:0;box-sizing:border-box;width:22px;height:22px;padding:0;margin:0;border-radius:50%;border:1px solid var(--line);background:var(--ink);color:var(--green);cursor:pointer;align-items:center;justify-content:center}
+#p.snap{transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1)}
+/* The tall window grew downward (no room above it): the capsule hangs from the same line. */
+body.down #p{bottom:auto;top:${PILL_LINE}px;translate:-50% -100%}
+#rim{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+#rim rect{fill:url(#sheen);stroke:var(--rim);stroke-width:.5}
+#rim stop{stop-color:var(--sheen)}#rim stop+stop{stop-opacity:0}
+#p[data-s=error] #rim rect{stroke:var(--fail)}
+#p.rest[data-rest=muted] #rim rect{stroke:var(--t-warning)}
+#p.rest[data-rest=off]{opacity:.5}
+:root[data-design=lively] #p{background:none;clip-path:none!important;width:auto!important;height:auto!important}
+:root[data-design=lively] #rim{display:none}
+#row{position:absolute;left:50%;bottom:0;translate:-50% 0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:8px;height:30px;padding:0 12px;white-space:nowrap}
+:root[data-design=quiet] #row{height:28px}
+#p[data-s=hands] #row{height:34px;padding:0 4px}
+:root[data-design=quiet] #p[data-s=hands] #row{height:32px}
+#p[data-s=esc] #row{padding:0 12px 0 10px}
+:root[data-design=quiet] #p[data-s=esc] #row{padding:0 12px}
+#p:is([data-s=aListen],[data-s=aThink],[data-s=aSpeak]) #row{padding:0 4px 0 11px}
+#p[data-s=process] #row{width:88px}
+:root[data-design=quiet] #p[data-s=process] #row{width:80px}
+#p.rest #row{width:40px;height:8px;padding:0}
+:root[data-design=quiet] #p.rest #row{width:36px;height:6px}
+#wv{display:contents}
+:root[data-design=lively] #row{position:relative;left:auto;bottom:auto;translate:none;width:auto!important;height:auto!important;padding:0!important;gap:6px}
+:root[data-design=lively] #wv{display:flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;height:34px;padding:0 12px;border-radius:12px;background:var(--surf);box-shadow:var(--pb-shadow);font-weight:700}
+:root[data-design=lively] #p[data-s=process] #wv{width:84px}
+:root[data-design=lively] #p.rest #wv{width:24px;height:10px;padding:0;border-radius:5px}
+:root[data-design=lively] #p.rest[data-rest=muted] #wv{background:var(--t-warningSurface)}
+:root[data-design=lively] #p[data-s=error] #wv{background:var(--fail-bg)}
+#row>:not(#wv),#wv>*{display:none;flex:none}
+:root[data-design=lively] #row>#wv{display:flex}
+#p[data-s=listen] :is(#mic,#w,#bal),#p[data-s=hands] :is(#dx,#w,#dv),#p[data-s=process] #d,#p[data-s=esc] :is(#gl,#t),
+#p[data-s=aListen] :is(#mk,#mic,#w,#st),#p[data-s=aThink] :is(#mk,#t,#d,#st),#p[data-s=aSpeak] :is(#mk,#w,#st),
+#p[data-s=text] :is(#t,#c),#p[data-s=error] :is(#gl,#t,#c){display:block}
+#p[data-s=process] #d,#p[data-s=aThink] #d,#p[data-s=hands] :is(#dx,#dv),#p[data-s=esc] #gl,#p[data-s=error] #gl,#p:is([data-s=aListen],[data-s=aThink],[data-s=aSpeak]) #st{display:grid}
+:root[data-design=lively] #p[data-s=hands] #wv>#w{display:block}
+#mic,#bal{width:6px;height:6px;border-radius:50%;background:var(--mic)}
+:root[data-design=quiet] :is(#mic,#bal){width:5px;height:5px}
+:root[data-design=lively] :is(#mic,#bal){width:7px;height:7px}
+#bal{visibility:hidden}
+#mk{width:16px;height:16px;color:var(--fg)}
+:root[data-design=quiet] #mk{width:15px;height:15px}:root[data-design=lively] #mk{width:17px;height:17px}
+#mk.sting{animation:sting .6s var(--pop) both}
+@keyframes sting{0%{scale:.4;opacity:0}60%{scale:1.2;opacity:1}100%{scale:1}}
+#gl{place-items:center;width:18px;height:18px;color:var(--fail)}#gl svg{width:16px;height:16px}
+:root[data-design=quiet] #p[data-s=esc] #gl{display:none}
+:root[data-design=lively] #gl{width:34px;height:34px;border-radius:12px;background:var(--fail-bg);box-shadow:var(--pb-shadow)}:root[data-design=lively] #gl svg{width:15px;height:15px}
+#t{white-space:nowrap}#t:empty,#c:empty{display:none!important}
+#c{color:var(--fg2);font-weight:500;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+#p[data-tone=good] #t{color:var(--t-accent)}#p[data-tone=off] #t{color:var(--fg2)}
+#p[data-s=error] #t{color:var(--fail)}
+:root[data-design=tessaya] #p[data-s=error] #t{color:var(--fg)}
+#d{align-items:center;grid-auto-flow:column;gap:4px}
+#d b{display:block;width:5px;height:5px;border-radius:50%;background:var(--pri);opacity:.3;animation:step 1.2s steps(1,end) infinite}
+:root[data-design=quiet] #d b{width:4px;height:4px;background:var(--fg)}
+:root[data-design=lively] #d{gap:5px}:root[data-design=lively] #d b{width:7px;height:7px;opacity:.35;animation-name:stepL}
+#d b:nth-child(2){animation-delay:.4s}#d b:nth-child(3){animation-delay:.8s}
+@keyframes step{0%{opacity:1}33.33%{opacity:.3}100%{opacity:.3}}
+@keyframes stepL{0%{opacity:1;translate:0 -4px}33.33%{opacity:.35;translate:0 0}100%{opacity:.35;translate:0 0}}
+#st{place-items:center;box-sizing:border-box;min-height:24px;padding:0 10px;border-radius:12px;background:var(--raised);color:var(--fg);font-size:12px;line-height:24px}
+#st svg{display:none;width:15px;height:15px}
+:root[data-design=quiet] #st{min-height:22px;line-height:22px;padding:0 9px;border-radius:999px}
+:root[data-design=lively] #st{width:34px;height:34px;padding:0;border-radius:12px;background:var(--raised);box-shadow:var(--pb-shadow);font-size:0}
+:root[data-design=lively] #st svg{display:block}:root[data-design=lively] #st span{display:none}
+.db{position:relative;box-sizing:border-box;place-items:center;width:26px;height:26px;padding:0;margin:0;border:0;border-radius:13px;background:none;color:var(--fg2);cursor:pointer;transition:border-radius .2s var(--pop),scale .2s var(--pop)}
+.db::before{content:"";position:absolute;inset:-4px}
+.db svg{width:13px;height:13px}
+.db:hover{background:var(--raised);color:var(--fg)}.db:active{border-radius:7px;scale:.92}
+.db:focus-visible{outline:2px solid var(--pri);outline-offset:1px}
+#dv{width:28px;border-radius:9px;background:var(--pri);color:var(--on-pri)}#dv:hover{background:var(--pri);color:var(--on-pri)}
+:root[data-design=quiet] .db{width:24px;height:24px;border-radius:50%}:root[data-design=quiet] .db::before{inset:-5px;border-radius:50%}
+:root[data-design=quiet] .db svg{width:12px;height:12px}:root[data-design=quiet] .db:hover{background:none}:root[data-design=quiet] .db:active{border-radius:50%;scale:.86}
+:root[data-design=quiet] #dv{width:24px;border-radius:50%}:root[data-design=quiet] #dv:hover{background:var(--pri)}
+:root[data-design=lively] .db{width:34px;height:34px;border-radius:12px;background:var(--raised);color:var(--fg);box-shadow:var(--pb-shadow)}:root[data-design=lively] .db::before{inset:0}
+:root[data-design=lively] .db svg{width:15px;height:15px}:root[data-design=lively] .db:active{border-radius:17px;scale:.9;rotate:-6deg}
+:root[data-design=lively] #dv{width:34px;border-radius:12px;background:var(--pri);color:var(--on-pri)}
+/* Pieces arrive on a state change only: Tessaya rises into place, Quiet blur-fades in, Lively's pebbles squash and stretch.
+   Hands-free: ✓ first, the waveform stretches out of it, then ✕. */
+:root[data-design=tessaya] #row.pop{animation:inT var(--pop-ms) var(--pop) both}
+@keyframes inT{from{opacity:0;transform:translateY(6px)}}
+:root[data-design=quiet] #row.pop{animation:inQ .24s ease-out both}
+@keyframes inQ{from{opacity:0;scale:.94;filter:blur(4px)}}
+:root:not([data-design=lively]) #p[data-s=hands] #row.pop>*{animation:popS var(--pop-ms) var(--pop) both}
+:root:not([data-design=lively]) #p[data-s=hands] #row.pop>#wv>#w{animation:stretch var(--pop-ms) var(--pop) 70ms both;transform-origin:100% 50%}
+:root:not([data-design=lively]) #p[data-s=hands] #row.pop>#dx{animation-delay:150ms}
+@keyframes popS{from{opacity:0;scale:.3}}
+@keyframes stretch{from{opacity:0;scale:.2 1}}
+:root[data-design=lively] #row.pop>*{animation:squash .52s cubic-bezier(.3,.7,.4,1) both}
+:root[data-design=lively] #p[data-s=hands] #row.pop>#wv{animation-delay:80ms}
+:root[data-design=lively] #p[data-s=hands] #row.pop>#dx{animation-delay:170ms}
+@keyframes squash{0%{opacity:0;scale:.3}55%{opacity:1;scale:1.14 .86}78%{scale:.96 1.05}100%{scale:1}}
+:root[data-design=lively] #p:not(.on) #row>*{animation:drop .16s ease-in both}
+@keyframes drop{to{opacity:0;translate:0 8px;scale:.85}}
+#p.isl #row{animation:none!important}
+body.moving #p{cursor:grab}body.moving #p.drag{cursor:grabbing}
+body.moving #rim rect{stroke:var(--t-accent);stroke-width:1;stroke-dasharray:3 2}
+:root[data-design=lively] body.moving #wv{outline:1px dashed var(--t-accent);outline-offset:1px}
+#ok{display:none;position:absolute;left:0;top:0;box-sizing:border-box;width:22px;height:22px;padding:0;margin:0;border-radius:50%;border:.5px solid var(--rim);background:var(--surf);color:var(--t-accent);cursor:pointer;align-items:center;justify-content:center}
 body.moving #ok{display:flex}
-#ok:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+#ok:focus-visible{outline:2px solid var(--t-accent);outline-offset:1px}
 #p.drag::before{content:"";position:absolute;inset:-10px}
-#p.rest{margin-bottom:9px;height:6px;width:36px;padding:0;gap:0;border-color:rgba(255,255,255,.4);background:rgba(13,13,17,.78)}
-#p.rest[data-rest=muted]{border-color:var(--amber)}
-#p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
-#p.rest>*{display:none}
-#mk{display:none;width:18px;height:18px;flex:none}
-#p[data-mark=on] #mk[src]{display:block}
-@keyframes br{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
-#p:hover #mk[src]{animation:br 2.6s ease-in-out infinite}
-@media (prefers-reduced-motion:reduce){#mk{animation:none!important}}
-html.motion-reduced #mk,html.motion-off #mk{animation:none!important}
-#w{display:none;width:54px;height:16px;flex:none}
-#p[data-wave=on] #w{display:block}
-#d{display:none;align-items:center;gap:4px;height:14px;flex:none}
-#d b{display:block;width:4px;height:4px;border-radius:50%;background:#fff;opacity:.25;animation:step 1350ms steps(1,end) infinite}
-#d b:nth-child(2){animation-delay:450ms}
-#d b:nth-child(3){animation-delay:900ms}
-@keyframes step{0%{opacity:1}33.33%{opacity:.25}100%{opacity:.25}}
-#p[data-dots=on] #d{display:flex}
-#st{display:none;color:var(--soft);font-weight:500;padding-left:2px;border-left:1px solid var(--line);padding-left:7px}
-#p[data-phase=speaking] #st,#p[data-phase=working] #st{display:block}
-/* While Tessaya works the pill is its only sign on screen, and a click on it stops the work. */
-#p[data-phase=working] #st{order:1}
-#t{white-space:nowrap}
-#t:empty,#c:empty{display:none}
-#c{color:var(--soft);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-/* Dictation's bars are neutral; Woad, Tessaya's accent, is only for a conversation the wake word started; red only for an error. */
-#p[data-phase=dictating]{--bar:#ececef}
-#p[data-phase=listening],#p[data-phase=thinking],#p[data-phase=speaking],#p[data-phase=working]{--bar:var(--woad)}
-#p[data-tone=good] #t{color:var(--green)}
-#p[data-tone=off] #t{color:var(--soft)}
-#p[data-phase=error]{border-color:var(--red)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-@media (prefers-reduced-motion:reduce){#p{transition:none}#d b{animation:none;opacity:.7}}
-html.motion-reduced #p,html.motion-off #p{transition:none}html.motion-reduced #d b,html.motion-off #d b{animation:none;opacity:.7}
-html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
-.db{display:none;position:relative;box-sizing:border-box;width:18px;height:18px;padding:0;margin:0 -2px;border-radius:50%;border:0;background:transparent;color:var(--soft);cursor:pointer;align-items:center;justify-content:center;flex:none}
-.db::before{content:"";position:absolute;inset:-5px;border-radius:50%}
-.db:hover{background:rgba(255,255,255,.12);color:var(--text)}
-#dv{color:var(--text)}
-.db:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-#p[data-phase=dictating][data-voice=on] .db{display:flex}
-/* The tall window grew downward (no room above it): everything hangs from the top, at the same place. */
-body.down{align-items:flex-start;padding-bottom:0;padding-top:${HEIGHT - PILL_BELOW - 22}px}
-body.down #p.rest{margin-bottom:0;margin-top:9px}
-body.down #p.isl{bottom:auto;top:${HEIGHT - PILL_BELOW - 26}px}
-${ISLAND_CSS}</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><canvas id="w" width="54" height="16" aria-hidden="true"></canvas><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span>${ISLAND_HTML}</div>${ISLAND_MEASURE}
+@media (prefers-reduced-motion:reduce){#p,#p *{transition:none!important;animation:none!important}#d b{opacity:.7}}
+html.motion-reduced #p,html.motion-reduced #p *,html.motion-off #p,html.motion-off #p *{transition:none!important;animation:none!important}
+html.motion-reduced #d b,html.motion-off #d b{opacity:.7}
+${ISLAND_CSS}</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite" data-s="listen"><svg id="rim" aria-hidden="true"><defs><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0"/><stop offset=".42"/></linearGradient></defs><rect/></svg><div id="row"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)">${ICON.x}</button><span id="gl" aria-hidden="true"></span><div id="wv"><span id="mk">${MARK}</span><i id="mic" title="Microphone on"></i><canvas id="w" width="64" height="20" aria-hidden="true"></canvas><span id="t"></span><span id="d"><b></b><b></b><b></b></span><span id="c"></span><i id="bal" aria-hidden="true"></i></div><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert">${ICON.check}</button><span id="st"><span>Stop</span>${ICON.stop}</span></div><span id="sr" class="sr"></span>${ISLAND_HTML}</div>${ISLAND_MEASURE}
 <script>
-const $=i=>document.getElementById(i),N=${PILL_BANDS},SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
+const $=i=>document.getElementById(i),SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)},PILL_LINE=${PILL_LINE};
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
 const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
-const ART={sting:'data:image/webp;base64,${STING_WEBP}',listening:'data:image/webp;base64,${LISTENING_WEBP}',still:'data:image/png;base64,${TRAY_PNG["white-40"]}'};
-// The mark only in a conversation the wake word started, never while he dictates.
-const MARKED=['listening','thinking','speaking','working'];
-let shown='none',stinging=false,want='still',stingTimer=0;
-// One image at a time, swapped for a new element so an animation starts from its first frame; gone when nothing is up.
-const setMark=name=>{if(name===shown)return;shown=name;const m=$('mk'),n=m.cloneNode();if(name==='none')n.removeAttribute('src');else n.src=ART[name];m.replaceWith(n);};
-// The waveform: one bar per band, low bands at the centre. A message only raises a bar's target; the frame loop
-// rises to it fast and falls back slowly, and runs only while a live waveform is up and motion is allowed.
-const cv=$('w'),g=cv.getContext('2d'),W=54,H=16,RIPPLE_MS=2000,SWEEP_MS=8000;
-// Sharp at any scale, fractional ones too; refitted when the window moves to a display of another scale.
-const fit=()=>{const r=devicePixelRatio||1;cv.width=Math.round(W*r);cv.height=Math.round(H*r);g.setTransform(r,0,0,r,0,0);if(mode!=='off'&&!raf)drawBars(null,0);matchMedia('(resolution: '+r+'dppx)').addEventListener('change',fit,{once:true});};
-const slot=Array.from({length:N},(_,b)=>Math.round((N-1)/2+(b%2?1:-1)*(Math.floor(b/2)+.5)));
-const taper=slot.map(x=>{const d=Math.abs(x-(N-1)/2)/((N-1)/2);return 1-.35*d*d;});
-const tgt=new Float32Array(N),lvl=new Float32Array(N);
-let ctx=null,mode='off',raf=0,last=0,since=0,color='#fff',glow='#fff',bw=2.5,look='';
-const take=v=>{if(mode!=='live'||isCalm())return;const t=performance.now();for(let i=0;i<N;i++){const x=v.length===1?v[0]/255*(.45+.55*Math.abs(Math.sin(t/90+i*1.9))):v[i]/255;if(x>tgt[i])tgt[i]=x;}kick();};
-// Up to 60 fps while something moves: a ripple for the first 2 s, his voice, or the tidy sweep (bounded). Settled, it draws the rest once and stops.
-const paint=t=>{raf=0;if(mode==='off')return;if(isCalm()){lvl.fill(0);drawBars(null,0);return;}
- const dt=last?Math.min(64,t-last):16;if(last&&dt<15){raf=requestAnimationFrame(paint);return;}last=t;
- const up=1-Math.exp(-dt/22),down=1-Math.exp(-dt/170);let e=0,pending=0;
- for(let i=0;i<N;i++){pending+=tgt[i];lvl[i]+=(tgt[i]-lvl[i])*(tgt[i]>lvl[i]?up:down);tgt[i]=0;e+=lvl[i];}
- const age=t-since;
- if(mode==='sweep'?age>SWEEP_MS:age>RIPPLE_MS&&pending===0&&e<.005*N){lvl.fill(0);drawBars(null,0);return;}
- drawBars(t,e/N);raf=requestAnimationFrame(paint);};
-const drawBars=(t,e)=>{g.clearRect(0,0,W,H);g.fillStyle=color;g.shadowColor=glow;g.shadowBlur=mode==='live'&&e>.04?Math.min(8,14*e):0;const step=W/N,fade=t===null?0:Math.max(0,1-(t-since)/RIPPLE_MS);
- for(let b=0;b<N;b++){const x=slot[b];let rest=.16,alpha=1;
-  if(mode==='live'&&fade>0)rest=.16+.07*fade*Math.sin(t/240-x*.6);
-  // Tidying: the bars lie low and a slow light runs across them, left to right.
-  if(mode==='sweep'){rest=.2;alpha=t===null?.6:.3+.7*Math.max(0,Math.cos(Math.PI*(x/(N-1)-(t%1500)/1500*1.6+.3)))**3;}
-  const h=Math.max(2,(rest+(1-rest)*lvl[b]*taper[b])*H);g.globalAlpha=alpha;g.beginPath();g.roundRect(x*step+(step-bw)/2,(H-h)/2,bw,h,bw/2);g.fill();}
- g.globalAlpha=1;};
-const kick=()=>{if(!raf&&mode!=='off'&&!isCalm()){last=0;raf=requestAnimationFrame(paint);}};
-// Reduced motion: drawn once, still, and no loop.
-const setMode=m=>{const p=$('p'),isl=p.classList.contains('isl'),key=p.dataset.phase+'/'+p.dataset.tone+'/'+isl;if(key!==look){look=key;const cs=getComputedStyle(p);color=cs.getPropertyValue('--bar').trim()||'#fff';glow=isl?cs.getPropertyValue('--glow').trim()||'transparent':color;bw=p.dataset.phase==='speaking'?3:2.5;}
- if(m!==mode)since=performance.now();mode=m;if(m==='off'){lvl.fill(0);tgt.fill(0);cancelAnimationFrame(raf);raf=0;return;}if(isCalm()){lvl.fill(0);drawBars(null,0);}else kick();};
+const GLYPH={esc:${JSON.stringify(ICON.x)},error:${JSON.stringify(ICON.alert)}};
+const design=()=>document.documentElement.dataset.design||'tessaya';
+// A damped spring sampled into CSS linear(): spring motion with no script per frame (stiffness, damping ratio).
+const spring=(k,ratio)=>{const c=2*ratio*Math.sqrt(k);let x=0,v=0,t=0;const dt=1/600,pts=[];
+ while(t<2.5){const a=-k*(x-1)-c*v;v+=a*dt;x+=v*dt;t+=dt;pts.push(x);if(t>.15&&Math.abs(x-1)<.0015&&Math.abs(v)<.02)break;}
+ const out=['0'];for(let i=1;i<40;i++)out.push(pts[Math.round(i/40*(pts.length-1))].toFixed(4));out.push('1');return{ease:'linear('+out.join(',')+')',ms:Math.round(t*1000)};};
+const SPRINGS={tessaya:{morph:[240,.74],pop:[480,.66]},quiet:{morph:[200,.82],pop:[420,.78]},lively:{morph:[340,.66],pop:[520,.56]}};
+let morphMs=300;
+const setSprings=()=>{for(const[n,[k,r]]of Object.entries(SPRINGS[design()]||SPRINGS.tessaya)){const s=spring(k,r);document.body.style.setProperty('--'+n,s.ease);document.body.style.setProperty('--'+n+'-ms',s.ms+'ms');if(n==='morph')morphMs=s.ms;}};
+setSprings();
+// The faces load on first use: loaded now, so the island measures his first words in the face it draws them in.
+for(const f of['420 20px Newsreader','600 12px "Schibsted Grotesk"','700 16px "Bricolage Grotesque"'])document.fonts.load(f);
+// The waveform (waveform.ts): RMS dBFS in from the main process, adaptive gain and an envelope, drawn by the design's
+// renderer. The loop runs only while a live waveform is up, moving, and motion is allowed; still, it is drawn once.
+const WE=(${waveEngine.toString()})(),LV=WE.createLevel(),cv=$('w'),g=cv.getContext('2d'),ZERO=()=>0;
+const WS={tessaya:{pill:[64,20],aListen:[56,20],aSpeak:[64,20]},quiet:{pill:[60,16],aListen:[52,16],aSpeak:[52,16]},lively:{pill:[64,22],aListen:[56,22],aSpeak:[72,22]}};
+let cw=64,ch=20,wmode='off',wkind='dict',db=-100,raf=0,last=0,cols=null;
+const probe=document.createElement('i');probe.style.display='none';$('p').appendChild(probe);
+const px=Object.assign(document.createElement('canvas'),{width:1,height:1}).getContext('2d',{willReadFrequently:true});
+// Theme colours arrive as hex, oklch or a mix: the page resolves each, and one painted pixel gives its sRGB.
+const rgbOf=v=>{probe.style.color='var('+v+')';const c=getComputedStyle(probe).color;px.clearRect(0,0,1,1);px.fillStyle='#000';px.fillStyle=c;px.fillRect(0,0,1,1);const d=px.getImageData(0,0,1,1).data;return[d[0],d[1],d[2]];};
+const colours=()=>cols??=({c1:rgbOf('--wave'),c2:rgbOf('--wave2'),c3:rgbOf('--wave3'),dark:document.documentElement.dataset.theme!=='light'});
+const drawW=t=>{g.clearRect(0,0,cw,ch);if(wmode==='off')return;const r=WE[document.documentElement.dataset.wave]||WE.mound;r(g,cw,ch,wmode==='live'&&!isCalm()?LV.at:ZERO,wkind,colours(),t);};
+const fit=()=>{const r=devicePixelRatio||1;cv.width=Math.round(cw*r);cv.height=Math.round(ch*r);cv.style.width=cw+'px';cv.style.height=ch+'px';g.setTransform(r,0,0,r,0,0);drawW(performance.now());matchMedia('(resolution: '+r+'dppx)').addEventListener('change',fit,{once:true});};
+const sizeW=s=>{const t=WS[design()]||WS.tessaya,[w,h]=t[s]||t.pill;if(w===cw&&h===ch)return;cw=w;ch=h;fit();};
 fit();
+// Quiet and settled (no voice in the history, and none coming): one last still frame, and the loop stops until he speaks.
+const settled=()=>{if(db>LV.state().floor+5)return false;for(let a=0;a<12;a++)if(LV.at(a)>.002)return false;return true;};
+const loop=t=>{raf=0;if(wmode!=='live'||isCalm())return;LV.tick(db,last?(t-last)/1000:.016);last=t;drawW(t);if(settled()){last=0;return;}raf=requestAnimationFrame(loop);};
+const kick=()=>{if(!raf&&wmode==='live'&&!isCalm())raf=requestAnimationFrame(loop);};
+const setMode=(m,kind)=>{if(kind)wkind=kind;if(m==='live'&&wmode!=='live')LV.reset();wmode=m;cancelAnimationFrame(raf);raf=0;last=0;drawW(performance.now());kick();};
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
+let ctx=null;
 const ipcRenderer=window.pillIpc||{send(){}};
-ipcRenderer.onBands?.(take);
+ipcRenderer.onLevel?.(v=>{if(typeof v!=='number')return;db=v;if(!raf&&wmode==='live'&&v>LV.state().floor+5)kick();});
+// The morph (Tessaya, Quiet): the box jumps once to cover the old and new shapes, then only its clip-path moves between
+// them on the design's spring; the hairline is drawn at the new shape. Once it has settled the box takes the new size.
+const rimR=document.querySelector('#rim rect');
+const rimTo=(x,y,w,h,r)=>{for(const[k,v]of[['x',x+.25],['y',y+.25],['width',Math.max(0,w-.5)],['height',Math.max(0,h-.5)],['rx',Math.max(0,r-.25)]])rimR.setAttribute(k,v.toFixed(2));};
+const ins=(W,H,w,h,r)=>'inset('+(H-h)+'px '+(W-w)/2+'px 0px '+(W-w)/2+'px round '+r+'px)';
+let box={W:0,H:0,w:0,h:0,r:0},settleT=0,sKey='';
+const snapP=fn=>{const p=$('p');p.classList.add('snap');fn();void p.offsetWidth;p.classList.remove('snap');};
+const morph=(key,instant)=>{const p=$('p'),row=$('row');if(island.on())return;
+ if(key!==sKey){sKey=key;row.classList.remove('pop');void row.offsetWidth;if(!instant)row.classList.add('pop');}
+ if(design()==='lively'){p.style.clipPath='';box={W:0,H:0,w:0,h:0,r:0};return sendRect();}
+ const w=row.offsetWidth,h=row.offsetHeight,r=p.classList.contains('rest')?h/2:h/2;
+ if(w===box.w&&h===box.h)return;
+ const now=instant||isCalm()||box.w===0,W=now?w:Math.max(w,box.w),H=now?h:Math.max(h,box.h),from=now?{w,h,r}:box;
+ snapP(()=>{p.style.width=W+'px';p.style.height=H+'px';p.style.clipPath=ins(W,H,from.w,from.h,from.r);});
+ p.style.clipPath=ins(W,H,w,h,r);rimTo((W-w)/2,H-h,w,h,r);box={W,H,w,h,r};clearTimeout(settleT);
+ const settle=()=>snapP(()=>{p.style.width=w+'px';p.style.height=h+'px';p.style.clipPath=ins(w,h,w,h,r);rimTo(0,0,w,h,r);box={W:w,H:h,w,h,r};sendRect();});
+ if(now)settle();else settleT=setTimeout(settle,morphMs+60);};
+new ResizeObserver(()=>morph(sKey,false)).observe($('row'));
+// The design or the theme changed (pillTheme.ts): new springs, colours and waveform size, the shape taken at once.
+window.onLook=()=>{setSprings();cols=null;sizeW($('p').dataset.ws||'pill');box={W:0,H:0,w:0,h:0,r:0};if(island.on())island.restyle();else morph(sKey,true);drawW(performance.now());};
 const isClick=${isPillClick.toString()};
 let drag=false,beat=0,down=null;
 const grab=$('p'),moving=()=>document.body.classList.contains('moving');
@@ -227,36 +306,56 @@ grab.addEventListener('pointercancel',()=>{down=null;ipcRenderer.send('baton-pil
 grab.addEventListener('lostpointercapture',()=>{down=null;ipcRenderer.send('baton-pill:press',false);endDrag('lost');});
 grab.addEventListener('dblclick',()=>{if(grab.classList.contains('rest'))ipcRenderer.send('baton-pill:reset');});
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
+// What is on screen: the island's capsule as drawn, the settled shape of the plain pill, or Lively's pebbles.
+const visibleRect=()=>{if(island.on()&&VIS)return VIS;const r=grab.getBoundingClientRect();
+ if(design()==='lively'||box.w===0)return{x:r.left,y:r.top,w:r.width,h:r.height};
+ return{x:r.left+(box.W-box.w)/2,y:r.top+box.H-box.h,w:box.w,h:box.h};};
 // The capsule's box goes to the main process, which decides by the cursor position when the window takes the mouse, so a missed forwarded mousemove cannot leave the pill dead.
-// The island resizes every frame while it moves: only a change of a few pixels is worth a message.
-let sentRect='';const sendRect=()=>{const r=grab.getBoundingClientRect(),ok=$('ok').style;
+// The island moves every frame: only a change of a few pixels is worth a message.
+let sentRect='';const sendRect=()=>{const v=visibleRect(),ok=$('ok').style;
  // Moving, the check mark sits just right of the capsule, inside the short window.
- if(moving()){ok.left=(r.right+6)+'px';ok.top=(r.top+(r.height-22)/2)+'px';}
+ if(moving()){ok.left=(v.x+v.w+6)+'px';ok.top=(v.y+(v.h-22)/2)+'px';}
  const o=$('ok').getBoundingClientRect(),k=moving()&&o.width>0;
- const x=k?Math.min(r.left,o.left):r.left,y=k?Math.min(r.top,o.top):r.top,w=(k?Math.max(r.right,o.right):r.right)-x,h=(k?Math.max(r.bottom,o.bottom):r.bottom)-y,key=[x,y,w,h].map(n=>Math.round(n/3)).join();if(key===sentRect)return;sentRect=key;ipcRenderer.send('baton-pill:rect',x,y,w,h);};
+ const x=k?Math.min(v.x,o.left):v.x,y=k?Math.min(v.y,o.top):v.y,w=(k?Math.max(v.x+v.w,o.right):v.x+v.w)-x,h=(k?Math.max(v.y+v.h,o.bottom):v.y+v.h)-y,key=[x,y,w,h].map(n=>Math.round(n/3)).join();if(key===sentRect)return;sentRect=key;ipcRenderer.send('baton-pill:rect',x,y,w,h);};
 new ResizeObserver(sendRect).observe(grab);addEventListener('load',sendRect);
 for(const t of['pointerdown','pointerup','pointermove','pointercancel'])addEventListener(t,e=>ipcRenderer.send('baton-pill:pointer',t,e.clientX,e.clientY,e.target&&e.target.id||e.target.tagName,e.buttons),true);
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
 ${ISLAND_SCRIPT}
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
+// The drafts' state for what the turn shows. Dictation: the dot and waveform held, ✕ / waveform / ✓ hands-free, dots
+// while it is processed, the Esc warning; Tessaya's own: listening, working and speaking, each with Stop.
+const stateOf=(v,isl)=>{if(v.phase==='dictating'){if(isl)return v.voice?'hands':'listen';
+  if(v.wave==='sweep')return'process';if(/Esc again/.test(v.caption||''))return'esc';if(v.caption)return'text';return v.voice?'hands':'listen';}
+ return v.phase==='listening'?'aListen':v.phase==='thinking'||v.phase==='working'?'aThink':v.phase==='speaking'?'aSpeak':v.phase==='error'?'error':'text';};
 window.pill={
- show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':isCalm()||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;
-  // Dictation's island: a new one for each recording; any other phase puts the plain pill back.
-  if(v.island!==true)island.stop();else if(v.fresh===true||!island.on())island.start();p.className=island.on()?'on isl':'on';p.dataset.esc=island.on()&&/Esc again/.test(v.caption||'')?'on':'off';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
-  setMode(!wave||v.wave==='flat'?'off':v.wave);if(island.on()&&v.wave==='sweep')island.release();
-  // A word only when the waveform does not say it; soft text only for where words go or an error.
-  $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
-  p.dataset.voice=v.voice?'on':'off';
-  $('c').textContent=v.phase==='ended'?'Say the wake word':v.phase==='dictating'?(v.caption||''):(v.caption&&/^to /.test(v.caption)?v.caption:'');},
- rest(why){island.stop();const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';setMode('off');},
- hide(){if(I)I.until=0;$('p').className=island.on()?'isl':'';$('p').dataset.mark='off';setMode('off');clearTimeout(stingTimer);stinging=false;setMark('none');},
- sting(){if(isCalm())return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
- move(){island.stop();const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';setMode('off');p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
+ show(v){const p=$('p'),was=p.classList.contains('on');p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.dataset.voice=v.voice?'on':'off';
+  // Dictation's island: a new one for each recording; processing with no words yet, the Esc warning or any other
+  // phase puts the plain pill back.
+  const plain=v.island!==true||(!island.hasWords()&&(v.wave==='sweep'||/Esc again/.test(v.caption||'')));
+  const s=stateOf(v,!plain);p.dataset.s=s;
+  if(plain)island.stop();
+  p.className=plain?'on':'on isl';
+  if(!plain&&(v.fresh===true||!island.on()))island.start();
+  p.dataset.esc=island.on()&&/Esc again/.test(v.caption||'')?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
+  if(island.on()&&v.wave==='sweep')island.release();
+  $('t').textContent=s==='esc'?(v.caption||''):s==='text'&&v.phase==='dictating'?(v.caption||''):s==='aThink'||s==='error'||s==='text'?v.label:'';
+  $('c').textContent=v.phase==='ended'?'Say the wake word':s==='text'&&v.caption&&/^to /.test(v.caption)?v.caption:'';
+  $('gl').innerHTML=GLYPH[s]||'';
+  const ws=s==='aListen'||s==='aSpeak'?s:'pill';p.dataset.ws=ws;sizeW(ws);
+  const live=WAVE.includes(v.phase)&&v.wave==='live'&&(s==='listen'||s==='hands'||s==='aListen'||s==='aSpeak');
+  setMode(live?'live':WAVE.includes(v.phase)?'flat':'off',v.phase==='speaking'?'assist':'dict');
+  morph(s,!was);},
+ rest(why){island.stop();const p=$('p'),was=p.classList.contains('on');p.className='on rest';delete p.dataset.phase;delete p.dataset.tone;p.dataset.s='rest';p.dataset.rest=why||'sleeping';setMode('off');morph('rest',!was);},
+ hide(){if(I)I.until=0;$('p').className=island.on()?'isl':'';setMode('off');},
+ sting(){if(isCalm())return;const m=$('mk');m.classList.remove('sting');void m.offsetWidth;m.classList.add('sting');},
+ move(){island.stop();const p=$('p');p.className='on';setMode('off');p.dataset.tone='voice';p.dataset.phase='move';p.dataset.s='text';$('t').textContent='Drag to move';$('c').textContent='';morph('move',false);sendRect();},
  moving(on){document.body.classList.toggle('moving',on);if(on)$('ok').focus();sendRect();},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  words(text){island.words(text);},
- cleanup(raw,clean){const ms=island.cleanup(raw,clean);if(ms>0){setMode('off');drawBars(null,0);}return ms;},
+ cleanup(raw,clean){const ms=island.cleanup(raw,clean);if(ms>0)setMode('flat');return ms;},
  sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);return ctx.state+':'+SOUNDS[name].length;},
+ // Frosted (Quiet over acrylic): the thinner tint, only while the acrylic is under it.
+ frost(on){root.toggle('frost',on);},
 };
 </script></body></html>`;
 
@@ -463,12 +562,22 @@ export const createVoicePill = (input: {
   const hideFrost = () => {
     if (frostTimer !== null) clearTimeout(frostTimer);
     frostTimer = null;
-    if (frost !== null && !frost.isDestroyed() && frost.isVisible()) frost.hide();
+    if (frost !== null && !frost.isDestroyed() && frost.isVisible()) {
+      frost.hide();
+      call("window.pill.frost(false)");
+    }
   };
   /** Hidden while the island moves, laid under the capsule once it holds still; the tint shows meanwhile. */
   const settleFrost = () => {
     hideFrost();
-    if (!tall || input.frosted?.() !== true || (input.look?.().glass ?? "on") !== "on") return;
+    // Only Quiet is drawn over acrylic: Tessaya and Lively look the same on Windows 10 and 11.
+    if (
+      !tall ||
+      input.frosted?.() !== true ||
+      pillLook().design !== "quiet" ||
+      (input.look?.().glass ?? "on") !== "on"
+    )
+      return;
     frostTimer = setTimeout(() => {
       frostTimer = null;
       const target = window;
@@ -496,6 +605,7 @@ export const createVoicePill = (input: {
         protectFromCapture(frost);
       } else frost.setBounds(bounds);
       frost.showInactive();
+      call("window.pill.frost(true)");
       target.moveTop();
     }, FROST_SETTLE_MS);
     frostTimer.unref();
@@ -764,10 +874,13 @@ export const createVoicePill = (input: {
       build();
       if (turnView(state) !== null) on({ type: "window_open" });
     });
+    // The design and the app's theme, before anything is shown.
+    call(pillLookScript(pillLook()));
   };
 
   const raise = () => {
     hold.raised();
+    void refreshPillTheme();
     build();
     if (hideTimer !== null) clearTimeout(hideTimer);
     hideTimer = null;
@@ -923,10 +1036,8 @@ export const createVoicePill = (input: {
     }
   };
 
-  const bandGain = createBandGain();
-  const bandBytes = new Uint8Array(PILL_BANDS);
-  const levelByte = new Uint8Array(1);
-  /** The bars are wanted: a live waveform on a visible pill, with motion on (the page draws them still otherwise). */
+  const wave_ = waveEngine();
+  /** The waveform is wanted: a live waveform on a visible pill, with motion on (the page draws them still otherwise). */
   const barsWanted = () =>
     wave === "live" &&
     window !== null &&
@@ -934,13 +1045,11 @@ export const createVoicePill = (input: {
     window.isVisible() &&
     !window.webContents.isLoading() &&
     (input.look?.().motion ?? "full") === "full";
-  /** Bars as bytes over IPC, one message a microphone frame (50 a second); one byte is a level without bands. */
-  const sendBars = (bars: ArrayLike<number>) => {
-    const out = bars.length === 1 ? levelByte : bandBytes;
-    for (let i = 0; i < out.length; i += 1)
-      out[i] = Math.round(Math.max(0, Math.min(1, bars[i] ?? 0)) * 255);
-    window?.webContents.send("baton-pill:bands", out);
-  };
+  /** The level in dBFS over IPC, one number a microphone frame (50 a second); the page smooths and draws it. */
+  const sendLevel = (db: number) => window?.webContents.send("baton-pill:level", db);
+
+  // A new design, waveform or theme repaints the pill in place.
+  const stopLook = onPillLook((look) => call(pillLookScript(look)));
 
   const closeIfLast = () => {
     const others = Electron.BrowserWindow.getAllWindows().filter(
@@ -1083,16 +1192,17 @@ export const createVoicePill = (input: {
   return {
     on,
     cue: (name) => sound(name),
-    micLevel: (value, shown = value, frame) => {
+    micLevel: (value, _shown, frame) => {
       loudest = Math.max(loudest, value);
       if ((state.phase !== "listening" && state.phase !== "dictating") || !barsWanted()) return;
-      sendBars(frame === undefined ? [shown] : bandGain(frameBands(frame), shown));
+      // The frame's own RMS: the page's gain adapts to his voice, so the shown level is not needed.
+      sendLevel(frame === undefined ? wave_.dbOf(value) : wave_.frameDb(frame));
     },
     speechLevel: (value) => {
       const now = performance.now();
       if (state.phase !== "speaking" || now - lastSpeech < SPEECH_MS || !barsWanted()) return;
       lastSpeech = now;
-      sendBars([value]);
+      sendLevel(wave_.dbOf(value));
     },
     words: (text) => {
       if (state.phase !== "dictating" || input.showWords?.() === false) return;
@@ -1186,6 +1296,7 @@ export const createVoicePill = (input: {
     },
     state: () => state,
     dispose: () => {
+      stopLook();
       if (timer !== null) clearTimeout(timer);
       if (silentTimer !== null) clearTimeout(silentTimer);
       closeMarkers();

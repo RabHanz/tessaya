@@ -18,6 +18,8 @@ import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.t
 const before: DesktopVoiceSettings = {
   dictationCleanup: "local",
   pillStyle: "pill",
+  pillDesign: "tessaya",
+  pillWaveform: "match",
   showWords: true,
   holdKey: "Ctrl+Shift+Win",
   holdKeyCues: false,

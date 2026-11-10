@@ -17,6 +17,7 @@ import {
   type DictationMode,
   type DictionaryEntry,
 } from "@t3tools/baton-shared/dictationCleanup";
+import type { StylePair } from "@t3tools/baton-shared/stylePairs";
 
 import {
   biasTranscript,
@@ -50,6 +51,11 @@ const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
 const API_REST_MS = 60_000;
+/**
+ * Once his key answers, release waits this long for what is left, then pastes the local text. His key's Haiku took
+ * 761 ms at p50 and 975 ms at p90 for a sentence under 15 words (2026-11-10), so most tails land inside it.
+ */
+const RELEASE_BUDGET_MS = 900;
 const API_SLOW_REST_MS = 15_000;
 
 interface CleanInput {
@@ -82,6 +88,8 @@ export const makeRewriter = (input: {
   readonly dictionary: () => ReadonlyArray<DictionaryEntry>;
   /** Replaces `hardLimitMs`, for the lab and for tests. */
   readonly limitMs?: number;
+  /** Replaces `RELEASE_BUDGET_MS`, for the lab and for tests. */
+  readonly releaseBudgetMs?: number;
   readonly start?: typeof startVisionSession;
   readonly always?: boolean;
   /**
@@ -94,7 +102,17 @@ export const makeRewriter = (input: {
    * at once and idling never ends it, so no dictation waits for Claude Code to start (about 2 s of 3.4 s cold).
    */
   readonly keepWarm?: () => boolean;
+  /** His own past dictations most like this one, with what he kept (stylePairs.ts); shown to the model as examples. */
+  readonly examples?: (text: string, mode: DictationMode) => ReadonlyArray<StylePair>;
 }): Rewriter => {
+  // Text already set out on this machine (a list) is only polished: examples there cost lists (18 → 12 of his 52).
+  const message = (text: string, mode: DictationMode, context?: DictationContext) =>
+    rewriteMessage(
+      text,
+      mode,
+      context,
+      text.includes("\n") ? [] : (input.examples?.(text, mode) ?? []),
+    );
   let session: VisionSession | null = null;
   let turns = 0;
   let idle: ReturnType<typeof setTimeout> | null = null;
@@ -148,7 +166,7 @@ export const makeRewriter = (input: {
     mode: DictationMode,
     context?: DictationContext,
   ): Promise<string> => {
-    const answer = get().ask([{ type: "text", text: rewriteMessage(text, mode, context) }]);
+    const answer = get().ask([{ type: "text", text: message(text, mode, context) }]);
     busy = answer.catch(() => undefined);
     return answer.then((a) => a.trim());
   };
@@ -165,7 +183,7 @@ export const makeRewriter = (input: {
     try {
       const answer = await input.api(
         rewriteSystemPrompt(input.dictionary()),
-        rewriteMessage(text, mode, context),
+        message(text, mode, context),
         64 + Math.ceil(text.length / 2),
       );
       apiAnswers = answer !== null;
@@ -179,14 +197,17 @@ export const makeRewriter = (input: {
       return null;
     }
   };
-  /** Only the final clean after release goes to the paid API; the guesses while he speaks use the subscription. */
+  /**
+   * The clean after release goes to his key; the guesses while he speaks too once it has answered (about 0.8 s against
+   * the session's 1.4 s), so release finds his finished sentences already cleaned. Before that, the subscription.
+   */
   const send = async (
     text: string,
     mode: DictationMode,
     final: boolean,
     context?: DictationContext,
   ): Promise<string> => {
-    const paid = final ? await viaApi(text, mode, context) : null;
+    const paid = final || apiAnswers ? await viaApi(text, mode, context) : null;
     return paid === null ? viaSession(text, mode, context) : paid.trim();
   };
   /** The real clean's question, against a deadline counted from when `clean` was called. */
@@ -280,7 +301,10 @@ export const makeRewriter = (input: {
     },
     clean: async (c) => {
       const started = Date.now();
-      const deadline = started + (input.limitMs ?? hardLimitMs(c.raw));
+      const limit = input.limitMs ?? hardLimitMs(c.raw);
+      const deadline =
+        started +
+        (apiAnswers ? Math.min(limit, input.releaseBudgetMs ?? RELEASE_BUDGET_MS) : limit);
       // The real clean goes before any guess still waiting.
       queue = [];
       const ready = new Map(guesses);

@@ -122,6 +122,8 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.brief": "general",
   "v.appearance": "appearance",
   "v.palette": "appearance",
+  "v.pillDesign": "appearance",
+  "v.pillWaveform": "appearance",
   "v.motion": "appearance",
   "v.glass": "appearance",
   "v.check": "advanced",

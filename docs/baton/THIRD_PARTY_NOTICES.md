@@ -116,10 +116,11 @@ SOFTWARE.
   and en_GB voices (VCTK, aru, semaine, alba, jenny_dioco, northern_english_male,
   southern_english_female) with openWakeWord's published negative features. Those sets carry their own
   terms, some non-commercial. Check them before any packaged or commercial release.
-- Fonts bundled in the window (inline, `apps/desktop/src/baton/home/fonts.ts`, Latin subset), both SIL
-  Open Font License 1.1, texts in `docs/baton/licences/`: Newsreader (roman and italic, variable
-  weight; Copyright 2020 The Newsreader Project Authors) and Schibsted Grotesk (variable weight;
-  Copyright 2023 The Schibsted-Grotesk Project Authors).
+- Fonts bundled in the window and the pill (inline, `apps/desktop/src/baton/home/fonts.ts`, Latin subset),
+  all SIL Open Font License 1.1, texts in `docs/baton/licences/`: Newsreader (roman and italic, variable
+  weight; Copyright 2020 The Newsreader Project Authors), Schibsted Grotesk (variable weight;
+  Copyright 2023 The Schibsted-Grotesk Project Authors) and Bricolage Grotesque (variable weight;
+  Copyright 2022 The Bricolage Grotesque Project Authors).
 
 ## What ships, and under which licence (checked by CI)
 
@@ -173,7 +174,8 @@ against the set's own page before a release that relies on it.
 
 ### Fonts
 
-Newsreader (roman and italic, variable weight; Copyright 2020 The Newsreader Project Authors) and Schibsted Grotesk (variable
-weight; Copyright 2023 The Schibsted-Grotesk Project Authors) are bundled in the window, SIL Open Font License 1.1, texts in
-`licences/OFL-newsreader.txt` and `licences/OFL-schibsted-grotesk.txt`. The fonts are not sold on their own and keep their names
+Newsreader (roman and italic, variable weight; Copyright 2020 The Newsreader Project Authors), Schibsted Grotesk (variable
+weight; Copyright 2023 The Schibsted-Grotesk Project Authors) and Bricolage Grotesque (variable weight; Copyright 2022 The
+Bricolage Grotesque Project Authors) are bundled in the window and the pill, SIL Open Font License 1.1, texts in
+`licences/OFL-newsreader.txt`, `licences/OFL-schibsted-grotesk.txt` and `licences/OFL-bricolage-grotesque.txt`. The fonts are not sold on their own and keep their names
 and licence.

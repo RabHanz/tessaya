@@ -6,6 +6,8 @@ import { createRemoteSettings } from "./remoteSettings.ts";
 const saved: DesktopVoiceSettings = {
   dictationCleanup: "local",
   pillStyle: "pill",
+  pillDesign: "tessaya",
+  pillWaveform: "match",
   showWords: true,
   holdKey: "Ctrl+Shift+Win",
   holdKeyCues: false,
@@ -31,6 +33,8 @@ describe("createRemoteSettings", () => {
       version: 7,
       patch: {
         dictationCleanup: "claude",
+        pillDesign: "quiet",
+        pillWaveform: "beads",
         holdKey: "F9",
         showWords: false,
         openTessayaOnStart: true,
@@ -47,12 +51,16 @@ describe("createRemoteSettings", () => {
         clicked.push([id, value]);
         if (id === "v.cleanup") settings = { ...settings, dictationCleanup: "claude" };
         if (id === "v.showWords") settings = { ...settings, showWords: false };
+        if (id === "v.pillDesign") settings = { ...settings, pillDesign: "quiet" };
+        if (id === "v.pillWaveform") settings = { ...settings, pillWaveform: "beads" };
         if (id === "v.startSessions") settings = { ...settings, openSessionsOnStart: false };
       },
     });
     expect(await remote.tick()).toBe(true);
     expect(clicked).toEqual([
       ["v.cleanup", "claude"],
+      ["v.pillDesign", "quiet"],
+      ["v.pillWaveform", "beads"],
       ["v.showWords", false],
       ["setup.hold", "F9"],
       ["v.startHome", true],
@@ -63,6 +71,8 @@ describe("createRemoteSettings", () => {
       effective: {
         ...saved,
         dictationCleanup: "claude",
+        pillDesign: "quiet",
+        pillWaveform: "beads",
         showWords: false,
         openSessionsOnStart: false,
       },
@@ -72,6 +82,8 @@ describe("createRemoteSettings", () => {
     expect(await remote.tick()).toBe(false);
     change = { version: 8, patch: { dictationCleanup: "always" } };
     expect(await remote.tick()).toBe(false);
-    expect(clicked).toHaveLength(5);
+    change = { version: 9, patch: { pillDesign: "neon" } };
+    expect(await remote.tick()).toBe(false);
+    expect(clicked).toHaveLength(7);
   });
 });

@@ -166,6 +166,15 @@ impl Chunker {
     }
 
     /// What is left at key release.
+    /// The first `samples` of the uncut audio are already written (a preview's words that ended well before it did):
+    /// they become context only, so `finish` leaves just what follows them to decode.
+    pub fn skip(&mut self, samples: usize) {
+        let at = samples.min(self.pending.len());
+        if at > 0 {
+            self.cut(at, false);
+        }
+    }
+
     pub fn finish(&mut self) -> Option<Piece> {
         if self.pending.is_empty() {
             return None;
@@ -500,6 +509,24 @@ mod tests {
         assert_eq!((piece.pcm.len(), piece.context, piece.at_pause), (RATE, 0, false));
         assert_eq!(chunker.pending_len(), RATE);
         assert_eq!(chunker.finish().unwrap().pcm.len(), RATE);
+    }
+
+    #[test]
+    fn a_release_after_a_preview_decodes_only_what_follows_its_safe_words() {
+        let mut chunker = Chunker::new(ChunkParams { min_samples: 6 * RATE, max_samples: 15 * RATE, context_samples: 3 * RATE });
+        let heard: Vec<f32> = (0..5 * RATE).map(|i| (i as f32 * 0.01).sin() * 0.1).collect();
+        assert!(chunker.push(&heard).is_none());
+        // A preview's words were safe up to 4 s; release decodes the last second, with 3 s before it as context.
+        chunker.skip(4 * RATE);
+        let piece = chunker.finish().unwrap();
+        assert_eq!(piece.context, 3 * RATE);
+        assert_eq!(piece.pcm.len(), 4 * RATE);
+        assert_eq!(&piece.pcm[piece.context..], &heard[4 * RATE..]);
+        // Nothing safe: the whole uncut audio is decoded, as before.
+        let mut whole = Chunker::new(ChunkParams { min_samples: 6 * RATE, max_samples: 15 * RATE, context_samples: 3 * RATE });
+        whole.push(&heard);
+        whole.skip(0);
+        assert_eq!(whole.finish().unwrap().pcm.len(), 5 * RATE);
     }
 
     #[test]
