@@ -13,6 +13,7 @@ const saved: DesktopVoiceSettings = {
   doubleTap: true,
   learnWords: true,
   duckWhileDictating: "off",
+  recognizeOnServers: false,
 };
 
 describe("createRemoteSettings", () => {

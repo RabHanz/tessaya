@@ -219,6 +219,62 @@ fn pump(mut socket: Socket, outgoing: Receiver<Out>, events: Sender<Event>) {
     }
 }
 
+/// `tessaya-voice replay-remote <url> <token file> <wav>...`: each recording through this client to his server in real
+/// time (20 ms blocks of 16 kHz mono), as a held key would send it; one JSON line each with the health check, the
+/// release to text, and the live-word cadence. For measuring the real path from his machine; it never pastes.
+pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String> {
+    let token = std::fs::read_to_string(token_file).map_err(|e| format!("{token_file}: {e}"))?.trim().to_string();
+    let server = Server { url: url.to_string(), token };
+    for wav in wavs {
+        let mut reader = hound::WavReader::open(wav).map_err(|e| format!("{wav}: {e}"))?;
+        let spec = reader.spec();
+        if spec.sample_rate != 16_000 || spec.channels != 1 || spec.bits_per_sample != 16 {
+            return Err(format!("{wav}: needs 16 kHz mono 16-bit"));
+        }
+        let pcm: Vec<f32> = reader.samples::<i16>().filter_map(Result::ok).map(|s| s as f32 / 32768.0).collect();
+        let health_at = Instant::now();
+        let health = health(&server, Duration::from_millis(400));
+        let health_ms = health_at.elapsed().as_millis() as u64;
+        let line = match Dictation::start(&server, None, Duration::from_millis(400)) {
+            Err(why) => json!({"wav": wav, "error": why, "healthMs": health_ms, "health": health.map(|h| h.queue)}),
+            Ok(dictation) => {
+                let t0 = Instant::now();
+                let mut updates: Vec<u64> = Vec::new();
+                let mut failed: Option<String> = None;
+                for (i, block) in pcm.chunks(320).enumerate() {
+                    thread::sleep((t0 + Duration::from_millis(20 * (i as u64 + 1))).saturating_duration_since(Instant::now()));
+                    dictation.audio(block);
+                    while let Ok(event) = dictation.events.try_recv() {
+                        match event {
+                            Event::Partial { .. } => updates.push(t0.elapsed().as_millis() as u64),
+                            Event::Failed(why) => failed = Some(why),
+                            Event::Text { .. } => {}
+                        }
+                    }
+                }
+                dictation.end();
+                let released = Instant::now();
+                let result = dictation.text(Duration::from_secs(30), |_, _| updates.push(t0.elapsed().as_millis() as u64));
+                let gaps: Vec<u64> = updates.windows(2).map(|w| w[1] - w[0]).collect();
+                json!({
+                    "wav": wav,
+                    "audioMs": pcm.len() / 16,
+                    "healthMs": health_ms,
+                    "queue": health.map(|h| h.queue),
+                    "releaseToTextMs": released.elapsed().as_millis() as u64,
+                    "firstUpdateMs": updates.first(),
+                    "updateGapsMs": gaps,
+                    "reused": result.as_ref().map(|r| r.2).ok(),
+                    "error": failed.or(result.as_ref().err().cloned()),
+                    "chars": result.map(|r| r.0.len()).unwrap_or(0),
+                })
+            }
+        };
+        println!("{line}");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

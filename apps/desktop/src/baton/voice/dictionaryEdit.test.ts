@@ -72,15 +72,15 @@ describe("the vocabulary", () => {
     expect(NodeFS.readFileSync(`${settings}.bad`, "utf8")).toBe('{"holdKey":"F9",');
   });
 
-  it("keeps only well-formed recognisers: a ws address and a token", () => {
+  it("keeps only well-formed recogniser addresses, never a token, from settings", () => {
     expect(
       recognizersFrom([
-        { url: "ws://recognizer.example:8797", token: "t" },
-        { url: "http://x", token: "t" },
-        { url: "ws://y" },
-        "z",
+        "ws://recognizer.example:8797",
+        "http://x",
+        { url: "ws://y", token: "t" },
+        3,
       ]),
-    ).toEqual([{ url: "ws://recognizer.example:8797", token: "t" }]);
+    ).toEqual(["ws://recognizer.example:8797"]);
     expect(recognizersFrom(undefined)).toEqual([]);
   });
 

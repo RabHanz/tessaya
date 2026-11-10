@@ -25,6 +25,7 @@ const before: DesktopVoiceSettings = {
   doubleTap: true,
   learnWords: true,
   duckWhileDictating: "off",
+  recognizeOnServers: false,
 };
 
 const layer = it.layer(

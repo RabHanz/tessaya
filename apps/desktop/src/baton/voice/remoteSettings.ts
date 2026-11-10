@@ -22,6 +22,7 @@ export const remoteSettingsOf = (settings: DesktopVoiceSettings): DesktopVoiceSe
   doubleTap: settings.doubleTap,
   learnWords: settings.learnWords,
   duckWhileDictating: settings.duckWhileDictating,
+  recognizeOnServers: settings.recognizeOnServers,
 });
 
 /** Each field's Settings control, so a remote change runs exactly what his click would. */
@@ -35,6 +36,7 @@ const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
   doubleTap: "v.doubleTap",
   learnWords: "v.learnWords",
   duckWhileDictating: "v.duck",
+  recognizeOnServers: "v.recognizeOnServers",
 };
 
 export const controlsFor = (

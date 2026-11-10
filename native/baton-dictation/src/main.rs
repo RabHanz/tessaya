@@ -2273,6 +2273,8 @@ fn main() {
             println!("{}", devices_json());
             Ok(())
         }
+        // Dev only: his recordings through the real client to his server, timed (remote.rs `replay`).
+        Some("replay-remote") if args.len() >= 4 => remote::replay(&args[1], &args[2], &args[3..]),
         Some("foreground") => {
             let window = foreground_window();
             let (app, title) = window_app(window);
