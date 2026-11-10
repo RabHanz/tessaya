@@ -287,23 +287,73 @@ export const frameLevel = (frame: Int16Array): number => {
   return Math.min(1, Math.sqrt(peak / 32768) * 1.4);
 };
 
+/** Voiced frames the speech reference is taken over: 3 s at 50 frames a second. */
+const REFERENCE_FRAMES = 150;
+/** Over voiced frames the floor only creeps up this far a frame (0.5 dB a second), so a long sentence never lifts it. */
+const FLOOR_CREEP_DB = 0.01;
+/** Digital silence reads no lower than this, so it never drags the floor below any real room. */
+const QUIETEST_DB = -90;
+/** Bars span this many dB below his reference; 3 dB above it is the top. */
+const SHOWN_RANGE_DB = 20;
+/** A frame this far over the noise floor is his voice. */
+const VOICED_OVER_FLOOR_DB = 9;
+/** A peak stays this many frames (80 ms) before it falls, so a syllable's top is seen. */
+const PEAK_HOLD_FRAMES = 4;
+
 /**
- * The pill's bars, normalised to his speech (an AGC): level over a slowly falling peak, gated at 1.4 times a noise
- * floor that rises only on noise-like frames, so a quiet mic's speech fills them and a fluctuating room stays low.
- * Display only: silence detection and the mic test keep `frameLevel`.
+ * The pill's bars against his own speech level (a display AGC): dB over his reference (the p90 of voiced frames in the
+ * last 3 s) above a floor learned only from the room, with a short peak hold. `reset` at each recording and new mic.
+ * Display only: recognition, silence detection and the mic test keep `frameLevel`.
  */
 export const createSpeechGain = () => {
-  let peak = 0.15;
-  let floor = 0.05;
-  return (level: number): number => {
-    peak = Math.max(level, peak * 0.997, 0.15);
-    if (level < floor) floor += (level - floor) * 0.2;
-    // Slowly, so a soft voice does not teach the floor to gate it (his quiet mic's speech was 31% gated at 0.05).
-    else if (level < floor * 2.5) floor += (level - floor) * 0.02;
-    const x = (level - floor * 1.4) / Math.max(peak - floor * 1.4, 0.2);
-    // Perceptual: a soft syllable shows as more than its share of the loudest, as an ear hears it.
-    return x <= 0 ? 0 : Math.min(1, x ** 0.85);
+  let floor: number | null = null;
+  let reference = -30;
+  const voiced: number[] = [];
+  let held = 0;
+  let holding = 0;
+  const gain = (level: number): number => {
+    // frameLevel is 1.4 * sqrt(peak): back to the peak in dBFS.
+    const db = Math.max(QUIETEST_DB, level > 0 ? 40 * Math.log10(level / 1.4) : QUIETEST_DB);
+    // The room is learned only from frames that are not his voice: down quickly, up slowly. Digital silence (a muted
+    // or starting device) says nothing about the room and is left out.
+    const silent = db <= QUIETEST_DB;
+    if (!silent) floor ??= db;
+    const isVoiced = floor !== null && db > floor + VOICED_OVER_FLOOR_DB;
+    if (floor !== null && !silent)
+      floor = isVoiced ? floor + FLOOR_CREEP_DB : floor + (db - floor) * (db < floor ? 0.3 : 0.05);
+    if (isVoiced) {
+      voiced.push(db);
+      if (voiced.length > REFERENCE_FRAMES) voiced.shift();
+      const sorted = [...voiced].sort((a, b) => a - b);
+      reference = Math.min(
+        -6,
+        Math.max(
+          -50,
+          (floor ?? -90) + VOICED_OVER_FLOOR_DB + 6,
+          sorted[Math.floor(sorted.length * 0.9)]!,
+        ),
+      );
+    }
+    const shown = isVoiced
+      ? Math.max(0, Math.min(1, (db - reference + SHOWN_RANGE_DB) / (SHOWN_RANGE_DB + 3)))
+      : 0;
+    if (shown >= held) {
+      held = shown;
+      holding = PEAK_HOLD_FRAMES;
+    } else if (holding > 0) holding -= 1;
+    else held = Math.max(shown, held * 0.6);
+    return held;
   };
+  return Object.assign(gain, {
+    /** A new recording or microphone: its own room and his level there, learned afresh. */
+    reset: () => {
+      floor = null;
+      reference = -30;
+      voiced.length = 0;
+      held = 0;
+      holding = 0;
+    },
+  });
 };
 
 /** A spoken cancel, with any wake word already stripped: it dismisses the pill at once. */
