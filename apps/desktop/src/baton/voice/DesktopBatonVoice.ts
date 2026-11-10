@@ -369,6 +369,7 @@ import {
   stalePartial,
   type DictationEvent,
   type DictationSidecar,
+  type GpuRecognition,
   type PasteVerdict,
   type FocusedApp,
   type RecognizerServer,
@@ -667,6 +668,8 @@ interface VoiceSettings {
   readonly recognizers: ReadonlyArray<string>;
   /** "Recognise on my servers": off by default; on, a dictation goes to the first healthy one, this machine last. */
   readonly recognizeOnServers: boolean;
+  /** Recognise on the graphics card (Windows, Vulkan): Auto when a capable card is present, On for any, Off never. */
+  readonly gpuRecognition: GpuRecognition;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
   /** He picked it himself; a value this branch saved for him does not count (D114). */
@@ -770,6 +773,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cloudModel: null,
   recognizers: [],
   recognizeOnServers: false,
+  gpuRecognition: "auto",
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
@@ -873,6 +877,10 @@ export const readSettings = (path: string): VoiceSettings => {
           : null,
       recognizers: recognizersFrom(saved["recognizers"]),
       recognizeOnServers: saved["recognizeOnServers"] === true,
+      gpuRecognition:
+        saved["gpuRecognition"] === "on" || saved["gpuRecognition"] === "off"
+          ? saved["gpuRecognition"]
+          : "auto",
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -3403,6 +3411,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       liveWords: settings.showWords,
       meter: loop === null,
       recognizers: settings.recognizeOnServers ? recognizersWithTokens() : [],
+      // Only the Windows build has the card's module; elsewhere a change would only restart the sidecar.
+      gpu: input.platform === "win32" ? settings.gpuRecognition : "off",
     });
     syncCleanupSession();
   };
@@ -3917,8 +3927,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
   });
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
+  let resumeHooked = false;
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
+    if (!resumeHooked) {
+      resumeHooked = true;
+      // After sleep the graphics card may have been reset: its session is read and warmed again before he dictates.
+      Electron.powerMonitor.on("resume", () => sidecar?.resume());
+    }
     resetCloudTmp();
     markPhase("dictation-sidecar-spawn:begin");
     sidecar = startDictationSidecar({
@@ -6458,6 +6474,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "mute", label: "Mute" },
         ],
       },
+      ...(input.platform === "win32"
+        ? [
+            {
+              id: "v.gpu",
+              section: "Dictation",
+              label: "Use graphics card for recognition",
+              hint: "Auto uses a graphics card with room for the speech model, warmed up in the background, and falls back to the processor on any problem. On uses any card that can run it. Off keeps recognition on the processor.",
+              kind: "choice" as const,
+              value: settings.gpuRecognition,
+              options: [
+                { value: "auto", label: "Auto" },
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+              ],
+            },
+          ]
+        : []),
       {
         id: "v.silence",
         section: "Wake and listening",
@@ -7259,7 +7292,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
     } else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
       save({ pillStyle: value });
-    else if (id === "v.recognizeOnServers") {
+    else if (id === "v.gpu" && (value === "auto" || value === "on" || value === "off")) {
+      save({ gpuRecognition: value });
+      configureDictation();
+    } else if (id === "v.recognizeOnServers") {
       save({ recognizeOnServers: on });
       configureDictation();
     } else if (id === "v.recognizer:add" && typeof value === "string") {

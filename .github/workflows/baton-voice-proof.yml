@@ -122,6 +122,13 @@ jobs:
         if: inputs.tag == ''
         run: corepack enable
 
+      # The sidecar's graphics-card build (native/baton-dictation gpu.rs) needs the Vulkan SDK's headers and shader compiler.
+      - uses: jakoch/install-vulkan-sdk-action@v1
+        if: inputs.tag == ''
+        with:
+          vulkan_version: 1.4.363.1
+          install_runtime: false
+          cache: true
       - uses: dtolnay/rust-toolchain@stable
         if: inputs.tag == ''
         with:

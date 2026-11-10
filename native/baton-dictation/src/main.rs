@@ -21,6 +21,7 @@ mod capture;
 mod changes;
 #[cfg(windows)]
 mod input_windows;
+mod gpu;
 mod live;
 #[cfg(windows)]
 mod paste_windows;
@@ -51,7 +52,7 @@ use live::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
-    init_backends_with, BackendMask, Feature, Model, RunOptions, Session, SessionOptions, TimestampKind,
+    init_backends_with, Feature, RunOptions, Session, SessionOptions, TimestampKind,
 };
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
@@ -134,6 +135,9 @@ struct Config {
     /// and the laptop only decodes if none answers or one stalls (remote.rs).
     #[serde(default)]
     recognizers: Vec<remote::Server>,
+    /// "Use graphics card for recognition": auto, on or off (gpu.rs).
+    #[serde(default)]
+    gpu: gpu::Mode,
     /// Wake words are off, so no other mic reader feeds the pill's waveform: the recording sends `pcm` lines.
     #[serde(default)]
     meter: bool,
@@ -180,6 +184,8 @@ struct Done {
     reused: bool,
     /// Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote).
     via: &'static str,
+    /// What recognised them here: "cpu", "gpu", or "gpu-fallback" (the card failed, the CPU decoded the whole recording).
+    backend: &'static str,
 }
 
 struct Job {
@@ -315,6 +321,11 @@ enum Work {
     /// The model `warm_in_background` loaded for cloud dictation's live words (None: it would not load); taken only
     /// into an empty slot.
     Warmed(PathBuf, Option<Session>),
+    /// His dictation model and graphics-card setting: the card's session is read and warmed in the background (gpu.rs).
+    GpuWarm(Option<PathBuf>, gpu::Mode),
+    GpuWarmed(PathBuf, Option<Session>),
+    /// The computer woke from sleep: the card's session is read again, as the device may have been reset.
+    GpuReset,
 }
 
 /// A background read of `wanted` is due: it is on disk, no slot holds it and none is running. After an idle unload
@@ -331,14 +342,19 @@ fn warm_in_background(
     loader: impl FnOnce(&Path) -> Result<(Session, u64), String> + Send + 'static,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        #[cfg(windows)]
-        unsafe {
-            use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
-            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
-        }
+        lower_priority();
         let session = loader(&model).ok().map(|(session, _)| session);
         let _ = job_tx.send(Work::Warmed(model, session));
     })
+}
+
+/// A background read runs below everything he is doing.
+fn lower_priority() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
+    }
 }
 
 /// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
@@ -370,7 +386,7 @@ fn load(model: &Path) -> Result<(Session, u64), String> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or_else(|| default_threads(usable_cores()));
-    let session = Model::load(model)
+    let session = gpu::cpu_model(model)
         .and_then(|m| m.session_with(&SessionOptions { n_threads, ..Default::default() }))
         .map_err(|e| format!("could not load {}: {e}", model.display()))?;
     Ok((session, started.elapsed().as_millis() as u64))
@@ -430,6 +446,10 @@ struct Live {
     remote: Option<Remote>,
     /// Who wrote the words, for the timing line: "local", "remote", or "fallback" (the server failed, the laptop wrote).
     via: &'static str,
+    /// His graphics card is recognising it (gpu.rs); on any error there the CPU decodes the whole recording at release.
+    on_gpu: bool,
+    /// The release's last decode or reuse has run (`settle`).
+    settled: bool,
 }
 
 /// How long a connection to his server may take before the laptop decodes instead.
@@ -520,6 +540,8 @@ impl Live {
             reused: false,
             remote: None,
             via: "local",
+            on_gpu: false,
+            settled: false,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -532,6 +554,11 @@ impl Live {
     }
 
     fn decode(&mut self, session: &mut Session, piece: Piece) {
+        // Dev only: the card fails after its first piece, to prove the CPU then writes every word.
+        if self.on_gpu && self.pieces > 0 && std::env::var("TESSAYA_DEV_GPU_FAIL").as_deref() == Ok("1") {
+            self.failed = Some("simulated graphics card failure".to_string());
+            return;
+        }
         let started = Instant::now();
         let at_pause = piece.at_pause;
         match decode_piece(session, piece, self.language.clone()) {
@@ -615,6 +642,28 @@ impl Live {
         self.preview_ms = started.elapsed().as_millis() as u64;
     }
 
+    /// The release's work on what was not yet decoded: the last piece, or nothing when the last preview already holds it.
+    /// Run once; the card's dictations run it on the card first, so a failure there is known before the text is made.
+    fn settle(&mut self, session: &mut Session) {
+        if std::mem::replace(&mut self.settled, true) {
+            return;
+        }
+        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
+            // No speech since the last preview: its words are the rest, and nothing is decoded at release.
+            let reuse = self.preview.is_some() && !self.chunker.speech_after(self.previewed, &self.heard);
+            if let (true, Some(text)) = (reuse, self.preview.take()) {
+                self.chunker.finish();
+                if !text.is_empty() {
+                    self.text.push(text);
+                }
+                self.reused = true;
+                self.pieces += 1;
+            } else if let Some(piece) = self.chunker.finish() {
+                self.decode(session, piece);
+            }
+        }
+    }
+
     fn finish(mut self, mut session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
         let audio_ms = self.heard.len() as u64 / 16;
         if let Some(dir) = &self.external {
@@ -632,6 +681,7 @@ impl Live {
                 audio: None,
                 reused: false,
                 via: "local",
+                backend: "cloud",
             });
         }
         if let Some(remote) = self.remote.take() {
@@ -650,6 +700,7 @@ impl Live {
                     audio,
                     reused,
                     via: "remote",
+                    backend: "server",
                 });
             }
             // His server did not answer in time: the laptop decodes all it kept.
@@ -660,20 +711,7 @@ impl Live {
             }
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
-        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
-            // No speech since the last preview: its words are the rest, and nothing is decoded at release.
-            let reuse = self.preview.is_some() && !self.chunker.speech_after(self.previewed, &self.heard);
-            if let (true, Some(text)) = (reuse, self.preview.take()) {
-                self.chunker.finish();
-                if !text.is_empty() {
-                    self.text.push(text);
-                }
-                self.reused = true;
-                self.pieces += 1;
-            } else if let Some(piece) = self.chunker.finish() {
-                self.decode(session, piece);
-            }
-        }
+        self.settle(session);
         let text = if self.failed.is_some() {
             infer(session, &mut self.heard, self.language.clone())?.0
         } else {
@@ -693,6 +731,7 @@ impl Live {
             audio,
             reused: self.reused,
             via: self.via,
+            backend: if self.on_gpu { "gpu" } else { "cpu" },
         })
     }
 }
@@ -811,6 +850,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
     let mut warming = false;
     let mut loaded: Loaded = None;
     let mut other: Loaded = None;
+    // His graphics card's session (gpu.rs), the model and setting it is for, and whether it is being read.
+    let mut gpu: Loaded = None;
+    let mut gpu_want: Option<(PathBuf, gpu::Mode)> = None;
+    let mut gpu_warming = false;
     let mut loaded_at = Instant::now();
     let mut other_at = Instant::now();
     let mut live: Option<Live> = None;
@@ -859,6 +902,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         audio: None,
                         reused: false,
                         via: "local",
+                        backend: "cpu",
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictation: None, dictated: job.dictated, target: job.target, result });
@@ -884,6 +928,13 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let words = words && path_of(&loaded) == Some(model.as_path());
                 live = Some(Live { id, external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
             }
+            Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers })
+                if path_of(&gpu) == Some(model.as_path()) =>
+            {
+                // On the card: the CPU's model is not read for it, and is read only if the card fails.
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, language.clone()));
+                live = Some(Live { id, keep, live_words: words, remote, on_gpu: true, ..Live::new(language, 0, None) });
+            }
             Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
@@ -906,19 +957,45 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let Some(current) = live.as_mut().filter(|l| l.id == id) else {
                     continue;
                 };
-                current.hear(loaded.as_mut().map(|(_, session)| session), &pcm, behind);
+                let session = if current.on_gpu { &mut gpu } else { &mut loaded };
+                current.hear(session.as_mut().map(|(_, session)| session), &pcm, behind);
+                if current.on_gpu && current.failed.is_some() && gpu.take().is_some() {
+                    emit(json!({"ev": "gpu", "ready": false, "error": current.failed}));
+                }
             }
             Ok(Work::End { id, target, released, timing }) => {
                 // Only its own recording answers a dictation; any other is never handed over as its words.
                 let result = match live.take_if(|l| l.id == id) {
-                    Some(current) => current
-                        .finish(loaded.as_mut().map(|(_, session)| session), released)
-                        .map(|done| {
+                    Some(mut current) => {
+                        let mut fell_back = false;
+                        if current.on_gpu {
+                            if let Some((_, session)) = gpu.as_mut() {
+                                current.settle(session);
+                            }
+                            if current.failed.is_some() || gpu.is_none() {
+                                // The card failed (or was lost): the CPU decodes everything heard, so no word is lost.
+                                let model = path_of(&gpu).map(Path::to_path_buf).or(gpu_want.as_ref().map(|(m, _)| m.clone()));
+                                if gpu.take().is_some() {
+                                    emit(json!({"ev": "gpu", "ready": false, "error": current.failed}));
+                                }
+                                fell_back = true;
+                                current.on_gpu = false;
+                                current.failed.get_or_insert_with(|| "graphics card lost".to_string());
+                                if let Some(Err(e)) = model.map(|model| ensure_loaded(&mut loaded, &model)) {
+                                    current.failed = Some(e);
+                                }
+                            }
+                        }
+                        let session = if current.on_gpu { &mut gpu } else { &mut loaded };
+                        current.finish(session.as_mut().map(|(_, session)| session), released).map(|done| {
+                            let backend = if fell_back { "gpu-fallback" } else { done.backend };
                             let mut timing = timing;
                             timing["reused"] = json!(done.reused);
                             timing["recognizer"] = json!(done.via);
-                            Done { timing: Some(timing), ..done }
-                        }),
+                            timing["backend"] = json!(backend);
+                            Done { timing: Some(timing), backend, ..done }
+                        })
+                    }
                     None => Err("That dictation's recording was lost, so nothing was written.".to_string()),
                 };
                 let _ = out.send(Msg::Finished { id: None, dictation: Some(id), dictated: true, target, result });
@@ -936,6 +1013,50 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 if let Some(session) = session.filter(|_| loaded.is_none()) {
                     loaded = Some((path, session));
                     loaded_at = Instant::now();
+                }
+            }
+            Ok(Work::GpuWarm(model, mode)) => {
+                gpu_want = model.filter(|_| mode != gpu::Mode::Off).map(|m| (m, mode));
+                if path_of(&gpu) != gpu_want.as_ref().map(|(m, _)| m.as_path()) {
+                    gpu = None;
+                }
+                if let (Some((model, mode)), true, false) = (&gpu_want, cfg!(feature = "gpu"), gpu_warming) {
+                    if gpu.is_none() && model.is_file() {
+                        gpu_warming = true;
+                        let (model, mode, me) = (model.clone(), *mode, me.clone());
+                        // Normal priority: at the lowest, his busy CPU starved it (156 s, and never under load).
+                        thread::spawn(move || {
+                            let session = match gpu::load(&model, mode) {
+                                Ok((session, device)) => {
+                                    emit(json!({"ev": "gpu", "ready": true, "device": device}));
+                                    Some(session)
+                                }
+                                Err(error) => {
+                                    emit(json!({"ev": "gpu", "ready": false, "error": error}));
+                                    None
+                                }
+                            };
+                            let _ = me.send(Work::GpuWarmed(model, session));
+                        });
+                    }
+                }
+            }
+            Ok(Work::GpuWarmed(model, session)) => {
+                gpu_warming = false;
+                if gpu_want.as_ref().is_some_and(|(m, _)| *m == model) {
+                    gpu = session.map(|s| (model, s));
+                } else if let Some((model, mode)) = gpu_want.clone() {
+                    // The setting or model changed while it was read: read the one wanted now.
+                    let _ = me.send(Work::GpuWarm(Some(model), mode));
+                }
+            }
+            Ok(Work::GpuReset) => {
+                // A dictation already on the card keeps its session; a lost device fails it over to the CPU.
+                if live.as_ref().is_none_or(|l| !l.on_gpu) {
+                    gpu = None;
+                    if let Some((model, mode)) = gpu_want.clone() {
+                        let _ = me.send(Work::GpuWarm(Some(model), mode));
+                    }
                 }
             }
             Ok(Work::Keep(on)) => {
@@ -1813,6 +1934,9 @@ fn serve() {
                                 {
                                     let _ = job_tx.send(Work::Warm(model.clone()));
                                 }
+                                // His graphics card, read and warmed now for local recognition so no press waits for it.
+                                let on_card = config.model.clone().filter(|_| config.external.is_none());
+                                let _ = job_tx.send(Work::GpuWarm(on_card, config.gpu));
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
@@ -1836,6 +1960,10 @@ fn serve() {
                         }
                     }
                     "devices" => emit(json!({"ev": "devices", "devices": devices_json()})),
+                    // The computer woke from sleep: the graphics card is read and warmed again.
+                    "resume" => {
+                        let _ = job_tx.send(Work::GpuReset);
+                    }
                     "load" => {
                         let id = value["id"].as_u64();
                         match &config.model {
@@ -2207,7 +2335,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
     let model = flag(args, "--model").ok_or("--model is required")?;
     let language = flag(args, "--language");
     let (mut session, load_ms) = load(Path::new(&model))?;
-    let loaded = Model::load(Path::new(&model)).map_err(|e| e.to_string())?;
+    let loaded = gpu::cpu_model(Path::new(&model)).map_err(|e| e.to_string())?;
     let caps = loaded.capabilities().map_err(|e| e.to_string())?;
     emit(json!({"ev": "loaded", "loadMs": load_ms, "streaming": caps.supports_streaming,
         "vocabulary": loaded.supports(Feature::Vocabulary), "arch": loaded.arch(), "variant": loaded.variant()}));
@@ -2272,11 +2400,12 @@ fn main() {
         };
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
-    if let Err(e) = init_backends_with(None::<&Path>, BackendMask::CPU) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let gpu_mode: gpu::Mode = flag(&args, "--gpu").and_then(|m| m.parse().ok()).unwrap_or(gpu::Mode::Off);
+    if let Err(e) = init_backends_with(None::<&Path>, gpu::mask(gpu_mode)) {
         emit(json!({"ev": "error", "message": format!("backend: {e}")}));
         std::process::exit(2);
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         None | Some("serve") => {
             serve();

@@ -26,6 +26,7 @@ const before: DesktopVoiceSettings = {
   learnWords: true,
   duckWhileDictating: "off",
   recognizeOnServers: false,
+  gpuRecognition: "auto",
 };
 
 const layer = it.layer(
