@@ -4450,6 +4450,20 @@ interface ClaudeLiveQueryContext {
   // Per process, not per session: a relative temp dir follows the cwd this CLI
   // was launched in, and a later turn's cwd can differ.
   readonly taskOutputRoot: string | undefined;
+  readonly resumed: boolean;
+  // An error result from before any turn attached: a missing --resume transcript, for one.
+  exitedBeforeTurn: string | undefined;
+}
+
+// Claude Code reports a --resume it cannot load as one error result and exits without reading the prompt.
+function claudeExitedBeforeTurnMessage(
+  query: Pick<ClaudeLiveQueryContext, "resumed" | "exitedBeforeTurn">,
+  instanceId: string,
+): string {
+  const reason = query.exitedBeforeTurn ?? "Claude Code exited before reading the message.";
+  return query.resumed
+    ? `This conversation couldn't be resumed on ${instanceId}: ${reason}`
+    : `Claude Code exited before the turn started: ${reason}`;
 }
 
 interface ActiveClaudeToolCall {
@@ -8384,6 +8398,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     failure: makeProviderFailure({
                       cause: cause === undefined ? undefined : Cause.squash(cause),
                       class: "transport_error",
+                      ...(closedQuery.exitedBeforeTurn === undefined
+                        ? {}
+                        : {
+                            message: claudeExitedBeforeTurnMessage(
+                              closedQuery,
+                              adapterOptions.instanceId,
+                            ),
+                          }),
                     }),
                   }),
             });
@@ -11019,6 +11041,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               resolvedTurnCwd,
               hostPlatform,
             ),
+            resumed: queryOptions.resume !== undefined,
+            exitedBeforeTurn: undefined,
           };
           // One step, so the replaced process cannot exit between the install and the handoff.
           yield* Ref.update(queryContext, (replaced) => {
@@ -11051,6 +11075,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     message.permissionMode !== undefined
                   ) {
                     context.permissionMode = message.permissionMode;
+                  }
+                  if (message.type === "result" && context.lastTurn === null && message.is_error) {
+                    context.exitedBeforeTurn =
+                      resultUserFacingError(message) ?? context.exitedBeforeTurn;
                   }
                   if (message.type === "result") {
                     const ledger = claudeModelLedger(message.modelUsage);
@@ -11295,7 +11323,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
             });
             if (userMessage !== null) {
-              yield* attachTurn;
+              const exitedBeforeTurn = yield* sdkMessageLock.withPermits(1)(
+                Effect.gen(function* () {
+                  const live = (yield* Ref.get(queryContext))?.query === querySession.query;
+                  yield* attachTurn;
+                  if (live) return false;
+                  // The process is gone, so its exit cannot settle this turn; settle it here.
+                  yield* finalizeActiveTurn({
+                    context,
+                    status: "failed",
+                    completedAt: yield* DateTime.now,
+                    failure: makeProviderFailure({
+                      class: "provider_error",
+                      message: claudeExitedBeforeTurnMessage(
+                        querySession,
+                        adapterOptions.instanceId,
+                      ),
+                    }),
+                  });
+                  return true;
+                }),
+              );
+              if (exitedBeforeTurn) return;
               yield* startUserTurnForWakeReports(nativeThreadId);
               yield* Effect.uninterruptibleMask((restore) =>
                 restore(

@@ -186,24 +186,53 @@ it.effect("adopts a directory another tool created, keeping the original beside 
     const root = makeRoot();
     givenPrimary(root);
     const account = NodePath.join(root, "account-b");
-    NodeFS.mkdirSync(NodePath.join(account, "projects", "an-old-project"), { recursive: true });
-    NodeFS.writeFileSync(
-      NodePath.join(account, "projects", "an-old-project", "memory.md"),
-      "kept\n",
-    );
+    NodeFS.mkdirSync(NodePath.join(account, "plugins", "an-old-plugin"), { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(account, "plugins", "an-old-plugin", "memory.md"), "kept\n");
 
     yield* materializeClaudeAccountHome(layoutFor(root), { adoptExisting: true });
 
     // The link is in place …
-    assert.equal(NodeFS.lstatSync(NodePath.join(account, "projects")).isSymbolicLink(), true);
+    assert.equal(NodeFS.lstatSync(NodePath.join(account, "plugins")).isSymbolicLink(), true);
     // … and nothing was deleted to get it there.
     const kept = NodeFS.readdirSync(account).find((entry) =>
-      entry.startsWith("projects.account-local-"),
+      entry.startsWith("plugins.account-local-"),
     );
     assert.ok(kept !== undefined, "the account's own copy should be kept beside the link");
     assert.equal(
-      NodeFS.readFileSync(NodePath.join(account, kept, "an-old-project", "memory.md"), "utf8"),
+      NodeFS.readFileSync(NodePath.join(account, kept, "an-old-plugin", "memory.md"), "utf8"),
       "kept\n",
+    );
+  }).pipe(run),
+);
+
+it.effect("moves conversations an account wrote on its own into the shared store", () =>
+  Effect.gen(function* () {
+    const root = makeRoot();
+    givenPrimary(root);
+    const account = NodePath.join(root, "account-b");
+    const shared = NodePath.join(root, "primary", "projects", "-work");
+    NodeFS.mkdirSync(shared, { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(shared, "both.jsonl"), "shared\n");
+    NodeFS.mkdirSync(NodePath.join(account, "projects", "-work"), { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(account, "projects", "-work", "b9ddd43a.jsonl"), "b\n");
+    NodeFS.writeFileSync(NodePath.join(account, "projects", "-work", "both.jsonl"), "local\n");
+    // A file link needs elevation on Windows; that failing must not leave projects/ unlinked.
+    NodeFS.writeFileSync(NodePath.join(account, "CLAUDE.md"), "# forked\n");
+
+    const result = yield* Effect.result(materializeClaudeAccountHome(layoutFor(root)));
+
+    assert.equal(result._tag, "Failure");
+    assert.equal(NodeFS.lstatSync(NodePath.join(account, "projects")).isSymbolicLink(), true);
+    // Any account now resumes it, through the shared store.
+    assert.equal(NodeFS.readFileSync(NodePath.join(shared, "b9ddd43a.jsonl"), "utf8"), "b\n");
+    assert.equal(NodeFS.readFileSync(NodePath.join(shared, "both.jsonl"), "utf8"), "shared\n");
+    const kept = NodeFS.readdirSync(account).find((entry) =>
+      entry.startsWith("projects.account-local-"),
+    );
+    assert.ok(kept !== undefined);
+    assert.equal(
+      NodeFS.readFileSync(NodePath.join(account, kept, "-work", "both.jsonl"), "utf8"),
+      "local\n",
     );
   }).pipe(run),
 );

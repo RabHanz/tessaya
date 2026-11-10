@@ -23,6 +23,8 @@
  * is a named error, and a shared entry that has become a real file is a named
  * error too — the two ways this silently forks are both refusals instead.
  */
+// @effect-diagnostics-next-line nodeBuiltinImport:off - Effect's symlink has no type argument, and Windows needs a junction to link without elevation.
+import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 
 import { type ClaudeSettings } from "@t3tools/baton-contracts";
@@ -33,6 +35,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
 import { expandHomePath as expandHomePathFrom } from "@t3tools/provider-core/server/pathExpansion";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 const expandHomePath = (value: string): string => expandHomePathFrom(value, NodeOS.homedir());
 
@@ -96,7 +99,14 @@ export class ClaudeAccountHomeFileSystemError extends Schema.TaggedError<ClaudeA
   "ClaudeAccountHomeFileSystemError",
   {
     ...CONTEXT,
-    operation: Schema.Literals(["readLink", "makeDirectory", "readDirectory", "remove", "symlink"]),
+    operation: Schema.Literals([
+      "readLink",
+      "makeDirectory",
+      "readDirectory",
+      "remove",
+      "rename",
+      "symlink",
+    ]),
     path: Schema.String,
     entryName: Schema.optional(Schema.String),
     cause: Schema.Defect(),
@@ -205,8 +215,8 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
      *
      * Off by default and on only when a person asked for it: the usual caller
      * is a session starting, and a session starting must never move somebody's
-     * data. It exists because another tool (claude-swap) creates `plugins/` and
-     * `projects/` per account, and sharing those is exactly what was asked for.
+     * data. It exists because another tool (claude-swap) creates `plugins/` per
+     * account, and sharing it is exactly what was asked for. (`projects/` always joins the shared store.)
      */
     readonly adoptExisting?: boolean | undefined;
   },
@@ -263,66 +273,101 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
       }),
     );
 
-  yield* Effect.forEach(
-    CLAUDE_SHARED_ENTRIES,
-    (entryName) =>
-      Effect.gen(function* () {
-        const target = path.join(layout.sharedHomePath, entryName);
-        const link = path.join(accountHomePath, entryName);
-        const state = yield* readLinkState(link, entryName);
+  const isWindows = yield* HostProcess.isWindows;
 
-        if (state._tag === "NotSymlink") {
-          // The one case this must never do quietly: replace a real file the
-          // account has been writing to. Two configurations have forked, and
-          // only a person can say which one is the one they meant — unless they
-          // already did, by asking for this.
-          if (options?.adoptExisting !== true) {
-            return yield* new ClaudeAccountHomeEntryConflictError({
-              ...context,
-              entryName,
-              path: link,
-            });
-          }
-          const stamp = (yield* Effect.clockWith((clock) => clock.currentTimeMillis)).toString();
-          const kept = `${link}.account-local-${stamp}`;
-          yield* fileSystem.rename(link, kept).pipe(
-            Effect.catchTags({
-              PlatformError: (cause) => fail("remove", link, entryName)(cause),
-            }),
-          );
-          yield* Effect.logInfo("Kept this account's own copy beside the shared one", {
-            entryName,
-            kept,
-          });
+  // Moves what `from` holds and `to` lacks into `to`; a name both hold stays in `from`.
+  const mergeInto: (from: string, to: string) => Effect.Effect<void, PlatformError.PlatformError> =
+    Effect.fn("ClaudeAccountHome.mergeInto")(function* (from: string, to: string) {
+      yield* fileSystem.makeDirectory(to, { recursive: true });
+      for (const name of yield* fileSystem.readDirectory(from)) {
+        const source = path.join(from, name);
+        const destination = path.join(to, name);
+        if (!(yield* fileSystem.exists(destination))) {
+          yield* fileSystem.rename(source, destination);
+        } else if (
+          (yield* fileSystem.stat(source)).type === "Directory" &&
+          (yield* fileSystem.stat(destination)).type === "Directory"
+        ) {
+          yield* mergeInto(source, destination);
         }
-        if (state._tag === "Symlink") {
-          const resolved = path.resolve(path.dirname(link), state.target);
-          if (resolved === target) return;
-          yield* fileSystem.remove(link).pipe(
-            Effect.catchTags({
-              PlatformError: (cause) => fail("remove", link, entryName)(cause),
-            }),
-          );
-        }
+      }
+    });
 
-        // A link to something that does not exist yet is not useful: a shared
-        // entry the primary has never created (no `skills/` on a fresh machine)
-        // becomes a real directory there first, so both accounts write into one
-        // place from the beginning.
-        const exists = yield* fileSystem.exists(target).pipe(Effect.orElseSucceed(() => false));
-        if (!exists) {
-          if (entryName.includes(".")) return;
-          yield* makeDirectory(target);
-        }
+  const linkEntry = Effect.fn("ClaudeAccountHome.linkEntry")(function* (
+    entryName: (typeof CLAUDE_SHARED_ENTRIES)[number],
+  ) {
+    const target = path.join(layout.sharedHomePath, entryName);
+    const link = path.join(accountHomePath, entryName);
+    const state = yield* readLinkState(link, entryName);
 
-        yield* fileSystem
-          .symlink(target, link)
-          .pipe(
-            Effect.catchTags({ PlatformError: (cause) => fail("symlink", link, entryName)(cause) }),
-          );
-      }),
-    { discard: true },
-  );
+    if (state._tag === "NotSymlink") {
+      // projects/ holds the conversations, and one left here strands them on this account: every account must
+      // resume every thread. They join the shared store; a name both hold stays in the kept copy.
+      if (entryName === "projects") {
+        yield* mergeInto(link, target).pipe(
+          Effect.catchTags({
+            PlatformError: (cause) => fail("rename", link, entryName)(cause),
+          }),
+        );
+      }
+      // The one case this must never do quietly: replace a real file the
+      // account has been writing to. Two configurations have forked, and
+      // only a person can say which one is the one they meant — unless they
+      // already did, by asking for this.
+      else if (options?.adoptExisting !== true) {
+        return yield* new ClaudeAccountHomeEntryConflictError({
+          ...context,
+          entryName,
+          path: link,
+        });
+      }
+      const stamp = (yield* Effect.clockWith((clock) => clock.currentTimeMillis)).toString();
+      const kept = `${link}.account-local-${stamp}`;
+      yield* fileSystem.rename(link, kept).pipe(
+        Effect.catchTags({
+          PlatformError: (cause) => fail("remove", link, entryName)(cause),
+        }),
+      );
+      yield* Effect.logInfo("Kept this account's own copy beside the shared one", {
+        entryName,
+        kept,
+      });
+    }
+    if (state._tag === "Symlink") {
+      const resolved = path.resolve(path.dirname(link), state.target);
+      if (resolved === target) return;
+      yield* fileSystem.remove(link).pipe(
+        Effect.catchTags({
+          PlatformError: (cause) => fail("remove", link, entryName)(cause),
+        }),
+      );
+    }
+
+    // A link to something that does not exist yet is not useful: a shared
+    // entry the primary has never created (no `skills/` on a fresh machine)
+    // becomes a real directory there first, so both accounts write into one
+    // place from the beginning.
+    const exists = yield* fileSystem.exists(target).pipe(Effect.orElseSucceed(() => false));
+    if (!exists) {
+      if (entryName.includes(".")) return;
+      yield* makeDirectory(target);
+    }
+
+    const isDirectory =
+      (yield* fileSystem.stat(target).pipe(Effect.orElseSucceed(() => undefined)))?.type ===
+      "Directory";
+    yield* Effect.tryPromise({
+      try: () =>
+        NodeFSP.symlink(target, link, isDirectory ? (isWindows ? "junction" : "dir") : "file"),
+      catch: fail("symlink", link, entryName),
+    });
+  });
+
+  // One entry that cannot link (a file link on Windows needs elevation) must not keep the others, projects/ above
+  // all, from linking; the first failure is still reported.
+  const failures = (yield* Effect.forEach(CLAUDE_SHARED_ENTRIES, (entryName) =>
+    Effect.result(linkEntry(entryName)),
+  )).flatMap((result) => (result._tag === "Failure" ? [result.failure] : []));
 
   // The account's own things must be the account's own. A credentials file that
   // is a link to another account's is the failure this whole layout exists to
@@ -342,6 +387,7 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
       }),
     { discard: true },
   );
+  if (failures[0] !== undefined) return yield* failures[0];
 });
 
 /**

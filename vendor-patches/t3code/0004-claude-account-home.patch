@@ -2,8 +2,69 @@ Subject: providers: a second Claude account home shares the primary's (D52)
 
 One call when the Claude adapter is created; the work is in provider/Drivers/ClaudeAccountHome.ts.
 
+diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+index d7d03c779b4bba2b8409e52090e75a8bacb74b72..21b12f9ee74738ea4f1514776441dd30dbe21a33 100644
+--- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
++++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+@@ -10354,6 +10354,56 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+       ),
+   );
+ 
++  it.effect("fails the turn when Claude exits before it, as on a missing conversation", () =>
++    Effect.scoped(
++      Effect.gen(function* () {
++        const harness = yield* makeWakeHarness;
++        // The CLI's whole output when --resume names a transcript its config dir does not hold.
++        yield* Queue.offer(
++          harness.sdkMessages,
++          makeResultFrame({
++            uuid: "00000000-0000-4000-8000-000000000640",
++            result: "",
++            subtype: "error_during_execution",
++            isError: true,
++            numTurns: 0,
++            terminalReason: null,
++            errors: [`No conversation found with session ID: ${WAKE_NATIVE_SESSION}`],
++          }),
++        );
++        // The process exits after it, with the result still unread; shutdown would discard it.
++        yield* Queue.interrupt(harness.sdkMessages);
++        yield* harness.runtime.startTurn(
++          makeClaudeTestTurnInput({
++            threadId: harness.threadId,
++            providerThread: harness.providerThread,
++            now: yield* DateTime.now,
++            attemptId: RunAttemptId.make("missing-conversation"),
++            text: "Continue",
++            attachments: [],
++            nativeThreadHasTurns: true,
++          }),
++        );
++        const terminal = yield* Queue.take(harness.terminalReceipts);
++        assert.equal(terminal.status, "failed");
++        assert.equal(
++          terminal.failure?.message,
++          `This conversation couldn't be resumed on ${ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID}: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
++        );
++        assert.lengthOf(harness.offeredMessages, 0);
++      }).pipe(
++        Effect.provide(
++          Layer.mergeAll(
++            IdAllocator.layer,
++            McpProviderSessions.layer,
++            NodeServices.layer,
++            NodeCrypto.layer,
++          ),
++        ),
++      ),
++    ),
++  );
++
+   it.effect("lets the native SDK acknowledge Stop before closing its own query", () =>
+     Effect.scoped(
+       Effect.gen(function* () {
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e239d4f086747821a6069935cf0133aaf249f7c2 100644
+index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e05d63a598f9adcccc9ff69dc2fc3dfd47f52c06 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -182,6 +182,7 @@ import {
@@ -14,7 +75,93 @@ index df80f1316fb772a522c9b12a30c4e1e1ba56d2a8..e239d4f086747821a6069935cf0133aa
  import {
    BUNDLED_CLAUDE_MODEL_CATALOG,
    resolveClaudeCatalogContextWindowTokens,
-@@ -12368,6 +12369,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -4449,6 +4450,20 @@ interface ClaudeLiveQueryContext {
+   // Per process, not per session: a relative temp dir follows the cwd this CLI
+   // was launched in, and a later turn's cwd can differ.
+   readonly taskOutputRoot: string | undefined;
++  readonly resumed: boolean;
++  // An error result from before any turn attached: a missing --resume transcript, for one.
++  exitedBeforeTurn: string | undefined;
++}
++
++// Claude Code reports a --resume it cannot load as one error result and exits without reading the prompt.
++function claudeExitedBeforeTurnMessage(
++  query: Pick<ClaudeLiveQueryContext, "resumed" | "exitedBeforeTurn">,
++  instanceId: string,
++): string {
++  const reason = query.exitedBeforeTurn ?? "Claude Code exited before reading the message.";
++  return query.resumed
++    ? `This conversation couldn't be resumed on ${instanceId}: ${reason}`
++    : `Claude Code exited before the turn started: ${reason}`;
+ }
+ 
+ interface ActiveClaudeToolCall {
+@@ -8383,6 +8398,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+                     failure: makeProviderFailure({
+                       cause: cause === undefined ? undefined : Cause.squash(cause),
+                       class: "transport_error",
++                      ...(closedQuery.exitedBeforeTurn === undefined
++                        ? {}
++                        : {
++                            message: claudeExitedBeforeTurnMessage(
++                              closedQuery,
++                              adapterOptions.instanceId,
++                            ),
++                          }),
+                     }),
+                   }),
+             });
+@@ -11018,6 +11041,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+               resolvedTurnCwd,
+               hostPlatform,
+             ),
++            resumed: queryOptions.resume !== undefined,
++            exitedBeforeTurn: undefined,
+           };
+           // One step, so the replaced process cannot exit between the install and the handoff.
+           yield* Ref.update(queryContext, (replaced) => {
+@@ -11051,6 +11076,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+                   ) {
+                     context.permissionMode = message.permissionMode;
+                   }
++                  if (message.type === "result" && context.lastTurn === null && message.is_error) {
++                    context.exitedBeforeTurn =
++                      resultUserFacingError(message) ?? context.exitedBeforeTurn;
++                  }
+                   if (message.type === "result") {
+                     const ledger = claudeModelLedger(message.modelUsage);
+                     const growth = claudeLedgerDelta(context.modelLedger, ledger);
+@@ -11294,7 +11323,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+               });
+             });
+             if (userMessage !== null) {
+-              yield* attachTurn;
++              const exitedBeforeTurn = yield* sdkMessageLock.withPermits(1)(
++                Effect.gen(function* () {
++                  const live = (yield* Ref.get(queryContext))?.query === querySession.query;
++                  yield* attachTurn;
++                  if (live) return false;
++                  // The process is gone, so its exit cannot settle this turn; settle it here.
++                  yield* finalizeActiveTurn({
++                    context,
++                    status: "failed",
++                    completedAt: yield* DateTime.now,
++                    failure: makeProviderFailure({
++                      class: "provider_error",
++                      message: claudeExitedBeforeTurnMessage(
++                        querySession,
++                        adapterOptions.instanceId,
++                      ),
++                    }),
++                  });
++                  return true;
++                }),
++              );
++              if (exitedBeforeTurn) return;
+               yield* startUserTurnForWakeReports(nativeThreadId);
+               yield* Effect.uninterruptibleMask((restore) =>
+                 restore(
+@@ -12368,6 +12418,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
        hostEnvironment,
      );
      const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
