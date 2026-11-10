@@ -59,57 +59,60 @@ describe("batonStateInputFromShell: a v2 thread shell on the §10 ladder", () =>
 });
 
 describe("threadShells", () => {
-  it.effect("shares one read across callers, outlives a caller that leaves, and rereads on a new event", () => {
-    const started = Deferred.makeUnsafe<void>();
-    const release = Deferred.makeUnsafe<void>();
-    const shell = workingShell();
-    let reads = 0;
-    let sequence = 7;
-    const engine = batonEngineLayer.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.mock(Orchestrator.OrchestratorV2)({
-            getShellSnapshot: () =>
-              Effect.sync(() => (reads += 1)).pipe(
-                Effect.andThen(Deferred.succeed(started, undefined)),
-                Effect.andThen(Deferred.await(release)),
-                Effect.as({
-                  schemaVersion: 1,
-                  snapshotSequence: sequence,
-                  threads: [shell],
-                  archivedThreads: [],
-                }),
-              ),
-            streamDomainEvents: Stream.empty,
-          }),
-          Layer.mock(ProjectStore.ProjectStoreV2)({ listShells: () => Effect.succeed([]) }),
-          Layer.mock(ThreadLaunch.ThreadLaunchService)({}),
-          Layer.mock(ThreadManagement.ThreadManagementService)({}),
-          Layer.mock(EventSink.EventSinkV2)({}),
-          Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({
-            latestApplicationSequence: Effect.sync(() => sequence),
-          }),
-          Layer.succeed(
-            SecureRandom.SecureRandom,
-            SecureRandom.make((size) => new Uint8Array(size).fill(1)),
+  it.effect(
+    "shares one read across callers, outlives a caller that leaves, and rereads on a new event",
+    () => {
+      const started = Deferred.makeUnsafe<void>();
+      const release = Deferred.makeUnsafe<void>();
+      const shell = workingShell();
+      let reads = 0;
+      let sequence = 7;
+      const engine = batonEngineLayer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(Orchestrator.OrchestratorV2)({
+              getShellSnapshot: () =>
+                Effect.sync(() => (reads += 1)).pipe(
+                  Effect.andThen(Deferred.succeed(started, undefined)),
+                  Effect.andThen(Deferred.await(release)),
+                  Effect.as({
+                    schemaVersion: 1,
+                    snapshotSequence: sequence,
+                    threads: [shell],
+                    archivedThreads: [],
+                  }),
+                ),
+              streamDomainEvents: Stream.empty,
+            }),
+            Layer.mock(ProjectStore.ProjectStoreV2)({ listShells: () => Effect.succeed([]) }),
+            Layer.mock(ThreadLaunch.ThreadLaunchService)({}),
+            Layer.mock(ThreadManagement.ThreadManagementService)({}),
+            Layer.mock(EventSink.EventSinkV2)({}),
+            Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({
+              latestApplicationSequence: Effect.sync(() => sequence),
+            }),
+            Layer.succeed(
+              SecureRandom.SecureRandom,
+              SecureRandom.make((size) => new Uint8Array(size).fill(1)),
+            ),
           ),
         ),
-      ),
-    );
-    return Effect.gen(function* () {
-      const { threadShells } = yield* BatonEngine;
-      const leaving = yield* Effect.forkChild(threadShells);
-      yield* Deferred.await(started);
-      const staying = yield* Effect.forkChild(threadShells);
-      yield* Fiber.interrupt(leaving);
-      yield* Deferred.succeed(release, undefined);
-      expect(yield* Fiber.join(staying)).toEqual([shell]);
-      expect(yield* threadShells).toEqual([shell]);
-      expect(reads).toBe(1);
+      );
+      return Effect.gen(function* () {
+        const { threadShells } = yield* BatonEngine;
+        const leaving = yield* Effect.forkChild(threadShells);
+        yield* Deferred.await(started);
+        const staying = yield* Effect.forkChild(threadShells);
+        yield* Fiber.interrupt(leaving);
+        yield* Deferred.succeed(release, undefined);
+        expect(yield* Fiber.join(staying)).toEqual([shell]);
+        expect(yield* threadShells).toEqual([shell]);
+        expect(reads).toBe(1);
 
-      sequence = 8;
-      expect(yield* threadShells).toEqual([shell]);
-      expect(reads).toBe(2);
-    }).pipe(Effect.provide(engine));
-  });
+        sequence = 8;
+        expect(yield* threadShells).toEqual([shell]);
+        expect(reads).toBe(2);
+      }).pipe(Effect.provide(engine));
+    },
+  );
 });

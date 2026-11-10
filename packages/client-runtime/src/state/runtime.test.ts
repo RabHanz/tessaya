@@ -1036,7 +1036,9 @@ describe("environment query lifecycle", () => {
             let executions = 0;
             const harness = yield* makeEnvironmentQueryHarness(
               Effect.sync(() => (executions += 1)).pipe(
-                Effect.tap((execution) => (execution === 1 ? Deferred.await(release) : Effect.void)),
+                Effect.tap((execution) =>
+                  execution === 1 ? Deferred.await(release) : Effect.void,
+                ),
               ),
               { refreshIntervalMs: 15_000 },
             );

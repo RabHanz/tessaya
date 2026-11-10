@@ -40,10 +40,10 @@ index 1482804c61e0edb6229342692ee353cffd477897..0afbb7e52cb5b861281d378db9760807
 +  }),
 +);
 diff --git a/apps/server/src/launcherWatch.ts b/apps/server/src/launcherWatch.ts
-index ca109422c95a88ee861bd48da067a0bfc629b935..b751cd86d8d3a96b76b0434294f1bbb20f360060 100644
+index ca109422c95a88ee861bd48da067a0bfc629b935..ad3f430f20b50b1d4e71c5a6e4d92e46518efd61 100644
 --- a/apps/server/src/launcherWatch.ts
 +++ b/apps/server/src/launcherWatch.ts
-@@ -4,27 +4,42 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
+@@ -4,27 +4,41 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
  
  const DEFAULT_POLL_INTERVAL = Duration.seconds(2);
  
@@ -83,14 +83,13 @@ index ca109422c95a88ee861bd48da067a0bfc629b935..b751cd86d8d3a96b76b0434294f1bbb2
    const poll: Effect.Effect<void> = Effect.suspend(() => {
      const parentPid = getParentPid();
 -    return parentPid === launcherPid
-+    const launcherPresent =
-+      platform === "win32" ? isAlive(launcherPid) : parentPid === launcherPid;
++    const launcherPresent = platform === "win32" ? isAlive(launcherPid) : parentPid === launcherPid;
 +    return launcherPresent
        ? Effect.flatMap(Effect.sleep(interval), () => poll)
        : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
            launcherPid,
 diff --git a/packages/client-runtime/src/state/runtime.test.ts b/packages/client-runtime/src/state/runtime.test.ts
-index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..54c8f9421440a07c72edbf23925193a7b0b011dd 100644
+index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..4d5e5292a0a9e9a0f49574de042e2f0548a04721 100644
 --- a/packages/client-runtime/src/state/runtime.test.ts
 +++ b/packages/client-runtime/src/state/runtime.test.ts
 @@ -1,4 +1,4 @@
@@ -123,7 +122,7 @@ index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..54c8f9421440a07c72edbf23925193a7
      ...(idleTtlMs === undefined ? {} : { idleTtlMs }),
      ...(isFinal === undefined ? {} : { isFinal }),
      ...(onAnswer === undefined ? {} : { onAnswer }),
-@@ -1023,6 +1026,37 @@ describe("environment query lifecycle", () => {
+@@ -1023,6 +1026,39 @@ describe("environment query lifecycle", () => {
      ),
    );
  
@@ -137,7 +136,9 @@ index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..54c8f9421440a07c72edbf23925193a7
 +            let executions = 0;
 +            const harness = yield* makeEnvironmentQueryHarness(
 +              Effect.sync(() => (executions += 1)).pipe(
-+                Effect.tap((execution) => (execution === 1 ? Deferred.await(release) : Effect.void)),
++                Effect.tap((execution) =>
++                  execution === 1 ? Deferred.await(release) : Effect.void,
++                ),
 +              ),
 +              { refreshIntervalMs: 15_000 },
 +            );

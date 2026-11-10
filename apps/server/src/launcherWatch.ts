@@ -37,8 +37,7 @@ export const awaitLauncherLoss = Effect.fn("launcherWatch.awaitLauncherLoss")(fu
   if (launcherPid <= 1) return yield* Effect.never;
   const poll: Effect.Effect<void> = Effect.suspend(() => {
     const parentPid = getParentPid();
-    const launcherPresent =
-      platform === "win32" ? isAlive(launcherPid) : parentPid === launcherPid;
+    const launcherPresent = platform === "win32" ? isAlive(launcherPid) : parentPid === launcherPid;
     return launcherPresent
       ? Effect.flatMap(Effect.sleep(interval), () => poll)
       : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
