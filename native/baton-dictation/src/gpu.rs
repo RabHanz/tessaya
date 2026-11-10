@@ -19,8 +19,9 @@ pub enum Mode {
     Off,
 }
 
-/// Free memory a card needs for the model (0.7 GB) and its working buffers (up to 1.2 GB measured on his MX150).
-const MIN_FREE: u64 = 1536 << 20;
+/// Free memory a card needs for the model and its working buffers: 1.1 GB measured on his MX150. A 2 GB card with his
+/// apps open has about 1.4 GB free, so 1.5 GB turned it away; a load that still runs short falls back to the CPU.
+const MIN_FREE: u64 = 1100 << 20;
 
 /// The backends this process registers, fixed at its start (`--gpu`): with his setting Off, or a build without the card's
 /// module, the Vulkan code never runs, so a broken driver cannot touch dictation. A change takes effect at the
@@ -107,9 +108,10 @@ mod tests {
         assert_eq!(choose(&his, Mode::On), Some(2));
         assert_eq!(choose(&his[..2], Mode::On), Some(1));
         assert_eq!(choose(&his, Mode::Off), None);
-        // A card with too little free memory is left to the CPU in Auto.
-        assert_eq!(choose(&[card(true, true, 1.4)], Mode::Auto), None);
-        assert_eq!(choose(&[card(true, true, 1.4)], Mode::On), Some(0));
+        // His MX150 with his apps open (1.4 GB free) is taken; too little free memory is left to the CPU in Auto.
+        assert_eq!(choose(&[card(true, true, 1.4)], Mode::Auto), Some(0));
+        assert_eq!(choose(&[card(true, true, 1.0)], Mode::Auto), None);
+        assert_eq!(choose(&[card(true, true, 1.0)], Mode::On), Some(0));
         // No Vulkan at all: the CPU.
         assert_eq!(choose(&[card(false, false, 16.0)], Mode::On), None);
     }
