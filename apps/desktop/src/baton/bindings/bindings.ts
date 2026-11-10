@@ -101,7 +101,7 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
     id: "hold",
     label: "Hold to dictate",
     hint: "Dictate while the key is down.",
-    fallback: key("Ctrl+Shift+Win"),
+    fallback: key("Alt+Win"),
   },
   {
     id: "toggle",

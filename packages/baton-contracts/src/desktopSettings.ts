@@ -12,6 +12,7 @@ export const BATON_DESKTOP_SETTINGS_WS_METHODS = {
 
 /** Safe to hold alone; the first is the default chord (Settings → Dictation and the first-run guide). */
 export const DESKTOP_HOLD_KEYS = [
+  "Alt+Win",
   "Ctrl+Shift+Win",
   "F9",
   "F8",

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  backupMics,
+  setMicAt,
   micChannel,
   normalizeDeviceName,
   reconcileDeviceChange,
@@ -98,6 +100,43 @@ describe("the microphone order", () => {
       preference: order,
     });
     expect(back).toMatchObject({ device: scarlett });
+  });
+
+  it("listens beside his mic on the rest of his order, never a hands-free headset", () => {
+    const headset = { deviceId: "h", label: "Headset (TAOTRONICS SoundSurge 46 Hands-Free)" };
+    const devices = [remote, headset, dji, scarlett];
+    // His case: the DJI receiver pinned, the Scarlett second in his order.
+    const pin = { ...order, pinnedLabel: dji.label };
+    expect(backupMics(devices, pin, dji.label)).toEqual([scarlett.label]);
+    expect(backupMics(devices, order, scarlett.label)).toEqual([dji.label]);
+    // A mic missing from the list is not tried; nothing chosen (the system's) has nothing beside it.
+    expect(backupMics([remote, dji], pin, dji.label)).toEqual([]);
+    expect(backupMics(devices, order, null)).toEqual([]);
+    expect(
+      backupMics(
+        devices,
+        { pinnedLabel: headset.label, micOrder: ["Hands-Free", "Scarlett"] },
+        dji.label,
+      ),
+    ).toEqual([scarlett.label]);
+  });
+
+  it("sets, swaps and clears a place in his order, keeping a mic's input", () => {
+    const his = [
+      { name: "Scarlett Solo", channel: 1 },
+      { name: "Wireless Mic Rx", channel: null },
+    ];
+    expect(setMicAt(his, 0, dji.label)).toEqual([
+      { name: dji.label, channel: null },
+      { name: "Scarlett Solo", channel: 1 },
+    ]);
+    expect(setMicAt(his, 1, remote.label)).toEqual([his[0], { name: remote.label, channel: null }]);
+    expect(setMicAt(his, 2, remote.label)).toEqual([...his, { name: remote.label, channel: null }]);
+    expect(setMicAt(his, 0, null)).toEqual([his[1]]);
+    expect(setMicAt(his, 0, scarlett.label)).toEqual([
+      { name: scarlett.label, channel: 1 },
+      his[1],
+    ]);
   });
 
   it("lets an explicit pin outrank the order", () => {
