@@ -39,6 +39,7 @@ import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { startBatonDesktop } from "../baton/startBatonDesktop.ts";
+import { mainHeldAtLaunch, takeMainHold } from "../baton/launchWindows.ts";
 
 const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
 const MAX_TCP_PORT = 65_535;
@@ -200,7 +201,7 @@ const bootstrap = Effect.gen(function* () {
 
   if (!settings.localEnvironmentEnabled) {
     yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");
-    if (!(yield* Ref.get(state.quitting))) {
+    if (!(yield* Ref.get(state.quitting)) && !takeMainHold()) {
       yield* desktopWindow.createMainIfBackendReady;
     }
     return;
@@ -262,7 +263,8 @@ const bootstrap = Effect.gen(function* () {
       !environment.isDevelopment &&
       !settings.wslOnly &&
       Option.isSome(config) &&
-      Option.isNone(config.value.preflightFailure)
+      Option.isNone(config.value.preflightFailure) &&
+      !mainHeldAtLaunch()
     ) {
       yield* desktopWindow.ensureMain;
     }

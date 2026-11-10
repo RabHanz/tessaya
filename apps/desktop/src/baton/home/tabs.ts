@@ -113,6 +113,8 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "pr.awFocus": "privacy",
   "pr.awJobs": "privacy",
   "v.login": "general",
+  "v.startHome": "general",
+  "v.startSessions": "general",
   "v.notice": "general",
   "v.dnd": "general",
   "v.snooze": "general",

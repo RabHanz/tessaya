@@ -325,6 +325,7 @@ import {
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
+import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
 import * as Electron from "electron";
 
@@ -546,6 +547,9 @@ interface VoiceSettings {
   /** Always-listening is opt-in: a microphone that opens itself is not a default. */
   readonly enabled: boolean;
   readonly openAtLogin: boolean;
+  /** Which windows open when the app starts (launchWindows.ts); off, it waits for the tray, hotkey or dock. */
+  readonly openTessayaOnStart: boolean;
+  readonly openSessionsOnStart: boolean;
   readonly pinnedLabel: string | null;
   /** Where the wake and VAD models are; null = the ones that shipped with the app. */
   readonly modelsDir: string | null;
@@ -708,6 +712,8 @@ export const holdKeyFrom = (saved: Record<string, unknown>): string => {
 const DEFAULT_SETTINGS: VoiceSettings = {
   enabled: false,
   openAtLogin: false,
+  openTessayaOnStart: true,
+  openSessionsOnStart: true,
   pinnedLabel: null,
   modelsDir: null,
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
@@ -849,6 +855,8 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       showWords: saved["showWords"] !== false,
+      openTessayaOnStart: saved["openTessayaOnStart"] !== false,
+      openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
@@ -1020,7 +1028,6 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly setPhoneMirror?: (mirror: PhoneMirror | null) => void;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
-  readonly needsBrainChoice: () => boolean;
   readonly setAskHotkey: (accelerator: string | null) => void;
   readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
@@ -6490,6 +6497,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: loginItem.on(),
       },
       {
+        id: "v.startHome",
+        section: "Start",
+        label: "Open the Tessaya window when the app starts",
+        kind: "toggle",
+        on: settings.openTessayaOnStart,
+      },
+      {
+        id: "v.startSessions",
+        section: "Start",
+        label: "Open the sessions window when the app starts",
+        hint: "With both off, Tessaya starts in the background: the tray, the hotkey and the voice still work.",
+        kind: "toggle",
+        on: settings.openSessionsOnStart,
+      },
+      {
         id: "v.diag",
         section: "Checks",
         label: "Something is wrong and you want to report it",
@@ -7328,7 +7350,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.login") {
       save({ openAtLogin: on });
       loginItem.set(on);
-    } else if (id === "k.addskill:add" && typeof value === "string") {
+    } else if (id === "v.startHome") save({ openTessayaOnStart: on });
+    else if (id === "v.startSessions") save({ openSessionsOnStart: on });
+    else if (id === "k.addskill:add" && typeof value === "string") {
       void addSkillFrom(value);
     } else if (/^k\.conn\.(calendar|mail|chat):add$/.test(id) && typeof value === "string") {
       void addConnector(id.split(".")[2]!.split(":")[0] as ConnectorKind, value);
@@ -7642,16 +7666,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   }, MIC_POLL_MS).unref();
 
   render();
-  // First run after install, and until he has chosen what Baton works through: the window opens on its own.
+  // First run after install opens both windows; after that the Start switches decide (launchWindows.ts).
   const shownPath = NodePath.join(input.stateDir, "baton-home.shown");
   const firstRun = !NodeFS.existsSync(shownPath);
   if (firstRun) {
     NodeFS.writeFileSync(shownPath, new Date().toISOString());
     NodeFS.writeFileSync(setupMarker, "");
   }
-  if (firstRun || input.extras?.needsBrainChoice() === true) {
-    setTimeout(() => home.open(), 2_000).unref();
-  }
+  const launch = launchWindows({
+    openTessaya: settings.openTessayaOnStart,
+    openSessions: settings.openSessionsOnStart,
+    firstRun,
+  });
+  holdMainAtLaunch(!launch.sessions);
+  if (launch.tessaya) setTimeout(() => home.open(), 2_000).unref();
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
   const atLaunch = dictationAtLaunch({
     available: binary !== null,
