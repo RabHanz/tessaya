@@ -519,8 +519,8 @@ import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
-/** How long the hold key is down before its pill shows. */
-const PRESS_SHOW_MS = 150;
+/** How long the hold key is down before its pill shows: the helper's tap cutoff (SHORT_TAP_MS), so a tap never flashes. */
+const PRESS_SHOW_MS = 200;
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: BatonFocusTarget = {
   producer: "desktop",
