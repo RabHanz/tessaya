@@ -1,5 +1,5 @@
 /**
- * The desktop's dictation and start-up settings an agent may read and change through this machine's server. Only these fields:
+ * The desktop's dictation, pill and start-up settings an agent may read and change through this machine's server. Only these fields:
  * nothing here holds a key, a path, an account or anything that opens the microphone or keeps audio.
  */
 import * as Schema from "effect/Schema";
@@ -23,6 +23,9 @@ export const DESKTOP_HOLD_KEYS = [
 export const DesktopVoiceSettings = Schema.Struct({
   dictationCleanup: Schema.Literals(["claude", "local", "off"]),
   pillStyle: Schema.Literals(["pill", "field"]),
+  /** Settings → Appearance → Pill design, and its waveform ("match" is the design's own). */
+  pillDesign: Schema.Literals(["tessaya", "quiet", "lively"]),
+  pillWaveform: Schema.Literals(["match", "mound", "bars", "beads"]),
   showWords: Schema.Boolean,
   holdKey: Schema.String.check(Schema.isMaxLength(80)),
   holdKeyCues: Schema.Boolean,
@@ -44,6 +47,8 @@ const fields = DesktopVoiceSettings.fields;
 export const DesktopVoiceSettingsPatch = Schema.Struct({
   dictationCleanup: Schema.optionalKey(fields.dictationCleanup),
   pillStyle: Schema.optionalKey(fields.pillStyle),
+  pillDesign: Schema.optionalKey(fields.pillDesign),
+  pillWaveform: Schema.optionalKey(fields.pillWaveform),
   showWords: Schema.optionalKey(fields.showWords),
   holdKey: Schema.optionalKey(Schema.Literals(DESKTOP_HOLD_KEYS)),
   holdKeyCues: Schema.optionalKey(fields.holdKeyCues),

@@ -418,6 +418,8 @@ import type {
 } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, wantsMoving, type VoicePill } from "./voicePill.ts";
+import { parsePillDesign, parsePillWave, type PillDesign, type PillWave } from "./pillLook.ts";
+import { setPillSettings } from "./pillTheme.ts";
 import {
   dictationCaption,
   createSpeechGain,
@@ -583,6 +585,9 @@ interface VoiceSettings {
   readonly showWords: boolean;
   /** "field": his words at the caret of the field they go into when it says where; "pill": always in the pill. */
   readonly pillStyle: "pill" | "field";
+  /** How the pill looks (Settings → Appearance), and its waveform: "match" is the design's own. */
+  readonly pillDesign: PillDesign;
+  readonly pillWaveform: PillWave;
   /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
   readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
@@ -742,6 +747,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   showWords: true,
   // The pill until D has been tried on Windows; the text box is opt-in under Settings → Dictation → Pill style.
   pillStyle: "pill",
+  pillDesign: "tessaya",
+  pillWaveform: "match",
   frosted: false,
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
@@ -872,6 +879,8 @@ export const readSettings = (path: string): VoiceSettings => {
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
+      pillDesign: parsePillDesign(saved["pillDesign"]),
+      pillWaveform: parsePillWave(saved["pillWaveform"]),
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
@@ -1214,9 +1223,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The window is not built yet; it reads the settings when it is.
     }
   };
+  /** The pill, its cards and prompts follow the design, waveform and palette (pillTheme.ts). */
+  const syncPillLook = () =>
+    setPillSettings({
+      design: settings.pillDesign,
+      wave: settings.pillWaveform,
+      palette: settings.palette,
+    });
+  syncPillLook();
   const save = (next: Partial<VoiceSettings>) => {
     settings = { ...settings, ...next };
     writeJsonFile(settingsPath, settings);
+    syncPillLook();
     pushHome();
   };
   const freshInstall =
@@ -6309,6 +6327,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
       {
+        id: "v.pillDesign",
+        section: "Appearance",
+        label: "Pill design",
+        hint: "How the dictation pill, its cards and prompts look. They wear the theme and palette above, light or dark.",
+        kind: "choice",
+        value: settings.pillDesign,
+        options: [
+          { value: "tessaya", label: "Tessaya" },
+          { value: "quiet", label: "Quiet" },
+          { value: "lively", label: "Lively" },
+        ],
+      },
+      {
+        id: "v.pillWaveform",
+        section: "Appearance",
+        label: "Waveform",
+        hint: "The pill's waveform. Match the design uses each design's own: Mound for Tessaya, Bars for Quiet, Beads for Lively.",
+        kind: "choice",
+        value: settings.pillWaveform,
+        options: [
+          { value: "match", label: "Match the design" },
+          { value: "mound", label: "Mound" },
+          { value: "bars", label: "Bars" },
+          { value: "beads", label: "Beads" },
+        ],
+      },
+      {
         id: "v.motion",
         section: "Appearance",
         label: "Motion",
@@ -7400,7 +7445,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.palette") {
       save({ palette: parsePalette(value) });
       void linkT3Theme(settings.palette);
-    } else if (id === "v.motion") save({ motion: parseMotion(value) });
+    } else if (id === "v.pillDesign") save({ pillDesign: parsePillDesign(value) });
+    else if (id === "v.pillWaveform") save({ pillWaveform: parsePillWave(value) });
+    else if (id === "v.motion") save({ motion: parseMotion(value) });
     else if (id === "v.glass") save({ glass: parseGlass(value) });
     else if (id === "v.hideFromCapture") {
       save({ hideFromCapture: on });

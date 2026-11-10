@@ -226,6 +226,8 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
         effective: {
           dictationCleanup: "claude",
           pillStyle: "pill",
+          pillDesign: "tessaya",
+          pillWaveform: "match",
           showWords: true,
           holdKey: "Ctrl+Shift+Win",
           holdKeyCues: false,
@@ -254,6 +256,42 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
         effective: {
           dictationCleanup: "local",
           pillStyle: "pill",
+          pillDesign: "tessaya",
+          pillWaveform: "match",
+          showWords: true,
+          holdKey: "Ctrl+Shift+Win",
+          holdKeyCues: false,
+          frosted: false,
+          doubleTap: true,
+          learnWords: true,
+          duckWhileDictating: "off",
+          recognizeOnServers: false,
+          gpuRecognition: "auto",
+          openTessayaOnStart: false,
+          openSessionsOnStart: true,
+        },
+        pending: null,
+        applied: true,
+      },
+    },
+    calls: ["tessaya_desktop_settings"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
+    id: "outside-sets-pill-design",
+    source:
+      "Pill styles: the pill's design and waveform are set with tessaya_desktop_settings, not asked",
+    prompt:
+      "Switch the dictation pill on the Director's laptop to the Lively design, with the Bars waveform.",
+    answers: {
+      tessaya_desktop_settings: {
+        connected: true,
+        at: "2026-11-10T10:00:00.000Z",
+        effective: {
+          dictationCleanup: "local",
+          pillStyle: "pill",
+          pillDesign: "lively",
+          pillWaveform: "bars",
           showWords: true,
           holdKey: "Ctrl+Shift+Win",
           holdKeyCues: false,

@@ -15,6 +15,8 @@ const decodeSync = Schema.decodeUnknownOption(DesktopSettingsSyncResult);
 export const remoteSettingsOf = (settings: DesktopVoiceSettings): DesktopVoiceSettings => ({
   dictationCleanup: settings.dictationCleanup,
   pillStyle: settings.pillStyle,
+  pillDesign: settings.pillDesign,
+  pillWaveform: settings.pillWaveform,
   showWords: settings.showWords,
   holdKey: settings.holdKey,
   holdKeyCues: settings.holdKeyCues,
@@ -32,6 +34,8 @@ export const remoteSettingsOf = (settings: DesktopVoiceSettings): DesktopVoiceSe
 const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
   dictationCleanup: "v.cleanup",
   pillStyle: "v.pillStyle",
+  pillDesign: "v.pillDesign",
+  pillWaveform: "v.pillWaveform",
   showWords: "v.showWords",
   holdKey: "setup.hold",
   holdKeyCues: "v.holdKeyCues",
