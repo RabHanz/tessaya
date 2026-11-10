@@ -3048,6 +3048,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (JSON.stringify(now) === chosen) return;
     chosen = JSON.stringify(now);
     silence.reset();
+    // A new microphone has its own room and level: the waveform learns them afresh.
+    pillGain.reset();
     input.onNote?.("mic", now);
     if (now.why === "kept" && was.why !== "kept") {
       const headset = devices.find((d) => d.isDefault === true)?.label ?? "a Bluetooth headset";
@@ -3649,6 +3651,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     setRecording(recordingAfter(event.ev, releaseRecordingEscape !== null));
     sidecarBusy = busyAfter(event.ev, sidecarBusy);
     if (event.ev === "recording") {
+      pillGain.reset();
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
       // Each recording's window goes with its own words, however soon the next starts.
       recordingSeq += 1;

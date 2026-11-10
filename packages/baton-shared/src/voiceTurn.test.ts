@@ -337,4 +337,26 @@ describe("frameLevel", () => {
     const roomShown = Array.from({ length: 200 }, (_, i) => room(level(-67 + ((i * 3) % 7) - 3)));
     expect(Math.max(...roomShown.slice(20))).toBe(0);
   });
+  it("keeps a long sentence moving, ignores digital silence, and starts afresh on reset", () => {
+    const level = (db: number) => 1.4 * Math.sqrt(10 ** (db / 20));
+    const syllables = [0, -4, 3, -8, -2, 5, -6, -12, 1, -3];
+    // A second of room, then 10 s of speech with no pause: the floor must not climb into it.
+    const gain = createSpeechGain();
+    for (let i = 0; i < 50; i += 1) gain(level(-67));
+    const said = Array.from({ length: 500 }, (_, i) => gain(level(-41 + syllables[i % 10]!)));
+    expect(Math.min(...said.slice(450).filter((_, i) => syllables[i % 10]! >= -4))).toBeGreaterThan(
+      0.3,
+    );
+    // Digital silence (zeros) between words never drags the floor so low that the room shows as speech.
+    const silent = createSpeechGain();
+    for (let i = 0; i < 50; i += 1) silent(0);
+    const room = Array.from({ length: 100 }, () => silent(level(-67)));
+    expect(Math.max(...room.slice(50))).toBe(0);
+    // A new recording on a hot mic: reset learns its room and level afresh.
+    gain.reset();
+    for (let i = 0; i < 50; i += 1) gain(level(-38));
+    const hot = Array.from({ length: 200 }, (_, i) => gain(level(-12 + syllables[i % 10]!)));
+    expect(hot.slice(150).reduce((a, x) => a + x, 0) / 50).toBeGreaterThan(0.5);
+    expect(gain(level(-38))).toBeLessThan(0.7);
+  });
 });
