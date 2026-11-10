@@ -64,6 +64,12 @@
       "holder": "Erick Tryzelaar, David Tolnay",
       "mention": "serde_json"
     },
+    "crate:tungstenite": {
+      "name": "tungstenite",
+      "licence": "MIT OR Apache-2.0",
+      "holder": "Alexey Galakhov, Jason Housley",
+      "mention": "tungstenite"
+    },
     "crate:windows": {
       "name": "windows (windows-rs)",
       "licence": "MIT OR Apache-2.0",

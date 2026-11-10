@@ -563,9 +563,10 @@ impl Live {
         }
         // On his server the laptop only keeps the audio. If the server fails mid-dictation the laptop takes over at
         // once with everything heard so far, and the live words come from here.
-        let fresh = match &mut self.remote {
-            Some(remote) if remote.step(&self.heard) => return,
-            Some(_) => {
+        let heard = &self.heard;
+        let fresh = match self.remote.as_mut().map(|remote| remote.step(heard)) {
+            Some(true) => return,
+            Some(false) => {
                 self.remote = None;
                 self.via = "fallback";
                 self.heard.clone()
