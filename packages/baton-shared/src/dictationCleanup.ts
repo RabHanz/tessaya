@@ -201,6 +201,90 @@ const STUTTER = /\b(i|the|a|an|to|and|of|we|it|in|on|for|is|you)(?:[,]?\s+\1)+\b
 /** Only on their own, so "add a new paragraph to the doc" stays a sentence. */
 const SPOKEN_BREAK = /(^|[.?!]\s+)new (paragraph|line)[.,]?(?=\s|$)/gi;
 
+/** Before a spoken mark or "dot", these make it the word itself: "the question mark icon", "the dot between them". */
+const NAMING = new Set([
+  "a",
+  "an",
+  "the",
+  "this",
+  "that",
+  "any",
+  "no",
+  "each",
+  "every",
+  "my",
+  "your",
+  "our",
+]);
+const lastWord = (text: string) => /([\p{L}']+)\W*$/u.exec(text)?.[1]?.toLowerCase() ?? "";
+
+const MARKS: Readonly<Record<string, string>> = {
+  "question mark": "?",
+  "exclamation mark": "!",
+  "exclamation point": "!",
+  "full stop": ".",
+};
+const SPOKEN_MARK =
+  /[ \t]*,?[ \t]*\b(question mark|exclamation (?:mark|point)|full stop)\b[.,?!]?/gi;
+
+/** A file's or site's ending said as "dot json", "dot com". */
+const DOT_ENDING = new RegExp(
+  String.raw`(^|\s)dot\s+(env|json|jsonl|js|jsx|ts|tsx|mjs|md|py|rs|go|sh|ps1|ahk|txt|csv|yml|yaml|toml|html|css|exe|dll|log|sql|gguf|wav|png|jpg|pdf|zip|lock|com|io|ai|dev|org|net|app|co|uk|social)\b`,
+  "gi",
+);
+const NUMBER_WORD = String.raw`(?:${Object.keys(NUMBER_WORDS).join("|")}|\d+)`;
+const NUMBER_GROUP = String.raw`${NUMBER_WORD}(?:\s+${NUMBER_WORD})*`;
+/** An address or version said in parts: "one nine two dot one six eight dot ten dot one". */
+const DOTTED_NUMBER = new RegExp(
+  String.raw`\b${NUMBER_GROUP}(?:\s+dot\s+${NUMBER_GROUP})+\b`,
+  "gi",
+);
+
+/** "one nine two" is 192, "one ninety two" is 192, "one hundred sixty eight" is 168, "ten" is 10. */
+const numberOfWords = (group: string): string => {
+  const values = group
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => NUMBER_WORDS[w] ?? w);
+  const hundred = values.indexOf("100");
+  if (hundred > 0) {
+    const rest = values.slice(hundred + 1).reduce((sum, v) => sum + Number(v), 0);
+    return String(Number(values[hundred - 1]) * 100 + rest);
+  }
+  let out = "";
+  for (let i = 0; i < values.length; i++) {
+    const tens = Number(values[i]);
+    const unit = Number(values[i + 1]);
+    // "ninety two" is one number; "nine two" is two digits.
+    if (tens >= 20 && tens % 10 === 0 && tens < 100 && unit > 0 && unit < 10) {
+      out += String(tens + unit);
+      i++;
+    } else out += values[i];
+  }
+  return out;
+};
+
+/** What he says as punctuation or as part of a name, written as it is meant, before anything else reads the text. */
+const spokenMarks = (text: string): string =>
+  text
+    .replace(/(\w)\s+hyphen\s+(?=\w)/gi, "$1-")
+    .replace(DOTTED_NUMBER, (said) =>
+      said
+        .split(/\s+dot\s+/i)
+        .map(numberOfWords)
+        .join("."),
+    )
+    .replace(DOT_ENDING, (_, lead: string, ending: string, at: number, whole: string) =>
+      lead === "" ||
+      NAMING.has(lastWord(whole.slice(0, at))) ||
+      /\b(?:in|into|to|from|of|all|multiple|some)$/i.test(whole.slice(0, at))
+        ? `${lead}.${ending.toLowerCase()}`
+        : `.${ending.toLowerCase()}`,
+    )
+    .replace(SPOKEN_MARK, (said, name: string, at: number, whole: string) =>
+      NAMING.has(lastWord(whole.slice(0, at))) ? said : MARKS[name.toLowerCase()]!,
+    );
+
 /** How many words before a correction marker he may have taken back. */
 const TAKEN_BACK_WORDS = 8;
 
@@ -239,10 +323,11 @@ const capitaliseSentences = (text: string): string =>
 const tidy = (text: string): string =>
   text
     .replace(/[ \t]+/g, " ")
-    .replace(/ ([,.;:!?])/g, "$1")
+    // Not before ".env": a dot that starts a name keeps its space.
+    .replace(/ ([,;:!?]|\.(?!\p{L}))/gu, "$1")
     .replace(/([,;:])\1+/g, "$1")
     .replace(/,\s*([.?!])/g, "$1")
-    .replace(/^[\s,.;:]+/, "")
+    .replace(/^(?:[\s,;:]|\.(?!\p{L}))+/u, "")
     .replace(/\n /g, "\n")
     .trim();
 
@@ -292,7 +377,7 @@ export const localClean = (
   dictionary: ReadonlyArray<DictionaryEntry> = [],
 ): string => {
   if (mode === "raw") return raw;
-  let text = raw
+  let text = spokenMarks(raw)
     .replace(FILLERS, "$1")
     .replace(FILLER_PHRASES, "$1")
     // "Like," only opens the sentence; the next word must start one. "So" is his and stays (0.1.92 dropped it).
