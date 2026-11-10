@@ -186,24 +186,132 @@ it.effect("adopts a directory another tool created, keeping the original beside 
     const root = makeRoot();
     givenPrimary(root);
     const account = NodePath.join(root, "account-b");
-    NodeFS.mkdirSync(NodePath.join(account, "projects", "an-old-project"), { recursive: true });
-    NodeFS.writeFileSync(
-      NodePath.join(account, "projects", "an-old-project", "memory.md"),
-      "kept\n",
-    );
+    NodeFS.mkdirSync(NodePath.join(account, "plugins", "an-old-plugin"), { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(account, "plugins", "an-old-plugin", "memory.md"), "kept\n");
 
     yield* materializeClaudeAccountHome(layoutFor(root), { adoptExisting: true });
 
     // The link is in place …
-    assert.equal(NodeFS.lstatSync(NodePath.join(account, "projects")).isSymbolicLink(), true);
+    assert.equal(NodeFS.lstatSync(NodePath.join(account, "plugins")).isSymbolicLink(), true);
     // … and nothing was deleted to get it there.
     const kept = NodeFS.readdirSync(account).find((entry) =>
-      entry.startsWith("projects.account-local-"),
+      entry.startsWith("plugins.account-local-"),
     );
     assert.ok(kept !== undefined, "the account's own copy should be kept beside the link");
     assert.equal(
-      NodeFS.readFileSync(NodePath.join(account, kept, "an-old-project", "memory.md"), "utf8"),
+      NodeFS.readFileSync(NodePath.join(account, kept, "an-old-plugin", "memory.md"), "utf8"),
       "kept\n",
+    );
+  }).pipe(run),
+);
+
+const keptProjects = (account: string): string => {
+  const kept = NodeFS.readdirSync(account).find((entry) =>
+    entry.startsWith("projects.account-local-"),
+  );
+  assert.ok(kept !== undefined, "the account's own copy should be kept beside the link");
+  return NodePath.join(account, kept);
+};
+
+it.effect("moves conversations an account wrote on its own into the shared store", () =>
+  Effect.gen(function* () {
+    const root = makeRoot();
+    givenPrimary(root);
+    const account = NodePath.join(root, "account-b");
+    const shared = NodePath.join(root, "primary", "projects", "-work");
+    const local = NodePath.join(account, "projects", "-work");
+    NodeFS.mkdirSync(shared, { recursive: true });
+    NodeFS.mkdirSync(local, { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(local, "b9ddd43a.jsonl"), "b\n");
+    // On a clash the newer transcript is the shared one, whichever side it was on.
+    const older = 1_767_225_600; // 2026-01-01, in seconds as utimes takes it
+    const newer = older + 31 * 86_400;
+    for (const [side, name, at] of [
+      [shared, "shared-newer.jsonl", newer],
+      [local, "shared-newer.jsonl", older],
+      [shared, "local-newer.jsonl", older],
+      [local, "local-newer.jsonl", newer],
+    ] as const) {
+      const file = NodePath.join(side, name);
+      NodeFS.writeFileSync(file, side === shared ? "shared\n" : "local\n");
+      NodeFS.utimesSync(file, at, at);
+    }
+    // A file link needs elevation on Windows; that failing must not leave projects/ unlinked.
+    NodeFS.writeFileSync(NodePath.join(account, "CLAUDE.md"), "# forked\n");
+
+    const result = yield* Effect.result(materializeClaudeAccountHome(layoutFor(root)));
+
+    assert.equal(result._tag, "Failure");
+    assert.equal(NodeFS.lstatSync(NodePath.join(account, "projects")).isSymbolicLink(), true);
+    // Any account now resumes it, through the shared store.
+    assert.equal(NodeFS.readFileSync(NodePath.join(shared, "b9ddd43a.jsonl"), "utf8"), "b\n");
+    assert.equal(
+      NodeFS.readFileSync(NodePath.join(shared, "shared-newer.jsonl"), "utf8"),
+      "shared\n",
+    );
+    assert.equal(
+      NodeFS.readFileSync(NodePath.join(shared, "local-newer.jsonl"), "utf8"),
+      "local\n",
+    );
+    const kept = NodePath.join(keptProjects(account), "-work");
+    assert.equal(NodeFS.readFileSync(NodePath.join(kept, "shared-newer.jsonl"), "utf8"), "local\n");
+    assert.equal(
+      NodeFS.readFileSync(NodePath.join(kept, "local-newer.jsonl.shared-older"), "utf8"),
+      "shared\n",
+    );
+    assert.equal(NodeFS.existsSync(NodePath.join(root, "primary", "projects.merge.lock")), false);
+  }).pipe(run),
+);
+
+it.effect("waits for a merge already running, and takes over one abandoned", () =>
+  Effect.gen(function* () {
+    const root = makeRoot();
+    givenPrimary(root);
+    const account = NodePath.join(root, "account-b");
+    const transcript = NodePath.join(account, "projects", "-work", "b9ddd43a.jsonl");
+    NodeFS.mkdirSync(NodePath.dirname(transcript), { recursive: true });
+    NodeFS.writeFileSync(transcript, "b\n");
+    const lock = NodePath.join(root, "primary", "projects.merge.lock");
+    NodeFS.mkdirSync(lock, { recursive: true });
+
+    yield* Effect.result(materializeClaudeAccountHome(layoutFor(root)));
+
+    assert.equal(NodeFS.readFileSync(transcript, "utf8"), "b\n");
+    assert.equal(NodeFS.lstatSync(NodePath.join(account, "projects")).isDirectory(), true);
+
+    const abandoned = 1_577_836_800; // 2020-01-01
+    NodeFS.utimesSync(lock, abandoned, abandoned);
+    yield* materializeClaudeAccountHome(layoutFor(root));
+
+    assert.equal(
+      NodeFS.readFileSync(
+        NodePath.join(root, "primary", "projects", "-work", "b9ddd43a.jsonl"),
+        "utf8",
+      ),
+      "b\n",
+    );
+    assert.equal(NodeFS.existsSync(lock), false);
+  }).pipe(run),
+);
+
+it.effect("never follows a link inside the account's conversations", () =>
+  Effect.gen(function* () {
+    const root = makeRoot();
+    givenPrimary(root);
+    const account = NodePath.join(root, "account-b");
+    const outside = NodePath.join(root, "outside");
+    NodeFS.mkdirSync(outside, { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(outside, "secret.jsonl"), "x\n");
+    NodeFS.mkdirSync(NodePath.join(account, "projects"), { recursive: true });
+    NodeFS.symlinkSync(outside, NodePath.join(account, "projects", "loop"));
+
+    yield* materializeClaudeAccountHome(layoutFor(root));
+
+    assert.equal(NodeFS.readFileSync(NodePath.join(outside, "secret.jsonl"), "utf8"), "x\n");
+    assert.equal(NodeFS.existsSync(NodePath.join(root, "primary", "projects", "loop")), false);
+    assert.equal(
+      NodeFS.lstatSync(NodePath.join(keptProjects(account), "loop")).isSymbolicLink(),
+      true,
     );
   }).pipe(run),
 );

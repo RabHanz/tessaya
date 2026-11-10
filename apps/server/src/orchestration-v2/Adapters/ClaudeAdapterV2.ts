@@ -4450,6 +4450,21 @@ interface ClaudeLiveQueryContext {
   // Per process, not per session: a relative temp dir follows the cwd this CLI
   // was launched in, and a later turn's cwd can differ.
   readonly taskOutputRoot: string | undefined;
+  readonly resumed: boolean;
+  // An error result from before any turn attached: a missing --resume transcript, for one.
+  exitedBeforeTurn: string | undefined;
+  exited: boolean;
+}
+
+// Claude Code reports a --resume it cannot load as one error result and exits without reading the prompt.
+function claudeExitedBeforeTurnMessage(
+  query: Pick<ClaudeLiveQueryContext, "resumed" | "exitedBeforeTurn">,
+  account: string,
+): string {
+  const reason = query.exitedBeforeTurn ?? "Claude Code exited before reading the message.";
+  return query.resumed
+    ? `This conversation couldn't be resumed on ${account}: ${reason}`
+    : `Claude Code exited before the turn started: ${reason}`;
 }
 
 interface ActiveClaudeToolCall {
@@ -4842,6 +4857,8 @@ function claudeProposedPlan(input: unknown): string | null {
 
 export interface ClaudeAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
+  // The account name users see, for messages that name the account.
+  readonly displayName?: string | undefined;
   readonly settings: ClaudeSettings;
   readonly modelCatalog?: Effect.Effect<ClaudeModelCatalog>;
   readonly environment: NodeJS.ProcessEnv;
@@ -8384,6 +8401,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     failure: makeProviderFailure({
                       cause: cause === undefined ? undefined : Cause.squash(cause),
                       class: "transport_error",
+                      ...(closedQuery.exitedBeforeTurn === undefined
+                        ? {}
+                        : {
+                            message: claudeExitedBeforeTurnMessage(
+                              closedQuery,
+                              adapterOptions.displayName ?? adapterOptions.instanceId,
+                            ),
+                          }),
                     }),
                   }),
             });
@@ -11019,6 +11044,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               resolvedTurnCwd,
               hostPlatform,
             ),
+            resumed: queryOptions.resume !== undefined,
+            exitedBeforeTurn: undefined,
+            exited: false,
           };
           // One step, so the replaced process cannot exit between the install and the handoff.
           yield* Ref.update(queryContext, (replaced) => {
@@ -11052,6 +11080,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   ) {
                     context.permissionMode = message.permissionMode;
                   }
+                  if (message.type === "result" && context.lastTurn === null && message.is_error) {
+                    context.exitedBeforeTurn =
+                      resultUserFacingError(message) ?? context.exitedBeforeTurn;
+                  }
                   if (message.type === "result") {
                     const ledger = claudeModelLedger(message.modelUsage);
                     const growth = claudeLedgerDelta(context.modelLedger, ledger);
@@ -11084,6 +11116,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ) {
                   yield* releaseHeldRootFrames(heldContext);
                 }
+                context.exited = true;
                 const ownsLiveQuery = yield* Ref.modify(queryContext, (current) =>
                   current?.query === querySession ? [true, null] : [false, current],
                 );
@@ -11295,7 +11328,29 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
             });
             if (userMessage !== null) {
-              yield* attachTurn;
+              const exitedBeforeTurn = yield* sdkMessageLock.withPermits(1)(
+                Effect.gen(function* () {
+                  yield* attachTurn;
+                  if (!querySession.exited && querySession.exitedBeforeTurn === undefined) {
+                    return false;
+                  }
+                  // The process is gone, so its exit cannot settle this turn; settle it here.
+                  yield* finalizeActiveTurn({
+                    context,
+                    status: "failed",
+                    completedAt: yield* DateTime.now,
+                    failure: makeProviderFailure({
+                      class: "provider_error",
+                      message: claudeExitedBeforeTurnMessage(
+                        querySession,
+                        adapterOptions.displayName ?? adapterOptions.instanceId,
+                      ),
+                    }),
+                  });
+                  return true;
+                }),
+              );
+              if (exitedBeforeTurn) return;
               yield* startUserTurnForWakeReports(nativeThreadId);
               yield* Effect.uninterruptibleMask((restore) =>
                 restore(
@@ -12356,7 +12411,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
     hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
   ) {
-    const { instanceId, environment, enabled, config } = input;
+    const { instanceId, displayName, environment, enabled, config } = input;
     const fileSystem = yield* FileSystem.FileSystem;
     const hostEnvironment = yield* HostProcess.Environment;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -12379,6 +12434,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     );
     return yield* makeClaudeAdapterV2({
       instanceId,
+      displayName,
       settings: { ...config, enabled, binaryPath },
       environment: claudeEnvironment,
       attachmentsDir: serverConfig.attachmentsDir,

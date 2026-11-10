@@ -5,6 +5,9 @@
 mod desktop_unix;
 #[cfg(windows)]
 mod escape_windows;
+mod chord;
+#[cfg(windows)]
+mod chord_windows;
 mod keygate;
 #[cfg(windows)]
 mod keygate_windows;
@@ -21,14 +24,15 @@ mod capture;
 mod changes;
 #[cfg(windows)]
 mod input_windows;
+mod gpu;
 mod live;
+mod micprobe;
 #[cfg(windows)]
 mod paste_windows;
 mod remote;
 #[cfg(any(windows, test))]
 mod paste_tx;
 
-use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -40,10 +44,14 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use enigo::Enigo;
 #[cfg(not(target_os = "linux"))]
 use enigo::Settings;
-use handy_keys::{Hotkey, HotkeyManager, HotkeyState, Key, KeyboardListener, Modifiers};
+use handy_keys::{Hotkey, HotkeyManager, HotkeyState};
+#[cfg(not(windows))]
+use handy_keys::{Key, KeyboardListener};
 use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
+#[cfg(not(windows))]
+use chord::{Chord, ChordOut, Ev as ChordEv};
 use keys::PasteMethod;
 use live::{
     join_pieces, lift_gain, meter_b64, preview_due, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES, REUSE_FLAT,
@@ -51,7 +59,7 @@ use live::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
-    init_backends_with, BackendMask, Feature, Model, RunOptions, Session, SessionOptions, TimestampKind,
+    init_backends_with, Feature, RunOptions, Session, SessionOptions, TimestampKind,
 };
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
@@ -134,9 +142,16 @@ struct Config {
     /// and the laptop only decodes if none answers or one stalls (remote.rs).
     #[serde(default)]
     recognizers: Vec<remote::Server>,
+    /// "Use graphics card for recognition": auto, on or off (gpu.rs).
+    #[serde(default)]
+    gpu: gpu::Mode,
     /// Wake words are off, so no other mic reader feeds the pill's waveform: the recording sends `pcm` lines.
     #[serde(default)]
     meter: bool,
+    /// His other microphones, in his order, by name: tried when `device` will not open, and listened to beside it at
+    /// each press in case it hears nothing (micprobe.rs).
+    #[serde(default)]
+    fallbacks: Vec<String>,
 }
 
 enum Msg {
@@ -154,6 +169,8 @@ enum Msg {
     Meter(Vec<f32>),
     /// A fake microphone ran out of file, which stands in for releasing the key.
     FakeEnded,
+    /// Another of his mics opened beside a dictation's (`micprobe.rs`); `rank` is its place in his order.
+    Probe(u64, Probe),
     /// `dictation`: the key dictation it answers (`Work::Begin`'s id); None for a clip.
     Finished { id: Option<u64>, dictation: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
     /// A dictation paste's checks are back from their worker (`paste_checked`).
@@ -180,6 +197,8 @@ struct Done {
     reused: bool,
     /// Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote).
     via: &'static str,
+    /// What recognised them here: "cpu", "gpu", or "gpu-fallback" (the card failed, the CPU decoded the whole recording).
+    backend: &'static str,
 }
 
 struct Job {
@@ -315,6 +334,11 @@ enum Work {
     /// The model `warm_in_background` loaded for cloud dictation's live words (None: it would not load); taken only
     /// into an empty slot.
     Warmed(PathBuf, Option<Session>),
+    /// His dictation model and graphics-card setting: the card's session is read and warmed in the background (gpu.rs).
+    GpuWarm(Option<PathBuf>, gpu::Mode),
+    GpuWarmed(PathBuf, Option<Session>),
+    /// The computer woke from sleep: the card's session is read again, as the device may have been reset.
+    GpuReset,
 }
 
 /// A background read of `wanted` is due: it is on disk, no slot holds it and none is running. After an idle unload
@@ -331,14 +355,19 @@ fn warm_in_background(
     loader: impl FnOnce(&Path) -> Result<(Session, u64), String> + Send + 'static,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        #[cfg(windows)]
-        unsafe {
-            use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
-            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
-        }
+        lower_priority();
         let session = loader(&model).ok().map(|(session, _)| session);
         let _ = job_tx.send(Work::Warmed(model, session));
     })
+}
+
+/// A background read runs below everything he is doing.
+fn lower_priority() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
+    }
 }
 
 /// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
@@ -370,7 +399,7 @@ fn load(model: &Path) -> Result<(Session, u64), String> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or_else(|| default_threads(usable_cores()));
-    let session = Model::load(model)
+    let session = gpu::cpu_model(model)
         .and_then(|m| m.session_with(&SessionOptions { n_threads, ..Default::default() }))
         .map_err(|e| format!("could not load {}: {e}", model.display()))?;
     Ok((session, started.elapsed().as_millis() as u64))
@@ -430,6 +459,10 @@ struct Live {
     remote: Option<Remote>,
     /// Who wrote the words, for the timing line: "local", "remote", or "fallback" (the server failed, the laptop wrote).
     via: &'static str,
+    /// His graphics card is recognising it (gpu.rs); on any error there the CPU decodes the whole recording at release.
+    on_gpu: bool,
+    /// The release's last decode or reuse has run (`settle`).
+    settled: bool,
 }
 
 /// How long release waits for his server's text before the laptop decodes everything it kept.
@@ -499,6 +532,8 @@ impl Live {
             reused: false,
             remote: None,
             via: "local",
+            on_gpu: false,
+            settled: false,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -511,6 +546,11 @@ impl Live {
     }
 
     fn decode(&mut self, session: &mut Session, piece: Piece) {
+        // Dev only: the card fails after its first piece, to prove the CPU then writes every word.
+        if self.on_gpu && self.pieces > 0 && std::env::var("TESSAYA_DEV_GPU_FAIL").as_deref() == Ok("1") {
+            self.failed = Some("simulated graphics card failure".to_string());
+            return;
+        }
         let started = Instant::now();
         let at_pause = piece.at_pause;
         match decode_piece(session, piece, self.language.clone()) {
@@ -594,6 +634,28 @@ impl Live {
         self.preview_ms = started.elapsed().as_millis() as u64;
     }
 
+    /// The release's work on what was not yet decoded: the last piece, or nothing when the last preview already holds it.
+    /// Run once; the card's dictations run it on the card first, so a failure there is known before the text is made.
+    fn settle(&mut self, session: &mut Session) {
+        if std::mem::replace(&mut self.settled, true) {
+            return;
+        }
+        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
+            // No speech since the last preview: its words are the rest, and nothing is decoded at release.
+            let reuse = self.preview.is_some() && !self.chunker.speech_after(self.previewed, &self.heard);
+            if let (true, Some(text)) = (reuse, self.preview.take()) {
+                self.chunker.finish();
+                if !text.is_empty() {
+                    self.text.push(text);
+                }
+                self.reused = true;
+                self.pieces += 1;
+            } else if let Some(piece) = self.chunker.finish() {
+                self.decode(session, piece);
+            }
+        }
+    }
+
     fn finish(mut self, mut session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
         let audio_ms = self.heard.len() as u64 / 16;
         if let Some(dir) = &self.external {
@@ -611,6 +673,7 @@ impl Live {
                 audio: None,
                 reused: false,
                 via: "local",
+                backend: "cloud",
             });
         }
         if let Some(remote) = self.remote.take() {
@@ -629,6 +692,7 @@ impl Live {
                     audio,
                     reused,
                     via: "remote",
+                    backend: "server",
                 });
             }
             // His server did not answer in time: the laptop decodes all it kept.
@@ -639,20 +703,7 @@ impl Live {
             }
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
-        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
-            // No speech since the last preview: its words are the rest, and nothing is decoded at release.
-            let reuse = self.preview.is_some() && !self.chunker.speech_after(self.previewed, &self.heard);
-            if let (true, Some(text)) = (reuse, self.preview.take()) {
-                self.chunker.finish();
-                if !text.is_empty() {
-                    self.text.push(text);
-                }
-                self.reused = true;
-                self.pieces += 1;
-            } else if let Some(piece) = self.chunker.finish() {
-                self.decode(session, piece);
-            }
-        }
+        self.settle(session);
         let text = if self.failed.is_some() {
             infer(session, &mut self.heard, self.language.clone())?.0
         } else {
@@ -672,6 +723,7 @@ impl Live {
             audio,
             reused: self.reused,
             via: self.via,
+            backend: if self.on_gpu { "gpu" } else { "cpu" },
         })
     }
 }
@@ -790,8 +842,14 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
     let mut warming = false;
     let mut loaded: Loaded = None;
     let mut other: Loaded = None;
+    // His graphics card's session (gpu.rs), the model and setting it is for, and whether it is being read.
+    let mut gpu: Loaded = None;
+    let mut gpu_want: Option<(PathBuf, gpu::Mode)> = None;
+    let mut gpu_warming = false;
     let mut loaded_at = Instant::now();
     let mut other_at = Instant::now();
+    // When a dictation last ran on the card (`gpu::IDLE`).
+    let mut gpu_at = Instant::now();
     let mut live: Option<Live> = None;
     let mut keep = false;
     // A message taken off the queue while gathering audio that was waiting, handled next.
@@ -838,6 +896,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         audio: None,
                         reused: false,
                         via: "local",
+                        backend: "cpu",
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictation: None, dictated: job.dictated, target: job.target, result });
@@ -863,6 +922,20 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let words = words && path_of(&loaded) == Some(model.as_path());
                 live = Some(Live { id, external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
             }
+            Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers })
+                if path_of(&gpu) == Some(model.as_path()) =>
+            {
+                // On the card: the CPU's model is not read for it, and is read only if the card fails.
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, language.clone()));
+                // Woken while he speaks, so release does not pay for it; a failure here shows at his own decode.
+                if gpu_at.elapsed() >= gpu::IDLE {
+                    if let Some((_, session)) = gpu.as_mut() {
+                        let _ = gpu::nudge(session, 1);
+                    }
+                }
+                gpu_at = Instant::now();
+                live = Some(Live { id, keep, live_words: words, remote, on_gpu: true, ..Live::new(language, 0, None) });
+            }
             Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
@@ -885,19 +958,45 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let Some(current) = live.as_mut().filter(|l| l.id == id) else {
                     continue;
                 };
-                current.hear(loaded.as_mut().map(|(_, session)| session), &pcm, behind);
+                let session = if current.on_gpu { &mut gpu } else { &mut loaded };
+                current.hear(session.as_mut().map(|(_, session)| session), &pcm, behind);
+                if current.on_gpu && current.failed.is_some() && gpu.take().is_some() {
+                    emit(json!({"ev": "gpu", "ready": false, "error": current.failed}));
+                }
             }
             Ok(Work::End { id, target, released, timing }) => {
                 // Only its own recording answers a dictation; any other is never handed over as its words.
                 let result = match live.take_if(|l| l.id == id) {
-                    Some(current) => current
-                        .finish(loaded.as_mut().map(|(_, session)| session), released)
-                        .map(|done| {
+                    Some(mut current) => {
+                        let mut fell_back = false;
+                        if current.on_gpu {
+                            if let Some((_, session)) = gpu.as_mut() {
+                                current.settle(session);
+                            }
+                            if current.failed.is_some() || gpu.is_none() {
+                                // The card failed (or was lost): the CPU decodes everything heard, so no word is lost.
+                                let model = path_of(&gpu).map(Path::to_path_buf).or(gpu_want.as_ref().map(|(m, _)| m.clone()));
+                                if gpu.take().is_some() {
+                                    emit(json!({"ev": "gpu", "ready": false, "error": current.failed}));
+                                }
+                                fell_back = true;
+                                current.on_gpu = false;
+                                current.failed.get_or_insert_with(|| "graphics card lost".to_string());
+                                if let Some(Err(e)) = model.map(|model| ensure_loaded(&mut loaded, &model)) {
+                                    current.failed = Some(e);
+                                }
+                            }
+                        }
+                        let session = if current.on_gpu { &mut gpu } else { &mut loaded };
+                        current.finish(session.as_mut().map(|(_, session)| session), released).map(|done| {
+                            let backend = if fell_back { "gpu-fallback" } else { done.backend };
                             let mut timing = timing;
                             timing["reused"] = json!(done.reused);
                             timing["recognizer"] = json!(done.via);
-                            Done { timing: Some(timing), ..done }
-                        }),
+                            timing["backend"] = json!(backend);
+                            Done { timing: Some(timing), backend, ..done }
+                        })
+                    }
                     None => Err("That dictation's recording was lost, so nothing was written.".to_string()),
                 };
                 let _ = out.send(Msg::Finished { id: None, dictation: Some(id), dictated: true, target, result });
@@ -915,6 +1014,50 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 if let Some(session) = session.filter(|_| loaded.is_none()) {
                     loaded = Some((path, session));
                     loaded_at = Instant::now();
+                }
+            }
+            Ok(Work::GpuWarm(model, mode)) => {
+                gpu_want = model.filter(|_| mode != gpu::Mode::Off).map(|m| (m, mode));
+                if path_of(&gpu) != gpu_want.as_ref().map(|(m, _)| m.as_path()) {
+                    gpu = None;
+                }
+                if let (Some((model, mode)), true, false) = (&gpu_want, cfg!(feature = "gpu"), gpu_warming) {
+                    if gpu.is_none() && model.is_file() {
+                        gpu_warming = true;
+                        let (model, mode, me) = (model.clone(), *mode, me.clone());
+                        // Normal priority: at the lowest, his busy CPU starved it (156 s, and never under load).
+                        thread::spawn(move || {
+                            let session = match gpu::load(&model, mode) {
+                                Ok((session, device)) => {
+                                    emit(json!({"ev": "gpu", "ready": true, "device": device}));
+                                    Some(session)
+                                }
+                                Err(error) => {
+                                    emit(json!({"ev": "gpu", "ready": false, "error": error}));
+                                    None
+                                }
+                            };
+                            let _ = me.send(Work::GpuWarmed(model, session));
+                        });
+                    }
+                }
+            }
+            Ok(Work::GpuWarmed(model, session)) => {
+                gpu_warming = false;
+                if gpu_want.as_ref().is_some_and(|(m, _)| *m == model) {
+                    gpu = session.map(|s| (model, s));
+                } else if let Some((model, mode)) = gpu_want.clone() {
+                    // The setting or model changed while it was read: read the one wanted now.
+                    let _ = me.send(Work::GpuWarm(Some(model), mode));
+                }
+            }
+            Ok(Work::GpuReset) => {
+                // A dictation already on the card keeps its session; a lost device fails it over to the CPU.
+                if live.as_ref().is_none_or(|l| !l.on_gpu) {
+                    gpu = None;
+                    if let Some((model, mode)) = gpu_want.clone() {
+                        let _ = me.send(Work::GpuWarm(Some(model), mode));
+                    }
                 }
             }
             Ok(Work::Keep(on)) => {
@@ -996,79 +1139,18 @@ fn paste_text(enigo: &mut Option<Enigo>, text: &str, method: PasteMethod) -> Res
     }
 }
 
-/// Dropping it stops the hook thread, which owns the manager.
-struct Keys(Arc<AtomicBool>);
+/// Dropping it stops the hook threads: the manager's by its flag, the chord hook's (Windows) by its thread id.
+struct Keys(Arc<AtomicBool>, #[cfg_attr(not(windows), allow(dead_code))] Option<u32>);
 
 impl Drop for Keys {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Relaxed);
+        #[cfg(windows)]
+        if let Some(thread) = self.1 {
+            chord_windows::stop(thread);
+        }
     }
 }
-
-/// A hold key of modifiers alone (Ctrl+Shift+Win), read without blocking anything: blocking the key that completes it
-/// would eat Windows' own Win+Ctrl+Shift+B. It holds only while exactly those modifiers are down and no other key; a key
-/// joining the chord cancels it, and that key goes on to Windows untouched.
-struct ModChord {
-    want: Modifiers,
-    active: bool,
-    spoiled: bool,
-    /// Other keys down now: the chord never starts over one.
-    held: HashSet<Key>,
-}
-
-#[derive(Debug, PartialEq)]
-enum ChordOut {
-    Down,
-    Up,
-    /// Another key joined while it held: the dictation it started is dropped.
-    Cancel,
-}
-
-impl ModChord {
-    fn new(want: Modifiers) -> Self {
-        Self { want, active: false, spoiled: false, held: HashSet::new() }
-    }
-
-    fn step(&mut self, modifiers: Modifiers, key: Option<Key>, down: bool) -> Option<ChordOut> {
-        if let Some(key) = key {
-            if !down {
-                self.held.remove(&key);
-                return None;
-            }
-            self.held.insert(key);
-            if self.active && !self.spoiled {
-                self.spoiled = true;
-                return Some(ChordOut::Cancel);
-            }
-            return None;
-        }
-        // A key-up missed while every modifier was up cannot block the chord for good.
-        if modifiers.is_empty() {
-            self.held.clear();
-        }
-        let now = self.want.matches(modifiers);
-        if now && !self.active && self.held.is_empty() {
-            self.active = true;
-            self.spoiled = false;
-            return Some(ChordOut::Down);
-        }
-        if !now && self.active {
-            self.active = false;
-            return (!std::mem::take(&mut self.spoiled)).then_some(ChordOut::Up);
-        }
-        None
-    }
-}
-
-/// The shell opens Start when Win comes up with no other key since it went down; an unassigned key between them keeps
-/// it shut, as the hotkey hook's own mask does (`handy-keys`' MENU_MASK_VK).
-#[cfg(windows)]
-fn mask_start_menu() {
-    let _ = input_windows::keys(&[0xE8]);
-}
-
-#[cfg(not(windows))]
-fn mask_start_menu() {}
 
 fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Option<Keys>, String> {
     if config.hold.is_empty() && config.toggle.is_empty() {
@@ -1110,37 +1192,52 @@ fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Optio
             }
         });
     }
+    #[cfg(not(windows))]
+    fn key_code(key: Key) -> u32 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        key.hash(&mut h);
+        h.finish() as u32
+    }
+    #[cfg(windows)]
+    let hook = if chords.is_empty() {
+        None
+    } else {
+        Some(chord_windows::start(chords, tx.clone(), clock).ok_or("Windows refused the keyboard hook for the hold key")?)
+    };
+    #[cfg(not(windows))]
+    let hook = None;
+    #[cfg(not(windows))]
     if !chords.is_empty() {
         let listener = KeyboardListener::new().map_err(|e| e.to_string())?;
         let stopped = stop.clone();
         let tx = tx.clone();
         thread::spawn(move || {
-            let mut machines: Vec<ModChord> = chords.into_iter().map(ModChord::new).collect();
+            let mut machines: Vec<Chord> = chords.into_iter().map(Chord::new).collect();
             while !stopped.load(Ordering::Relaxed) {
                 let Some(event) = listener.try_recv() else {
                     thread::sleep(Duration::from_millis(5));
                     continue;
                 };
+                let ev = match (event.changed_modifier, event.key) {
+                    (Some(side), _) => ChordEv::Mod(side, event.is_key_down),
+                    (None, Some(key)) => ChordEv::Key(key_code(key), event.is_key_down),
+                    (None, None) => continue,
+                };
                 let at = clock.elapsed().as_secs_f64() * 1000.0;
                 for machine in &mut machines {
-                    match machine.step(event.modifiers, event.key, event.is_key_down) {
-                        Some(ChordOut::Down) => {
-                            mask_start_menu();
-                            let _ = tx.send(Msg::Key { hold: true, pressed: true, at });
-                        }
-                        Some(ChordOut::Up) => {
-                            let _ = tx.send(Msg::Key { hold: true, pressed: false, at });
-                        }
-                        Some(ChordOut::Cancel) => {
-                            let _ = tx.send(Msg::ChordJoined);
-                        }
-                        None => {}
-                    }
+                    let msg = match machine.step(ev) {
+                        Some(ChordOut::Down) => Msg::Key { hold: true, pressed: true, at },
+                        Some(ChordOut::Up) => Msg::Key { hold: true, pressed: false, at },
+                        Some(ChordOut::Cancel) => Msg::ChordJoined,
+                        None => continue,
+                    };
+                    let _ = tx.send(msg);
                 }
             }
         });
     }
-    Ok(Some(Keys(stop)))
+    Ok(Some(Keys(stop, hook)))
 }
 
 /// Hands the microphone to the engine as it arrives.
@@ -1154,6 +1251,28 @@ struct LiveSink {
     /// Config's `meter`, read live so turning wake words on or off mid-recording takes effect.
     meter_on: Arc<AtomicBool>,
     meter: Meter,
+    tap: Arc<Mutex<Tap>>,
+}
+
+/// What a mic heard in a dictation's first seconds, for `micprobe::judge`, and whether its audio is the dictation's.
+/// Both under one lock, so a mic taking over sends what it heard before any newer audio.
+struct Tap {
+    heard: Vec<f32>,
+    forward: bool,
+}
+
+impl Tap {
+    fn new(forward: bool) -> Arc<Mutex<Tap>> {
+        Arc::new(Mutex::new(Tap { heard: Vec::new(), forward }))
+    }
+}
+
+/// Another of his mics recording beside a dictation's until `micprobe::judge` decides.
+struct Probe {
+    rank: usize,
+    name: String,
+    source: Source,
+    tap: Arc<Mutex<Tap>>,
 }
 
 /// Shortest gap between two waveform blocks: about 30 a second.
@@ -1186,7 +1305,19 @@ impl Meter {
 
 impl Sink for LiveSink {
     fn process_chunk(&mut self, chunk: AudioChunk<'_>) {
-        let samples = chunk.samples[..chunk.valid_frames].to_vec();
+        self.deliver(chunk.samples[..chunk.valid_frames].to_vec());
+    }
+}
+
+impl LiveSink {
+    fn deliver(&mut self, samples: Vec<f32>) {
+        let mut tap = self.tap.lock().unwrap_or_else(|e| e.into_inner());
+        if tap.heard.len() < micprobe::PROBE_SAMPLES {
+            tap.heard.extend_from_slice(&samples);
+        }
+        if !tap.forward {
+            return;
+        }
         if !samples.is_empty() {
             let _ = self.first_audio.set(Instant::now());
         }
@@ -1217,11 +1348,17 @@ struct Recording {
     mic_ms: u64,
     first_audio: Arc<OnceLock<Instant>>,
     via: &'static str,
+    /// The mic it records from, by name (None: the system's), and what that mic has heard.
+    mic: Option<String>,
+    tap: Arc<Mutex<Tap>>,
+    /// His other mics listening beside it, in his order, until the judge decides (`decided`).
+    probes: Vec<Probe>,
+    decided: bool,
 }
 
-impl Drop for Recording {
+impl Drop for Source {
     fn drop(&mut self) {
-        if let Source::Fake(stop) = &self.source {
+        if let Source::Fake(stop) = self {
             stop.store(true, Ordering::Relaxed);
         }
     }
@@ -1233,15 +1370,14 @@ fn fake_mic() -> Option<PathBuf> {
     std::env::var_os("BATON_FAKE_MIC").map(PathBuf::from)
 }
 
-fn play_fake(
-    path: &Path,
-    dictation: u64,
-    work: Sender<Work>,
-    samples: Arc<AtomicUsize>,
-    first_audio: Arc<OnceLock<Instant>>,
-    stop: Arc<AtomicBool>,
-    tx: Sender<Msg>,
-) -> Result<(), String> {
+/// BATON_FAKE_PROBE=<wav>: with a fake mic, a second fake one listening beside it (micprobe.rs), so moving to a mic that
+/// hears him is measured with nobody speaking.
+fn fake_probe() -> Option<PathBuf> {
+    std::env::var_os("BATON_FAKE_PROBE").map(PathBuf::from)
+}
+
+/// `ended`: told when the file runs out, which stands in for releasing the key (the recording's own mic only).
+fn play_fake(path: &Path, mut sink: LiveSink, stop: Arc<AtomicBool>, ended: Option<Sender<Msg>>) -> Result<(), String> {
     let pcm = read_wav(path)?;
     thread::spawn(move || {
         let started = Instant::now();
@@ -1251,11 +1387,11 @@ fn play_fake(
             if stop.load(Ordering::Relaxed) {
                 return;
             }
-            let _ = first_audio.set(Instant::now());
-            samples.fetch_add(chunk.len(), Ordering::Relaxed);
-            let _ = work.send(Work::Audio(dictation, chunk.to_vec()));
+            sink.deliver(chunk.to_vec());
         }
-        let _ = tx.send(Msg::FakeEnded);
+        if let Some(tx) = ended {
+            let _ = tx.send(Msg::FakeEnded);
+        }
     });
     Ok(())
 }
@@ -1621,6 +1757,94 @@ fn over_limit(held: Duration) -> bool {
     held >= MAX_RECORDING
 }
 
+fn begin_work(config: &Config, id: u64, model: PathBuf) -> Work {
+    Work::Begin {
+        id,
+        model,
+        language: config.language.clone(),
+        external: config.external.clone(),
+        keep: config.keep_audio.clone(),
+        live: config.live_words,
+        remote: config.recognizers.clone(),
+    }
+}
+
+/// The mics a press tries, by name, in order: the one that heard him when his choice last stayed silent, then his
+/// choice, then the rest of his order. Empty: the system's mic, with nothing beside it.
+fn mic_order(device: Option<&str>, fallbacks: &[String], lead: Option<&str>) -> Vec<String> {
+    let Some(device) = device else { return Vec::new() };
+    let mut order: Vec<String> = Vec::new();
+    for name in lead.into_iter().chain([device]).chain(fallbacks.iter().map(String::as_str)) {
+        if !order.iter().any(|n| n == name) {
+            order.push(name.to_string());
+        }
+    }
+    order
+}
+
+/// Opens each of `others` (rank in his order, name) to record beside dictation `id`; one that will not open is skipped.
+fn open_probes(id: u64, others: Vec<(usize, String)>, sinks: Vec<LiveSink>, tx: Sender<Msg>) {
+    let Ok(devices) = list_input_devices() else { return };
+    for ((rank, name), sink) in others.into_iter().zip(sinks) {
+        let Some(device) = devices.iter().find(|d| d.name == name) else { continue };
+        let mut config = RecorderConfig::speech();
+        config.device = Some(device.id.clone());
+        let tap = sink.tap.clone();
+        let Ok(recorder) = Recorder::open(config) else { continue };
+        if recorder.start(sink).is_ok() {
+            let _ = tx.send(Msg::Probe(id, Probe { rank, name, source: Source::Mic(recorder), tap }));
+        }
+    }
+}
+
+/// Dictation `r`'s mics weighed (`micprobe::judge`): it keeps its mic and closes the others, moves to the one that hears
+/// him, or waits for him to speak.
+fn judge_mics(r: &mut Recording, config: &Config, job_tx: &Sender<Work>, lead: &std::cell::RefCell<Option<String>>) {
+    if r.decided || r.probes.is_empty() {
+        return;
+    }
+    let first = r.tap.lock().unwrap_or_else(|e| e.into_inner());
+    let others: Vec<_> = r.probes.iter().map(|p| p.tap.lock().unwrap_or_else(|e| e.into_inner())).collect();
+    let verdict = micprobe::judge(&first.heard, &others.iter().map(|t| t.heard.as_slice()).collect::<Vec<_>>());
+    let full = first.heard.len() >= micprobe::PROBE_SAMPLES;
+    drop(others);
+    drop(first);
+    match verdict {
+        micprobe::Verdict::Wait if !full => {}
+        micprobe::Verdict::Wait => r.decided = true,
+        micprobe::Verdict::Keep { preferred_heard } => {
+            // On the mic it moved to: his own choice hearing him again means the next press is back on it.
+            if preferred_heard && r.mic != config.device && r.probes.first().map(|p| &p.name) == config.device.as_ref() {
+                *lead.borrow_mut() = None;
+            }
+            r.decided = true;
+        }
+        micprobe::Verdict::Switch(i) => {
+            let Some(model) = config.model.clone() else { return };
+            let probe = r.probes.remove(i);
+            r.tap.lock().unwrap_or_else(|e| e.into_inner()).forward = false;
+            {
+                let mut tap = probe.tap.lock().unwrap_or_else(|e| e.into_inner());
+                // What it heard so far becomes the dictation's whole recording; its next audio follows in order.
+                let _ = job_tx.send(Work::Abort);
+                let _ = job_tx.send(begin_work(config, r.id, model));
+                let _ = job_tx.send(Work::Audio(r.id, tap.heard.clone()));
+                r.samples.store(tap.heard.len(), Ordering::Relaxed);
+                tap.forward = true;
+            }
+            emit(json!({"ev": "mic_switched", "dictation": r.id, "from": r.mic, "to": probe.name, "why": "silent"}));
+            *lead.borrow_mut() = Some(probe.name.clone());
+            r.mic = Some(probe.name);
+            r.tap = probe.tap;
+            r.source = probe.source;
+            r.decided = true;
+        }
+    }
+    if r.decided {
+        r.probes.clear();
+    }
+}
+
 fn serve() {
     let (tx, rx) = channel::<Msg>();
     let (job_tx, job_rx) = channel::<Work>();
@@ -1651,6 +1875,9 @@ fn serve() {
     // The desktop's voice dictation is running (it says so with `voice`): a key press is its ✓.
     let mut voice_on = false;
     let meter_on = Arc::new(AtomicBool::new(false));
+    // The mic that heard him when his first choice stayed silent: first at the next press, until his choice hears him.
+    let lead: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+    let mut judged = Instant::now();
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
     // `via`: the hold key, the toggle key, or `start` (a held mouse button or the desktop), for the timing line.
@@ -1665,46 +1892,75 @@ fn serve() {
         };
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let _ = job_tx.send(Work::Begin {
-            id,
-            model,
-            language: config.language.clone(),
-            external: config.external.clone(),
-            keep: config.keep_audio.clone(),
-            live: config.live_words,
-            remote: config.recognizers.clone(),
-        });
+        let _ = job_tx.send(begin_work(config, id, model));
+        let mut mic = config.device.clone();
+        let tap = Tap::new(true);
         let samples = Arc::new(AtomicUsize::new(0));
         let first_audio = Arc::new(OnceLock::new());
+        let sink = |tap: Arc<Mutex<Tap>>| LiveSink {
+            dictation: id,
+            work: job_tx.clone(),
+            samples: samples.clone(),
+            first_audio: first_audio.clone(),
+            out: tx.clone(),
+            meter_on: meter_on.clone(),
+            meter: Meter::default(),
+            tap,
+        };
         let opened = match fake_mic() {
             Some(path) => {
                 let stop = Arc::new(AtomicBool::new(false));
-                play_fake(&path, id, job_tx.clone(), samples.clone(), first_audio.clone(), stop.clone(), tx.clone())
-                    .map(|()| Source::Fake(stop))
+                let opened = play_fake(&path, sink(tap.clone()), stop.clone(), Some(tx.clone())).map(|()| Source::Fake(stop));
+                if let (Ok(_), Some(probe)) = (&opened, fake_probe()) {
+                    let (stop, tap) = (Arc::new(AtomicBool::new(false)), Tap::new(false));
+                    if play_fake(&probe, sink(tap.clone()), stop.clone(), None).is_ok() {
+                        let name = "fake probe".to_string();
+                        let _ = tx.send(Msg::Probe(id, Probe { rank: 1, name, source: Source::Fake(stop), tap }));
+                    }
+                }
+                opened
             }
             None => {
-                let open = |fresh: bool| {
-                    let sink = LiveSink {
-                        dictation: id,
-                        work: job_tx.clone(),
-                        samples: samples.clone(),
-                        first_audio: first_audio.clone(),
-                        out: tx.clone(),
-                        meter_on: meter_on.clone(),
-                        meter: Meter::default(),
-                    };
+                let open = |name: Option<&str>, fresh: bool| {
                     let tx = tx.clone();
-                    recorder_config(config.device.as_deref(), config.channel, fresh).and_then(|cfg| {
+                    // The channel is the chosen device's (one input of his interface), never another mic's.
+                    let channel = if name == config.device.as_deref() { config.channel } else { None };
+                    recorder_config(name, channel, fresh).and_then(|cfg| {
                         let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
                             let _ = tx.send(Msg::MicFailed(e.to_string()));
                         })
                         .map_err(|e| e.to_string())?;
-                        recorder.start(sink).map_err(|e| e.to_string())?;
+                        recorder.start(sink(tap.clone())).map_err(|e| e.to_string())?;
                         Ok(Source::Mic(recorder))
                     })
                 };
-                // A kept id can be stale after a replug: one fresh look before saying the microphone failed.
-                open(false).or_else(|_| open(true))
+                let order = mic_order(config.device.as_deref(), &config.fallbacks, lead.borrow().as_deref());
+                // A kept id can be stale after a replug: one fresh look before trying the next of his mics.
+                let mut opened = open(order.first().map(String::as_str), false)
+                    .or_else(|_| open(order.first().map(String::as_str), true));
+                mic = order.first().cloned().or(mic);
+                for name in order.iter().skip(1) {
+                    if opened.is_ok() {
+                        break;
+                    }
+                    if let Ok(source) = open(Some(name), true) {
+                        emit(json!({"ev": "mic_switched", "dictation": id, "from": order[0], "to": name, "why": "missing"}));
+                        *lead.borrow_mut() = Some(name.clone());
+                        mic = Some(name.clone());
+                        opened = Ok(source);
+                    }
+                }
+                if opened.is_ok() {
+                    let others: Vec<(usize, String)> =
+                        order.iter().cloned().enumerate().filter(|(_, n)| Some(n) != mic.as_ref()).collect();
+                    if !others.is_empty() {
+                        let sinks: Vec<LiveSink> = others.iter().map(|_| sink(Tap::new(false))).collect();
+                        let tx = tx.clone();
+                        // Beside the dictation's own mic, never before it: opening each takes 100 to 300 ms.
+                        thread::spawn(move || open_probes(id, others, sinks, tx));
+                    }
+                }
+                opened
             }
         };
         match opened {
@@ -1712,8 +1968,21 @@ fn serve() {
                 let target = foreground_window();
                 let (app, title) = window_app(target);
                 let mic_ms = pressed.elapsed().as_millis() as u64;
-                *recording =
-                    Some(Recording { id, source, samples, started: Instant::now(), target, pressed, mic_ms, first_audio, via });
+                *recording = Some(Recording {
+                    id,
+                    source,
+                    samples,
+                    started: Instant::now(),
+                    target,
+                    pressed,
+                    mic_ms,
+                    first_audio,
+                    via,
+                    mic,
+                    tap,
+                    probes: Vec::new(),
+                    decided: false,
+                });
                 emit(json!({"ev": "recording", "app": app, "title": title, "micMs": mic_ms, "dictation": id, "via": via}));
             }
             Err(message) => {
@@ -1759,7 +2028,16 @@ fn serve() {
     };
 
     loop {
-        let message = match rx.recv_timeout(Duration::from_secs(1)) {
+        // Every 50 ms while a dictation's mics are weighed, whatever else arrives (the waveform's blocks come 30 a second).
+        let weighing = recording.as_ref().is_some_and(|r| !r.decided && !r.probes.is_empty());
+        if weighing && judged.elapsed() >= Duration::from_millis(50) {
+            judged = Instant::now();
+            if let Some(r) = recording.as_mut() {
+                judge_mics(r, &config, &job_tx, &lead);
+            }
+        }
+        let wait = if weighing { Duration::from_millis(50) } else { Duration::from_secs(1) };
+        let message = match rx.recv_timeout(wait) {
             Ok(message) => message,
             Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {
@@ -1778,6 +2056,10 @@ fn serve() {
                         match serde_json::from_value::<Config>(value.clone()) {
                             Ok(next) => {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
+                                // He chose another mic, or his order changed: his choice is first again.
+                                if next.device != config.device || next.fallbacks != config.fallbacks {
+                                    *lead.borrow_mut() = None;
+                                }
                                 config = next;
                                 remote::keep_warm(&config.recognizers);
                                 meter_on.store(config.meter, Ordering::Relaxed);
@@ -1793,6 +2075,9 @@ fn serve() {
                                 {
                                     let _ = job_tx.send(Work::Warm(model.clone()));
                                 }
+                                // His graphics card, read and warmed now for local recognition so no press waits for it.
+                                let on_card = config.model.clone().filter(|_| config.external.is_none());
+                                let _ = job_tx.send(Work::GpuWarm(on_card, config.gpu));
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
@@ -1816,6 +2101,10 @@ fn serve() {
                         }
                     }
                     "devices" => emit(json!({"ev": "devices", "devices": devices_json()})),
+                    // The computer woke from sleep: the graphics card is read and warmed again.
+                    "resume" => {
+                        let _ = job_tx.send(Work::GpuReset);
+                    }
                     "load" => {
                         let id = value["id"].as_u64();
                         match &config.model {
@@ -2078,6 +2367,14 @@ fn serve() {
                 }
             }
             Msg::Meter(block) => emit(json!({"ev": "pcm", "b64": meter_b64(&block)})),
+            Msg::Probe(id, probe) => {
+                // Kept in his order, so the judge moves to the first that hears him; a late one for an ended or decided
+                // dictation closes as it drops.
+                if let Some(r) = recording.as_mut().filter(|r| r.id == id && !r.decided) {
+                    let at = r.probes.iter().position(|p| p.rank > probe.rank).unwrap_or(r.probes.len());
+                    r.probes.insert(at, probe);
+                }
+            }
             Msg::PasteChecked { id, text, why, started } => {
                 // Past the deadline the desktop has kept the words already; pasting them now would type them twice.
                 let why = if why == "ok" && started.elapsed() >= PASTE_DEADLINE { "late" } else { why };
@@ -2187,7 +2484,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
     let model = flag(args, "--model").ok_or("--model is required")?;
     let language = flag(args, "--language");
     let (mut session, load_ms) = load(Path::new(&model))?;
-    let loaded = Model::load(Path::new(&model)).map_err(|e| e.to_string())?;
+    let loaded = gpu::cpu_model(Path::new(&model)).map_err(|e| e.to_string())?;
     let caps = loaded.capabilities().map_err(|e| e.to_string())?;
     emit(json!({"ev": "loaded", "loadMs": load_ms, "streaming": caps.supports_streaming,
         "vocabulary": loaded.supports(Feature::Vocabulary), "arch": loaded.arch(), "variant": loaded.variant()}));
@@ -2252,11 +2549,12 @@ fn main() {
         };
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
-    if let Err(e) = init_backends_with(None::<&Path>, BackendMask::CPU) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let gpu_mode: gpu::Mode = flag(&args, "--gpu").and_then(|m| m.parse().ok()).unwrap_or(gpu::Mode::Off);
+    if let Err(e) = init_backends_with(None::<&Path>, gpu::mask(gpu_mode)) {
         emit(json!({"ev": "error", "message": format!("backend: {e}")}));
         std::process::exit(2);
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         None | Some("serve") => {
             serve();
@@ -2507,31 +2805,14 @@ mod tests {
     }
 
     #[test]
-    fn the_modifier_chord_holds_only_alone_and_lets_a_fourth_key_through() {
-        let want: Hotkey = "Ctrl+Shift+Win".parse().unwrap();
-        let (ctrl, shift, win) = (Modifiers::CTRL_LEFT, Modifiers::SHIFT_LEFT, Modifiers::CMD_LEFT);
-        let mut chord = ModChord::new(want.modifiers);
-        // In any order; only the third modifier starts it, and the first one up ends it.
-        assert_eq!(chord.step(win, None, true), None);
-        assert_eq!(chord.step(win | ctrl, None, true), None);
-        assert_eq!(chord.step(win | ctrl | shift, None, true), Some(ChordOut::Down));
-        assert_eq!(chord.step(win | ctrl | shift, None, true), None, "a modifier's key repeat");
-        assert_eq!(chord.step(win | shift, None, false), Some(ChordOut::Up));
-        assert_eq!(chord.step(Modifiers::empty(), None, false), None);
-        // Win+Ctrl+Shift+B: B joins, the dictation is dropped, and letting go starts nothing.
-        let b = Some(Key::B);
-        chord.step(ctrl | shift | win, None, true);
-        assert_eq!(chord.step(ctrl | shift | win, b, true), Some(ChordOut::Cancel));
-        assert_eq!(chord.step(ctrl | shift | win, b, false), None);
-        assert_eq!(chord.step(ctrl | shift, None, false), None);
-        // A key already down when the chord forms: it never starts.
-        chord.step(Modifiers::empty(), None, false);
-        chord.step(Modifiers::empty(), Some(Key::A), true);
-        assert_eq!(chord.step(ctrl | shift | win, None, true), None);
-        // Wispr's Ctrl+Win, or Alt as well, is not ours.
-        let mut other = ModChord::new(want.modifiers);
-        assert_eq!(other.step(ctrl | win, None, true), None);
-        assert_eq!(other.step(ctrl | shift | win | Modifiers::OPT_LEFT, None, true), None);
+    fn a_press_tries_the_mic_that_heard_him_last_then_his_choice_then_his_order() {
+        let order = |d: Option<&str>, f: &[&str], l: Option<&str>| {
+            mic_order(d, &f.iter().map(|s| s.to_string()).collect::<Vec<_>>(), l)
+        };
+        assert_eq!(order(Some("DJI"), &["Scarlett", "DJI", "Webcam"], None), ["DJI", "Scarlett", "Webcam"]);
+        assert_eq!(order(Some("DJI"), &["Scarlett", "Webcam"], Some("Scarlett")), ["Scarlett", "DJI", "Webcam"]);
+        // The system's mic: nothing to choose between.
+        assert!(order(None, &["Scarlett"], Some("Scarlett")).is_empty());
     }
 
     /// The timing table in docs/baton/fixtures/double-tap.json.

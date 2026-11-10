@@ -47,8 +47,11 @@ export interface DictationConfig {
   readonly liveWords?: boolean;
   /** Wake words are off: the recording sends its audio (`pcm`) for the pill's waveform. */
   readonly meter?: boolean;
+  /** His other plugged-in mics in his order: tried when `device` will not open, and heard beside it at each press. */
+  readonly fallbacks?: ReadonlyArray<string>;
   /** His recognisers on his own servers, in his order; empty: the laptop decodes (native remote.rs). */
   readonly recognizers?: ReadonlyArray<RecognizerServer>;
+  readonly gpu?: GpuRecognition;
 }
 
 /**
@@ -260,6 +263,14 @@ export type DictationEvent =
   | { readonly ev: "held_key"; readonly id: number }
   /** The hold key went down and a recording starts: the pill shows now, before the microphone opens. */
   | { readonly ev: "pressed" }
+  /** The dictation moved to another of his mics: `device` was missing, or heard nothing while this one heard him. */
+  | {
+      readonly ev: "mic_switched";
+      readonly dictation: number;
+      readonly from: string | null;
+      readonly to: string;
+      readonly why: "missing" | "silent";
+    }
   /** Every raw edge of the hold key, ms on the helper's clock, for the turn log. */
   | { readonly ev: "key_edge"; readonly down: boolean; readonly at: number }
   | { readonly ev: "error"; readonly message: string; readonly dictation?: number }
@@ -323,7 +334,12 @@ export interface SidecarTiming {
   readonly reused?: boolean;
   /** Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote). */
   readonly recognizer?: "local" | "remote" | "fallback";
+  /** What recognised them on this computer (native/baton-dictation gpu.rs). */
+  readonly backend?: "cpu" | "gpu" | "gpu-fallback" | "cloud" | "server";
 }
+
+/** His setting "Use graphics card for recognition"; the sidecar takes it at start (`--gpu`). */
+export type GpuRecognition = "auto" | "on" | "off";
 
 /** `nofield`: the keyboard was on icons, a list or a button, where a paste lands nowhere. */
 export type PasteVerdict = "ok" | "gone" | "changed" | "secret" | "nofield" | "refused";
@@ -370,6 +386,8 @@ export interface DictationSidecar {
   readonly start: () => void;
   /** Ends the running recording, if any, and writes it out. */
   readonly finish: () => void;
+  /** The computer woke from sleep: the graphics card's session is read and warmed again. */
+  readonly resume: () => void;
   /** The desktop's voice dictation is on: a dictation key press is its ✓, not a second recording. */
   readonly voice: (on: boolean) => void;
   /** While dictation `id`'s ghost plays, typing keys for `window` wait for its paste (Windows). */
@@ -565,8 +583,14 @@ export const startDictationSidecar = (input: {
     }
   };
 
+  // The graphics-card setting is fixed for a sidecar's life (its backends register at start): a change restarts it.
+  let spawnedGpu: GpuRecognition = "off";
+  let restarting = false;
   const spawn = () => {
-    const proc = NodeChildProcess.spawn(input.binary, ["serve"], { windowsHide: true });
+    spawnedGpu = lastConfig?.gpu ?? "off";
+    const proc = NodeChildProcess.spawn(input.binary, ["serve", "--gpu", spawnedGpu], {
+      windowsHide: true,
+    });
     child = proc;
     const startedAt = Date.now();
     let stderr = "";
@@ -678,6 +702,12 @@ export const startDictationSidecar = (input: {
       deviceWaiters.forEach((resolve) => resolve([]));
       deviceWaiters = [];
       if (disposed) return;
+      if (restarting) {
+        restarting = false;
+        spawn();
+        if (lastConfig !== null) send({ cmd: "configure", ...lastConfig });
+        return;
+      }
       failures = Date.now() - startedAt >= HEALTHY_RUN_MS ? 1 : failures + 1;
       const delay = restartDelayMs(failures);
       const reason = lastLine(stderr) ?? "it exited";
@@ -697,8 +727,14 @@ export const startDictationSidecar = (input: {
   return {
     configure: (config) => {
       lastConfig = config;
+      if ((config.gpu ?? "off") !== spawnedGpu && child !== null && !restarting) {
+        restarting = true;
+        send({ cmd: "quit" });
+        return;
+      }
       send({ cmd: "configure", ...config });
     },
+    resume: () => send({ cmd: "resume" }),
     toggle: () => send({ cmd: "toggle" }),
     start: () => send({ cmd: "start" }),
     finish: () => send({ cmd: "finish" }),

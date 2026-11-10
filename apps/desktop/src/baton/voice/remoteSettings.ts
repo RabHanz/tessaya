@@ -23,6 +23,9 @@ export const remoteSettingsOf = (settings: DesktopVoiceSettings): DesktopVoiceSe
   learnWords: settings.learnWords,
   duckWhileDictating: settings.duckWhileDictating,
   recognizeOnServers: settings.recognizeOnServers,
+  gpuRecognition: settings.gpuRecognition,
+  openTessayaOnStart: settings.openTessayaOnStart,
+  openSessionsOnStart: settings.openSessionsOnStart,
 });
 
 /** Each field's Settings control, so a remote change runs exactly what his click would. */
@@ -37,6 +40,9 @@ const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
   learnWords: "v.learnWords",
   duckWhileDictating: "v.duck",
   recognizeOnServers: "v.recognizeOnServers",
+  gpuRecognition: "v.gpu",
+  openTessayaOnStart: "v.startHome",
+  openSessionsOnStart: "v.startSessions",
 };
 
 export const controlsFor = (

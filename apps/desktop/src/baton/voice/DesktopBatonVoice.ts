@@ -325,6 +325,7 @@ import {
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
+import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
 import * as Electron from "electron";
 
@@ -335,7 +336,10 @@ import {
 } from "../channels.ts";
 import {
   choiceDeviceId,
+  backupMics,
   choiceSummary,
+  sameMic,
+  setMicAt,
   micChannel,
   realDevices,
   reconcileDeviceChange,
@@ -369,6 +373,7 @@ import {
   stalePartial,
   type DictationEvent,
   type DictationSidecar,
+  type GpuRecognition,
   type PasteVerdict,
   type FocusedApp,
   type RecognizerServer,
@@ -428,6 +433,7 @@ import {
   type NeverList,
   parseAddToDictionary,
   removeHeard,
+  screenNames,
   unteach,
   upsertEntry,
   type SeenWords,
@@ -491,6 +497,7 @@ import {
   fitInsertion,
   fitWithoutContext,
   closeLastSentence,
+  type CaretContext,
 } from "@t3tools/baton-shared/dictationFit";
 import { createLoginItemState, setLoginItem } from "./loginItem.ts";
 import {
@@ -546,6 +553,9 @@ interface VoiceSettings {
   /** Always-listening is opt-in: a microphone that opens itself is not a default. */
   readonly enabled: boolean;
   readonly openAtLogin: boolean;
+  /** Which windows open when the app starts (launchWindows.ts); off, it waits for the tray, hotkey or dock. */
+  readonly openTessayaOnStart: boolean;
+  readonly openSessionsOnStart: boolean;
   readonly pinnedLabel: string | null;
   /** Where the wake and VAD models are; null = the ones that shipped with the app. */
   readonly modelsDir: string | null;
@@ -667,6 +677,8 @@ interface VoiceSettings {
   readonly recognizers: ReadonlyArray<string>;
   /** "Recognise on my servers": off by default; on, a dictation goes to the first healthy one, this machine last. */
   readonly recognizeOnServers: boolean;
+  /** Recognise on the graphics card (Windows, Vulkan): Auto when a capable card is present, On for any, Off never. */
+  readonly gpuRecognition: GpuRecognition;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
   /** He picked it himself; a value this branch saved for him does not count (D114). */
@@ -689,25 +701,30 @@ interface VoiceSettings {
 }
 
 /**
- * Hold to dictate. No Alt, which arms Windows' menus and right-click menus; Win with Ctrl and Shift held is masked by
- * the hook, so Start never opens. Clear of Wispr Flow's defaults: Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win.
+ * Hold to dictate. The sidecar's hook masks the release, so neither Start nor the app's menu bar opens; any other key
+ * pressed with it (Win+Alt+R) cancels it and goes on to Windows. Clear of Wispr Flow's Ctrl+Win and Ctrl+Alt+Win.
  */
-export const HOLD_KEY = "Ctrl+Shift+Win";
+export const HOLD_KEY = "Alt+Win";
 /** Bumped when the default hold key moves: a file still on an older default is moved once, a key he chose is kept. */
-const HOLD_KEY_DEFAULTS = 2;
-const OLD_HOLD_KEYS: ReadonlyArray<string> = ["Ctrl+Alt+Space"];
+const HOLD_KEY_DEFAULTS = 3;
+/** Each old default, by the `holdKeyDefaults` it stopped being the default at. */
+const OLD_HOLD_KEYS: ReadonlyArray<readonly [number, string]> = [
+  [2, "Ctrl+Alt+Space"],
+  [3, "Ctrl+Shift+Win"],
+];
 
-/** His hold key after this file's one move: an old default becomes the new one, anything else is his and stays. */
+/** His hold key after this file's moves: a default a later build replaced becomes today's, anything else is his. */
 export const holdKeyFrom = (saved: Record<string, unknown>): string => {
   const held = typeof saved["holdKey"] === "string" ? saved["holdKey"] : HOLD_KEY;
-  return saved["holdKeyDefaults"] !== HOLD_KEY_DEFAULTS && OLD_HOLD_KEYS.includes(held)
-    ? HOLD_KEY
-    : held;
+  const seen = typeof saved["holdKeyDefaults"] === "number" ? saved["holdKeyDefaults"] : 0;
+  return OLD_HOLD_KEYS.some(([until, key]) => seen < until && key === held) ? HOLD_KEY : held;
 };
 
 const DEFAULT_SETTINGS: VoiceSettings = {
   enabled: false,
   openAtLogin: false,
+  openTessayaOnStart: false,
+  openSessionsOnStart: true,
   pinnedLabel: null,
   modelsDir: null,
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
@@ -770,6 +787,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cloudModel: null,
   recognizers: [],
   recognizeOnServers: false,
+  gpuRecognition: "auto",
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
@@ -849,6 +867,8 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       showWords: saved["showWords"] !== false,
+      openTessayaOnStart: saved["openTessayaOnStart"] === true,
+      openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
@@ -873,6 +893,10 @@ export const readSettings = (path: string): VoiceSettings => {
           : null,
       recognizers: recognizersFrom(saved["recognizers"]),
       recognizeOnServers: saved["recognizeOnServers"] === true,
+      gpuRecognition:
+        saved["gpuRecognition"] === "on" || saved["gpuRecognition"] === "off"
+          ? saved["gpuRecognition"]
+          : "auto",
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -1020,7 +1044,6 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly setPhoneMirror?: (mirror: PhoneMirror | null) => void;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
-  readonly needsBrainChoice: () => boolean;
   readonly setAskHotkey: (accelerator: string | null) => void;
   readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
@@ -1257,6 +1280,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let lastReply: string | null = null;
   let spokenTurnId: string | null = null;
   let focusedApp: FocusedApp = { exe: "", title: "" };
+  /** Names on screen as this recording started, read while he speaks, for the clean-up to spell names by. */
+  let screenNow: ReadonlyArray<string> = [];
   let dictionary: ReadonlyArray<VocabularyEntry> = [];
   let seenWords: SeenWords = {};
   const seenPath = NodePath.join(input.stateDir, "voice", "vocabulary-seen.json");
@@ -1511,6 +1536,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       raw: raw,
       mode: chooseMode(app, settings.appModes),
       level,
+      context: { screen: screenNow },
     });
     // Every fallback keeps its reason (a refused name, a timeout, the API's error), so a slow or failed clean-up can be
     // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
@@ -1537,18 +1563,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const windowKey = (app: { readonly exe: string; readonly title: string }) =>
     `${app.exe}\n${app.title}`;
   const CARET_LIMIT_MS = 1_500;
+  /**
+   * The words around the caret, read at key-down while he speaks: a first UI Automation read of a field can take 0.9 s,
+   * which release would otherwise wait for (0.1.98). Used only for that window, and only if nothing was pasted since.
+   */
+  let caretEarly: {
+    readonly key: string;
+    readonly pastes: number;
+    readonly read: Promise<CaretContext | null>;
+  } | null = null;
+  let pastes = 0;
+  const readCaretEarly = (app: { readonly exe: string; readonly title: string }) => {
+    caretEarly =
+      sidecar === null
+        ? null
+        : { key: windowKey(app), pastes, read: sidecar.caret().catch(() => null) };
+  };
   /** The text made to fit the words already there: spacing, capitals, punctuation. */
   const fitToCaret = async (
     text: string,
     app: { readonly exe: string; readonly title: string },
   ): Promise<string> => {
     const key = windowKey(app);
+    const early = caretEarly?.key === key && caretEarly.pastes === pastes ? caretEarly.read : null;
+    caretEarly = null;
     // The sidecar reads it in-process; PowerShell (300 ms or more to start) only without one.
     const around =
       (await (sidecar === null
         ? readCaretContext(input.platform)
         : Promise.race([
-            sidecar.caret().catch(() => null),
+            early ?? sidecar.caret().catch(() => null),
             // A field that hangs UI Automation never holds the paste: past the old PowerShell limit it did not say.
             new Promise<null>((resolve) => setTimeout(() => resolve(null), CARET_LIMIT_MS)),
           ]))) ??
@@ -1563,6 +1607,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const fitted =
       around !== null ? fitInsertion(around, closed) : plain ? closed : fitWithoutContext(closed);
     lastInsert = { text: fitted, at: Date.now(), key };
+    pastes += 1;
     return fitted;
   };
   // Everything he says and what it became, kept forever on this machine (the History tab).
@@ -3390,6 +3435,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       hold: baton ? keysOf("hold") : null,
       toggle: baton ? keysOf("toggle") : null,
       device,
+      fallbacks: backupMics(devices, preference(), device),
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
       language: recogniserHint(settings.languages),
@@ -3403,6 +3449,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       liveWords: settings.showWords,
       meter: loop === null,
       recognizers: settings.recognizeOnServers ? recognizersWithTokens() : [],
+      // Only the Windows build has the card's module; elsewhere a change would only restart the sidecar.
+      gpu: input.platform === "win32" ? settings.gpuRecognition : "off",
     });
     syncCleanupSession();
   };
@@ -3689,6 +3737,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
+    if (event.ev === "mic_switched") {
+      input.onNote?.("mic_switched", { from: event.from, to: event.to, why: event.why });
+      return showDictation(`Using ${event.to.replace(/^Microphone \((.*)\)$/, "$1")}`);
+    }
     if (event.ev === "key_edge")
       return input.onNote?.("key_edge", { down: event.down, at: event.at });
     // The pill on the press itself; the microphone opens 80 to 140 ms later (`recording`).
@@ -3706,6 +3758,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
+            context: { screen: screenNow },
             pause: event.pause !== false,
           }),
         );
@@ -3731,6 +3784,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       escArmedUntil = 0;
       keyHeldToTalk = heldToTalk(event.via, heldByButton);
       if (settings.dictationCleanup === "claude") rewriter.warm();
+      readCaretEarly(focusedApp);
+      // Read on his machine while he speaks; only the claude level sends it on, inside the clean-up's prompt.
+      screenNow = [];
+      const seq = recordingSeq;
+      void sidecar
+        ?.uiTree()
+        .then((tree) => {
+          if (seq === recordingSeq)
+            screenNow = screenNames([tree.window ?? "", ...(tree.controls ?? [])]);
+        })
+        .catch(() => undefined);
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       pressGate.want();
@@ -3880,7 +3944,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         configureDictation();
         await loop?.switchDevice(choiceDeviceId(next));
         render();
-      } else if (listChanged) render();
+      } else if (listChanged) {
+        // A backup mic plugged in or out: the helper's list of mics to listen on follows.
+        configureDictation();
+        render();
+      }
     })();
   };
   const listSidecarDevices = async (): Promise<ReadonlyArray<AudioInputDevice>> => {
@@ -3917,8 +3985,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
   });
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
+  let resumeHooked = false;
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
+    if (!resumeHooked) {
+      resumeHooked = true;
+      // After sleep the graphics card may have been reset: its session is read and warmed again before he dictates.
+      Electron.powerMonitor.on("resume", () => sidecar?.resume());
+    }
     resetCloudTmp();
     markPhase("dictation-sidecar-spawn:begin");
     sidecar = startDictationSidecar({
@@ -5949,6 +6023,29 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
         more: true,
       },
+      // His order after it: tried when it is unplugged, and moved to at a press when it hears nothing and one of these does.
+      ...Array.from({ length: Math.min(settings.micOrder.length + 1, 3) }, (_, i) => {
+        const name = settings.micOrder[i]?.name ?? "";
+        const shown = realDevices(devices).find((d) => sameMic(d.label, name));
+        return {
+          id: `v.micOrder:${i}`,
+          section: "Wake and listening",
+          label: i === 0 ? "If it hears nothing, use" : "Then",
+          kind: "choice" as const,
+          value: shown?.label ?? name,
+          options: [
+            { value: "", label: "Nothing" },
+            ...(name !== "" && shown === undefined
+              ? [{ value: name, label: `${name} (not plugged in)` }]
+              : []),
+            ...realDevices(devices).map((d) => ({
+              value: d.label,
+              label: d.label || "Unnamed microphone",
+            })),
+          ],
+          more: true,
+        };
+      }),
       ...settings.wakeWords.map((wake) => ({
         id: `v.wake:${wake.word}`,
         section: "Wake and listening",
@@ -6458,6 +6555,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "mute", label: "Mute" },
         ],
       },
+      ...(input.platform === "win32"
+        ? [
+            {
+              id: "v.gpu",
+              section: "Dictation",
+              label: "Use graphics card for recognition",
+              hint: "Auto uses a graphics card with room for the speech model, warmed up in the background, and falls back to the processor on any problem. On uses any card that can run it. Off keeps recognition on the processor.",
+              kind: "choice" as const,
+              value: settings.gpuRecognition,
+              options: [
+                { value: "auto", label: "Auto" },
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+              ],
+            },
+          ]
+        : []),
       {
         id: "v.silence",
         section: "Wake and listening",
@@ -6488,6 +6602,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: "Start Tessaya when I sign in",
         kind: "toggle",
         on: loginItem.on(),
+      },
+      {
+        id: "v.startHome",
+        section: "Start",
+        label: "Open the Tessaya window when the app starts",
+        kind: "toggle",
+        on: settings.openTessayaOnStart,
+      },
+      {
+        id: "v.startSessions",
+        section: "Start",
+        label: "Open the sessions window when the app starts",
+        hint: "With both off, Tessaya starts in the background: the tray, the hotkey and the voice still work.",
+        kind: "toggle",
+        on: settings.openSessionsOnStart,
       },
       {
         id: "v.diag",
@@ -7113,6 +7242,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if ((state === "direct_session") !== on) loop?.activate("toggle_direct_session");
     } else if (id === "v.mic") {
       pickMic(typeof value === "string" && value !== "" ? value : null);
+    } else if (id.startsWith("v.micOrder:")) {
+      const at = Number(id.slice("v.micOrder:".length));
+      save({
+        micOrder: setMicAt(
+          settings.micOrder,
+          at,
+          typeof value === "string" && value !== "" ? value : null,
+        ),
+      });
+      void restart();
     } else if (id.startsWith("v.wake:")) {
       const word = id.slice("v.wake:".length);
       save({
@@ -7259,7 +7398,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
     } else if (id === "v.pillStyle" && (value === "pill" || value === "field"))
       save({ pillStyle: value });
-    else if (id === "v.recognizeOnServers") {
+    else if (id === "v.gpu" && (value === "auto" || value === "on" || value === "off")) {
+      save({ gpuRecognition: value });
+      configureDictation();
+    } else if (id === "v.recognizeOnServers") {
       save({ recognizeOnServers: on });
       configureDictation();
     } else if (id === "v.recognizer:add" && typeof value === "string") {
@@ -7328,7 +7470,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.login") {
       save({ openAtLogin: on });
       loginItem.set(on);
-    } else if (id === "k.addskill:add" && typeof value === "string") {
+    } else if (id === "v.startHome") save({ openTessayaOnStart: on });
+    else if (id === "v.startSessions") save({ openSessionsOnStart: on });
+    else if (id === "k.addskill:add" && typeof value === "string") {
       void addSkillFrom(value);
     } else if (/^k\.conn\.(calendar|mail|chat):add$/.test(id) && typeof value === "string") {
       void addConnector(id.split(".")[2]!.split(":")[0] as ConnectorKind, value);
@@ -7642,16 +7786,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   }, MIC_POLL_MS).unref();
 
   render();
-  // First run after install, and until he has chosen what Baton works through: the window opens on its own.
+  // First run after install opens both windows; after that the Start switches decide (launchWindows.ts).
   const shownPath = NodePath.join(input.stateDir, "baton-home.shown");
   const firstRun = !NodeFS.existsSync(shownPath);
   if (firstRun) {
     NodeFS.writeFileSync(shownPath, new Date().toISOString());
     NodeFS.writeFileSync(setupMarker, "");
   }
-  if (firstRun || input.extras?.needsBrainChoice() === true) {
-    setTimeout(() => home.open(), 2_000).unref();
-  }
+  const launch = launchWindows({
+    openTessaya: settings.openTessayaOnStart,
+    openSessions: settings.openSessionsOnStart,
+    firstRun,
+  });
+  holdMainAtLaunch(!launch.sessions);
+  if (launch.tessaya) setTimeout(() => home.open(), 2_000).unref();
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
   const atLaunch = dictationAtLaunch({
     available: binary !== null,

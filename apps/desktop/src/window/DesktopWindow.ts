@@ -15,6 +15,7 @@ import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/con
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import { installDetachedWindows } from "../baton/detachedWindows.ts";
 import { setOverlaySafely, syncsWithT3Appearance } from "../baton/lastAppWindow.ts";
+import { takeMainHold } from "../baton/launchWindows.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
@@ -1029,6 +1030,7 @@ export const make = Effect.gen(function* () {
     }),
     activate: Effect.gen(function* () {
       if (yield* Ref.get(desktopState.quitting)) return;
+      takeMainHold();
       const existingWindow = yield* currentMainWindow;
       if (Option.isSome(existingWindow)) {
         yield* revealMain(existingWindow.value);
@@ -1054,7 +1056,8 @@ export const make = Effect.gen(function* () {
       backendHasStarted = true;
       yield* Ref.set(backendReadyRef, true);
       yield* logWindowInfo("backend ready", { source: "http", url: httpBaseUrl.href });
-      if (!mainClosedDuringStartup) yield* createMainIfBackendReady;
+      // Baton: Settings → Start can keep the sessions window shut on this start (launchWindows.ts).
+      if (!mainClosedDuringStartup && !takeMainHold()) yield* createMainIfBackendReady;
     }),
     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
       Effect.withSpan("desktop.window.handleBackendNotReady"),

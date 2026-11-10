@@ -13,6 +13,7 @@ import {
   rewriteSystemPrompt,
   type CleanedText,
   type CleanupLevel,
+  type DictationContext,
   type DictationMode,
   type DictionaryEntry,
 } from "@t3tools/baton-shared/dictationCleanup";
@@ -28,14 +29,19 @@ import {
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 
+/** He is about to list things ("a few things", "two problems", "firstly… secondly…", "here's what"). */
+const LIST_CUE =
+  /\b(?:a (?:few|couple of)|several|two|three|four|five|six|some|these|the following|multiple) (?:things|problems|issues|questions|points|reasons|steps|items|changes|bugs|tasks|ideas|types|options|features|parts)\b|\bhere(?:'s| is) what\b|\b(?:first(?:ly)?|number one)\b[\s\S]*\b(?:second(?:ly)?|number two)\b/i;
+
 /**
  * A dictation in the pieces cleaned on their own while he speaks: split after a full stop or "!". Never after "?",
- * since a question often runs on with "and also"; never in an email, whose greeting and sign-off need the whole.
+ * since a question often runs on with "and also"; never in an email, whose greeting and sign-off need the whole, or in
+ * a list, which spans its sentences.
  */
 export const dictationPieces = (raw: string, mode: DictationMode): ReadonlyArray<string> => {
   const text = raw.trim();
   if (text === "") return [];
-  return mode === "email" ? [text] : text.split(/(?<=[.!])\s+(?=\S)/);
+  return mode === "email" || LIST_CUE.test(text) ? [text] : text.split(/(?<=[.!])\s+(?=\S)/);
 };
 
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
@@ -50,6 +56,7 @@ interface CleanInput {
   readonly raw: string;
   readonly mode: DictationMode;
   readonly level: CleanupLevel;
+  readonly context?: DictationContext;
 }
 
 export interface Rewriter {
@@ -136,8 +143,12 @@ export const makeRewriter = (input: {
 
   /** The session's turn in flight, by its own answer: the next question waits for it, not for a timer. */
   let busy: Promise<unknown> = Promise.resolve();
-  const viaSession = (text: string, mode: DictationMode): Promise<string> => {
-    const answer = get().ask([{ type: "text", text: rewriteMessage(text, mode) }]);
+  const viaSession = (
+    text: string,
+    mode: DictationMode,
+    context?: DictationContext,
+  ): Promise<string> => {
+    const answer = get().ask([{ type: "text", text: rewriteMessage(text, mode, context) }]);
     busy = answer.catch(() => undefined);
     return answer.then((a) => a.trim());
   };
@@ -145,12 +156,16 @@ export const makeRewriter = (input: {
   let apiRestsUntil = 0;
   /** His key answered the last paid clean: release then asks it again rather than wait for a running guess. */
   let apiAnswers = false;
-  const viaApi = async (text: string, mode: DictationMode): Promise<string | null> => {
+  const viaApi = async (
+    text: string,
+    mode: DictationMode,
+    context?: DictationContext,
+  ): Promise<string | null> => {
     if (input.api === undefined || Date.now() < apiRestsUntil) return null;
     try {
       const answer = await input.api(
         rewriteSystemPrompt(input.dictionary()),
-        rewriteMessage(text, mode),
+        rewriteMessage(text, mode, context),
         64 + Math.ceil(text.length / 2),
       );
       apiAnswers = answer !== null;
@@ -165,13 +180,18 @@ export const makeRewriter = (input: {
     }
   };
   /** Only the final clean after release goes to the paid API; the guesses while he speaks use the subscription. */
-  const send = async (text: string, mode: DictationMode, final: boolean): Promise<string> => {
-    const paid = final ? await viaApi(text, mode) : null;
-    return paid === null ? viaSession(text, mode) : paid.trim();
+  const send = async (
+    text: string,
+    mode: DictationMode,
+    final: boolean,
+    context?: DictationContext,
+  ): Promise<string> => {
+    const paid = final ? await viaApi(text, mode, context) : null;
+    return paid === null ? viaSession(text, mode, context) : paid.trim();
   };
   /** The real clean's question, against a deadline counted from when `clean` was called. */
   const askBy =
-    (deadline: number) =>
+    (deadline: number, context?: DictationContext) =>
     async (text: string, mode: DictationMode): Promise<string> => {
       let sent = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -180,7 +200,7 @@ export const makeRewriter = (input: {
           busy.then(() => {
             if (Date.now() >= deadline) throw new Error("timed out");
             sent = true;
-            return send(text, mode, true);
+            return send(text, mode, true, context);
           }),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(new Error("timed out")), deadline - Date.now());
@@ -203,12 +223,14 @@ export const makeRewriter = (input: {
     };
 
   const run = (
-    { raw, mode, level }: CleanInput,
+    { raw, mode, level, context }: CleanInput,
     ask: (text: string, mode: DictationMode) => Promise<string>,
   ) =>
     cleanDictation({
+      ...(context === undefined ? {} : { context }),
       // His own names put back first; Raw and Off keep exactly what was heard.
-      raw: mode === "raw" || level === "off" ? raw : biasTranscript(raw, input.dictionary()),
+      raw:
+        mode === "raw" || level === "off" ? raw : biasTranscript(raw, input.dictionary(), context),
       mode,
       level,
       dictionary: input.dictionary(),
@@ -227,7 +249,9 @@ export const makeRewriter = (input: {
     guessing = job !== undefined;
     if (job === undefined) return;
     // A guess is not counted against the session's turns, and is never timed out here: the session's own limit holds.
-    const cleaned = run(job.input, (text, mode) => busy.then(() => send(text, mode, false)));
+    const cleaned = run(job.input, (text, mode) =>
+      busy.then(() => send(text, mode, false, job.input.context)),
+    );
     guesses.set(job.key, cleaned);
     void cleaned
       .then((answer) => void answered.set(job.key, answer))
@@ -280,7 +304,7 @@ export const makeRewriter = (input: {
       let guessedAll = true;
       const cleanLeft = async () => {
         if (left.length === 0) return;
-        parts.push(await run({ ...c, raw: left.join(" ") }, askBy(deadline)));
+        parts.push(await run({ ...c, raw: left.join(" ") }, askBy(deadline, c.context)));
         left = [];
         guessedAll = false;
       };
@@ -299,7 +323,7 @@ export const makeRewriter = (input: {
         parts.push(guessed);
       }
       await cleanLeft();
-      if (parts.length === 0) parts.push(await run(c, askBy(deadline)));
+      if (parts.length === 0) parts.push(await run(c, askBy(deadline, c.context)));
       const fellBack = parts.find((part) => part.stage === "fallback");
       const cleaned: CleanedText = {
         text: parts
