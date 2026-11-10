@@ -150,7 +150,8 @@ export const layer = Layer.effect(
       (effect) =>
         effect.pipe(
           Effect.timeoutOrElse({
-            duration: "3 seconds",
+            // Short enough that the subscription fallback still fits a short dictation's limit (hardLimitMs).
+            duration: "1200 millis",
             orElse: () => Effect.fail(new DictationCleanupError({ reason: "timeout" })),
           }),
         ),

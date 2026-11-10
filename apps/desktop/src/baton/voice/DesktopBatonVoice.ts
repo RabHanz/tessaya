@@ -1055,7 +1055,10 @@ export interface DesktopBatonVoiceInput {
   readonly extras?: TrayExtras;
   /** The Sessions area's rows and actions (D138). */
   readonly sessions?: SessionsBridge;
-  /** Dictation's cleanup through his own Anthropic key, kept by this machine's server; null with no key saved. */
+  /**
+   * Dictation's cleanup through his own Anthropic key, kept by this machine's server: null with no key saved; it throws
+   * with the reason (invalid-key, rate-limit, timeout, unreachable) when the call fails.
+   */
   readonly cleanupApi?: (
     system: string,
     message: string,

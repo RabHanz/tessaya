@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { DictionaryEntry } from "@t3tools/baton-shared/dictationCleanup";
 
@@ -63,6 +63,47 @@ describe("makeRewriter", () => {
     saved = false;
     expect((await rewriter.clean(said)).text).toBe("from the session");
     expect(apiAsked).toHaveLength(2);
+    rewriter.dispose();
+  });
+
+  it("sends only the final clean to the paid API, and rests it a minute after a refused key", async () => {
+    let now = 1_000_000;
+    using _now = vi.spyOn(Date, "now").mockImplementation(() => now);
+    let refuse = false;
+    const apiAsked: string[] = [];
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: "haiku",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      start: (): VisionSession => ({
+        ask: async () => "from the session",
+        alive: () => true,
+        dispose: () => {},
+      }),
+      api: async (_system, message) => {
+        apiAsked.push(message);
+        if (refuse) throw new Error("invalid-key");
+        return "from the api";
+      },
+    });
+    const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
+    // A guess while he speaks goes to the subscription session only.
+    rewriter.speculate({ ...said, raw: "we should go home" });
+    await vi.waitFor(() => expect(apiAsked).toHaveLength(0));
+    expect((await rewriter.clean(said)).text).toBe("from the api");
+    expect(apiAsked).toHaveLength(1);
+    // A refused key: this dictation and the next minute's go through the session, with no paid try.
+    refuse = true;
+    expect((await rewriter.clean(said)).text).toBe("from the session");
+    expect((await rewriter.clean(said)).text).toBe("from the session");
+    expect(apiAsked).toHaveLength(2);
+    now += 61_000;
+    refuse = false;
+    expect((await rewriter.clean(said)).text).toBe("from the api");
     rewriter.dispose();
   });
 
