@@ -430,6 +430,7 @@ import {
   type NeverList,
   parseAddToDictionary,
   removeHeard,
+  screenNames,
   unteach,
   upsertEntry,
   type SeenWords,
@@ -1272,6 +1273,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let lastReply: string | null = null;
   let spokenTurnId: string | null = null;
   let focusedApp: FocusedApp = { exe: "", title: "" };
+  /** Names on screen as this recording started, read while he speaks, for the clean-up to spell names by. */
+  let screenNow: ReadonlyArray<string> = [];
   let dictionary: ReadonlyArray<VocabularyEntry> = [];
   let seenWords: SeenWords = {};
   const seenPath = NodePath.join(input.stateDir, "voice", "vocabulary-seen.json");
@@ -1526,6 +1529,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       raw: raw,
       mode: chooseMode(app, settings.appModes),
       level,
+      context: { screen: screenNow },
     });
     // Every fallback keeps its reason (a refused name, a timeout, the API's error), so a slow or failed clean-up can be
     // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
@@ -3723,6 +3727,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
+            context: { screen: screenNow },
             pause: event.pause !== false,
           }),
         );
@@ -3748,6 +3753,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       escArmedUntil = 0;
       keyHeldToTalk = heldToTalk(event.via, heldByButton);
       if (settings.dictationCleanup === "claude") rewriter.warm();
+      // Read on his machine while he speaks; only the claude level sends it on, inside the clean-up's prompt.
+      screenNow = [];
+      const seq = recordingSeq;
+      void sidecar
+        ?.uiTree()
+        .then((tree) => {
+          if (seq === recordingSeq)
+            screenNow = screenNames([tree.window ?? "", ...(tree.controls ?? [])]);
+        })
+        .catch(() => undefined);
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       pressGate.want();
