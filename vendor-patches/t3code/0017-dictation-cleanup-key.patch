@@ -1,0 +1,564 @@
+Dictation cleanup through his own Anthropic key: the secret settings field dictationCleanupCredentials, its
+status/save/test endpoints in the voice HTTP group, the client calls, and Settings -> APIs -> Anthropic.
+
+diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
+index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..2cd2a833575370ec8f9cbf2f59c3d83ea7b08dbb 100644
+--- a/apps/server/src/serverSettings.test.ts
++++ b/apps/server/src/serverSettings.test.ts
+@@ -1643,6 +1643,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+         const hub = UsageLimitSourceId.make("hub");
+         const withUsage = yield* serverSettings.updateSettings({
+           cloudSpeechCredentials: { openai: usageReference, xai: "literal-fixture" },
++          dictationCleanupCredentials: { anthropic: "sk-ant-fixture" },
+           usageLimitSources: {
+             [hub]: {
+               kind: "cliproxy",
+@@ -1693,6 +1694,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+           xai: SECRET_REDACTED,
+           openrouter: "",
+         });
++        assert.deepEqual(legacy.dictationCleanupCredentials, { anthropic: SECRET_REDACTED });
++        assert.notInclude(JSON.stringify(legacy), "sk-ant-fixture");
++        assert.isTrue(Option.isSome(yield* secrets.get("dictation-cleanup-anthropic")));
++        assert.notInclude(
++          yield* fileSystem.readFileString(serverConfig.settingsPath),
++          "sk-ant-fixture",
++        );
+         assert.equal(legacy.sourceControlHosts.bitbucket?.accessToken, SECRET_REDACTED);
+         assert.equal(legacy.usageLimitSources[hub]?.managementKey, SECRET_REDACTED);
+         assert.equal(legacy.easDeviceHosts[0]?.accessToken, SECRET_REDACTED);
+@@ -1703,6 +1711,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+         assert.equal(configOf(legacy, openCode)?.serverPassword, SECRET_REDACTED);
+         const echoed = yield* serverSettings.updateSettings({
+           cloudSpeechCredentials: legacy.cloudSpeechCredentials,
++          dictationCleanupCredentials: legacy.dictationCleanupCredentials,
+           sourceControlHosts: legacy.sourceControlHosts,
+           usageLimitSources: legacy.usageLimitSources,
+           easDeviceHosts: legacy.easDeviceHosts,
+@@ -1720,6 +1729,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+           xai: "literal-fixture",
+           openrouter: "",
+         });
++        assert.deepEqual(echoed.dictationCleanupCredentials, { anthropic: "sk-ant-fixture" });
+         assert.deepEqual(echoed.easDeviceHosts[0]?.accessToken, easReference);
+         assert.deepEqual(echoed.simlockDeviceHosts[0]?.agentToken, simlockReference);
+         assert.deepEqual(configOf(echoed, antigravity)?.apiKey, antigravityReference);
+@@ -1817,6 +1827,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+         "cloudSpeechCredentials.openai",
+         "cloudSpeechCredentials.xai",
+         "cloudSpeechCredentials.openrouter",
++        "dictationCleanupCredentials.anthropic",
+         "easDeviceHosts.[].accessToken",
+         "simlockDeviceHosts.[].agentToken",
+         "usageLimitSources.*.managementKey",
+diff --git a/apps/server/src/settingsSecrets.ts b/apps/server/src/settingsSecrets.ts
+index ae69a61f1f5dd97c40b0e07cc2f83410dea0ae57..303da55350cb53516443fbdb0b32048e2a058c1b 100644
+--- a/apps/server/src/settingsSecrets.ts
++++ b/apps/server/src/settingsSecrets.ts
+@@ -3,6 +3,7 @@ import {
+   ClaudeSettings,
+   CloudSpeechCredentials,
+   CodexSettings,
++  DictationCleanupCredentials,
+   EasDeviceHostConfig,
+   type ProviderInstanceConfig,
+   type ServerSettings,
+@@ -47,6 +48,7 @@ const providerSecretFields = new Map([
+ ]);
+ const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
+ const voiceSecretFields = secretSettingsFields(CloudSpeechCredentials);
++const dictationCleanupSecretFields = secretSettingsFields(DictationCleanupCredentials);
+ const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
+ const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
+ const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
+@@ -239,6 +241,11 @@ function mapSecretFieldGroups(
+       voiceSecretFields,
+       (provider) => `voice-cloud-${provider}`,
+     ) as ServerSettings["cloudSpeechCredentials"],
++    dictationCleanupCredentials: mapFields(
++      settings.dictationCleanupCredentials,
++      dictationCleanupSecretFields,
++      (provider) => `dictation-cleanup-${provider}`,
++    ) as ServerSettings["dictationCleanupCredentials"],
+     providerInstances,
+     sourceControlHosts,
+     usageLimitSources,
+diff --git a/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts b/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts
+index 58c84365dfcefbe3f39ea8513731fd9016d07adf..58fbb6ea9c7ca6e9b916740c44596c27e8bf5cac 100644
+--- a/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts
++++ b/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts
+@@ -177,6 +177,7 @@ it.effect("reads a collected reference again once it is invalidated", () =>
+       Effect.succeed({
+         sourceControlHosts: hosts,
+         cloudSpeechCredentials: { openai: source("voice#key"), xai: "", openrouter: "" },
++        dictationCleanupCredentials: { anthropic: "" },
+         usageLimitSources,
+         easDeviceHosts,
+         simlockDeviceHosts,
+diff --git a/apps/server/src/sourceControl/sourceControlHostSecrets.ts b/apps/server/src/sourceControl/sourceControlHostSecrets.ts
+index 94eec45d7c9ea8086d72192db14673272f1d2878..90ed5186346245afdc560d56fb25668efa482959 100644
+--- a/apps/server/src/sourceControl/sourceControlHostSecrets.ts
++++ b/apps/server/src/sourceControl/sourceControlHostSecrets.ts
+@@ -123,6 +123,7 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
+       | "easDeviceHosts"
+       | "simlockDeviceHosts"
+       | "cloudSpeechCredentials"
++      | "dictationCleanupCredentials"
+     >,
+     E
+   >,
+@@ -133,6 +134,7 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
+       ...collectUsageLimitSecretReferences(current.usageLimitSources),
+       ...collectDeviceHostSecretReferences(current),
+       ...Object.values(current.cloudSpeechCredentials).filter(isSecretReference),
++      ...Object.values(current.dictationCleanupCredentials).filter(isSecretReference),
+     ]),
+     Effect.orElseSucceed(() => undefined),
+   );
+diff --git a/apps/server/src/speech/http.test.ts b/apps/server/src/speech/http.test.ts
+index f67129be60423ae9ceab2f0143ad4aec0e2fb26a..e2b744681198d4e383a5850b9f808f733937750b 100644
+--- a/apps/server/src/speech/http.test.ts
++++ b/apps/server/src/speech/http.test.ts
+@@ -28,6 +28,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
+ import type * as NetAddress from "effect/net/NetAddress";
+ import * as SpeechService from "./SpeechService.ts";
+ import * as CloudSpeech from "./CloudSpeech.ts";
++import * as DictationCleanupApi from "./DictationCleanupApi.ts";
+ import * as ServerSettings from "../serverSettings.ts";
+ import * as TextGeneration from "../textGeneration/TextGeneration.ts";
+ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+@@ -49,6 +50,7 @@ const principal = (...scopes: AuthEnvironmentScope[]) =>
+ 
+ const dependencies = Layer.mergeAll(
+   Layer.mock(CloudSpeech.CloudSpeech)({}),
++  Layer.mock(DictationCleanupApi.DictationCleanupApi)({}),
+   Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+   Layer.mock(ServerSettings.ServerSettingsService)({
+     getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+@@ -160,12 +162,21 @@ effectIt.effect(
+           return Effect.fail(new CloudSpeechError({ provider, reason: "rejected-key" }));
+         },
+       });
++      let cleanupKey: unknown = null;
++      const cleanupApi = Layer.mock(DictationCleanupApi.DictationCleanupApi)({
++        configured: Effect.sync(() => cleanupKey !== null),
++        setKey: (key) =>
++          Effect.sync(() => {
++            cleanupKey = key;
++          }),
++      });
+       const { handler, dispose } = HttpRouter.toWebHandler(
+         HttpApiBuilder.layer(HttpApi.make("environment").add(EnvironmentVoiceHttpApi)).pipe(
+           Layer.provide(speechHttpApiLayer),
+           Layer.provide(principal(AuthOrchestrationOperateScope, AuthSettingsWriteScope)),
+           Layer.provide(Layer.mock(SpeechService.SpeechService)({})),
+           Layer.provide(cloud),
++          Layer.provide(cleanupApi),
+           Layer.provide(dependencies),
+           Layer.provide(HttpServer.layerServices),
+           Layer.provide(NodeServices.layer),
+@@ -196,6 +207,23 @@ effectIt.effect(
+           headers: { "content-type": "application/json" },
+           body: JSON.stringify({ key }),
+         });
++      const cleanup = (path: string, init?: RequestInit) =>
++        Effect.promise(() =>
++          handler(new Request(`http://localhost/api/voice/cleanup/${path}`, init), context),
++        );
++      expect(
++        (yield* cleanup("anthropic/key", {
++          method: "POST",
++          headers: { "content-type": "application/json" },
++          body: JSON.stringify({ key: "sk-ant-fixture" }),
++        })).status,
++      ).toBe(204);
++      expect(Redacted.isRedacted(cleanupKey)).toBe(true);
++      // Whether a key is saved, never the key.
++      const keysResponse = yield* cleanup("keys");
++      const cleanupKeys = yield* Effect.promise(() => keysResponse.text());
++      expect(JSON.parse(cleanupKeys)).toEqual({ anthropic: true });
++      expect(cleanupKeys).not.toContain("sk-ant");
+       expect((yield* setReference(reference)).status).toBe(204);
+       expect(save).toHaveBeenLastCalledWith("xai", reference);
+       expect((yield* setReference(reference.reference)).status).toBe(400);
+diff --git a/apps/server/src/speech/http.ts b/apps/server/src/speech/http.ts
+index eb4a7a01b88fb27d276f028b844c109cf57a988c..76ce99ea7cfc9b0187696fe8701b225e6d9cabfc 100644
+--- a/apps/server/src/speech/http.ts
++++ b/apps/server/src/speech/http.ts
+@@ -22,6 +22,7 @@ import {
+ } from "../auth/http.ts";
+ import * as SpeechPostProcessing from "./postProcessing.ts";
+ import * as CloudSpeech from "./CloudSpeech.ts";
++import * as DictationCleanupApi from "./DictationCleanupApi.ts";
+ import * as SpeechService from "./SpeechService.ts";
+ 
+ const MAX_TRANSCRIBE_BODY_BYTES = SpeechService.MAX_SPEECH_BYTES + SPEECH_MAX_OPTIONS_BYTES + 4;
+@@ -59,6 +60,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+   Effect.fnUntraced(function* (handlers) {
+     const speech = yield* SpeechService.SpeechService;
+     const cloud = yield* CloudSpeech.CloudSpeech;
++    const cleanupApi = yield* DictationCleanupApi.DictationCleanupApi;
+     const postProcessing = yield* SpeechPostProcessing.SpeechPostProcessing;
+     const guard = Effect.fnUntraced(function* (
+       endpoint: string,
+@@ -86,6 +88,35 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+             .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
+         }),
+       )
++      .handle(
++        "cleanupKeys",
++        Effect.fn("environment.voice.cleanupKeys")(function* (args) {
++          yield* guard(args.endpoint.name);
++          return yield* cleanupApi.configured.pipe(
++            Effect.map((anthropic) => ({ anthropic })),
++            Effect.catch((error) => failEnvironmentInternal("internal_error", error)),
++          );
++        }),
++      )
++      .handle(
++        "setCleanupKey",
++        Effect.fn("environment.voice.setCleanupKey")(function* (args) {
++          yield* guard(args.endpoint.name, AuthSettingsWriteScope);
++          yield* cleanupApi
++            .setKey(args.payload.key)
++            .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
++        }),
++      )
++      .handle(
++        "testCleanupKey",
++        Effect.fn("environment.voice.testCleanupKey")(function* (args) {
++          yield* guard(args.endpoint.name, AuthSettingsWriteScope);
++          return yield* cleanupApi.test.pipe(
++            Effect.map((result) => ({ result })),
++            Effect.catch((error) => failEnvironmentInternal("internal_error", error)),
++          );
++        }),
++      )
+       .handle(
+         "cloudModels",
+         Effect.fn("environment.voice.cloudModels")(function* (args) {
+diff --git a/apps/web/src/components/settings/CloudVoiceConfiguration.tsx b/apps/web/src/components/settings/CloudVoiceConfiguration.tsx
+index 95dcee4cffb456f48d81eea52334ba3a56c16842..aa1736965ac54843d59faa8e13d98da4777ef409 100644
+--- a/apps/web/src/components/settings/CloudVoiceConfiguration.tsx
++++ b/apps/web/src/components/settings/CloudVoiceConfiguration.tsx
+@@ -67,7 +67,7 @@ import { SecretInput } from "./SecretInput";
+ import { SecretSourceSelect } from "./SecretSourceInput";
+ 
+ // Per dialog instance, not an Atom.family: key presence must be read fresh each time it opens.
+-function useCloudRead<A, E>(
++export function useCloudRead<A, E>(
+   prepared: PreparedConnection | null,
+   read: (prepared: PreparedConnection) => Effect.Effect<A, E, HttpClient.HttpClient>,
+ ) {
+diff --git a/apps/web/src/components/settings/SecretsSettings.logic.test.ts b/apps/web/src/components/settings/SecretsSettings.logic.test.ts
+index 1480844f58baf18e27c1af23fe1cc92f1be356a3..a2238bee50ceae04edafb904e39766280c56bbba 100644
+--- a/apps/web/src/components/settings/SecretsSettings.logic.test.ts
++++ b/apps/web/src/components/settings/SecretsSettings.logic.test.ts
+@@ -32,6 +32,7 @@ const settings = Schema.decodeSync(ServerSettings)({
+     { kind: "eas", id: "eas", label: "EAS Simulator", accessToken: personal("op://expo") },
+   ],
+   cloudSpeechCredentials: { openai: personal("op://voice"), xai: "" },
++  dictationCleanupCredentials: { anthropic: personal("op://anthropic") },
+ });
+ 
+ it.each([
+@@ -44,6 +45,7 @@ it.each([
+       "https://hub.test · Management Key",
+       "EAS Simulator · Access Token",
+       "Voice · OpenAI",
++      "APIs · Anthropic",
+     ],
+   ],
+   ["work", ["Antigravity Work · OTHER_TOKEN", "GitHub · ghe.acme.test"]],
+diff --git a/apps/web/src/components/settings/SecretsSettings.logic.ts b/apps/web/src/components/settings/SecretsSettings.logic.ts
+index a85bc9e3301435290e114da4ae570b28dcee2b50..a458076c1a854130dce051879172731f3306d6d0 100644
+--- a/apps/web/src/components/settings/SecretsSettings.logic.ts
++++ b/apps/web/src/components/settings/SecretsSettings.logic.ts
+@@ -19,6 +19,7 @@ type SecretUseSettings = Pick<
+   | "usageLimitSources"
+   | "easDeviceHosts"
+   | "cloudSpeechCredentials"
++  | "dictationCleanupCredentials"
+ >;
+ 
+ interface SecretProviderUse {
+@@ -98,5 +99,9 @@ export function secretProviderUses(
+         ? [{ id: `voice:${provider}`, label: `Voice · ${CLOUD_SPEECH_LABELS[provider]}` }]
+         : [];
+     }),
++    ...(isSecretReference(settings.dictationCleanupCredentials.anthropic) &&
++    settings.dictationCleanupCredentials.anthropic.provider === providerId
++      ? [{ id: "apis:anthropic", label: "APIs · Anthropic" }]
++      : []),
+   ];
+ }
+diff --git a/apps/web/src/components/settings/SettingsSidebarNav.tsx b/apps/web/src/components/settings/SettingsSidebarNav.tsx
+index e175fbc439f2281811e3630cec4ec3710b66ab33..60874247931257e872eafe6b0eaa13c402a7a43e 100644
+--- a/apps/web/src/components/settings/SettingsSidebarNav.tsx
++++ b/apps/web/src/components/settings/SettingsSidebarNav.tsx
+@@ -24,6 +24,7 @@ import {
+   KeyboardIcon,
+   KeyRoundIcon,
+   MicIcon,
++  PlugIcon,
+   PaletteIcon,
+   SearchIcon,
+   ServerIcon,
+@@ -105,6 +106,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
+   "/settings/connections": ServerIcon,
+   "/settings/access": ShieldCheckIcon,
+   "/settings/secrets": KeyRoundIcon,
++  "/settings/apis": PlugIcon,
+   "/settings/maintenance": WrenchIcon,
+   "/settings/labs": FlaskConicalIcon,
+   "/settings/about": InfoIcon,
+diff --git a/apps/web/src/routeTree.gen.ts b/apps/web/src/routeTree.gen.ts
+index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20581a540b 100644
+--- a/apps/web/src/routeTree.gen.ts
++++ b/apps/web/src/routeTree.gen.ts
+@@ -47,6 +47,7 @@ import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings
+ import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
+ import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
+ import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
++import { Route as ChatSettingsApisRouteImport } from './routes/_chat.settings.apis'
+ import { Route as ChatSettingsAccessRouteImport } from './routes/_chat.settings.access'
+ import { Route as ChatSettingsAboutRouteImport } from './routes/_chat.settings.about'
+ import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
+@@ -246,6 +247,11 @@ const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
+   path: '/appearance',
+   getParentRoute: () => ChatSettingsRoute,
+ } as any)
++const ChatSettingsApisRoute = ChatSettingsApisRouteImport.update({
++  id: '/apis',
++  path: '/apis',
++  getParentRoute: () => ChatSettingsRoute,
++} as any)
+ const ChatSettingsAccessRoute = ChatSettingsAccessRouteImport.update({
+   id: '/access',
+   path: '/access',
+@@ -284,6 +290,7 @@ export interface FileRoutesByFullPath {
+   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+   '/settings/about': typeof ChatSettingsAboutRoute
+   '/settings/access': typeof ChatSettingsAccessRoute
++  '/settings/apis': typeof ChatSettingsApisRoute
+   '/settings/appearance': typeof ChatSettingsAppearanceRoute
+   '/settings/archived': typeof ChatSettingsArchivedRoute
+   '/settings/beta': typeof ChatSettingsBetaRoute
+@@ -327,6 +334,7 @@ export interface FileRoutesByTo {
+   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+   '/settings/about': typeof ChatSettingsAboutRoute
+   '/settings/access': typeof ChatSettingsAccessRoute
++  '/settings/apis': typeof ChatSettingsApisRoute
+   '/settings/appearance': typeof ChatSettingsAppearanceRoute
+   '/settings/archived': typeof ChatSettingsArchivedRoute
+   '/settings/beta': typeof ChatSettingsBetaRoute
+@@ -372,6 +380,7 @@ export interface FileRoutesById {
+   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+   '/_chat/settings/about': typeof ChatSettingsAboutRoute
+   '/_chat/settings/access': typeof ChatSettingsAccessRoute
++  '/_chat/settings/apis': typeof ChatSettingsApisRoute
+   '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
+   '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
+   '/_chat/settings/beta': typeof ChatSettingsBetaRoute
+@@ -417,6 +426,7 @@ export interface FileRouteTypes {
+     | '/draft/$draftId'
+     | '/settings/about'
+     | '/settings/access'
++    | '/settings/apis'
+     | '/settings/appearance'
+     | '/settings/archived'
+     | '/settings/beta'
+@@ -460,6 +470,7 @@ export interface FileRouteTypes {
+     | '/draft/$draftId'
+     | '/settings/about'
+     | '/settings/access'
++    | '/settings/apis'
+     | '/settings/appearance'
+     | '/settings/archived'
+     | '/settings/beta'
+@@ -504,6 +515,7 @@ export interface FileRouteTypes {
+     | '/_chat/draft/$draftId'
+     | '/_chat/settings/about'
+     | '/_chat/settings/access'
++    | '/_chat/settings/apis'
+     | '/_chat/settings/appearance'
+     | '/_chat/settings/archived'
+     | '/_chat/settings/beta'
+@@ -811,6 +823,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof ChatSettingsAppearanceRouteImport
+       parentRoute: typeof ChatSettingsRoute
+     }
++    '/_chat/settings/apis': {
++      id: '/_chat/settings/apis'
++      path: '/apis'
++      fullPath: '/settings/apis'
++      preLoaderRoute: typeof ChatSettingsApisRouteImport
++      parentRoute: typeof ChatSettingsRoute
++    }
+     '/_chat/settings/access': {
+       id: '/_chat/settings/access'
+       path: '/access'
+@@ -845,6 +864,7 @@ declare module '@tanstack/react-router' {
+ interface ChatSettingsRouteChildren {
+   ChatSettingsAboutRoute: typeof ChatSettingsAboutRoute
+   ChatSettingsAccessRoute: typeof ChatSettingsAccessRoute
++  ChatSettingsApisRoute: typeof ChatSettingsApisRoute
+   ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
+   ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
+   ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
+@@ -875,6 +895,7 @@ interface ChatSettingsRouteChildren {
+ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
+   ChatSettingsAboutRoute: ChatSettingsAboutRoute,
+   ChatSettingsAccessRoute: ChatSettingsAccessRoute,
++  ChatSettingsApisRoute: ChatSettingsApisRoute,
+   ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
+   ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
+   ChatSettingsBetaRoute: ChatSettingsBetaRoute,
+diff --git a/apps/web/src/routes/_chat.settings.tsx b/apps/web/src/routes/_chat.settings.tsx
+index 7758c9ca559191b0a2ba6f0b14349f34af9803b2..d78d7f25fa874ca8a54443d10fab7c40430da7cb 100644
+--- a/apps/web/src/routes/_chat.settings.tsx
++++ b/apps/web/src/routes/_chat.settings.tsx
+@@ -150,7 +150,11 @@ function SettingsRouteLayout() {
+   return (
+     <SettingsScopeProvider
+       search={rawSearch}
+-      singleEnvironment={pathname === "/settings/providers" || pathname === "/settings/secrets"}
++      singleEnvironment={
++        pathname === "/settings/providers" ||
++        pathname === "/settings/secrets" ||
++        pathname === "/settings/apis"
++      }
+       onChange={(next) => {
+         // Send every axis so retain middleware recognizes "all" as an explicit target.
+         void navigate({
+diff --git a/packages/client-runtime/src/voice-input/environment.ts b/packages/client-runtime/src/voice-input/environment.ts
+index 52fa5a0d1fe5b70ebe920bc4178fb3db26008201..cf7ab233cbe9a822f70258422041054c58fec4a2 100644
+--- a/packages/client-runtime/src/voice-input/environment.ts
++++ b/packages/client-runtime/src/voice-input/environment.ts
+@@ -124,6 +124,37 @@ export const setCloudSpeechKey = (
+       }),
+   });
+ 
++export const getDictationCleanupKeys = (prepared: PreparedConnection) =>
++  request({
++    group: "voice",
++    prepared,
++    method: "GET",
++    path: (urls) => urls.cleanupKeys(),
++    run: ({ client, headers }) => client.cleanupKeys({ headers }),
++  });
++
++export const setDictationCleanupKey = (prepared: PreparedConnection, key: string | null) =>
++  request({
++    group: "voice",
++    prepared,
++    method: "POST",
++    path: (urls) => urls.setCleanupKey(),
++    run: ({ client, headers }) =>
++      client.setCleanupKey({
++        headers,
++        payload: { key: key === null ? null : Redacted.make(key) },
++      }),
++  });
++
++export const testDictationCleanupKey = (prepared: PreparedConnection) =>
++  request({
++    group: "voice",
++    prepared,
++    method: "POST",
++    path: (urls) => urls.testCleanupKey(),
++    run: ({ client, headers }) => client.testCleanupKey({ headers }),
++  });
++
+ export const transcribeCloudPcm = (
+   prepared: PreparedConnection,
+   provider: CloudSpeechProvider,
+diff --git a/packages/client-runtime/src/voice-input/index.ts b/packages/client-runtime/src/voice-input/index.ts
+index 5843267800f67c0260db23fde967f6e787b48e5e..9fb86277a8dd31a8bc1e0492f0c8670111666177 100644
+--- a/packages/client-runtime/src/voice-input/index.ts
++++ b/packages/client-runtime/src/voice-input/index.ts
+@@ -18,6 +18,9 @@ export {
+   getCloudSpeechModels,
+   requireCloudSpeechKey,
+   setCloudSpeechKey,
++  getDictationCleanupKeys,
++  setDictationCleanupKey,
++  testDictationCleanupKey,
+   transcribeCloudPcm,
+   getEnvironmentSpeechStatus,
+   getEnvironmentSpeechStreamUrl,
+diff --git a/packages/contracts/src/environmentHttp.ts b/packages/contracts/src/environmentHttp.ts
+index 46dfcde197ac275a22d5708ccf0dbf2fd786c1f1..9b319204f1a639e069e3deec28de8228ee91b236 100644
+--- a/packages/contracts/src/environmentHttp.ts
++++ b/packages/contracts/src/environmentHttp.ts
+@@ -55,6 +55,8 @@ import {
+   CloudSpeechModelId,
+   CloudSpeechModels,
+   CloudSpeechProvider,
++  DictationCleanupKeyTest,
++  DictationCleanupKeys,
+   EnvironmentSpeechAccelerationRequest,
+   EnvironmentSpeechModelRequest,
+   EnvironmentSpeechModels,
+@@ -802,6 +804,32 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
+       error: EnvironmentScopedOperationErrors,
+     }).middleware(EnvironmentAuthenticatedAuth),
+   )
++  .add(
++    HttpApiEndpoint.get("cleanupKeys", "/api/voice/cleanup/keys", {
++      headers: OptionalBearerHeaders,
++      success: DictationCleanupKeys,
++      error: EnvironmentScopedOperationErrors,
++    }).middleware(EnvironmentAuthenticatedAuth),
++  )
++  .add(
++    HttpApiEndpoint.post("setCleanupKey", "/api/voice/cleanup/anthropic/key", {
++      headers: OptionalBearerHeaders,
++      payload: Schema.Struct({
++        key: Schema.NullOr(
++          Schema.Union([Schema.RedactedFromValue(CloudSpeechApiKey), SecretReference]),
++        ),
++      }),
++      success: HttpApiSchema.NoContent,
++      error: EnvironmentScopedOperationErrors,
++    }).middleware(EnvironmentAuthenticatedAuth),
++  )
++  .add(
++    HttpApiEndpoint.post("testCleanupKey", "/api/voice/cleanup/anthropic/test", {
++      headers: OptionalBearerHeaders,
++      success: DictationCleanupKeyTest,
++      error: EnvironmentScopedOperationErrors,
++    }).middleware(EnvironmentAuthenticatedAuth),
++  )
+   .add(
+     // Public catalog; carries no credential and no audio.
+     HttpApiEndpoint.get("cloudModels", "/api/voice/cloud/openrouter/models", {
+diff --git a/packages/contracts/src/speech.ts b/packages/contracts/src/speech.ts
+index e6e4d3ddbc51eb3cc6d3ad305c61fe44cd9bbae2..79aca128d6f691056655ace7fc7a88096bf32f64 100644
+--- a/packages/contracts/src/speech.ts
++++ b/packages/contracts/src/speech.ts
+@@ -280,3 +280,24 @@ export const SpeechStreamEvent = Schema.Union([
+   Schema.Struct({ type: Schema.Literal("error"), message: Schema.String }),
+ ]);
+ export type SpeechStreamEvent = typeof SpeechStreamEvent.Type;
++
++/** Whether a direct-API dictation cleanup key is saved; never the key. */
++export const DictationCleanupKeys = Schema.Struct({ anthropic: Schema.Boolean });
++export type DictationCleanupKeys = typeof DictationCleanupKeys.Type;
++export const DictationCleanupKeyTest = Schema.Struct({
++  result: Schema.Literals(["ok", "missing-key", "invalid-key", "unreachable"]),
++});
++export type DictationCleanupKeyTest = typeof DictationCleanupKeyTest.Type;
++
++export class DictationCleanupError extends Schema.TaggedError<DictationCleanupError>()(
++  "DictationCleanupError",
++  {
++    reason: Schema.Literals([
++      "unreadable-key",
++      "invalid-key",
++      "rate-limit",
++      "timeout",
++      "unreachable",
++    ]),
++  },
++) {}

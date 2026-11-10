@@ -3,6 +3,7 @@ import {
   ClaudeSettings,
   CloudSpeechCredentials,
   CodexSettings,
+  DictationCleanupCredentials,
   EasDeviceHostConfig,
   type ProviderInstanceConfig,
   type ServerSettings,
@@ -47,6 +48,7 @@ const providerSecretFields = new Map([
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 const voiceSecretFields = secretSettingsFields(CloudSpeechCredentials);
+const dictationCleanupSecretFields = secretSettingsFields(DictationCleanupCredentials);
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
@@ -239,6 +241,11 @@ function mapSecretFieldGroups(
       voiceSecretFields,
       (provider) => `voice-cloud-${provider}`,
     ) as ServerSettings["cloudSpeechCredentials"],
+    dictationCleanupCredentials: mapFields(
+      settings.dictationCleanupCredentials,
+      dictationCleanupSecretFields,
+      (provider) => `dictation-cleanup-${provider}`,
+    ) as ServerSettings["dictationCleanupCredentials"],
     providerInstances,
     sourceControlHosts,
     usageLimitSources,

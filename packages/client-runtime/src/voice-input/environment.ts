@@ -124,6 +124,37 @@ export const setCloudSpeechKey = (
       }),
   });
 
+export const getDictationCleanupKeys = (prepared: PreparedConnection) =>
+  request({
+    group: "voice",
+    prepared,
+    method: "GET",
+    path: (urls) => urls.cleanupKeys(),
+    run: ({ client, headers }) => client.cleanupKeys({ headers }),
+  });
+
+export const setDictationCleanupKey = (prepared: PreparedConnection, key: string | null) =>
+  request({
+    group: "voice",
+    prepared,
+    method: "POST",
+    path: (urls) => urls.setCleanupKey(),
+    run: ({ client, headers }) =>
+      client.setCleanupKey({
+        headers,
+        payload: { key: key === null ? null : Redacted.make(key) },
+      }),
+  });
+
+export const testDictationCleanupKey = (prepared: PreparedConnection) =>
+  request({
+    group: "voice",
+    prepared,
+    method: "POST",
+    path: (urls) => urls.testCleanupKey(),
+    run: ({ client, headers }) => client.testCleanupKey({ headers }),
+  });
+
 export const transcribeCloudPcm = (
   prepared: PreparedConnection,
   provider: CloudSpeechProvider,

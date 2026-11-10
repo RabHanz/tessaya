@@ -1055,6 +1055,15 @@ export interface DesktopBatonVoiceInput {
   readonly extras?: TrayExtras;
   /** The Sessions area's rows and actions (D138). */
   readonly sessions?: SessionsBridge;
+  /**
+   * Dictation's cleanup through his own Anthropic key, kept by this machine's server: null with no key saved; it throws
+   * with the reason (invalid-key, rate-limit, timeout, unreachable) when the call fails.
+   */
+  readonly cleanupApi?: (
+    system: string,
+    message: string,
+    maxTokens: number,
+  ) => Promise<string | null>;
   /** Every session on every environment, running or stopped, with Resume and New session. */
   readonly catalog?: ReturnType<typeof import("../sessions/catalogRows.ts").createCatalog>;
   /** Baton's self-update (D137): its rows, its action, and whether one is waiting. */
@@ -1387,6 +1396,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     platform: input.platform,
     dictionary: () => dictionary,
     keepWarm: () => cleanupStaysWarm(),
+    ...(input.cleanupApi === undefined ? {} : { api: input.cleanupApi }),
   });
   /** Held to where the words came from and where he is now. Unknown counts as secret. */
   const levelNow = async (spokenIn: { readonly exe: string; readonly title: string }) => {

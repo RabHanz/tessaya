@@ -19,6 +19,7 @@ type SecretUseSettings = Pick<
   | "usageLimitSources"
   | "easDeviceHosts"
   | "cloudSpeechCredentials"
+  | "dictationCleanupCredentials"
 >;
 
 interface SecretProviderUse {
@@ -98,5 +99,9 @@ export function secretProviderUses(
         ? [{ id: `voice:${provider}`, label: `Voice · ${CLOUD_SPEECH_LABELS[provider]}` }]
         : [];
     }),
+    ...(isSecretReference(settings.dictationCleanupCredentials.anthropic) &&
+    settings.dictationCleanupCredentials.anthropic.provider === providerId
+      ? [{ id: "apis:anthropic", label: "APIs · Anthropic" }]
+      : []),
   ];
 }

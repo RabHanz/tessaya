@@ -1643,6 +1643,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         const hub = UsageLimitSourceId.make("hub");
         const withUsage = yield* serverSettings.updateSettings({
           cloudSpeechCredentials: { openai: usageReference, xai: "literal-fixture" },
+          dictationCleanupCredentials: { anthropic: "sk-ant-fixture" },
           usageLimitSources: {
             [hub]: {
               kind: "cliproxy",
@@ -1693,6 +1694,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
           xai: SECRET_REDACTED,
           openrouter: "",
         });
+        assert.deepEqual(legacy.dictationCleanupCredentials, { anthropic: SECRET_REDACTED });
+        assert.notInclude(JSON.stringify(legacy), "sk-ant-fixture");
+        assert.isTrue(Option.isSome(yield* secrets.get("dictation-cleanup-anthropic")));
+        assert.notInclude(
+          yield* fileSystem.readFileString(serverConfig.settingsPath),
+          "sk-ant-fixture",
+        );
         assert.equal(legacy.sourceControlHosts.bitbucket?.accessToken, SECRET_REDACTED);
         assert.equal(legacy.usageLimitSources[hub]?.managementKey, SECRET_REDACTED);
         assert.equal(legacy.easDeviceHosts[0]?.accessToken, SECRET_REDACTED);
@@ -1703,6 +1711,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         assert.equal(configOf(legacy, openCode)?.serverPassword, SECRET_REDACTED);
         const echoed = yield* serverSettings.updateSettings({
           cloudSpeechCredentials: legacy.cloudSpeechCredentials,
+          dictationCleanupCredentials: legacy.dictationCleanupCredentials,
           sourceControlHosts: legacy.sourceControlHosts,
           usageLimitSources: legacy.usageLimitSources,
           easDeviceHosts: legacy.easDeviceHosts,
@@ -1720,6 +1729,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
           xai: "literal-fixture",
           openrouter: "",
         });
+        assert.deepEqual(echoed.dictationCleanupCredentials, { anthropic: "sk-ant-fixture" });
         assert.deepEqual(echoed.easDeviceHosts[0]?.accessToken, easReference);
         assert.deepEqual(echoed.simlockDeviceHosts[0]?.agentToken, simlockReference);
         assert.deepEqual(configOf(echoed, antigravity)?.apiKey, antigravityReference);
@@ -1817,6 +1827,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         "cloudSpeechCredentials.openai",
         "cloudSpeechCredentials.xai",
         "cloudSpeechCredentials.openrouter",
+        "dictationCleanupCredentials.anthropic",
         "easDeviceHosts.[].accessToken",
         "simlockDeviceHosts.[].agentToken",
         "usageLimitSources.*.managementKey",

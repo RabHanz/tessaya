@@ -20,10 +20,18 @@ index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 60c89ffc6b732db13fd880bedac4af057157415d..4f218aeaa33b9c63bbb58d7caf5204f09a61be85 100644
+index 60c89ffc6b732db13fd880bedac4af057157415d..eac9fa67d5c6d5530383519671d4e61887da50fa 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -93,7 +93,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+@@ -35,6 +35,7 @@ export type SettingsPath =
+   | "/settings/connections"
+   | "/settings/access"
+   | "/settings/secrets"
++  | "/settings/apis"
+   | "/settings/maintenance"
+   | "/settings/labs"
+   | "/settings/about"
+@@ -93,7 +94,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
    "/settings/diffs": "Diffs & pull requests",
    "/settings/keybindings": "Keybindings",
    "/settings/snap-shot": "SnapShots",
@@ -32,3 +40,40 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..4f218aeaa33b9c63bbb58d7caf5204f0
    "/settings/threads": "Threads",
    "/settings/browser": "Browser",
    "/settings/devices": "Devices",
+@@ -103,6 +104,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+   "/settings/connections": "Environments",
+   "/settings/access": "Sharing & access",
+   "/settings/secrets": "Secrets",
++  "/settings/apis": "APIs",
+   "/settings/maintenance": "Maintenance",
+   "/settings/labs": "Labs",
+   "/settings/about": "About",
+@@ -147,6 +149,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+       "/settings/connections",
+       "/settings/access",
+       ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
++      "/settings/apis",
+     ],
+   },
+   {
+@@ -1285,6 +1288,12 @@ export const SETTINGS_SEARCH_ITEMS = [
+     searchTerms: ["new 1password vault op cli account"],
+     secretsFeatureOnly: true,
+   },
++  {
++    id: "apis-anthropic",
++    title: "Anthropic",
++    to: "/settings/apis",
++    searchTerms: ["api key claude dictation cleanup voice"],
++  },
+   {
+     id: "archive",
+     title: "Archived threads",
+@@ -1316,6 +1325,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+   "/settings/connections": "connections",
+   "/settings/access": "connections",
+   "/settings/secrets": null,
++  "/settings/apis": null,
+   "/settings/scheduled-tasks": null,
+   "/settings/maintenance": null,
+   "/settings/labs": null,

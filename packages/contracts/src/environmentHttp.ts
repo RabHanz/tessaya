@@ -55,6 +55,8 @@ import {
   CloudSpeechModelId,
   CloudSpeechModels,
   CloudSpeechProvider,
+  DictationCleanupKeyTest,
+  DictationCleanupKeys,
   EnvironmentSpeechAccelerationRequest,
   EnvironmentSpeechModelRequest,
   EnvironmentSpeechModels,
@@ -799,6 +801,32 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
         ),
       }),
       success: HttpApiSchema.NoContent,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.get("cleanupKeys", "/api/voice/cleanup/keys", {
+      headers: OptionalBearerHeaders,
+      success: DictationCleanupKeys,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("setCleanupKey", "/api/voice/cleanup/anthropic/key", {
+      headers: OptionalBearerHeaders,
+      payload: Schema.Struct({
+        key: Schema.NullOr(
+          Schema.Union([Schema.RedactedFromValue(CloudSpeechApiKey), SecretReference]),
+        ),
+      }),
+      success: HttpApiSchema.NoContent,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("testCleanupKey", "/api/voice/cleanup/anthropic/test", {
+      headers: OptionalBearerHeaders,
+      success: DictationCleanupKeyTest,
       error: EnvironmentScopedOperationErrors,
     }).middleware(EnvironmentAuthenticatedAuth),
   )

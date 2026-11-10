@@ -22,6 +22,7 @@ import {
 } from "../auth/http.ts";
 import * as SpeechPostProcessing from "./postProcessing.ts";
 import * as CloudSpeech from "./CloudSpeech.ts";
+import * as DictationCleanupApi from "./DictationCleanupApi.ts";
 import * as SpeechService from "./SpeechService.ts";
 
 const MAX_TRANSCRIBE_BODY_BYTES = SpeechService.MAX_SPEECH_BYTES + SPEECH_MAX_OPTIONS_BYTES + 4;
@@ -59,6 +60,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const speech = yield* SpeechService.SpeechService;
     const cloud = yield* CloudSpeech.CloudSpeech;
+    const cleanupApi = yield* DictationCleanupApi.DictationCleanupApi;
     const postProcessing = yield* SpeechPostProcessing.SpeechPostProcessing;
     const guard = Effect.fnUntraced(function* (
       endpoint: string,
@@ -84,6 +86,35 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
           yield* cloud
             .setKey(args.params.provider, args.payload.key)
             .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
+        }),
+      )
+      .handle(
+        "cleanupKeys",
+        Effect.fn("environment.voice.cleanupKeys")(function* (args) {
+          yield* guard(args.endpoint.name);
+          return yield* cleanupApi.configured.pipe(
+            Effect.map((anthropic) => ({ anthropic })),
+            Effect.catch((error) => failEnvironmentInternal("internal_error", error)),
+          );
+        }),
+      )
+      .handle(
+        "setCleanupKey",
+        Effect.fn("environment.voice.setCleanupKey")(function* (args) {
+          yield* guard(args.endpoint.name, AuthSettingsWriteScope);
+          yield* cleanupApi
+            .setKey(args.payload.key)
+            .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
+        }),
+      )
+      .handle(
+        "testCleanupKey",
+        Effect.fn("environment.voice.testCleanupKey")(function* (args) {
+          yield* guard(args.endpoint.name, AuthSettingsWriteScope);
+          return yield* cleanupApi.test.pipe(
+            Effect.map((result) => ({ result })),
+            Effect.catch((error) => failEnvironmentInternal("internal_error", error)),
+          );
         }),
       )
       .handle(

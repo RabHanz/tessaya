@@ -33,6 +33,7 @@ export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + te
 const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
+const API_REST_MS = 60_000;
 
 interface CleanInput {
   readonly raw: string;
@@ -65,6 +66,11 @@ export const makeRewriter = (input: {
   readonly limitMs?: number;
   readonly start?: typeof startVisionSession;
   readonly always?: boolean;
+  /**
+   * The optional direct API path: his own Anthropic key, kept by the server and used for nothing else. It answers null
+   * when no key is saved, and the subscription session answers instead.
+   */
+  readonly api?: (system: string, message: string, maxTokens: number) => Promise<string | null>;
   /**
    * While true (a dictation key is bound at the claude level), a session is always up: one that ends is replaced
    * at once and idling never ends it, so no dictation waits for Claude Code to start (about 2 s of 3.4 s cold).
@@ -119,10 +125,32 @@ export const makeRewriter = (input: {
 
   /** The session's turn in flight, by its own answer: the next question waits for it, not for a timer. */
   let busy: Promise<unknown> = Promise.resolve();
-  const send = (text: string, mode: DictationMode): Promise<string> => {
+  const viaSession = (text: string, mode: DictationMode): Promise<string> => {
     const answer = get().ask([{ type: "text", text: rewriteMessage(text, mode) }]);
     busy = answer.catch(() => undefined);
     return answer.then((a) => a.trim());
+  };
+  /** After a refused key or a rate limit the paid path rests for a minute, so a bad key costs one try, not every one. */
+  let apiRestsUntil = 0;
+  const viaApi = async (text: string, mode: DictationMode): Promise<string | null> => {
+    if (input.api === undefined || Date.now() < apiRestsUntil) return null;
+    try {
+      return await input.api(
+        rewriteSystemPrompt(input.dictionary()),
+        rewriteMessage(text, mode),
+        64 + Math.ceil(text.length / 2),
+      );
+    } catch (error) {
+      if (/invalid-key|rate-limit/.test(error instanceof Error ? error.message : "")) {
+        apiRestsUntil = Date.now() + API_REST_MS;
+      }
+      return null;
+    }
+  };
+  /** Only the final clean after release goes to the paid API; the guesses while he speaks use the subscription. */
+  const send = async (text: string, mode: DictationMode, final: boolean): Promise<string> => {
+    const paid = final ? await viaApi(text, mode) : null;
+    return paid === null ? viaSession(text, mode) : paid.trim();
   };
   /** The real clean's question, against a deadline counted from when `clean` was called. */
   const askBy =
@@ -135,7 +163,7 @@ export const makeRewriter = (input: {
           busy.then(() => {
             if (Date.now() >= deadline) throw new Error("timed out");
             sent = true;
-            return send(text, mode);
+            return send(text, mode, true);
           }),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(new Error("timed out")), deadline - Date.now());
@@ -180,7 +208,9 @@ export const makeRewriter = (input: {
     guessing = true;
     // A guess is not counted against the session's turns, and is never timed out here: the session's own limit holds.
     const cleaned = run(c, (text, mode) =>
-      busy.then(() => (guess?.key === key ? send(text, mode) : Promise.reject(new Error("stale")))),
+      busy.then(() =>
+        guess?.key === key ? send(text, mode, false) : Promise.reject(new Error("stale")),
+      ),
     );
     guess = { key, cleaned };
     void cleaned

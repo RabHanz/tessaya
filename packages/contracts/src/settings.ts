@@ -1246,6 +1246,8 @@ export const CloudSpeechCredentials = Schema.Struct({
   xai: CloudSpeechCredential,
   openrouter: CloudSpeechCredential,
 });
+/** Read only by the direct-API dictation cleanup, never placed in any environment variable. */
+export const DictationCleanupCredentials = Schema.Struct({ anthropic: CloudSpeechCredential });
 
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
@@ -1280,6 +1282,9 @@ export const ServerSettings = Schema.Struct({
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   cloudSpeechCredentials: CloudSpeechCredentials.pipe(
     Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
+  ),
+  dictationCleanupCredentials: DictationCleanupCredentials.pipe(
+    Schema.withDecodingDefault(Effect.succeed({ anthropic: "" })),
   ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
@@ -1705,6 +1710,9 @@ export const ServerSettingsPatch = Schema.Struct({
       xai: Schema.optionalKey(SettingsSecretValue),
       openrouter: Schema.optionalKey(SettingsSecretValue),
     }),
+  ),
+  dictationCleanupCredentials: Schema.optionalKey(
+    Schema.Struct({ anthropic: Schema.optionalKey(SettingsSecretValue) }),
   ),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),

@@ -1003,7 +1003,7 @@ index dc67bd9387e04b91fa61d34ea47929c056256796..93263b7b064ba3389f92c2f5935bd6a2
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5363b44db 100644
+index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..33692ba633588c239c7676ceab4bcd5c247babfd 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -1014,7 +1014,15 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
-@@ -78,6 +79,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
+@@ -44,6 +45,7 @@ import * as PullRequestHttp from "./pullRequest/http.ts";
+ import * as SpeechModelStore from "./speech/SpeechModelStore.ts";
+ import * as SpeechService from "./speech/SpeechService.ts";
+ import * as CloudSpeech from "./speech/CloudSpeech.ts";
++import * as DictationCleanupApi from "./speech/DictationCleanupApi.ts";
+ import { speechHttpApiLayer } from "./speech/http.ts";
+ import { speechStreamRouteLayer } from "./speech/stream.ts";
+ import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
+@@ -78,6 +80,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
  import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
  import * as TerminalManager from "./terminal/Manager.ts";
  import * as McpHttpServer from "./mcp/McpHttpServer.ts";
@@ -1023,7 +1031,7 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5
  import * as PeerForwarding from "./peer/PeerForwarding.ts";
  import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
  import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
-@@ -667,7 +670,14 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -667,7 +671,16 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    ProviderInstallation.layer,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -1031,6 +1039,8 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5
  ).pipe(
 +  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
 +  Layer.provideMerge(BatonServerLayer.services),
++  // The desktop's dictation cleanup reaches it through the desk door (BatonTessayaRoutes).
++  Layer.provideMerge(DictationCleanupApi.layer),
 +  // Baton's cross-environment session list reaches linked environments the way agents do (GEN-6).
 +  Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
 +  // The same memoized sink the runtime uses, for Baton's live-session threads (D83).
@@ -1038,7 +1048,7 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -781,11 +791,18 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -781,11 +794,18 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
@@ -1058,6 +1068,14 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..0b5a9076a003421ae83a5831464858f5
      Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
    ),
+@@ -824,6 +844,7 @@ const layerMakeRoutes = Layer.mergeAll(
+     ),
+   ),
+   Layer.provide(CloudSpeech.layer.pipe(Layer.provide(SecretResolver.layer))),
++  Layer.provide(DictationCleanupApi.layer.pipe(Layer.provide(SecretResolver.layer))),
+   Layer.provide(layerServerSettings),
+   Layer.provide(PreviewAutomationBroker.layer),
+   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate))),
 diff --git a/apps/server/src/vcs/GitVcsDriver.test.ts b/apps/server/src/vcs/GitVcsDriver.test.ts
 index ec8809d895f6d3fa4f3b73588cf112b177cfa6d3..382195a6bddde471eb30182adcbb772b2352a038 100644
 --- a/apps/server/src/vcs/GitVcsDriver.test.ts
@@ -1282,10 +1300,19 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index f6409a87074fda1cc83a97b39a484abaa519ed02..8a095a49a75251ec47c653579ba552ae6301dae9 100644
+index f6409a87074fda1cc83a97b39a484abaa519ed02..67f0232c0053dfa667606f83b338430a7744f0e3 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1267,8 +1267,14 @@ export const ServerSettings = Schema.Struct({
+@@ -1246,6 +1246,8 @@ export const CloudSpeechCredentials = Schema.Struct({
+   xai: CloudSpeechCredential,
+   openrouter: CloudSpeechCredential,
+ });
++/** Read only by the direct-API dictation cleanup, never placed in any environment variable. */
++export const DictationCleanupCredentials = Schema.Struct({ anthropic: CloudSpeechCredential });
+ 
+ export const ServerSettings = Schema.Struct({
+   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
+@@ -1267,14 +1269,23 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1301,7 +1328,16 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..8a095a49a75251ec47c653579ba552ae
    ),
  
    enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-@@ -1689,6 +1695,8 @@ export const ServerSettingsPatch = Schema.Struct({
+   cloudSpeechCredentials: CloudSpeechCredentials.pipe(
+     Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
+   ),
++  dictationCleanupCredentials: DictationCleanupCredentials.pipe(
++    Schema.withDecodingDefault(Effect.succeed({ anthropic: "" })),
++  ),
+   speechModelId: Schema.String.pipe(
+     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
+   ),
+@@ -1689,6 +1700,8 @@ export const ServerSettingsPatch = Schema.Struct({
    worktreesDirectory: Schema.optionalKey(TrimmedString),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -1310,3 +1346,13 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..8a095a49a75251ec47c653579ba552ae
    continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
+@@ -1698,6 +1711,9 @@ export const ServerSettingsPatch = Schema.Struct({
+       openrouter: Schema.optionalKey(SettingsSecretValue),
+     }),
+   ),
++  dictationCleanupCredentials: Schema.optionalKey(
++    Schema.Struct({ anthropic: Schema.optionalKey(SettingsSecretValue) }),
++  ),
+   speechModelId: Schema.optionalKey(Schema.String),
+   speechAcceleration: Schema.optionalKey(SpeechAcceleration),
+   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),

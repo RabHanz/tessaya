@@ -280,3 +280,24 @@ export const SpeechStreamEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("error"), message: Schema.String }),
 ]);
 export type SpeechStreamEvent = typeof SpeechStreamEvent.Type;
+
+/** Whether a direct-API dictation cleanup key is saved; never the key. */
+export const DictationCleanupKeys = Schema.Struct({ anthropic: Schema.Boolean });
+export type DictationCleanupKeys = typeof DictationCleanupKeys.Type;
+export const DictationCleanupKeyTest = Schema.Struct({
+  result: Schema.Literals(["ok", "missing-key", "invalid-key", "unreachable"]),
+});
+export type DictationCleanupKeyTest = typeof DictationCleanupKeyTest.Type;
+
+export class DictationCleanupError extends Schema.TaggedError<DictationCleanupError>()(
+  "DictationCleanupError",
+  {
+    reason: Schema.Literals([
+      "unreadable-key",
+      "invalid-key",
+      "rate-limit",
+      "timeout",
+      "unreachable",
+    ]),
+  },
+) {}

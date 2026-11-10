@@ -409,7 +409,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
     };
     // This machine's own server, with the desktop's local token, as the remote-hands loop calls it.
-    const direct = async (method: string, body: unknown): Promise<unknown> => {
+    const direct = async (method: string, body: unknown, timeoutMs = 20_000): Promise<unknown> => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
@@ -417,7 +417,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const json = (await response.json().catch(() => ({}))) as {
         value?: unknown;
@@ -598,6 +598,16 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       mainWindowUp: t3Up,
       direct,
+      // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
+      // subscription session. The wait matches the server's 1.2 s limit, with a little for the hop.
+      cleanupApi: async (system, message, maxTokens) => {
+        const answer = (await direct(
+          "baton.dictation.cleanupApi",
+          { system, message, maxTokens },
+          1_500,
+        )) as { readonly configured?: boolean; readonly text?: unknown };
+        return answer?.configured === true && typeof answer.text === "string" ? answer.text : null;
+      },
       ...(screen === null ? {} : { extras: screen }),
       sessions,
       catalog,
