@@ -3686,6 +3686,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       takeRecording(recordings, event.dictation);
       // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
+      if (event.discarded === true) input.onNote?.("dictation_dropped", { reason: "esc_held" });
       showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();

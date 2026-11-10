@@ -793,6 +793,9 @@ unsafe fn first_box(array: *mut SAFEARRAY) -> Option<(f64, f64, f64, f64)> {
 
 /// The caret's box, the field's box (physical px) and the font size (points, 0 when the field does not say), for
 /// the words to be drawn where they will land. A password box, or one named like a secret, gives nothing.
+/// How many characters before the caret are looked at for right-to-left script.
+const RTL_LOOK: i32 = 40;
+
 pub fn caret_geometry() -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     unsafe {
@@ -806,7 +809,7 @@ pub fn caret_geometry() -> Result<Value, String> {
             return Ok(json!({"caret": null}));
         }
         let field = element.CurrentBoundingRectangle().map_err(err)?;
-        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64)>> {
+        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64, bool)>> {
             let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
             let selection = pattern.GetSelection()?;
             if selection.Length()? == 0 {
@@ -822,15 +825,23 @@ pub fn caret_geometry() -> Result<Value, String> {
             }
             let Some(caret) = caret else { return Ok(None) };
             let size = range.GetAttributeValue(UIA_FontSizeAttributeId).ok().and_then(|v| f64::try_from(&v).ok()).unwrap_or(0.0);
-            Ok(Some((caret, size)))
+            // Only whether the words before the caret run right to left leaves here, never the words.
+            let rtl = (|| -> windows::core::Result<bool> {
+                let before = range.Clone()?;
+                before.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -RTL_LOOK)?;
+                Ok(crate::has_rtl(&before.GetText(RTL_LOOK)?.to_string()))
+            })()
+            .unwrap_or(false);
+            Ok(Some((caret, size, rtl)))
         })()
         .ok()
         .flatten();
-        let Some(((x, y, w, h), size)) = found else { return Ok(json!({"caret": null})) };
+        let Some(((x, y, w, h), size, rtl)) = found else { return Ok(json!({"caret": null})) };
         Ok(json!({
             "caret": {"x": x, "y": y, "width": w, "height": h},
             "field": {"x": field.left, "y": field.top, "width": field.right - field.left, "height": field.bottom - field.top},
             "fontPt": size,
+            "rtl": rtl,
         }))
     }
 }

@@ -51,7 +51,7 @@ describe("the ghost at the caret", () => {
         field: composer,
         fontPt: 10.5,
       }),
-    ).toMatchObject({ indent: 0, linePx: 20, fontPx: 14 });
+    ).toMatchObject({ indent: 0, linePx: 20, fontPx: 14, top: 8 });
   });
   it("flows words from the caret and wraps each at the box's width, never one word a line", () => {
     // Box 100 wide, caret 60 in: the first fits after it, the next goes to a new line, which holds three.
@@ -88,6 +88,8 @@ describe("the ghost at the caret", () => {
     ).toBe("field 84px wide");
     expect(why({ caret: { ...caret, x: 50 }, field, fontPt: 11 })).toBe("caret outside the field");
     expect(why({ caret: { ...caret, height: 0 }, field, fontPt: 0 })).toBe("caret line 0px");
+    // The ghost lays words out left to right; Hebrew or Arabic before the caret stays in the pill.
+    expect(why({ caret, field, fontPt: 11, rtl: true })).toBe("rtl");
   });
   it("reads the sidecar's caret only when it is whole: a secret field sends none", () => {
     expect(caretGeometry({ caret: null })).toBeNull();
@@ -102,5 +104,12 @@ describe("the ghost at the caret", () => {
       field: { x: 0, y: 0, width: 9, height: 9 },
       fontPt: 0,
     });
+    expect(
+      caretGeometry({
+        caret: { x: 1, y: 2, width: 0, height: 20 },
+        field: { x: 0, y: 0, width: 9, height: 9 },
+        rtl: true,
+      })?.rtl,
+    ).toBe(true);
   });
 });

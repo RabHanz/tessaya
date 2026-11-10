@@ -67,7 +67,8 @@ export const caretGeometry = (event: Record<string, unknown>): CaretGeometry | n
   const caret = boxOf(event["caret"]);
   const field = boxOf(event["field"]);
   const fontPt = typeof event["fontPt"] === "number" ? event["fontPt"] : 0;
-  return caret === null || field === null ? null : { caret, field, fontPt };
+  if (caret === null || field === null) return null;
+  return event["rtl"] === true ? { caret, field, fontPt, rtl: true } : { caret, field, fontPt };
 };
 
 export const busyAfter = (ev: DictationEvent["ev"], was: boolean): boolean =>
@@ -201,7 +202,13 @@ export type DictationEvent =
   /** 40 ms of the recording's audio (16-bit PCM, base64): the pill's waveform when no wake-word mic runs. */
   | { readonly ev: "pcm"; readonly b64: string }
   /** `tap`: the hold key came up within 200 ms, so the recording was dropped as an accidental tap. */
-  | { readonly ev: "idle"; readonly dictation?: number; readonly tap?: boolean }
+  /** `discarded`: Esc while the hold key was down dropped it. */
+  | {
+      readonly ev: "idle";
+      readonly dictation?: number;
+      readonly tap?: boolean;
+      readonly discarded?: boolean;
+    }
   /** A key was held for dictation `id`'s paste (`holdKeys`): paste now. */
   | { readonly ev: "held_key"; readonly id: number }
   | { readonly ev: "error"; readonly message: string; readonly dictation?: number }

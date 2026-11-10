@@ -3,6 +3,8 @@
 //! See docs/baton/VOICE.md. Run with no arguments it serves; the subcommands are for voice-lab.
 #[cfg(unix)]
 mod desktop_unix;
+#[cfg(windows)]
+mod escape_windows;
 mod keygate;
 #[cfg(windows)]
 mod keygate_windows;
@@ -140,6 +142,9 @@ enum Msg {
     MicFailed(String),
     /// Another key joined the hold chord (Win+Ctrl+Shift+B): the dictation it started is dropped, never pasted.
     ChordJoined,
+    /// Esc while the hold key is down (`escape_windows`): the recording is dropped and its release pastes nothing.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    HeldEscape,
     /// A block of the recording's audio for the pill's waveform, written out by the serve thread, never the audio's.
     Meter(Vec<f32>),
     /// A fake microphone ran out of file, which stands in for releasing the key.
@@ -1278,6 +1283,12 @@ fn paste_verdict(focused: bool, same_window: bool, same_title: bool, secret: boo
     }
 }
 
+/// Hebrew, Arabic, Syriac, Thaana, N'Ko and their presentation forms: the ghost draws left to right only.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn has_rtl(text: &str) -> bool {
+    text.chars().any(|c| matches!(c, '\u{0590}'..='\u{07FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFC}'))
+}
+
 /// The desktop and taskbar: shell panes with nothing to type into. Windows reports them as a plain pane, which
 /// `focused_takes_no_text` otherwise keeps as a box because editors that draw their own text look the same.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1295,6 +1306,19 @@ fn focus_for_paste(window: isize) -> Result<(), String> {
 fn focus_for_paste(_window: isize) -> Result<(), String> {
     Err("not on this platform yet".to_string())
 }
+
+/// Esc is the helper's while a hold records, since the desktop's Esc shortcut never fires under the hold's modifiers.
+#[cfg(windows)]
+fn take_escape(tx: &Sender<Msg>, on: bool) {
+    if on {
+        escape_windows::arm(tx)
+    } else {
+        escape_windows::disarm()
+    }
+}
+
+#[cfg(not(windows))]
+fn take_escape(_tx: &Sender<Msg>, _on: bool) {}
 
 #[cfg(windows)]
 fn focused_is_secret() -> bool {
@@ -1776,6 +1800,7 @@ fn serve() {
                         }
                         // A ✓ on a latched hold also ends the latch, so the next press starts afresh.
                         held = false;
+                        take_escape(&tx, false);
                         taps = PushToTalk::default();
                     }
                     "voice" => voice_on = value["on"].as_bool().unwrap_or(false),
@@ -1876,22 +1901,28 @@ fn serve() {
                             _ => {
                                 held = true;
                                 begin(&config, &mut recording, &tx, &job_tx, "hold");
+                                take_escape(&tx, recording.is_some());
                             }
                         },
                         Out::Stop => {
                             held = false;
+                            take_escape(&tx, false);
                             finish(&mut recording, &job_tx, true);
                         }
                         // An accidental tap: what little was heard is dropped, not transcribed. Said, so a key that
                         // seems not to fire can be told from one let go too soon.
                         Out::Cancel => {
                             held = false;
+                            take_escape(&tx, false);
                             let stopped = recording.take().map(|r| r.id);
                             let _ = job_tx.send(Work::Abort);
                             emit(of_dictation(json!({"ev": "idle", "tap": true}), stopped));
                         }
                         // Hands-free from here: the desktop shows the pill's ✓ and ✕.
-                        Out::Latch => emit(json!({"ev": "latched"})),
+                        Out::Latch => {
+                            take_escape(&tx, false);
+                            emit(json!({"ev": "latched"}));
+                        }
                         Out::Unlatch => {}
                     }
                 }
@@ -1910,6 +1941,7 @@ fn serve() {
             Msg::FakeEnded => finish(&mut recording, &job_tx, true),
             Msg::ChordJoined => {
                 held = false;
+                take_escape(&tx, false);
                 taps = PushToTalk::default();
                 if let Some(stopped) = recording.take() {
                     let _ = job_tx.send(Work::Abort);
@@ -1932,7 +1964,17 @@ fn serve() {
                 }
                 emit(line);
             }
+            // The key is still down: its release finds no recording, so nothing is pasted.
+            Msg::HeldEscape => {
+                if held {
+                    if let Some(stopped) = recording.take() {
+                        let _ = job_tx.send(Work::Abort);
+                        emit(of_dictation(json!({"ev": "idle", "discarded": true}), Some(stopped.id)));
+                    }
+                }
+            }
             Msg::MicFailed(message) => {
+                take_escape(&tx, false);
                 let stopped = recording.take().map(|r| r.id);
                 let _ = job_tx.send(Work::Abort);
                 held = false;
@@ -2142,6 +2184,14 @@ mod tests {
         for ((focused, same_window, same_title, secret, no_field), want) in rows {
             assert_eq!(paste_verdict(focused, same_window, same_title, secret, no_field), want);
         }
+    }
+
+    #[test]
+    fn right_to_left_script_before_the_caret_is_seen() {
+        assert!(has_rtl("hello שלום"));
+        assert!(has_rtl("مرحبا"));
+        assert!(!has_rtl("hello, naïve café — 日本語"));
+        assert!(!has_rtl(""));
     }
 
     #[test]

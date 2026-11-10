@@ -18,7 +18,13 @@ type Box = {
   readonly height: number;
 };
 /** What the sidecar reads at the caret, in physical screen pixels; the font size in points (0: not said). */
-export type CaretGeometry = { readonly caret: Box; readonly field: Box; readonly fontPt: number };
+export type CaretGeometry = {
+  readonly caret: Box;
+  readonly field: Box;
+  readonly fontPt: number;
+  /** The words before the caret run right to left. */
+  readonly rtl?: boolean;
+};
 
 /** Lines of his field the ghost may cover above the caret and below it; a taller field scrolls inside this. */
 const ABOVE = 12;
@@ -36,20 +42,22 @@ const SKIP_POLL_MS = 50;
  * from the caret, and scroll up from its bottom edge; `top` is how far down that box the caret's line is.
  */
 export const ghostPlacement = (g: CaretGeometry) => {
+  // The ghost lays words out left to right only.
+  if (g.rtl === true) return { why: "rtl" };
   const guessedFont = g.fontPt > 0 ? Math.round((g.fontPt * 4) / 3) : 0;
-  // An empty field's caret is a sliver a few px tall; its font says how tall the line is.
-  const line =
-    guessedFont > 0 && g.caret.height < guessedFont
-      ? Math.round(guessedFont * 1.4)
-      : Math.round(g.caret.height);
+  // An empty field's caret is a sliver a few px tall: its font says how tall the line is, and the line sits as far
+  // below the field's top as the caret sits in from its left (the field's padding).
+  const sliver = guessedFont > 0 && g.caret.height < guessedFont;
+  const line = sliver ? Math.round(guessedFont * 1.4) : Math.round(g.caret.height);
+  const caretY = sliver ? g.field.y + Math.max(0, g.caret.x - g.field.x) : g.caret.y;
   const fontPx = guessedFont > 0 ? guessedFont : Math.round(line * 0.72);
   // The text's left edge is never right of the caret: a field with a slim padding puts it there.
   const left = Math.min(g.field.x + INSET, g.caret.x);
   const width = Math.round(g.field.x + g.field.width - INSET - left);
   const indent = Math.round(g.caret.x - left);
-  const boxTop = Math.round(Math.max(g.field.y, g.caret.y - ABOVE * line));
-  const boxBottom = Math.round(Math.min(g.field.y + g.field.height, g.caret.y + BELOW * line));
-  const top = Math.round(g.caret.y) - boxTop;
+  const boxTop = Math.round(Math.max(g.field.y, caretY - ABOVE * line));
+  const boxBottom = Math.round(Math.min(g.field.y + g.field.height, caretY + BELOW * line));
+  const top = Math.round(caretY) - boxTop;
   const height = boxBottom - boxTop;
   if (line < 8 || line > 80) return { why: `caret line ${line}px` };
   if (g.caret.x < g.field.x || indent > width || top < 0 || top + line > height + line / 2)
