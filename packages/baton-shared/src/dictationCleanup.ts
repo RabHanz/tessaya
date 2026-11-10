@@ -29,7 +29,12 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
   raw: "Raw, exactly as heard",
 };
 
-import { joinSplitTerms, promptTerms, withOwnWords } from "./vocabulary.ts";
+import { joinSplitTerms, promptTerms, soundsLike, withOwnWords } from "./vocabulary.ts";
+
+/** What was on his screen as he spoke: names the recogniser has never heard of (Wispr sends the same). */
+export interface DictationContext {
+  readonly screen?: ReadonlyArray<string>;
+}
 
 export interface DictionaryEntry {
   readonly phrase: string;
@@ -196,6 +201,90 @@ const STUTTER = /\b(i|the|a|an|to|and|of|we|it|in|on|for|is|you)(?:[,]?\s+\1)+\b
 /** Only on their own, so "add a new paragraph to the doc" stays a sentence. */
 const SPOKEN_BREAK = /(^|[.?!]\s+)new (paragraph|line)[.,]?(?=\s|$)/gi;
 
+/** Before a spoken mark or "dot", these make it the word itself: "the question mark icon", "the dot between them". */
+const NAMING = new Set([
+  "a",
+  "an",
+  "the",
+  "this",
+  "that",
+  "any",
+  "no",
+  "each",
+  "every",
+  "my",
+  "your",
+  "our",
+]);
+const lastWord = (text: string) => /([\p{L}']+)\W*$/u.exec(text)?.[1]?.toLowerCase() ?? "";
+
+const MARKS: Readonly<Record<string, string>> = {
+  "question mark": "?",
+  "exclamation mark": "!",
+  "exclamation point": "!",
+  "full stop": ".",
+};
+const SPOKEN_MARK =
+  /[ \t]*,?[ \t]*\b(question mark|exclamation (?:mark|point)|full stop)\b[.,?!]?/gi;
+
+/** A file's or site's ending said as "dot json", "dot com". */
+const DOT_ENDING = new RegExp(
+  String.raw`(^|\s)dot\s+(env|json|jsonl|js|jsx|ts|tsx|mjs|md|py|rs|go|sh|ps1|ahk|txt|csv|yml|yaml|toml|html|css|exe|dll|log|sql|gguf|wav|png|jpg|pdf|zip|lock|com|io|ai|dev|org|net|app|co|uk|social)\b`,
+  "gi",
+);
+const NUMBER_WORD = String.raw`(?:${Object.keys(NUMBER_WORDS).join("|")}|\d+)`;
+const NUMBER_GROUP = String.raw`${NUMBER_WORD}(?:\s+${NUMBER_WORD})*`;
+/** An address or version said in parts: "one nine two dot one six eight dot ten dot one". */
+const DOTTED_NUMBER = new RegExp(
+  String.raw`\b${NUMBER_GROUP}(?:\s+dot\s+${NUMBER_GROUP})+\b`,
+  "gi",
+);
+
+/** "one nine two" is 192, "one ninety two" is 192, "one hundred sixty eight" is 168, "ten" is 10. */
+const numberOfWords = (group: string): string => {
+  const values = group
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => NUMBER_WORDS[w] ?? w);
+  const hundred = values.indexOf("100");
+  if (hundred > 0) {
+    const rest = values.slice(hundred + 1).reduce((sum, v) => sum + Number(v), 0);
+    return String(Number(values[hundred - 1]) * 100 + rest);
+  }
+  let out = "";
+  for (let i = 0; i < values.length; i++) {
+    const tens = Number(values[i]);
+    const unit = Number(values[i + 1]);
+    // "ninety two" is one number; "nine two" is two digits.
+    if (tens >= 20 && tens % 10 === 0 && tens < 100 && unit > 0 && unit < 10) {
+      out += String(tens + unit);
+      i++;
+    } else out += values[i];
+  }
+  return out;
+};
+
+/** What he says as punctuation or as part of a name, written as it is meant, before anything else reads the text. */
+const spokenMarks = (text: string): string =>
+  text
+    .replace(/(\w)\s+hyphen\s+(?=\w)/gi, "$1-")
+    .replace(DOTTED_NUMBER, (said) =>
+      said
+        .split(/\s+dot\s+/i)
+        .map(numberOfWords)
+        .join("."),
+    )
+    .replace(DOT_ENDING, (_, lead: string, ending: string, at: number, whole: string) =>
+      lead === "" ||
+      NAMING.has(lastWord(whole.slice(0, at))) ||
+      /\b(?:in|into|to|from|of|all|multiple|some)$/i.test(whole.slice(0, at))
+        ? `${lead}.${ending.toLowerCase()}`
+        : `.${ending.toLowerCase()}`,
+    )
+    .replace(SPOKEN_MARK, (said, name: string, at: number, whole: string) =>
+      NAMING.has(lastWord(whole.slice(0, at))) ? said : MARKS[name.toLowerCase()]!,
+    );
+
 /** How many words before a correction marker he may have taken back. */
 const TAKEN_BACK_WORDS = 8;
 
@@ -234,10 +323,11 @@ const capitaliseSentences = (text: string): string =>
 const tidy = (text: string): string =>
   text
     .replace(/[ \t]+/g, " ")
-    .replace(/ ([,.;:!?])/g, "$1")
+    // Not before ".env": a dot that starts a name keeps its space.
+    .replace(/ ([,;:!?]|\.(?!\p{L}))/gu, "$1")
     .replace(/([,;:])\1+/g, "$1")
     .replace(/,\s*([.?!])/g, "$1")
-    .replace(/^[\s,.;:]+/, "")
+    .replace(/^(?:[\s,;:]|\.(?!\p{L}))+/u, "")
     .replace(/\n /g, "\n")
     .trim();
 
@@ -361,7 +451,7 @@ export const localClean = (
   dictionary: ReadonlyArray<DictionaryEntry> = [],
 ): string => {
   if (mode === "raw") return raw;
-  let text = raw
+  let text = spokenMarks(raw)
     .replace(FILLERS, "$1")
     .replace(FILLER_PHRASES, "$1")
     // "Like," only opens the sentence; the next word must start one. "So" is his and stays (0.1.92 dropped it).
@@ -510,6 +600,7 @@ export const checkRewrite = (
   input: string,
   answer: string,
   dictionary: ReadonlyArray<DictionaryEntry> = [],
+  context: DictationContext = {},
 ): RewriteVerdict => {
   const fail = (reason: string): RewriteVerdict => ({ ok: false, reason });
   const output = answer.replace(LIST_MARK, "");
@@ -540,14 +631,38 @@ export const checkRewrite = (
       return fail(`lost number ${number}`);
 
   const his = withOwnWords(dictionary);
+  const screen = context.screen ?? [];
   // Whole words: "Tessa" is not known because "Tessaya" is.
   const known = new Set(
-    his.flatMap((d) => `${d.phrase} ${d.replacement ?? ""}`.toLowerCase().split(/\s+/)),
+    [...his.flatMap((d) => `${d.phrase} ${d.replacement ?? ""}`), ...screen].flatMap((t) =>
+      t.toLowerCase().split(/\s+/),
+    ),
+  );
+  const inputWords = (input.match(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu) ?? []).map((w) =>
+    w.replace(/[.'’-]+$/, ""),
+  );
+  // A term on his screen the answer brought in may stand for a word that sounds like it: "Tesla" said, Tessaya
+  // meant. Off screen, only a form he taught counts, so "Copy Tessa in" stays Tessa.
+  const shown = new Set(screen.map((w) => w.toLowerCase()));
+  const heardAs = (term: string) => {
+    const bare = term.replace(/\s+/g, "");
+    return (
+      shown.has(term.toLowerCase()) &&
+      inputWords.some(
+        (w, i) => soundsLike(w, bare) || (i > 0 && soundsLike(`${inputWords[i - 1]}${w}`, bare)),
+      )
+    );
+  };
+  const brought = [...his.map((d) => d.replacement ?? d.phrase), ...screen].filter(
+    (term) => output.includes(term) && !input.includes(term),
   );
   const outLower = output.toLowerCase();
   const inLower = input.toLowerCase();
   // A name may go only for one of his words the answer brought in, and only as a form it is known to be heard as.
   const misheard = (name: string) =>
+    brought.some(
+      (term) => shown.has(term.toLowerCase()) && soundsLike(name, term.replace(/\s+/g, "")),
+    ) ||
     his.some((d) => {
       const term = d.replacement ?? d.phrase;
       return (
@@ -558,9 +673,19 @@ export const checkRewrite = (
     });
   // Exact case: "stripe" for "Stripe" is a lost name, even if the letters survived.
   // As a whole word: "Tessa" does not survive inside "Tessaya".
-  const survives = (name: string) =>
-    new RegExp(String.raw`(?<![\p{L}\p{N}])${escapeRegExp(name)}(?![\p{L}\p{N}])`, "u").test(
+  const whole = (word: string, flags = "u") =>
+    new RegExp(String.raw`(?<![\p{L}\p{N}])${escapeRegExp(word)}(?![\p{L}\p{N}])`, flags).test(
       output,
+    );
+  // Or joined to the word beside it, as one of his words is written: "Launch Pad" became "LaunchPad".
+  const survives = (name: string) =>
+    whole(name) ||
+    inputWords.some(
+      (w, i) =>
+        w === name &&
+        [`${inputWords[i - 1] ?? ""}${w}`, `${w}${inputWords[i + 1] ?? ""}`].some(
+          (joined) => joined !== w && whole(joined, "iu"),
+        ),
     );
   for (const name of namesIn(input))
     if (
@@ -592,9 +717,16 @@ export const checkRewrite = (
       )
     )
       continue;
-    if (!said(term.replace(/\s+/g, "")) && !(d.heard ?? []).some(said))
+    if (!said(term.replace(/\s+/g, "")) && !(d.heard ?? []).some(said) && !heardAs(term))
       return fail(`new term ${term}`);
   }
+  for (const term of brought)
+    if (
+      !his.some((d) => (d.replacement ?? d.phrase) === term) &&
+      !said(term.replace(/\s+/g, "")) &&
+      !heardAs(term)
+    )
+      return fail(`new term ${term}`);
   for (const token of input.match(CODE_TOKEN) ?? [])
     if (!output.includes(token.replace(/[.,]+$/, ""))) return fail(`lost term ${token}`);
 
@@ -702,6 +834,7 @@ export interface CleanedText {
 /** The whole pass. `ask` is whichever model this platform has, and must give up on its own. */
 export const cleanDictation = async (input: {
   readonly raw: string;
+  readonly context?: DictationContext;
   readonly mode: DictationMode;
   readonly level: CleanupLevel;
   readonly dictionary: ReadonlyArray<DictionaryEntry>;
@@ -717,7 +850,7 @@ export const cleanDictation = async (input: {
   try {
     // The model's own split spelling of his word ("Venture OS") is his word, not a lost name.
     const answer = joinSplitTerms(await input.ask(local, mode), dictionary);
-    const verdict = checkRewrite(local, answer, dictionary);
+    const verdict = checkRewrite(local, answer, dictionary, input.context);
     return verdict.ok
       ? { text: answer, stage: "model" }
       : { text: local, stage: "fallback", why: verdict.reason };
@@ -728,5 +861,15 @@ export const cleanDictation = async (input: {
 };
 
 /** A dictated closing tag cannot end the wrapper early. */
-export const rewriteMessage = (text: string, mode: DictationMode): string =>
-  `Mode: ${mode}\n<dictation>${text.replace(/<\/?dictation>/gi, "")}</dictation>`;
+export const rewriteMessage = (
+  text: string,
+  mode: DictationMode,
+  context: DictationContext = {},
+): string => {
+  const screen = (context.screen ?? []).map((w) => w.replace(/[<>\n]/g, "")).filter(Boolean);
+  const names =
+    screen.length === 0
+      ? ""
+      : `On his screen as he spoke: ${screen.join(", ")}. A word in the dictation that sounds like one of these and fits the sentence is that name, mis-heard: write it as on screen. Never add a name he did not say.\n`;
+  return `${names}Mode: ${mode}\n<dictation>${text.replace(/<\/?dictation>/gi, "")}</dictation>`;
+};

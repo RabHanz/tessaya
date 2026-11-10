@@ -16,6 +16,7 @@ import {
   parseAddToDictionary,
   parseVocabulary,
   promptTerms,
+  screenNames,
   upsertEntry,
 } from "./vocabulary.ts";
 
@@ -108,6 +109,24 @@ describe("his taught words", () => {
       ["Play with button presses.", "Play with button presses."],
     ];
     for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
+    // The model hears of an everyday form only as a maybe.
+    expect(promptTerms(his)).toContain(
+      'Baton (heard as "Buton"; sometimes heard as "button", only where it names this)',
+    );
+  });
+
+  it("puts a form he corrected that was written as a name back anywhere, and nothing shouted", () => {
+    const his = parseVocabulary([{ phrase: "Tessaya", replacement: null, heard: ["Tessa"] }]);
+    expect(biasTranscript("Tessa.", his)).toBe("Tessaya.");
+    expect(biasTranscript("Ask Tessa for it.", his)).toBe("Ask Tessaya for it.");
+    expect(biasTranscript("TESSA is loud.", his)).toBe("TESSA is loud.");
+    // One of his own words is never a mis-hearing of another (Wispr taught "Kubernetes" for Kuberly).
+    const both = parseVocabulary([
+      { phrase: "Kuberly", replacement: null, heard: ["Kubernetes"] },
+      { phrase: "Kubernetes", replacement: null },
+    ]);
+    expect(biasTranscript("Is the Kubernetes box up?", both)).toBe("Is the Kubernetes box up?");
+    expect(promptTerms(both)).toContain("Kuberly");
   });
 
   it("never puts a taught word over an everyday word he said, however Wispr learned it (0.1.92 feelIt)", () => {
@@ -311,6 +330,33 @@ describe("recognition bias", () => {
     expect(biasTranscript("Ask Zohayb about Kubernetis and colour.", entries)).toBe(
       "Ask Zohaib about Kubernetes and colour.",
     );
+  });
+
+  it("makes a name the recogniser made up his word when it is on screen and sounds like it", () => {
+    const his = parseVocabulary([{ phrase: "Zohaib", replacement: null }]);
+    const screen = { screen: ["Tessaya", "Zohaib"] };
+    expect(biasTranscript("Tessa.", his, screen)).toBe("Tessaya.");
+    expect(biasTranscript("Is Tesla up for Zohayb?", his, screen)).toBe(
+      "Is Tessaya up for Zohaib?",
+    );
+    // Off screen, a real word, or one that starts with another sound, stays.
+    expect(biasTranscript("Ask Tessa.", his)).toBe("Ask Tessa.");
+    // Said alone, it is his word even off screen.
+    expect(biasTranscript("Tessa.", his)).toBe("Tessaya.");
+    expect(biasTranscript("Press the button on Hessia.", his, screen)).toBe(
+      "Press the button on Hessia.",
+    );
+  });
+
+  it("reads names off the screen's accessibility lines, not its everyday words", () => {
+    expect(
+      screenNames([
+        "Tessaya - Google Chrome",
+        "Tab: LaunchPad dashboard",
+        "Button: Open the T3 Code settings",
+        "Text: What is the status",
+      ]),
+    ).toEqual(["Tessaya", "Google", "Chrome", "LaunchPad", "T3", "Code"]);
   });
 });
 
