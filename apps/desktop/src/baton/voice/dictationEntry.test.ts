@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { dictationStep, type DictationNow } from "./dictationEntry.ts";
+import { dictationStep, heldToTalk, type DictationNow } from "./dictationEntry.ts";
 
 const idle: DictationNow = { voice: false, keyRecording: false, heldByButton: false, ready: true };
 
@@ -27,5 +27,18 @@ describe("one dictation, whichever key, button or word moves it", () => {
     ["pill_click", { ...idle, voice: true }, "none"],
   ] as const)("%s while %o: %s", (entry, now, step) => {
     expect(dictationStep(entry, now)).toBe(step);
+  });
+});
+
+describe("the pill's ✓ and ✕", () => {
+  it.each([
+    ["hold", false, true],
+    // A mouse button held down: the helper hears "start", the desktop knows the button.
+    ["start", true, true],
+    ["toggle", false, false],
+    // An older helper says nothing: the buttons stay, as before.
+    [undefined, false, false],
+  ] as const)("via %s, held by a button %s: held to talk %s", (via, byButton, held) => {
+    expect(heldToTalk(via, byButton)).toBe(held);
   });
 });

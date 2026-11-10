@@ -51,3 +51,10 @@ export const dictationStep = (entry: DictationEntry, now: DictationNow): Dictati
       return now.keyRecording ? "helper_finish" : "none";
   }
 };
+
+/**
+ * A recording held to talk (the hold key, or a mouse button held down): its release is the ✓, so the pill shows no ✓
+ * or ✕. The hands-free key, a latched hold and an older helper that does not say how it started keep them.
+ */
+export const heldToTalk = (via: string | undefined, heldByButton: boolean): boolean =>
+  via === "hold" || heldByButton;

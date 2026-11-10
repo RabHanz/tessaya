@@ -31,28 +31,31 @@ const MIN_CHARS = 24;
 const SKIP_POLL_MS = 50;
 
 /**
- * Where the ghost window goes and how it sets its words, in DIP; null when there is no sensible place (the pill shows
- * them). The window is the field's text box, so his words wrap at the field's width, not from the caret, and scroll
- * up from its bottom edge; `top` is how far down that box the caret's line is.
+ * Where the ghost window goes and how it sets its words, in DIP; why not when there is no sensible place (the pill shows
+ * them, and the turn log says why). The window is the field's text box, so his words wrap at the field's width, not
+ * from the caret, and scroll up from its bottom edge; `top` is how far down that box the caret's line is.
  */
 export const ghostPlacement = (g: CaretGeometry) => {
-  const line = Math.round(g.caret.height);
-  const left = g.field.x + INSET;
-  const width = Math.round(g.field.width - 2 * INSET);
+  const guessedFont = g.fontPt > 0 ? Math.round((g.fontPt * 4) / 3) : 0;
+  // An empty field's caret is a sliver a few px tall; its font says how tall the line is.
+  const line =
+    guessedFont > 0 && g.caret.height < guessedFont
+      ? Math.round(guessedFont * 1.4)
+      : Math.round(g.caret.height);
+  const fontPx = guessedFont > 0 ? guessedFont : Math.round(line * 0.72);
+  // The text's left edge is never right of the caret: a field with a slim padding puts it there.
+  const left = Math.min(g.field.x + INSET, g.caret.x);
+  const width = Math.round(g.field.x + g.field.width - INSET - left);
   const indent = Math.round(g.caret.x - left);
-  const fontPx = g.fontPt > 0 ? Math.round((g.fontPt * 4) / 3) : Math.round(line * 0.72);
   const boxTop = Math.round(Math.max(g.field.y, g.caret.y - ABOVE * line));
   const boxBottom = Math.round(Math.min(g.field.y + g.field.height, g.caret.y + BELOW * line));
   const top = Math.round(g.caret.y) - boxTop;
   const height = boxBottom - boxTop;
-  if (line < 8 || line > 80 || indent < 0 || indent > width) return null;
-  if (
-    width < Math.max(120, fontPx * 0.5 * MIN_CHARS) ||
-    height < 2 * line ||
-    top < 0 ||
-    top + line > height + line / 2
-  )
-    return null;
+  if (line < 8 || line > 80) return { why: `caret line ${line}px` };
+  if (g.caret.x < g.field.x || indent > width || top < 0 || top + line > height + line / 2)
+    return { why: "caret outside the field" };
+  if (width < Math.max(120, fontPx * 0.5 * MIN_CHARS)) return { why: `field ${width}px wide` };
+  if (height < 2 * line) return { why: `field ${height}px tall, one line` };
   return {
     bounds: { x: Math.round(left), y: boxTop, width, height },
     fontPx,
@@ -86,8 +89,8 @@ window.ghost={start(f){setField(f.fontPx,f.linePx,f.width,f.indent,f.top,f.heigh
 </script></body></html>`;
 
 export interface PillGhost {
-  /** Opens the ghost at this caret; false when there is nowhere sensible to draw (the pill shows the words). */
-  readonly start: (geometry: CaretGeometry) => boolean;
+  /** Opens the ghost at this caret; why not when there is nowhere sensible to draw (the pill shows the words). */
+  readonly start: (geometry: CaretGeometry) => { readonly why: string } | null;
   readonly active: () => boolean;
   readonly words: (text: string) => void;
   /** His ✓ or the key's release. */
@@ -165,7 +168,7 @@ export const createPillGhost = (input: {
         field: scale(geometry.field),
         fontPt: geometry.fontPt,
       });
-      if (placed === null) return false;
+      if (placed.why !== undefined) return { why: placed.why };
       const win = new Electron.BrowserWindow({
         ...placed.bounds,
         frame: false,
@@ -192,7 +195,7 @@ export const createPillGhost = (input: {
       void call(
         `window.ghost.start(${JSON.stringify({ fontPx: placed.fontPx, linePx: placed.linePx, width: placed.width, indent: placed.indent, top: placed.top, height: placed.height })})`,
       );
-      return true;
+      return null;
     },
     active: live,
     words: (text) => void call(`window.ghost.words(${JSON.stringify(text)})`),

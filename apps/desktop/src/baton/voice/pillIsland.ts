@@ -19,6 +19,7 @@ html.glass-reduced #p.isl,html.glass-off #p.isl{background:var(--glass-solid)}
 #p.isl>#mk,#p.isl>#d,#p.isl>#st,#p.isl>#t,#p.isl>#c{display:none!important}
 #p.isl .db{position:absolute;left:0;top:0;display:flex;width:28px;height:28px;margin:0;border-radius:8px;color:var(--soft)}
 #p.isl .db:hover{background:transparent;color:var(--text)}
+#p.isl[data-voice=off] .db{display:none}
 #p.isl #dv{color:var(--text)}
 #p.isl[data-esc=on] #dx{color:var(--red)}
 #p.isl #w{position:absolute;left:0;top:0;display:block}

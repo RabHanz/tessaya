@@ -20,10 +20,38 @@ describe("the ghost at the caret", () => {
       height: 300,
     });
   });
-  it("leaves a one-line box or one too narrow to flow words in to the pill", () => {
+  it("leaves a one-line box or one too narrow to flow words in to the pill, and says which", () => {
     const caret = { x: 120, y: 205, width: 0, height: 22 };
-    expect(ghostPlacement({ caret, field: { ...field, height: 30 }, fontPt: 11.25 })).toBeNull();
-    expect(ghostPlacement({ caret, field: { ...field, width: 180 }, fontPt: 11.25 })).toBeNull();
+    expect(ghostPlacement({ caret, field: { ...field, height: 30 }, fontPt: 11.25 })).toEqual({
+      why: "field 30px tall, one line",
+    });
+    expect(ghostPlacement({ caret, field: { ...field, width: 180 }, fontPt: 11.25 })).toEqual({
+      why: "field 164px wide",
+    });
+  });
+  it("draws in a field whose padding is slimmer than the inset, and in an empty one", () => {
+    // The T3 composer on his laptop (0.1.91 turn log): the caret sits 7 px in, so the ghost never showed.
+    const composer = { x: 2714, y: 1828, width: 1011, height: 95 };
+    expect(
+      ghostPlacement({
+        caret: { x: 2721, y: 1839, width: 8, height: 31 },
+        field: composer,
+        fontPt: 10.5,
+      }),
+    ).toMatchObject({
+      bounds: { x: 2721, y: 1828, width: 996, height: 95 },
+      indent: 0,
+      top: 11,
+      linePx: 31,
+    });
+    // Empty, it reports a 3 px caret; the line comes from the font.
+    expect(
+      ghostPlacement({
+        caret: { x: 2722, y: 1833, width: 0, height: 3 },
+        field: composer,
+        fontPt: 10.5,
+      }),
+    ).toMatchObject({ indent: 0, linePx: 20, fontPx: 14 });
   });
   it("flows words from the caret and wraps each at the box's width, never one word a line", () => {
     // Box 100 wide, caret 60 in: the first fits after it, the next goes to a new line, which holds three.
@@ -47,9 +75,19 @@ describe("the ghost at the caret", () => {
   });
   it("draws nothing where it could not sit right: a tiny field, a caret outside it, no line", () => {
     const caret = { x: 300, y: 240, width: 0, height: 22 };
-    expect(ghostPlacement({ caret, field: { ...field, width: 100 }, fontPt: 11 })).toBeNull();
-    expect(ghostPlacement({ caret: { ...caret, x: 50 }, field, fontPt: 11 })).toBeNull();
-    expect(ghostPlacement({ caret: { ...caret, height: 0 }, field, fontPt: 11 })).toBeNull();
+    const why = (g: Parameters<typeof ghostPlacement>[0]) => {
+      const placed = ghostPlacement(g);
+      return placed.why ?? null;
+    };
+    expect(
+      why({
+        caret: { x: 120, y: 240, width: 0, height: 22 },
+        field: { ...field, width: 100 },
+        fontPt: 11,
+      }),
+    ).toBe("field 84px wide");
+    expect(why({ caret: { ...caret, x: 50 }, field, fontPt: 11 })).toBe("caret outside the field");
+    expect(why({ caret: { ...caret, height: 0 }, field, fontPt: 0 })).toBe("caret line 0px");
   });
   it("reads the sidecar's caret only when it is whole: a secret field sends none", () => {
     expect(caretGeometry({ caret: null })).toBeNull();

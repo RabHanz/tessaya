@@ -1278,6 +1278,13 @@ fn paste_verdict(focused: bool, same_window: bool, same_title: bool, secret: boo
     }
 }
 
+/// The desktop and taskbar: shell panes with nothing to type into. Windows reports them as a plain pane, which
+/// `focused_takes_no_text` otherwise keeps as a box because editors that draw their own text look the same.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn shell_surface(class: &str) -> bool {
+    ["Progman", "WorkerW", "SHELLDLL_DefView", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"].contains(&class)
+}
+
 #[cfg(windows)]
 fn focus_for_paste(window: isize) -> Result<(), String> {
     capture::focus_window(window).map(drop)
@@ -1559,7 +1566,7 @@ fn serve() {
                 let mic_ms = pressed.elapsed().as_millis() as u64;
                 *recording =
                     Some(Recording { id, source, samples, started: Instant::now(), target, pressed, mic_ms, first_audio, via });
-                emit(json!({"ev": "recording", "app": app, "title": title, "micMs": mic_ms, "dictation": id}));
+                emit(json!({"ev": "recording", "app": app, "title": title, "micMs": mic_ms, "dictation": id, "via": via}));
             }
             Err(message) => {
                 let _ = job_tx.send(Work::Abort);
@@ -1883,7 +1890,9 @@ fn serve() {
                             let _ = job_tx.send(Work::Abort);
                             emit(of_dictation(json!({"ev": "idle", "tap": true}), stopped));
                         }
-                        Out::Latch | Out::Unlatch => {}
+                        // Hands-free from here: the desktop shows the pill's ✓ and ✕.
+                        Out::Latch => emit(json!({"ev": "latched"})),
+                        Out::Unlatch => {}
                     }
                 }
             }
@@ -2132,6 +2141,17 @@ mod tests {
         ];
         for ((focused, same_window, same_title, secret, no_field), want) in rows {
             assert_eq!(paste_verdict(focused, same_window, same_title, secret, no_field), want);
+        }
+    }
+
+    #[test]
+    fn the_desktop_and_taskbar_are_no_text_box() {
+        for class in ["Progman", "WorkerW", "SHELLDLL_DefView", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"] {
+            assert!(shell_surface(class), "{class}");
+        }
+        // Panes editors draw their own text in stay boxes.
+        for class in ["", "Chrome_RenderWidgetHostHWND", "_WwG", "Scintilla", "CabinetWClass"] {
+            assert!(!shell_surface(class), "{class}");
         }
     }
 

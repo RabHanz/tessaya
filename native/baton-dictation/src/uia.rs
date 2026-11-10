@@ -690,7 +690,8 @@ pub fn focused_is_secret() -> bool {
 /// The keyboard is on something that takes no typing: Explorer's or the desktop's icons, a list, a tree, a button. A
 /// paste there does nothing (or pastes files), so the words go on the clipboard with a card instead. Anything that might
 /// take text stays a box: an edit, a document, a text pattern, a writable value, a data item (a cell in Excel or
-/// Sheets), and any pane, window or custom control, which is how editors that draw their own text show up.
+/// Sheets), and any pane, window or custom control, which is how editors that draw their own text show up, except the
+/// shell's own desktop and taskbar panes (`shell_surface`).
 pub fn focused_takes_no_text() -> bool {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -700,6 +701,10 @@ pub fn focused_takes_no_text() -> bool {
         };
         let Ok(element) = automation.GetFocusedElement() else { return false };
         let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+        let class = element.CurrentClassName().map(|c| c.to_string()).unwrap_or_default();
+        if crate::shell_surface(&class) {
+            return true;
+        }
         if element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).is_ok() {
             return false;
         }

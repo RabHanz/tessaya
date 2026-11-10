@@ -187,7 +187,11 @@ export type DictationEvent =
       readonly app?: string;
       readonly title?: string;
       readonly dictation?: number;
+      /** What started it: `hold` (the hold key), `toggle` (the hands-free key) or `start` (the desktop). */
+      readonly via?: string;
     }
+  /** A double-tapped hold latched the microphone open: it is hands-free until the next press. */
+  | { readonly ev: "latched" }
   | { readonly ev: "transcribing" }
   /** The words so far, at a pause while the key is still held. */
   /** Every decoded piece; `pause` when it ended at a pause (an older sidecar sends only those, unmarked). */
