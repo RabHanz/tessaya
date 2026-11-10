@@ -1,7 +1,7 @@
 // @effect-diagnostics globalTimers:off
 /**
- * PILL-V2 "D": his words drawn as ghost text at the caret of the field they will land in, then the same cleanup
- * played in place; the paste lands as the ghost goes, and any key or click skips straight to it. A click-through
+ * PILL-V2 "D": his words drawn as ghost text at the caret of the field they will land in. The paste never waits for
+ * it: the cleaned words land at once and the ghost goes as they do (`stop`). A click-through
  * window that never takes focus and stays out of screen sharing. With no caret to draw at, the pill shows them (E).
  */
 import * as Electron from "electron";
@@ -22,6 +22,8 @@ export type CaretGeometry = {
   readonly caret: Box;
   readonly field: Box;
   readonly fontPt: number;
+  /** The field's font family as UI Automation names it; absent when it does not say. */
+  readonly fontName?: string;
   /** The words before the caret run right to left. */
   readonly rtl?: boolean;
 };
@@ -33,8 +35,6 @@ const BELOW = 30;
 const INSET = 8;
 /** Narrower than this many average characters, or shorter than two lines, the field is no place to flow his words. */
 const MIN_CHARS = 24;
-/** How often a key or click is looked for while the ghost plays. */
-const SKIP_POLL_MS = 50;
 
 /**
  * Where the ghost window goes and how it sets its words, in DIP; why not when there is no sensible place (the pill shows
@@ -66,6 +66,9 @@ export const ghostPlacement = (g: CaretGeometry) => {
   if (height < 2 * line) return { why: `field ${height}px tall, one line` };
   return {
     bounds: { x: Math.round(left), y: boxTop, width, height },
+    // A name that could break out of the CSS string is dropped; the default stack stands in.
+    font: /^[\w .-]{1,64}$/.test(g.fontName ?? "") ? (g.fontName as string) : null,
+    empty: sliver,
     fontPx,
     linePx: line,
     width,
@@ -74,6 +77,13 @@ export const ghostPlacement = (g: CaretGeometry) => {
     height,
   };
 };
+
+/** The sidecar's boxes in DIP; everything else it read (font, RTL) goes with them. */
+export const inDip = (g: CaretGeometry, scale: (b: Box) => Box): CaretGeometry => ({
+  ...g,
+  caret: scale(g.caret),
+  field: scale(g.field),
+});
 
 const GHOST_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
 :root{--field-bg:#1f1f23;--field-ink:#e9e9ee;--ghost:rgba(233,233,238,.84);--ghost-drop:rgba(233,233,238,.5);--sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
@@ -93,7 +103,7 @@ const $=i=>document.getElementById(i);
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
 const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
 ${wordsScript("D")}
-window.ghost={start(f){setField(f.fontPx,f.linePx,f.width,f.indent,f.top,f.height);island.start();},words(t){island.words(t);},release(){island.release();},cleanup(r,c){return island.cleanup(r,c);},stop(){island.stop();}};
+window.ghost={start(f){EMPTY=f.empty;if(f.font)document.documentElement.style.setProperty('--sans','"'+f.font+'",'+getComputedStyle(document.documentElement).getPropertyValue('--sans'));setField(f.fontPx,f.linePx,f.width,f.indent,f.top,f.height);island.start();},words(t){island.words(t);},release(){island.release();},stop(){island.stop();}};
 </script></body></html>`;
 
 export interface PillGhost {
@@ -103,28 +113,17 @@ export interface PillGhost {
   readonly words: (text: string) => void;
   /** His ✓ or the key's release. */
   readonly release: () => void;
-  /**
-   * Plays the cleanup in place and resolves when the paste should land: as the ghost goes, or at once on a key or
-   * click. False when the ghost was not up (nothing waited).
-   */
-  readonly play: (raw: string, clean: string) => Promise<boolean>;
-  /** A key he pressed is waiting for the paste: the play ends at once, now or as soon as it starts. */
-  readonly skip: () => void;
   readonly stop: () => void;
 }
 
 export const createPillGhost = (input: {
   readonly look: () => { readonly motion: Motion; readonly glass: Glass };
-  /** The system's last-input tick (a key, a click or a move); null when it cannot say. */
-  readonly lastInput: () => Promise<number | null>;
   /** The sidecar's boxes are physical pixels only on Windows. */
   readonly windows: boolean;
 }): PillGhost => {
   let window: Electron.BrowserWindow | null = null;
   let ready: Promise<unknown> = Promise.resolve();
   const live = () => window !== null && !window.isDestroyed();
-  let keyWaiting = false;
-  let onKey: (() => void) | null = null;
   const call = (code: string): Promise<unknown> => {
     const target = window;
     return ready.then(() =>
@@ -141,41 +140,11 @@ export const createPillGhost = (input: {
     if (live()) window!.destroy();
     window = null;
   };
-  /**
-   * A click or key while the ghost plays pastes at once: the tick moved while the pointer stayed put (a move alone is
-   * not a skip). Edge: a plain key (Enter included) still reaches the field just before the paste; no hook swallows it.
-   */
-  const skipped = (stopAt: Promise<void>) =>
-    new Promise<void>((resolve) => {
-      let done = false;
-      void stopAt.then(() => (done = true));
-      void input.lastInput().then((first) => {
-        if (first === null) return;
-        let cursor = Electron.screen.getCursorScreenPoint();
-        const look = () => {
-          if (done) return;
-          void input.lastInput().then((tick) => {
-            const now = Electron.screen.getCursorScreenPoint();
-            const moved = now.x !== cursor.x || now.y !== cursor.y;
-            cursor = now;
-            if (tick !== null && tick !== first && !moved) return resolve();
-            if (moved && tick !== null) first = tick;
-            setTimeout(look, SKIP_POLL_MS).unref();
-          });
-        };
-        setTimeout(look, SKIP_POLL_MS).unref();
-      });
-    });
   return {
     start: (geometry) => {
       stop();
-      keyWaiting = false;
       const scale = (b: Box) => (input.windows ? Electron.screen.screenToDipRect(null, b) : b);
-      const placed = ghostPlacement({
-        caret: scale(geometry.caret),
-        field: scale(geometry.field),
-        fontPt: geometry.fontPt,
-      });
+      const placed = ghostPlacement(inDip(geometry, scale));
       if (placed.why !== undefined) return { why: placed.why };
       const win = new Electron.BrowserWindow({
         ...placed.bounds,
@@ -201,52 +170,13 @@ export const createPillGhost = (input: {
         })
         .catch(() => undefined);
       void call(
-        `window.ghost.start(${JSON.stringify({ fontPx: placed.fontPx, linePx: placed.linePx, width: placed.width, indent: placed.indent, top: placed.top, height: placed.height })})`,
+        `window.ghost.start(${JSON.stringify({ fontPx: placed.fontPx, linePx: placed.linePx, width: placed.width, indent: placed.indent, top: placed.top, height: placed.height, font: placed.font, empty: placed.empty })})`,
       );
       return null;
     },
     active: live,
     words: (text) => void call(`window.ghost.words(${JSON.stringify(text)})`),
     release: () => void call("window.ghost.release()"),
-    play: async (raw, clean) => {
-      if (!live()) return false;
-      const target = window;
-      const ms = await call(
-        `window.ghost.cleanup(${JSON.stringify(raw)},${JSON.stringify(clean)})`,
-      );
-      const fade = 300;
-      const total = typeof ms === "number" ? Math.min(ms, 3_000) : 0;
-      let end = () => undefined as void;
-      const over = new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, Math.max(0, total - fade));
-        t.unref();
-        end = resolve;
-      });
-      const key = new Promise<boolean>((resolve) => {
-        onKey = () => resolve(true);
-        if (keyWaiting) resolve(true);
-      });
-      const skip = await Promise.race([
-        over.then(() => false),
-        skipped(over).then(() => true),
-        key,
-      ]);
-      onKey = null;
-      keyWaiting = false;
-      end();
-      // The words land under the ghost as it fades; a skip takes it away at once.
-      setTimeout(
-        () => {
-          if (window === target) stop();
-        },
-        skip || total <= fade ? 0 : fade,
-      ).unref();
-      return true;
-    },
-    skip: () => {
-      keyWaiting = true;
-      onKey?.();
-    },
     stop,
   };
 };

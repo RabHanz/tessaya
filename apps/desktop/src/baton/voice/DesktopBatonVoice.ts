@@ -375,6 +375,7 @@ import {
 import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createLastLanded } from "./lastLanded.ts";
+import { createPressGate } from "./pressGate.ts";
 import {
   dictationStep,
   heldToTalk,
@@ -518,8 +519,8 @@ import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
-/** The longest the paste waits for the ghost in his field. */
-const GHOST_WAIT_MS = 3_000;
+/** How long the hold key is down before its pill shows: the helper's tap cutoff (SHORT_TAP_MS), so a tap never flashes. */
+const PRESS_SHOW_MS = 200;
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: BatonFocusTarget = {
   producer: "desktop",
@@ -1957,10 +1958,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const ghost = createPillGhost({
     look: () => ({ motion: settings.motion, glass: settings.glass }),
-    lastInput: () => sidecar?.lastInput().catch(() => null) ?? Promise.resolve(null),
     windows: input.platform === "win32",
   });
-  /** The ghost played this flush's cleanup in his field, so the pill does not play it again. */
+  /** The ghost showed this flush's words in his field, so the pill does not play the cleanup again. */
   let ghostPlayed = false;
   /** As a dictation starts: the words go at the caret when the field says where it is, else in the pill. */
   const startGhost = () => {
@@ -1982,24 +1982,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let keyHold = 0;
   let keyHolds = 0;
   const oneShot = createOneShot<FocusedApp>({
-    // A hung ghost page never stops the paste: past GHOST_WAIT_MS the words land anyway.
-    beforePaste: (raw, text, app) => {
-      // Enter pressed while the ghost plays must land after the words, so typing keys wait for this paste.
-      if (ghost.active() && app.window !== undefined && sidecar !== null) {
+    // The paste never waits for the ghost (it held every paste ~2.8 s): its words go as the cleaned ones land.
+    beforePaste: async (_raw, _text, app) => {
+      ghostPlayed = ghost.active();
+      // Enter pressed while the ghost is up must land after the words, so typing keys wait for this paste.
+      if (ghostPlayed && app.window !== undefined && sidecar !== null) {
         keyHold = ++keyHolds;
         sidecar.holdKeys(keyHold, app.window);
       }
-      return Promise.race([
-        ghost.play(raw, text),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), GHOST_WAIT_MS).unref()),
-      ]).then((played) => {
-        ghostPlayed = played;
-        if (!played) ghost.stop();
-      });
     },
     afterPaste: () => {
       if (keyHold !== 0) sidecar?.releaseKeys(keyHold);
       keyHold = 0;
+      ghost.stop();
     },
     save: (chunks) => {
       try {
@@ -2039,7 +2034,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 // One helper call: its window forward, the same window and page checked (his words were not for
                 // another), then the paste.
                 const why = await side
-                  .pasteChecked(text, target, title)
+                  .pasteChecked(text, target, title, (late) => {
+                    if (late !== "ok") return;
+                    // It landed after all: its copy card would only invite a second paste.
+                    toast.retract(text);
+                    pill.on({ type: "done", label: "Pasted after all" });
+                    input.onNote?.("paste_late", { chars: text.length });
+                  })
                   .catch(() => "refused" as const);
                 if (why === "ok") return true;
                 keptWhy = why;
@@ -3606,6 +3607,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (id === "toggle") return void moveDictation("toggle");
     bindingHandlers?.[id]?.();
   };
+  /** A tap under PRESS_SHOW_MS never shows the pill; the microphone opened on the press all the same. */
+  const pressGate = createPressGate(PRESS_SHOW_MS, () => showDictation("Esc twice discards"));
   /** The helper is recording a key or button dictation (its Esc is held while it does). */
   const keyRecording = () => releaseRecordingEscape !== null;
   /** That recording is held to talk (`heldToTalk`), until a double tap latches it. */
@@ -3650,6 +3653,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
+    if (event.ev === "key_edge")
+      return input.onNote?.("key_edge", { down: event.down, at: event.at });
+    // The pill on the press itself; the microphone opens 80 to 140 ms later (`recording`).
+    if (event.ev === "pressed") return pressGate.press();
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
       dictationWords(event.text);
@@ -3686,23 +3693,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (settings.dictationCleanup === "claude") rewriter.warm();
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
-      showDictation("Esc twice discards");
+      pressGate.want();
       startGhost();
     } else if (event.ev === "latched") {
       keyHeldToTalk = false;
       showDictation("Esc twice discards");
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
-    else if (event.ev === "held_key" && event.id === keyHold) ghost.skip();
     else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
       takeRecording(recordings, event.dictation);
       // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
+      if (event.joined === true) input.onNote?.("dictation_dropped", { reason: "chord_joined" });
       if (event.discarded === true) input.onNote?.("dictation_dropped", { reason: "esc_held" });
-      showDictation(null);
+      // A tap whose pill never showed ends with nothing on screen to take away.
+      if (!pressGate.cancel()) showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();
+      pressGate.cancel();
       takeRecording(recordings, event.dictation);
       note = event.message;
       showDictation(null);
@@ -3763,6 +3772,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         keepText(`Heard as ${languageName(outside)}, not pasted`, text);
         return void heardOutside(outside);
       }
+      // A hold that leaves nothing: why, so it is never a silent loss.
+      if (event.dictated === true && (event.error !== undefined || text.trim() === ""))
+        input.onNote?.("dictation_dropped", {
+          reason: event.error === undefined ? "no_text" : "error",
+          audioMs: event.audioMs ?? null,
+          ...(event.error === undefined ? {} : { error: event.error }),
+        });
       if (event.dictated === true && event.error === undefined) {
         const own = withRecording(event);
         if (own.unmatched === true) return keepText("Not pasted", text);

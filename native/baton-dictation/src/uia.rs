@@ -19,7 +19,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_SelectionItemIsSelectedPropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId,
     UIA_ToggleToggleStatePropertyId, UIA_TogglePatternId, UIA_TreeItemControlTypeId, UIA_ValuePatternId,
     UIA_ValueValuePropertyId, IUIAutomationTextPattern, TextPatternRangeEndpoint_End, TextPatternRangeEndpoint_Start,
-    TextUnit_Character, UIA_TextPatternId, UIA_FontSizeAttributeId,
+    TextUnit_Character, UIA_TextPatternId, UIA_FontSizeAttributeId, UIA_FontNameAttributeId,
 };
 use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Ole::SafeArrayDestroy;
@@ -809,7 +809,7 @@ pub fn caret_geometry() -> Result<Value, String> {
             return Ok(json!({"caret": null}));
         }
         let field = element.CurrentBoundingRectangle().map_err(err)?;
-        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64, bool)>> {
+        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64, String, bool)>> {
             let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
             let selection = pattern.GetSelection()?;
             if selection.Length()? == 0 {
@@ -832,15 +832,22 @@ pub fn caret_geometry() -> Result<Value, String> {
                 Ok(crate::has_rtl(&before.GetText(RTL_LOOK)?.to_string()))
             })()
             .unwrap_or(false);
-            Ok(Some((caret, size, rtl)))
+            let font = range
+                .GetAttributeValue(UIA_FontNameAttributeId)
+                .ok()
+                .and_then(|v| BSTR::try_from(&v).ok())
+                .map(|name| name.to_string())
+                .unwrap_or_default();
+            Ok(Some((caret, size, font, rtl)))
         })()
         .ok()
         .flatten();
-        let Some(((x, y, w, h), size, rtl)) = found else { return Ok(json!({"caret": null})) };
+        let Some(((x, y, w, h), size, font, rtl)) = found else { return Ok(json!({"caret": null})) };
         Ok(json!({
             "caret": {"x": x, "y": y, "width": w, "height": h},
             "field": {"x": field.left, "y": field.top, "width": field.right - field.left, "height": field.bottom - field.top},
             "fontPt": size,
+            "fontName": font,
             "rtl": rtl,
         }))
     }

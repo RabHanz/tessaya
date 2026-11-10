@@ -78,6 +78,8 @@ export interface VocabToast {
   readonly add: (word: string) => void;
   /** Shows this card in place of any other. */
   readonly show: (card: Card) => void;
+  /** Takes back the copy card for these words, if it is the one up. */
+  readonly retract: (text: string) => void;
   readonly dispose: () => void;
 }
 
@@ -192,6 +194,9 @@ export const createVocabToast = (input: {
       batchTimer.unref();
     },
     show,
+    retract: (text: string) => {
+      if (shown?.kind === "copy" && shown.text === text) close();
+    },
     dispose: () => {
       if (batchTimer !== null) clearTimeout(batchTimer);
       close();

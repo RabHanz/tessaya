@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { caretGeometry } from "./dictationSidecar.ts";
-import { ghostPlacement } from "./pillGhost.ts";
+import { ghostPlacement, inDip } from "./pillGhost.ts";
 import { flowWords, ghostScroll } from "./pillIsland.ts";
 
 const field = { x: 100, y: 200, width: 600, height: 300 };
@@ -12,6 +12,8 @@ describe("the ghost at the caret", () => {
       ghostPlacement({ caret: { x: 300, y: 240, width: 0, height: 22 }, field, fontPt: 11.25 }),
     ).toEqual({
       bounds: { x: 108, y: 200, width: 584, height: 300 },
+      font: null,
+      empty: false,
       fontPx: 15,
       linePx: 22,
       width: 584,
@@ -51,7 +53,17 @@ describe("the ghost at the caret", () => {
         field: composer,
         fontPt: 10.5,
       }),
-    ).toMatchObject({ indent: 0, linePx: 20, fontPx: 14, top: 8 });
+    ).toMatchObject({ indent: 0, linePx: 20, fontPx: 14, top: 8, empty: true });
+  });
+  it("covers an empty field's placeholder and writes in the field's own font, never one that breaks the CSS", () => {
+    const caret = { x: 300, y: 240, width: 0, height: 22 };
+    expect(ghostPlacement({ caret, field, fontPt: 11, fontName: "Inter Variable" })).toMatchObject({
+      font: "Inter Variable",
+      empty: false,
+    });
+    expect(
+      ghostPlacement({ caret, field, fontPt: 11, fontName: 'x";}body{display:none' }),
+    ).toMatchObject({ font: null });
   });
   it("flows words from the caret and wraps each at the box's width, never one word a line", () => {
     // Box 100 wide, caret 60 in: the first fits after it, the next goes to a new line, which holds three.
@@ -91,6 +103,23 @@ describe("the ghost at the caret", () => {
     // The ghost lays words out left to right; Hebrew or Arabic before the caret stays in the pill.
     expect(why({ caret, field, fontPt: 11, rtl: true })).toBe("rtl");
   });
+  it("keeps the field's font and its RTL flag when the boxes go to DIP", () => {
+    const half = (b: { x: number; y: number; width: number; height: number }) => ({
+      x: b.x / 2,
+      y: b.y / 2,
+      width: b.width / 2,
+      height: b.height / 2,
+    });
+    const g = {
+      caret: { x: 600, y: 480, width: 0, height: 44 },
+      field: { x: 200, y: 400, width: 1200, height: 600 },
+      fontPt: 11,
+    };
+    expect(ghostPlacement(inDip({ ...g, fontName: "Inter Variable" }, half))).toMatchObject({
+      font: "Inter Variable",
+    });
+    expect(ghostPlacement(inDip({ ...g, rtl: true }, half))).toEqual({ why: "rtl" });
+  });
   it("reads the sidecar's caret only when it is whole: a secret field sends none", () => {
     expect(caretGeometry({ caret: null })).toBeNull();
     expect(caretGeometry({ caret: { x: 1, y: 2, width: 0, height: 20 }, field: null })).toBeNull();
@@ -111,5 +140,12 @@ describe("the ghost at the caret", () => {
         rtl: true,
       })?.rtl,
     ).toBe(true);
+    expect(
+      caretGeometry({
+        caret: { x: 1, y: 2, width: 0, height: 20 },
+        field: { x: 0, y: 0, width: 9, height: 9 },
+        fontName: "Segoe UI",
+      })?.fontName,
+    ).toBe("Segoe UI");
   });
 });
