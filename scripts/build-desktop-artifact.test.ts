@@ -1908,4 +1908,12 @@ it("batonSidecarBuild builds the sidecar for each platform and arch, joining a u
   assert.deepEqual(targets("mac", "x64"), ["x86_64-apple-darwin"]);
   assert.deepEqual(targets("mac", "universal"), ["aarch64-apple-darwin", "x86_64-apple-darwin"]);
   assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
+  // With the Vulkan SDK, Windows adds the graphics card and keeps the static CRT; elsewhere the SDK changes nothing.
+  const gpu = batonSidecarBuild("win", "x64", "C:\\VulkanSDK\\1.4")[0]!;
+  assert.strictEqual(gpu.features, "gpu");
+  assert.include(gpu.cmake, "-DCMAKE_PREFIX_PATH=C:/VulkanSDK/1.4");
+  assert.include(gpu.cmake, "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
+  assert.strictEqual(gpu.rustflags, "-C target-feature=+crt-static -L native=C:/VulkanSDK/1.4/Lib");
+  assert.strictEqual(batonSidecarBuild("win", "x64")[0]!.features, undefined);
+  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 });

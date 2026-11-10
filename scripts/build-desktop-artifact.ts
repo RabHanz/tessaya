@@ -2423,23 +2423,44 @@ export const BATON_VOICE_PAYLOAD_FILES = [
   "models/tessaya.onnx",
 ] as const;
 
-/** The sidecar's cargo target and cmake flags for one platform and arch. Windows keeps its static CRT build. */
+/** The Windows graphics-card build's modules beside tessaya-voice.exe (`batonSidecarBuild` with the Vulkan SDK). */
+export const BATON_VOICE_GPU_FILES = [
+  "transcribe.dll",
+  "ggml.dll",
+  "ggml-base.dll",
+  "ggml-cpu.dll",
+  "ggml-vulkan.dll",
+] as const;
+
+/**
+ * The sidecar's cargo target and cmake flags for one platform and arch. Windows keeps its static CRT build, and with
+ * the Vulkan SDK on the build machine (`vulkanSdk`) also recognises on the graphics card (native/baton-dictation
+ * gpu.rs): its Vulkan backend is then a DLL beside the exe, loaded only where a Vulkan driver exists.
+ */
 export function batonSidecarBuild(
   platform: typeof BuildPlatform.Type,
   arch: typeof BuildArch.Type,
+  vulkanSdk?: string,
 ): ReadonlyArray<{
   readonly rustTarget: string | null;
   readonly cmake: string;
   readonly rustflags?: string;
+  readonly features?: string;
 }> {
   const avx2 =
     "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON";
   if (platform === "win") {
+    const cmake = `${avx2} -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`;
+    const rustflags = "-C target-feature=+crt-static";
+    if (vulkanSdk === undefined) return [{ rustTarget: null, cmake, rustflags }];
+    // One CPU module at the AVX2 floor, not ggml's per-ISA set; CMake finds the SDK's SPIRV headers by prefix.
+    const sdk = vulkanSdk.replaceAll("\\", "/");
     return [
       {
         rustTarget: null,
-        cmake: `${avx2} -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`,
-        rustflags: "-C target-feature=+crt-static",
+        cmake: `${cmake} -DGGML_CPU_ALL_VARIANTS=OFF -DCMAKE_PREFIX_PATH=${sdk}`,
+        rustflags: `${rustflags} -L native=${sdk}/Lib`,
+        features: "gpu",
       },
     ];
   }
@@ -2473,12 +2494,16 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
   const exe = input.platform === "win" ? "tessaya-voice.exe" : "tessaya-voice";
   const built: string[] = [];
-  for (const build of batonSidecarBuild(input.platform, input.arch ?? "x64")) {
+  const sdk = yield* Config.String("VULKAN_SDK").pipe(Config.withDefault(""));
+  const vulkanSdk = input.platform === "win" && sdk !== "" ? sdk : undefined;
+  const builds = batonSidecarBuild(input.platform, input.arch ?? "x64", vulkanSdk);
+  for (const build of builds) {
     const spawnCommand = yield* resolveSpawnCommand("cargo", [
       "build",
       "--locked",
       "--release",
       ...(build.rustTarget === null ? [] : ["--target", build.rustTarget]),
+      ...(build.features === undefined ? [] : ["--features", build.features]),
       "--manifest-path",
       path.join(crate, "Cargo.toml"),
     ]);
@@ -2512,6 +2537,13 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   const out = path.join(destination, exe);
   if (built.length === 1) {
     yield* fs.copyFile(built[0]!, out);
+    // The graphics-card build's modules: the exe does not start without transcribe.dll and its ggml DLLs.
+    if (builds[0]!.features === "gpu") {
+      const dir = path.dirname(built[0]!);
+      for (const file of BATON_VOICE_GPU_FILES) {
+        yield* fs.copyFile(path.join(dir, file), path.join(destination, file));
+      }
+    }
   } else {
     const lipo = yield* resolveSpawnCommand("lipo", ["-create", ...built, "-output", out]);
     yield* runCommand(

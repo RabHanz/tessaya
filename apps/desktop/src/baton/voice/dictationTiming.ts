@@ -22,6 +22,8 @@ export interface DictationTimingLine {
   readonly reused: boolean | null;
   /** His server wrote the words, the laptop did, or the laptop after his server failed. */
   readonly recognizer: string | null;
+  /** What recognised them here: the CPU, the graphics card, or the CPU after the card failed. */
+  readonly backend: string | null;
   readonly audioMs: number | null;
   /** Text → cleaned, → fitted to the caret, → pasted, → pill gone; null for a stage that did not happen. */
   readonly cleanupMs: number | null;
@@ -94,6 +96,7 @@ export const startDictationTiming = (
         pieces: event.pieces ?? null,
         reused: timing?.reused ?? null,
         recognizer: timing?.recognizer ?? null,
+        backend: timing?.backend ?? null,
         audioMs: event.audioMs ?? null,
         cleanupMs: since(cleanedAt, textAt),
         cleanup,
