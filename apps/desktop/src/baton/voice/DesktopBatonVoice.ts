@@ -24,6 +24,7 @@ import type {
   BatonRecordEntry,
   WatchFinding,
 } from "@t3tools/baton-contracts";
+import { BATON_DESKTOP_SETTINGS_WS_METHODS } from "@t3tools/baton-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
@@ -374,6 +375,7 @@ import {
 } from "./dictationSidecar.ts";
 import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
+import { createRemoteSettings } from "./remoteSettings.ts";
 import { createLastLanded } from "./lastLanded.ts";
 import { createPressGate } from "./pressGate.ts";
 import {
@@ -775,6 +777,9 @@ const PASTE_AGAIN_MS = 350;
 /** The renderer has this long to answer an intent call before the core is told it failed. */
 const REQUEST_TIMEOUT_MS = 20_000;
 const PHONE_POLL_MS = 5_000;
+/** Between held syncs of an agent's settings changes (each waits on the server until one comes), and after a failure. */
+const REMOTE_SETTINGS_GAP_MS = 1_000;
+const REMOTE_SETTINGS_RETRY_MS = 30_000;
 /** Sent again at least this often, so the server can tell a quiet desktop from a gone one. */
 const STATE_REFRESH_MS = 5 * 60_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
@@ -1048,7 +1053,7 @@ export interface DesktopBatonVoiceInput {
   /** Whether T3's main window exists now, without opening it. */
   readonly mainWindowUp?: () => Promise<boolean>;
   /** One Tessaya method on this machine's own server, for when T3's window is closed. */
-  readonly direct?: (method: string, input: unknown) => Promise<unknown>;
+  readonly direct?: (method: string, input: unknown, timeoutMs?: number) => Promise<unknown>;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** His environment, for the `claude` that cleans text up. */
@@ -7505,6 +7510,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     syncCleanupSession();
   };
   applyBindings();
+  // An agent's change to his dictation settings, through this machine's server, applied as his own click would be.
+  const direct = input.direct;
+  if (direct !== undefined) {
+    const remote = createRemoteSettings({
+      // The server holds a sync open up to 25 s while nothing waits: the wait covers it.
+      sync: (body) => direct(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, body, 30_000),
+      current: () => settings,
+      apply: applyHome,
+    });
+    const remoteLoop = () =>
+      void remote
+        .tick()
+        .then(
+          () => REMOTE_SETTINGS_GAP_MS,
+          () => REMOTE_SETTINGS_RETRY_MS,
+        )
+        .then((ms) => setTimeout(remoteLoop, ms).unref());
+    setTimeout(remoteLoop, REMOTE_SETTINGS_RETRY_MS).unref();
+  }
   Electron.app.on("will-quit", () => {
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
     void audio?.stop();

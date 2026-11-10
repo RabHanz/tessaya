@@ -213,4 +213,32 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     askMatches: /cloud/i,
     replyMustNot: /\b(has been|I've|I have|is now|successfully) (switched|changed|set)\b/i,
   },
+  {
+    id: "outside-sets-dictation-setting",
+    source:
+      "Remote desktop settings: a dictation setting he asked for is set with tessaya_desktop_settings, not asked",
+    prompt:
+      "Set Dictation's Clean up with AI to Claude on the Director's laptop, so his Anthropic key gets used.",
+    answers: {
+      tessaya_desktop_settings: {
+        connected: true,
+        at: "2026-11-10T10:00:00.000Z",
+        effective: {
+          dictationCleanup: "claude",
+          pillStyle: "pill",
+          showWords: true,
+          holdKey: "Ctrl+Shift+Win",
+          holdKeyCues: false,
+          frosted: false,
+          doubleTap: true,
+          learnWords: true,
+          duckWhileDictating: "off",
+        },
+        pending: null,
+        applied: true,
+      },
+    },
+    calls: ["tessaya_desktop_settings"],
+    callsMustNot: ["tessaya_ask"],
+  },
 ];

@@ -121,6 +121,13 @@ import {
   BatonDictationCleanupStatus,
 } from "./dictation.ts";
 import {
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
+  DesktopSettingsSetInput,
+  DesktopSettingsSyncInput,
+  DesktopSettingsSyncResult,
+  DesktopSettingsView,
+} from "./desktopSettings.ts";
+import {
   BATON_JOB_WS_METHODS,
   BatonJobGrantInput,
   BatonJobListResult,
@@ -761,6 +768,24 @@ const WsBatonDictationCleanupApiStatusRpc = Rpc.make(BATON_DICTATION_WS_METHODS.
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonDesktopSettingsGetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.get, {
+  payload: Schema.Struct({}),
+  success: DesktopSettingsView,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonDesktopSettingsSetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.set, {
+  payload: DesktopSettingsSetInput,
+  success: DesktopSettingsView,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonDesktopSettingsSyncRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, {
+  payload: DesktopSettingsSyncInput,
+  success: DesktopSettingsSyncResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
@@ -945,6 +970,9 @@ const BATON_RPCS = [
   WsBatonRecordAppendRpc,
   WsBatonDictationCleanupApiRpc,
   WsBatonDictationCleanupApiStatusRpc,
+  WsBatonDesktopSettingsGetRpc,
+  WsBatonDesktopSettingsSetRpc,
+  WsBatonDesktopSettingsSyncRpc,
   WsBatonWeaveSendRpc,
   WsBatonWeaveListRpc,
   WsBatonWeaveTickRpc,

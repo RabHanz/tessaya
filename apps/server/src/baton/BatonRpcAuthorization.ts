@@ -19,6 +19,7 @@ import {
   BATON_ACCOUNTS_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
   BATON_DICTATION_WS_METHODS,
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
@@ -91,6 +92,13 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // It spends his saved Anthropic key: the desktop app's own session only.
   [BATON_DICTATION_WS_METHODS.cleanupApi]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
   [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: AuthOrchestrationReadScope,
+  // The desktop app's own session reads, changes and syncs its settings; an agent reaches them through /mcp's gate.
+  [BATON_DESKTOP_SETTINGS_WS_METHODS.get]: [AuthOrchestrationReadScope, AuthBatonHandsHostScope],
+  [BATON_DESKTOP_SETTINGS_WS_METHODS.set]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  [BATON_DESKTOP_SETTINGS_WS_METHODS.sync]: [
+    AuthOrchestrationOperateScope,
+    AuthBatonHandsHostScope,
+  ],
   [BATON_JOB_WS_METHODS.jobList]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobTeam]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobStart]: AuthOrchestrationOperateScope,
@@ -241,6 +249,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_RECORD_WS_METHODS.append,
   BATON_DICTATION_WS_METHODS.cleanupApi,
   BATON_DICTATION_WS_METHODS.cleanupApiStatus,
+  BATON_DESKTOP_SETTINGS_WS_METHODS.sync,
   BATON_COMMITMENT_WS_METHODS.list,
   BATON_COMMITMENT_WS_METHODS.upsert,
   BATON_WEAVE_WS_METHODS.send,

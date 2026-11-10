@@ -27,6 +27,7 @@ import {
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_DICTATION_WS_METHODS,
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonJobPlacementError,
@@ -74,6 +75,7 @@ import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import { BatonPhoneInbox, phoneCall } from "./BatonPhoneInbox.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
+import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
 import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
@@ -119,6 +121,7 @@ export type BatonServices =
   | BatonCommitmentService
   | BatonRecordService
   | DictationCleanupApi
+  | BatonDesktopSettings
   | BatonPhoneInbox
   | BatonWeaveService
   | BatonCloudService
@@ -586,6 +589,12 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.orElseSucceed(() => ({ configured: false })),
         ),
       ),
+    [BATON_DESKTOP_SETTINGS_WS_METHODS.get]: () =>
+      run(Effect.flatMap(BatonDesktopSettings, (settings) => settings.get)),
+    [BATON_DESKTOP_SETTINGS_WS_METHODS.set]: (input) =>
+      run(Effect.flatMap(BatonDesktopSettings, (settings) => settings.set(input.patch))),
+    [BATON_DESKTOP_SETTINGS_WS_METHODS.sync]: (input) =>
+      run(Effect.flatMap(BatonDesktopSettings, (settings) => settings.sync(input))),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(
         Effect.flatMap(BatonCommitmentService, (commitments) =>
