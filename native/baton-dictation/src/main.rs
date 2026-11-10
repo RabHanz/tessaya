@@ -926,7 +926,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 if path_of(&gpu) == Some(model.as_path()) =>
             {
                 // On the card: the CPU's model is not read for it, and is read only if the card fails.
-                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, language.clone()));
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, &servers, language.clone())).flatten();
                 // Woken while he speaks, so release does not pay for it; a failure here shows at his own decode.
                 if gpu_at.elapsed() >= gpu::IDLE {
                     if let Some((_, session)) = gpu.as_mut() {
