@@ -16,6 +16,7 @@ export * from "./jobs.ts";
 export * from "./commitments.ts";
 export * from "./phone.ts";
 export * from "./desktopState.ts";
+export * from "./desktopSettings.ts";
 export * from "./record.ts";
 export * from "./dictation.ts";
 export * from "./memory.ts";

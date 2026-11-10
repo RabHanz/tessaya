@@ -45,6 +45,7 @@ import * as BatonMemoryService from "./BatonMemoryService.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonPhoneInbox from "./BatonPhoneInbox.ts";
+import * as BatonDesktopSettings from "./BatonDesktopSettings.ts";
 import * as BatonTessayaRoutes from "./BatonTessayaRoutes.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
@@ -115,6 +116,7 @@ const servicesInner = IntentService.layer.pipe(
       memoryLayer,
       BatonCommitmentService.layer,
       BatonPhoneInbox.layer,
+      BatonDesktopSettings.layer,
       BatonCloudService.layer,
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
       // on a machine with no Herdr found no way to start a thread.

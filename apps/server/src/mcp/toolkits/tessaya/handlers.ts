@@ -1,4 +1,5 @@
 import {
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
@@ -184,6 +185,14 @@ export const layer = McpToolAccess.toLayer(
               };
             },
           ),
+        ),
+      ),
+      // A full-access outside client only: it changes the desktop without asking him, so it is for what he asked for.
+      tessaya_desktop_settings: McpToolAccess.writesEnvironment((input) =>
+        call(
+          input.set === undefined
+            ? handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.get]()
+            : handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.set]({ patch: input.set }),
         ),
       ),
       // Only this agent's own requests: another agent's, the phone's and the web bar's are not its to read.

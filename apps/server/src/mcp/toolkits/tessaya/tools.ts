@@ -1,7 +1,8 @@
 /**
  * Tessaya's toolkit on T3's /mcp (docs/user/outside-agents.md): what an outside agent may read, through the same server
  * methods the clients use. Reads, weave (messaging a session in a terminal pane, here or on a linked environment), and
- * asks that wait for the Director's yes; any other acting goes through his gate on the desktop, never through here.
+ * asks that wait for the Director's yes, and the desktop's dictation settings for a full-access client; any other acting
+ * goes through his gate on the desktop, never through here.
  */
 import {
   BatonCatalogListInput,
@@ -19,6 +20,8 @@ import {
   BatonWeaveListResult,
   BatonWeaveSendInput,
   BatonWeaveSendResult,
+  DesktopSettingsView,
+  DesktopVoiceSettingsPatch,
   OrchestrationRuleListInput,
   OrchestrationRuleListResult,
   WatchResult,
@@ -257,7 +260,7 @@ const MemoryHistoryTool = Tool.make("tessaya_memory_history", {
 const StateTool = Tool.make("tessaya_state", {
   ...shared,
   description:
-    "How Tessaya is set up on the Director's computer, one section at a time: `settings` (how she answers and what she may do unasked), `voice` (voice, recognition local or cloud, languages, wake words), `personas`, `skills`, or `diagnostics` (versions, each connection, recent error codes, the brain and voice engines). Not for what is running, stuck or waiting: that is `tessaya_watch` and `tessaya_jobs`. Read only, and never keys, the vault or anything said: to change something, ask with `tessaya_ask`. When her desktop app is not connected, only this server's own facts come back.",
+    "How Tessaya is set up on the Director's computer, one section at a time: `settings` (how she answers and what she may do unasked), `voice` (voice, recognition local or cloud, languages, wake words), `personas`, `skills`, or `diagnostics` (versions, each connection, recent error codes, the brain and voice engines). Not for what is running, stuck or waiting: that is `tessaya_watch` and `tessaya_jobs`. Read only, and never keys, the vault or anything said: dictation settings change with `tessaya_desktop_settings`; to change anything else, ask with `tessaya_ask`. When her desktop app is not connected, only this server's own facts come back.",
   parameters: Schema.Struct({ section: Schema.Literals(DESKTOP_STATE_SECTIONS) }),
   success: Schema.Struct({
     connected: Schema.Boolean,
@@ -270,6 +273,19 @@ const StateTool = Tool.make("tessaya_state", {
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const DesktopSettingsTool = Tool.make("tessaya_desktop_settings", {
+  ...shared,
+  description:
+    "Read or change Tessaya's dictation settings on the Director's desktop app: `dictationCleanup` (claude uses his own Claude or saved Anthropic key, local is code only, off), `pillStyle` (pill or field), `showWords`, `holdKey` (one of Ctrl+Shift+Win, F9, F8, Ctrl+Shift+Space, Pause), `holdKeyCues`, `frosted`, `doubleTap`, `learnWords`, `duckWhileDictating` (off, lower, mute). Without `set` it only reads. With `set`, only the fields given change; the app applies them live and the reply's `effective` is what it then runs with (`applied` false: the app has not taken it yet and `pending` waits for it). Only for changes the Director asked for.",
+  parameters: Schema.Struct({ set: Schema.optional(DesktopVoiceSettingsPatch) }),
+  success: DesktopSettingsView,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
@@ -340,6 +356,7 @@ export const TessayaToolkit = Toolkit.make(
   WeaveSendTool,
   WeaveListTool,
   StateTool,
+  DesktopSettingsTool,
   MoveIntoTessayaTool,
   OpenInTerminalTool,
   MainSessionTool,

@@ -9,6 +9,7 @@ import {
   AuthStandardClientScopes,
   BATON_ACCOUNT_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
@@ -16,12 +17,14 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BatonRecordAppendInput,
+  DesktopSettingsSetInput,
   AuthGrantScopes,
   BatonRpcGroup,
   BatonRpcScopeAuthorization,
   tessayaSpelling,
 } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
@@ -208,6 +211,36 @@ describe("who may write the Record", () => {
     expect(decodes({ kind: "standing_job", outcome: "held" })).toBe(true);
     expect(decodes({ kind: "assistant_turn", outcome: "approved" })).toBe(false);
     expect(decodes({ kind: "approval", outcome: "ran" })).toBe(false);
+  });
+});
+
+const decodeSettingsSet = Schema.decodeUnknownOption(DesktopSettingsSetInput);
+
+describe("who may change the desktop's dictation settings", () => {
+  it("is only the desktop app's own session, and only the whitelisted fields and values", () => {
+    const desktop = [...AuthStandardClientScopes, AuthBatonHandsHostScope];
+    for (const method of Object.values(BATON_DESKTOP_SETTINGS_WS_METHODS)) {
+      // A paired phone or browser holds every standard scope and still may not.
+      expect(missingBatonScope(method, AuthStandardClientScopes)).toBe(AuthBatonHandsHostScope);
+      expect(missingBatonScope(tessayaSpelling(method), AuthStandardClientScopes)).toBe(
+        AuthBatonHandsHostScope,
+      );
+      expect(missingBatonScope(method, desktop)).toBe(null);
+    }
+    const patch = (value: Record<string, unknown>) =>
+      Option.getOrNull(decodeSettingsSet({ patch: value }))?.patch ?? null;
+    expect(patch({ dictationCleanup: "claude", pillStyle: "field", holdKey: "F9" })).toEqual({
+      dictationCleanup: "claude",
+      pillStyle: "field",
+      holdKey: "F9",
+    });
+    expect(patch({ dictationCleanup: "gpt" })).toBe(null);
+    expect(patch({ holdKey: "Alt+F4" })).toBe(null);
+    expect(patch({ frosted: "yes" })).toBe(null);
+    // Fields outside the list never reach the desktop: its binary path, keys, audio keeping.
+    expect(patch({ claudeBinary: "/tmp/x", keepVoice: true, frosted: true })).toEqual({
+      frosted: true,
+    });
   });
 });
 
