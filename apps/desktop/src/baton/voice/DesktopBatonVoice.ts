@@ -375,7 +375,12 @@ import {
 import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createLastLanded } from "./lastLanded.ts";
-import { dictationStep, type DictationEntry, type DictationStep } from "./dictationEntry.ts";
+import {
+  dictationStep,
+  heldToTalk,
+  type DictationEntry,
+  type DictationStep,
+} from "./dictationEntry.ts";
 import { importWispr, makeRewriter, readDictionary } from "./dictationRewriter.ts";
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
@@ -1965,9 +1970,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .caretAt()
       .catch(() => null)
       .then((at) => {
-        if (at === null || !(keyRecording() || dictatingByVoice)) return;
-        // The boxes the field gave (no words): how its ghost was laid out, for the turn log.
-        input.onNote?.("ghost_start", { ...at, shown: ghost.start(at) });
+        if (!(keyRecording() || dictatingByVoice)) return;
+        if (at === null) return input.onNote?.("ghost_start", { shown: false, why: "no caret" });
+        // The boxes the field gave (no words): how its ghost was laid out, or why the pill shows them instead.
+        const not = ghost.start(at);
+        input.onNote?.("ghost_start", { ...at, shown: not === null, ...not });
       });
   };
   const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
@@ -3601,6 +3608,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** The helper is recording a key or button dictation (its Esc is held while it does). */
   const keyRecording = () => releaseRecordingEscape !== null;
+  /** That recording is held to talk (`heldToTalk`), until a double tap latches it. */
+  let keyHeldToTalk = false;
   /** One dictation, whichever key, button or word moves it (`dictationStep`): the engines never run side by side. */
   const moveDictation = (entry: DictationEntry): DictationStep => {
     const step = dictationStep(entry, {
@@ -3673,11 +3682,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         discarded: false,
       });
       escArmedUntil = 0;
+      keyHeldToTalk = heldToTalk(event.via, heldByButton);
       if (settings.dictationCleanup === "claude") rewriter.warm();
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       showDictation("Esc twice discards");
       startGhost();
+    } else if (event.ev === "latched") {
+      keyHeldToTalk = false;
+      showDictation("Esc twice discards");
     } else if (event.ev === "transcribing") showDictation("Writing it out", true);
     else if (event.ev === "held_key" && event.id === keyHold) ghost.skip();
     else if (event.ev === "idle") {
@@ -3686,6 +3699,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       takeRecording(recordings, event.dictation);
       // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
+      if (event.discarded === true) input.onNote?.("dictation_dropped", { reason: "esc_held" });
       showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();
@@ -3942,8 +3956,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             !insert && sidecarBusy
             ? discardNewest()
             : undefined,
-    // ✕ | waveform | ✓ for every dictation, whichever key, button or word started it.
-    voiceDictating: () => dictatingByVoice || keyRecording(),
+    // ✕ | waveform | ✓ while the pill stays up on its own; a key or button held to talk ends on its release.
+    voiceDictating: () => dictatingByVoice || (keyRecording() && !keyHeldToTalk),
     showWords: () => settings.showWords && !ghost.active(),
     frosted: () => settings.frosted && acrylicSupported(input.platform, NodeOS.release()),
     dictationMessage: () => dictationMessage,

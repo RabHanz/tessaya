@@ -690,7 +690,8 @@ pub fn focused_is_secret() -> bool {
 /// The keyboard is on something that takes no typing: Explorer's or the desktop's icons, a list, a tree, a button. A
 /// paste there does nothing (or pastes files), so the words go on the clipboard with a card instead. Anything that might
 /// take text stays a box: an edit, a document, a text pattern, a writable value, a data item (a cell in Excel or
-/// Sheets), and any pane, window or custom control, which is how editors that draw their own text show up.
+/// Sheets), and any pane, window or custom control, which is how editors that draw their own text show up, except the
+/// shell's own desktop and taskbar panes (`shell_surface`).
 pub fn focused_takes_no_text() -> bool {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -700,6 +701,10 @@ pub fn focused_takes_no_text() -> bool {
         };
         let Ok(element) = automation.GetFocusedElement() else { return false };
         let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+        let class = element.CurrentClassName().map(|c| c.to_string()).unwrap_or_default();
+        if crate::shell_surface(&class) {
+            return true;
+        }
         if element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).is_ok() {
             return false;
         }
@@ -788,6 +793,9 @@ unsafe fn first_box(array: *mut SAFEARRAY) -> Option<(f64, f64, f64, f64)> {
 
 /// The caret's box, the field's box (physical px) and the font size (points, 0 when the field does not say), for
 /// the words to be drawn where they will land. A password box, or one named like a secret, gives nothing.
+/// How many characters before the caret are looked at for right-to-left script.
+const RTL_LOOK: i32 = 40;
+
 pub fn caret_geometry() -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     unsafe {
@@ -801,7 +809,7 @@ pub fn caret_geometry() -> Result<Value, String> {
             return Ok(json!({"caret": null}));
         }
         let field = element.CurrentBoundingRectangle().map_err(err)?;
-        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64)>> {
+        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64, bool)>> {
             let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
             let selection = pattern.GetSelection()?;
             if selection.Length()? == 0 {
@@ -817,15 +825,23 @@ pub fn caret_geometry() -> Result<Value, String> {
             }
             let Some(caret) = caret else { return Ok(None) };
             let size = range.GetAttributeValue(UIA_FontSizeAttributeId).ok().and_then(|v| f64::try_from(&v).ok()).unwrap_or(0.0);
-            Ok(Some((caret, size)))
+            // Only whether the words before the caret run right to left leaves here, never the words.
+            let rtl = (|| -> windows::core::Result<bool> {
+                let before = range.Clone()?;
+                before.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -RTL_LOOK)?;
+                Ok(crate::has_rtl(&before.GetText(RTL_LOOK)?.to_string()))
+            })()
+            .unwrap_or(false);
+            Ok(Some((caret, size, rtl)))
         })()
         .ok()
         .flatten();
-        let Some(((x, y, w, h), size)) = found else { return Ok(json!({"caret": null})) };
+        let Some(((x, y, w, h), size, rtl)) = found else { return Ok(json!({"caret": null})) };
         Ok(json!({
             "caret": {"x": x, "y": y, "width": w, "height": h},
             "field": {"x": field.left, "y": field.top, "width": field.right - field.left, "height": field.bottom - field.top},
             "fontPt": size,
+            "rtl": rtl,
         }))
     }
 }
