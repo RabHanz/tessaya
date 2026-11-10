@@ -265,6 +265,8 @@ describe("checkRewrite", () => {
       "Now ensure a few things:\n\n1. Load up the design skill\n2. Make sure the pricing page works on mobile\n3. Check all 3 forms";
     expect(checkRewrite(said, listed)).toEqual({ ok: true });
     expect(checkRewrite(said, listed.replace("all 3", "all 4")).ok).toBe(false);
+    // A list set out on this machine is polished, not refused for its own "1." and "2.".
+    expect(checkRewrite(listed, listed.replace("Load up", "Load"))).toEqual({ ok: true });
     const bullets =
       "I want you to pick up a few things from the store:\n\n- Bread for sandwiches\n- Potato chips";
     expect(

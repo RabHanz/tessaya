@@ -17,6 +17,7 @@ import {
   type DictationMode,
   type DictionaryEntry,
 } from "@t3tools/baton-shared/dictationCleanup";
+import type { StylePair } from "@t3tools/baton-shared/stylePairs";
 
 import {
   biasTranscript,
@@ -94,7 +95,17 @@ export const makeRewriter = (input: {
    * at once and idling never ends it, so no dictation waits for Claude Code to start (about 2 s of 3.4 s cold).
    */
   readonly keepWarm?: () => boolean;
+  /** His own past dictations most like this one, with what he kept (stylePairs.ts); shown to the model as examples. */
+  readonly examples?: (text: string, mode: DictationMode) => ReadonlyArray<StylePair>;
 }): Rewriter => {
+  // Text already set out on this machine (a list) is only polished: examples there cost lists (18 → 12 of his 52).
+  const message = (text: string, mode: DictationMode, context?: DictationContext) =>
+    rewriteMessage(
+      text,
+      mode,
+      context,
+      text.includes("\n") ? [] : (input.examples?.(text, mode) ?? []),
+    );
   let session: VisionSession | null = null;
   let turns = 0;
   let idle: ReturnType<typeof setTimeout> | null = null;
@@ -148,7 +159,7 @@ export const makeRewriter = (input: {
     mode: DictationMode,
     context?: DictationContext,
   ): Promise<string> => {
-    const answer = get().ask([{ type: "text", text: rewriteMessage(text, mode, context) }]);
+    const answer = get().ask([{ type: "text", text: message(text, mode, context) }]);
     busy = answer.catch(() => undefined);
     return answer.then((a) => a.trim());
   };
@@ -165,7 +176,7 @@ export const makeRewriter = (input: {
     try {
       const answer = await input.api(
         rewriteSystemPrompt(input.dictionary()),
-        rewriteMessage(text, mode, context),
+        message(text, mode, context),
         64 + Math.ceil(text.length / 2),
       );
       apiAnswers = answer !== null;

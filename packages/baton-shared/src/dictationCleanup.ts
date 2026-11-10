@@ -29,6 +29,7 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
   raw: "Raw, exactly as heard",
 };
 
+import type { StylePair } from "./stylePairs.ts";
 import { joinSplitTerms, promptTerms, soundsLike, withOwnWords } from "./vocabulary.ts";
 
 /** What was on his screen as he spoke: names the recogniser has never heard of (Wispr sends the same). */
@@ -380,7 +381,7 @@ const LIST_COUNTS: Readonly<Record<string, number>> = {
   "a couple of": 2,
 };
 /** He announces a list: "two problems", "a few things", "the following questions". */
-const LIST_CUE =
+export const LIST_CUE =
   /\b(two|three|four|five|six|a few(?: more)?|several|the following|a couple of)\s+(?:\w+\s+)?(?:things|problems|issues|questions|concerns|points|reasons|steps|items|changes|bugs|tasks|ideas|options|features|requests|fixes|parts|areas)\b/i;
 /** What opens the next item ("Also, …", "Secondly …", "The other one is …"); never "then", which narrates. */
 const NEXT_ITEM =
@@ -597,15 +598,16 @@ export type RewriteVerdict =
 const LIST_MARK = /^[ \t]*(?:[-*•]|\d{1,2}[.)])[ \t]+/gm;
 
 export const checkRewrite = (
-  input: string,
+  asked: string,
   answer: string,
   dictionary: ReadonlyArray<DictionaryEntry> = [],
   context: DictationContext = {},
 ): RewriteVerdict => {
   const fail = (reason: string): RewriteVerdict => ({ ok: false, reason });
   const output = answer.replace(LIST_MARK, "");
+  const input = asked.replace(LIST_MARK, "");
   if (output.trim().length === 0) return fail("empty");
-  if (/<\/?dictation>/i.test(output)) return fail("leaked its wrapper");
+  if (/<\/?(?:dictation|example|said|kept)>/i.test(output)) return fail("leaked its wrapper");
   if (REPLY.test(output.trim()) && !REPLY.test(input.trim()))
     return fail("replied instead of cleaning");
 
@@ -860,16 +862,32 @@ export const cleanDictation = async (input: {
   }
 };
 
-/** A dictated closing tag cannot end the wrapper early. */
+const TAGS = /<\/?(?:dictation|example|said|kept)>/gi;
+
+/**
+ * A dictated closing tag cannot end the wrapper early. `context` is what was on his screen; `examples` are his own past
+ * dictations most like this one with the text he kept, for his style only (stylePairs.ts).
+ */
 export const rewriteMessage = (
   text: string,
   mode: DictationMode,
   context: DictationContext = {},
+  examples: ReadonlyArray<StylePair> = [],
 ): string => {
   const screen = (context.screen ?? []).map((w) => w.replace(/[<>\n]/g, "")).filter(Boolean);
   const names =
     screen.length === 0
       ? ""
       : `On his screen as he spoke: ${screen.join(", ")}. A word in the dictation that sounds like one of these and fits the sentence is that name, mis-heard: write it as on screen. Never add a name he did not say.\n`;
-  return `${names}Mode: ${mode}\n<dictation>${text.replace(/<\/?dictation>/gi, "")}</dictation>`;
+  const shown = examples
+    .map(
+      (e) =>
+        `<example>\n<said>${e.raw.replace(TAGS, "")}</said>\n<kept>${e.kept.replace(TAGS, "")}</kept>\n</example>`,
+    )
+    .join("\n");
+  const style =
+    shown === ""
+      ? ""
+      : `How he wrote dictations like this one before: what was heard, then the text he kept. Follow his way of writing (lists, punctuation, paragraphs, capitals, register), never their words or facts.\n${shown}\n\n`;
+  return `${names}${style}Mode: ${mode}\n<dictation>${text.replace(TAGS, "")}</dictation>`;
 };
