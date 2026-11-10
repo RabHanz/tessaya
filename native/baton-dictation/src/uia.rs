@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 use windows::Win32::Foundation::{POINT, RECT};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
-use windows::Win32::System::Variant::VARIANT;
+use windows::Win32::System::Variant::{VARIANT, VT_BSTR};
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationCacheRequest, IUIAutomationCondition, IUIAutomationElement, IUIAutomationElementArray,
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
@@ -793,6 +793,18 @@ unsafe fn first_box(array: *mut SAFEARRAY) -> Option<(f64, f64, f64, f64)> {
 
 /// The caret's box, the field's box (physical px) and the font size (points, 0 when the field does not say), for
 /// the words to be drawn where they will land. A password box, or one named like a secret, gives nothing.
+/// A VARIANT's text when it holds a BSTR, else empty (a mixed-font range answers with the "mixed" object). Read by hand:
+/// windows 0.61's `TryFrom<&VARIANT> for BSTR` needs the Com_StructuredStorage feature, which this crate leaves off.
+fn variant_text(v: &VARIANT) -> String {
+    unsafe {
+        if v.Anonymous.Anonymous.vt == VT_BSTR {
+            v.Anonymous.Anonymous.Anonymous.bstrVal.to_string()
+        } else {
+            String::new()
+        }
+    }
+}
+
 /// How many characters before the caret are looked at for right-to-left script.
 const RTL_LOOK: i32 = 40;
 
@@ -832,12 +844,7 @@ pub fn caret_geometry() -> Result<Value, String> {
                 Ok(crate::has_rtl(&before.GetText(RTL_LOOK)?.to_string()))
             })()
             .unwrap_or(false);
-            let font = range
-                .GetAttributeValue(UIA_FontNameAttributeId)
-                .ok()
-                .and_then(|v| BSTR::try_from(&v).ok())
-                .map(|name| name.to_string())
-                .unwrap_or_default();
+            let font = range.GetAttributeValue(UIA_FontNameAttributeId).map(|v| variant_text(&v)).unwrap_or_default();
             Ok(Some((caret, size, font, rtl)))
         })()
         .ok()
