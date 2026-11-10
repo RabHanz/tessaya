@@ -1,0 +1,21 @@
+# Tessaya's recogniser as a `systemctl --user` unit, for a server where the service user has no root (linger on, cpu
+# and memory delegated). No Nice and no OOMScoreAdjust: a user unit cannot lower them. Its CPU weight counts only
+# against the user's other units; to rank it above the user's login sessions too, root once runs
+# `systemctl set-property user@<uid>.service CPUWeight=10000`. Install in ~/.config/systemd/user/ with the binary,
+# the TDT v3 GGUF and a 0600 token file under ~/tsy-recognizer, and RECOGNIZER_ADDR set to the tailnet address.
+[Unit]
+Description=Tessaya dictation recogniser
+
+[Service]
+Environment=RECOGNIZER_MODEL=%h/tsy-recognizer/tdt.gguf RECOGNIZER_TOKEN_FILE=%h/tsy-recognizer/token RECOGNIZER_THREADS=4
+EnvironmentFile=%h/tsy-recognizer/env
+ExecStart=%h/tsy-recognizer/tessaya-recognizer
+Restart=always
+RestartSec=2
+CPUWeight=10000
+IOWeight=10000
+MemoryLow=1G
+MemoryMax=2G
+
+[Install]
+WantedBy=default.target

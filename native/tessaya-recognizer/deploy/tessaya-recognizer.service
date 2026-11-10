@@ -1,7 +1,7 @@
 # Tessaya's recogniser as a service (native/tessaya-recognizer). Install: the binary and the TDT v3 GGUF under
 # /opt/tessaya-recognizer, a token file readable only by the service user, /etc/tessaya-recognizer.env with
 # RECOGNIZER_ADDR (this machine's tailnet address and port), RECOGNIZER_MODEL, RECOGNIZER_TOKEN_FILE and
-# RECOGNIZER_THREADS, then the drop-in for this machine (primary.conf or second.conf) in
+# RECOGNIZER_THREADS, then the drop-in for this machine (primary.conf or second.conf); a server without root runs tessaya-recognizer.user.service instead in
 # /etc/systemd/system/tessaya-recognizer.service.d/. Audio is held in memory only, never written.
 [Unit]
 Description=Tessaya dictation recogniser
@@ -17,10 +17,24 @@ RestartSec=2
 Nice=-5
 CPUWeight=1000
 IOWeight=1000
+# The model and one dictation fit well under this; more means something is wrong, and it restarts.
+MemoryMax=2G
+User=tessaya
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
-ProtectHome=read-only
+ProtectHome=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
 ReadOnlyPaths=/opt/tessaya-recognizer
 
 [Install]
