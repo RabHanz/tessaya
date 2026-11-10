@@ -5,7 +5,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use transcribe_cpp::{Backend, Model, ModelOptions, RunOptions, Session, SessionOptions, TimestampKind};
+use transcribe_cpp::{Backend, Model, ModelOptions, Session, SessionOptions};
 
 /// His setting "Use graphics card for recognition".
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Deserialize)]
@@ -99,7 +99,7 @@ pub const IDLE: std::time::Duration = std::time::Duration::from_secs(60);
 pub fn nudge(session: &mut Session, seconds: usize) -> transcribe_cpp::Result<()> {
     let noise: Vec<f32> =
         (0..seconds * 16_000).map(|i| ((i as f32 * 12.9898).sin() * 43_758.547).fract() * 0.01).collect();
-    session.run(&noise, &RunOptions { timestamps: TimestampKind::Word, ..Default::default() }).map(drop)
+    crate::run_with(session, &noise, None, true).map(drop)
 }
 
 #[cfg(test)]
