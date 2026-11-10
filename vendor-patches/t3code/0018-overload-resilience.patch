@@ -1,0 +1,187 @@
+Overload resilience (laptop incident, 2026-11-11): a Windows backend notices its desktop launcher died
+(Windows keeps the dead parent's id as ppid) and exits instead of holding the port and state lock, and a
+refreshing query does not cancel and re-send a read still in flight on its interval.
+
+diff --git a/apps/server/src/launcherWatch.test.ts b/apps/server/src/launcherWatch.test.ts
+index 1482804c61e0edb6229342692ee353cffd477897..0afbb7e52cb5b861281d378db9760807d8bc0003 100644
+--- a/apps/server/src/launcherWatch.test.ts
++++ b/apps/server/src/launcherWatch.test.ts
+@@ -1,6 +1,8 @@
+-import { it } from "@effect/vitest";
++import { expect, it } from "@effect/vitest";
++import * as Duration from "effect/Duration";
+ import * as Effect from "effect/Effect";
+ import * as Fiber from "effect/Fiber";
++import * as TestClock from "effect/testing/TestClock";
+ import * as HostProcess from "@t3tools/shared/HostProcess";
+ 
+ import { awaitLauncherLoss } from "./launcherWatch.ts";
+@@ -21,3 +23,22 @@ it.effect("notices a launcher that was already gone when the watch began", () =>
+     yield* Fiber.join(fiber);
+   }),
+ );
++
++// Windows keeps the dead launcher's id as ppid, so only the launcher's liveness shows the loss.
++it.effect("notices on Windows that the launcher died while its id stays the parent", () =>
++  Effect.gen(function* () {
++    let launcherAlive = true;
++    const fiber = yield* Effect.forkChild(
++      awaitLauncherLoss({
++        launcherPid,
++        getParentPid: () => launcherPid,
++        isAlive: (pid) => pid === launcherPid && launcherAlive,
++      }).pipe(Effect.provideService(HostProcess.Platform, "win32")),
++    );
++    yield* TestClock.adjust(Duration.seconds(10));
++    expect(fiber.pollUnsafe()).toBeUndefined();
++    launcherAlive = false;
++    yield* TestClock.adjust(Duration.seconds(2));
++    expect(fiber.pollUnsafe()).toBeDefined();
++  }),
++);
+diff --git a/apps/server/src/launcherWatch.ts b/apps/server/src/launcherWatch.ts
+index ca109422c95a88ee861bd48da067a0bfc629b935..b751cd86d8d3a96b76b0434294f1bbb20f360060 100644
+--- a/apps/server/src/launcherWatch.ts
++++ b/apps/server/src/launcherWatch.ts
+@@ -4,27 +4,42 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
+ 
+ const DEFAULT_POLL_INTERVAL = Duration.seconds(2);
+ 
++// shortcut: a Windows pid reused within one poll hides the loss, as before this check existed.
++const isProcessAlive = (pid: number): boolean => {
++  try {
++    process.kill(pid, 0);
++    return true;
++  } catch (error) {
++    return (error as NodeJS.ErrnoException).code === "EPERM";
++  }
++};
++
+ // Capture before config and bootstrap reads to detect launcher loss during startup.
+ const startupParentPid = process.ppid;
+ 
+ /**
+  * Any parent change signals launcher loss, including adoption by a Linux subreaper;
+  * otherwise an orphan backend keeps its ownership lock and blocks replacement launches.
+- * Skip init-launched backends and Windows, which retains the exited parent's id.
++ * Windows keeps the exited parent's id as ppid, so there the launcher's own liveness is polled.
++ * Skip init-launched backends.
+  */
+ export const awaitLauncherLoss = Effect.fn("launcherWatch.awaitLauncherLoss")(function* (options?: {
+   readonly launcherPid?: number;
+   readonly getParentPid?: () => number;
++  readonly isAlive?: (pid: number) => boolean;
+   readonly interval?: Duration.Input;
+ }): Effect.fn.Return<void> {
+   const platform = yield* HostProcess.Platform;
+   const launcherPid = options?.launcherPid ?? startupParentPid;
+   const getParentPid = options?.getParentPid ?? (() => process.ppid);
++  const isAlive = options?.isAlive ?? isProcessAlive;
+   const interval = options?.interval ?? DEFAULT_POLL_INTERVAL;
+-  if (platform === "win32" || launcherPid <= 1) return yield* Effect.never;
++  if (launcherPid <= 1) return yield* Effect.never;
+   const poll: Effect.Effect<void> = Effect.suspend(() => {
+     const parentPid = getParentPid();
+-    return parentPid === launcherPid
++    const launcherPresent =
++      platform === "win32" ? isAlive(launcherPid) : parentPid === launcherPid;
++    return launcherPresent
+       ? Effect.flatMap(Effect.sleep(interval), () => poll)
+       : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
+           launcherPid,
+diff --git a/packages/client-runtime/src/state/runtime.test.ts b/packages/client-runtime/src/state/runtime.test.ts
+index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..54c8f9421440a07c72edbf23925193a7b0b011dd 100644
+--- a/packages/client-runtime/src/state/runtime.test.ts
++++ b/packages/client-runtime/src/state/runtime.test.ts
+@@ -1,4 +1,4 @@
+-import { describe, expect, it } from "@effect/vitest";
++import { describe, expect, it, vi } from "@effect/vitest";
+ import {
+   EnvironmentId,
+   ORCHESTRATION_V2_WS_METHODS,
+@@ -97,6 +97,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+   execute: Effect.Effect<A, E>,
+   {
+     refreshTrigger,
++    refreshIntervalMs,
+     idleTtlMs,
+     persistence,
+     initialState,
+@@ -105,6 +106,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+     onAnswer,
+   }: {
+     readonly refreshTrigger?: Atom.Atom<unknown>;
++    readonly refreshIntervalMs?: number;
+     readonly onAnswer?: QueryAnswerHandler<undefined, A>;
+     readonly isFinal?: (value: A) => boolean;
+     readonly idleTtlMs?: number;
+@@ -152,6 +154,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+     ...(persistence === undefined ? {} : { persistence }),
+     execute: () => execute,
+     ...(refreshTrigger === undefined ? {} : { refreshTrigger: () => refreshTrigger }),
++    ...(refreshIntervalMs === undefined ? {} : { refreshIntervalMs }),
+     ...(idleTtlMs === undefined ? {} : { idleTtlMs }),
+     ...(isFinal === undefined ? {} : { isFinal }),
+     ...(onAnswer === undefined ? {} : { onAnswer }),
+@@ -1023,6 +1026,37 @@ describe("environment query lifecycle", () => {
+     ),
+   );
+ 
++  it.effect("waits for a slow read to answer before its interval asks again", () =>
++    Effect.gen(function* () {
++      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
++      try {
++        yield* Effect.scoped(
++          Effect.gen(function* () {
++            const release = yield* Deferred.make<void>();
++            let executions = 0;
++            const harness = yield* makeEnvironmentQueryHarness(
++              Effect.sync(() => (executions += 1)).pipe(
++                Effect.tap((execution) => (execution === 1 ? Deferred.await(release) : Effect.void)),
++              ),
++              { refreshIntervalMs: 15_000 },
++            );
++            const registry = yield* mountEnvironmentQuery(harness.atom);
++
++            yield* Effect.promise(() => vi.advanceTimersByTimeAsync(45_000));
++            expect(executions).toBe(1);
++            yield* Deferred.succeed(release, undefined);
++            expect(yield* readEnvironmentQuery(registry, harness.atom)).toBe(1);
++
++            yield* Effect.promise(() => vi.advanceTimersByTimeAsync(15_000));
++            expect(executions).toBe(2);
++          }),
++        );
++      } finally {
++        vi.useRealTimers();
++      }
++    }),
++  );
++
+   it.effect("re-checks thread titles when one of their threads leaves the shell", () =>
+     Effect.scoped(
+       Effect.gen(function* () {
+diff --git a/packages/client-runtime/src/state/runtime.ts b/packages/client-runtime/src/state/runtime.ts
+index b0ed950572834a596cb7e830d201a258c8edfb18..bf105bcc697ee63088f019d9cc0a6b26b3d6c6ef 100644
+--- a/packages/client-runtime/src/state/runtime.ts
++++ b/packages/client-runtime/src/state/runtime.ts
+@@ -541,13 +541,17 @@ const refreshOnSignalWhileRead =
+   };
+ 
+ const refreshEveryUntilFinal =
+-  <V>(intervalMs: number, isFinal: (value: V) => boolean) =>
++  <V extends AsyncResult.AsyncResult<unknown, unknown>>(
++    intervalMs: number,
++    isFinal: (value: V) => boolean,
++  ) =>
+   <A extends V>(self: Atom.Atom<A>): Atom.Atom<A> =>
+     Atom.transform(
+       self,
+       (get) => {
+         const value = get(self);
+-        if (!isFinal(value)) {
++        // Refreshing a read in flight cancels it and asks again, so a server slower than the interval never answers.
++        if (!value.waiting && !isFinal(value)) {
+           // @effect-diagnostics-next-line globalTimers:off - Mirrors `Atom.withRefresh`, outside an Effect runtime.
+           const handle = setTimeout(() => get.refresh(self), intervalMs);
+           get.addFinalizer(() => clearTimeout(handle));

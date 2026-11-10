@@ -541,13 +541,17 @@ const refreshOnSignalWhileRead =
   };
 
 const refreshEveryUntilFinal =
-  <V>(intervalMs: number, isFinal: (value: V) => boolean) =>
+  <V extends AsyncResult.AsyncResult<unknown, unknown>>(
+    intervalMs: number,
+    isFinal: (value: V) => boolean,
+  ) =>
   <A extends V>(self: Atom.Atom<A>): Atom.Atom<A> =>
     Atom.transform(
       self,
       (get) => {
         const value = get(self);
-        if (!isFinal(value)) {
+        // Refreshing a read in flight cancels it and asks again, so a server slower than the interval never answers.
+        if (!value.waiting && !isFinal(value)) {
           // @effect-diagnostics-next-line globalTimers:off - Mirrors `Atom.withRefresh`, outside an Effect runtime.
           const handle = setTimeout(() => get.refresh(self), intervalMs);
           get.addFinalizer(() => clearTimeout(handle));
