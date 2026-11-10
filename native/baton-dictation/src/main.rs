@@ -405,13 +405,34 @@ fn load(model: &Path) -> Result<(Session, u64), String> {
     Ok((session, started.elapsed().as_millis() as u64))
 }
 
+/// His words for a recogniser that takes a glossary (Qwen3-ASR): TESSAYA_GLOSSARY names a file, one term a line.
+fn glossary() -> &'static [String] {
+    static TERMS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    TERMS.get_or_init(|| {
+        std::env::var("TESSAYA_GLOSSARY")
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|t| t.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
+            .unwrap_or_default()
+    })
+}
+
+/// One decode as the model allows: word times and the glossary where it takes them, dropped where it refuses.
+pub fn run_with(session: &mut Session, pcm: &[f32], language: Option<String>, words: bool) -> transcribe_cpp::Result<transcribe_cpp::Transcript> {
+    let timestamps = if words { TimestampKind::Word } else { TimestampKind::default() };
+    let full = RunOptions { language: language.clone(), timestamps, vocabulary: glossary().to_vec(), ..Default::default() };
+    session
+        .run(pcm, &full)
+        .or_else(|_| session.run(pcm, &RunOptions { vocabulary: Vec::new(), ..full.clone() }))
+        .or_else(|_| session.run(pcm, &RunOptions { language, ..Default::default() }))
+}
+
 fn infer(session: &mut Session, pcm: &mut Vec<f32>, language: Option<String>) -> Result<(String, u64, u64), String> {
     let audio_ms = pcm.len() as u64 / 16;
     lift_gain(pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
     let started = Instant::now();
-    let options = RunOptions { language, ..Default::default() };
-    let result = session.run(pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+    let result = run_with(session, pcm, language, false).map_err(|e| format!("transcribe: {e}"))?;
     Ok((result.text.trim().to_string(), audio_ms, started.elapsed().as_millis() as u64))
 }
 
@@ -420,8 +441,7 @@ fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -
     let Piece { mut pcm, context, .. } = piece;
     lift_gain(&mut pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
-    let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
-    let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+    let result = run_with(session, &pcm, language, true).map_err(|e| format!("transcribe: {e}"))?;
     if context == 0 || result.words.is_empty() {
         return Ok(result.text.trim().to_string());
     }

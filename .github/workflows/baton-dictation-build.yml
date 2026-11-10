@@ -61,8 +61,15 @@ jobs:
         run: |
           if (Test-Path C:\Windows\System32\vulkan-1.dll) { Rename-Item C:\Windows\System32\vulkan-1.dll vulkan-1.dll.off }
           $exe = "native/baton-dictation/target/release/tessaya-voice.exe"
-          $out = '{"cmd":"quit"}' | & $exe serve --gpu auto
-          if ($LASTEXITCODE -ne 0 -or -not ($out -match '"ev":"ready"')) { "the sidecar did not start"; exit 1 }
+          # Quit only after "ready": closing stdin first can end the sidecar before it says it started.
+          $psi = [System.Diagnostics.ProcessStartInfo]::new((Resolve-Path $exe).Path, "serve --gpu auto")
+          $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.UseShellExecute = $false
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $ready = $false
+          while ($null -ne ($line = $p.StandardOutput.ReadLine())) { if ($line -match '"ev":"ready"') { $ready = $true; break } }
+          $p.StandardInput.WriteLine('{"cmd":"quit"}'); $p.StandardInput.Close()
+          if (-not $p.WaitForExit(30000)) { $p.Kill(); "the sidecar did not quit"; exit 1 }
+          if (-not $ready -or $p.ExitCode -ne 0) { "the sidecar did not start"; exit 1 }
           curl.exe -sSLf -o tdt.gguf "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf"
           python -c "import wave,math,struct; w=wave.open('tone.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b''.join(struct.pack('<h', int(3000*math.sin(i/9))) for i in range(32000))); w.close()"
           $lines = & $exe transcribe --gpu auto --model tdt.gguf tone.wav
