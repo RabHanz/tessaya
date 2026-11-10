@@ -44,6 +44,7 @@ import {
   ISLAND_HTML,
   ISLAND_MEASURE,
   ISLAND_SCRIPT,
+  PILL_BELOW,
 } from "./pillIsland.ts";
 import {
   CUE_TAIL_MS,
@@ -68,12 +69,14 @@ import {
 } from "@t3tools/baton-shared/voiceTurn";
 import { PILL_BANDS, createBandGain, frameBands } from "@t3tools/baton-shared/voiceBands";
 
+// As wide as the island's words; outside the capsule the window is click-through (hitTest).
 const WIDTH = 420;
-// Room above the capsule for the Move pill check mark; the margins take it back, so the capsule sits where it did.
-const HEIGHT = 80;
-/** Clear of a dictation bar in Wispr's place at the bottom edge, so both can show. */
-const ABOVE_WORK_AREA = 30;
-const TOP_MARGIN = -4;
+/** The island's 26 px head and a little air: the Move pill check mark sits beside the capsule, not above it. */
+const HEIGHT = 40;
+/** The capsule's bottom 58 px above the work area, clear of a dictation bar in Wispr's place, so both can show. */
+const ABOVE_WORK_AREA = 58 - PILL_BELOW;
+/** The capsule's top 24 px below the work area's top. */
+const TOP_MARGIN = 24 - (HEIGHT - PILL_BELOW - 22);
 const DRAG_MS = 16;
 const FOREGROUND_WAIT_MS = 300;
 // The hit test runs fast only while the cursor is near the capsule; the resting bar can stay up all day.
@@ -97,7 +100,7 @@ const FROST_SETTLE_MS = 160;
 const WAVE_PHASES = ["listening", "speaking", "dictating"];
 
 /**
- * The pill: black in every theme, 24 px tall, nothing it does not need. A live waveform while he or
+ * The pill: black in every theme, 22 px tall, nothing it does not need. A live waveform while he or
  * Baton is speaking; otherwise one short word; soft text only for an error or where words go. No
  * icon, no button, no shadow beyond a hairline. The bars are a canvas that animates only while a live waveform is up.
  */
@@ -105,12 +108,12 @@ export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><
 :root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--woad:#5FB3B3;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
-body{box-sizing:border-box;display:flex;align-items:flex-end;justify-content:center;padding-bottom:28px}
-#p{box-sizing:border-box;display:flex;align-items:center;gap:7px;height:24px;max-width:${WIDTH - 16}px;padding:0 11px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 55%),var(--ink);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.5);color:var(--text);position:relative;touch-action:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s}
+body{box-sizing:border-box;display:flex;align-items:flex-end;justify-content:center;padding-bottom:${PILL_BELOW}px}
+#p{box-sizing:border-box;display:flex;align-items:center;gap:6px;height:22px;max-width:${WIDTH - 16}px;padding:0 9px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 55%),var(--ink);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.16);color:var(--text);position:relative;touch-action:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s}
 #p.on{opacity:1;transform:none}
 body.moving #p{cursor:grab;border:1px dashed var(--blue)}
 body.moving #p.drag{cursor:grabbing}
-#ok{display:none;position:absolute;left:50%;bottom:54px;transform:translateX(-50%);box-sizing:border-box;width:24px;height:24px;padding:0;margin:0;border-radius:50%;border:1px solid var(--line);background:var(--ink);color:var(--green);cursor:pointer;align-items:center;justify-content:center}
+#ok{display:none;position:absolute;left:0;top:0;box-sizing:border-box;width:22px;height:22px;padding:0;margin:0;border-radius:50%;border:1px solid var(--line);background:var(--ink);color:var(--green);cursor:pointer;align-items:center;justify-content:center}
 body.moving #ok{display:flex}
 #ok:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p.drag::before{content:"";position:absolute;inset:-10px}
@@ -118,7 +121,7 @@ body.moving #ok{display:flex}
 #p.rest[data-rest=muted]{border-color:var(--amber)}
 #p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
 #p.rest>*{display:none}
-#mk{display:none;width:20px;height:20px;flex:none}
+#mk{display:none;width:18px;height:18px;flex:none}
 #p[data-mark=on] #mk[src]{display:block}
 @keyframes br{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
 #p:hover #mk[src]{animation:br 2.6s ease-in-out infinite}
@@ -156,10 +159,9 @@ html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
 .db:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 #p[data-phase=dictating][data-voice=on] .db{display:flex}
 /* The tall window grew downward (no room above it): everything hangs from the top, at the same place. */
-body.down{align-items:flex-start;padding-bottom:0;padding-top:28px}
-body.down #ok{bottom:auto;top:2px}
+body.down{align-items:flex-start;padding-bottom:0;padding-top:${HEIGHT - PILL_BELOW - 22}px}
 body.down #p.rest{margin-bottom:0;margin-top:9px}
-body.down #p.isl{bottom:auto;top:18px}
+body.down #p.isl{bottom:auto;top:${HEIGHT - PILL_BELOW - 26}px}
 ${ISLAND_CSS}</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><canvas id="w" width="54" height="16" aria-hidden="true"></canvas><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span>${ISLAND_HTML}</div>${ISLAND_MEASURE}
 <script>
 const $=i=>document.getElementById(i),N=${PILL_BANDS},SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
@@ -227,7 +229,10 @@ grab.addEventListener('dblclick',()=>{if(grab.classList.contains('rest'))ipcRend
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
 // The capsule's box goes to the main process, which decides by the cursor position when the window takes the mouse, so a missed forwarded mousemove cannot leave the pill dead.
 // The island resizes every frame while it moves: only a change of a few pixels is worth a message.
-let sentRect='';const sendRect=()=>{const r=grab.getBoundingClientRect(),o=$('ok').getBoundingClientRect(),k=moving()&&o.width>0;
+let sentRect='';const sendRect=()=>{const r=grab.getBoundingClientRect(),ok=$('ok').style;
+ // Moving, the check mark sits just right of the capsule, inside the short window.
+ if(moving()){ok.left=(r.right+6)+'px';ok.top=(r.top+(r.height-22)/2)+'px';}
+ const o=$('ok').getBoundingClientRect(),k=moving()&&o.width>0;
  const x=k?Math.min(r.left,o.left):r.left,y=k?Math.min(r.top,o.top):r.top,w=(k?Math.max(r.right,o.right):r.right)-x,h=(k?Math.max(r.bottom,o.bottom):r.bottom)-y,key=[x,y,w,h].map(n=>Math.round(n/3)).join();if(key===sentRect)return;sentRect=key;ipcRenderer.send('baton-pill:rect',x,y,w,h);};
 new ResizeObserver(sendRect).observe(grab);addEventListener('load',sendRect);
 for(const t of['pointerdown','pointerup','pointermove','pointercancel'])addEventListener(t,e=>ipcRenderer.send('baton-pill:pointer',t,e.clientX,e.clientY,e.target&&e.target.id||e.target.tagName,e.buttons),true);
@@ -428,7 +433,7 @@ export const createVoicePill = (input: {
     hold.holdUntil(0);
     if (turnView(state) === null) lower();
   };
-  /** Where the window goes for a spot of the 80 px pill; tall, it grows without moving the capsule. */
+  /** Where the window goes for a spot of the base pill; tall, it grows without moving the capsule. */
   const boundsAt = (at: { readonly x: number; readonly y: number }): Electron.Rectangle => {
     const base = { x: at.x, y: at.y, width: WIDTH, height: HEIGHT };
     if (!tall) return base;
@@ -443,7 +448,7 @@ export const createVoicePill = (input: {
     }
     return grown.bounds;
   };
-  /** The 80 px pill's bounds, whatever the window's height: what places, saves and anchors use. */
+  /** The base pill's bounds, whatever the window's height: what places, saves and anchors use. */
   const baseBounds = (target: Electron.BrowserWindow): Electron.Rectangle =>
     baseOf(target.getBounds(), HEIGHT, tall && down);
   const setTall = (on: boolean) => {

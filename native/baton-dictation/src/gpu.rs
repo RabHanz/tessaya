@@ -84,15 +84,22 @@ pub fn load(model: &Path, mode: Mode) -> Result<(Session, String), String> {
         // The library's default is every core, spinning beside his work; the CPU path's count did 6x better under load.
         .and_then(|m| m.session_with(&SessionOptions { n_threads: crate::default_threads(crate::usable_cores()), ..Default::default() }))
         .map_err(|e| format!("{name}: {e}"))?;
-    // Quiet noise, not silence: a silent clip can end before the decoder's shaders are reached.
-    let noise = |seconds: usize| -> Vec<f32> {
-        (0..seconds * 16_000).map(|i| ((i as f32 * 12.9898).sin() * 43_758.547).fract() * 0.01).collect()
-    };
-    let options = RunOptions { timestamps: TimestampKind::Word, ..Default::default() };
     for seconds in [1, 9] {
-        session.run(&noise(seconds), &options).map_err(|e| format!("{name} warm-up: {e}"))?;
+        nudge(&mut session, seconds).map_err(|e| format!("{name} warm-up: {e}"))?;
     }
     Ok((session, format!("{name} in {} ms", started.elapsed().as_millis())))
+}
+
+/// Unused this long, the card has clocked down and may have moved the model out of its memory: his first dictation after
+/// an hour took 1,046 ms to decode 445 ms of audio (0.1.98). A press after this long nudges it while he speaks.
+pub const IDLE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// One decode of `seconds` of quiet noise, as a dictation's (word times on). Not silence: a silent clip can end before
+/// the decoder's shaders are reached.
+pub fn nudge(session: &mut Session, seconds: usize) -> transcribe_cpp::Result<()> {
+    let noise: Vec<f32> =
+        (0..seconds * 16_000).map(|i| ((i as f32 * 12.9898).sin() * 43_758.547).fract() * 0.01).collect();
+    session.run(&noise, &RunOptions { timestamps: TimestampKind::Word, ..Default::default() }).map(drop)
 }
 
 #[cfg(test)]

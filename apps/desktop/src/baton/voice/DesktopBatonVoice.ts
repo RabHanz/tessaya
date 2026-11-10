@@ -338,7 +338,10 @@ import {
 } from "../channels.ts";
 import {
   choiceDeviceId,
+  backupMics,
   choiceSummary,
+  sameMic,
+  setMicAt,
   micChannel,
   realDevices,
   reconcileDeviceChange,
@@ -432,6 +435,7 @@ import {
   type NeverList,
   parseAddToDictionary,
   removeHeard,
+  screenNames,
   unteach,
   upsertEntry,
   type SeenWords,
@@ -495,6 +499,7 @@ import {
   fitInsertion,
   fitWithoutContext,
   closeLastSentence,
+  type CaretContext,
 } from "@t3tools/baton-shared/dictationFit";
 import { createLoginItemState, setLoginItem } from "./loginItem.ts";
 import {
@@ -698,20 +703,23 @@ interface VoiceSettings {
 }
 
 /**
- * Hold to dictate. No Alt, which arms Windows' menus and right-click menus; Win with Ctrl and Shift held is masked by
- * the hook, so Start never opens. Clear of Wispr Flow's defaults: Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win.
+ * Hold to dictate. The sidecar's hook masks the release, so neither Start nor the app's menu bar opens; any other key
+ * pressed with it (Win+Alt+R) cancels it and goes on to Windows. Clear of Wispr Flow's Ctrl+Win and Ctrl+Alt+Win.
  */
-export const HOLD_KEY = "Ctrl+Shift+Win";
+export const HOLD_KEY = "Alt+Win";
 /** Bumped when the default hold key moves: a file still on an older default is moved once, a key he chose is kept. */
-const HOLD_KEY_DEFAULTS = 2;
-const OLD_HOLD_KEYS: ReadonlyArray<string> = ["Ctrl+Alt+Space"];
+const HOLD_KEY_DEFAULTS = 3;
+/** Each old default, by the `holdKeyDefaults` it stopped being the default at. */
+const OLD_HOLD_KEYS: ReadonlyArray<readonly [number, string]> = [
+  [2, "Ctrl+Alt+Space"],
+  [3, "Ctrl+Shift+Win"],
+];
 
-/** His hold key after this file's one move: an old default becomes the new one, anything else is his and stays. */
+/** His hold key after this file's moves: a default a later build replaced becomes today's, anything else is his. */
 export const holdKeyFrom = (saved: Record<string, unknown>): string => {
   const held = typeof saved["holdKey"] === "string" ? saved["holdKey"] : HOLD_KEY;
-  return saved["holdKeyDefaults"] !== HOLD_KEY_DEFAULTS && OLD_HOLD_KEYS.includes(held)
-    ? HOLD_KEY
-    : held;
+  const seen = typeof saved["holdKeyDefaults"] === "number" ? saved["holdKeyDefaults"] : 0;
+  return OLD_HOLD_KEYS.some(([until, key]) => seen < until && key === held) ? HOLD_KEY : held;
 };
 
 const DEFAULT_SETTINGS: VoiceSettings = {
@@ -1274,6 +1282,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let lastReply: string | null = null;
   let spokenTurnId: string | null = null;
   let focusedApp: FocusedApp = { exe: "", title: "" };
+  /** Names on screen as this recording started, read while he speaks, for the clean-up to spell names by. */
+  let screenNow: ReadonlyArray<string> = [];
   let dictionary: ReadonlyArray<VocabularyEntry> = [];
   let seenWords: SeenWords = {};
   const seenPath = NodePath.join(input.stateDir, "voice", "vocabulary-seen.json");
@@ -1531,6 +1541,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       raw: raw,
       mode: chooseMode(app, settings.appModes),
       level,
+      context: { screen: screenNow },
     });
     // Every fallback keeps its reason (a refused name, a timeout, the API's error), so a slow or failed clean-up can be
     // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
@@ -1557,18 +1568,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const windowKey = (app: { readonly exe: string; readonly title: string }) =>
     `${app.exe}\n${app.title}`;
   const CARET_LIMIT_MS = 1_500;
+  /**
+   * The words around the caret, read at key-down while he speaks: a first UI Automation read of a field can take 0.9 s,
+   * which release would otherwise wait for (0.1.98). Used only for that window, and only if nothing was pasted since.
+   */
+  let caretEarly: {
+    readonly key: string;
+    readonly pastes: number;
+    readonly read: Promise<CaretContext | null>;
+  } | null = null;
+  let pastes = 0;
+  const readCaretEarly = (app: { readonly exe: string; readonly title: string }) => {
+    caretEarly =
+      sidecar === null
+        ? null
+        : { key: windowKey(app), pastes, read: sidecar.caret().catch(() => null) };
+  };
   /** The text made to fit the words already there: spacing, capitals, punctuation. */
   const fitToCaret = async (
     text: string,
     app: { readonly exe: string; readonly title: string },
   ): Promise<string> => {
     const key = windowKey(app);
+    const early = caretEarly?.key === key && caretEarly.pastes === pastes ? caretEarly.read : null;
+    caretEarly = null;
     // The sidecar reads it in-process; PowerShell (300 ms or more to start) only without one.
     const around =
       (await (sidecar === null
         ? readCaretContext(input.platform)
         : Promise.race([
-            sidecar.caret().catch(() => null),
+            early ?? sidecar.caret().catch(() => null),
             // A field that hangs UI Automation never holds the paste: past the old PowerShell limit it did not say.
             new Promise<null>((resolve) => setTimeout(() => resolve(null), CARET_LIMIT_MS)),
           ]))) ??
@@ -1583,6 +1612,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const fitted =
       around !== null ? fitInsertion(around, closed) : plain ? closed : fitWithoutContext(closed);
     lastInsert = { text: fitted, at: Date.now(), key };
+    pastes += 1;
     return fitted;
   };
   // Everything he says and what it became, kept forever on this machine (the History tab).
@@ -3410,6 +3440,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       hold: baton ? keysOf("hold") : null,
       toggle: baton ? keysOf("toggle") : null,
       device,
+      fallbacks: backupMics(devices, preference(), device),
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
       language: recogniserHint(settings.languages),
@@ -3711,6 +3742,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return;
     }
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
+    if (event.ev === "mic_switched") {
+      input.onNote?.("mic_switched", { from: event.from, to: event.to, why: event.why });
+      return showDictation(`Using ${event.to.replace(/^Microphone \((.*)\)$/, "$1")}`);
+    }
     if (event.ev === "key_edge")
       return input.onNote?.("key_edge", { down: event.down, at: event.at });
     // The pill on the press itself; the microphone opens 80 to 140 ms later (`recording`).
@@ -3728,6 +3763,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
+            context: { screen: screenNow },
             pause: event.pause !== false,
           }),
         );
@@ -3753,6 +3789,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       escArmedUntil = 0;
       keyHeldToTalk = heldToTalk(event.via, heldByButton);
       if (settings.dictationCleanup === "claude") rewriter.warm();
+      readCaretEarly(focusedApp);
+      // Read on his machine while he speaks; only the claude level sends it on, inside the clean-up's prompt.
+      screenNow = [];
+      const seq = recordingSeq;
+      void sidecar
+        ?.uiTree()
+        .then((tree) => {
+          if (seq === recordingSeq)
+            screenNow = screenNames([tree.window ?? "", ...(tree.controls ?? [])]);
+        })
+        .catch(() => undefined);
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       pressGate.want();
@@ -3902,7 +3949,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         configureDictation();
         await loop?.switchDevice(choiceDeviceId(next));
         render();
-      } else if (listChanged) render();
+      } else if (listChanged) {
+        // A backup mic plugged in or out: the helper's list of mics to listen on follows.
+        configureDictation();
+        render();
+      }
     })();
   };
   const listSidecarDevices = async (): Promise<ReadonlyArray<AudioInputDevice>> => {
@@ -5985,6 +6036,29 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
         more: true,
       },
+      // His order after it: tried when it is unplugged, and moved to at a press when it hears nothing and one of these does.
+      ...Array.from({ length: Math.min(settings.micOrder.length + 1, 3) }, (_, i) => {
+        const name = settings.micOrder[i]?.name ?? "";
+        const shown = realDevices(devices).find((d) => sameMic(d.label, name));
+        return {
+          id: `v.micOrder:${i}`,
+          section: "Wake and listening",
+          label: i === 0 ? "If it hears nothing, use" : "Then",
+          kind: "choice" as const,
+          value: shown?.label ?? name,
+          options: [
+            { value: "", label: "Nothing" },
+            ...(name !== "" && shown === undefined
+              ? [{ value: name, label: `${name} (not plugged in)` }]
+              : []),
+            ...realDevices(devices).map((d) => ({
+              value: d.label,
+              label: d.label || "Unnamed microphone",
+            })),
+          ],
+          more: true,
+        };
+      }),
       ...settings.wakeWords.map((wake) => ({
         id: `v.wake:${wake.word}`,
         section: "Wake and listening",
@@ -7181,6 +7255,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if ((state === "direct_session") !== on) loop?.activate("toggle_direct_session");
     } else if (id === "v.mic") {
       pickMic(typeof value === "string" && value !== "" ? value : null);
+    } else if (id.startsWith("v.micOrder:")) {
+      const at = Number(id.slice("v.micOrder:".length));
+      save({
+        micOrder: setMicAt(
+          settings.micOrder,
+          at,
+          typeof value === "string" && value !== "" ? value : null,
+        ),
+      });
+      void restart();
     } else if (id.startsWith("v.wake:")) {
       const word = id.slice("v.wake:".length);
       save({

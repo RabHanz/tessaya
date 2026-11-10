@@ -104,6 +104,15 @@ describe("a live thread's own selection", () => {
     const current = sel("baton-live", "live");
     expect(pinnedLiveSelection("baton-live4:abc", sel("claudeAgent", "x"), current)).toBe(current);
   });
+  it("keeps a thread that is not on its terminal session off the Terminal session entry", () => {
+    const current = sel("claudeAgent_work", "opus");
+    expect(pinnedLiveSelection("import:claudeAgent:abc", sel("baton-live", "live"), current)).toBe(
+      current,
+    );
+    // A live thread moved into Tessaya may still be switched back to its session.
+    const back = sel("baton-live", "live");
+    expect(pinnedLiveSelection("baton-live4:abc", back, current)).toBe(back);
+  });
   it("leaves other threads, a handed-off thread and an unchanged selection alone", () => {
     const other = sel("claudeAgent", "x");
     expect(pinnedLiveSelection("baton-live4:abc", other, sel("codex", "y"))).toBe(other);

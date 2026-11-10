@@ -56,6 +56,71 @@ export const realDevices = (
 /** A Bluetooth headset's call-quality mic: Windows names it "Headset (… Hands-Free)". */
 export const isHandsFree = (label: string): boolean => /hands-?free|bluetooth/i.test(label);
 
+const wantsOf = (preference: DevicePreference): ReadonlyArray<string> => [
+  ...(preference.pinnedLabel === null ? [] : [preference.pinnedLabel]),
+  ...(preference.micOrder ?? []),
+];
+
+const findWanted = (
+  candidates: ReadonlyArray<AudioInputDevice>,
+  label: string,
+): AudioInputDevice | undefined => {
+  const wanted = normalizeDeviceName(label);
+  // A receiver can come back under a slightly different product string
+  // ("DJI MIC MINI" vs "DJI Mic Mini Wireless"); containment catches that.
+  return (
+    candidates.find((d) => normalizeDeviceName(d.label) === wanted) ??
+    candidates.find((d) => {
+      const name = normalizeDeviceName(d.label);
+      return name.length > 0 && (name.includes(wanted) || wanted.includes(name));
+    })
+  );
+};
+
+/**
+ * His other mics that are plugged in, in his order: the dictation helper listens on them beside `chosen` and moves to one
+ * that hears him when `chosen` hears nothing (a receiver whose transmitter is off). A hands-free headset is never opened
+ * for this, since opening it drops his headphones to call quality.
+ */
+export const backupMics = (
+  devices: ReadonlyArray<AudioInputDevice>,
+  preference: DevicePreference,
+  chosen: string | null,
+): ReadonlyArray<string> => {
+  if (chosen === null) return [];
+  const candidates = realDevices(devices).filter(
+    (d) => !isHandsFree(d.label) && d.label !== chosen,
+  );
+  const found = wantsOf(preference).flatMap((label) => findWanted(candidates, label)?.label ?? []);
+  return [...new Set(found)];
+};
+
+/** One mic by name, as his order names it: part of the device name is enough ("Scarlett Solo"). */
+export const sameMic = (a: string, b: string): boolean => {
+  const [x, y] = [normalizeDeviceName(a), normalizeDeviceName(b)];
+  return x.length > 0 && y.length > 0 && (x.includes(y) || y.includes(x));
+};
+
+/**
+ * His order with place `at` set to the mic `name`, or emptied (null). A mic already elsewhere in it swaps places, and
+ * keeps the input he chose for it.
+ */
+export const setMicAt = <Mic extends { readonly name: string; readonly channel: number | null }>(
+  order: ReadonlyArray<Mic>,
+  at: number,
+  name: string | null,
+): ReadonlyArray<{ readonly name: string; readonly channel: number | null }> => {
+  const next: Array<{ readonly name: string; readonly channel: number | null }> = [...order];
+  if (name === null) return next.filter((_, i) => i !== at);
+  const was = order.findIndex((m) => sameMic(m.name, name));
+  const mic = { name, channel: order[was]?.channel ?? null };
+  if (was >= 0 && was !== at && order[at] !== undefined) next[was] = order[at]!;
+  else if (was >= 0 && was !== at) next.splice(was, 1);
+  if (at < next.length) next[at] = mic;
+  else next.push(mic);
+  return next;
+};
+
 export const selectInputDevice = (
   devices: ReadonlyArray<AudioInputDevice>,
   preference: DevicePreference,
@@ -76,22 +141,10 @@ export const selectInputDevice = (
       ? { kind: "default", deviceId: osDefault, reason, label }
       : { kind: "pinned", device: kept, by: "kept" };
   };
-  const wants = [
-    ...(preference.pinnedLabel === null ? [] : [preference.pinnedLabel]),
-    ...(preference.micOrder ?? []),
-  ];
+  const wants = wantsOf(preference);
   if (wants.length === 0) return systemDefault("No microphone is pinned.");
   for (const label of wants) {
-    const wanted = normalizeDeviceName(label);
-    const exact = candidates.find((d) => normalizeDeviceName(d.label) === wanted);
-    // A receiver can come back under a slightly different product string
-    // ("DJI MIC MINI" vs "DJI Mic Mini Wireless"); containment catches that.
-    const loose =
-      exact ??
-      candidates.find((d) => {
-        const name = normalizeDeviceName(d.label);
-        return name.length > 0 && (name.includes(wanted) || wanted.includes(name));
-      });
+    const loose = findWanted(candidates, label);
     if (loose !== undefined) {
       return {
         kind: "pinned",

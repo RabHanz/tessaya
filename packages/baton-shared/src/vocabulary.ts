@@ -89,23 +89,32 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
     : [];
 
 /** The words the clean-up prompt gets, her own names first, then most used, capped; each with how it is mis-heard. */
-export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyArray<string> =>
-  withOwnWords(entries)
+export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyArray<string> => {
+  const his = new Set(withOwnWords(entries).map((e) => (e.replacement ?? e.phrase).toLowerCase()));
+  return withOwnWords(entries)
     .map((entry, i) => ({ entry, rank: entry.count ?? Number.MAX_SAFE_INTEGER - i }))
     .sort((a, b) => b.rank - a.rank)
     .slice(0, PROMPT_TERMS)
     .map(({ entry }) => {
       const term = entry.replacement ?? entry.phrase;
-      // An everyday-looking form ("button", "venture OS") as a hint makes the model swap every "button" and "venture";
-      // those are put back in code, only where the name fits.
-      // Nor an everyday word, however it is capitalised: "feelIt (heard as "It")" made the model write "part of
+      // Never an everyday word, however it is capitalised: "feelIt (heard as "It")" made the model write "part of
       // feelIt" (0.1.92).
-      const heard = (entry.heard ?? [])
-        .filter((h) => /^\p{Lu}/u.test(h) && !everydayForm(h))
-        .map((h) => `"${h}"`)
-        .join(", ");
-      return heard.length === 0 ? term : `${term} (heard as ${heard})`;
+      const forms = (entry.heard ?? []).filter(
+        (h) => !everydayForm(h) && !his.has(h.toLowerCase()),
+      );
+      const quote = (list: ReadonlyArray<string>) => list.map((h) => `"${h}"`).join(", ");
+      const named = forms.filter((h) => /^\p{Lu}/u.test(h));
+      // A form that is also a real word ("button" for Baton) is a hint only where the sentence is about his word.
+      const plain = forms.filter((h) => !/^\p{Lu}/u.test(h));
+      const notes = [
+        ...(named.length === 0 ? [] : [`heard as ${quote(named)}`]),
+        ...(plain.length === 0
+          ? []
+          : [`sometimes heard as ${quote(plain)}, only where it names this`]),
+      ];
+      return notes.length === 0 ? term : `${term} (${notes.join("; ")})`;
     });
+};
 
 /** Adds or strengthens one entry. `source: "added"` wins over learned once he has said it himself. */
 export const upsertEntry = (
@@ -174,6 +183,49 @@ export const similar = (a: string, b: string): number => {
     }
   }
   return 1 - row[y.length]! / Math.max(x.length, y.length);
+};
+
+/** Spelling folded towards sound: "Tesai" and "Tessaya", "Zohayb" and "Zohaib" come closer, letters only. */
+const soundKey = (word: string): string =>
+  word
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "")
+    .replace(/ph/g, "f")
+    .replace(/ck|q/g, "k")
+    .replace(/c(?=[eiy])/g, "s")
+    .replace(/c/g, "k")
+    .replace(/z/g, "s")
+    .replace(/y/g, "i")
+    .replace(/(.)\1+/g, "$1");
+
+/** Whether a heard word could be one of his terms mis-heard ("Tesla" for Tessaya, "button" for Baton). */
+export const soundsLike = (heard: string, term: string): boolean =>
+  heard.toLowerCase() !== term.toLowerCase() && similar(soundKey(heard), soundKey(term)) >= 0.6;
+
+/**
+ * Names on his screen, from the lines of the focused window's accessibility tree (`Kind: Name …`): words with a
+ * capital, a digit or camelCase inside, most frequent first. Titles capitalise every word, so common words are dropped.
+ */
+export const screenNames = (lines: ReadonlyArray<string>, max = 50): ReadonlyArray<string> => {
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    const name = line.replace(/^[\w ]+?:\s*/, "");
+    for (const word of tokens(name)) {
+      const bare = word.replace(/[.'’-]+$/g, "");
+      if (
+        bare.length < 2 ||
+        COMMON.has(bare.toLowerCase()) ||
+        EVERYDAY_FORMS.has(bare.toLowerCase())
+      )
+        continue;
+      const looks = /^\p{Lu}/u.test(bare) || /\p{N}/u.test(bare) || /[a-z][A-Z]/.test(bare);
+      if (looks && !/^\d+$/.test(bare)) counts.set(bare, (counts.get(bare) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, max)
+    .map(([word]) => word);
 };
 
 /**
@@ -608,14 +660,19 @@ const everydayForm = (form: string): boolean =>
   form.length < 3 || everyday(form) || EVERYDAY_FORMS.has(form.toLowerCase());
 
 const applyTaughtForms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+  // A form that is itself one of his words stays: Wispr taught one word of his as a mis-hearing of another.
+  const his = new Set(entries.map((e) => (e.replacement ?? e.phrase).toLowerCase()));
   let out = text;
   for (const e of entries)
     for (const form of e.heard ?? []) {
-      if (!/^\p{L}+$/u.test(form) || everydayForm(form)) continue;
+      if (!/^\p{L}+$/u.test(form) || everydayForm(form) || his.has(form.toLowerCase())) continue;
       const term = e.replacement ?? e.phrase;
       out = out.replace(
         new RegExp(`${WORD_START}${escapeRegExp(form)}${WORD_END}`, "giu"),
         (found: string, at: number, whole: string) => {
+          // Written as a name ("Tessa" he corrected to Tessaya), it is his word wherever it stands.
+          if (/^\p{Lu}/u.test(form) && /^\p{Lu}/u.test(found) && found !== found.toUpperCase())
+            return term;
           const before = /([\p{L}']+)[^\p{L}\n]*$/u.exec(whole.slice(0, at))?.[1]?.toLowerCase();
           const rest = whole.slice(at + found.length);
           const after = /^ ([\p{L}']+)/u.exec(rest)?.[1]?.toLowerCase();
@@ -631,11 +688,47 @@ const applyTaughtForms = (text: string, entries: ReadonlyArray<VocabularyEntry>)
   return out;
 };
 
+/**
+ * A name the recogniser made up ("Tessa", "Tesla", "Zohayb") that sounds like one of his words on screen right now is that
+ * word. Only capitalised words, so "button" stays for the model, which sees the sentence; with no screen, nothing.
+ */
+const applyScreenNames = (
+  text: string,
+  entries: ReadonlyArray<VocabularyEntry>,
+  screen: ReadonlyArray<string>,
+): string => {
+  const shown = new Set(screen.map((w) => w.toLowerCase()));
+  // A dictation that is only that name ("Tessa.") is his word, on screen or not: nobody dictates a stranger's name alone.
+  const alone = /^\s*\p{Lu}[\p{L}\p{N}]*[.!?]?\s*$/u.test(text);
+  const terms = withOwnWords(entries)
+    .map((e) => e.replacement ?? e.phrase)
+    .filter((t) => t.length >= 4 && (alone || shown.has(t.toLowerCase())));
+  if (terms.length === 0) return text;
+  return text.replace(
+    new RegExp(`${WORD_START}\\p{Lu}[\\p{L}\\p{N}]*${WORD_END}`, "gu"),
+    (word) => {
+      if (shown.has(word.toLowerCase())) return word;
+      const term = terms.find(
+        (t) => soundsLike(word, t) && word[0]!.toLowerCase() === t[0]!.toLowerCase(),
+      );
+      return term ?? word;
+    },
+  );
+};
+
 export const biasTranscript = (
   heardText: string,
   entries: ReadonlyArray<VocabularyEntry>,
+  context: { readonly screen?: ReadonlyArray<string> } = {},
 ): string => {
-  const text = joinSplitTerms(applyTaughtForms(applyOwnNames(heardText), entries), entries);
+  const text = joinSplitTerms(
+    applyScreenNames(
+      applyTaughtForms(applyOwnNames(heardText), entries),
+      entries,
+      context.screen ?? [],
+    ),
+    entries,
+  );
   const terms = entries
     .map((entry) => entry.replacement ?? entry.phrase)
     .filter(

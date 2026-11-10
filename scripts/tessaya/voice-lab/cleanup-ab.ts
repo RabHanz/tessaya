@@ -89,7 +89,7 @@ const askApi = async (text: string, mode: DictationMode): Promise<string> => {
       messages: [
         {
           role: "user",
-          content: rewriteMessage(text, mode, text.includes("\n") ? [] : examples(text, mode)),
+          content: rewriteMessage(text, mode, {}, text.includes("\n") ? [] : examples(text, mode)),
         },
       ],
     }),

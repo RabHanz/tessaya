@@ -63,7 +63,7 @@ describe("his past dictations as examples", () => {
   });
 
   it("puts them before the dictation, and refuses an answer that copies their wrapper", () => {
-    const message = rewriteMessage("buy some eggs", "default", [pairs[0]!]);
+    const message = rewriteMessage("buy some eggs", "default", {}, [pairs[0]!]);
     expect(message).toContain("<said>pick up a few things");
     expect(message.endsWith("<dictation>buy some eggs</dictation>")).toBe(true);
     expect(rewriteMessage("buy some eggs", "default")).toBe(
