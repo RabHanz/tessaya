@@ -4,18 +4,19 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 3c5f499a1cb3c2f90be617821076f69fa6633a73..271f8582663a11587751d5ae2f98a5814df82313 100644
+index 3c5f499a1cb3c2f90be617821076f69fa6633a73..ca9ef977a83ed06a459c4a77215c5b86bb54f667 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -38,6 +38,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
+@@ -38,6 +38,8 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
  import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
  import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
  import * as HostProcess from "@t3tools/shared/HostProcess";
 +import { startBatonDesktop } from "../baton/startBatonDesktop.ts";
++import { mainHeldAtLaunch, takeMainHold } from "../baton/launchWindows.ts";
  
  const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
  const MAX_TCP_PORT = 65_535;
-@@ -185,6 +186,10 @@ const bootstrap = Effect.gen(function* () {
+@@ -185,6 +187,10 @@ const bootstrap = Effect.gen(function* () {
      clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
    });
    yield* installDesktopIpcHandlers();
@@ -26,6 +27,25 @@ index 3c5f499a1cb3c2f90be617821076f69fa6633a73..271f8582663a11587751d5ae2f98a581
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
+@@ -195,7 +201,7 @@ const bootstrap = Effect.gen(function* () {
+ 
+   if (!settings.localEnvironmentEnabled) {
+     yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");
+-    if (!(yield* Ref.get(state.quitting))) {
++    if (!(yield* Ref.get(state.quitting)) && !takeMainHold()) {
+       yield* desktopWindow.createMainIfBackendReady;
+     }
+     return;
+@@ -257,7 +263,8 @@ const bootstrap = Effect.gen(function* () {
+       !environment.isDevelopment &&
+       !settings.wslOnly &&
+       Option.isSome(config) &&
+-      Option.isNone(config.value.preflightFailure)
++      Option.isNone(config.value.preflightFailure) &&
++      !mainHeldAtLaunch()
+     ) {
+       yield* desktopWindow.ensureMain;
+     }
 diff --git a/apps/desktop/src/app/DesktopLifecycle.ts b/apps/desktop/src/app/DesktopLifecycle.ts
 index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc43438d2fa 100644
 --- a/apps/desktop/src/app/DesktopLifecycle.ts
@@ -425,19 +445,20 @@ index 4f8949823e354618ba1eaf12694de9561cac99f7..e74d257e36fc4ab5e8f16885b58d1cb7
  
    it("rejects renderer navigations whose origin only serializes as null", () => {
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 292a3540d18bff63b6e37bf48d46d7478244d52f..9d5a132dcb626668fc14e0e0b960ee5ec1934e8b 100644
+index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d7630b37418d 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -13,6 +13,8 @@ import * as Electron from "electron";
+@@ -13,6 +13,9 @@ import * as Electron from "electron";
  import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
  
  import * as DesktopAssets from "../app/DesktopAssets.ts";
 +import { installDetachedWindows } from "../baton/detachedWindows.ts";
 +import { setOverlaySafely, syncsWithT3Appearance } from "../baton/lastAppWindow.ts";
++import { takeMainHold } from "../baton/launchWindows.ts";
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
-@@ -148,15 +150,19 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
+@@ -148,15 +151,19 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
  
  type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
  
@@ -461,7 +482,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..9d5a132dcb626668fc14e0e0b960ee5e
    );
  }
  
-@@ -272,14 +278,14 @@ function syncWindowAppearance(
+@@ -272,14 +279,14 @@ function syncWindowAppearance(
    platform: NodeJS.Platform,
  ): Effect.Effect<void> {
    return Effect.sync(() => {
@@ -478,7 +499,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..9d5a132dcb626668fc14e0e0b960ee5e
      }
    });
  }
-@@ -397,6 +403,17 @@ export const make = Effect.gen(function* () {
+@@ -397,6 +404,17 @@ export const make = Effect.gen(function* () {
        yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
      }
      if (yield* Ref.get(desktopState.quitting)) return Option.none();
@@ -496,7 +517,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..9d5a132dcb626668fc14e0e0b960ee5e
      const window = yield* electronWindow.create({
        ...initialBounds,
        minWidth: DesktopAppSettings.MIN_MAIN_WINDOW_SIZE.width,
-@@ -408,17 +425,7 @@ export const make = Effect.gen(function* () {
+@@ -408,17 +426,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
        ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
@@ -515,7 +536,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..9d5a132dcb626668fc14e0e0b960ee5e
      });
      if (yield* Ref.get(desktopState.quitting)) {
        yield* electronWindow.destroyAll;
-@@ -522,26 +529,6 @@ export const make = Effect.gen(function* () {
+@@ -522,26 +530,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -542,7 +563,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..9d5a132dcb626668fc14e0e0b960ee5e
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -619,33 +606,65 @@ export const make = Effect.gen(function* () {
+@@ -619,33 +607,65 @@ export const make = Effect.gen(function* () {
          installContextMenu(popup, popup.webContents);
        });
      };
@@ -634,3 +655,21 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..9d5a132dcb626668fc14e0e0b960ee5e
  
      const quitShortcutHandler = makeQuitShortcutHandler({
        platform: environment.platform,
+@@ -1010,6 +1030,7 @@ export const make = Effect.gen(function* () {
+     }),
+     activate: Effect.gen(function* () {
+       if (yield* Ref.get(desktopState.quitting)) return;
++      takeMainHold();
+       const existingWindow = yield* currentMainWindow;
+       if (Option.isSome(existingWindow)) {
+         yield* revealMain(existingWindow.value);
+@@ -1035,7 +1056,8 @@ export const make = Effect.gen(function* () {
+       backendHasStarted = true;
+       yield* Ref.set(backendReadyRef, true);
+       yield* logWindowInfo("backend ready", { source: "http", url: httpBaseUrl.href });
+-      if (!mainClosedDuringStartup) yield* createMainIfBackendReady;
++      // Baton: Settings → Start can keep the sessions window shut on this start (launchWindows.ts).
++      if (!mainClosedDuringStartup && !takeMainHold()) yield* createMainIfBackendReady;
+     }),
+     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
+       Effect.withSpan("desktop.window.handleBackendNotReady"),

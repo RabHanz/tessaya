@@ -1,5 +1,5 @@
 /**
- * The desktop's dictation settings an agent may read and change through this machine's server. Only these fields:
+ * The desktop's dictation and start-up settings an agent may read and change through this machine's server. Only these fields:
  * nothing here holds a key, a path, an account or anything that opens the microphone or keeps audio.
  */
 import * as Schema from "effect/Schema";
@@ -32,6 +32,9 @@ export const DesktopVoiceSettings = Schema.Struct({
   /** Recognise on his own servers (off by default); the servers and their tokens are set only on the desktop. */
   recognizeOnServers: Schema.Boolean,
   gpuRecognition: Schema.Literals(["auto", "on", "off"]),
+  /** Which windows open when the app starts; the first run opens both whatever these say. */
+  openTessayaOnStart: Schema.Boolean,
+  openSessionsOnStart: Schema.Boolean,
 });
 export type DesktopVoiceSettings = typeof DesktopVoiceSettings.Type;
 
@@ -49,6 +52,8 @@ export const DesktopVoiceSettingsPatch = Schema.Struct({
   duckWhileDictating: Schema.optionalKey(fields.duckWhileDictating),
   recognizeOnServers: Schema.optionalKey(fields.recognizeOnServers),
   gpuRecognition: Schema.optionalKey(fields.gpuRecognition),
+  openTessayaOnStart: Schema.optionalKey(fields.openTessayaOnStart),
+  openSessionsOnStart: Schema.optionalKey(fields.openSessionsOnStart),
 });
 export type DesktopVoiceSettingsPatch = typeof DesktopVoiceSettingsPatch.Type;
 

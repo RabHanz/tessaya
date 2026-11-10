@@ -560,7 +560,6 @@ export interface ScreenCompanion {
   ) => Promise<number>;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
-  readonly needsBrainChoice: () => boolean;
   /** Move the Ask Baton key, or switch it off with null. */
   readonly setAskHotkey: (accelerator: string | null) => void;
   /** Asks again whether Claude Code and Codex are installed and signed in. */
@@ -3744,7 +3743,6 @@ export const startScreenCompanion = (input: {
         on: settings.captureApproval === "always",
       },
     ],
-    needsBrainChoice: () => !settings.brainChosen,
     setAskHotkey: (accelerator) => {
       if (accelerator === askKey) return;
       if (askKey !== null) Electron.globalShortcut.unregister(askKey);

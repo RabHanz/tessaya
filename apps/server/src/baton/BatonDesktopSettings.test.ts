@@ -27,6 +27,8 @@ const before: DesktopVoiceSettings = {
   duckWhileDictating: "off",
   recognizeOnServers: false,
   gpuRecognition: "auto",
+  openTessayaOnStart: false,
+  openSessionsOnStart: true,
 };
 
 const layer = it.layer(
