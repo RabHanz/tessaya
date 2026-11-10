@@ -8,16 +8,18 @@ import { pillEngine } from "./pillTimeline.ts";
 /** The pill window's width; the island is never wider. */
 export const ISLAND_WIDTH = 420;
 /** The window grows upward to this while the island is up: the head, 12 lines and their padding, over the margin. */
-export const ISLAND_HEIGHT = 320;
+export const ISLAND_HEIGHT = 280;
+/** The window's margin under the capsule, plain or island. */
+export const PILL_BELOW = 6;
 
 export const ISLAND_CSS = `
 :root{--glass:rgba(20,20,26,.96);--glass-solid:#14141a;--edge:rgba(255,255,255,.13);--itext:#fff;--grey:rgba(255,255,255,.46);--isoft:rgba(255,255,255,.62);--ibar:#ececef;--glow:rgba(236,236,239,.55);--accent:#5FB3B3}
 @media (prefers-color-scheme:light){:root{--glass:rgba(255,255,255,.96);--glass-solid:#fff;--edge:rgba(0,0,0,.16);--itext:#0f1012;--grey:rgba(15,16,18,.6);--isoft:rgba(15,16,18,.74);--ibar:#16171a;--glow:transparent;--accent:#14505A}}
-#p.isl{position:absolute;left:0;bottom:28px;display:block;width:124px;height:34px;max-width:none;padding:0;border:0;border-radius:17px;overflow:hidden;background:var(--glass);box-shadow:inset 0 0 0 1px var(--edge);--text:var(--itext);--soft:var(--isoft);color:var(--text)}
+#p.isl{position:absolute;left:0;bottom:${PILL_BELOW}px;display:block;width:76px;height:26px;max-width:none;padding:0;border:0;border-radius:13px;overflow:hidden;background:var(--glass);box-shadow:inset 0 0 0 1px var(--edge);--text:var(--itext);--soft:var(--isoft);color:var(--text)}
 #p.isl[data-phase=dictating]{--bar:var(--ibar)}
 html.glass-reduced #p.isl,html.glass-off #p.isl{background:var(--glass-solid)}
 #p.isl>#mk,#p.isl>#d,#p.isl>#st,#p.isl>#t,#p.isl>#c{display:none!important}
-#p.isl .db{position:absolute;left:0;top:0;display:flex;width:28px;height:28px;margin:0;border-radius:8px;color:var(--soft)}
+#p.isl .db{position:absolute;left:0;top:0;display:flex;width:22px;height:22px;margin:0;border-radius:7px;color:var(--soft)}
 #p.isl .db:hover{background:transparent;color:var(--text)}
 #p.isl[data-voice=off] .db{display:none}
 #p.isl #dv{color:var(--text)}
@@ -76,7 +78,7 @@ export const ghostScroll = (lines: number, top: number, line: number, height: nu
  */
 export const wordsScript = (variant: "E" | "D"): string => `
 const {clamp,prog,EMPH,DECEL,ACCEL,MD,FLOW,EXPAND_MS,SMOOTH,springAt,align,cleanupTimes,stepWidth}=(${pillEngine.toString()})();
-const D=${variant === "D"},PH=34,PBASE=124,LIVE_LINES=D?99:5,PAD=12,MAXW=${ISLAND_WIDTH},TMAX=MAXW-32,FLOW01=[{at:0,to:0},{at:0,to:1}];
+const D=${variant === "D"},PH=26,PBASE=76,PVOICE=112,LIVE_LINES=D?99:5,PAD=8,MAXW=${ISLAND_WIDTH},TMAX=MAXW-24,FLOW01=[{at:0,to:0},{at:0,to:1}];
 const SHRINK_MS=D?0:600;
 const flowWords=${flowWords.toString()},ghostScroll=${ghostScroll.toString()};
 let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0,TOP=0,BOXH=0,FONT=14,EMPTY=false;
@@ -94,9 +96,9 @@ const layLine=words=>measure(words,null).map(s=>s.offsetLeft);
 const oneLine=words=>{measure(words,null);return mE.offsetWidth;};
 const linesOf=pos=>pos.length?Math.round(pos[pos.length-1].y/LINE)+1:0;
 // The lines the window has room for (a short screen gives the island less).
-const roomLines=()=>D?99:Math.max(1,Math.floor((innerHeight-28-PH-PAD-6)/LINE));
+const roomLines=()=>D?99:Math.max(1,Math.floor((innerHeight-${PILL_BELOW}-PH-PAD-6)/LINE));
 const hOf=lines=>lines>0?Math.min(ALL_LINES,lines)*LINE+PAD:0;
-const wOf=t=>Math.max(PBASE,t+32);
+const wOf=t=>Math.max(PBASE,t+24);
 const mk=t=>{const s=document.createElement('span');s.textContent=t;vp.appendChild(s);return s;};
 const textC=D?'var(--field-ink)':'var(--text)',greyC=D?'var(--ghost-drop)':'var(--grey)',liveC=D?'var(--ghost)':textC;
 const mix=a=>p=>p>=1?a:p<=0?greyC:'color-mix(in srgb,'+a+' '+Math.round(p*100)+'%,'+greyC+')',mixC=mix(textC),mixL=mix(liveC);
@@ -181,7 +183,8 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
   else if(C&&t>=R+C.MOVE_T){h=hRaw+(hOf(L.linesB)-hRaw)*pp;sc=0;}
   // From ✓ the capsule opens and the scroll returns to the top on one curve from where they were.
   else{const qo=calm?1:SMOOTH(prog(t,R,EXPAND_MS)),hAtR=Math.max(0,springAt(L.HhLive,R,calm));h=hAtR+(hRaw-hAtR)*qo;sc=springAt(L.ScLive,R,calm)*(1-qo);}}
- const ww=w;
+ // Spoken dictation's ✓ and ✕ sit either side of the waveform: the capsule is wider only while they show.
+ const ww=!D&&p_.dataset.voice==='on'?Math.max(w,PVOICE):w;
  if(D){vp.style.width=FW+'px';
   // The text scrolls as a field does: the newest line stays in the box, and the cleanup's lines settle the same way.
   const sD=t<R||!C?springAt(L.Sc,t,calm):scD(L.rawLines)+(scD(L.linesB)-scD(L.rawLines))*pp;vp.style.transform='translateY('+(TOP-sD).toFixed(2)+'px)';sc=0;
@@ -196,9 +199,9 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
  const tuck=t<R?0:t<P?(calm?1:EMPH(prog(t,R,MD.medium2))):(calm?0:1-EMPH(prog(t,P,MD.medium2)));
  for(const id of['dx','dv'])$(id).style.opacity=String(1-.65*tuck);
  $('dv').style.color=t>=R&&t<P+200?'var(--accent)':'';
- $('dx').style.transform='translate(5px,3px)';$('dv').style.transform='translate('+(ww-33).toFixed(2)+'px,3px)';$('w').style.transform='translate('+(ww/2-27).toFixed(2)+'px,9px)';
- const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(16px,'+(PH-4)+'px)';
- vp.style.clipPath='inset(0 '+Math.max(0,16+TMAX-(ww-14)).toFixed(2)+'px '+Math.max(0,vh-(h-PAD+4)).toFixed(2)+'px 0)';
+ $('dx').style.transform='translate(3px,2px)';$('dv').style.transform='translate('+(ww-25).toFixed(2)+'px,2px)';$('w').style.transform='translate('+(ww/2-27).toFixed(2)+'px,5px)';
+ const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(12px,'+(PH-4)+'px)';
+ vp.style.clipPath='inset(0 '+Math.max(0,12+TMAX-(ww-10)).toFixed(2)+'px '+Math.max(0,vh-(h-PAD+4)).toFixed(2)+'px 0)';
  // The top edge fades while lines are scrolled out of view above it.
  const mkd=clamp(sc/LINE);vp.style.maskImage=vp.style.webkitMaskImage=mkd>.01?'linear-gradient(180deg,rgba(0,0,0,'+(1-.75*mkd).toFixed(3)+') 0,#000 14px)':'';}
  if(!C){// While he talks, and after ✓ until the clean text: the newest partial's layout, each word arriving with a decelerated fade, rise and unblur.
