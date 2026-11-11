@@ -237,3 +237,50 @@ export const enrolOwner = async (input: {
   input.save(profile);
   return { saved: true, ...counts, samples: profile.samples };
 };
+
+/** What a saved person reads after saying yes: short, so a guest at the table can do it. */
+export const SAVED_PERSON_LINES = [
+  "Yes, Tessaya may remember my voice.",
+  "I'm reading this so she knows it's me when I talk to her.",
+  "The quick brown fox jumps over the lazy dog, and then it goes back to sleep in the sun.",
+] as const;
+
+/** A profile id from a name: never "owner", never one already taken. */
+export const personId = (name: string, taken: ReadonlyArray<string>): string => {
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "person";
+  const free = (id: string) => id !== "owner" && !taken.includes(id);
+  if (free(base)) return base;
+  for (let n = 2; ; n += 1) if (free(`${base}-${n}`)) return `${base}-${n}`;
+};
+
+/** Someone he saves, from their read alone (no Wispr: those are only his). Null when there is too little. */
+export const enrolSaved = async (input: {
+  readonly name: string;
+  readonly taken: ReadonlyArray<string>;
+  readonly embedder: { readonly model: string; readonly embed: Embed };
+  readonly spoken: Int16Array;
+  readonly consentNote: string;
+  readonly save: (profile: SpeakerProfile) => void;
+  readonly now: Date;
+}): Promise<SpeakerProfile | null> => {
+  const spoken = await spokenVectors(input.spoken, input.embedder.embed);
+  const made = enrol(spoken.vectors);
+  if (made === null) return null;
+  const profile: SpeakerProfile = {
+    id: personId(input.name, input.taken),
+    name: input.name,
+    kind: "saved",
+    model: input.embedder.model,
+    centroid: made.centroid,
+    samples: made.kept,
+    sources: ["spoken"],
+    enrolledAt: input.now.toISOString(),
+    consentNote: input.consentNote,
+  };
+  input.save(profile);
+  return profile;
+};

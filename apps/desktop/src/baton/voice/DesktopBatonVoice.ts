@@ -44,6 +44,7 @@ import {
   stripWake,
   type BatonVoiceCore,
   type EchoGuard,
+  type SpeakerEmbedder,
   type SttProvider,
   type VoiceCoreEvent,
   type VoiceIntentClient,
@@ -406,12 +407,22 @@ import {
   modelPresent,
   PARAKEET_FAST_MODEL,
   PARAKEET_MODEL,
+  SPEAKER_MODEL,
   machinePicksFast,
   slowStartsAfter,
   wakeModelFor,
   weakMachine,
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
+import { createVoiceId } from "./voiceId.ts";
+import {
+  parseVoiceIdSettings,
+  VOICE_ID_DEFAULTS,
+  VOICE_ID_SWITCHES,
+  voiceIdControls,
+  type VoiceIdSettings,
+} from "./voiceIdRows.ts";
+import type { HostedScorer } from "./onnxHost.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
 import { createRecogniserPriority, type RecogniserPriority } from "./recogniserPriority.ts";
 import type {
@@ -622,6 +633,8 @@ interface VoiceSettings {
   readonly pronounce: Readonly<Record<string, string>>;
   /** Over speakers: hear him through her voice (the echo guard). Measured, not yet reliable enough to be the default. */
   readonly voiceBargeIn: boolean;
+  /** Voice ID and its switches (voiceIdRows.ts). */
+  readonly voiceId: VoiceIdSettings;
   /** Two quick taps of the dictation key keep the microphone open until the next press. */
   readonly doubleTap: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
@@ -772,6 +785,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   outputDevice: "auto",
   pronounce: {},
   voiceBargeIn: false,
+  voiceId: VOICE_ID_DEFAULTS,
   doubleTap: true,
   keepVoice: false,
   keepDays: 30,
@@ -901,6 +915,7 @@ export const readSettings = (path: string): VoiceSettings => {
       outputDevice: outputDeviceFrom(saved),
       pronounce: pronounceFrom(saved["pronounce"]),
       voiceBargeIn: saved["voiceBargeIn"] === true,
+      voiceId: parseVoiceIdSettings(saved["voiceId"]),
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
       palette: parsePalette(saved["palette"]),
@@ -1122,6 +1137,8 @@ export interface DesktopBatonVoiceInput {
   readonly direct?: (method: string, input: unknown, timeoutMs?: number) => Promise<unknown>;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
+  /** The voice match model in the voice model worker (VOICE-ID); absent, Voice ID cannot run here. */
+  readonly speakerModel?: (path: string, model: string) => Promise<HostedScorer<SpeakerEmbedder>>;
   /** His environment, for the `claude` that cleans text up. */
   /** `tessaya-voice`; null only in a build that left it out. */
   readonly dictationBinary: string | null;
@@ -1291,6 +1308,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // A left click is what an icon invites, and without this it did nothing on Windows.
   tray.on("click", () => home.open());
   const modelsDir = NodePath.join(input.stateDir, "voice", "models");
+  const voiceId = createVoiceId({
+    stateDir: input.stateDir,
+    ownerName: () => "You",
+    settings: () => settings.voiceId,
+    ensureModel: () => ensureModel({ dir: modelsDir, model: SPEAKER_MODEL, onProgress: () => {} }),
+    openModel: async (path) => {
+      if (input.speakerModel === undefined) throw new Error("No voice model worker here.");
+      return input.speakerModel(path, SPEAKER_MODEL.id);
+    },
+    model: SPEAKER_MODEL.id,
+    appData: input.env["APPDATA"],
+    onChange: () => pushHome(),
+    ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+  });
+  voiceId.sync();
   const binary = input.dictationBinary;
   let sidecar: DictationSidecar | null = null;
   let parakeetPath: string | null = null;
@@ -4779,6 +4811,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (keyRecording()) hearKeyCommand(frame, level);
         else commandClips.reset();
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
+        voiceId.push(frame);
       },
       // The core's router has already sent the words on; this is the HUD's line.
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
@@ -6070,6 +6103,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...styleControls(styles.read(), settings.dictationCleanup),
       ...insightControls(deepInsights()),
       ...voiceProfileControls(profileValue),
+      ...voiceIdControls(voiceId.view(loop !== null)),
       {
         id: "d.import",
         section: "Vocabulary files",
@@ -6873,6 +6907,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
   };
 
+  /** One confirmation that says what goes with it, then the profile is deleted at once. */
+  const forgetVoice = async (id: string, what: string) => {
+    const answer = await (input.extras?.ask({
+      title: `Delete ${what}?`,
+      detail:
+        id === "owner"
+          ? "Tessaya will not know your voice until you enrol again."
+          : "Tessaya will not know their voice any more, and what she remembers for them is deleted too.",
+      buttons: ["Delete", "Cancel"],
+      cancel: 1,
+      expiresMs: 60_000,
+    }) ?? Promise.resolve(1));
+    if (answer === 0) voiceId.remove(id);
+  };
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
     if (memoryTab.act(id, value)) return;
@@ -7623,7 +7671,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (value === "auto" || value === "headphones" || value === "speakers")
     )
       save({ outputDevice: value });
-    else if (id === "v.voiceBargeIn") {
+    else if (VOICE_ID_SWITCHES[id] !== undefined) {
+      save({ voiceId: { ...settings.voiceId, [VOICE_ID_SWITCHES[id]]: on } });
+      voiceId.sync();
+    } else if (id === "vid.enrol") voiceId.read({ kind: "owner" });
+    else if (id === "vid.enrol:later") void forgetVoice("owner", "your voice profile");
+    else if (id === "vid.people:add" && typeof value === "string" && value.trim() !== "")
+      voiceId.read({ kind: "saved", name: value.trim().slice(0, 40) });
+    else if (id === "vid.people:rm" && typeof value === "string") {
+      const person = voiceId.profiles().find((p) => p.kind === "saved" && p.name === value);
+      if (person !== undefined) void forgetVoice(person.id, `${person.name}'s voice`);
+    } else if (id === "v.voiceBargeIn") {
       save({ voiceBargeIn: on });
       void relisten();
     } else if (id === "v.quietSpeech") {

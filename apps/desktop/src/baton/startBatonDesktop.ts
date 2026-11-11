@@ -660,6 +660,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           env: { BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"] },
           modelsDir,
         }),
+      speakerModel: (path, model) => onnx.speaker(path, model),
       makeCore: async ({
         intent,
         onReply,
