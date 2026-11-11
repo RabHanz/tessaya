@@ -142,7 +142,7 @@ fn recognise(session: &mut Session, job: Job) {
                 let from = previewed;
                 previewed = pending;
                 if !chunker.quiet_since(from, &heard) {
-                    if let Some(piece) = chunker.preview() {
+                    if let Some(piece) = chunker.preview(0) {
                         let t = Instant::now();
                         preview = decode(session, piece, language.clone()).ok();
                         if let Some(words) = &preview {

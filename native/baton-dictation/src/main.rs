@@ -692,7 +692,9 @@ impl Live {
     /// ends: they stand, and only the audio after them is decoded again.
     fn settled_words(&self, reached: usize) -> (usize, EndedWords) {
         let safe = reached.saturating_sub(PREVIEW_SAFE);
-        let kept: EndedWords = self.preview_words.iter().take_while(|(end, _)| *end <= safe).cloned().collect();
+        // Its last word never stands: its end time can fall well before the audio it was cut from ("blob" of "blobs").
+        let before_last = &self.preview_words[..self.preview_words.len().saturating_sub(1)];
+        let kept: EndedWords = before_last.iter().take_while(|(end, _)| *end <= safe).cloned().collect();
         (kept.last().map_or(0, |(end, _)| *end), kept)
     }
 
