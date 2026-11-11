@@ -76,9 +76,9 @@ it("fixes his names in what the room heard, from the shared dictionary, as dicta
   const { biasTranscript } = await import("@t3tools/baton-shared/vocabulary");
   const entries = dictionaryEntries([
     { term: "Tessaya", aliases: ["Tezaya"] },
-    { term: "VentureOS", aliases: [] },
+    { term: "AcmeCloud", aliases: [] },
   ]);
-  expect(biasTranscript("Ask Tezaya about Venture OS", entries)).toBe(
-    "Ask Tessaya about VentureOS",
+  expect(biasTranscript("Ask Tezaya about Acme Cloud", entries)).toBe(
+    "Ask Tessaya about AcmeCloud",
   );
 });
