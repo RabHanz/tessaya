@@ -35,7 +35,11 @@ export interface EchoGuard {
   /** Nothing is playing any more, or the output device changed: forget the room. */
   readonly reset: () => void;
   /** For tests and tuning. */
-  readonly state: () => { readonly delayMs: number; readonly erleDb: number; readonly converged: boolean };
+  readonly state: () => {
+    readonly delayMs: number;
+    readonly erleDb: number;
+    readonly converged: boolean;
+  };
 }
 
 const decimate = (pcm: Int16Array): Float32Array => {
@@ -75,7 +79,11 @@ export const createEchoGuard = (): EchoGuard => {
     for (let c = Math.floor(start / ENV_HOP); c * ENV_HOP < start + x.length; c += 1) {
       let sum = 0;
       let n = 0;
-      for (let i = Math.max(c * ENV_HOP, start); i < Math.min((c + 1) * ENV_HOP, start + x.length); i += 1) {
+      for (
+        let i = Math.max(c * ENV_HOP, start);
+        i < Math.min((c + 1) * ENV_HOP, start + x.length);
+        i += 1
+      ) {
         sum += x[i - start]! ** 2;
         n += 1;
       }
@@ -213,6 +221,10 @@ export const createEchoGuard = (): EchoGuard => {
     sinceEstimate = 0;
   };
 
-  const state = () => ({ delayMs: delay < 0 ? -1 : delay / (RATE / 1000), erleDb: erle, converged });
+  const state = () => ({
+    delayMs: delay < 0 ? -1 : delay / (RATE / 1000),
+    erleDb: erle,
+    converged,
+  });
   return { reference, process, reset, state };
 };

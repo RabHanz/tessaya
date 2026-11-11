@@ -1,0 +1,21 @@
+# The R1 room voice loop as a `systemctl --user` unit on the voice host. Its CPU weight ranks it far above the
+# coding lanes in the same user's cgroup while a conversation is running; idle, it uses next to nothing. A user unit
+# cannot lower its nice value; to rank it above login sessions too, root runs once:
+#   systemctl set-property user@<uid>.service CPUWeight=10000
+[Unit]
+Description=Tessaya room voice (R1)
+After=network-online.target tessaya-recognizer.service
+
+[Service]
+EnvironmentFile=%h/r1-voice/env
+WorkingDirectory=%h/r1-voice
+ExecStart=%h/r1-voice/node/bin/node %h/r1-voice/app/main.mjs
+Restart=always
+RestartSec=2
+CPUWeight=10000
+IOWeight=10000
+MemoryLow=1G
+MemoryMax=2500M
+
+[Install]
+WantedBy=default.target
