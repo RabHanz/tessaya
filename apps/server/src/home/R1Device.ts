@@ -10,6 +10,7 @@ import * as NodeNet from "node:net";
 
 import { recordText } from "@t3tools/baton-shared/audit";
 import { biasTranscript, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -345,7 +346,7 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
  * words wait for the outcomes so the room never hears "done" for something that went to his phone or failed.
  */
 const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"]) =>
-  Stream.callback<string>((queue) =>
+  Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
       let offered = false;
       const say = (words: string) => {

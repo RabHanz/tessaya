@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off preferSchemaOverJson:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalJsonInEffect:off preferSchemaOverJson:off
 /**
  * The room's brain, routed per turn by the `roomBrain` setting (no restart): his Anthropic key from Settings → APIs
  * (Haiku streamed, quickest), or his subscription via a Claude Code process started ahead and waiting on stdin

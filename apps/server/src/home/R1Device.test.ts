@@ -78,5 +78,7 @@ it("fixes his names in what the room heard, from the shared dictionary, as dicta
     { term: "Tessaya", aliases: ["Tezaya"] },
     { term: "VentureOS", aliases: [] },
   ]);
-  expect(biasTranscript("Ask Tezaya about Venture OS", entries)).toBe("Ask Tessaya about VentureOS");
+  expect(biasTranscript("Ask Tezaya about Venture OS", entries)).toBe(
+    "Ask Tessaya about VentureOS",
+  );
 });
