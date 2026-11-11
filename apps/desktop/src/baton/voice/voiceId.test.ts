@@ -60,7 +60,9 @@ describe("Voice ID enrolment", () => {
     t.voiceId.read({ kind: "owner" });
     expect(t.voiceId.view(true).capture?.secondsLeft).toBe(30);
     await t.read(loud(30));
-    expect(t.voiceId.profiles()).toMatchObject([{ id: "owner", kind: "owner", sources: ["spoken"] }]);
+    expect(t.voiceId.profiles()).toMatchObject([
+      { id: "owner", kind: "owner", sources: ["spoken"] },
+    ]);
 
     t.voiceId.read({ kind: "saved", name: "Sarah" });
     await t.read(loud(20));
@@ -153,8 +155,8 @@ describe("Voice ID settings", () => {
   });
 
   it("cannot start a read while the microphone is closed", () => {
-    expect(voiceIdControls(view({ listening: false })).find((c) => c.id === "vid.enrol")).toMatchObject(
-      { disabled: true },
-    );
+    expect(
+      voiceIdControls(view({ listening: false })).find((c) => c.id === "vid.enrol"),
+    ).toMatchObject({ disabled: true });
   });
 });

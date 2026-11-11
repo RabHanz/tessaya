@@ -169,7 +169,14 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
       detail: `Read aloud: ${view.capture.lines.join(" ")}`,
     });
   if (view.note !== null)
-    rows.push({ id: "vid.note", section: SECTION, kind: "check", status: "ok", label: view.note, detail: "" });
+    rows.push({
+      id: "vid.note",
+      section: SECTION,
+      kind: "check",
+      status: "ok",
+      label: view.note,
+      detail: "",
+    });
   if (settings.on && view.modelState === "ready" && view.capture === null) {
     const cannot = view.listening ? {} : { disabled: true };
     rows.push(
