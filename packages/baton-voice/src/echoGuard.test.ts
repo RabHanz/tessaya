@@ -11,7 +11,15 @@ describe("the echo guard", () => {
   });
 
   it("learns the delay and cuts the echo within a second or two of speech", () => {
-    const run = runEcho({ tts: speechLike(6, 7, 110), seed: 3, unknownDelayMs: 140, rt60Ms: 250, echoRms: 0.07, noiseRms: 0.002, interruptions: [] });
+    const run = runEcho({
+      tts: speechLike(6, 7, 110),
+      seed: 3,
+      unknownDelayMs: 140,
+      rt60Ms: 250,
+      echoRms: 0.07,
+      noiseRms: 0.002,
+      interruptions: [],
+    });
     expect(run.readyAtS).not.toBeNull();
     expect(run.readyAtS!).toBeLessThan(4);
   });

@@ -361,7 +361,7 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..624c9d47d27128249db660efe22fca98af365e2e 100644
+index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..7b1e2fdb2615e1ae14efe35097242c7160fa7ede 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,9 @@
@@ -466,7 +466,249 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..624c9d47d27128249db660efe22fca98
    const runtimePolicy = yield* RuntimePolicyV2;
    const threadForkService = yield* ThreadForkServiceV2;
    const threadDispatch = yield* ThreadCommandExecutor.ThreadCommandExecutor;
-@@ -3557,9 +3632,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1271,6 +1346,94 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+     return false;
+   });
+ 
++  // Tessaya (hot account swap, docs/baton/HOT_ACCOUNT_SWAP.md): an account change keeps a session that runs
++  // background work and moves its process to the target's login, so the work goes on and the next turn runs there.
++  const sessionKeptForAccountSwitch = Effect.fn("Orchestrator.sessionKeptForAccountSwitch")(
++    function* (input: {
++      readonly projection: Pick<
++        OrchestrationV2ThreadProjection,
++        "thread" | "providerSessions" | "providerThreads"
++      >;
++      readonly activeProviderThread: OrchestrationV2ProviderThread | undefined;
++      readonly targetModelSelection: ModelSelection;
++      readonly freshContext: boolean;
++      /** A turn running on the session also keeps it: a rotation at a limit lands mid-turn. */
++      readonly turnRunning?: boolean;
++    }) {
++      const active = input.activeProviderThread;
++      const target = input.targetModelSelection.instanceId;
++      // Back on the session's own account after an in-place move, its login must move back too.
++      const returning =
++        active?.providerInstanceId === target &&
++        input.projection.thread.providerInstanceId !== target;
++      if (
++        input.freshContext ||
++        active === undefined ||
++        active.nativeThreadRef === null ||
++        (active.providerInstanceId === target && !returning)
++      ) {
++        return undefined;
++      }
++      const session = input.projection.providerSessions.find(
++        (candidate) =>
++          candidate.id === active.providerSessionId &&
++          candidate.status !== "stopped" &&
++          candidate.status !== "error",
++      );
++      if (session === undefined) return undefined;
++      const runtime = yield* providerSessions
++        .get(session.id)
++        .pipe(Effect.orElseSucceed(() => Option.none()));
++      const targetAdapter = yield* Effect.option(providerAdapters.get(target));
++      if (
++        Option.isNone(runtime) ||
++        runtime.value.switchAccount === undefined ||
++        Option.isNone(targetAdapter) ||
++        targetAdapter.value.driver !== runtime.value.driver ||
++        targetAdapter.value.accountLogin === undefined
++      ) {
++        return undefined;
++      }
++      if (returning) return session;
++      const plan = yield* Effect.option(
++        providerSwitchService.plan({
++          projection: {
++            ...input.projection,
++            thread: {
++              ...input.projection.thread,
++              modelSelection: {
++                ...input.projection.thread.modelSelection,
++                instanceId: active.providerInstanceId,
++              },
++            },
++          },
++          targetModelSelection: input.targetModelSelection,
++        }),
++      );
++      // Only accounts that share the native conversation; another provider keeps its own process.
++      if (Option.isNone(plan) || plan.value.transition.type !== "restart_and_resume") {
++        return undefined;
++      }
++      return input.turnRunning === true ||
++        (yield* sessionHasBackgroundWork(session, input.projection.providerThreads))
++        ? session
++        : undefined;
++    },
++  );
++
++  const switchAccountEffect = (
++    commandId: CommandId,
++    threadId: ThreadId,
++    providerSessionId: ProviderSessionId,
++    targetInstanceId: ProviderInstanceId,
++  ) =>
++    ({
++      id: `effect:${commandId}:provider-session.switch-account:${providerSessionId}`,
++      commandId,
++      threadId,
++      request: { type: "provider-session.switch-account", providerSessionId, targetInstanceId },
++    }) satisfies PendingOrchestrationEffectV2;
++
+   // Runs in every command transaction; avoid reading thousands of finished leaf nodes.
+   const readCommandProjection = (threadId: ThreadId) =>
+     projectionStore
+@@ -1739,13 +1902,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         (candidate) => candidate.id === storedQueuedRun.userMessageId,
+       );
+       const modelSelection = queuedRunModelSelection(projection, storedQueuedRun);
+-      const queuedRun = {
++      const requestedRun = {
+         ...storedQueuedRun,
+         modelSelection,
+         providerInstanceId: modelSelection.instanceId,
+       };
+       // A limited provider would fail and consume every waiting message.
+-      if (usageLimitHoldsQueue(projection, queuedRun.providerInstanceId)) {
++      if (usageLimitHoldsQueue(projection, requestedRun.providerInstanceId)) {
+         return;
+       }
+       // Waits without a hold: lowering the thread's mode starts the queue again.
+@@ -1765,13 +1928,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       const settings = yield* serverSettings.getSettings.pipe(Effect.orDie);
+       const projectOverride =
+         settings.projectSettingsOverrides[projection.thread.projectId]?.providerInstances?.[
+-          queuedRun.providerInstanceId
++          requestedRun.providerInstanceId
+         ]?.enabled;
+       const machineInstance = Object.hasOwn(
+         settings.providerInstances,
+-        queuedRun.providerInstanceId,
++        requestedRun.providerInstanceId,
+       )
+-        ? settings.providerInstances[queuedRun.providerInstanceId]
++        ? settings.providerInstances[requestedRun.providerInstanceId]
+         : undefined;
+       const instanceDisabledForProject =
+         projectOverride !== undefined
+@@ -1782,7 +1945,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         instanceDisabledForProject ||
+         (failureClass !== undefined &&
+           failureClass !== "validation_error" &&
+-          failedRun?.providerInstanceId === queuedRun.providerInstanceId)
++          failedRun?.providerInstanceId === requestedRun.providerInstanceId)
+       ) {
+         const now = yield* DateTime.now;
+         yield* writeSystemEvents(
+@@ -1799,6 +1962,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         );
+         return;
+       }
++      // Tessaya (hot account swap): a kept session runs the turn as its own instance; the thread names the new account.
++      const activeForAccountSwitch = projection.providerThreads.find(
++        (candidate) => candidate.id === projection.thread.activeProviderThreadId,
++      );
++      const keptForAccountSwitch = yield* sessionKeptForAccountSwitch({
++        projection,
++        activeProviderThread: activeForAccountSwitch,
++        targetModelSelection: requestedRun.modelSelection,
++        freshContext: requestedRun.freshContext === true,
++      });
++      const queuedRun =
++        keptForAccountSwitch === undefined || activeForAccountSwitch === undefined
++          ? requestedRun
++          : {
++              ...requestedRun,
++              providerInstanceId: activeForAccountSwitch.providerInstanceId,
++              modelSelection: {
++                ...requestedRun.modelSelection,
++                instanceId: activeForAccountSwitch.providerInstanceId,
++              } as ModelSelection,
++            };
+       // Move queued ordinals after runs that started while they waited to preserve transcript and checkpoint order.
+       // Started runs have prompts; cancelled queued messages do not.
+       const newerRunIds = projection.runs
+@@ -1874,16 +2058,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       const followsLatestContext =
+         !freshContext &&
+         (followsCurrent || providerThreadPredatesBoundary(storedProviderThread, contextBoundary));
+-      const targetProviderThread = followsLatestContext
+-        ? activeProviderThread?.providerInstanceId === queuedRun.providerInstanceId &&
+-          !providerThreadPredatesBoundary(activeProviderThread, contextBoundary)
+-          ? activeProviderThread
+-          : rootProviderThreadsForProvider(projection, queuedRun.providerInstanceId)[0]
+-        : freshContext &&
+-            (storedProviderThread.firstRunOrdinal !== null ||
+-              storedProviderThread.nativeThreadRef !== null)
+-          ? undefined
+-          : storedProviderThread;
++      const targetProviderThread =
++        keptForAccountSwitch !== undefined
++          ? activeForAccountSwitch
++          : followsLatestContext
++            ? activeProviderThread?.providerInstanceId === queuedRun.providerInstanceId &&
++              !providerThreadPredatesBoundary(activeProviderThread, contextBoundary)
++              ? activeProviderThread
++              : rootProviderThreadsForProvider(projection, queuedRun.providerInstanceId)[0]
++            : freshContext &&
++                (storedProviderThread.firstRunOrdinal !== null ||
++                  storedProviderThread.nativeThreadRef !== null)
++              ? undefined
++              : storedProviderThread;
+       const queuedProviderThread: OrchestrationV2ProviderThread = targetProviderThread ?? {
+         id: idAllocator.derive.providerThread({
+           driver: targetAdapter.driver,
+@@ -1909,7 +2096,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       };
+       const selectionChanged = !modelSelectionsEqual(
+         projection.thread.modelSelection,
+-        queuedRun.modelSelection,
++        requestedRun.modelSelection,
+       );
+       // The picker may already have moved ahead of the native conversation.
+       const switchFromActiveProvider =
+@@ -2340,16 +2527,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+             ? [
+                 {
+                   type:
+-                    queuedRun.providerInstanceId === projection.thread.providerInstanceId
++                    requestedRun.providerInstanceId === projection.thread.providerInstanceId
+                       ? ("thread.model-selection-updated" as const)
+                       : ("thread.provider-switched" as const),
+                   threadId,
+-                  providerInstanceId: queuedRun.providerInstanceId,
++                  providerInstanceId: requestedRun.providerInstanceId,
+                   occurredAt: now,
+                   payload: {
+                     ...projection.thread,
+-                    providerInstanceId: queuedRun.providerInstanceId,
+-                    modelSelection: queuedRun.modelSelection,
++                    providerInstanceId: requestedRun.providerInstanceId,
++                    modelSelection: requestedRun.modelSelection,
+                     updatedAt: now,
+                   },
+                 },
+@@ -2469,6 +2656,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           },
+         ],
+         [
++          ...(keptForAccountSwitch === undefined
++            ? []
++            : [
++                switchAccountEffect(
++                  commandId,
++                  threadId,
++                  keptForAccountSwitch.id,
++                  requestedRun.providerInstanceId,
++                ),
++              ]),
+           ...sessionsToDetach.map((session) => ({
+             id: `effect:${commandId}:provider-session.detach:${session.id}`,
+             commandId,
+@@ -3557,9 +3754,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            )
            .pipe(mapDispatchError(command))
        : null;
@@ -505,7 +747,75 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..624c9d47d27128249db660efe22fca98
              yield* providerAdapters.get(command.modelSelection.instanceId).pipe(
                Effect.mapError(
                  (cause) =>
-@@ -5825,7 +5929,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4324,6 +4550,56 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       yield* closePendingLinkRequests({ command, events, threadId: command.threadId, now });
+     }
+ 
++    // Tessaya (hot account swap): an account change moves a busy session to the new login; a provider change
++    // leaves it running until its background work ends and it goes idle.
++    const keptBusySessionIds = new Set<ProviderSessionId>();
++    const switchTarget =
++      command.type === "thread.model-selection.set" || command.type === "provider.switch"
++        ? command.modelSelection
++        : undefined;
++    const activeForSwitch = providerContext?.providerThreads.find(
++      (providerThread) => providerThread.id === thread.activeProviderThreadId,
++    );
++    const keptForAccountSwitch =
++      switchTarget !== undefined && providerContext !== null
++        ? yield* sessionKeptForAccountSwitch({
++            projection: providerContext,
++            activeProviderThread: activeForSwitch,
++            targetModelSelection: switchTarget,
++            freshContext: false,
++            turnRunning:
++              activeForSwitch !== undefined &&
++              activeForSwitch.providerInstanceId !== switchTarget.instanceId &&
++              (yield* projectionStore
++                .getThreadRecords(command.threadId, ["runs"])
++                .pipe(mapDispatchError(command))).runs.some(
++                (run) =>
++                  run.providerInstanceId === activeForSwitch.providerInstanceId &&
++                  ["preparing", "starting", "running", "waiting"].includes(run.status),
++              ),
++          })
++        : undefined;
++    if (keptForAccountSwitch !== undefined && switchTarget !== undefined) {
++      keptBusySessionIds.add(keptForAccountSwitch.id);
++      yield* Ref.update(effects, (existing) => [
++        ...existing,
++        switchAccountEffect(
++          command.commandId,
++          command.threadId,
++          keptForAccountSwitch.id,
++          switchTarget.instanceId,
++        ),
++      ]);
++    } else if (providerSwitchPlan?.transition.type === "create_with_handoff") {
++      for (const session of providerContext?.providerSessions ?? []) {
++        if (
++          providerSwitchPlan.releaseProviderSessionIds.includes(session.id) &&
++          (yield* sessionHasBackgroundWork(session, providerContext?.providerThreads ?? []))
++        ) {
++          keptBusySessionIds.add(session.id);
++        }
++      }
++    }
+     // Archive and settle stop idle background work; serialized commands prevent starts racing detach.
+     // Settlement rejects active or blocked runs.
+     const detachSessionIds = new Set(
+@@ -4339,7 +4615,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+                   (session) => !session.capabilities.sessions.supportsRuntimeModeSwitchInSession,
+                 )
+                 .map((session) => session.id)
+-            : (providerSwitchPlan?.releaseProviderSessionIds ?? []),
++            : (providerSwitchPlan?.releaseProviderSessionIds ?? []).filter(
++                (id) => !keptBusySessionIds.has(id),
++              ),
+     );
+     if (detachSessionIds.size > 0) {
+       const liveSessions = (providerContext?.providerSessions ?? []).filter(
+@@ -5825,7 +6103,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ]);
        projection = applyToProjection(projection, event);
      }
@@ -545,7 +855,100 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..624c9d47d27128249db660efe22fca98
      let dispatchMode = resolveMessageDispatchIntent(
        projection,
        command.dispatchMode,
-@@ -6575,6 +6710,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6492,9 +6801,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       projection.thread.historyOrigin === "v1_import" && contextBoundary === 0
+         ? yield* readHandoffItems(command.threadId, [null])
+         : [];
++    const keptForAccountSwitch = yield* sessionKeptForAccountSwitch({
++      projection,
++      activeProviderThread,
++      targetModelSelection: modelSelection,
++      freshContext,
++    });
++    // The kept session runs this turn as its own instance; the thread already names the new account.
++    const runSelection =
++      keptForAccountSwitch === undefined || activeProviderThread === undefined
++        ? modelSelection
++        : ({
++            ...modelSelection,
++            instanceId: activeProviderThread.providerInstanceId,
++          } as ModelSelection);
+     const isProviderSwitch =
+       activeProviderThread !== undefined &&
+-      activeProviderThread.providerInstanceId !== modelSelection.instanceId;
++      activeProviderThread.providerInstanceId !== runSelection.instanceId;
+     // Account overlays share native history. Selection commands may already
+     // have updated the app thread, so classify against the native thread's owner.
+     const providerSwitchPlan = isProviderSwitch
+@@ -6510,7 +6833,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+                 },
+               },
+             },
+-            targetModelSelection: modelSelection,
++            targetModelSelection: runSelection,
+           })
+           .pipe(mapDispatchError(command))
+       : null;
+@@ -6519,7 +6842,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       isProviderSwitch &&
+       activeProviderThread.nativeThreadRef !== null &&
+       providerSwitchPlan?.transition.type === "restart_and_resume";
+-    const sessionsToDetach = uniqueSessions([
++    const releasableSessions = uniqueSessions([
+       ...projection.providerSessions.filter(
+         (session) =>
+           providerSwitchPlan?.releaseProviderSessionIds.includes(session.id) &&
+@@ -6528,8 +6851,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       ),
+       ...(freshContext ? sessionsReleasedByFreshContext(projection, activeProviderThread) : []),
+     ]);
+-    for (const detaching of sessionsToDetach) {
++    // A handoff runs in its own session, so a busy one stays up and ends when idle, as a queued start does.
++    const busySessionIds = new Set<ProviderSessionId>();
++    for (const detaching of releasableSessions) {
+       if (yield* sessionHasBackgroundWork(detaching, projection.providerThreads)) {
++        if (!freshContext && providerSwitchPlan?.transition.type === "create_with_handoff") {
++          busySessionIds.add(detaching.id);
++          continue;
++        }
+         return yield* new OrchestratorDispatchError({
+           commandId: command.commandId,
+           commandType: command.type,
+@@ -6539,6 +6868,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         });
+       }
+     }
++    const sessionsToDetach = releasableSessions.filter(
++      (session) => !busySessionIds.has(session.id),
++    );
+ 
+     if (
+       pendingForkTransfer === undefined &&
+@@ -6546,12 +6878,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       (!isProviderSwitch || freshContext)
+     ) {
+       const reusableProviderThread = freshContext ? undefined : activeProviderThread;
+-      const adapter = yield* providerAdapters.get(modelSelection.instanceId).pipe(
++      const adapter = yield* providerAdapters.get(runSelection.instanceId).pipe(
+         Effect.mapError(
+           (cause) =>
+             new OrchestratorProviderAdapterError({
+               commandId: command.commandId,
+-              providerInstanceId: modelSelection.instanceId,
++              providerInstanceId: runSelection.instanceId,
+               cause,
+             }),
+         ),
+@@ -6561,7 +6893,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         (yield* mapDispatchError(command)(
+           providerSessionIdFor({
+             adapter,
+-            providerInstanceId: modelSelection.instanceId,
++            providerInstanceId: runSelection.instanceId,
+             threadId: command.threadId,
+           }),
+         ));
+@@ -6575,13 +6907,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
@@ -553,6 +956,151 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..624c9d47d27128249db660efe22fca98
        })
          ? yield* contextHandoffService
              .prepareLegacyImport({
+               threadId: command.threadId,
+               targetRunId: runId,
+               toProviderThreadId: providerThreadId,
+-              toProviderInstanceId: modelSelection.instanceId,
++              toProviderInstanceId: runSelection.instanceId,
+               items: legacyImportItems,
+               createdAt: now,
+             })
+@@ -6592,7 +6925,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           ? {
+               id: providerThreadId,
+               driver: adapter.driver,
+-              providerInstanceId: modelSelection.instanceId,
++              providerInstanceId: runSelection.instanceId,
+               providerSessionId,
+               appThreadId: command.threadId,
+               ownerNodeId: null,
+@@ -6624,7 +6957,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           : yield* runtimePolicy
+               .resolve({
+                 thread: projection.thread,
+-                modelSelection,
++                modelSelection: runSelection,
+               })
+               .pipe(
+                 mapDispatchError(command),
+@@ -6645,8 +6978,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         id: runId,
+         threadId: command.threadId,
+         ordinal,
+-        providerInstanceId: modelSelection.instanceId,
+-        modelSelection,
++        providerInstanceId: runSelection.instanceId,
++        modelSelection: runSelection,
+         providerThreadId,
+         userMessageId: command.messageId,
+         rootNodeId,
+@@ -6677,7 +7010,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         runId,
+         attemptOrdinal: 1,
+         rootNodeId,
+-        providerInstanceId: modelSelection.instanceId,
++        providerInstanceId: runSelection.instanceId,
+         providerThreadId,
+         providerTurnId: null,
+         reason: "initial",
+@@ -6784,7 +7117,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         type: "provider-thread.updated",
+         threadId: command.threadId,
+         driver: adapter.driver,
+-        providerInstanceId: modelSelection.instanceId,
++        providerInstanceId: runSelection.instanceId,
+         occurredAt: now,
+         payload: providerThread,
+       });
+@@ -6793,7 +7126,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           type: "context-handoff.updated",
+           threadId: command.threadId,
+           runId,
+-          providerInstanceId: modelSelection.instanceId,
++          providerInstanceId: runSelection.instanceId,
+           occurredAt: now,
+           payload: legacyImportHandoff,
+         });
+@@ -6803,7 +7136,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         threadId: command.threadId,
+         runId,
+         nodeId: rootNodeId,
+-        providerInstanceId: modelSelection.instanceId,
++        providerInstanceId: runSelection.instanceId,
+         occurredAt: now,
+         payload: run,
+       });
+@@ -6813,7 +7146,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         threadId: command.threadId,
+         runId,
+         nodeId: rootNodeId,
+-        providerInstanceId: modelSelection.instanceId,
++        providerInstanceId: runSelection.instanceId,
+         occurredAt: now,
+         payload: attempt,
+       });
+@@ -6822,7 +7155,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         threadId: command.threadId,
+         runId,
+         nodeId: rootNodeId,
+-        providerInstanceId: modelSelection.instanceId,
++        providerInstanceId: runSelection.instanceId,
+         occurredAt: now,
+         payload: rootNode,
+       });
+@@ -6832,7 +7165,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           threadId: command.threadId,
+           runId,
+           nodeId: rootNodeId,
+-          providerInstanceId: modelSelection.instanceId,
++          providerInstanceId: runSelection.instanceId,
+           occurredAt: now,
+           payload: checkpointScope,
+         });
+@@ -6842,7 +7175,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         threadId: command.threadId,
+         runId,
+         nodeId: rootNodeId,
+-        providerInstanceId: modelSelection.instanceId,
++        providerInstanceId: runSelection.instanceId,
+         occurredAt: now,
+         payload: message,
+       });
+@@ -6851,7 +7184,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         threadId: command.threadId,
+         runId,
+         nodeId: rootNodeId,
+-        providerInstanceId: modelSelection.instanceId,
++        providerInstanceId: runSelection.instanceId,
+         occurredAt: now,
+         payload: notificationTurnItem(
+           turnItem,
+@@ -6865,7 +7198,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           threadId: command.threadId,
+           runId,
+           nodeId: rootNodeId,
+-          providerInstanceId: modelSelection.instanceId,
++          providerInstanceId: runSelection.instanceId,
+           occurredAt: now,
+           payload: preparationTurnItem,
+         });
+@@ -6898,6 +7231,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+           } satisfies PendingOrchestrationEffectV2,
+         ]);
+       }
++      if (keptForAccountSwitch !== undefined) {
++        yield* Ref.update(effects, (existing) => [
++          ...existing,
++          switchAccountEffect(
++            command.commandId,
++            command.threadId,
++            keptForAccountSwitch.id,
++            modelSelection.instanceId,
++          ),
++        ]);
++      }
+       const pendingEffect = {
+         id: `effect:${command.commandId}:provider-turn.start:${runId}`,
+         commandId: command.commandId,
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 index 54b16d7aa2aef6d888a9b5eecb787bac19eaa0e6..e3e955efd3e550c4b96debe9d184b29261607816 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
@@ -1368,7 +1916,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index f6409a87074fda1cc83a97b39a484abaa519ed02..3d28689e380b0a81821a7e47bdb7c13139ca136a 100644
+index f6409a87074fda1cc83a97b39a484abaa519ed02..5965225a746d5098a77587abb0ee69bdfa3b1462 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,7 @@ import {
@@ -1379,16 +1927,18 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..3d28689e380b0a81821a7e47bdb7c131
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1246,6 +1247,8 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -1246,6 +1247,10 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
 +/** Read only by the direct-API dictation cleanup, never placed in any environment variable. */
 +export const DictationCleanupCredentials = Schema.Struct({ anthropic: CloudSpeechCredential });
++export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
++export type RoomBrain = typeof RoomBrain.Type;
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1267,6 +1270,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1267,6 +1272,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1400,17 +1950,19 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..3d28689e380b0a81821a7e47bdb7c131
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1275,6 +1283,9 @@ export const ServerSettings = Schema.Struct({
+@@ -1275,6 +1285,11 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
 +  dictationCleanupCredentials: DictationCleanupCredentials.pipe(
 +    Schema.withDecodingDefault(Effect.succeed({ anthropic: "" })),
 +  ),
++  // Tessaya: how the room device's turn reaches Claude. "auto" tries the Anthropic key above first, then the subscription.
++  roomBrain: RoomBrain.pipe(Schema.withDecodingDefault(Effect.succeed("auto" as const))),
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1284,10 +1295,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1284,10 +1299,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -1424,7 +1976,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..3d28689e380b0a81821a7e47bdb7c131
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1689,6 +1702,8 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1689,6 +1706,8 @@ export const ServerSettingsPatch = Schema.Struct({
    worktreesDirectory: Schema.optionalKey(TrimmedString),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -1433,13 +1985,14 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..3d28689e380b0a81821a7e47bdb7c131
    continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
-@@ -1698,11 +1713,15 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1698,11 +1717,16 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
 +  dictationCleanupCredentials: Schema.optionalKey(
 +    Schema.Struct({ anthropic: Schema.optionalKey(SettingsSecretValue) }),
 +  ),
++  roomBrain: Schema.optionalKey(RoomBrain),
    speechModelId: Schema.optionalKey(Schema.String),
    speechAcceleration: Schema.optionalKey(SpeechAcceleration),
    speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
@@ -1449,7 +2002,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..3d28689e380b0a81821a7e47bdb7c131
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -1944,3 +1963,5 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -1944,3 +1968,5 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

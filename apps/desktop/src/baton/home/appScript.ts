@@ -786,7 +786,7 @@ function entry(t, home) {
       });
       tx.appendChild(cmp);
     }
-    const info = [t.delivery && ('delivered: ' + t.delivery), t.model && ('tidied by ' + t.model), t.error].filter(Boolean).join(' · ');
+    const info = [t.delivery && ('delivered: ' + t.delivery), t.model && ('tidied by ' + t.model), t.cleanup === 'local' && t.status === 'ok' && 'tidied on this computer only', t.error].filter(Boolean).join(' · ');
     if (info) tx.appendChild($('div', 'hint', info));
     if ((t.menu || []).some(i => i.id === 'retry')) { const rc = $('button', 'btn quiet', hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up'); rc.onclick = () => hact(t, 'retry'); const ra = $('div', 'hacts'); ra.appendChild(rc); tx.appendChild(ra); }
   }

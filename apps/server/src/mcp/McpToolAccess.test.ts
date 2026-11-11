@@ -31,6 +31,8 @@ const backgroundThreadId = ThreadId.make("thread:background");
 const oldProviderThreadId = ThreadId.make("thread:old-provider-background");
 const archivedThreadId = ThreadId.make("thread:archived-background");
 const unknownOwnerThreadId = ThreadId.make("thread:unknown-background-owner");
+// The thread moved to another account while its session, kept for background work, runs the active run.
+const keptSessionThreadId = ThreadId.make("thread:kept-session");
 
 const backgroundShell = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) => ({
   ...liveThreadShell(threadId, { activeRunId: null }),
@@ -47,6 +49,7 @@ const shells = new Map([
   ],
   [fullAccessThreadId, liveThreadShell(fullAccessThreadId)],
   [endedThreadId, liveThreadShell(endedThreadId, { activeRunId: null })],
+  [keptSessionThreadId, liveThreadShell(keptSessionThreadId)],
   [backgroundThreadId, backgroundShell(backgroundThreadId, ProviderInstanceId.make("codex"))],
   [oldProviderThreadId, backgroundShell(oldProviderThreadId, ProviderInstanceId.make("claude"))],
   [
@@ -229,6 +232,17 @@ const mismatchedProvider = {
   ...background,
   thread: { ...background.thread!, providerInstanceId: ProviderInstanceId.make("claude") },
 };
+const keptSession = {
+  ...threadCaller(keptSessionThreadId),
+  thread: {
+    ...threadCaller(keptSessionThreadId).thread!,
+    providerInstanceId: ProviderInstanceId.make("claude"),
+  },
+};
+const mismatchedActiveRun = {
+  ...supervised,
+  thread: { ...supervised.thread!, providerInstanceId: ProviderInstanceId.make("claude") },
+};
 const supervisedClient = clientCaller("approval-required");
 const fullAccessClient = clientCaller("full-access");
 const readOnlyClient = clientCaller("read-only");
@@ -260,6 +274,8 @@ it.effect.each([
   ["acts_as_caller", background, {}, "ran"],
   ["acts_as_caller", oldProviderBackground, {}, "parent_not_active"],
   ["acts_as_caller", mismatchedProvider, {}, "parent_not_active"],
+  ["acts_as_caller", keptSession, {}, "ran"],
+  ["acts_as_caller", mismatchedActiveRun, {}, "parent_not_active"],
   ["acts_as_caller", archivedBackground, {}, "parent_not_active"],
   ["acts_as_caller", unknownOwnerBackground, {}, "parent_not_active"],
   ["acts_as_caller", fullAccessClient, {}, "thread_credential_required"],
@@ -322,6 +338,17 @@ it.effect.each([
       probeServer(
         Layer.mock(ThreadManagement.ThreadManagementService)({
           getThreadShell: (threadId) => Effect.succeed(shells.get(threadId) ?? null),
+          getThreadRecords: (threadId) =>
+            Effect.succeed({
+              runs: [
+                {
+                  id: shells.get(threadId)?.activeRunId,
+                  providerInstanceId: ProviderInstanceId.make(
+                    threadId === keptSessionThreadId ? "claude" : "codex",
+                  ),
+                },
+              ],
+            } as never),
         }),
       ),
     ),

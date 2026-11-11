@@ -19,7 +19,7 @@ index 5f7328214cb16b81c7b2817aea7d5f7992e776d6..cad4ae610e21c61d709358097023cf46
            <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
          ) : null}
 diff --git a/apps/server/src/serverSettings.ts b/apps/server/src/serverSettings.ts
-index 565b388dc784c32b076fb23ebe9a50662a770560..764b072c213aacf5b5a14e1cb6b75fcbb2c41714 100644
+index 565b388dc784c32b076fb23ebe9a50662a770560..dfc76cd2eeda5979a0b3acc2fca410eba80f25d1 100644
 --- a/apps/server/src/serverSettings.ts
 +++ b/apps/server/src/serverSettings.ts
 @@ -18,6 +18,7 @@ import {
@@ -30,7 +30,16 @@ index 565b388dc784c32b076fb23ebe9a50662a770560..764b072c213aacf5b5a14e1cb6b75fcb
    isSecretReference,
    type SecretReference,
    withIdleCompaction,
-@@ -823,6 +824,7 @@ const make = Effect.gen(function* () {
+@@ -548,6 +549,8 @@ const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+   "textGenerationModelSelection",
+   "fallbackModelSelection",
+   "pullRequestMergeMethod",
++  // Its schema has no per-field defaults, so a partial copy on disk would not decode (or encode).
++  "dictationCleanup",
+   // Empty by default, these hold one whole value, which a managed policy can default.
+   ...Object.entries(DEFAULT_SERVER_SETTINGS).flatMap(([key, value]) =>
+     value === null ? [key] : [],
+@@ -823,6 +826,7 @@ const make = Effect.gen(function* () {
      // it to `idleCompaction`, so that switch goes to clients as a boolean. The
      // defaults gain the field too, which tells clients this server reads modes.
      settings = withIdleCompaction(settings, globalIdleCompaction(settings));

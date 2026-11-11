@@ -124,3 +124,47 @@ effectIt.effect("keeps a thread on its account across a restart, and lets it go 
     expect((yield* (yield* makeMoves(engine, sql, idle)).held).has(thread)).toBe(false);
   }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );
+
+effectIt.effect.each([
+  ["moves a running turn's thread at once when its login can move in place", true, "now"],
+  ["waits for the turn to end when it cannot", false, "next-turn"],
+] as const)("%s", ([, inPlace, timing]) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const thread = ThreadId.make("running-thread");
+    const selections: Array<unknown> = [];
+    const recorded: Array<unknown> = [];
+    const shell = {
+      id: thread,
+      projectId: "project-1",
+      modelSelection: { instanceId: "claudeAgent_robin", model: "claude-haiku-4-5" },
+    };
+    const engine = {
+      threadShell: () => Effect.succeed(shell),
+      threadRuns: () => Effect.succeed([{ status: "running" }]),
+      setThreadSelection: (input: unknown) => Effect.sync(() => void selections.push(input)),
+    } as unknown as BatonEngineShape;
+    const moves = yield* makeMoves(engine, sql, idle, {
+      switchesInPlace: () => Effect.succeed(inPlace),
+      record: (entry) => Effect.sync(() => void recorded.push(entry)),
+    });
+    const result = yield* moves.request({ threadId: thread, instanceId: "claudeAgent_optima" });
+    expect(result).toEqual({ instanceId: "claudeAgent_optima", timing });
+    expect(selections.length).toBe(inPlace ? 1 : 0);
+    expect(recorded).toEqual(
+      inPlace
+        ? [
+            {
+              kind: "account_switch",
+              actor: "tessaya",
+              project: "project-1",
+              ref: thread,
+              subject: "Account claudeAgent_robin → claudeAgent_optima",
+              outcome: "switched in place during the turn",
+            },
+          ]
+        : [],
+    );
+    expect((yield* moves.held).has(thread)).toBe(!inPlace);
+  }).pipe(Effect.provide(SqlitePersistenceMemory)),
+);

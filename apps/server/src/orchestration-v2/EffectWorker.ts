@@ -138,6 +138,15 @@ export const layerExecutor: Layer.Layer<
                     }),
                 ),
               );
+          case "provider-session.switch-account":
+            return providerSessions.switchAccount(effect.request).pipe(
+              Effect.tap((switched) =>
+                switched
+                  ? Effect.void
+                  : Effect.logWarning("The live session kept its account", effect.request),
+              ),
+              Effect.asVoid,
+            );
           case "provider-turn.start":
             return providerTurnStart
               .start({ threadId: effect.threadId, runId: effect.request.runId, willRetry })

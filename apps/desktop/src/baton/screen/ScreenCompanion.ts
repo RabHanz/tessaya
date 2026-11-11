@@ -443,6 +443,7 @@ export interface AssistantActions {
       | "cloud_usage"
       | "cloud_approve"
       | "home"
+      | "devices"
       | "trust_show"
       | "activity_today"
       | "record"

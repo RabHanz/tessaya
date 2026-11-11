@@ -570,10 +570,10 @@ const FOCUSED_FIELD: BatonFocusTarget = {
   origin: null,
 };
 
-/** A house tool's call to this machine's server (deskCall: always its own door). */
+/** A house or device tool's call to this machine's server (deskCall: always its own door). */
 interface HomeBridgeRequest {
-  readonly kind: "home";
-  readonly op: "read" | "act";
+  readonly kind: "home" | "devices";
+  readonly op: "read" | "act" | "owner";
   readonly args: { readonly op: string; readonly args: Readonly<Record<string, unknown>> };
 }
 
@@ -1632,8 +1632,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
     // Words that look like a secret are never put in a Claude prompt, whatever the level.
     const started = Date.now();
-    const level = detectSecret(raw) === null ? await levelNow(app) : "local";
+    const decided =
+      detectSecret(raw) === null ? await levelNow(app) : { level: "local" as const, why: "secret" };
+    const { level } = decided;
     const levelMs = Date.now() - started;
+    // A model clean-up stepped down to this computer is never silent: the turn log says why.
+    if (decided.why !== null && settings.dictationCleanup === "claude")
+      input.onNote?.("dictation_cleanup_level", { level, why: decided.why });
     const out = await rewriter.clean({
       raw: raw,
       mode: chooseMode(app, settings.appModes),
@@ -2288,7 +2293,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       raw: result.raw,
       cleaned: result.text,
       status: result.failed ? "raw" : "ok",
-      model: result.failed ? null : settings.cleanupModel,
+      // Named only when the model could have cleaned it: a local clean-up said "tidied by haiku" (0.1.106).
+      model: result.failed || result.level !== "claude" ? null : settings.cleanupModel,
       error: result.failed
         ? "Clean-up failed, inserted what was heard"
         : result.status === "kept"
@@ -2684,12 +2690,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     feeds: settings.needsFeeds,
     expect: settings.needsExpect,
   });
-  /** The house tools: the server answers ok with a value or a sentence; the model gets it as JSON text. */
-  const homeOp = async (args: Readonly<Record<string, unknown>>): Promise<string> => {
+  /** The house and device tools: the server answers ok with a value or a sentence; the model gets it as JSON text. */
+  const homeOp = async (
+    args: Readonly<Record<string, unknown>>,
+    kind: "home" | "devices" = "home",
+  ): Promise<string> => {
     try {
       const reply = (await requestKept({
-        kind: "home",
-        op: args["method"] === "act" ? "act" : "read",
+        kind,
+        op: args["method"] === "act" ? "act" : args["method"] === "owner" ? "owner" : "read",
         args: {
           op: String(args["op"] ?? ""),
           args: {
@@ -2878,6 +2887,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
       if (op === "home") return homeOp(args);
+      if (op === "devices") return homeOp(args, "devices");
       if (op === "note_add") {
         try {
           return `Saved to the Scratchpad [id: ${scratch.add(String(args["text"] ?? "")).id}].`;
@@ -3941,7 +3951,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const app = focusedApp;
       // Each finished sentence is cleaned as he speaks, and at a pause the last one too.
       if (settings.dictationCleanup === "claude")
-        void levelNow(app).then((level) =>
+        void levelNow(app).then(({ level }) =>
           rewriter.speculate({
             raw: event.text,
             mode: chooseMode(app, settings.appModes),

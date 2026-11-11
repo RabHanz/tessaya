@@ -37,7 +37,10 @@ import {
 import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 import type * as Effect from "effect/Effect";
+import type * as Redacted from "effect/Redacted";
 import type * as Scope from "effect/Scope";
+
+import type { ManagedServerProvider } from "./snapshot.ts";
 import type * as Stream from "effect/Stream";
 
 import type {
@@ -604,6 +607,13 @@ export type ProviderAdapterV2SubagentOutcome = {
   readonly result: OrchestrationV2Subagent["result"];
 };
 
+/** An instance's login that a live session of the same driver can take over in place. */
+export interface ProviderAdapterV2AccountLogin {
+  readonly instanceId: ProviderInstanceId;
+  readonly secret: Redacted.Redacted<string>;
+  readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+}
+
 export interface ProviderAdapterV2SessionRuntime {
   readonly instanceId: ProviderInstanceId;
   readonly driver: ProviderDriverKind;
@@ -620,6 +630,8 @@ export interface ProviderAdapterV2SessionRuntime {
     providerThread: OrchestrationV2ProviderThread,
     options?: { readonly includeSubagents?: boolean },
   ) => Effect.Effect<boolean>;
+  /** Moves the live process to another login without restarting it; false when it cannot. */
+  readonly switchAccount?: (login: ProviderAdapterV2AccountLogin) => Effect.Effect<boolean>;
   /** Set only if all session background tasks end with its process; otherwise threads must keep Waiting. */
   readonly backgroundTasksEndWithProcess?: true;
   readonly getModelContextWindow?: (
@@ -711,5 +723,7 @@ export class ProviderAdapterV2 extends Context.Service<
     readonly openSession: (
       input: ProviderAdapterV2OpenSessionInput,
     ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;
+    /** Present when this instance's login can be handed to another instance's live session. */
+    readonly accountLogin?: ProviderAdapterV2AccountLogin;
   }
 >()("@t3tools/provider-core/server/ProviderAdapter/ProviderAdapterV2") {}

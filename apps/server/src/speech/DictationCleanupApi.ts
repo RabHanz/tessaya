@@ -11,7 +11,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as ServerSettings from "../serverSettings.ts";
 import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
@@ -19,6 +21,24 @@ import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
 const API = "https://api.anthropic.com/v1";
 const MODEL = "claude-haiku-5-5";
 const isApiKey = Schema.is(CloudSpeechApiKey);
+
+/** The text of one Messages API stream line (`data: {...content_block_delta...}`), or null for any other line. */
+export const sseTextDelta = (line: string): string | null => {
+  if (!line.startsWith("data:")) return null;
+  try {
+    const event = JSON.parse(line.slice(5)) as {
+      type?: string;
+      delta?: { type?: string; text?: string };
+    };
+    return event.type === "content_block_delta" &&
+      event.delta?.type === "text_delta" &&
+      event.delta.text
+      ? event.delta.text
+      : null;
+  } catch {
+    return null;
+  }
+};
 const MessagesResponse = Schema.Struct({
   content: Schema.Array(
     Schema.Struct({ type: Schema.String, text: Schema.optionalKey(Schema.String) }),
@@ -34,7 +54,7 @@ export type DictationCleanupResult =
   | { readonly configured: false }
   | { readonly configured: true; readonly text: string; readonly ms: number };
 
-/** The Anthropic key saved in Settings → APIs, read only here and only for dictation cleanup. */
+/** The Anthropic key saved in Settings → APIs, read only here: for dictation cleanup and the room device's turn. */
 export class DictationCleanupApi extends Context.Service<
   DictationCleanupApi,
   {
@@ -46,6 +66,10 @@ export class DictationCleanupApi extends Context.Service<
     readonly cleanup: (
       input: DictationCleanupRequest,
     ) => Effect.Effect<DictationCleanupResult, DictationCleanupError | ServerSettingsError>;
+    /** One streamed Haiku answer as text deltas; fails `unreadable-key` when no key is saved. */
+    readonly stream: (
+      input: DictationCleanupRequest,
+    ) => Stream.Stream<string, DictationCleanupError | ServerSettingsError>;
   }
 >()("t3/speech/DictationCleanupApi") {}
 
@@ -159,6 +183,40 @@ export const layer = Layer.effect(
         ),
     );
 
-    return DictationCleanupApi.of({ configured, setKey, test, cleanup });
+    const stream = (input: DictationCleanupRequest) =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const request = yield* authorized(
+            HttpClientRequest.post(`${API}/messages`).pipe(
+              HttpClientRequest.bodyJsonUnsafe({
+                model: MODEL,
+                max_tokens: input.maxTokens,
+                stream: true,
+                system: [
+                  { type: "text", text: input.system, cache_control: { type: "ephemeral" } },
+                ],
+                messages: [{ role: "user", content: input.message }],
+                thinking: { type: "disabled" },
+              }),
+            ),
+          );
+          if (request === null)
+            return yield* new DictationCleanupError({ reason: "unreadable-key" });
+          const response = yield* execute(request);
+          if (response.status < 200 || response.status >= 300)
+            return yield* rejected(response.status);
+          return response.stream.pipe(
+            Stream.mapError(() => new DictationCleanupError({ reason: "unreachable" })),
+            Stream.decodeText,
+            Stream.splitLines,
+            Stream.filterMap((line) => {
+              const delta = sseTextDelta(line);
+              return delta === null ? Result.failVoid : Result.succeed(delta);
+            }),
+          );
+        }),
+      );
+
+    return DictationCleanupApi.of({ configured, setKey, test, cleanup, stream });
   }),
 );
