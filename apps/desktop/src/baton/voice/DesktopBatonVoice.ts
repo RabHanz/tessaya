@@ -550,6 +550,13 @@ const FOCUSED_FIELD: BatonFocusTarget = {
   origin: null,
 };
 
+/** A house tool's call to this machine's server (deskCall: always its own door). */
+interface HomeBridgeRequest {
+  readonly kind: "home";
+  readonly op: "read" | "act";
+  readonly args: { readonly op: string; readonly args: Readonly<Record<string, unknown>> };
+}
+
 interface MicSetting {
   /** Part of the device name, as Windows shows it. */
   readonly name: string;
@@ -2430,7 +2437,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
       | BatonCloudBridgeRequest
-      | BatonPhoneBridgeRequest,
+      | BatonPhoneBridgeRequest
+      | HomeBridgeRequest,
   ): Promise<unknown> => {
     // With T3's window closed, this machine's server answers instead of opening the window; acting on another
     // computer is refused in a sentence, since only T3's own session to it may do that.
@@ -2484,7 +2492,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
       | BatonCloudBridgeRequest
-      | BatonPhoneBridgeRequest,
+      | BatonPhoneBridgeRequest
+      | HomeBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -2598,6 +2607,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     feeds: settings.needsFeeds,
     expect: settings.needsExpect,
   });
+  /** The house tools: the server answers ok with a value or a sentence; the model gets it as JSON text. */
+  const homeOp = async (args: Readonly<Record<string, unknown>>): Promise<string> => {
+    try {
+      const reply = (await requestKept({
+        kind: "home",
+        op: args["method"] === "act" ? "act" : "read",
+        args: {
+          op: String(args["op"] ?? ""),
+          args: {
+            ...(args["args"] as Readonly<Record<string, unknown>>),
+            surface: "assistant",
+            who: "Tessaya",
+          },
+        },
+      })) as { ok?: boolean; error?: string; value?: unknown } | null;
+      if (reply?.ok !== true) return reply?.error ?? "Home did not answer.";
+      return JSON.stringify(reply.value ?? null).slice(0, 8000);
+    } catch (error) {
+      return error instanceof Error ? error.message : "Home did not answer.";
+    }
+  };
   const weaveOp = async (
     op: "weave_send" | "weave_list",
     args: Readonly<Record<string, unknown>>,
@@ -2770,6 +2800,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return said;
       }
       if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
+      if (op === "home") return homeOp(args);
       if (op === "note_add") {
         try {
           return `Saved to the Scratchpad [id: ${scratch.add(String(args["text"] ?? "")).id}].`;

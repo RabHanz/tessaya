@@ -428,6 +428,7 @@ export interface AssistantActions {
       | "cloud_cancel"
       | "cloud_usage"
       | "cloud_approve"
+      | "home"
       | "trust_show"
       | "activity_today"
       | "record"

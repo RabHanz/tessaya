@@ -182,6 +182,9 @@ export const decideTrust = (ask: TrustAsk): TrustVerdict => {
  */
 const UNATTENDED_TOOLS: ReadonlySet<string> = new Set([
   "jobs_list",
+  "home_find",
+  "home_state",
+  "home_automations",
   "watch_report",
   "what_happened",
   "morning_brief",
