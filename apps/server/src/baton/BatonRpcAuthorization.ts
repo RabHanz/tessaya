@@ -28,6 +28,7 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
+  BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
@@ -147,6 +148,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // Home: looking is a read; acting is operate (each act is risk-checked again on the server); his yes to one
   // that waited is the approval scope, so no assistant, agent or device approves its own request.
   [BATON_HOME_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // Voices: listing and previews are reads; a persona's voice, the Google key and a cloud line are operate.
+  [BATON_VOICE_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.
@@ -264,6 +267,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_CLOUD_WS_METHODS.act,
   BATON_CLOUD_WS_METHODS.approve,
   BATON_HOME_WS_METHODS.call,
+  // A persona's cloud voice, said by this machine's server.
+  BATON_VOICE_WS_METHODS.call,
   // Every live session here and on each linked environment, and typing into a pane here.
   BATON_SESSIONS_WS_METHODS.across,
   // This machine's own catalog with T3's window closed; another machine's goes through the window.
@@ -354,6 +359,11 @@ export const missingBatonScope = (
   if (homeKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
   else if (homeKind === "answer") desktopOnly.push(AuthBatonCloudApproveScope);
   else if (homeKind !== undefined && homeKind !== "read") return AuthOrchestrationOperateScope;
+  // A voice call likewise: listing and previews are reads, changing a voice or the key is operate.
+  const voiceKind =
+    tag === BATON_VOICE_WS_METHODS.call ? (fields as { kind?: unknown }).kind : undefined;
+  if (voiceKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
+  else if (voiceKind !== undefined && voiceKind !== "read") return AuthOrchestrationOperateScope;
   return [...all, ...desktopOnly].find((scope) => !scopes.includes(scope)) ?? null;
 };
 

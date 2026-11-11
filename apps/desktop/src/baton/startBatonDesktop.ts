@@ -54,7 +54,7 @@ import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
 import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
-import { createSpeaker, type VoiceChoice } from "./voice/voiceSpeaker.ts";
+import { createSpeaker, type Synthesise, type VoiceChoice } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
 import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
@@ -347,13 +347,48 @@ export const startBatonDesktop = Effect.gen(function* () {
     /** Undefined until a wake; null for a hotkey, which answers as the lead. */
     let lastWake: string | null | undefined;
     /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
-    const chooseVoice = (name: PocketVoice | "system"): VoiceChoice => {
+    const chooseVoice = (
+      name: PocketVoice | "system",
+      cloud: string | null = null,
+    ): VoiceChoice => {
       if (name === "system") return { kind: "system" };
       const synth = pocket.synthesise(name);
-      return synth === null
-        ? { kind: "wait", ready: pocket.ensure(name) }
-        : { kind: "synth", synth };
+      if (synth === null) return { kind: "wait", ready: pocket.ensure(name) };
+      return cloud === null || Date.now() < cloudQuietUntil
+        ? { kind: "synth", synth, voice: name }
+        : { kind: "synth", synth: cloudSynth(cloud, synth), voice: cloud, engine: "gemini" };
     };
+    /** After a cloud line fails (offline, no key), the persona's own voice speaks for five minutes before trying again. */
+    let cloudQuietUntil = 0;
+    const cloudSynth =
+      (cloud: string, fallback: Synthesise): Synthesise =>
+      (text) => {
+        let cancelled = false;
+        let inner: ReturnType<Synthesise> | null = null;
+        const stream = (async function* () {
+          const reply = (await direct("baton.voice.call", {
+            kind: "act",
+            op: "say",
+            args: { voice: cloud, text },
+          }).catch(() => null)) as { ok?: boolean; value?: { base64?: string } } | null;
+          if (cancelled) return;
+          if (reply?.ok === true && typeof reply.value?.base64 === "string") {
+            yield Buffer.from(reply.value.base64, "base64");
+            return;
+          }
+          cloudQuietUntil = Date.now() + 5 * 60_000;
+          // Gemini's tags mean nothing to Pocket: said without them.
+          inner = fallback(text.replace(/<[^<>]{1,30}>/g, " "));
+          yield* inner.stream;
+        })();
+        return {
+          stream,
+          cancel: () => {
+            cancelled = true;
+            inner?.cancel();
+          },
+        };
+      };
     const voicePlayer = createVoicePlayer(
       (level) => voice?.onSpeechLevel(level),
       () => screen?.volume() ?? 1,
@@ -361,7 +396,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
-      voice: () => chooseVoice(screen?.voice() ?? "anna"),
+      voice: () => chooseVoice(screen?.voice() ?? "anna", screen?.cloudVoice() ?? null),
       player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),

@@ -105,10 +105,12 @@ SOFTWARE.
   The embeddings are made from recordings listed in `kyutai/tts-voices`: VCTK (CC BY 4.0: anna, azelma,
   charles, eponine, eve, fantine, george, jane, mary, michael, paul, vera), Voice-Zero/LibriVox and the
   Unmute voice donations (CC0: bill_boerst, caro_davy, peter_yearsley, stuart_bell, javert, marius),
-  Common Voice (CC0: giovanni, lola), Kyutai's Unmute recordings (CC0: estelle). alba, juergen and rafael
-  carry no licence line of their own there; check them as well before offering them. cosette
-  (Expresso) and jean (EARS) come from CC BY-NC 4.0 recordings: check them before offering either in a
-  commercial release. Only anna, vera, charles and paul are offered today; the voice lab can play all 27.
+  Common Voice (CC0: giovanni, lola), Kyutai's Unmute recordings (CC0: estelle). alba, daan, juergen and rafael
+  carry no licence line of their own there. cosette (Expresso) and jean (EARS) come from CC BY-NC 4.0 recordings.
+  All 27 are offered (`packages/baton-shared/src/voiceLibrary.ts`); those six are marked "personal use" and left out
+  of a build made with `TESSAYA_COMMERCIAL_BUILD=1`.
+- Gemini TTS (Google), only when the user saves a Google API key in Settings → APIs: speech made by Google's API
+  under its terms, not shipped or downloaded.
 - `melspectrogram.onnx`, `embedding_model.onnx` from openWakeWord v0.5.1, `silero_vad.onnx` from
   Silero VAD v6.2.3 (MIT), shipped in `native/baton-dictation/models`. See
   `docs/baton/research/voice-stack-2026-10-26.md` for their licence notes.
