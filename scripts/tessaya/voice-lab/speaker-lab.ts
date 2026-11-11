@@ -2,7 +2,8 @@
 /**
  * Voice match on his own recordings (VOICE-ID): enrol from WAVs, score groups (a microphone, Tessaya's recordings) in
  * 2 s and 4 s windows, and report how often he is rejected at the benchmark's cut-offs. Aggregates only.
- *   node speaker-lab.mjs <model.onnx> <plan.json>   plan: { "enrol": [wav], "groups": { name: [wav] } }
+ *   node speaker-lab.mjs <model.onnx> <plan.json>   plan: { "enrol": [wav], "groups": { name: [wav] }, "impostors"?: [wav] }
+ * Impostors are other people's clips (a public speaker set): how often each cut-off takes them for him.
  */
 import * as NodeFS from "node:fs";
 
@@ -50,6 +51,7 @@ const [, , modelPath, planPath] = process.argv;
 const plan = JSON.parse(NodeFS.readFileSync(planPath!, "utf8")) as {
   enrol: ReadonlyArray<string>;
   groups: Readonly<Record<string, ReadonlyArray<string>>>;
+  impostors?: ReadonlyArray<string>;
 };
 const embedder = await createSpeakerEmbedder(modelPath!, "lab");
 
@@ -69,14 +71,13 @@ const pct = (xs: ReadonlyArray<number>, p: number) =>
   xs.toSorted((a, b) => a - b)[Math.floor((xs.length - 1) * p)] ?? NaN;
 const rejected = (xs: ReadonlyArray<number>, cut: number) =>
   xs.length === 0 ? "n/a" : `${((100 * xs.filter((x) => x < cut).length) / xs.length).toFixed(1)}%`;
+const accepted = (xs: ReadonlyArray<number>, cut: number) =>
+  xs.length === 0
+    ? "n/a"
+    : `${((100 * xs.filter((x) => x >= cut).length) / xs.length).toFixed(2)}% (${xs.filter((x) => x >= cut).length}/${xs.length})`;
 
-const report: Record<string, unknown> = {
-  enrolClips: plan.enrol.length,
-  enrolSeconds: Math.round(enrolSeconds),
-  kept: made.kept,
-  dropped: made.dropped,
-};
-for (const [group, files] of Object.entries(plan.groups)) {
+/** Scores of one set of clips: every 2 s and 4 s window, and the mean of each 3 consecutive 2 s windows of a clip. */
+const scoreAll = async (files: ReadonlyArray<string>, centroid: Float32Array) => {
   const s2: number[] = [];
   const s4: number[] = [];
   const avg3: number[] = [];
@@ -85,16 +86,27 @@ for (const [group, files] of Object.entries(plan.groups)) {
     const two: number[] = [];
     for (const w of windows(pcm, 2)) {
       const v = await embedder.embed(w);
-      if (v !== null) two.push(cosine(v, made.centroid));
+      if (v !== null) two.push(cosine(v, centroid));
     }
     s2.push(...two);
     for (let i = 0; i + 3 <= two.length; i += 3)
       avg3.push((two[i]! + two[i + 1]! + two[i + 2]!) / 3);
     for (const w of windows(pcm, 4)) {
       const v = await embedder.embed(w);
-      if (v !== null) s4.push(cosine(v, made.centroid));
+      if (v !== null) s4.push(cosine(v, centroid));
     }
   }
+  return { s2, s4, avg3 };
+};
+
+const report: Record<string, unknown> = {
+  enrolClips: plan.enrol.length,
+  enrolSeconds: Math.round(enrolSeconds),
+  kept: made.kept,
+  dropped: made.dropped,
+};
+for (const [group, files] of Object.entries(plan.groups)) {
+  const { s2, s4, avg3 } = await scoreAll(files, made.centroid);
   const p = CAMPLUS_POLICY;
   report[group] = {
     clips: files.length,
@@ -109,6 +121,22 @@ for (const [group, files] of Object.entries(plan.groups)) {
       steerAvg3: rejected(avg3, p.averaged.steer),
       act4s: rejected(s4, p.single.act),
       actAvg3: rejected(avg3, p.averaged.act),
+    },
+  };
+}
+if (plan.impostors !== undefined && plan.impostors.length > 0) {
+  const { s2, s4, avg3 } = await scoreAll(plan.impostors, made.centroid);
+  const p = CAMPLUS_POLICY;
+  report["impostors"] = {
+    clips: plan.impostors.length,
+    score2s: { p50: pct(s2, 0.5), p95: pct(s2, 0.95), p99: pct(s2, 0.99) },
+    accepted: {
+      listen2s: accepted(s2, p.single.listen),
+      steer2s: accepted(s2, p.single.steer),
+      steer4s: accepted(s4, p.single.steer),
+      steerAvg3: accepted(avg3, p.averaged.steer),
+      act4s: accepted(s4, p.single.act),
+      actAvg3: accepted(avg3, p.averaged.act),
     },
   };
 }

@@ -83,7 +83,8 @@ export const createSpeakerIdentity = (input: {
       policy: input.policy,
     };
     const identity = identityOf(
-      decideSpeaker({ ...base, use: use === "barge" ? "steer" : "listen" }),
+      // Turns too are judged at "steer": "listen" (0.10) lets about 32% of other voices through (voiceid-bench).
+      decideSpeaker({ ...base, use: "steer" }),
       decideSpeaker({ ...base, use: "act" }),
       at,
     );
