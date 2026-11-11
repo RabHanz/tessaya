@@ -1,0 +1,26 @@
+Published themes: a light or dark variant is generated from its own canvas and accent, so it no longer
+inherits T3 Chat's pink for every role it does not name.
+
+diff --git a/apps/web/src/themePalette.ts b/apps/web/src/themePalette.ts
+index 309010a383602cf70a640122841717b2bab69e24..b12cb1b801add1f2972198d8ffd1889f74affa69 100644
+--- a/apps/web/src/themePalette.ts
++++ b/apps/web/src/themePalette.ts
+@@ -250,12 +250,13 @@ function publishedThemeColors(
+   appearance: ThemeAppearance,
+   colors: Readonly<Record<string, string>> | undefined,
+ ): ThemeColors {
+-  // A variant builds on that appearance's stock defaults: the generator follows
+-  // the seed canvas's luminance, so dark seeds would give a light variant
+-  // unreadable colors.
++  // A variant is generated from its own canvas and accent, never the theme's: the
++  // generator follows the seed canvas's luminance, so dark seeds would give a light
++  // variant unreadable colors. Without both it builds on the stock defaults.
++  const seeds = appearance === theme.appearance ? theme : colors;
+   const base =
+-    appearance === theme.appearance && theme.canvas !== undefined && theme.accent !== undefined
+-      ? createVividThemeColors(appearance, theme.canvas, theme.accent)
++    seeds?.canvas !== undefined && seeds.accent !== undefined
++      ? createVividThemeColors(appearance, seeds.canvas, seeds.accent)
+       : getDefaultThemeColors(appearance);
+   return { ...base, ...lenientThemeColorOverrides(colors ?? {}) };
+ }
