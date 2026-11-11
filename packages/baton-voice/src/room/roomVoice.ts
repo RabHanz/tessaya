@@ -210,6 +210,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
     };
 
+    const speakNow = (text: string) => {
+      const control = new AbortController();
+      reply = control;
+      lastActivity = deps.now();
+      void say(text, control.signal)
+        .catch(() => undefined)
+        .finally(() => {
+          if (reply === control) reply = null;
+        });
+    };
+
     const answer = async (pcm: Int16Array, reason: string, lastVoice: number) => {
       const turn = (turnNo += 1);
       const decidedAt = deps.now();
@@ -384,11 +395,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       },
       enrol: () => {
         enrolling = [];
-        const control = new AbortController();
-        reply = control;
-        void say(ENROL_INTRO, control.signal).finally(() => {
-          if (reply === control) reply = null;
-        });
+        speakNow(ENROL_INTRO);
+      },
+      cancelEnrol: () => {
+        enrolling = null;
+      },
+      /** Tessaya says this in the room now (an agent, a reminder or the Devices page), cutting off whatever she was saying. */
+      say: (text: string) => {
+        if (reply !== null) interrupt();
+        speakNow(text);
       },
       idle: () => !turns.inTurn() && !speaking() && deps.now() - lastActivity > config.idleStopMs,
       /** For the replay harness: everything heard so far has been scored. */
@@ -402,6 +417,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   };
 
   const sessions = new Map<string, ReturnType<typeof openSession>>();
+  /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
+  const muted = new Set<string>();
   const start = (id: string) => {
     sessions.get(id)?.close();
     const s = openSession(id);
@@ -429,11 +446,36 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const m = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);
       if (m === null) return;
       const [, id, tail] = m as unknown as [string, string, string];
-      if (tail === "voice/up") (sessions.get(id) ?? start(id)).frame(payload);
-      else if (tail === "cmd/voice/start") start(id);
+      const json = () => {
+        try {
+          return JSON.parse(String(payload)) as Record<string, unknown>;
+        } catch {
+          return {};
+        }
+      };
+      if (tail === "voice/up") {
+        if (!muted.has(id)) (sessions.get(id) ?? start(id)).frame(payload);
+      } else if (tail === "voice/ctl") {
+        // The R1 hears "flush" on the same topic; only mute and unmute are for the loop.
+        const ev = json()["ev"];
+        if (ev === "mute") {
+          muted.add(id);
+          stop(id);
+        } else if (ev === "unmute") muted.delete(id);
+      } else if (tail === "voice/say") {
+        const text = json()["text"];
+        if (typeof text === "string" && text.trim() !== "")
+          (sessions.get(id) ?? start(id)).say(text.trim().slice(0, 500));
+      } else if (tail === "cmd/voice/start") start(id);
       else if (tail === "cmd/voice/stop") stop(id);
-      else if (tail === "voice/enrol") (sessions.get(id) ?? start(id)).enrol();
-      else if (tail === "state/online" && String(payload).trim() === "1" && config.inhouse.has(id))
+      else if (tail === "voice/enrol") {
+        if (json()["cancel"] === true) sessions.get(id)?.cancelEnrol();
+        else (sessions.get(id) ?? start(id)).enrol();
+      } else if (
+        tail === "state/online" &&
+        String(payload).trim() === "1" &&
+        config.inhouse.has(id)
+      )
         void rearm(id);
     },
     /** Ends sessions nobody has spoken in; the R1 hears its own stop and plays the exit chime. */

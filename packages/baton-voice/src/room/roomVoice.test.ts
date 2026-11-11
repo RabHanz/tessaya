@@ -145,3 +145,20 @@ describe("the per-device switch", () => {
     expect(published.some((t) => t.startsWith("freya/r1/r1-b/"))).toBe(false);
   });
 });
+
+describe("what Tessaya's Devices page can ask of the room", () => {
+  it("says a line on the R1 when asked, and hears nothing while muted", async () => {
+    const t = setup();
+    t.room.message(
+      `freya/r1/${DEV}/voice/say`,
+      Buffer.from(JSON.stringify({ text: "Dinner is ready." })),
+    );
+    await new Promise<void>((r) => queueMicrotask(r));
+    await Promise.resolve();
+    expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/voice/down`)).toBe(true);
+    t.room.message(`freya/r1/${DEV}/voice/ctl`, Buffer.from(JSON.stringify({ ev: "mute" })));
+    await t.feed(true, 20).catch(() => undefined);
+    expect(t.room.session(DEV)).toBeUndefined();
+    expect(t.brainCalls).toEqual([]);
+  });
+});
