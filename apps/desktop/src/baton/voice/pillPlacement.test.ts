@@ -27,6 +27,25 @@ describe("where the pill sits", () => {
     expect(defaultPosition(hd, size, "bottom", m)).toEqual({ x: 750, y: 944 });
     expect(defaultPosition(hd, size, "top", m)).toEqual({ x: 750, y: 10 });
   });
+  it("is centred on the work area at fractional display scales, from his saved centre spot too", () => {
+    const pill = { width: 420, height: 40 };
+    // A 4K screen at 125%, 150% and 175%, as Electron gives its work area in DIP.
+    for (const scale of [1.25, 1.5, 1.75]) {
+      const area = {
+        x: 0,
+        y: 0,
+        width: Math.round(3840 / scale),
+        height: Math.round(2076 / scale),
+      };
+      const centre = area.x + area.width / 2;
+      const placed = [
+        defaultPosition(area, pill, "bottom", { top: 10, bottom: 52 }),
+        positionOf(area, pill, { fx: 0.5002816901408451, fy: 0.973803071364047 }),
+      ];
+      for (const at of placed)
+        expect(Math.abs(at.x + pill.width / 2 - centre)).toBeLessThanOrEqual(1);
+    }
+  });
   it("keeps a dragged place as a fraction, so another resolution puts it in the same place", () => {
     const spot = spotFrom(hd, size, { x: 300, y: 500 });
     const there = positionOf({ x: 0, y: 0, width: 1280, height: 720 }, size, spot);

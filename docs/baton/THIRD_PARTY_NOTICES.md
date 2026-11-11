@@ -105,10 +105,12 @@ SOFTWARE.
   The embeddings are made from recordings listed in `kyutai/tts-voices`: VCTK (CC BY 4.0: anna, azelma,
   charles, eponine, eve, fantine, george, jane, mary, michael, paul, vera), Voice-Zero/LibriVox and the
   Unmute voice donations (CC0: bill_boerst, caro_davy, peter_yearsley, stuart_bell, javert, marius),
-  Common Voice (CC0: giovanni, lola), Kyutai's Unmute recordings (CC0: estelle). alba, juergen and rafael
-  carry no licence line of their own there; check them as well before offering them. cosette
-  (Expresso) and jean (EARS) come from CC BY-NC 4.0 recordings: check them before offering either in a
-  commercial release. Only anna, vera, charles and paul are offered today; the voice lab can play all 27.
+  Common Voice (CC0: giovanni, lola), Kyutai's Unmute recordings (CC0: estelle). alba, daan, juergen and rafael
+  carry no licence line of their own there. cosette (Expresso) and jean (EARS) come from CC BY-NC 4.0 recordings.
+  All 27 are offered (`packages/baton-shared/src/voiceLibrary.ts`); those six are marked "personal use" and left out
+  of a build made with `TESSAYA_COMMERCIAL_BUILD=1`.
+- Gemini TTS (Google), only when the user saves a Google API key in Settings → APIs: speech made by Google's API
+  under its terms, not shipped or downloaded.
 - `melspectrogram.onnx`, `embedding_model.onnx` from openWakeWord v0.5.1, `silero_vad.onnx` from
   Silero VAD v6.2.3 (MIT), shipped in `native/baton-dictation/models`. See
   `docs/baton/research/voice-stack-2026-10-26.md` for their licence notes.
@@ -142,14 +144,15 @@ Code's own dependencies are covered by `third-party-licenses.config.json`. Licen
 
 ### Models
 
-| File                                                                       | What it is                                                                                                   | Licence                                                                                 | Ships in the installer      |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | --------------------------- |
-| `silero_vad.onnx`                                                          | Silero VAD v6.2.3, Silero Team                                                                               | MIT                                                                                     | yes                         |
-| `melspectrogram.onnx`                                                      | openWakeWord v0.5.1 feature model                                                                            | CC BY-NC-SA 4.0 (the project's README groups it with its pre-trained models)            | yes                         |
-| `embedding_model.onnx`                                                     | openWakeWord v0.5.1 embedding model (the README says it re-implements Google's speech embedding, Apache-2.0) | CC BY-NC-SA 4.0, as above                                                               | yes                         |
-| `sebastian.onnx`, `alfred.onnx`, `freya.onnx`, `onyx.onnx`, `tessaya.onnx` | Tessaya's wake models, trained here with openWakeWord's trainer                                              | trained on sets that include non-commercial data (below), so treated as CC BY-NC-SA 4.0 | yes                         |
-| Parakeet TDT 0.6B v3 (NVIDIA), GGUF conversion by handy-computer           | speech to text for dictation                                                                                 | CC BY 4.0                                                                               | no, downloaded on first use |
-| Pocket TTS (Kyutai) binary and weights; VCTK-derived voices                | spoken replies                                                                                               | MIT (binary); CC BY 4.0 (weights and voices)                                            | no, downloaded on first use |
+| File                                                                                                                                 | What it is                                                                                                   | Licence                                                                                 | Ships in the installer                    |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `silero_vad.onnx`                                                                                                                    | Silero VAD v6.2.3, Silero Team                                                                               | MIT                                                                                     | yes                                       |
+| `melspectrogram.onnx`                                                                                                                | openWakeWord v0.5.1 feature model                                                                            | CC BY-NC-SA 4.0 (the project's README groups it with its pre-trained models)            | yes                                       |
+| `embedding_model.onnx`                                                                                                               | openWakeWord v0.5.1 embedding model (the README says it re-implements Google's speech embedding, Apache-2.0) | CC BY-NC-SA 4.0, as above                                                               | yes                                       |
+| `sebastian.onnx`, `alfred.onnx`, `freya.onnx`, `onyx.onnx`, `tessaya.onnx`                                                           | Tessaya's wake models, trained here with openWakeWord's trainer                                              | trained on sets that include non-commercial data (below), so treated as CC BY-NC-SA 4.0 | yes                                       |
+| Parakeet TDT 0.6B v3 (NVIDIA), GGUF conversion by handy-computer                                                                     | speech to text for dictation                                                                                 | CC BY 4.0                                                                               | no, downloaded on first use               |
+| Pocket TTS (Kyutai) binary and weights; VCTK-derived voices                                                                          | spoken replies                                                                                               | MIT (binary); CC BY 4.0 (weights and voices)                                            | no, downloaded on first use               |
+| 3D-Speaker CAM++ (VoxCeleb), Alibaba DAMO / ModelScope `iic/speech_campplus_sv_en_voxceleb_16k`, ONNX export by sherpa-onnx (k2-fsa) | voice match: whose voice an utterance is                                                                     | Apache-2.0 (code and weights)                                                           | no, downloaded when Voice ID is turned on |
 
 Texts: `licences/CC-BY-4.0.txt`, `licences/CC-BY-NC-SA-4.0.txt`, `licences/MIT.txt`. A clean-licence wake model for the word
 Tessaya is trained on the sets marked "clean" below; the four older words are not.

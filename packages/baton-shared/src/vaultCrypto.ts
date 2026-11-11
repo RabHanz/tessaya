@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
-/** The vault's cryptography (D151): AES-256-GCM, scrypt for the passphrase, random keys. Node's own crypto, no dependency. */
+/** Sealing for the vault (D151) and private memories: AES-256-GCM, scrypt for a passphrase or PIN, random keys. Node crypto only. */
 import * as NodeCrypto from "node:crypto";
 
 export interface Sealed {

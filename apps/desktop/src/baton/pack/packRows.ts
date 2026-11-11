@@ -11,12 +11,13 @@ import * as NodePath from "node:path";
 import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
 import {
   DEFAULT_PACK_FILES,
-  FRONT_MATTER,
   mergePack,
   modelOf,
   splitFront,
   type OsPack,
 } from "@t3tools/baton-shared/osPack";
+import { setPersonaField } from "@t3tools/baton-shared/personaFile";
+import { commercialBuild, voiceLibrary } from "@t3tools/baton-shared/voiceLibrary";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES } from "../voice/pocketVoice.ts";
@@ -201,29 +202,17 @@ export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
           label: `Default (${capital(fallback)})`,
           voice: fallback.toLowerCase(),
         },
-        ...POCKET_VOICES.map((v) => ({ value: v, label: capital(v), voice: v })),
+        ...voiceLibrary("pocket", { commercial: commercialBuild(process.env) }).map((v) => ({
+          value: v.id,
+          label: `${v.name} (${v.gender}${v.personalUse ? ", personal use" : ""})`,
+          voice: v.id,
+        })),
       ],
     };
   });
 };
 
 /** A persona's voice in its own file (made from the default when he has none); null takes the line out. */
-export const setPersonaVoice = (dir: string, personaId: string, voice: string | null): boolean => {
-  const file = fileFor(dir, fileIdOf(personaId));
-  if (
-    file === null ||
-    (voice !== null && !(POCKET_VOICES as ReadonlyArray<string>).includes(voice))
-  )
-    return false;
-  if (!NodeFS.existsSync(file)) {
-    if (voice === null) return true;
-    fileToEdit(dir, fileIdOf(personaId));
-  }
-  const text = NodeFS.readFileSync(file, "utf8");
-  const m = FRONT_MATTER.exec(text);
-  const lines = (m?.[1]?.split(/\r?\n/) ?? []).filter((line) => !/^\s*voice\s*:/i.test(line));
-  if (voice !== null) lines.push(`voice: ${voice}`);
-  const body = m === null ? text : text.slice(m[0].length);
-  NodeFS.writeFileSync(file, lines.length === 0 ? body : `---\n${lines.join("\n")}\n---\n${body}`);
-  return true;
-};
+export const setPersonaVoice = (dir: string, personaId: string, voice: string | null): boolean =>
+  (voice === null || (POCKET_VOICES as ReadonlyArray<string>).includes(voice)) &&
+  setPersonaField(dir, personaId, "voice", voice);

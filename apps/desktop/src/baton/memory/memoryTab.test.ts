@@ -5,9 +5,13 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import type { BatonPrivateStore } from "@t3tools/baton-contracts";
 import type { MemoryItem } from "@t3tools/baton-shared/memory";
 
+import type { HomeControl } from "../home/batonHome.ts";
+import type { HelloResult } from "../vault/hello.ts";
 import { createMemoryTab } from "./memoryTab.ts";
+import { createPrivateTab } from "./privateTab.ts";
 import type { NotesStore } from "./memoryNotes.ts";
 
 const item = (id: string, over: Partial<MemoryItem> = {}): MemoryItem => ({
@@ -162,5 +166,195 @@ describe("the Memory tab", () => {
   it("leaves other ids alone", () => {
     const { tab } = make(async () => ({}));
     expect(tab.act("v.enabled", true)).toBe(false);
+  });
+});
+
+const OWNER = "0b1f7c55-0000-4000-8000-000000000001";
+const SARA = "0b1f7c55-0000-4000-8000-000000000002";
+const store = (id: string, over: Partial<BatonPrivateStore> = {}): BatonPrivateStore => ({
+  id,
+  personId: id === OWNER ? "owner" : "sara",
+  name: id === OWNER ? "You" : "Sara",
+  kind: id === OWNER ? "owner" : "person",
+  items: 2,
+  open: false,
+  openUntil: null,
+  recallOff: false,
+  lastOpenedAt: null,
+  waitUntil: null,
+  recoveryOnly: false,
+  ...over,
+});
+
+/** A stand-in for the server's private stores: opens on PIN 24681357, keeps what was listed for an open store. */
+const makePrivate = (over: { hello?: HelloResult; noOwner?: boolean } = {}) => {
+  const open = new Set<string>();
+  const calls: Array<[string, Record<string, unknown>]> = [];
+  const locked = new Set<() => void>();
+  const clip = { value: "" };
+  const memory = {
+    people: async () =>
+      (over.noOwner && !open.has(OWNER) ? [store(SARA)] : [store(OWNER), store(SARA)]).map((s) =>
+        open.has(s.id) ? { ...s, open: true, openUntil: "2026-01-01T00:05:00.000Z" } : s,
+      ),
+    call: async (op: string, args: Record<string, unknown> = {}) => {
+      calls.push([op, args]);
+      if (op === "unlock") {
+        if (args.pin !== undefined && args.pin !== "24681357")
+          throw new Error("That PIN is not right.");
+        open.add(args.storeId as string);
+        return {};
+      }
+      if (op === "lock") {
+        open.delete(args.storeId as string);
+        return { locked: 1 };
+      }
+      if (op === "setup") {
+        open.add(OWNER);
+        return { store: store(OWNER), recoveryCode: "ABCD-EFGH-IJKL-MNOP" };
+      }
+      if (op === "list")
+        return {
+          items: [
+            item("p1", { text: "Sara's birthday is 3 March" }),
+            item("p2", { proposed: true }),
+          ],
+        };
+      return {};
+    },
+    onLocked: (f: () => void) => void locked.add(f),
+  };
+  const hello = vi.fn(async () => over.hello ?? ("unavailable" as HelloResult));
+  const tab = createPrivateTab({
+    memory,
+    hello,
+    clipboard: {
+      read: () => clip.value,
+      write: (t) => void (clip.value = t),
+      clear: () => void (clip.value = ""),
+    },
+    saveFile: async () => "/picked/file.md",
+    everydayCount: () => 3,
+    voices: () => [
+      { id: "sara", name: "Sara" },
+      { id: "kim", name: "Kim" },
+    ],
+    refresh: () => undefined,
+    now: () => Date.parse("2026-01-01T00:01:30.000Z"),
+  });
+  return { tab, calls, hello, clip, lockAll: () => locked.forEach((f) => f()) };
+};
+const rowsOf = (tab: { controls: () => ReadonlyArray<HomeControl> }) =>
+  tab
+    .controls()
+    .filter((c) => c.kind === "memory")
+    .map((c) => c.label);
+
+describe("the People area", () => {
+  it("passes a PIN to the server and never back into what the window draws", async () => {
+    const { tab, calls, hello } = makePrivate({ hello: "verified" });
+    await tab.load();
+    tab.act(`m.pv.pick:${OWNER}`, null);
+    await settle();
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    expect(hello).toHaveBeenCalledOnce();
+    expect(calls).toContainEqual(["unlock", { storeId: OWNER, pin: "24681357" }]);
+    expect(JSON.stringify(tab.controls())).not.toContain("24681357");
+    expect(rowsOf(tab)).toEqual(["fact p2", "Sara's birthday is 3 March"]);
+    // His review list: what waits for his yes.
+    expect(tab.controls().find((c) => c.id.endsWith("/p2"))?.section).toBe("Waiting for your yes");
+    // A wrong PIN says so, and is not drawn either.
+    tab.act(`m.pv.lock:${OWNER}`, null);
+    await settle();
+    tab.act(`m.pv.unlock:${OWNER}`, "11112222");
+    await settle();
+    const drawn = JSON.stringify(tab.controls());
+    expect(drawn).not.toContain("11112222");
+    expect(drawn).toContain("That PIN is not right.");
+  });
+
+  it("does not open his store when Windows Hello says no", async () => {
+    const { tab, calls } = makePrivate({ hello: "declined" });
+    await tab.load();
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    expect(calls.some(([op]) => op === "unlock")).toBe(false);
+  });
+
+  it("drops what it read when a store locks, the screen locks, or the tab closes", async () => {
+    const { tab, lockAll } = makePrivate();
+    await tab.load();
+    tab.act(`m.pv.pick:${OWNER}`, null);
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    expect(rowsOf(tab)).toHaveLength(2);
+    tab.act(`m.pv.lock:${OWNER}`, null);
+    expect(rowsOf(tab)).toEqual([]);
+    await settle();
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    lockAll();
+    expect(rowsOf(tab)).toEqual([]);
+    expect(JSON.stringify(tab.controls())).not.toContain("birthday");
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    tab.close();
+    expect(rowsOf(tab)).toEqual([]);
+  });
+
+  it("shows the recovery code once: gone when he has saved it or the tab closes, and copied only for 30 s", async () => {
+    vi.useFakeTimers();
+    try {
+      const { tab, clip } = makePrivate({ noOwner: true });
+      await tab.load();
+      tab.act("m.pv.setup", JSON.stringify({ pin: "24681357", again: "2468135" }));
+      expect(JSON.stringify(tab.controls())).toContain("The two PINs are not the same.");
+      tab.act("m.pv.setup", JSON.stringify({ pin: "24681357", again: "24681357" }));
+      await settle();
+      const people = () =>
+        tab.controls().find((c) => c.kind === "privatePeople") as { recovery: unknown };
+      expect(people().recovery).toEqual({ name: "You, private", code: "ABCD-EFGH-IJKL-MNOP" });
+      tab.act("m.pv.recoveryCopy", null);
+      expect(clip.value).toBe("ABCD-EFGH-IJKL-MNOP");
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(clip.value).toBe("");
+      tab.act("m.pv.recoveryDone", null);
+      expect(people().recovery).toBeNull();
+      expect(JSON.stringify(tab.controls())).not.toContain("ABCD-EFGH");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("makes a person's store only for a voice Voice ID saved, named as Voice ID named them", async () => {
+    const { tab, calls } = makePrivate();
+    await tab.load();
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    const people = tab.controls().find((c) => c.kind === "privatePeople") as {
+      voices: ReadonlyArray<{ id: string }>;
+    };
+    // Sara already has a store; only Kim is offered.
+    expect(people.voices.map((v) => v.id)).toEqual(["kim"]);
+    tab.act(
+      "m.pv.addPerson",
+      JSON.stringify({ personId: "kim", name: "", pin: "135792", again: "135792" }),
+    );
+    await settle();
+    expect(calls).toContainEqual(["setup", { personId: "kim", name: "Kim", pin: "135792" }]);
+  });
+
+  it("opens a person's store as admin with no PIN, only once his own is open", async () => {
+    const { tab, calls } = makePrivate();
+    await tab.load();
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    tab.act(`m.pv.pick:${SARA}`, null);
+    tab.act(`m.pv.admin:${SARA}`, null);
+    await settle();
+    expect(calls).toContainEqual(["unlock", { storeId: SARA }]);
+    const bar = tab.controls().find((c) => c.kind === "privateBar") as { canChangePin: boolean };
+    expect(bar.canChangePin).toBe(false);
   });
 });

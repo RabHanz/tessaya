@@ -332,6 +332,28 @@ describe("recognition bias", () => {
     );
   });
 
+  it("takes a compound term's own word as that word, and its split or dotted form as the term", () => {
+    // From his dictations: an ordinary word that is the first part of one of his compound terms became the term (0.1.99).
+    const his = parseVocabulary([
+      { phrase: "AlphaOS", replacement: null, heard: ["alpha OS"] },
+      { phrase: "Claude", replacement: null },
+    ]);
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      [
+        "We started the clipping alpha, the first clips.",
+        "We started the clipping alpha, the first clips.",
+      ],
+      ["It is a new alpha for us.", "It is a new alpha for us."],
+      ["Ask alpha OS about it.", "Ask AlphaOS about it."],
+      ["Ask alpha O.S. about it.", "Ask AlphaOS about it."],
+      ["Ask Alphas about it.", "Ask AlphaOS about it."],
+      ["Is it in the U.S. yet?", "Is it in the U.S. yet?"],
+      // A clipped spelling is not a part of the word: it is still put right.
+      ["Ask claud to check.", "Ask Claude to check."],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
+  });
+
   it("makes a name the recogniser made up his word when it is on screen and sounds like it", () => {
     const his = parseVocabulary([{ phrase: "Zohaib", replacement: null }]);
     const screen = { screen: ["Tessaya", "Zohaib"] };

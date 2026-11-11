@@ -59,7 +59,7 @@ index ccb7a8b82000e20282ec12231d566e1ce15e85a8..a71c1b73089378be2aebdc1a633d4c0d
    if (isElectron) startElectronBrowserHost();
    startPreviewTitleRecording();
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..6c9e97c16418f68079b245f72ee9b103df68ebd2 100644
+index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..2f545e8b569c9cacfaee57e197765485b895fe28 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 @@ -53,6 +53,7 @@ import {
@@ -70,7 +70,15 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..6c9e97c16418f68079b245f72ee9b103
  import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
  import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";
  import {
-@@ -455,7 +456,6 @@ function ProjectDictionaryRow() {
+@@ -108,6 +109,7 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
+ import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
+ import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
+ import { AdvancedSettings } from "./AdvancedSettings";
++import { VoiceLibrarySections } from "./VoiceLibrarySettings";
+ import {
+   SETTINGS_PICKER_TRIGGER_CLASSNAME,
+   SettingResetButton,
+@@ -455,7 +457,6 @@ function ProjectDictionaryRow() {
  function CleanupModelRow() {
    const { environment, connectedEnvironments } = useSettingsScope();
    const settings = useScopedSettings();
@@ -78,7 +86,7 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..6c9e97c16418f68079b245f72ee9b103
    const providersByEnvironment = useEnvironmentProviders();
    const providers =
      (environment?.serverConfig
-@@ -466,7 +466,8 @@ function CleanupModelRow() {
+@@ -466,7 +467,8 @@ function CleanupModelRow() {
    );
    const instanceEntries = providerInstanceEntriesFor(textGenerationProviders, settings, null);
    const hasProvider = instanceEntries.some((entry) => entry.enabled && entry.isAvailable);
@@ -88,7 +96,7 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..6c9e97c16418f68079b245f72ee9b103
    const selection = resolveAppModelSelectionState(
      {
        ...settings,
-@@ -491,24 +492,23 @@ function CleanupModelRow() {
+@@ -491,24 +493,23 @@ function CleanupModelRow() {
        toastManager.add({ type: "error", title: "Cleanup model not saved", description: reason });
        return;
      }
@@ -118,7 +126,7 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..6c9e97c16418f68079b245f72ee9b103
            />
          ) : null
        }
-@@ -1093,6 +1093,7 @@ function TranscriptionTest(props: {
+@@ -1093,6 +1094,7 @@ function TranscriptionTest(props: {
  
  export function VoiceSettingsPanel() {
    const cleanupEnabled = useCleanupGrant() !== null;
@@ -126,7 +134,7 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..6c9e97c16418f68079b245f72ee9b103
    const settings = useClientSettings();
    const settingsScope = useOptionalSettingsScope();
    const destination = useVoiceTranscriptionDestination();
-@@ -1527,12 +1528,15 @@ export function VoiceSettingsPanel() {
+@@ -1527,12 +1529,15 @@ export function VoiceSettingsPanel() {
        <SettingsSection id={searchableSetting("speech-post-processing").id} title="Cleanup">
          <SettingsRow
            title="Clean up transcripts with a provider"
@@ -144,6 +152,14 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..6c9e97c16418f68079b245f72ee9b103
              />
            }
          />
+@@ -1610,6 +1615,7 @@ export function VoiceSettingsPanel() {
+           />
+         ) : null}
+       </SettingsSection>
++      <VoiceLibrarySections />
+     </SettingsPageContainer>
+   );
+ }
 diff --git a/packages/client-runtime/src/state/sharedSettings.ts b/packages/client-runtime/src/state/sharedSettings.ts
 index 77dbddadb6bbbb4eede94b66bb423aacbc659326..476f2edf5a8d179817864197b0622dd3c7c8d7f2 100644
 --- a/packages/client-runtime/src/state/sharedSettings.ts
