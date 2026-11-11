@@ -1,0 +1,262 @@
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalFetch:off globalTimers:off globalConsole:off
+/**
+ * The R1 room loop as a program on the voice host (onnyx, next to the R1 on his LAN). Everything it needs comes from
+ * the environment; secrets are read from files, never from variables or arguments. See deploy/r1-voice/README.md.
+ *
+ * @module baton-voice/room/main
+ */
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import { createSileroScorer } from "../providers/onnx.ts";
+import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
+import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "../speaker.ts";
+import { createSpeakerStore } from "../speakerStore.ts";
+import { createResampler24to16, createWavReader } from "./audio.ts";
+import { connectMqtt } from "./mqtt.ts";
+import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
+import { createSenseVoice } from "./senseVoice.ts";
+import { createSmartTurn } from "./smartTurn.ts";
+
+const env = (key: string, fallback?: string): string => {
+  const v = process.env[key] ?? fallback;
+  if (v === undefined || v === "") throw new Error(`${key} is not set`);
+  return v;
+};
+const secret = (key: string) => NodeFS.readFileSync(env(key), "utf8").trim();
+const log = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+
+/** CAM++ as the desktop ships it: a profile made with another model is never compared. */
+const SPEAKER_MODEL_ID = "campplus-voxceleb-357a834f";
+
+const models = env("R1_MODELS");
+const state = env("R1_STATE");
+const model = (file: string) => NodePath.join(models, file);
+
+/** Tessaya's recogniser (native/tessaya-recognizer) over its WebSocket protocol: words stream in, the text at the end. */
+const recogniser = (url: string, token: string) => (): RecogniserTurn => {
+  const ws = new WebSocket(url, {
+    headers: { authorization: `Bearer ${token}` },
+  } as unknown as string[]);
+  ws.binaryType = "arraybuffer";
+  const queued: Uint8Array<ArrayBuffer>[] = [];
+  let open = false;
+  let ended = false;
+  let settle: ((text: string) => void) | null = null;
+  const result = new Promise<string>((resolve, reject) => {
+    settle = resolve;
+    ws.addEventListener("error", () => reject(new Error("recogniser unreachable")));
+    ws.addEventListener("close", () => resolve(""));
+  });
+  ws.addEventListener("open", () => {
+    open = true;
+    ws.send(JSON.stringify({ cmd: "begin", language: "en" }));
+    for (const q of queued.splice(0)) ws.send(q);
+    if (ended) ws.send(JSON.stringify({ cmd: "end" }));
+  });
+  ws.addEventListener("message", (e) => {
+    if (typeof e.data !== "string") return;
+    const m = JSON.parse(e.data) as { ev?: string; text?: string; message?: string };
+    if (m.ev === "text") settle?.(m.text ?? "");
+    if (m.ev === "error") settle?.("");
+    if (m.ev === "text" || m.ev === "error") ws.close();
+  });
+  return {
+    feed: (pcm) => {
+      const bytes = new Uint8Array(pcm.byteLength);
+      bytes.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+      if (open) ws.send(bytes);
+      else queued.push(bytes);
+    },
+    finish: () => {
+      ended = true;
+      if (open) ws.send(JSON.stringify({ cmd: "end" }));
+      return result;
+    },
+    cancel: () => ws.close(),
+  };
+};
+
+/** Pocket TTS's own server, kept running beside the loop (her voice, as on the desktop). */
+const startPocket = async () => {
+  const dir = NodePath.join(models, "pocket", "english");
+  const port = Number(env("R1_POCKET_PORT", "58232"));
+  const proc = NodeChildProcess.spawn(
+    env("R1_POCKET_BIN"),
+    ["serve", "--host", "127.0.0.1", "--port", String(port), "--config", "config.yaml"].concat([
+      "--default-voice",
+      `${env("R1_VOICE", "anna")}.safetensors`,
+    ]),
+    {
+      cwd: dir,
+      stdio: "ignore",
+      env: { HOME: process.env["HOME"], RAYON_NUM_THREADS: env("R1_TTS_THREADS", "2") },
+    },
+  );
+  proc.on("exit", (code) => {
+    log(`pocket exited (${code}); the loop restarts with it`);
+    process.exit(1);
+  });
+  for (let i = 0; ; i += 1) {
+    const ok = await fetch(`http://127.0.0.1:${port}/health`).then(
+      (r) => r.ok,
+      () => false,
+    );
+    if (ok) break;
+    if (i > 300) throw new Error("pocket did not start");
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return async function* (text: string, signal: AbortSignal) {
+    const res = await fetch(`http://127.0.0.1:${port}/tts`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ text }).toString(),
+      signal,
+    });
+    if (!res.ok || res.body === null) throw new Error(`voice answered ${res.status}`);
+    const read = createWavReader();
+    const down = createResampler24to16();
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      const pcm = down(read(chunk));
+      if (pcm.length > 0) yield pcm;
+    }
+  };
+};
+
+/** Tessaya's turn on her server, OpenAI chat-completions shape, streamed. */
+const brain = (url: string, key: string): RoomDeps["brain"] =>
+  async function* (input, signal) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ messages: input.messages, stream: true, tessaya: input.tessaya }),
+      signal,
+    });
+    if (!res.ok || res.body === null) throw new Error(`Tessaya answered ${res.status}`);
+    const decoder = new TextDecoder();
+    let buf = "";
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      buf += decoder.decode(chunk, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return;
+        const delta = (JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> })
+          .choices?.[0]?.delta?.content;
+        if (delta) yield delta;
+      }
+    }
+  };
+
+const main = async () => {
+  const threads = Number(env("R1_ONNX_THREADS", "2"));
+  const silero = model("silero_vad.onnx");
+  const smart = await createSmartTurn(model("smart-turn-v3.2-cpu.onnx"), threads);
+  const sense = NodeFS.existsSync(model("sensevoice.int8.onnx"))
+    ? await createSenseVoice({
+        modelPath: model("sensevoice.int8.onnx"),
+        tokensPath: model("sensevoice.tokens.txt"),
+        threads,
+      })
+    : null;
+  const embedder = await createSpeakerEmbedder(model("campplus.onnx"), SPEAKER_MODEL_ID, 1);
+  const store = createSpeakerStore(state);
+  const policy = { ...CAMPLUS_POLICY, model: SPEAKER_MODEL_ID };
+  const speak = await startPocket();
+  const deviceKey = secret("R1_DEVICE_KEY_FILE");
+  const metricsFile = NodePath.join(state, "metrics.ndjson");
+
+  let room: ReturnType<typeof createRoomVoice> | null = null;
+  const mqtt = connectMqtt({
+    host: env("R1_MQTT_HOST"),
+    port: Number(env("R1_MQTT_PORT", "1883")),
+    clientId: `tessaya-room-${process.pid}`,
+    user: env("R1_MQTT_USER"),
+    pass: secret("R1_MQTT_PASS_FILE"),
+    subscribe: [
+      "freya/r1/+/voice/up",
+      "freya/r1/+/cmd/voice/start",
+      "freya/r1/+/cmd/voice/stop",
+      "freya/r1/+/voice/enrol",
+      "freya/r1/+/state/online",
+    ],
+    onMessage: (t, p) => room?.message(t, p),
+    log,
+  });
+  const inhouse = new Set(
+    (process.env["R1_INHOUSE"] ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  room = createRoomVoice(
+    {
+      publish: (t, p) => {
+        mqtt.publish(t, p);
+        if (t.endsWith("/event/voice/metrics"))
+          NodeFS.appendFileSync(metricsFile, `${String(p)}\n`);
+      },
+      vad: () => {
+        const scorer = createSileroScorer(silero);
+        return { score: async (w) => (await scorer).score(w) };
+      },
+      smartTurn: (pcm) => smart.complete(pcm),
+      recognise: recogniser(env("R1_RECOGNIZER_URL"), secret("R1_RECOGNIZER_TOKEN_FILE")),
+      speaker: async (pcm) => {
+        const at = Date.now();
+        const vector = await embedder.embed(pcm);
+        if (vector === null) return UNVERIFIED(at);
+        const clips = [{ vector, ms: (pcm.length / 16_000) * 1000 }];
+        const profiles = store.list();
+        const decide = (use: "steer" | "act") =>
+          decideSpeaker({ clips, model: SPEAKER_MODEL_ID, profiles, policy, use });
+        return identityOf(decide("steer"), decide("act"), at);
+      },
+      ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
+      brain: brain(env("R1_BRAIN_URL"), deviceKey),
+      speak,
+      enrolOwner: async (windows) => {
+        const vectors = (await Promise.all(windows.map((w) => embedder.embed(w)))).filter(
+          (v) => v !== null,
+        );
+        const made = enrol(vectors);
+        if (made === null)
+          return "I couldn't get a clear enough voice print. Let's try again another time.";
+        store.save({
+          id: "owner",
+          name: "Owner",
+          kind: "owner",
+          model: SPEAKER_MODEL_ID,
+          centroid: made.centroid,
+          samples: made.kept,
+          sources: ["spoken"],
+          enrolledAt: new Date().toISOString(),
+          consentNote: "Enrolled through the R1 at his request; numbers only, no audio kept.",
+        });
+        return "Thanks. I know your voice now.";
+      },
+      now: () => performance.timeOrigin + performance.now(),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      log,
+    },
+    { ...ROOM_CONFIG, inhouse },
+  );
+  setInterval(() => room?.sweep(), 1_000);
+  const stop = () => {
+    room?.close();
+    mqtt.close();
+    process.exit(0);
+  };
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
+  log("room loop ready");
+};
+
+void main().catch((error: unknown) => {
+  log(`room loop failed: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+});

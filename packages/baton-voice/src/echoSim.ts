@@ -45,7 +45,9 @@ export const speechLike = (seconds: number, seed: number, pitchHz: number): Floa
     const t = i / RATE_16K;
     const f0 = pitchHz * (1 + 0.12 * Math.sin(2 * Math.PI * 0.7 * t + syllable));
     phase += (2 * Math.PI * f0) / RATE_16K;
-    const source = voiced ? Math.sign(Math.sin(phase)) * 0.6 + (rand() - 0.5) * 0.2 : (rand() - 0.5) * 1.2;
+    const source = voiced
+      ? Math.sign(Math.sin(phase)) * 0.6 + (rand() - 0.5) * 0.2
+      : (rand() - 0.5) * 1.2;
     let v = 0;
     for (let k = 0; k < 3; k += 1) {
       const a = Math.exp((-Math.PI * 120) / RATE_16K);
@@ -72,7 +74,8 @@ export const room = (delayMs: number, rt60Ms: number, seed: number): Float32Arra
   const tail = Math.round((rt60Ms * RATE_16K) / 1000);
   const ir = new Float32Array(delay + tail);
   ir[delay] = 1;
-  for (let i = 1; i < tail; i += 1) ir[delay + i] = (rand() - 0.5) * 0.1 * Math.exp((-6.9 * i) / tail);
+  for (let i = 1; i < tail; i += 1)
+    ir[delay + i] = (rand() - 0.5) * 0.1 * Math.exp((-6.9 * i) / tail);
   return ir;
 };
 
@@ -89,7 +92,8 @@ const convolve = (x: Float32Array, ir: Float32Array): Float32Array => {
 
 const toInt16 = (f: Float32Array, from: number): Int16Array => {
   const out = new Int16Array(FRAME);
-  for (let i = 0; i < FRAME; i += 1) out[i] = Math.max(-32768, Math.min(32767, Math.round((f[from + i] ?? 0) * 32768)));
+  for (let i = 0; i < FRAME; i += 1)
+    out[i] = Math.max(-32768, Math.min(32767, Math.round((f[from + i] ?? 0) * 32768)));
   return out;
 };
 
@@ -122,7 +126,17 @@ export const runEcho = (input: {
   readonly interruptions: ReadonlyArray<Interruption>;
   /** Consecutive flagged frames that count as a detection (the core's debounce). */
   readonly frames?: number;
-  readonly trace?: (atS: number, state: { delayMs: number; erleDb: number; converged: boolean; ratio: number; over: number; ne: boolean }) => void;
+  readonly trace?: (
+    atS: number,
+    state: {
+      delayMs: number;
+      erleDb: number;
+      converged: boolean;
+      ratio: number;
+      over: number;
+      ne: boolean;
+    },
+  ) => void;
 }): EchoRun => {
   const need = input.frames ?? 5;
   const guard = createEchoGuard();
@@ -132,14 +146,17 @@ export const runEcho = (input: {
   const echoGain = input.echoRms / Math.sqrt(eSum / echo.length + 1e-12);
   const rand = rng(input.seed ^ 0x9e3779b9);
   const mic = new Float32Array(input.tts.length);
-  for (let i = 0; i < mic.length; i += 1) mic[i] = echo[i]! * echoGain + (rand() - 0.5) * 2 * input.noiseRms;
+  for (let i = 0; i < mic.length; i += 1)
+    mic[i] = echo[i]! * echoGain + (rand() - 0.5) * 2 * input.noiseRms;
   for (const it of input.interruptions) {
     const speech = speechLike(it.seconds, input.seed + Math.round(it.atS * 100), it.pitchHz);
     let s = 0;
     for (const v of speech) s += v * v;
-    const gain = (input.echoRms * 10 ** (it.overEchoDb / 20)) / Math.sqrt(s / speech.length + 1e-12);
+    const gain =
+      (input.echoRms * 10 ** (it.overEchoDb / 20)) / Math.sqrt(s / speech.length + 1e-12);
     const from = Math.round(it.atS * RATE_16K);
-    for (let i = 0; i < speech.length && from + i < mic.length; i += 1) mic[from + i] = mic[from + i]! + speech[i]! * gain;
+    for (let i = 0; i < speech.length && from + i < mic.length; i += 1)
+      mic[from + i] = mic[from + i]! + speech[i]! * gain;
   }
   const detections: number[] = [];
   let run = 0;
@@ -150,7 +167,13 @@ export const runEcho = (input: {
     guard.reference(toInt16(input.tts, f * FRAME), f * 20);
     const verdict = guard.process(toInt16(mic, f * FRAME), ms);
     if (verdict.ready && readyAt === null) readyAt = ms / 1000;
-    if (input.trace !== undefined && f % 5 === 0) input.trace(ms / 1000, { ...guard.state(), ratio: verdict.ratio ?? 0, over: verdict.over ?? 0, ne: verdict.nearEnd });
+    if (input.trace !== undefined && f % 5 === 0)
+      input.trace(ms / 1000, {
+        ...guard.state(),
+        ratio: verdict.ratio ?? 0,
+        over: verdict.over ?? 0,
+        ne: verdict.nearEnd,
+      });
     run = verdict.nearEnd ? run + 1 : 0;
     // One detection per run of flagged frames, when it reaches the confirmation (as the core acts on it once and stops speaking).
     if (run === need) detections.push(ms / 1000);
@@ -173,13 +196,24 @@ const ROOMS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /** The measurement behind docs/baton/BARGE_IN.md: the same rooms and levels every run. */
-export const evaluateGuard = (input: { readonly seconds?: number; readonly levelsDb?: ReadonlyArray<number> } = {}): GuardEvaluation => {
+export const evaluateGuard = (
+  input: { readonly seconds?: number; readonly levelsDb?: ReadonlyArray<number> } = {},
+): GuardEvaluation => {
   const seconds = input.seconds ?? 60;
   let alarms = 0;
   let played = 0;
   ROOMS.forEach(([delay, rt60], i) => {
     const tts = speechLike(seconds, 11 + i, 105 + i * 8);
-    const run = runEcho({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions: [], frames: 6 });
+    const run = runEcho({
+      tts,
+      seed: 5 + i,
+      unknownDelayMs: delay,
+      rt60Ms: rt60,
+      echoRms: 0.07,
+      noiseRms: 0.003,
+      interruptions: [],
+      frames: 6,
+    });
     alarms += run.detections.length;
     played += run.seconds;
   });
@@ -189,8 +223,22 @@ export const evaluateGuard = (input: { readonly seconds?: number; readonly level
     let total = 0;
     ROOMS.forEach(([delay, rt60], i) => {
       const tts = speechLike(seconds, 11 + i, 105 + i * 8);
-      const interruptions = Array.from({ length: Math.floor((seconds - 12) / 6.5) }, (_, k) => ({ atS: 8 + k * 6.5, seconds: 1.5, overEchoDb: db, pitchHz: 170 + k * 12 }));
-      const run = runEcho({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions, frames: 6 });
+      const interruptions = Array.from({ length: Math.floor((seconds - 12) / 6.5) }, (_, k) => ({
+        atS: 8 + k * 6.5,
+        seconds: 1.5,
+        overEchoDb: db,
+        pitchHz: 170 + k * 12,
+      }));
+      const run = runEcho({
+        tts,
+        seed: 5 + i,
+        unknownDelayMs: delay,
+        rt60Ms: rt60,
+        echoRms: 0.07,
+        noiseRms: 0.003,
+        interruptions,
+        frames: 6,
+      });
       for (const it of interruptions) {
         total += 1;
         if (run.detections.some((t) => t >= it.atS && t <= it.atS + 0.3 + 6 * 0.02)) hit += 1;
@@ -198,5 +246,9 @@ export const evaluateGuard = (input: { readonly seconds?: number; readonly level
     });
     recall[String(db)] = Math.round((hit / total) * 100) / 100;
   }
-  return { falsePer10Min: Math.round((alarms / played) * 6_000) / 10, recall, secondsPlayed: played };
+  return {
+    falsePer10Min: Math.round((alarms / played) * 6_000) / 10,
+    recall,
+    secondsPlayed: played,
+  };
 };
