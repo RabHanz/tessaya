@@ -1,6 +1,7 @@
 import { parseInputBindings } from "@t3tools/baton-shared/inputBindings";
 import { describe, expect, it } from "vite-plus/test";
 
+import { ACTIONS } from "./bindings.ts";
 import { mouseHookConfig } from "./inputConfig.ts";
 
 describe("what the mouse hook is told", () => {
@@ -26,5 +27,17 @@ describe("what the mouse hook is told", () => {
     ]);
     expect(parseInputBindings(JSON.parse(JSON.stringify(config))).bindings).toHaveLength(4);
     expect(mouseHookConfig([]).bindings).toEqual([]);
+  });
+  it("maps every action a mouse button can be given, so the middle button can start dictation", () => {
+    const config = mouseHookConfig(
+      ACTIONS.map((def) => ({ def, inputs: [{ type: "mouse", button: "middle" } as const] })),
+    );
+    // Every row of the Keyboard and mouse page reaches the hook: none saves and then does nothing.
+    expect(config.bindings.map((b) => b.id)).toEqual(ACTIONS.map((def) => def.id));
+    expect(config.bindings.find((b) => b.id === "toggle")?.action).toBe("dictate_toggle");
+    expect(config.bindings.find((b) => b.id === "hold")?.action).toBe("dictate_hold");
+    // Each one is an action the hook's schema accepts (one button keeps one action, so they are checked apart).
+    for (const binding of config.bindings)
+      expect(parseInputBindings({ ...config, bindings: [binding] }).bindings).toEqual([binding]);
   });
 });

@@ -14,6 +14,7 @@
  */
 import {
   BATON_ACCOUNT_WS_METHODS,
+  BATON_ACCOUNTS_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
@@ -158,6 +159,14 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:sessions-reattach",
       tag: BATON_SESSIONS_WS_METHODS.reattach,
     }),
+    sessionsMoveIntoTessaya: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-move-into-tessaya",
+      tag: BATON_SESSIONS_WS_METHODS.moveIntoTessaya,
+    }),
+    sessionsOpenInTerminal: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-open-in-terminal",
+      tag: BATON_SESSIONS_WS_METHODS.openInTerminal,
+    }),
     sessionsKept: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:sessions-kept",
       tag: BATON_SESSIONS_WS_METHODS.kept,
@@ -274,6 +283,11 @@ export function createBatonWorkSessionAtoms<R, E>(
     jobList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-list",
       tag: BATON_JOB_WS_METHODS.jobList,
+    }),
+    /** Who on the team is doing what (P4): a read of jobs, episodes and the Record. */
+    jobTeam: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-team",
+      tag: BATON_JOB_WS_METHODS.jobTeam,
     }),
     jobStart: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-start",
@@ -411,6 +425,24 @@ export function createBatonWorkSessionAtoms<R, E>(
       scheduler,
       concurrency,
     }),
+    liveSetAccount: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:live-set-account",
+      tag: BATON_LIVE_WS_METHODS.liveSetAccount,
+      scheduler,
+      concurrency,
+    }),
+    liveStateQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:live-state-query",
+      tag: BATON_LIVE_WS_METHODS.liveState,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 10_000,
+    }),
+    liveCancelQueued: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:live-cancel-queued",
+      tag: BATON_LIVE_WS_METHODS.liveCancelQueued,
+      scheduler,
+      concurrency,
+    }),
     herdrSend: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:herdr-send",
       tag: BATON_LIVE_WS_METHODS.herdrSend,
@@ -420,6 +452,12 @@ export function createBatonWorkSessionAtoms<R, E>(
     accountPoolQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:baton:account-pool-query",
       tag: BATON_ACCOUNT_WS_METHODS.accountPool,
+      staleTimeMs: 30_000,
+      refreshIntervalMs: 60_000,
+    }),
+    accountsQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:accounts-query",
+      tag: BATON_ACCOUNTS_WS_METHODS.list,
       staleTimeMs: 30_000,
       refreshIntervalMs: 60_000,
     }),

@@ -10,6 +10,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { redactText } from "@t3tools/baton-shared/diagnostics";
+import { batonToolName } from "@t3tools/baton-shared/operator";
 import {
   matchSkills,
   nightlyGroups,
@@ -263,7 +264,7 @@ export const learnFromTurn = async (input: {
     for (let i = 0; i < REPLAY_SAMPLES; i += 1) {
       const calls = await input.replay(c, extra).catch(() => ["error"]);
       out.push({
-        reached: calls.some((t) => t.replace(/^mcp__baton__/, "") === c.goal),
+        reached: calls.some((t) => batonToolName(t) === c.goal),
         calls: calls.length,
       });
     }

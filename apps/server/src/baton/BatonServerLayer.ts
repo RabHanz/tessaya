@@ -22,6 +22,7 @@ import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
 import * as AccountPoolService from "./AccountPoolService.ts";
+import * as BatonAccounts from "./BatonAccounts.ts";
 import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
 import * as BatonMemorySync from "./BatonMemorySync.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
@@ -44,6 +45,7 @@ import * as BatonMemoryService from "./BatonMemoryService.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonPhoneInbox from "./BatonPhoneInbox.ts";
+import * as BatonDesktopSettings from "./BatonDesktopSettings.ts";
 import * as BatonTessayaRoutes from "./BatonTessayaRoutes.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
@@ -114,6 +116,7 @@ const servicesInner = IntentService.layer.pipe(
       memoryLayer,
       BatonCommitmentService.layer,
       BatonPhoneInbox.layer,
+      BatonDesktopSettings.layer,
       BatonCloudService.layer,
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
       // on a machine with no Herdr found no way to start a thread.
@@ -121,6 +124,7 @@ const servicesInner = IntentService.layer.pipe(
         Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
         Layer.provide(BatonEngine.layer),
         Layer.provide(weaveLayer),
+        Layer.provide(BatonAccounts.layer.pipe(Layer.provide(AccountPoolService.layer))),
       ),
       weaveLayer,
       // This server's live sessions and each linked environment's, for the desktop with T3's window closed (GEN-6).
@@ -134,8 +138,13 @@ const servicesInner = IntentService.layer.pipe(
       BatonMemorySync.layer.pipe(Layer.provide(memoryLayer)),
       readClaudeAccountInstances,
       AccountPoolService.layer,
+      BatonAccounts.layer.pipe(Layer.provide(AccountPoolService.layer)),
       AccountRotationPolicy.layer,
-      ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
+      ThreadAccountMoves.layer.pipe(
+        Layer.provide(BatonEngine.layer),
+        Layer.provide(AccountPoolService.layer),
+        Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+      ),
       // The adapter is provided here so the one place that talks to another program stays
       // visible, and a machine without Herdr still gets a service that refuses by name.
       AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer)),

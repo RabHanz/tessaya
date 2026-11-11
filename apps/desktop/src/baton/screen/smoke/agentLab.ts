@@ -71,7 +71,7 @@ void Electron.app.whenReady().then(async () => {
       // Finished and misclicks are read from the frames afterwards; the file check covers task one.
       const finished =
         task.id === "notepad"
-          ? NodeFS.existsSync(NodePath.join(NodeOS.homedir(), "Documents", "baton-task-one.txt"))
+          ? NodeFS.existsSync(NodePath.join(NodeOS.homedir(), "Documents", "tessaya-task-one.txt"))
           : false;
       results.push({
         task: task.id,

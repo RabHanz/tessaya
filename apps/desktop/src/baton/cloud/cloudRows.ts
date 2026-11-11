@@ -16,7 +16,14 @@ const CAPS = [1, 2, 3, 5];
 export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray<HomeControl> => {
   const section = text("cloud.section.where");
   const out: HomeControl[] = [
-    { id: "cl.set.on", section, label: text("cloud.on.label"), hint: text("cloud.on.hint"), kind: "toggle", on: s.on },
+    {
+      id: "cl.set.on",
+      section,
+      label: text("cloud.on.label"),
+      hint: text("cloud.on.hint"),
+      kind: "toggle",
+      on: s.on,
+    },
     {
       id: "setup.cloud.github",
       section,
@@ -26,10 +33,28 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       button: text("setup.cloud.githubButton"),
       more: true,
     },
-    { id: "setup.cloud.always", section, label: text("setup.cloud.always"), kind: "check", status: "ok", detail: text("setup.cloud.alwaysDetail"), more: true },
+    {
+      id: "setup.cloud.always",
+      section,
+      label: text("setup.cloud.always"),
+      kind: "check",
+      status: "ok",
+      detail: text("setup.cloud.alwaysDetail"),
+      more: true,
+    },
   ];
   if (!s.on) {
-    return [...out, { id: "cl.off", section, label: text("cloud.off.label"), kind: "check", status: "ok", detail: text("cloud.off.detail") }];
+    return [
+      ...out,
+      {
+        id: "cl.off",
+        section,
+        label: text("cloud.off.label"),
+        kind: "check",
+        status: "ok",
+        detail: text("cloud.off.detail"),
+      },
+    ];
   }
   out.push(
     {
@@ -45,7 +70,14 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
         { value: "ssh", label: text("cloud.transport.ssh") },
       ],
     },
-    { id: "cl.set.ask", section, label: text("cloud.ask.label"), hint: text("cloud.ask.hint"), kind: "toggle", on: s.askPopup },
+    {
+      id: "cl.set.ask",
+      section,
+      label: text("cloud.ask.label"),
+      hint: text("cloud.ask.hint"),
+      kind: "toggle",
+      on: s.askPopup,
+    },
     {
       id: "cl.set.cap",
       section,
@@ -74,7 +106,10 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       hint: text("cloud.hub.hint"),
       kind: "choice",
       value: s.hubEnv,
-      options: [{ value: "", label: text("cloud.hub.thisWindow") }, ...v.environments.map((e) => ({ value: e.id, label: e.label }))],
+      options: [
+        { value: "", label: text("cloud.hub.thisWindow") },
+        ...v.environments.map((e) => ({ value: e.id, label: e.label })),
+      ],
     });
   }
   if (s.transport === "ssh") {
@@ -96,9 +131,25 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       field("cl.set.approverKeyVault", "cloud.ssh.approverKeyVault", s.approverKeyVault),
     );
   }
-  out.push({ id: "cl.test", section, label: text("cloud.test.label"), hint: text("cloud.test.hint"), kind: "action", button: text("cloud.test.button") });
+  out.push({
+    id: "cl.test",
+    section,
+    label: text("cloud.test.label"),
+    hint: text("cloud.test.hint"),
+    kind: "action",
+    button: text("cloud.test.button"),
+  });
   if (v.tested !== null) {
-    v.tested.forEach((t, i) => out.push({ id: `cl.testrow.${i}`, section: text("cloud.test.section"), label: t.line, kind: "check", status: t.ok ? "ok" : "warn", detail: "" }));
+    v.tested.forEach((t, i) =>
+      out.push({
+        id: `cl.testrow.${i}`,
+        section: text("cloud.test.section"),
+        label: t.line,
+        kind: "check",
+        status: t.ok ? "ok" : "warn",
+        detail: "",
+      }),
+    );
   }
   const assistants = text("cloud.section.assistants");
   for (const p of v.providers) {
@@ -112,13 +163,41 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       detail: d?.signInCommand == null ? "" : text("cloud.signin", { command: d.signInCommand }),
     });
     if (d?.signInCommand != null) {
-      out.push({ id: `cl.signin.${p.id}`, section: assistants, label: text("cloud.signin.label", { name: p.label }), kind: "action", button: text("cloud.signin.button") });
+      out.push({
+        id: `cl.signin.${p.id}`,
+        section: assistants,
+        label: text("cloud.signin.label", { name: p.label }),
+        kind: "action",
+        button: text("cloud.signin.button"),
+      });
     }
   }
-  if (v.error !== null) out.push({ id: "cl.err", section: assistants, label: text("cloud.error"), kind: "check", status: "warn", detail: v.error });
-  out.push({ id: "cl.refresh", section: assistants, label: text("cloud.refresh.label"), kind: "action", button: text("cloud.refresh.button") });
+  if (v.error !== null)
+    out.push({
+      id: "cl.err",
+      section: assistants,
+      label: text("cloud.error"),
+      kind: "check",
+      status: "warn",
+      detail: v.error,
+    });
+  out.push({
+    id: "cl.refresh",
+    section: assistants,
+    label: text("cloud.refresh.label"),
+    kind: "action",
+    button: text("cloud.refresh.button"),
+  });
   const mine = text("cloud.section.requests");
-  if (v.requests.length === 0) out.push({ id: "cl.none", section: mine, label: text("cloud.none"), kind: "check", status: "ok", detail: "" });
+  if (v.requests.length === 0)
+    out.push({
+      id: "cl.none",
+      section: mine,
+      label: text("cloud.none"),
+      kind: "check",
+      status: "ok",
+      detail: "",
+    });
   for (const r of v.requests.toReversed().slice(0, 30)) {
     const over = r.pointsUsed !== null && r.pointsUsed > s.capPoints;
     out.push({
@@ -157,7 +236,10 @@ export const approvalCardControls = (v: CloudView): ReadonlyArray<HomeControl> =
       label: r.task ?? r.id,
       hint: [
         text("cloud.card.repo", { repo: r.repo ?? "?", branch: r.branch ?? "?" }),
-        text("cloud.card.asked", { who: [r.caller, r.label].filter(Boolean).join(" / ") || "?", expected: r.expectedUsage === null ? "" : `, ${r.expectedUsage} points expected` }),
+        text("cloud.card.asked", {
+          who: [r.caller, r.label].filter(Boolean).join(" / ") || "?",
+          expected: r.expectedUsage === null ? "" : `, ${r.expectedUsage} points expected`,
+        }),
         ...(r.fromWeb ? [text("cloud.fromweb")] : []),
       ].join(". "),
       kind: "check",
@@ -165,14 +247,20 @@ export const approvalCardControls = (v: CloudView): ReadonlyArray<HomeControl> =
       detail: "",
       lead: true,
     };
-    const ids = (verb: string, rest?: string) => `cl.${verb}.${r.provider}:${r.id}${rest === undefined ? "" : `:${rest}`}`;
-    const deny: HomeControl = { id: ids("deny"), section, label: text("cloud.card.denyLabel"), kind: "action", button: text("cloud.card.deny") };
+    const ids = (verb: string, rest?: string) =>
+      `cl.${verb}.${r.provider}:${r.id}${rest === undefined ? "" : `:${rest}`}`;
+    const deny: HomeControl = {
+      id: ids("deny"),
+      section,
+      label: text("cloud.card.denyLabel"),
+      kind: "action",
+      button: text("cloud.card.deny"),
+    };
     switch (state.phase) {
       case "provider":
         return [
           head,
-          ...v.choices
-            .map((c): HomeControl => ({
+          ...v.choices.map((c): HomeControl => ({
             id: ids("p", c.id),
             section,
             label: c.label,
@@ -193,7 +281,13 @@ export const approvalCardControls = (v: CloudView): ReadonlyArray<HomeControl> =
             label: a.account,
             hint: a.enabled
               ? [
-                  a.percent === null ? text("cloud.card.unknown") : text("cloud.card.usage", { percent: a.percent, resets: a.resets === null ? "" : text("cloud.card.resets", { when: a.resets }) }),
+                  a.percent === null
+                    ? text("cloud.card.unknown")
+                    : text("cloud.card.usage", {
+                        percent: a.percent,
+                        resets:
+                          a.resets === null ? "" : text("cloud.card.resets", { when: a.resets }),
+                      }),
                   ...((a.why ?? "").includes("renews soon") ? [text("cloud.card.renewSoon")] : []),
                 ].join(" · ")
               : (a.why ?? ""),
@@ -201,7 +295,13 @@ export const approvalCardControls = (v: CloudView): ReadonlyArray<HomeControl> =
             button: text("cloud.card.use", { account: a.account }),
             disabled: !a.enabled,
           })),
-          { id: ids("ok", "later"), section, label: text("cloud.card.back"), kind: "action", button: text("cloud.card.back") },
+          {
+            id: ids("ok", "later"),
+            section,
+            label: text("cloud.card.back"),
+            kind: "action",
+            button: text("cloud.card.back"),
+          },
           deny,
         ];
       }
@@ -211,23 +311,69 @@ export const approvalCardControls = (v: CloudView): ReadonlyArray<HomeControl> =
           {
             id: ids("ok"),
             section,
-            label: text("cloud.card.approveOn", { account: state.account, provider: state.provider }),
+            label: text("cloud.card.approveOn", {
+              account: state.account,
+              provider: state.provider,
+            }),
             kind: "action",
             button: text("cloud.card.approve"),
             secondary: text("cloud.card.back"),
           },
         ];
       case "approving":
-        return [head, { id: `cl.busy.${key}`, section, label: text("cloud.card.working"), kind: "check", status: "ok", detail: "" }];
+        return [
+          head,
+          {
+            id: `cl.busy.${key}`,
+            section,
+            label: text("cloud.card.working"),
+            kind: "check",
+            status: "ok",
+            detail: "",
+          },
+        ];
       case "done":
-        return [head, { id: `cl.done.${key}`, section, label: text("cloud.card.done", { account: state.account }), kind: "check", status: "ok", detail: "" }];
+        return [
+          head,
+          {
+            id: `cl.done.${key}`,
+            section,
+            label: text("cloud.card.done", { account: state.account }),
+            kind: "check",
+            status: "ok",
+            detail: "",
+          },
+        ];
       case "denied":
-        return [head, { id: `cl.denied.${key}`, section, label: text("cloud.card.denied"), kind: "check", status: "ok", detail: "" }];
+        return [
+          head,
+          {
+            id: `cl.denied.${key}`,
+            section,
+            label: text("cloud.card.denied"),
+            kind: "check",
+            status: "ok",
+            detail: "",
+          },
+        ];
       case "error":
         return [
           head,
-          { id: `cl.fail.${key}`, section, label: state.message, kind: "check", status: "bad", detail: "" },
-          { id: ids("ok", "later"), section, label: text("cloud.card.retry"), kind: "action", button: text("cloud.card.retry") },
+          {
+            id: `cl.fail.${key}`,
+            section,
+            label: state.message,
+            kind: "check",
+            status: "bad",
+            detail: "",
+          },
+          {
+            id: ids("ok", "later"),
+            section,
+            label: text("cloud.card.retry"),
+            kind: "action",
+            button: text("cloud.card.retry"),
+          },
         ];
     }
   });

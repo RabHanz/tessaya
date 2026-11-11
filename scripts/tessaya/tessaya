@@ -3,6 +3,8 @@
 #
 #   tessaya <project|dir> [claude|codex|<command…>]   new agent in a new tab of that project's space
 #   tessaya --resume <claude-session-id> [dir]          bring an existing Claude conversation into Herdr
+#   tessaya resume <thread> [--force]                   a Tessaya thread's session in Herdr, on the thread's own login;
+#                                                       works with the server down (reads tessaya-sessions.json)
 #   tessaya                                             attach to the space for the current directory
 #
 # Every agent started this way lives in a Herdr session named fab-<project>: it survives the
@@ -12,6 +14,38 @@ set -euo pipefail
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
 roots=(${BATON_ROOTS:-${FAB_ROOTS:-"$PWD" "$HOME" "$HOME/dev"}})
+
+# `resume <thread>`: the thread's session id, login and folder come from the file the server keeps, never its database.
+from_thread=0
+force=0
+if [[ "${1:-}" == "resume" ]]; then
+  [[ -n "${2:-}" ]] || { echo "usage: tessaya resume <thread id, session id or title words> [--force]" >&2; exit 2; }
+  [[ "${3:-}" == "--force" ]] && force=1
+  file="${TESSAYA_SESSIONS_FILE:-${T3CODE_HOME:-$HOME/.t3}/userdata/tessaya-sessions.json}"
+  [[ -f "$file" ]] || { echo "tessaya: $file is missing (Tessaya's server writes it)" >&2; exit 2; }
+  found="$(python3 -I - "$file" "$2" << 'PY'
+import json, sys
+threads = json.load(open(sys.argv[1])).get("threads", [])
+want = sys.argv[2]
+hits = (
+    [t for t in threads if want in (t["threadId"], t["sessionId"])]
+    or [t for t in threads if t["threadId"].startswith(want) or t["sessionId"].startswith(want)]
+    or [t for t in threads if want.lower() in t.get("title", "").lower()]
+)
+if len(hits) != 1:
+    print(f"tessaya: {len(hits)} threads match '{want}'", file=sys.stderr)
+    for t in hits[:10]:
+        print(f"  {t['threadId']}  {t.get('title', '')}", file=sys.stderr)
+    sys.exit(1)
+print(hits[0]["threadId"], hits[0]["sessionId"], hits[0]["configDir"], hits[0]["cwd"], sep="\t")
+PY
+  )" || exit 1
+  IFS=$'\t' read -r thread_id thread_session thread_config thread_cwd <<< "$found"
+  requests="$(dirname "$file")/tessaya-requests"
+  export TESSAYA_RESUME_CONFIG_DIR="$thread_config"
+  from_thread=1
+  set -- --resume "$thread_session" "$thread_cwd"
+fi
 
 resolve_dir() {
   local want="$1"
@@ -23,18 +57,21 @@ resolve_dir() {
   exit 2
 }
 
+# Each conversation in its own config dir, so its login can move while it runs (LIVE-ACCOUNT).
+claude_cmd=claude
+command -v tessaya-claude > /dev/null 2>&1 && claude_cmd=tessaya-claude
 agent=()
 if [[ "${1:-}" == "--resume" ]]; then
   [[ -n "${2:-}" ]] || { echo "usage: tessaya --resume <session-id> [dir]" >&2; exit 2; }
   dir="$(resolve_dir "${3:-$PWD}")"
-  agent=(claude --resume "$2")
+  agent=("$claude_cmd" --resume "$2")
 elif [[ $# -eq 0 ]]; then
   dir="$PWD"
 else
   dir="$(resolve_dir "$1")"
   shift
   case "${1:-claude}" in
-    claude) agent=(claude) ;;
+    claude) agent=("$claude_cmd") ;;
     codex) agent=(codex) ;;
     *) agent=("$@") ;;
   esac
@@ -45,12 +82,29 @@ name="fab-$(basename "$dir" | tr -c 'A-Za-z0-9_\n-' '-')"
 running() { herdr session list 2>/dev/null | awk -v n="$name" '$1 == n && $2 == "running" { found = 1 } END { exit !found }'; }
 
 # A live Claude process already holds this conversation (any account's sessions folder).
+# The pid still runs the Claude process its descriptor names: claude on its command line, and the start time Claude
+# recorded (procStart, /proc/<pid>/stat field 22), so a pid reused by another process is never taken for it.
+verified() {
+  local pid="$1" f="$2" want stat start began boot
+  tr '\0' ' ' 2> /dev/null < "/proc/$pid/cmdline" | grep -qi claude || return 1
+  stat="$(cat "/proc/$pid/stat" 2> /dev/null)" || return 1
+  start="$(cut -d' ' -f20 <<< "${stat##*) }")"
+  want="$(grep -o '"procStart":"[0-9]*"' "$f" | grep -o '[0-9][0-9]*')"
+  [[ -z "$want" ]] || { [[ "$start" == "$want" ]]; return; }
+  # Older descriptors: the process must not have started after the session did (100 ticks a second).
+  began="$(grep -o '"startedAt":[0-9]*' "$f" | grep -o '[0-9][0-9]*')"
+  [[ -n "$began" ]] || return 1
+  boot="$(awk '/^btime/ {print $2}' /proc/stat)"
+  ((boot * 1000 + start * 10 <= began + 2000))
+}
 holder() {
   local f
   for f in "$HOME"/.claude/sessions/*.json "$HOME"/.claude-*/sessions/*.json \
-    "$HOME"/.local/share/claude-swap/sessions/*/sessions/*.json; do
-    [[ -f "$f" ]] && grep -q "\"sessionId\":\"$1\"" "$f" && kill -0 "$(basename "$f" .json)" 2> /dev/null &&
-      holder_pid="$(basename "$f" .json)" && return 0
+    "$HOME"/.local/share/claude-swap/sessions/*/sessions/*.json \
+    "${TESSAYA_CLAUDE_THREADS:-$HOME/.local/share/tessaya/claude-threads}"/*/sessions/*.json \
+    "${TESSAYA_RESUME_CONFIG_DIR:-/nonexistent}"/sessions/*.json; do
+    [[ -f "$f" ]] && grep -q "\"sessionId\":\"$1\"" "$f" && verified "$(basename "$f" .json)" "$f" &&
+      holder_pid="$(basename "$f" .json)" && holder_file="$f" && return 0
   done
   return 1
 }
@@ -75,6 +129,35 @@ restored=0
 if ((${#agent[@]} > 0)) && [[ "${agent[1]:-}" == "--resume" ]]; then
   exec 9> "${XDG_RUNTIME_DIR:-/tmp}/tessaya-resume-${agent[2]}.lock"
   flock -w 60 9 || { echo "tessaya: another resume of ${agent[2]} is still starting" >&2; exit 1; }
+  # Tessaya's own SDK process holds a thread's session: stop it only when asked (--force), never two writers.
+  if ((from_thread)) && holder "${agent[2]}" && grep -q '"entrypoint":"sdk' "$holder_file"; then
+    if ((!force)); then
+      echo "tessaya: Tessaya is hosting this session (pid $holder_pid). Use Open in terminal in Tessaya, or add --force to stop its turn and open it here." >&2
+      exit 1
+    fi
+    # A running server stops the turn and opens the terminal itself: it renames the request `.taken`, acts, then
+    # answers in `.result`, which is what is printed here. Mode 0600 and this user's: the server acts on nothing else.
+    mkdir -p "$requests"
+    request="$requests/open-$$-${RANDOM}${RANDOM}.json"
+    answer="${request%.json}.result"
+    trap 'rm -f "$request" "$answer"' EXIT INT TERM
+    (umask 077 && printf '{"threadId":"%s"}' "$thread_id" > "$request")
+    for _ in $(seq 1 40); do [[ -f "$request" ]] || break; sleep 0.25; done
+    if [[ ! -f "$request" ]]; then
+      echo "tessaya: Tessaya is stopping its turn and opening this session in a terminal..."
+      for _ in $(seq 1 360); do [[ -f "$answer" ]] && break; sleep 0.5; done
+      [[ -f "$answer" ]] || { echo "tessaya: Tessaya took the request but has not answered in 3 minutes" >&2; exit 1; }
+      outcome="$(python3 -I -c 'import json, sys; a = json.load(open(sys.argv[1])); print(a.get("state", "")); print(a.get("detail", ""))' "$answer")"
+      echo "tessaya: $(sed -n 2p <<< "$outcome")"
+      [[ "$(head -1 <<< "$outcome")" == "opened" ]]
+      exit $?
+    fi
+    # No server took it: the process outlived its server, so it is stopped here (holder() verified the pid).
+    rm -f "$request"
+    kill -TERM "$holder_pid" 2> /dev/null || true
+    for _ in $(seq 1 60); do kill -0 "$holder_pid" 2> /dev/null || break; sleep 0.25; done
+    kill -0 "$holder_pid" 2> /dev/null && { echo "tessaya: pid $holder_pid did not stop" >&2; exit 1; }
+  fi
   if holder "${agent[2]}"; then
     say_where
     agent=()
@@ -101,15 +184,17 @@ if ((restored)); then
   if wait_holder "${agent[2]}"; then say_where; else echo "tessaya: $name restored but ${agent[2]} did not start" >&2; fi
 elif ((${#agent[@]} > 0)); then
   cmd="$(printf '%q ' "${agent[@]}")"
+  # The pane's shell starts from Herdr's environment, so a thread's login goes in the command itself.
+  [[ -n "${TESSAYA_RESUME_CONFIG_DIR:-}" ]] && cmd="CLAUDE_CONFIG_DIR=$(printf '%q' "$TESSAYA_RESUME_CONFIG_DIR") $cmd"
   if herdr --session "$name" workspace list 2>/dev/null | grep -q '"workspace_id"'; then
-    herdr --session "$name" tab create --cwd "$dir" --label "${agent[0]}" --focus >/dev/null
+    herdr --session "$name" tab create --cwd "$dir" --label "${agent[0]#tessaya-}" --focus >/dev/null
   else
     herdr --session "$name" workspace create --cwd "$dir" --label "$(basename "$dir")" --focus >/dev/null
   fi
   # The newest pane is the one just created.
   pane="$(herdr --session "$name" pane list | grep -o '"pane_id":"[^"]*"' | tail -1 | cut -d'"' -f4)"
   herdr --session "$name" pane run "$pane" "$cmd" >/dev/null
-  echo "tessaya: ${agent[0]} running in $name pane $pane"
+  echo "tessaya: ${agent[0]#tessaya-} running in $name pane $pane"
   [[ "${agent[1]:-}" == "--resume" ]] && { wait_holder "${agent[2]}" || true; }
 fi
 

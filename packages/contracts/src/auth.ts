@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
 
 import {
@@ -66,7 +67,7 @@ export const AuthBatonHandsHostScope = "baton:hands-host" as const;
  * can do only these; it is minted on the server it reads.
  */
 export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
-export const AuthEnvironmentScope = Schema.Literals([
+const AuthEnvironmentScopeName = Schema.Literals([
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
   AuthSettingsWriteScope,
@@ -89,16 +90,61 @@ export const AuthEnvironmentScope = Schema.Literals([
   AuthBatonHandsHostScope,
   AuthBatonMemorySyncScope,
 ]);
-export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
+/**
+ * Baton was renamed Tessaya. Each `baton:` scope also decodes from its `tessaya:` spelling, and this build still
+ * writes the old one, so a session, token or grant written by the next build (or read after a rollback) still works.
+ */
+const RENAMED_SCOPES = [
+  [AuthBatonCloudApproveScope, "tessaya:cloud-approve"],
+  [AuthBatonHandsScope, "tessaya:hands"],
+  [AuthBatonHandsHostScope, "tessaya:hands-host"],
+  [AuthBatonMemorySyncScope, "tessaya:memory-sync"],
+] as const;
+const SCOPE_OF_RENAMED = new Map<string, string>(
+  RENAMED_SCOPES.map(([current, renamed]) => [renamed, current]),
+);
+const RENAMED_SPELLINGS = RENAMED_SCOPES.map(([, renamed]) => renamed);
+type RenamedSpelling = (typeof RENAMED_SPELLINGS)[number];
+const fromRenamed = <S extends string>(scope: S | RenamedSpelling): S =>
+  (SCOPE_OF_RENAMED.get(scope) ?? scope) as S;
+export type AuthEnvironmentScope = typeof AuthEnvironmentScopeName.Type;
+export const AuthEnvironmentScope = Schema.Literals([
+  ...AuthEnvironmentScopeName.literals,
+  ...RENAMED_SPELLINGS,
+]).pipe(
+  Schema.decodeTo(
+    AuthEnvironmentScopeName,
+    SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
+      decode: fromRenamed,
+      encode: (scope) => scope,
+    }),
+  ),
+);
 export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
 export type AuthEnvironmentScopes = typeof AuthEnvironmentScopes.Type;
 
 // Only the desktop's own session holds hands-host, so no grant can hand it to another device.
-export const AuthGrantScope = Schema.Literals(
-  AuthEnvironmentScope.literals.filter(
+const AuthGrantScopeName = Schema.Literals(
+  AuthEnvironmentScopeName.literals.filter(
     (scope) => scope !== AuthReviewWriteScope && scope !== AuthBatonHandsHostScope,
   ),
 );
+type AuthGrantScopeName = typeof AuthGrantScopeName.Type;
+export const AuthGrantScope = Schema.Literals([
+  ...AuthGrantScopeName.literals,
+  ...RENAMED_SPELLINGS,
+]).pipe(
+  Schema.decodeTo(
+    AuthGrantScopeName,
+    // A renamed hands-host still decodes to a scope no grant may carry, so the target rejects it.
+    SchemaTransformation.transform<AuthGrantScopeName, AuthGrantScopeName | RenamedSpelling>({
+      decode: fromRenamed,
+      encode: (scope) => scope,
+    }),
+  ),
+);
+/** The grantable scopes under the names this build writes. */
+export const AuthGrantScopeNames = AuthGrantScopeName.literals;
 export type AuthGrantScope = typeof AuthGrantScope.Type;
 /** A memory-sync credential carries that scope alone: it must never double as a client token. */
 export const mixesMemorySync = (scopes: ReadonlyArray<string>): boolean =>

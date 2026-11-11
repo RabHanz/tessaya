@@ -33,12 +33,18 @@ export const parseCloudLogins = (text: string): CloudLogins | null => {
     if (typeof v.checkedAt !== "number" || !Array.isArray(v.accounts)) return null;
     const accounts = v.accounts.flatMap((a: unknown) => {
       const o = (typeof a === "object" && a !== null ? a : {}) as Record<string, unknown>;
-      return typeof o["account"] === "string" && typeof o["state"] === "string" && STATES.has(o["state"])
+      return typeof o["account"] === "string" &&
+        typeof o["state"] === "string" &&
+        STATES.has(o["state"])
         ? [
             {
               account: o["account"],
-              loginExpiresInDays: typeof o["loginExpiresInDays"] === "number" ? o["loginExpiresInDays"] : null,
-              state: stateOf(o["state"] as CloudLoginState, typeof o["loginExpiresInDays"] === "number" ? o["loginExpiresInDays"] : null),
+              loginExpiresInDays:
+                typeof o["loginExpiresInDays"] === "number" ? o["loginExpiresInDays"] : null,
+              state: stateOf(
+                o["state"] as CloudLoginState,
+                typeof o["loginExpiresInDays"] === "number" ? o["loginExpiresInDays"] : null,
+              ),
             },
           ]
         : [];
@@ -52,18 +58,32 @@ export const parseCloudLogins = (text: string): CloudLogins | null => {
 
 const ago = (ms: number): string => {
   const m = Math.max(0, Math.round(ms / 60_000));
-  return m < 120 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+  return m < 120
+    ? `${m} min ago`
+    : m < 2880
+      ? `${Math.round(m / 60)} h ago`
+      : `${Math.round(m / 1440)} days ago`;
 };
 
 /** The 'what works right now' row. Unknown when there is no report. */
 export const cloudLoginsRow = (
   s: CloudLogins | null,
   now: number,
-): { readonly name: string; readonly state: "works" | "limited" | "unknown"; readonly why: string } => {
+): {
+  readonly name: string;
+  readonly state: "works" | "limited" | "unknown";
+  readonly why: string;
+} => {
   const name = "Claude cloud logins";
-  if (s === null) return { name, state: "unknown", why: "Unknown: no report of the cloud logins could be read here." };
+  if (s === null)
+    return {
+      name,
+      state: "unknown",
+      why: "Unknown: no report of the cloud logins could be read here.",
+    };
   const when = ago(now - s.checkedAt);
-  if (s.accounts.length === 0) return { name, state: "unknown", why: `Checked ${when}; no cloud accounts are set up.` };
+  if (s.accounts.length === 0)
+    return { name, state: "unknown", why: `Checked ${when}; no cloud accounts are set up.` };
   const bad = s.accounts.filter((a) => a.state !== "ok");
   if (bad.length > 0) {
     return {
@@ -75,7 +95,11 @@ export const cloudLoginsRow = (
   if (now - s.checkedAt > CLOUD_CHECK_STALE_MS) {
     return { name, state: "limited", why: `The last check was ${when}; it should run every day.` };
   }
-  return { name, state: "works", why: `All ${s.accounts.length} logins are good (checked ${when}).` };
+  return {
+    name,
+    state: "works",
+    why: `All ${s.accounts.length} logins are good (checked ${when}).`,
+  };
 };
 
 /** One 'needs you' row per login that is about to lapse or has: renewing one takes a browser. */

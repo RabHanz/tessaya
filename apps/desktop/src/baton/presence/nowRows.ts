@@ -4,6 +4,7 @@ import { degradedSummary, type Capability } from "@t3tools/baton-shared/degraded
 import type { WeaveRecord } from "@t3tools/baton-shared/weave";
 import type { Commitment } from "@t3tools/baton-shared/commitments";
 import type { NeedItem } from "@t3tools/baton-shared/needsMe";
+import type { BatonTeamMember } from "@t3tools/baton-contracts";
 
 import type { HomeControl } from "../home/batonHome.ts";
 
@@ -23,6 +24,8 @@ export interface NowData {
   readonly muted: ReadonlyArray<{ readonly topic: string; readonly title: string }>;
   readonly weaves: ReadonlyArray<WeaveRecord>;
   readonly capabilities: ReadonlyArray<Capability>;
+  /** Who on the team is doing what (P4), his own view. */
+  readonly team?: ReadonlyArray<BatonTeamMember>;
   /** Each standing job's latest run, newest first. */
   readonly runs?: ReadonlyArray<{
     readonly id: string;
@@ -71,6 +74,7 @@ const BRIEF = "This morning";
 const CUT = "Interrupted by a restart";
 const KEEP = "Keeping track of";
 const DOING = "What I am doing";
+const TEAM = "The team";
 const LEARNED = "Learned today";
 const HELD = "Held back, and why";
 const WEAVE = "Between sessions";
@@ -166,6 +170,25 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
           ),
         ]
       : data.doing.map((d, i) => note(`now.doing:${i}`, DOING, d, ""))),
+    // A private persona's work is its own: only whether it is busy.
+    ...(data.team ?? []).map((m) =>
+      note(
+        `now.team:${m.id}`,
+        TEAM,
+        `${m.name}: ${m.jobs.length > 0 && !m.private ? m.jobs.map((j) => j.title).join(", ") : m.busy ? "busy" : "free"}`,
+        m.private
+          ? m.role
+          : [
+              m.role,
+              m.episode?.text,
+              m.recent[0] === undefined
+                ? undefined
+                : `${m.recent[0].subject}: ${m.recent[0].outcome}`,
+            ]
+              .filter((x): x is string => x !== undefined && x !== "")
+              .join(". "),
+      ),
+    ),
     ...(data.learned.length === 0
       ? [
           note(

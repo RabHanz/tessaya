@@ -1,8 +1,13 @@
-import { AuthBatonMemorySyncScope, AuthGrantScope, mixesMemorySync } from "@t3tools/contracts";
+import {
+  AuthBatonMemorySyncScope,
+  type AuthGrantScope,
+  AuthGrantScopeNames,
+  mixesMemorySync,
+} from "@t3tools/contracts";
 import { Flag } from "effect/cli";
 
 export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
-  Flag.Literals("scope", AuthGrantScope.literals).pipe(
+  Flag.Literals("scope", AuthGrantScopeNames).pipe(
     Flag.withDescription(
       `Authorization scope to grant. Repeat for multiple scopes; replaces the default set: ${defaults.join(", ")}.`,
     ),

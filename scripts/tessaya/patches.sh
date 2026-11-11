@@ -11,6 +11,7 @@
 #   vendor-patches/t3code/PIN          upstream commit the tree is built on
 #   vendor-patches/t3code/series       patch names, applied in order
 #   vendor-patches/t3code/REGENERATED  upstream paths changed by regeneration, not by patch
+#   vendor-patches/t3code/OURS         upstream paths Tessaya replaces whole; a conflict there keeps Tessaya's file
 #   vendor-patches/t3code/NNNN-*.patch one concern each; every edited upstream path in exactly one
 #
 # Usage:
@@ -156,7 +157,7 @@ cmd_rebase() {
     <(git diff --no-renames --name-only --diff-filter=A "$pin" HEAD | sort) \
     <(git diff --no-renames --name-only --diff-filter=A "$pin" "$new" | sort) || true)"
   if [ -n "$collide" ]; then
-    echo "patches: upstream now adds paths Baton also added. Rename or drop Baton's first:" >&2
+    echo "patches: upstream now adds paths Tessaya also added. Rename or drop Tessaya's first:" >&2
     printf '  %s\n' $collide >&2
     exit 1
   fi
@@ -179,6 +180,27 @@ cmd_rebase() {
       failed+=("$p")
     fi
   done < <(series)
+
+  # OURS lists upstream files Tessaya replaces whole (its own text where upstream has T3's branding). A patch whose
+  # every file applied, and whose only conflicts are OURS files, keeps Tessaya's file: no human needed.
+  local still=() n applied conflicted f
+  for p in ${failed[@]+"${failed[@]}"}; do
+    n="$(patch_paths "$dir/$p" | grep -c . || true)"
+    applied="$(grep -cE "^Applied patch to '.*' (cleanly|with conflicts)\.$" "$dir/.$p.log" || true)"
+    conflicted="$(sed -n "s/^Applied patch to '\(.*\)' with conflicts\.$/\1/p" "$dir/.$p.log")"
+    if [ -f "$dir/OURS" ] && [ "$applied" -eq "$n" ] && [ -n "$conflicted" ] &&
+      ! printf '%s\n' "$conflicted" | grep -vxF -f <(grep -vE '^\s*(#|$)' "$dir/OURS") | grep -q .; then
+      while read -r f; do
+        git show "HEAD:$f" > "$f" || die "could not restore Tessaya's $f"
+        git add -- "$f"
+        echo "  OURS      $p  kept Tessaya's $f (upstream changed it)"
+      done <<< "$conflicted"
+      rm -f "$dir/.$p.log"
+    else
+      still+=("$p")
+    fi
+  done
+  failed=(${still[@]+"${still[@]}"})
 
   printf '%s\n' "$new" > "$dir/PIN"
   git add "$dir/PIN"

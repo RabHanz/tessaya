@@ -7,7 +7,17 @@ const drawn = new Set<string>([...TABS.map((t) => t.id), ...SETTINGS.map((t) => 
 
 /** Every setting the window has (ids as the producers make them), and the one place each must be. */
 const PLACES: Readonly<Record<string, ReadonlyArray<string>>> = {
-  general: ["v.login", "v.notice", "v.dnd", "v.snooze", "v.quiet", "v.brief", "u.act"],
+  general: [
+    "v.login",
+    "v.startHome",
+    "v.startSessions",
+    "v.notice",
+    "v.dnd",
+    "v.snooze",
+    "v.quiet",
+    "v.brief",
+    "u.act",
+  ],
   voice: [
     "v.enabled",
     "v.muted",

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   dictationCaption,
   frameLevel,
+  createSpeechGain,
   IDLE_TURN,
   isCancelPhrase,
   reduceTurn,
@@ -146,6 +147,13 @@ describe("the pill while a window is open", () => {
 
   it("holds Dictating through each chunk, and leaves after", () => {
     let state = play([...open, { type: "dictating", caption: "Say stop dictating" }]);
+    expect(turnView(state)?.wave).toBe("live");
+    // Writing it out or tidying sweeps, so the main process stops reading bands from the microphone.
+    const tidying = reduceTurn(state, { type: "dictating", caption: "Tidying…", tidying: true });
+    expect(turnView(tidying)?.wave).toBe("sweep");
+    expect(turnView(reduceTurn(tidying, { type: "dictating", caption: "Pasted" }))?.wave).toBe(
+      "live",
+    );
     state = play(
       [
         { type: "heard", text: "Dear Sam" },
@@ -291,5 +299,64 @@ describe("frameLevel", () => {
   it("is zero for silence and capped for a full frame", () => {
     expect(frameLevel(new Int16Array(160))).toBe(0);
     expect(frameLevel(new Int16Array(160).fill(32767))).toBe(1);
+  });
+  it("normalises to his own speech: a -41 dBFS and a -12 dBFS speaker fill the bars alike, and pauses fall back", () => {
+    // A frame's level from its peak in dBFS, as frameLevel gives it.
+    const level = (db: number) => 1.4 * Math.sqrt(10 ** (db / 20));
+    // Syllables around his median, with pauses, over a room 26 dB under his speech.
+    const syllables = [0, -4, 3, -8, -2, 5, -6, -12, 1, -3];
+    const talk = (median: number, floor: number) =>
+      Array.from({ length: 400 }, (_, i) =>
+        i % 40 < 30 ? median + syllables[i % syllables.length]! : floor + ((i * 7) % 5) - 2,
+      );
+    const run = (median: number) => {
+      const gain = createSpeechGain();
+      const frames = talk(median, median - 26);
+      const shown = frames.map((db) => gain(level(db)));
+      const speech = shown.slice(200).filter((_, i) => (i + 200) % 40 < 30);
+      const sorted = [...speech].sort((a, b) => a - b);
+      return {
+        mean: speech.reduce((s, x) => s + x, 0) / speech.length,
+        p90: sorted[Math.floor(sorted.length * 0.9)]!,
+        pinned: speech.filter((x) => x >= 1).length / speech.length,
+        // The last pause, 10 frames in.
+        pause: shown[399]!,
+      };
+    };
+    const quiet = run(-41);
+    const hot = run(-12);
+    expect(Math.abs(quiet.mean - hot.mean)).toBeLessThan(0.1);
+    expect(Math.abs(quiet.p90 - hot.p90)).toBeLessThan(0.1);
+    // Lively, never flat, never pinned at the top.
+    expect(quiet.mean).toBeGreaterThan(0.5);
+    expect(hot.pinned).toBeLessThan(0.3);
+    expect(quiet.pause).toBeLessThan(0.1);
+    expect(hot.pause).toBeLessThan(0.1);
+    // The room alone, a few dB either way, never lifts the bars.
+    const room = createSpeechGain();
+    const roomShown = Array.from({ length: 200 }, (_, i) => room(level(-67 + ((i * 3) % 7) - 3)));
+    expect(Math.max(...roomShown.slice(20))).toBe(0);
+  });
+  it("keeps a long sentence moving, ignores digital silence, and starts afresh on reset", () => {
+    const level = (db: number) => 1.4 * Math.sqrt(10 ** (db / 20));
+    const syllables = [0, -4, 3, -8, -2, 5, -6, -12, 1, -3];
+    // A second of room, then 10 s of speech with no pause: the floor must not climb into it.
+    const gain = createSpeechGain();
+    for (let i = 0; i < 50; i += 1) gain(level(-67));
+    const said = Array.from({ length: 500 }, (_, i) => gain(level(-41 + syllables[i % 10]!)));
+    expect(Math.min(...said.slice(450).filter((_, i) => syllables[i % 10]! >= -4))).toBeGreaterThan(
+      0.3,
+    );
+    // Digital silence (zeros) between words never drags the floor so low that the room shows as speech.
+    const silent = createSpeechGain();
+    for (let i = 0; i < 50; i += 1) silent(0);
+    const room = Array.from({ length: 100 }, () => silent(level(-67)));
+    expect(Math.max(...room.slice(50))).toBe(0);
+    // A new recording on a hot mic: reset learns its room and level afresh.
+    gain.reset();
+    for (let i = 0; i < 50; i += 1) gain(level(-38));
+    const hot = Array.from({ length: 200 }, (_, i) => gain(level(-12 + syllables[i % 10]!)));
+    expect(hot.slice(150).reduce((a, x) => a + x, 0) / 50).toBeGreaterThan(0.5);
+    expect(gain(level(-38))).toBeLessThan(0.7);
   });
 });

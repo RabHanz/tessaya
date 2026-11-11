@@ -22,11 +22,15 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 
-import { parsePanePrompt } from "./pane-prompt.mjs";
+import { CARD_REF, herdrBin, parsePanePrompt, parseWaitingScreen } from "./pane-prompt.mjs";
 
-const HERDR =
-  process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
-const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
+const HERDR = herdrBin();
+const localBin = (name) => NodePath.join(NodeOS.homedir(), ".local", "bin", name);
+// A box whose launchers predate the rename has only `baton`.
+const BATON =
+  process.env.TESSAYA_BIN ??
+  process.env.BATON_BIN ??
+  (NodeFS.existsSync(localBin("tessaya")) ? localBin("tessaya") : localBin("baton"));
 const ATTACHMENT_ENTER_MS = Number(process.env.BATON_LIVE_ATTACHMENT_ENTER_MS ?? 1_500);
 const PROMPT_CLEAR_TRIES = Number(process.env.BATON_LIVE_PROMPT_CLEAR_TRIES ?? 30);
 const UNBOUND = "baton-unbound";
@@ -50,6 +54,38 @@ export function promptText(blocks) {
   return (at < 0 ? text : text.slice(at + marker.length)).trim();
 }
 
+/** The efforts `/effort` takes; the same list as LIVE_EFFORT_CHOICES in baton-shared's liveModel.ts (the test pins it). */
+export const LIVE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const EFFORT_AS_IS = "session";
+
+/**
+ * What T3 shows as this session's model: the agent in the terminal, which keeps its own model (the slug stays `live`,
+ * the thread's model in LiveSessionMirror). Picking another Claude model in T3 types /model into the session.
+ */
+export const LIVE_MODELS = {
+  availableModels: [
+    {
+      modelId: "live",
+      name: "Claude Code",
+      description: "The model is the session's own; pick one to change it there.",
+    },
+  ],
+  currentModelId: "live",
+};
+
+/** The effort control T3's own composer shows for a live thread; the session itself keeps the real value. */
+export const effortConfigOption = (current = EFFORT_AS_IS) => ({
+  id: "effort",
+  name: "Effort",
+  category: "thought_level",
+  type: "select",
+  currentValue: current,
+  options: [
+    { value: EFFORT_AS_IS, name: "Current" },
+    ...LIVE_EFFORTS.map((effort) => ({ value: effort, name: effort })),
+  ],
+});
+
 /** The explicit request to move a plain-terminal session into Herdr. */
 export const isAdoptRequest = (text) => /(?:^|\n)\s*bring (it )?into herdr\s*\.?\s*$/i.test(text);
 
@@ -62,7 +98,7 @@ export const notSentNote = (live) =>
   [
     "Not sent. This session runs in a plain terminal" +
       (live.remoteControl ? " with Remote Control on" : "") +
-      ", and Baton can only type into sessions inside Herdr.",
+      ", and Tessaya can only type into sessions inside Herdr.",
     "Moving it into Herdr restarts it with the same conversation" +
       (live.remoteControl
         ? " (Remote Control on claude.ai disconnects until you turn it on again)"
@@ -190,9 +226,11 @@ export function herdrPaneRef(env) {
 /** The keys that answer `prompt` with `answer` (an option's label or number, or free text). */
 export function answerKeys(prompt, answer) {
   const wanted = String(answer ?? "").trim();
-  const byLabel = prompt.options.find((o) => o.label.toLowerCase() === wanted.toLowerCase());
-  const byNumber = /^\d+$/.test(wanted)
-    ? prompt.options.find((o) => o.index === Number(wanted) - 1)
+  // A choice is the answer's first line: T3 appends a pasted picture's note below it.
+  const chosen = wanted.split("\n")[0].trim();
+  const byLabel = prompt.options.find((o) => o.label.toLowerCase() === chosen.toLowerCase());
+  const byNumber = /^\d+$/.test(chosen)
+    ? prompt.options.find((o) => o.index === Number(chosen) - 1)
     : undefined;
   const option = byLabel ?? byNumber;
   if (option?.keys !== undefined) return { keys: option.keys, text: null };
@@ -587,32 +625,82 @@ export async function sendToStopped(dir, sessionId, item, deps) {
   return { state: "resumed" };
 }
 
-/** The prompt on the pane's screen now, or null. */
-export async function readPanePrompt(paneRef) {
+/** The prompt on the pane's screen now, or null. `waiting`: a screen it has no reader for is Enter and Esc. */
+export async function readPanePrompt(paneRef, waiting = false) {
   const read = await run(
     HERDR,
     herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "80"]),
   );
-  return read.ok ? parsePanePrompt(read.out) : null;
+  return read.ok ? (waiting ? parseWaitingScreen : parsePanePrompt)(read.out) : null;
 }
 
 /**
  * D88: answer the prompt showing in the pane with keystrokes, then wait until it is gone. Returns
  * what to tell the thread, or null when `text` is not an answer to it (nothing was pressed).
  */
-export async function answerPrompt(sessionId, paneRef, text) {
-  const shown = await readPanePrompt(paneRef);
-  if (shown === null) return null;
-  // A plain message is never an answer: only the question card's own "<question>\n<answer>" presses keys.
-  if (!isCardAnswer(text, shown)) return null;
+const answering = new Map(); // pane -> the answer being pressed there, so two never interleave keys
+
+/** `<id>.answered`: when the bridge last finished with a card's answer; the mirror re-raises a card only after it. */
+const answeredFile = (dir, sessionId) =>
+  NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.answered`);
+
+export function answerPrompt(sessionId, paneRef, text) {
+  const done = (answering.get(paneRef) ?? Promise.resolve()).then(() =>
+    answerNow(sessionId, paneRef, text),
+  );
+  const tail = done.catch(() => {});
+  answering.set(paneRef, tail);
+  void tail.then(() => {
+    if (answering.get(paneRef) === tail) answering.delete(paneRef);
+  });
+  return done;
+}
+
+/** Said when a card's answer reaches a dialog other than the one it was for. */
+export const STALE_ANSWER_NOTE =
+  "That answer was for a question that is no longer on the screen, so nothing was pressed. The question showing now has its own card.";
+
+/** True when the text's first line is a permission card's question, which ends with its prompt's ref. */
+export const isRefAnswer = (text) => {
+  const body = String(text ?? "").trim();
+  const at = body.indexOf("\n");
+  return at > 0 && CARD_REF.test(body.slice(0, at).trim());
+};
+
+async function answerNow(sessionId, paneRef, text) {
+  const shown = await readPanePrompt(paneRef, true);
+  const forThis = shown !== null && isCardAnswer(text, shown);
+  // A permission card's answer for another dialog presses nothing and is never typed as a message.
+  const stale = !forThis && isRefAnswer(text);
+  if (!forThis && !stale) return null;
+  try {
+    return stale ? STALE_ANSWER_NOTE : await pressAnswer(sessionId, paneRef, text, shown);
+  } finally {
+    try {
+      NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
+      NodeFS.writeFileSync(answeredFile(QUEUE_DIR, sessionId), String(Date.now()));
+    } catch {}
+  }
+}
+
+/** True while the pane still shows the dialog `shown` was read from. */
+const stillShows = async (paneRef, shown) =>
+  (await readPanePrompt(paneRef, true))?.key === shown.key;
+
+async function pressAnswer(sessionId, paneRef, text, shown) {
   const answer = answerFrom(text, shown);
   const plan = answerKeys(shown, answer);
   if (plan === null) return null;
-  if (plan.keys.length > 0) await run(HERDR, herdrArgs(paneRef, "send-keys", plan.keys));
+  // The last key commits: the pane is read again just before it, so a dialog that changed meanwhile is never confirmed.
+  const commit = plan.text === null ? plan.keys.slice(-1) : [];
+  const moves = plan.text === null ? plan.keys.slice(0, -1) : plan.keys;
+  if (moves.length > 0) await run(HERDR, herdrArgs(paneRef, "send-keys", moves));
+  if (plan.text !== null) await sleep(300);
+  if (!(await stillShows(paneRef, shown))) return STALE_ANSWER_NOTE;
+  if (commit.length > 0) await run(HERDR, herdrArgs(paneRef, "send-keys", commit));
   if (plan.text !== null) {
     const at = paneRef.indexOf("~");
     const session = at < 0 ? [] : ["--session", paneRef.slice(0, at)];
-    await sleep(300);
     await run(HERDR, [
       ...session,
       "pane",
@@ -753,7 +841,7 @@ async function adopt(sessionId, live) {
   if (live.status === "busy") {
     return {
       error:
-        "It is working in a plain terminal right now. Send again when it is idle and Baton will move it into Herdr.",
+        "It is working in a plain terminal right now. Send again when it is idle and Tessaya will move it into Herdr.",
     };
   }
   process.kill(live.pid, "SIGTERM");
@@ -761,7 +849,7 @@ async function adopt(sessionId, live) {
   if (alive(live.pid)) return { error: "It did not exit, so it was left as it was." };
   const out = await run(BATON, ["--resume", sessionId, live.cwd], 30_000);
   if (!/running in (\S+) pane (\S+)/.test(out.out))
-    return { error: `baton --resume said: ${out.out.slice(0, 200)}` };
+    return { error: `tessaya --resume said: ${out.out.slice(0, 200)}` };
   for (let i = 0; i < 60; i += 1) {
     const next = findLiveSession(sessionId);
     if (next?.pane && next.status !== "busy") return { live: next };
@@ -939,8 +1027,8 @@ async function prompt(params) {
   const turn = { cancelled: false, pane: live.pane };
   turns.set(sessionId, turn);
   try {
-    // A question or approval on the screen takes the message as its answer (D88).
-    if (live.status === "waiting") {
+    // A question or approval on the screen takes the message as its answer (D88); a card's answer is never typed.
+    if (live.status === "waiting" || isRefAnswer(promptText(params.prompt))) {
       const answered = await answerPrompt(sessionId, live.pane, promptText(params.prompt));
       if (answered !== null) {
         say(sessionId, answered);
@@ -960,7 +1048,7 @@ async function prompt(params) {
       say(
         sessionId,
         live.status === "waiting"
-          ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
+          ? questionWaitingNote((await readPanePrompt(live.pane, true))?.question, count)
           : queuedNote("earlier messages are still waiting.", count),
       );
       return { stopReason: "end_turn" };
@@ -985,7 +1073,7 @@ async function prompt(params) {
       say(
         sessionId,
         failure === BLOCKED_NOTE
-          ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
+          ? questionWaitingNote((await readPanePrompt(live.pane, true))?.question, count)
           : queuedNote("Herdr did not take it yet.", count),
       );
       return { stopReason: "end_turn" };
@@ -997,6 +1085,60 @@ async function prompt(params) {
   } finally {
     turns.delete(sessionId);
   }
+}
+
+/** The last effort typed into each session, so T3 re-applying a saved option on every activation types nothing. */
+const efforts = new Map();
+
+/**
+ * An effort picked on a client without the web hook (mobile, a keybinding), before its next send. Typed only into an
+ * idle session with nothing waiting; otherwise queued behind what waits, in order, as a message would be. A question
+ * or approval on screen would take it as its answer. Returns what the control should show; never refuses the send.
+ */
+async function setEffort(params) {
+  const sessionId = params.sessionId;
+  const value = String(params.value ?? "");
+  if (
+    params.configId !== "effort" ||
+    !LIVE_EFFORTS.includes(value) ||
+    typeof sessionId !== "string"
+  ) {
+    return efforts.get(sessionId) ?? EFFORT_AS_IS;
+  }
+  if (efforts.get(sessionId) === value) return value;
+  const live = findLiveSession(sessionId);
+  if (live === null || live.pane === null) {
+    say(
+      sessionId,
+      `Effort not changed to ${value}: this session is not in Herdr, so it cannot be told.`,
+    );
+    return efforts.get(sessionId) ?? EFFORT_AS_IS;
+  }
+  const command = `/effort ${value}`;
+  if (
+    live.status === "busy" ||
+    live.status === "waiting" ||
+    serverWaiting(QUEUE_DIR, sessionId) > 0 ||
+    readQueue(QUEUE_DIR, sessionId).some((item) => item.kind !== "note")
+  ) {
+    const count = queueForServer(QUEUE_DIR, sessionId, {
+      text: command,
+      label: NodePath.basename(live.cwd),
+    });
+    say(
+      sessionId,
+      `Effort ${value} goes in once the session is free (${count} waiting, this included).`,
+    );
+    efforts.set(sessionId, value);
+    return value;
+  }
+  const failure = await typeInto(live.pane, command);
+  if (failure !== null) {
+    say(sessionId, `Effort not changed to ${value}: ${failure}`);
+    return efforts.get(sessionId) ?? EFFORT_AS_IS;
+  }
+  efforts.set(sessionId, value);
+  return value;
 }
 
 const resumesInFlight = new Set();
@@ -1048,7 +1190,7 @@ async function handle(message) {
     case "initialize":
       return {
         protocolVersion: 1,
-        agentInfo: { name: "baton-live", title: "Baton live session", version: "1" },
+        agentInfo: { name: "baton-live", title: "Tessaya live session", version: "1" },
         agentCapabilities: {
           loadSession: false,
           promptCapabilities: { image: true, audio: false, embeddedContext: false },
@@ -1058,13 +1200,19 @@ async function handle(message) {
       };
     case "session/new": {
       const bound = sessionOfLiveThread(process.env.T3CODE_THREAD_ID);
-      if (bound !== null) return { sessionId: bound };
+      if (bound !== null)
+        return { sessionId: bound, models: LIVE_MODELS, configOptions: [effortConfigOption()] };
       const unbound = `${UNBOUND}-${process.pid}-${id}`;
       if (typeof params.cwd === "string") newSessionCwd.set(unbound, params.cwd);
-      return { sessionId: unbound };
+      return { sessionId: unbound, models: LIVE_MODELS, configOptions: [effortConfigOption()] };
     }
     case "session/resume":
+      return { models: LIVE_MODELS, configOptions: [effortConfigOption()] };
+    // The model is the session's own: T3 re-selecting "live" changes nothing (a real pick types /model, 0009).
+    case "session/set_model":
       return {};
+    case "session/set_config_option":
+      return { configOptions: [effortConfigOption(await setEffort(params))] };
     case "session/prompt":
       return prompt(params);
     case "session/cancel": {

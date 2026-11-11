@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const HINTS = {
   opened: "Synced and gates green. The PR is open for review; merging and deploying are by hand.",
-  nothing: "Baton is on upstream's tip.",
+  nothing: "Tessaya is on upstream's tip.",
   conflict:
     "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR.",
   gates: "The series applied but a gate failed. The branch is pushed; read the gates log.",

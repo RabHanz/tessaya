@@ -1,3 +1,212 @@
+diff --git a/apps/mobile/src/features/home/HomeRouteScreen.tsx b/apps/mobile/src/features/home/HomeRouteScreen.tsx
+index 99ede8afe7c4aecc9ff8342f3f0b4d0f0b68bb57..f1fdb0aae1be4f2dfb4a86fe493fca9aed590462 100644
+--- a/apps/mobile/src/features/home/HomeRouteScreen.tsx
++++ b/apps/mobile/src/features/home/HomeRouteScreen.tsx
+@@ -33,9 +33,11 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
+ import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
+ import { WorkspaceListEmptyDetail } from "../layout/workspace/WorkspaceListEmptyDetail";
+ import { WorkspaceListHeader } from "../layout/workspace/WorkspaceListHeader";
++import { useBatonLiveOnly } from "../threads/batonLiveOnly";
+ import { buildHomeListFilterMenuItems } from "./home-list-filter-menu";
+ 
+ export function HomeRouteScreen() {
++  const batonLiveOnly = useBatonLiveOnly();
+   const nativePrimaryColumn = use(NativePrimaryColumnContext);
+   const { layout, primarySidebarSearchQuery, setPrimarySidebarSearchQuery, startNewTask } =
+     useAdaptiveWorkspaceLayout();
+@@ -174,7 +176,8 @@ export function HomeRouteScreen() {
+             accessibilityLabel: "Search threads",
+           }}
+           filter={{
+-            customized: selectedEnvironmentId !== null || selectedProjectKey !== null,
++            customized:
++              selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
+             items: buildHomeListFilterMenuItems({
+               environments,
+               projects: projectFilterOptions,
+@@ -182,6 +185,7 @@ export function HomeRouteScreen() {
+               selectedProjectKey,
+               onEnvironmentChange: setSelectedEnvironmentId,
+               onProjectChange: setSelectedProjectKey,
++              liveOnly: batonLiveOnly,
+             }),
+           }}
+         />
+diff --git a/apps/mobile/src/features/home/HomeScreen.tsx b/apps/mobile/src/features/home/HomeScreen.tsx
+index dac883341cc1011b1b4e06b76f17888cb182db2f..b6185c65537ab6a3a9b6216871ced9d25f69a542 100644
+--- a/apps/mobile/src/features/home/HomeScreen.tsx
++++ b/apps/mobile/src/features/home/HomeScreen.tsx
+@@ -89,6 +89,12 @@ import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-sw
+ import { useFabScroll } from "./FabScrollContext";
+ import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
+ import { ThreadListFilters } from "./ThreadListFilters";
++import {
++  isRunningLive,
++  liveThreadsOnly,
++  runningLiveThreads,
++  useBatonLiveOnly,
++} from "../threads/batonLiveOnly";
+ 
+ interface HomeScreenProps {
+   readonly projects: ReadonlyArray<EnvironmentProject>;
+@@ -456,13 +462,15 @@ export function HomeScreen(props: HomeScreenProps) {
+   } = listEnvironments;
+   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
+   const pendingOrder = usePendingThreadOrder();
++  const batonLiveOnly = useBatonLiveOnly();
++  const batonRunningLive = useMemo(() => runningLiveThreads(props.threads), [props.threads]);
+   const {
+     layout: threadListV2Layout,
+     items: threadListV2Items,
+     contentOnlyThreadKeys,
+     olderSettledShelf,
+   } = useThreadListV2({
+-    threads: props.threads,
++    threads: liveThreadsOnly(props.threads, batonLiveOnly),
+     pendingTasks: props.pendingTasks,
+     environmentId: props.selectedEnvironmentId,
+     projectRefs: v2ScopedProjectGroup === null ? null : v2ScopedProjectGroup.projectRefs,
+@@ -574,6 +582,7 @@ export function HomeScreen(props: HomeScreenProps) {
+     const thread = item.item.thread;
+     return (
+       <ThreadListV2Row
++        batonLive={isRunningLive(batonRunningLive, thread)}
+         pane={sidebarSurface ? "sidebar" : "screen"}
+         selected={scopedThreadKey(thread.environmentId, thread.id) === selectedThreadKey}
+         fullSwipeWidth={fullSwipeWidth}
+diff --git a/apps/mobile/src/features/home/ThreadListFilters.tsx b/apps/mobile/src/features/home/ThreadListFilters.tsx
+index 196e6a86480b561b1c9efa0a41b54a56791b843c..9217b45117f09971cc16ae5356e9c3375b134230 100644
+--- a/apps/mobile/src/features/home/ThreadListFilters.tsx
++++ b/apps/mobile/src/features/home/ThreadListFilters.tsx
+@@ -1,6 +1,7 @@
+ import { Pressable, ScrollView } from "react-native";
+ import { SymbolView } from "../../components/ui/AppSymbol";
+ import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
++import { setBatonLiveOnly, useBatonLiveOnly } from "../threads/batonLiveOnly";
+ import type { EnvironmentId } from "@t3tools/contracts";
+ import type {
+   HomeListFilterMenuEnvironment,
+@@ -17,6 +18,7 @@ export function ThreadListFilters(props: {
+   /** List padding the scroller bleeds through so pills start where row content does. */
+   readonly gutter: number;
+ }) {
++  const liveOnly = useBatonLiveOnly();
+   const selectedEnvironment = props.environments.find(
+     (environment) => environment.environmentId === props.selectedEnvironmentId,
+   );
+@@ -98,6 +100,16 @@ export function ThreadListFilters(props: {
+           <SymbolView name="xmark.circle.fill" size={18} tintColorClassName="accent-icon-muted" />
+         </Pressable>
+       ) : null}
++      <ListFilterMenu
++        label={liveOnly ? "Live only" : "All threads"}
++        accessibilityLabel="Filter threads to live sessions"
++        active={liveOnly}
++        actions={[
++          { id: "all", title: "All threads", state: liveOnly ? "off" : "on" },
++          { id: "live", title: "Live only", state: liveOnly ? "on" : "off" },
++        ]}
++        onSelect={(id) => setBatonLiveOnly(id === "live")}
++      />
+     </ScrollView>
+   );
+ }
+diff --git a/apps/mobile/src/features/home/home-list-filter-menu.ts b/apps/mobile/src/features/home/home-list-filter-menu.ts
+index 617c3fa0988ef6c84236de5282f79e423c840695..a8229738b4e3316a8091ccb88c1e4a6fdb65a609 100644
+--- a/apps/mobile/src/features/home/home-list-filter-menu.ts
++++ b/apps/mobile/src/features/home/home-list-filter-menu.ts
+@@ -2,6 +2,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
+ 
+ import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
+ 
++import { setBatonLiveOnly } from "../threads/batonLiveOnly";
++
+ export interface HomeListFilterMenuEnvironment {
+   readonly environmentId: EnvironmentId;
+   readonly label: string;
+@@ -19,6 +21,7 @@ export function buildHomeListFilterMenuItems(props: {
+   readonly selectedProjectKey: string | null;
+   readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
+   readonly onProjectChange: (projectKey: string | null) => void;
++  readonly liveOnly: boolean;
+ }): AppBarMenuItem[] {
+   const items: AppBarMenuItem[] = [
+     {
+@@ -64,5 +67,25 @@ export function buildHomeListFilterMenuItems(props: {
+     });
+   }
+ 
++  // Tessaya: live sessions only (P5).
++  items.push({
++    id: "live",
++    title: "Sessions",
++    items: [
++      {
++        id: "live:all",
++        title: "All threads",
++        selected: !props.liveOnly,
++        onPress: () => setBatonLiveOnly(false),
++      },
++      {
++        id: "live:only",
++        title: "Live only",
++        subtitle: "Claude Code sessions running in a terminal",
++        selected: props.liveOnly,
++        onPress: () => setBatonLiveOnly(true),
++      },
++    ],
++  });
+   return items;
+ }
+diff --git a/apps/mobile/src/features/threads/PendingUserInputCard.tsx b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
+index 3a2127ea2931cb322354ef393a4f880b59694fb0..f0f6f8b6a29eca6b62b3ce31381574d5660cab4e 100644
+--- a/apps/mobile/src/features/threads/PendingUserInputCard.tsx
++++ b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
+@@ -7,7 +7,7 @@ import {
+   textDirection,
+   type TextDirection,
+ } from "@t3tools/shared/textDirection";
+-import { useRef } from "react";
++import { useRef, useState } from "react";
+ import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
+ import Animated, {
+   useAnimatedStyle,
+@@ -66,6 +66,27 @@ function proseDirectionStyle(text: string, setDirection: TextDirection | undefin
+   } as const;
+ }
+ 
++/** The raw text behind a plainly worded question, folded until asked for. */
++function QuestionDetails(props: { readonly details: string }) {
++  const [open, setOpen] = useState(false);
++  return (
++    <View className="gap-1">
++      <Pressable
++        accessibilityRole="button"
++        accessibilityState={{ expanded: open }}
++        onPress={() => setOpen(!open)}
++      >
++        <Text className="text-xs text-foreground-muted">{open ? "Hide details" : "Details"}</Text>
++      </Pressable>
++      {open ? (
++        <Text selectable className="font-mono text-xs text-foreground-muted">
++          {props.details}
++        </Text>
++      ) : null}
++    </View>
++  );
++}
++
+ function QuestionText(props: {
+   readonly markdown: string;
+   readonly environmentId: EnvironmentId;
+@@ -241,6 +262,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
+                 environmentId={props.environmentId}
+                 setDirection={setDirection}
+               />
++              {question.details ? <QuestionDetails details={question.details} /> : null}
+               <View className="gap-2">
+                 {question.options.map((option) => {
+                   const optionValue = option.value ?? option.label.trim();
 diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
 index d6fdc9e955cde9ce2288bdc5696fbc4e2e651211..21685d03f9283e88b59cd0f422d81d4f657cbe99 100644
 --- a/apps/mobile/src/features/threads/ThreadFeed.tsx
@@ -31,6 +240,144 @@ index d6fdc9e955cde9ce2288bdc5696fbc4e2e651211..21685d03f9283e88b59cd0f422d81d4f
          setInteractionState((current) => ({
            ...current,
            expandedTurnIds: new Set(current.expandedTurnIds).add(latest.runId),
+diff --git a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
+index dce389c836669cd9409d658dc9d2682da73e5183..37a2918afddd676744fd276f0111e669bad9b2c6 100644
+--- a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
++++ b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
+@@ -41,6 +41,12 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
+ import { requestThreadMessageJump } from "./threadMessageJump";
+ import { useThreadListSearchMatches } from "./useThreadListSearchMatches";
+ import { useHomeListOptions } from "../home/home-list-options";
++import {
++  isRunningLive,
++  liveThreadsOnly,
++  runningLiveThreads,
++  useBatonLiveOnly,
++} from "./batonLiveOnly";
+ import { buildHomeListFilterMenuItems } from "../home/home-list-filter-menu";
+ import { buildHomeProjectScopes } from "../home/homeThreadList";
+ import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
+@@ -110,6 +116,7 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
+ }
+ 
+ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
++  const batonLiveOnly = useBatonLiveOnly();
+   const floatingTabsEnabled = useAndroidFloatingTabs();
+   const { themeVariables: materialTheme } = useAppearancePreferences();
+   const drawerColor = materialTheme["--color-drawer"];
+@@ -259,13 +266,14 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+   } = listEnvironments;
+   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
+   const pendingOrder = usePendingThreadOrder();
++  const batonRunningLive = useMemo(() => runningLiveThreads(threads), [threads]);
+   const {
+     layout: threadListV2Layout,
+     items: threadListV2Items,
+     contentOnlyThreadKeys,
+     olderSettledShelf,
+   } = useThreadListV2({
+-    threads,
++    threads: liveThreadsOnly(threads, batonLiveOnly),
+     pendingTasks,
+     environmentId: options.selectedEnvironmentId,
+     projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
+@@ -407,6 +415,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+         const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
+         return (
+           <ThreadListV2Row
++            batonLive={isRunningLive(batonRunningLive, thread)}
+             onNewThreadOnBranch={props.onNewThreadOnBranch}
+             thread={thread}
+             variant={item.item.variant}
+@@ -535,7 +544,8 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+         accessibilityLabel: "Search threads",
+       }}
+       filter={{
+-        customized: options.selectedEnvironmentId !== null || selectedProjectKey !== null,
++        customized:
++          options.selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
+         items: buildHomeListFilterMenuItems({
+           environments,
+           projects: projectFilterOptions,
+@@ -543,6 +553,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+           selectedProjectKey,
+           onEnvironmentChange: setSelectedEnvironmentId,
+           onProjectChange: setSelectedProjectKey,
++          liveOnly: batonLiveOnly,
+         }),
+       }}
+       sidebar={{
+diff --git a/apps/mobile/src/features/threads/thread-list-v2-items.tsx b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
+index c9043a8d6c181ea5a4eb40a5a057851f32a7afef..ed2888c208661c3bf51c572e17eb4fa071baf65c 100644
+--- a/apps/mobile/src/features/threads/thread-list-v2-items.tsx
++++ b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
+@@ -38,6 +38,7 @@ import type { ThreadListProvider } from "../../state/thread-list-environments";
+ import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
+ import { AppText as Text } from "../../components/ui/AppText";
+ import { Menu } from "../../components/ui/Menu";
++import { BatonLiveTag } from "./BatonLiveTag";
+ import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
+ import { ProjectFavicon } from "../../components/ProjectFavicon";
+ import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
+@@ -623,6 +624,8 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
+ 
+ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+   readonly thread: EnvironmentThreadShell;
++  /** Tessaya: a live session running now (P5), decided once for the whole list. */
++  readonly batonLive?: boolean;
+   readonly variant: "card" | "slim";
+   readonly hasQueuedMessages?: boolean;
+   readonly snoozed?: boolean;
+@@ -1256,21 +1259,25 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+       ) : null}
+       <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
+         {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
+-          <Text
+-            className={cn(
+-              "flex-1 text-xs",
+-              selected
+-                ? selectedThreadRowColors.mutedForegroundClassName
+-                : status === "limited"
+-                  ? "text-warning-foreground"
+-                  : "text-danger-foreground",
+-            )}
+-            numberOfLines={1}
+-          >
+-            {thread.runtime.lastError}
+-          </Text>
++          <>
++            <BatonLiveTag live={props.batonLive === true} />
++            <Text
++              className={cn(
++                "flex-1 text-xs",
++                selected
++                  ? selectedThreadRowColors.mutedForegroundClassName
++                  : status === "limited"
++                    ? "text-warning-foreground"
++                    : "text-danger-foreground",
++              )}
++              numberOfLines={1}
++            >
++              {thread.runtime.lastError}
++            </Text>
++          </>
+         ) : props.environmentLabel ? (
+           <View className="min-w-0 flex-1 flex-row items-center gap-1">
++            <BatonLiveTag live={props.batonLive === true} />
+             {props.environmentMachine ? (
+               <EnvironmentMachineSymbol
+                 kind={props.environmentMachine}
+@@ -1295,7 +1302,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+             </Text>
+           </View>
+         ) : (
+-          <View className="flex-1" />
++          <View className="flex-1 flex-row">
++            <BatonLiveTag live={props.batonLive === true} />
++          </View>
+         )}
+         {pr ? (
+           <Pressable
 diff --git a/apps/server/scripts/dev-replay-agent.ts b/apps/server/scripts/dev-replay-agent.ts
 index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40a35d85e9 100644
 --- a/apps/server/scripts/dev-replay-agent.ts
@@ -244,6 +591,179 @@ index c810890ebf96b1c7112c721575303c5f7ed7a435..e59f34cb462f6a4ce5aeaed355d4a1c1
    return (
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
+diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
+index 0002beeaf9fef7dd2c9920799430367027b4c23b..e48c5389977868c5fa2c63f8a433ebd97799b5ef 100644
+--- a/apps/web/src/components/chat/ComposerControlsBar.tsx
++++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
+@@ -27,6 +27,16 @@ import {
+   ComposerPickerFooter,
+   describeComposerEffort,
+ } from "./ComposerModelEffort";
++import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
++import { useLiveTraits } from "./BatonLiveModel";
++import {
++  BatonLimitMark,
++  BatonPickerAccount,
++  BatonUsageDetails,
++  batonPickModel,
++  batonModelOptions,
++  batonRailEntries,
++} from "./BatonPickerAccount";
+ import type { useComposerProviderModel } from "./useComposerProviderModel";
+ import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
+ 
+@@ -88,6 +98,7 @@ export function ComposerControlsBar(props: {
+   onModelPickerOpenChange: (open: boolean) => void;
+   modelPickerIconClassName: string | undefined;
+   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
++  onUsageLimitsCommand: ChatComposerProps["onUsageLimitsCommand"];
+ }) {
+   const {
+     environmentId,
+@@ -152,20 +163,25 @@ export function ComposerControlsBar(props: {
+     measuredHiddenBlockCount,
+   });
+   const controlSize = composerControlsCollapsed ? "xs" : "sm";
+-  const traitsInput = resolveComposerTraitsInput({
+-    provider: selectedProvider,
+-    instanceId: selectedInstanceId,
+-    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
+-    ...(routeKind === "draft" && draftId ? { draftId } : {}),
+-    model: selectedModel,
+-    models: selectedProviderModels,
+-    modelOptions: composerModelOptions?.[selectedInstanceId],
+-    reportedModelSelection,
+-    promptUltrathink,
+-    onPromptEdit,
+-    planModeEnabled,
+-  });
++  const batonThreadRef = routeKind === "server" ? routeThreadRef : null;
++  const traitsInput = useLiveTraits(
++    batonThreadRef,
++    resolveComposerTraitsInput({
++      provider: selectedProvider,
++      instanceId: selectedInstanceId,
++      ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
++      ...(routeKind === "draft" && draftId ? { draftId } : {}),
++      model: selectedModel,
++      models: selectedProviderModels,
++      modelOptions: composerModelOptions?.[selectedInstanceId],
++      reportedModelSelection,
++      promptUltrathink,
++      onPromptEdit,
++      planModeEnabled,
++    }),
++  );
+   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
++  const railEntries = batonRailEntries(providerInstanceEntries, selectedInstanceId);
+   const restingBlockDefs = showModeBlock
+     ? [
+         {
+@@ -200,7 +216,12 @@ export function ComposerControlsBar(props: {
+       multipleModelSelections={multipleModelSelections}
+       onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
+       selectedModelSelection={selectedModelSelection}
+-      onProviderModelSelect={onProviderModelSelect}
++      onProviderModelSelect={(instanceId, model, options) => {
++        // The Terminal session entry, already current, changes nothing: the pick just closes the picker.
++        if (instanceId === LIVE_INSTANCE && selectedInstanceId === LIVE_INSTANCE)
++          onModelPickerOpenChange(false);
++        onProviderModelSelect(instanceId, model, options);
++      }}
+       activeInstanceId={
+         providerCatalogPending
+           ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
+@@ -213,16 +234,24 @@ export function ComposerControlsBar(props: {
+       }
+       lockedProvider={lockedProvider}
+       lockedContinuationGroupKey={lockedContinuationGroupKey}
+-      instanceEntries={providerInstanceEntries}
++      instanceEntries={railEntries}
+       keybindings={keybindings}
+-      modelOptionsByInstance={modelOptionsByInstance}
++      modelOptionsByInstance={batonModelOptions(modelOptionsByInstance, providerInstanceEntries)}
+       size={controlSize}
+       triggerClassName={cn(
+         "group/model-trigger",
+         MODEL_TRIGGER_STATES,
+         composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
+       )}
+-      triggerSuffix={effort.suffix}
++      triggerSuffix={
++        <>
++          {effort.suffix}
++          <BatonLimitMark
++            entry={providerInstanceEntries.find((entry) => entry.instanceId === selectedInstanceId)}
++            threadRef={batonThreadRef}
++          />
++        </>
++      }
+       triggerDetail={effort.detail}
+       triggerShortcuts={
+         pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
+@@ -234,8 +263,33 @@ export function ComposerControlsBar(props: {
+           runtimeMode={compatibleRuntimeMode}
+           runtimeModeOptions={compatibleRuntimeModeOptions}
+           onRuntimeModeChange={handleRuntimeModeChange}
+-        />
++        >
++          <BatonUsageDetails
++            onOpen={
++              props.onUsageLimitsCommand
++                ? () => {
++                    onModelPickerOpenChange(false);
++                    props.onUsageLimitsCommand?.();
++                  }
++                : null
++            }
++          />
++        </ComposerPickerFooter>
+       }
++      renderInstanceDetail={(entry) => (
++        <BatonPickerAccount
++          entry={entry}
++          threadRef={batonThreadRef}
++          environmentId={environmentId}
++          threadInstanceId={selectedInstanceId}
++          onPickInstance={(instanceId) =>
++            onProviderModelSelect(
++              instanceId,
++              batonPickModel(entry, selectedProvider, selectedModel),
++            )
++          }
++        />
++      )}
+       terminalOpen={terminalOpen}
+       open={modelPickerOpen}
+       instanceIndicatorBackground={
+diff --git a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
+index a19e7f205cef9fcac31aa02c76e29a29a9c5afee..b453e976fd0211e9aaec10d2ed73fc73e33d9942 100644
+--- a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
++++ b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
+@@ -103,6 +103,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
+       !customAnswerActive && progress.selectedOptionValues.includes(option.value ?? option.label),
+   );
+   const isCollapsed = collapsedQuestionId !== null && collapsedQuestionId === activeQuestion?.id;
++  // The progress helper types questions as the provider's, which carry no details.
++  const details = prompt.questions.find((q) => q.id === activeQuestion?.id)?.details;
+ 
+   if (
+     optimisticSingleSelect &&
+@@ -264,6 +266,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
+               threadRef={threadRef}
+               className={cn("pt-2 text-foreground/85", questionTextAlign)}
+             />
++            {details ? (
++              <details className="mt-1 text-secondary-label text-xs">
++                <summary className="cursor-pointer select-none">Details</summary>
++                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-2xs">
++                  {details}
++                </pre>
++              </details>
++            ) : null}
+             {/* Rows span the header row's width so the radios align with the question text and the shortcut column sits under the dismiss button. */}
+             <div className="-ms-2 mt-1.5 sm:-ms-1.5">
+               {activeQuestion.options.map((option, index) => {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts b/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
 index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70b5b38b89 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
@@ -1023,6 +1543,72 @@ index 5a62cde69c3758a8237930de51dfe1143f70f87c..ae59d68979cca71ea208f0991c02d525
    );
  }
  
+diff --git a/apps/web/src/components/chat/chatViewSend.ts b/apps/web/src/components/chat/chatViewSend.ts
+index 81a00823a98be93a7546211063490f6af06d66f7..e603a6f3d428d9285b7aae4ec7f90244157c6b73 100644
+--- a/apps/web/src/components/chat/chatViewSend.ts
++++ b/apps/web/src/components/chat/chatViewSend.ts
+@@ -42,6 +42,7 @@ import {
+   readFileAsDataUrl,
+   prepareRevertedMessageAttachments,
+   waitForRevertedMessage,
++  relinkRewoundAttachmentReferences,
+ } from "../ChatView.logic";
+ import { readPreparedConnection } from "../../state/session";
+ import { recallableComposerPrompt } from "./composerPromptHistory";
+@@ -218,17 +219,9 @@ export async function rewindToMessage(input: {
+       });
+       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+     });
+-    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
+-    const restoredPrompt = recallableComposerPrompt(message.text);
+-    const nextPrompt =
+-      restoredPrompt.length === 0
+-        ? currentPrompt
+-        : currentPrompt.length > 0
+-          ? `${currentPrompt}\n\n${restoredPrompt}`
+-          : restoredPrompt;
+-    store.setPrompt(draftTarget, nextPrompt);
+     const images: ComposerImageAttachment[] = [];
+     const restoredFiles: ComposerFileAttachment[] = [];
++    const restored: Array<ComposerImageAttachment | ComposerFileAttachment> = [];
+     files.forEach((file, index) => {
+       const attachment = {
+         id: randomUUID(),
+@@ -238,11 +231,32 @@ export async function rewindToMessage(input: {
+         file,
+       };
+       if (message.attachments?.[index]?.type === "image") {
+-        images.push({ ...attachment, type: "image", previewUrl: URL.createObjectURL(file) });
++        const image = {
++          ...attachment,
++          type: "image" as const,
++          previewUrl: URL.createObjectURL(file),
++        };
++        images.push(image);
++        restored.push(image);
+       } else {
+-        restoredFiles.push({ ...attachment, type: "file" });
++        const restoredFile = { ...attachment, type: "file" as const };
++        restoredFiles.push(restoredFile);
++        restored.push(restoredFile);
+       }
+     });
++    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
++    const restoredPrompt = relinkRewoundAttachmentReferences(
++      recallableComposerPrompt(message.text),
++      message,
++      restored,
++    );
++    const nextPrompt =
++      restoredPrompt.length === 0
++        ? currentPrompt
++        : currentPrompt.length > 0
++          ? `${currentPrompt}\n\n${restoredPrompt}`
++          : restoredPrompt;
++    store.setPrompt(draftTarget, nextPrompt);
+     store.addImages(draftTarget, images, { allowDuplicates: true });
+     store.addFiles(draftTarget, restoredFiles, { allowDuplicates: true });
+     return { error: null, prompt: nextPrompt };
 diff --git a/apps/web/src/components/chat/timelineRowContext.ts b/apps/web/src/components/chat/timelineRowContext.ts
 index 1a0c3aa014ad02d4f9d114ee094059344a66ef2f..5213f9d5dad8046db3776f2a19e5590b7b8d2a61 100644
 --- a/apps/web/src/components/chat/timelineRowContext.ts
@@ -1036,39 +1622,157 @@ index 1a0c3aa014ad02d4f9d114ee094059344a66ef2f..5213f9d5dad8046db3776f2a19e5590b
    onCancelWorktreeSetup: (() => void) | null;
    retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
 diff --git a/apps/web/src/components/chat/useComposerSelection.ts b/apps/web/src/components/chat/useComposerSelection.ts
-index a6312466d9747ce40a6e94b4c8de347f10ea29c7..7bd23e1757f9e1657d0fc65dc6ff07b79975e33e 100644
+index a6312466d9747ce40a6e94b4c8de347f10ea29c7..31e4c592535a449bf8730343e21fea7d6153d203 100644
 --- a/apps/web/src/components/chat/useComposerSelection.ts
 +++ b/apps/web/src/components/chat/useComposerSelection.ts
-@@ -17,6 +17,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+@@ -17,6 +17,15 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
  import { type SetStateAction } from "react";
  import { useNavigate } from "@tanstack/react-router";
  import { toastManager } from "../ui/toast";
-+import { useLiveSessionChange } from "./BatonLiveModel";
++import { liveChangeRoute } from "@t3tools/baton-shared/liveModel";
++import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
++import {
++  liveLoginOf,
++  useContinueInNewThread,
++  useLiveAccounts,
++  useLiveAccountSwitch,
++  useLiveSessionChange,
++} from "./BatonLiveModel";
  import { resolveAppModelSelectionForInstance } from "../../modelSelection";
  import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
  import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
-@@ -139,12 +140,21 @@ export function useComposerSelection(input: ComposerSelectionInput) {
+@@ -139,6 +148,17 @@ export function useComposerSelection(input: ComposerSelectionInput) {
        : null,
    );
  
-+  // A mirrored terminal session changes model inside itself; picking another provider here would start a twin.
++  // A mirrored terminal session changes model inside itself; another provider continues in a new thread (liveChangeRoute).
 +  const liveSession = useLiveSessionChange(
++    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
++  );
++  const continueInNewThread = useContinueInNewThread();
++  const switchLiveAccount = useLiveAccountSwitch(
++    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
++  );
++  const liveAccounts = useLiveAccounts(
 +    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
 +  );
    const onProviderModelSelect = (
      instanceId: ProviderInstanceId,
      model: string,
-     options?: { focusComposer?: boolean },
+@@ -146,6 +166,36 @@ export function useComposerSelection(input: ComposerSelectionInput) {
    ) => {
      if (!activeThread) return;
-+    if (liveSession.sessionId !== null) {
-+      liveSession.apply({ model });
-+      if (options?.focusComposer !== false) scheduleComposerFocus();
-+      return;
-+    }
      const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
++    if (liveSession.sessionId !== null) {
++      const liveLogin = liveLoginOf(instanceId, liveAccounts);
++      const route = liveChangeRoute({
++        threadId: activeThread.id,
++        currentInstance: activeThread.modelSelection.instanceId,
++        picked: { instance: instanceId, driver: entry?.driver ?? null, model, effort: null },
++        current: { model: activeThread.modelSelection.model, effort: null },
++        account: liveLogin,
++      });
++      if (route.kind === "session") liveSession.apply(route.change);
++      else if (route.kind === "account") {
++        const account = liveAccounts.find((entry) => entry.key === route.key);
++        if (account !== undefined) switchLiveAccount(account);
++      } else if (route.kind === "draft" && instanceId === LIVE_INSTANCE)
++        setComposerDraftModelSelection(
++          scopeThreadRef(activeThread.environmentId, activeThread.id),
++          { instanceId, model },
++          { explicit: true, replaceOptions: true },
++        );
++      else if (route.kind === "continue-in")
++        void continueInNewThread(
++          activeThread,
++          { instanceId, model },
++          entry?.displayName ?? String(instanceId),
++        );
++      if (route.kind !== "draft" || instanceId === LIVE_INSTANCE) {
++        if (options?.focusComposer !== false) scheduleComposerFocus();
++        return;
++      }
++    }
      const resolvedDriverKind = entry?.driver ?? null;
      if (
+       !supportsProviderSwitchingViaHandoff &&
+diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
+index 7e0b410134c5ebb1fa38740d2b8b3232fa44a37e..c7f0ba22a1f79a3b6efc67e970c318060f2ac0e5 100644
+--- a/apps/web/src/components/chat/useComposerSend.ts
++++ b/apps/web/src/components/chat/useComposerSend.ts
+@@ -125,6 +125,7 @@ import {
+   prepareTurnAttachments,
+   restoreComposerDraft,
+ } from "./chatViewSend";
++import { forgetStaleLiveSelection } from "./batonLiveSend";
+ import type {
+   EnvironmentProject,
+   EnvironmentThreadShell,
+@@ -594,6 +595,7 @@ export function useComposerSend(input: ComposerSendInput) {
+       selectedProviderModels: ctxSelectedProviderModels,
+       selectedPromptEffort: ctxSelectedPromptEffort,
+       selectedModelSelection: ctxSelectedModelSelection,
++      providerChangeApproved: ctxProviderChangeApproved,
+       interactionMode: sendInteractionMode,
+       interactionModeEnabled: sendInteractionModeEnabled,
+     } = sendCtx;
+@@ -653,9 +655,11 @@ export function useComposerSend(input: ComposerSendInput) {
+       sendableTerminalContexts: sendableComposerTerminalContexts,
+       expiredTerminalContextCount,
+       hasSendableContent,
++      unattachedLabels,
+     } = deriveComposerSendState({
+       prompt: promptForSend,
+       imageCount: composerImages.length + composerFiles.length,
++      attachments: [...composerImages, ...composerFiles],
+       terminalContexts: composerTerminalContexts,
+       elementContextCount:
+         composerPreviewAnnotations.length +
+@@ -663,6 +667,16 @@ export function useComposerSend(input: ComposerSendInput) {
+         composerThreadContexts.length +
+         composerEnvironmentContexts.length,
+     });
++    if (unattachedLabels.length > 0) {
++      toastManager.add(
++        stackedThreadToast({
++          type: "warning",
++          title: `${unattachedLabels.map((label) => `"${label}"`).join(", ")} ${unattachedLabels.length === 1 ? "is" : "are"} no longer attached`,
++          description: "Attach it again or remove its chip, then send.",
++        }),
++      );
++      return;
++    }
+     const feedbackCommand =
+       ctxSelectedProvider === "codex" &&
+       composerImages.length === 0 &&
+@@ -1314,6 +1328,7 @@ export function useComposerSend(input: ComposerSendInput) {
+             idleCompaction: "onReturn",
+           },
+           modelSelection: ctxSelectedModelSelection,
++          providerChangeApproved: ctxProviderChangeApproved,
+           runtimeMode,
+           interactionMode: sendInteractionMode,
+         },
+@@ -1376,6 +1391,7 @@ export function useComposerSend(input: ComposerSendInput) {
+             }),
+           },
+           modelSelection: ctxSelectedModelSelection,
++          providerChangeApproved: ctxProviderChangeApproved,
+           titleSeed: title,
+           runtimeMode,
+           interactionMode: sendInteractionMode,
+@@ -1413,6 +1429,11 @@ export function useComposerSend(input: ComposerSendInput) {
+         failure = startResult;
+       } else {
+         turnStartSucceeded = true;
++        forgetStaleLiveSelection(
++          scopeThreadRef(activeThread.environmentId, threadIdForSend),
++          ctxSelectedModelSelection,
++          activeThread,
++        );
+         setKeepFullHistory(routeThreadKey, false);
+         if (freshArm !== undefined) disarmFreshSession(routeThreadKey, freshArm);
+         clearUsageLimitsFor(routeThreadKey);
 diff --git a/apps/web/src/components/threadActionMenu.logic.ts b/apps/web/src/components/threadActionMenu.logic.ts
 index ac4ef649ed07c2c6d1c057424afdb05687d64e53..1b60b5e9abece9273e31451bfb691db1f4d65ea3 100644
 --- a/apps/web/src/components/threadActionMenu.logic.ts
@@ -1122,6 +1826,223 @@ index ac4ef649ed07c2c6d1c057424afdb05687d64e53..1b60b5e9abece9273e31451bfb691db1
      ...(state.branch
        ? [
            {
+diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
+index cd0e74d231aaca9c3d15531c39d577990c7df62b..f757fe70f4cffaca6f7906c8bf0960a40f26f2f8 100644
+--- a/apps/web/src/composerDraftStore.test.ts
++++ b/apps/web/src/composerDraftStore.test.ts
+@@ -90,6 +90,7 @@ import {
+   type ComposerImageAttachment,
+   composerFileNeedsReattach,
+   partializeComposerDraftStoreState,
++  restoreComposerImageBackups,
+   useComposerDraftStore,
+   DraftId,
+ } from "./composerDraftStore";
+@@ -416,6 +417,81 @@ describe("composerDraftStore file attachments", () => {
+     ]);
+   });
+ 
++  it("restores a draft image whose bytes never reached localStorage after a reload", () => {
++    const store = useComposerDraftStore.getState();
++    const image = makeImage({ id: "img-reload", previewUrl: "blob:img-reload" });
++    store.addImages(threadRef, [image]);
++    store.setPrompt(threadRef, "look ![image.png](t3-context://v1/image/image_img-reload)");
++    const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
++    const persistApi = useComposerDraftStore.persist as unknown as {
++      getOptions: () => {
++        merge: (
++          persistedState: unknown,
++          currentState: ReturnType<typeof useComposerDraftStore.getState>,
++        ) => ReturnType<typeof useComposerDraftStore.getState>;
++      };
++    };
++    // The composer never serialized the image, as when the localStorage write misses.
++    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
++    useComposerDraftStore.setState(
++      persistApi.getOptions().merge(persisted, useComposerDraftStore.getState()),
++    );
++    expect(useComposerDraftStore.getState().draftsByThreadKey[threadKey]?.images).toEqual([]);
++
++    const backup = {
++      threadKey,
++      id: image.id,
++      name: image.name,
++      mimeType: image.mimeType,
++      sizeBytes: image.sizeBytes,
++      blob: image.file,
++    };
++    // A sent image whose delete had not landed is tombstoned; a dropped draft has no entry.
++    const sent = { ...backup, id: "img-sent" };
++    const orphan = { ...backup, threadKey: "dropped-draft" };
++    expect(
++      restoreComposerImageBackups([backup, sent, orphan], (candidate) => candidate === sent),
++    ).toEqual([sent, orphan]);
++
++    expect(useComposerDraftStore.getState().draftsByThreadKey["dropped-draft"]).toBeUndefined();
++    const restored = useComposerDraftStore.getState().draftsByThreadKey[threadKey];
++    expect(restored?.prompt).toContain("image_img-reload");
++    expect(restored?.images.map(({ id, name, file }) => ({ id, name, size: file.size }))).toEqual([
++      { id: "img-reload", name: "image.png", size: image.sizeBytes },
++    ]);
++  });
++
++  it("restores an image pasted on its own, with no text or chip, after a reload", () => {
++    const image = makeImage({ id: "img-alone", previewUrl: "blob:img-alone" });
++    useComposerDraftStore.getState().addImages(threadRef, [image]);
++    const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
++    const persistApi = useComposerDraftStore.persist as unknown as {
++      getOptions: () => {
++        merge: (
++          persistedState: unknown,
++          currentState: ReturnType<typeof useComposerDraftStore.getState>,
++        ) => ReturnType<typeof useComposerDraftStore.getState>;
++      };
++    };
++    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
++    useComposerDraftStore.setState(
++      persistApi.getOptions().merge(persisted, useComposerDraftStore.getState()),
++    );
++
++    const backup = {
++      threadKey,
++      id: image.id,
++      name: image.name,
++      mimeType: image.mimeType,
++      sizeBytes: image.sizeBytes,
++      blob: image.file,
++    };
++    expect(restoreComposerImageBackups([backup], () => false)).toEqual([]);
++    expect(
++      useComposerDraftStore.getState().draftsByThreadKey[threadKey]?.images.map(({ id }) => id),
++    ).toEqual(["img-alone"]);
++  });
++
+   it("persists a pending file as a needs-reattach marker instead of dropping it", () => {
+     const store = useComposerDraftStore.getState();
+     store.addFiles(threadRef, [makeFile("file-pending")]);
+diff --git a/apps/web/src/composerDraftStore.ts b/apps/web/src/composerDraftStore.ts
+index aef9e88a385726458d979e6dca9c0fff705f4f6a..941e77f477c20bfb96d9a875486b10f09fa5a175 100644
+--- a/apps/web/src/composerDraftStore.ts
++++ b/apps/web/src/composerDraftStore.ts
+@@ -89,6 +89,7 @@ import {
+   environmentContextReference,
+ } from "./lib/composerContextRecords";
+ import { create } from "zustand";
++import { startComposerImageBackup } from "./composerImageBackup";
+ import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
+ import { useShallow } from "zustand/react/shallow";
+ import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
+@@ -242,6 +243,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
+ const PersistedComposerThreadDraftState = Schema.Struct({
+   prompt: Schema.String,
+   attachments: Schema.Array(PersistedComposerImageAttachment),
++  // Images whose bytes live only in the IndexedDB backup; they keep an image-only draft alive.
++  backedUpImageIds: Schema.optionalKey(Schema.Array(Schema.String)),
+   files: Schema.optionalKey(Schema.Array(PersistedComposerDraftFileAttachment)),
+   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
+   previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
+@@ -1846,6 +1849,9 @@ function normalizePersistedDraftsByThreadId(
+           return normalized ? [normalized] : [];
+         })
+       : [];
++    const backedUpImageIds = Array.isArray(draftCandidate.backedUpImageIds)
++      ? draftCandidate.backedUpImageIds.filter((id): id is string => typeof id === "string")
++      : [];
+     const files = Array.isArray(draftCandidate.files)
+       ? draftCandidate.files.filter(isPersistedComposerDraftFileAttachment)
+       : [];
+@@ -1975,6 +1981,7 @@ function normalizePersistedDraftsByThreadId(
+     if (
+       promptCandidate.length === 0 &&
+       attachments.length === 0 &&
++      backedUpImageIds.length === 0 &&
+       files.length === 0 &&
+       terminalContexts.length === 0 &&
+       previewAnnotations.length === 0 &&
+@@ -2002,6 +2009,7 @@ function normalizePersistedDraftsByThreadId(
+     nextDraftsByThreadKey[normalizedThreadKey] = {
+       prompt,
+       attachments,
++      ...(backedUpImageIds.length > 0 ? { backedUpImageIds } : {}),
+       ...(files.length > 0 ? { files } : {}),
+       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
+       ...(previewAnnotations.length > 0 ? { previewAnnotations } : {}),
+@@ -2106,6 +2114,7 @@ export function partializeComposerDraftStoreState(
+     if (
+       draft.prompt.length === 0 &&
+       draft.persistedAttachments.length === 0 &&
++      draft.images.length === 0 &&
+       draft.files.length === 0 &&
+       draft.terminalContexts.length === 0 &&
+       draft.previewAnnotations.length === 0 &&
+@@ -2121,6 +2130,9 @@ export function partializeComposerDraftStoreState(
+     const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
+       prompt: draft.prompt,
+       attachments: draft.persistedAttachments,
++      ...(draft.images.length > 0
++        ? { backedUpImageIds: draft.images.map((image) => image.id) }
++        : {}),
+       ...(draft.files.length > 0
+         ? {
+             files: draft.files.map((file) => ({
+@@ -4243,6 +4255,57 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
+ 
+ export const useComposerDraftStore = composerDraftStore;
+ 
++export interface ComposerImageBackup {
++  readonly threadKey: string;
++  readonly id: string;
++  readonly name: string;
++  readonly mimeType: string;
++  readonly sizeBytes: number;
++  readonly source?: ComposerImageAttachment["source"];
++  readonly blob: Blob;
++}
++
++/**
++ * Puts back draft images a reload dropped because their bytes never reached localStorage.
++ * `removed` marks backups of images that were sent or removed, whose delete may not have landed.
++ * Returns the backups that are stale and should be deleted.
++ */
++export function restoreComposerImageBackups(
++  backups: ReadonlyArray<ComposerImageBackup>,
++  removed: (backup: ComposerImageBackup) => boolean,
++): ComposerImageBackup[] {
++  const stale: ComposerImageBackup[] = [];
++  composerDraftStore.setState((state) => {
++    const drafts = { ...state.draftsByThreadKey };
++    let restored = false;
++    for (const backup of backups) {
++      const draft = drafts[backup.threadKey];
++      if (draft?.images.some((image) => image.id === backup.id)) continue;
++      if (!draft || removed(backup)) {
++        stale.push(backup);
++        continue;
++      }
++      const file = new File([backup.blob], backup.name, { type: backup.mimeType });
++      const image: ComposerImageAttachment = {
++        type: "image",
++        id: backup.id,
++        name: backup.name,
++        mimeType: backup.mimeType,
++        sizeBytes: backup.sizeBytes,
++        previewUrl: URL.createObjectURL(file),
++        file,
++        ...(backup.source ? { source: backup.source } : {}),
++      };
++      drafts[backup.threadKey] = { ...draft, images: [...draft.images, image] };
++      restored = true;
++    }
++    return restored ? { draftsByThreadKey: drafts } : state;
++  });
++  return stale;
++}
++
++startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
++
+ export function subscribeComposerDraftModelReconciliation(input: {
+   readonly registry: AtomRegistry.AtomRegistry;
+   readonly threadRefsAtom: Atom.Atom<ReadonlyArray<ScopedThreadRef>>;
 diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
 index d22b1d9cf6c4fdca3fa41ca0ccaf49dde08ebe59..1c3a981cdc4bad8760f5d583f0f99e847ea77ad1 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.ts
@@ -1161,10 +2082,10 @@ index d22b1d9cf6c4fdca3fa41ca0ccaf49dde08ebe59..1c3a981cdc4bad8760f5d583f0f99e84
            const project = projects.find(
              (candidate) =>
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index 25095b70f1c3db33b1eaa5d7f7d32ee98cf5855d..0b0c5413e690fbd0cdf00e459dd59dc47d0a85e9 100644
+index 8de252f90c35ef98108d22206cecdda064a33398..2d8e85b25edd8c6f25a8d3bcfd4875d73275c762 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -335,3 +335,11 @@ A snoozed thread keeps working and stays hidden until its wake time, even while
+@@ -336,3 +336,11 @@ A snoozed thread keeps working and stays hidden until its wake time, even while
  its agent wakes itself for background work. It comes back early for an approval,
  a new question, a failed run, or a message or answer you send. You can snooze an existing
  question and answer when the thread wakes; the question stays unanswered.
@@ -1218,6 +2139,50 @@ index fd0dca831e06dc2631771913901aebc90f1b1863..ca3206bb572903486d5efb75011e53b1
    const end = /[.?!]["'”’)]?(?=\s)/.exec(text);
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
+diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
+index 5c430ef75581a165d94ce16c7369c0245bdef5d8..a6fa8210135da3efe7d614692a29568bc1835f47 100644
+--- a/packages/contracts/src/orchestrationV2.ts
++++ b/packages/contracts/src/orchestrationV2.ts
+@@ -1353,6 +1353,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
+   allowCustomAnswer: Schema.optional(Schema.Boolean),
+   initialAnswer: Schema.optional(Schema.String),
+   required: Schema.optional(Schema.Boolean),
++  /** The raw text behind a plainly worded question, shown on request. */
++  details: Schema.optional(Schema.String),
+ });
+ export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
+ 
+@@ -3148,7 +3150,9 @@ export const OrchestrationV2Command = Schema.Union([
+     type: Schema.Literal("thread.model-selection.set"),
+     commandId: CommandId,
+     threadId: ThreadId,
+-    modelSelection: ModelSelection,
++    modelSelection:
++      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+   }),
+   Schema.Struct({
+     type: Schema.Literal("provider-session.detach"),
+@@ -3176,6 +3180,8 @@ export const OrchestrationV2Command = Schema.Union([
+     attachments: Schema.Array(ChatAttachment),
+     titleSeed: Schema.optional(TrimmedNonEmptyString),
+     modelSelection: Schema.optional(ModelSelection),
++    /** The user picked `modelSelection`'s provider for this thread; without it a started thread keeps its driver. */
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+     sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
+     restartContinuationOfRunId: Schema.optional(RunId),
+     usageLimitContinuationOfRunId: Schema.optional(RunId),
+@@ -3383,7 +3389,9 @@ export const OrchestrationV2Command = Schema.Union([
+     type: Schema.Literal("provider.switch"),
+     commandId: CommandId,
+     threadId: ThreadId,
+-    modelSelection: ModelSelection,
++    modelSelection:
++      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
++    providerChangeApproved: Schema.optional(Schema.Boolean),
+   }),
+ ]);
+ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
 diff --git a/packages/shared/package.json b/packages/shared/package.json
 index 5d9a87ac7719dbf0e6a24460bdd4a2e8e790c10c..ed8bda7978989717f3ec382d9fb19586212ba9ae 100644
 --- a/packages/shared/package.json

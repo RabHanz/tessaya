@@ -12,14 +12,14 @@ index 4f4940ba6655dc008db1986fb879d2c7180e9c9f..df4eb663c93a92ee349a33e3d8adeb38
 +    url: https://github.com/RabHanz/tessaya/security/advisories/new
 +    about: Report a vulnerability privately. Do not open a public issue.
 diff --git a/.github/SECURITY.md b/.github/SECURITY.md
-index 69dc53dc4393fe4f2b319c12a82c3218e7f27bb4..1381120856e94014ac5788ca7c0c7e3d35ae4bce 100644
+index 56e3f03525e0135bbcd15806f21de6598c63db30..1381120856e94014ac5788ca7c0c7e3d35ae4bce 100644
 --- a/.github/SECURITY.md
 +++ b/.github/SECURITY.md
 @@ -1,8 +1,20 @@
  # Security policy
  
 -Report security vulnerabilities affecting T3 Code or T3 Tools-operated infrastructure to
--[security@ping.gg](mailto:security@ping.gg). Please do not disclose them publicly until we have had
+-[security@t3.codes](mailto:security@t3.codes). Please do not disclose them publicly until we have had
 -a reasonable opportunity to investigate and remediate them.
 +Report a vulnerability in Tessaya privately through this repository's **Security** tab, **Report a vulnerability** (GitHub private vulnerability reporting). Please do not open a public issue or post details until it is fixed. If that button is not available, open an issue that says only "I need a private way to report a security problem" and nothing else, and a private channel will be arranged.
  

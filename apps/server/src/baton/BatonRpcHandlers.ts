@@ -9,8 +9,10 @@
  * routes needs nothing Baton-specific: upstream's own ws tests compile and run unchanged, and a
  * server without Baton's layer answers `fabric.*` with a defect naming why.
  */
+import { teamBoard } from "./BatonTeamBoard.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
+  BATON_ACCOUNTS_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
@@ -24,6 +26,8 @@ import {
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  BATON_DICTATION_WS_METHODS,
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonJobPlacementError,
@@ -35,12 +39,14 @@ import {
   ProviderDriverKind,
   WorkSessionHandoffRefusedError,
   type WorkSessionHandoffInput,
+  tessayaSpelling,
+  type TessayaSpelling,
 } from "@t3tools/baton-contracts";
 import { fleetForOutside } from "@t3tools/baton-shared/fleetForOutside";
 import { batonProjectKey, handoffTarget } from "@t3tools/baton-shared/jobPlacement";
 import { workAccount } from "@t3tools/baton-shared/batonProjects";
 import { watchFleet } from "@t3tools/baton-shared/watch";
-import { type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import { DictationCleanupError, type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -53,6 +59,8 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
+import { BatonAccounts } from "./BatonAccounts.ts";
+import { liveSwitchRefusal } from "@t3tools/baton-shared/accounts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -67,6 +75,8 @@ import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import { BatonPhoneInbox, phoneCall } from "./BatonPhoneInbox.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
+import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
+import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
@@ -76,7 +86,14 @@ import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { BatonSessionsAcross } from "./BatonSessionsAcross.ts";
 import { BatonIntentService } from "./IntentService.ts";
-import { liveAdopt, liveAttach, liveSetModel } from "./LiveActions.ts";
+import {
+  defaultEffortOf,
+  liveAdopt,
+  liveAttach,
+  liveEffort,
+  liveSetAccount,
+  liveSetModel,
+} from "./LiveActions.ts";
 import { setModelResumingStopped } from "@t3tools/baton-shared/liveModel";
 import { BatonOrchestrationReactor } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
@@ -91,6 +108,7 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 export type BatonServices =
   | WorkSessionService
   | AccountPoolService
+  | BatonAccounts
   | AccountRotationPolicy
   | OrchestrationRuleService
   | BatonOrchestrationReactor
@@ -102,6 +120,8 @@ export type BatonServices =
   | BatonMemorySync
   | BatonCommitmentService
   | BatonRecordService
+  | DictationCleanupApi
+  | BatonDesktopSettings
   | BatonPhoneInbox
   | BatonWeaveService
   | BatonCloudService
@@ -153,7 +173,12 @@ const handoff = Effect.fn("fabric.workSession.handoff")(function* (input: WorkSe
     return yield* refuse(`provider instance ${targetId} is not signed in or available.`);
   }
   yield* engine
-    .switchProvider({ tag: "handoff", threadId, modelSelection: input.modelSelection })
+    .switchProvider({
+      tag: "handoff",
+      threadId,
+      modelSelection: input.modelSelection,
+      approved: true,
+    })
     .pipe(Effect.mapError((error) => refuse(error.detail)));
   if (input.note !== undefined && input.note.trim().length > 0) {
     yield* engine.sendMessage({ tag: "handoff", threadId, text: input.note });
@@ -228,6 +253,8 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(ProviderRegistry.ProviderRegistry, (registry) => registry.getProviders),
       ).pipe(Effect.map((providers) => ({ instances: instancesWeekly(providers, input.driver) }))),
+    [BATON_ACCOUNTS_WS_METHODS.list]: () =>
+      run(Effect.flatMap(BatonAccounts, (accounts) => accounts.list)),
     [BATON_ACCOUNT_WS_METHODS.threadKept]: (input) =>
       run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.kept(input.threadId))).pipe(
         Effect.map((keep) => ({ keep })),
@@ -308,15 +335,42 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_LIVE_WS_METHODS.liveAttach]: (input) =>
       run(Effect.flatMap(AdoptedSessionService, (adopted) => liveAttach(adopted, input))),
     [BATON_LIVE_WS_METHODS.liveAdopt]: (input) => liveAdopt(input),
+    [BATON_LIVE_WS_METHODS.liveSetAccount]: (input) =>
+      run(
+        Effect.gen(function* () {
+          const refusal = liveSwitchRefusal(
+            (yield* (yield* BatonAccounts).list).accounts,
+            input.accountKey,
+          );
+          if (refusal !== null) return { state: "refused" as const, detail: refusal };
+          const accounts = yield* (yield* AccountPoolService)
+            .read(ProviderDriverKind.make("claudeAgent"))
+            .pipe(
+              Effect.map((read) => read.accounts),
+              Effect.orElseSucceed(() => []),
+            );
+          const result = yield* liveSetAccount(input, accounts);
+          if (result.state !== "busy") return result;
+          yield* (yield* ThreadAccountMoves).queueLive(input.sessionId, {
+            accountKey: input.accountKey,
+            ...(input.restart === true ? { restart: true } : {}),
+          });
+          return { ...result, queued: true, detail: "Switches when this turn ends." };
+        }),
+      ),
     [BATON_LIVE_WS_METHODS.liveSetModel]: (input) =>
       run(
         Effect.gen(function* () {
           const adopted = yield* AdoptedSessionService;
           const catalog = yield* BatonSessionCatalogService;
+          const claudeModels = (yield* (yield* ProviderRegistry.ProviderRegistry).getProviders)
+            .filter((provider) => provider.driver === "claudeAgent")
+            .flatMap((provider) => provider.models.map((model) => model.slug));
           const services = yield* Effect.context<never>();
-          return yield* Effect.promise(() =>
+          const result = yield* Effect.promise(() =>
             setModelResumingStopped({
-              run: () => Effect.runPromiseWith(services)(liveSetModel(adopted, input)),
+              run: () =>
+                Effect.runPromiseWith(services)(liveSetModel(adopted, input, claudeModels)),
               // The same session id, in Herdr; a resume that made no pane did not bring it back.
               resume: async () =>
                 (
@@ -328,7 +382,31 @@ export const makeHandlers = Effect.gen(function* () {
               wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
             }),
           );
+          if (result.state !== "busy") return result;
+          // A busy session gets it when it goes idle, never typed into a turn or a question on screen.
+          yield* (yield* ThreadAccountMoves).queueLive(input.sessionId, {
+            ...(input.model === undefined ? {} : { model: input.model }),
+            ...(input.effort === undefined ? {} : { effort: input.effort }),
+          });
+          return { ...result, queued: true, detail: "Applies when this turn ends." };
         }),
+      ),
+    [BATON_LIVE_WS_METHODS.liveState]: (input) =>
+      run(
+        Effect.gen(function* () {
+          const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+          const effort = yield* liveEffort(input.sessionId, (model) =>
+            defaultEffortOf(providers, model),
+          );
+          const { queued, failure } = yield* (yield* ThreadAccountMoves).liveQueued(
+            input.sessionId,
+          );
+          return { effort, queued, failure };
+        }),
+      ),
+    [BATON_LIVE_WS_METHODS.liveCancelQueued]: (input) =>
+      run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.cancelLive(input.sessionId))).pipe(
+        Effect.map((cancelled) => ({ cancelled })),
       ),
     [BATON_SESSIONS_WS_METHODS.across]: (input) =>
       run(Effect.flatMap(BatonSessionsAcross, (sessions) => sessions.list(input))),
@@ -404,6 +482,7 @@ export const makeHandlers = Effect.gen(function* () {
         }),
       ),
     [BATON_JOB_WS_METHODS.jobList]: () => run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
+    [BATON_JOB_WS_METHODS.jobTeam]: (input) => run(teamBoard(input)),
     [BATON_JOB_WS_METHODS.jobStart]: (input) => run(JobFlow.startJob(input)),
     [BATON_JOB_WS_METHODS.jobPlace]: (input) => run(JobFlow.placeJob(input)),
     [BATON_JOB_WS_METHODS.jobHandoff]: (input) => run(handoffTo(input)),
@@ -457,6 +536,14 @@ export const makeHandlers = Effect.gen(function* () {
       run(Effect.flatMap(BatonSessionCatalogService, (s) => s.retireHandoff(input))),
     [BATON_SESSIONS_WS_METHODS.reattach]: (input) =>
       run(Effect.flatMap(BatonSessionCatalogService, (s) => s.reattach(input))),
+    [BATON_SESSIONS_WS_METHODS.moveIntoTessaya]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.moveIntoTessaya(input))),
+    [BATON_SESSIONS_WS_METHODS.openInTerminal]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.openInTerminal(input))),
+    [BATON_SESSIONS_WS_METHODS.mainSession]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.mainSession(input))),
+    [BATON_SESSIONS_WS_METHODS.sessionDefaults]: () =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.sessionDefaults)),
     [BATON_SESSIONS_WS_METHODS.inFlight]: () =>
       run(Effect.flatMap(BatonSessionCatalogService, (s) => s.inFlight())),
     [BATON_SESSIONS_WS_METHODS.waiting]: (input) =>
@@ -486,6 +573,28 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.as(record.appendFromClient(input), {}),
         ),
       ),
+    [BATON_DICTATION_WS_METHODS.cleanupApi]: (input) =>
+      run(
+        Effect.flatMap(DictationCleanupApi, (api) => api.cleanup(input)).pipe(
+          Effect.catchTags({
+            ServerSettingsError: () =>
+              Effect.fail(new DictationCleanupError({ reason: "unreadable-key" })),
+          }),
+        ),
+      ),
+    [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: () =>
+      run(
+        Effect.flatMap(DictationCleanupApi, (api) => api.configured).pipe(
+          Effect.map((configured) => ({ configured })),
+          Effect.orElseSucceed(() => ({ configured: false })),
+        ),
+      ),
+    [BATON_DESKTOP_SETTINGS_WS_METHODS.get]: () =>
+      run(Effect.flatMap(BatonDesktopSettings, (settings) => settings.get)),
+    [BATON_DESKTOP_SETTINGS_WS_METHODS.set]: (input) =>
+      run(Effect.flatMap(BatonDesktopSettings, (settings) => settings.set(input.patch))),
+    [BATON_DESKTOP_SETTINGS_WS_METHODS.sync]: (input) =>
+      run(Effect.flatMap(BatonDesktopSettings, (settings) => settings.sync(input))),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(
         Effect.flatMap(BatonCommitmentService, (commitments) =>
@@ -567,7 +676,7 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(BatonMemoryLearning, (learning) =>
           learning.learn({
-            origin: "turn",
+            origin: input.origin ?? "turn",
             said: input.said,
             reply: input.reply,
             sourceRef: input.turnRef ?? null,
@@ -575,6 +684,8 @@ export const makeHandlers = Effect.gen(function* () {
             project: input.project ?? null,
             previous: input.previous ?? null,
             ...(input.agent === undefined ? {} : { agent: input.agent }),
+            ...(input.at === undefined ? {} : { at: input.at }),
+            ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
           }),
         ),
       ),
@@ -744,7 +855,23 @@ export const makeHandlers = Effect.gen(function* () {
       context === null
         ? Stream.die(unavailable())
         : workSessionStream(Context.get(context, WorkSessionService)),
-  } satisfies RpcGroup.HandlersFrom<RpcGroup.Rpcs<typeof BatonRpcGroup>>;
+  } satisfies RpcGroup.HandlersFrom<LegacyRpcs>;
 });
 
-export const make = Effect.flatMap(makeHandlers, (handlers) => BatonRpcGroup.toHandlers(handlers));
+type LegacyRpcs = Exclude<
+  RpcGroup.Rpcs<typeof BatonRpcGroup>,
+  { readonly _tag: `tessaya.${string}` }
+>;
+
+// Rename R1: each tessaya.* alias runs its old-named handler.
+const withTessayaAliases = <H extends RpcGroup.HandlersFrom<LegacyRpcs>>(handlers: H) =>
+  ({
+    ...handlers,
+    ...Object.fromEntries(
+      Object.entries(handlers).map(([tag, handler]) => [tessayaSpelling(tag), handler]),
+    ),
+  }) as H & { readonly [K in keyof H & string as TessayaSpelling<K>]: H[K] };
+
+export const make = Effect.flatMap(makeHandlers, (handlers) =>
+  BatonRpcGroup.toHandlers(withTessayaAliases(handlers)),
+);

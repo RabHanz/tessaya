@@ -113,6 +113,11 @@ describe("more than one way to do an action", () => {
       reason: "Add Ctrl, Alt, Shift or Win so it does not get in the way of typing.",
     });
     expect(checkInput(key("Ctrl+Alt"))).toMatchObject({ ok: false });
+    // Modifiers alone only with Win: the hold default, and Wispr Flow's.
+    expect(checkInput(key("Ctrl+Shift+Win"))).toEqual({ ok: true });
+    expect(checkInput(key("Ctrl+Win"))).toEqual({ ok: true });
+    expect(checkInput(key("Win"))).toMatchObject({ ok: false });
+    expect(checkInput(key("Ctrl+Shift"))).toMatchObject({ ok: false });
     expect(checkInput(key("Ctrl+Alt+Shift+Z"))).toEqual({
       ok: false,
       reason: "Use at most 3 keys together.",
@@ -122,6 +127,13 @@ describe("more than one way to do an action", () => {
       reason: "Windows keeps Ctrl+Alt+Delete for itself.",
     });
     expect(checkInput(key("alt+f4"))).toMatchObject({ ok: false });
+    // A mouse button remapped to F13 to F24 in its own software binds alone; Win+D, which Windows keeps, steers there.
+    expect(checkInput(key("F13"))).toEqual({ ok: true });
+    expect(checkInput(key("F24"))).toEqual({ ok: true });
+    expect(checkInput(key("Win+D"))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("F13"),
+    });
     expect(checkInput(key("Ctrl+C"))).toMatchObject({ ok: false });
     for (const fine of [
       key("F9"),

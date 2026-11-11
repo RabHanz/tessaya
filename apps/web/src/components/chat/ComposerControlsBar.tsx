@@ -27,6 +27,16 @@ import {
   ComposerPickerFooter,
   describeComposerEffort,
 } from "./ComposerModelEffort";
+import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { useLiveTraits } from "./BatonLiveModel";
+import {
+  BatonLimitMark,
+  BatonPickerAccount,
+  BatonUsageDetails,
+  batonPickModel,
+  batonModelOptions,
+  batonRailEntries,
+} from "./BatonPickerAccount";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
@@ -88,6 +98,7 @@ export function ComposerControlsBar(props: {
   onModelPickerOpenChange: (open: boolean) => void;
   modelPickerIconClassName: string | undefined;
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
+  onUsageLimitsCommand: ChatComposerProps["onUsageLimitsCommand"];
 }) {
   const {
     environmentId,
@@ -152,20 +163,25 @@ export function ComposerControlsBar(props: {
     measuredHiddenBlockCount,
   });
   const controlSize = composerControlsCollapsed ? "xs" : "sm";
-  const traitsInput = resolveComposerTraitsInput({
-    provider: selectedProvider,
-    instanceId: selectedInstanceId,
-    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
-    ...(routeKind === "draft" && draftId ? { draftId } : {}),
-    model: selectedModel,
-    models: selectedProviderModels,
-    modelOptions: composerModelOptions?.[selectedInstanceId],
-    reportedModelSelection,
-    promptUltrathink,
-    onPromptEdit,
-    planModeEnabled,
-  });
+  const batonThreadRef = routeKind === "server" ? routeThreadRef : null;
+  const traitsInput = useLiveTraits(
+    batonThreadRef,
+    resolveComposerTraitsInput({
+      provider: selectedProvider,
+      instanceId: selectedInstanceId,
+      ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
+      ...(routeKind === "draft" && draftId ? { draftId } : {}),
+      model: selectedModel,
+      models: selectedProviderModels,
+      modelOptions: composerModelOptions?.[selectedInstanceId],
+      reportedModelSelection,
+      promptUltrathink,
+      onPromptEdit,
+      planModeEnabled,
+    }),
+  );
   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
+  const railEntries = batonRailEntries(providerInstanceEntries, selectedInstanceId);
   const restingBlockDefs = showModeBlock
     ? [
         {
@@ -200,7 +216,12 @@ export function ComposerControlsBar(props: {
       multipleModelSelections={multipleModelSelections}
       onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
       selectedModelSelection={selectedModelSelection}
-      onProviderModelSelect={onProviderModelSelect}
+      onProviderModelSelect={(instanceId, model, options) => {
+        // The Terminal session entry, already current, changes nothing: the pick just closes the picker.
+        if (instanceId === LIVE_INSTANCE && selectedInstanceId === LIVE_INSTANCE)
+          onModelPickerOpenChange(false);
+        onProviderModelSelect(instanceId, model, options);
+      }}
       activeInstanceId={
         providerCatalogPending
           ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
@@ -213,16 +234,24 @@ export function ComposerControlsBar(props: {
       }
       lockedProvider={lockedProvider}
       lockedContinuationGroupKey={lockedContinuationGroupKey}
-      instanceEntries={providerInstanceEntries}
+      instanceEntries={railEntries}
       keybindings={keybindings}
-      modelOptionsByInstance={modelOptionsByInstance}
+      modelOptionsByInstance={batonModelOptions(modelOptionsByInstance, providerInstanceEntries)}
       size={controlSize}
       triggerClassName={cn(
         "group/model-trigger",
         MODEL_TRIGGER_STATES,
         composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
       )}
-      triggerSuffix={effort.suffix}
+      triggerSuffix={
+        <>
+          {effort.suffix}
+          <BatonLimitMark
+            entry={providerInstanceEntries.find((entry) => entry.instanceId === selectedInstanceId)}
+            threadRef={batonThreadRef}
+          />
+        </>
+      }
       triggerDetail={effort.detail}
       triggerShortcuts={
         pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
@@ -234,8 +263,33 @@ export function ComposerControlsBar(props: {
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           onRuntimeModeChange={handleRuntimeModeChange}
-        />
+        >
+          <BatonUsageDetails
+            onOpen={
+              props.onUsageLimitsCommand
+                ? () => {
+                    onModelPickerOpenChange(false);
+                    props.onUsageLimitsCommand?.();
+                  }
+                : null
+            }
+          />
+        </ComposerPickerFooter>
       }
+      renderInstanceDetail={(entry) => (
+        <BatonPickerAccount
+          entry={entry}
+          threadRef={batonThreadRef}
+          environmentId={environmentId}
+          threadInstanceId={selectedInstanceId}
+          onPickInstance={(instanceId) =>
+            onProviderModelSelect(
+              instanceId,
+              batonPickModel(entry, selectedProvider, selectedModel),
+            )
+          }
+        />
+      )}
       terminalOpen={terminalOpen}
       open={modelPickerOpen}
       instanceIndicatorBackground={

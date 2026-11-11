@@ -3,15 +3,20 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   biasTranscript,
   candidateWords,
+  correctionsAtCaret,
   correctionsBetween,
   addNever,
   isNever,
   learnCorrection,
+  mergeWispr,
+  removeHeard,
   skipWord,
+  unteach,
   observeWording,
   parseAddToDictionary,
   parseVocabulary,
   promptTerms,
+  screenNames,
   upsertEntry,
 } from "./vocabulary.ts";
 
@@ -23,12 +28,14 @@ describe("vocabulary file", () => {
       parseVocabulary([
         { phrase: "Kubernetes", replacement: null },
         { phrase: "gee pee tee", replacement: "GPT", source: "learned", count: 4, lastSeen: NOW },
+        { phrase: "Tessaya", replacement: null, source: "wispr", heard: ["Tisia", "tessaya", 3] },
         { phrase: "" },
         "x",
       ]),
     ).toEqual([
       { phrase: "Kubernetes", replacement: null, source: "added", count: 1 },
       { phrase: "gee pee tee", replacement: "GPT", source: "learned", count: 4, lastSeen: NOW },
+      { phrase: "Tessaya", replacement: null, source: "wispr", count: 1, heard: ["Tisia"] },
     ]);
     expect(parseVocabulary({})).toEqual([]);
   });
@@ -47,8 +54,161 @@ describe("vocabulary file", () => {
       1,
     );
     entries = upsertEntry(entries, { phrase: "baton", replacement: null, source: "added" }, NOW);
-    expect(promptTerms(entries)).toEqual(["Parakeet", "Baton"]);
+    const terms = promptTerms(entries);
+    // Her own names come first and carry how they are mis-heard; his words follow, most used first.
+    expect(terms.slice(0, 3).map((t) => t.split(" ")[0])).toEqual(["Tessaya", "Wispr", "T3"]);
+    expect(terms.slice(3)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
+  });
+});
+
+describe("her own names", () => {
+  it("are put back where Parakeet mis-hears them, and only where the name fits", () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["Quick update on Tisia.", "Quick update on Tessaya."],
+      ["Go over the whole of Teceyas code.", "Go over the whole of Tessaya's code."],
+      ["To say um", "Tessaya"],
+      ["Ship the Buton build.", "Ship the Baton build."],
+      ["Move it into D3 code.", "Move it into T3 code."],
+      // The dictation app he measures against (0.1.91).
+      ["Compare it with WhisperFlow.", "Compare it with Wispr Flow."],
+      ["Whisper Flow pastes faster.", "Wispr Flow pastes faster."],
+      // Controls: the everyday word, and real names.
+      ["Any header button is not working.", "Any header button is not working."],
+      ["Press the button to start.", "Press the button to start."],
+      [
+        "Ask Tessa from accounts, and copy Tasha in.",
+        "Ask Tessa from accounts, and copy Tasha in.",
+      ],
+      ["The D3 chart library is fine.", "The D3 chart library is fine."],
+      [
+        "Set BATON_THREADS on baton/dictation-magic.",
+        "Set BATON_THREADS on baton/dictation-magic.",
+      ],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, [])).toBe(meant);
+  });
+});
+
+describe("his taught words", () => {
+  it("joins a split spelling, and puts an everyday heard form back only in the bare slot after a preposition", () => {
+    const his = parseVocabulary([
+      { phrase: "Kubernetes", replacement: null },
+      { phrase: "Baton", replacement: null, heard: ["button"] },
+      { phrase: "Wispr Flow", replacement: null },
+    ]);
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["Ask Kuber Netes to check, on T 3 code.", "Ask Kubernetes to check, on T3 code."],
+      ["WisprFlow and wispr flow", "Wispr Flow and Wispr Flow"],
+      ["Add the accounts to button on the laptop.", "Add the accounts to Baton on the laptop."],
+      ["Update it from button.", "Update it from Baton."],
+      // Controls: the thing itself.
+      ["Put a like button there.", "Put a like button there."],
+      ["Fix the button UI.", "Fix the button UI."],
+      ["Click the button.", "Click the button."],
+      ["Play with button presses.", "Play with button presses."],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
+    // The model hears of an everyday form only as a maybe.
+    expect(promptTerms(his)).toContain(
+      'Baton (heard as "Buton"; sometimes heard as "button", only where it names this)',
+    );
+  });
+
+  it("puts a form he corrected that was written as a name back anywhere, and nothing shouted", () => {
+    const his = parseVocabulary([{ phrase: "Tessaya", replacement: null, heard: ["Tessa"] }]);
+    expect(biasTranscript("Tessa.", his)).toBe("Tessaya.");
+    expect(biasTranscript("Ask Tessa for it.", his)).toBe("Ask Tessaya for it.");
+    expect(biasTranscript("TESSA is loud.", his)).toBe("TESSA is loud.");
+    // One of his own words is never a mis-hearing of another (Wispr taught "Kubernetes" for Kuberly).
+    const both = parseVocabulary([
+      { phrase: "Kuberly", replacement: null, heard: ["Kubernetes"] },
+      { phrase: "Kubernetes", replacement: null },
+    ]);
+    expect(biasTranscript("Is the Kubernetes box up?", both)).toBe("Is the Kubernetes box up?");
+    expect(promptTerms(both)).toContain("Kuberly");
+  });
+
+  it("never puts a taught word over an everyday word he said, however Wispr learned it (0.1.92 feelIt)", () => {
+    const his = parseVocabulary([
+      { phrase: "feelIt", replacement: null, heard: ["It"] },
+      { phrase: "Hex", replacement: null, heard: ["Have"] },
+      { phrase: "UltraThink", replacement: null, heard: ["Think"] },
+    ]);
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      [
+        "It will overlap with it and it will look a bit weird.",
+        "It will overlap with it and it will look a bit weird.",
+      ],
+      ["Talk to have and then go.", "Talk to have and then go."],
+      ["Run it with think and see.", "Run it with think and see."],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
+    // Nor is the model told that "It" may be one of his words (0.1.92: "part of feelIt" on the Claude path).
+    expect(promptTerms(his).join(" ")).not.toMatch(/heard as "(It|Have|Think)"/);
+  });
+});
+
+describe("Wispr's dictionary", () => {
+  const rows = [
+    {
+      phrase: "Kubernetes",
+      replacement: null,
+      observedSource: "Cooper Netties",
+      isSnippet: 0,
+      frequencyUsed: 34,
+    },
+    {
+      phrase: "Opus",
+      replacement: "",
+      observedSource: new Uint8Array([1]),
+      isSnippet: 0,
+      frequencyUsed: 55,
+    },
+    {
+      phrase: "my sign-off",
+      replacement: "Kind regards, Sam",
+      observedSource: null,
+      isSnippet: 1,
+      frequencyUsed: 0,
+    },
+    { phrase: "Dee", replacement: null, observedSource: "she", isSnippet: 0, frequencyUsed: 2 },
+  ];
+
+  it("keeps the form each word was mis-heard as, its use, and moves snippets out", () => {
+    const old = [
+      { phrase: "Kubernetes", replacement: null, source: "added" as const, count: 1 },
+      {
+        phrase: "my sign-off",
+        replacement: "Kind regards, Sam",
+        source: "added" as const,
+        count: 1,
+      },
+    ];
+    const { entries, snippets } = mergeWispr(old, rows, ["Dee"]);
+    expect(entries).toEqual([
+      {
+        phrase: "Kubernetes",
+        replacement: null,
+        source: "added",
+        count: 34,
+        heard: ["Cooper Netties"],
+      },
+      { phrase: "Opus", replacement: null, source: "wispr", count: 55 },
+    ]);
+    expect(snippets).toEqual([{ cue: "my sign-off", text: "Kind regards, Sam" }]);
+  });
+
+  it("never brings back a word he deleted after the first import", () => {
+    expect(mergeWispr([], rows, [], false).entries).toEqual([]);
+  });
+
+  it("takes one heard form off", () => {
+    const entries = [{ phrase: "Tessaya", replacement: null, heard: ["Tisia", "Tessa"] }];
+    expect(removeHeard(entries, "tessaya", "tessa")).toEqual([
+      { phrase: "Tessaya", replacement: null, heard: ["Tisia"] },
+    ]);
+    expect(removeHeard(entries, "Tessaya", "Tisia").map((e) => e.heard)).toEqual([["Tessa"]]);
   });
 });
 
@@ -63,24 +223,74 @@ describe("the voice command", () => {
 });
 
 describe("learning from his corrections", () => {
-  it("learns a mis-heard word only after he fixes it twice, and ignores rewrites", () => {
-    const fix = correctionsBetween(
-      "Ask Sam about the Cooper Netties cluster",
-      "Ask Sam about the Kubernetes cluster",
-    );
-    expect(fix).toEqual([]); // two words became one: a rewrite, not a swap
-    const swap = correctionsBetween(
-      "Deploy it to Cooper Nettie today",
-      "Deploy it to Cooper Kubernetes today",
-    );
-    expect(swap).toEqual([]);
+  it("learns a heard form from one fix, the rule from two, and ignores rewrites", () => {
+    // A span he typed over as one word is a correction; a swap that keeps the old words is not.
+    expect(
+      correctionsBetween(
+        "Ask Sam about the Cooper Netties cluster",
+        "Ask Sam about the Kubernetes cluster",
+      ),
+    ).toEqual([{ heard: "Cooper Netties", meant: "Kubernetes" }]);
+    expect(correctionsBetween("Ask the git hub team", "Ask the GitHub team")).toEqual([
+      { heard: "git hub", meant: "GitHub" },
+    ]);
+    expect(
+      correctionsBetween(
+        "Deploy it to Cooper Nettie today",
+        "Deploy it to Cooper Kubernetes today",
+      ),
+    ).toEqual([]);
+    expect(
+      correctionsBetween("Send the deck to Sam", "Email it to the whole team instead"),
+    ).toEqual([]);
     const one = correctionsBetween("Please call Tomas about it", "Please call Thomas about it");
     expect(one).toEqual([{ heard: "Tomas", meant: "Thomas" }]);
     let state = learnCorrection({}, [], one[0]!, NOW);
-    expect(state.entries).toEqual([]);
+    expect(state.entries).toEqual([
+      {
+        phrase: "Thomas",
+        replacement: null,
+        source: "learned",
+        count: 1,
+        lastSeen: NOW,
+        heard: ["Tomas"],
+      },
+    ]);
+    expect(state.taught).toEqual(one);
     state = learnCorrection(state.seen, state.entries, one[0]!, NOW);
+    expect(state.taught).toEqual([]);
     expect(state.entries).toMatchObject([
+      { phrase: "Thomas", heard: ["Tomas"] },
       { phrase: "Tomas", replacement: "Thomas", source: "learned", count: 2 },
+    ]);
+    // Grammar is never taught, whatever its capitals or spacing.
+    for (const fix of [
+      { heard: "Their", meant: "There" },
+      { heard: "in to", meant: "into" },
+      { heard: "may be", meant: "maybe" },
+    ])
+      expect(
+        learnCorrection({ [`${fix.heard.toLowerCase()}>${fix.meant}`]: 1 }, [], fix, NOW).entries,
+      ).toEqual([]);
+    // A dictation pasted after text already in the field, then shortened by his fix, is still found.
+    expect(
+      correctionsAtCaret(
+        "Ask the git hub team today",
+        "Notes from Monday. The build is green. Ask the GitHub team today",
+      ),
+    ).toEqual({
+      fixes: [{ heard: "git hub", meant: "GitHub" }],
+      fixed: "Ask the GitHub team today",
+    });
+    // Undo takes the form off, and the word with it when that form was all it had learned.
+    expect(unteach(learnCorrection({}, [], one[0]!, NOW).entries, one[0]!)).toEqual([]);
+    // After two fixes, Discard takes the literal rule too.
+    expect(unteach(state.entries, one[0]!)).toEqual([]);
+    const his = [{ phrase: "Tessaya", replacement: null, source: "added" as const, count: 4 }];
+    const taught = learnCorrection({}, his, { heard: "Tisia", meant: "Tessaya" }, NOW);
+    expect(taught.entries[0]?.heard).toEqual(["Tisia"]);
+    expect(unteach(taught.entries, { heard: "Tisia", meant: "Tessaya" })).toEqual([
+      { ...his[0], lastSeen: NOW },
     ]);
   });
 });
@@ -120,6 +330,33 @@ describe("recognition bias", () => {
     expect(biasTranscript("Ask Zohayb about Kubernetis and colour.", entries)).toBe(
       "Ask Zohaib about Kubernetes and colour.",
     );
+  });
+
+  it("makes a name the recogniser made up his word when it is on screen and sounds like it", () => {
+    const his = parseVocabulary([{ phrase: "Zohaib", replacement: null }]);
+    const screen = { screen: ["Tessaya", "Zohaib"] };
+    expect(biasTranscript("Tessa.", his, screen)).toBe("Tessaya.");
+    expect(biasTranscript("Is Tesla up for Zohayb?", his, screen)).toBe(
+      "Is Tessaya up for Zohaib?",
+    );
+    // Off screen, a real word, or one that starts with another sound, stays.
+    expect(biasTranscript("Ask Tessa.", his)).toBe("Ask Tessa.");
+    // Said alone, it is his word even off screen.
+    expect(biasTranscript("Tessa.", his)).toBe("Tessaya.");
+    expect(biasTranscript("Press the button on Hessia.", his, screen)).toBe(
+      "Press the button on Hessia.",
+    );
+  });
+
+  it("reads names off the screen's accessibility lines, not its everyday words", () => {
+    expect(
+      screenNames([
+        "Tessaya - Google Chrome",
+        "Tab: LaunchPad dashboard",
+        "Button: Open the T3 Code settings",
+        "Text: What is the status",
+      ]),
+    ).toEqual(["Tessaya", "Google", "Chrome", "LaunchPad", "T3", "Code"]);
   });
 });
 

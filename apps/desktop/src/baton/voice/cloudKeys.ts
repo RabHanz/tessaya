@@ -15,43 +15,44 @@ export interface KeyProtection {
   readonly unprotect: (wrapped: string) => string;
 }
 
-export interface CloudKeys {
+export interface CloudKeys<K extends string = CloudSttProvider> {
   /** The key to use, or null: none kept, one that will not unwrap, or one the provider refused. */
-  readonly get: (provider: CloudSttProvider) => string | null;
-  readonly has: (provider: CloudSttProvider) => boolean;
+  readonly get: (provider: K) => string | null;
+  readonly has: (provider: K) => boolean;
   /** The provider answered 401/403: the cloud is not tried with this key again until he saves or removes one. */
-  readonly refuse: (provider: CloudSttProvider) => void;
-  readonly refused: (provider: CloudSttProvider) => boolean;
+  readonly refuse: (provider: K) => void;
+  readonly refused: (provider: K) => boolean;
   /** Throws when this computer cannot encrypt it, so it is never kept in the clear. */
-  readonly set: (provider: CloudSttProvider, key: string) => void;
-  readonly clear: (provider: CloudSttProvider) => void;
+  readonly set: (provider: K, key: string) => void;
+  readonly clear: (provider: K) => void;
 }
 
 /** API keys are long runs of letters, digits and - _ . (sk-..., AIza..., sk-or-v1-...); anything else is a paste gone wrong. */
 const KEY_SHAPE = /^[A-Za-z0-9_.-]{20,400}$/;
 
-export const createCloudKeys = (
+/** Also keeps his recogniser tokens, by server address (`K` = string), in their own file. */
+export const createCloudKeys = <K extends string = CloudSttProvider>(
   file: string,
   protection: () => KeyProtection | null,
-): CloudKeys => {
-  const read = (): Partial<Record<CloudSttProvider, string>> => {
+): CloudKeys<K> => {
+  const read = (): Partial<Record<K, string>> => {
     try {
       const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as unknown;
       return parsed !== null && typeof parsed === "object"
-        ? (parsed as Partial<Record<CloudSttProvider, string>>)
+        ? (parsed as Partial<Record<K, string>>)
         : {};
     } catch {
       return {};
     }
   };
-  const write = (all: Partial<Record<CloudSttProvider, string>>) => {
+  const write = (all: Partial<Record<K, string>>) => {
     NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
     NodeFS.writeFileSync(file, JSON.stringify(all), { mode: 0o600 });
   };
   // Unwrapped once and kept in memory: the settings page asks on every draw, and a file read plus a decrypt each time is waste.
-  const cache = new Map<CloudSttProvider, string | null>();
-  const refusedBy = new Set<CloudSttProvider>();
-  const unwrap = (provider: CloudSttProvider): string | null => {
+  const cache = new Map<K, string | null>();
+  const refusedBy = new Set<K>();
+  const unwrap = (provider: K): string | null => {
     const wrapped = read()[provider];
     const os = protection();
     if (typeof wrapped !== "string" || os === null) return null;
@@ -62,11 +63,11 @@ export const createCloudKeys = (
       return null;
     }
   };
-  const kept = (provider: CloudSttProvider): string | null => {
+  const kept = (provider: K): string | null => {
     if (!cache.has(provider)) cache.set(provider, unwrap(provider));
     return cache.get(provider) ?? null;
   };
-  const forget = (provider: CloudSttProvider) => {
+  const forget = (provider: K) => {
     cache.delete(provider);
     refusedBy.delete(provider);
   };
@@ -92,7 +93,8 @@ export const createCloudKeys = (
       forget(provider);
     },
     clear: (provider) => {
-      const { [provider]: _gone, ...rest } = read();
+      const rest = { ...read() };
+      delete rest[provider];
       write(rest);
       forget(provider);
     },

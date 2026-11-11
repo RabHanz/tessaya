@@ -8,6 +8,7 @@ import {
   packPrompt,
   PACK_PROMPT_CHARS,
   personaFor,
+  rosterLine,
 } from "./osPack.ts";
 
 describe("the operating-system pack", () => {
@@ -38,6 +39,16 @@ describe("the roster", () => {
     const p = personaFor(pack.personas, { wake, text });
     return `${p.name}/${p.voice}`;
   };
+  it("tells each persona who the others are and what they do, in one line, leaving out a private one (PRESENCE)", () => {
+    expect(rosterLine(DEFAULT_OS_PACK.personas, "operations")).toBe(
+      "Tessaya leads and hands out the work; Alfred handles sessions, builds and releases; Sebastian handles research and analysis",
+    );
+    expect(rosterLine(DEFAULT_OS_PACK.personas, "executive")).not.toContain("Tessaya");
+    const hidden = DEFAULT_OS_PACK.personas.map((p) =>
+      p.id === "research" ? { ...p, private: true } : p,
+    );
+    expect(rosterLine(hidden, "operations")).not.toContain("Sebastian");
+  });
   it("answers a wake word with that persona's name and voice", () => {
     expect(who(DEFAULT_OS_PACK, "Freya")).toBe("Freya/vera");
     expect(who(DEFAULT_OS_PACK, "alfred")).toBe("Alfred/charles");

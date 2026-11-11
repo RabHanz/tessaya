@@ -8006,10 +8006,10 @@ z%>2Jx()@`>H_aEDe`#KLdl<bgI%(|VKViPx%$eGgpLoxE-ufG_{=oEAQl;nJU;GyM
 Z{{X8}C)yA-<!=B0002ovPDHLkV1jyQ5Q_i+
 
 diff --git a/apps/web/public/manifest.webmanifest b/apps/web/public/manifest.webmanifest
-index fa9c40e127adad36177ca591cd5beb0bb4545dd4..2a7208e5faad59af41064b59fdc46ff27ac9a422 100644
+index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff27ac9a422 100644
 --- a/apps/web/public/manifest.webmanifest
 +++ b/apps/web/public/manifest.webmanifest
-@@ -1,22 +1,15 @@
+@@ -1,34 +1,15 @@
  {
    "id": "/",
 -  "name": "T3 Code",
@@ -8033,76 +8033,139 @@ index fa9c40e127adad36177ca591cd5beb0bb4545dd4..2a7208e5faad59af41064b59fdc46ff2
 -      "src": "/apple-touch-icon.png",
 -      "sizes": "180x180",
 -      "type": "image/png"
+-    },
+-    {
+-      "src": "/icon-192x192.png",
+-      "sizes": "192x192",
+-      "type": "image/png",
+-      "purpose": "any"
+-    },
+-    {
+-      "src": "/icon-512x512.png",
+-      "sizes": "512x512",
+-      "type": "image/png",
+-      "purpose": "any"
 -    }
 +    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
 +    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
 +    { "src": "/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
    ]
  }
-diff --git a/apps/web/src/components/ThreadStatusIndicators.tsx b/apps/web/src/components/ThreadStatusIndicators.tsx
-index ea49b01665b645c778731a375295672d00e700bb..0964589173c30b63818b55b112bd39ffe7c37863 100644
---- a/apps/web/src/components/ThreadStatusIndicators.tsx
-+++ b/apps/web/src/components/ThreadStatusIndicators.tsx
-@@ -603,7 +603,7 @@ export function ThreadWorktreeIndicator({
-   );
- }
- 
--function ThreadStatusLabel({
-+export function ThreadStatusLabel({
-   status,
-   compact = false,
- }: {
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..160c117c0f93546303a7acf9814396d21e0ea111 100644
+index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc44911852 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -20,6 +20,8 @@ import {
    type MouseEvent as ReactMouseEvent,
  } from "react";
  import { isTrailingDoubleClick } from "../Sidebar.logic";
-+import { BatonLiveModel } from "./BatonLiveModel";
-+import { BatonThreadAccount } from "./BatonThreadAccount";
++import { BatonLiveStatus } from "./BatonLiveStatus";
++import { useDisplayThreadTitle } from "./BatonThreadTitle";
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { toastManager } from "../ui/toast";
-@@ -430,6 +432,8 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -73,7 +75,7 @@ const TITLE_MENU_OPEN_DELAY_MS = 500;
+ export const ChatHeader = memo(function ChatHeader({
+   activeThreadEnvironmentId,
+   activeThreadId,
+-  activeThreadTitle,
++  activeThreadTitle: storedThreadTitle,
+   activeThreadLinkOrigin,
+   isServerThread,
+   activeProject,
+@@ -84,6 +86,11 @@ export const ChatHeader = memo(function ChatHeader({
+   onOpenProjectSettings,
+   onFindInThread,
+ }: ChatHeaderProps) {
++  const activeThreadTitle = useDisplayThreadTitle(
++    activeThreadEnvironmentId,
++    activeThreadId,
++    storedThreadTitle,
++  );
+   const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
+   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
+   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
+@@ -169,7 +176,7 @@ export const ChatHeader = memo(function ChatHeader({
+     setRenaming({
+       environmentId: activeThreadEnvironmentId,
+       threadId: activeThreadId,
+-      title: activeThreadTitle,
++      title: storedThreadTitle,
+     });
+   };
+   const commitRename = (title: string) => {
+@@ -177,7 +184,7 @@ export const ChatHeader = memo(function ChatHeader({
+     if (!readEnvironmentScope(activeThreadEnvironmentId, AuthOrchestrationOperateScope)) return;
+     const resolution = resolveRenameCommit({
+       title,
+-      originalTitle: renamingTitle ?? activeThreadTitle,
++      originalTitle: renamingTitle ?? storedThreadTitle,
+     });
+     if (resolution.action === "reject-empty") {
+       toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
+@@ -430,6 +437,7 @@ export const ChatHeader = memo(function ChatHeader({
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
-+      {isServerThread ? <BatonLiveModel threadRef={activeThreadRef} /> : null}
-+      {isServerThread ? <BatonThreadAccount threadRef={activeThreadRef} /> : null}
++      {isServerThread ? <BatonLiveStatus threadRef={activeThreadRef} /> : null}
        {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
      </div>
    );
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..b835cd5071f0e33b69bdd739a4db0e730dcdf54e 100644
+index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..618f18cea064815d2ca010f3e7450514895f02f0 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
 +++ b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-@@ -1,5 +1,6 @@
+@@ -1,8 +1,12 @@
  import { Toolbar } from "@base-ui/react/toolbar";
  import { type ProviderInstanceId } from "@t3tools/contracts";
+-import { memo, useLayoutEffect, useRef, useState } from "react";
 +import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
- import { memo, useLayoutEffect, useRef, useState } from "react";
++import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
++import { Fragment, memo, useLayoutEffect, useRef, useState } from "react";
  import { StarIcon } from "lucide-react";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-@@ -39,6 +40,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
++import { instanceRoom, RailLimitMark } from "./BatonPickerAccount";
++import { useNowMinute } from "../../hooks/useNowMinute";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import { cn } from "~/lib/utils";
+ import {
+@@ -39,10 +43,18 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
    selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
    getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
  }) {
-+  const badgeLetters = distinctInstanceInitials(props.instanceEntries.map((e) => e.displayName));
++  // The Terminal session instance is its own group above the providers: it drives a terminal, not a model.
++  const liveEntries = props.instanceEntries.filter((e) => e.instanceId === LIVE_INSTANCE);
++  const instanceEntries = [
++    ...liveEntries,
++    ...props.instanceEntries.filter((e) => e.instanceId !== LIVE_INSTANCE),
++  ];
++  const badgeLetters = distinctInstanceInitials(instanceEntries.map((e) => e.displayName));
    const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
      props.onSelectInstance(instanceId);
    };
-@@ -123,7 +125,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+   const showFavorites = props.showFavorites ?? true;
++  const now = Date.parse(`${useNowMinute()}:00Z`);
+   const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
+   const sidebarContentRef = useRef<HTMLDivElement>(null);
+   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
+@@ -123,7 +135,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
              </>
            ) : null}
  
 -          {props.instanceEntries.map((entry) => {
-+          {props.instanceEntries.map((entry, entryIndex) => {
++          {instanceEntries.map((entry, entryIndex) => {
              const isUnavailable = !isProviderInstancePickerReady(entry);
              const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
              const unavailableSelectionIsReachable =
-@@ -169,6 +171,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -139,6 +151,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+               : isContextDisabled
+                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
+                 : entry.displayName;
++            const room = isUnavailable || isContextDisabled ? null : instanceRoom(entry, now);
+ 
+             const button = (
+               <Toolbar.Button
+@@ -169,6 +182,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                    acpRegistryAgentId={entry.acpRegistryAgentId}
                    acpRegistryIconUrl={entry.acpRegistryIconUrl}
                    showBadge={showInstanceBadge}
@@ -8110,6 +8173,55 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..b835cd5071f0e33b69bdd739a4db0e73
                    className="size-6 z-30"
                    iconClassName="size-5"
                    indicatorBackground={
+@@ -180,6 +194,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+                   }
+                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
+                 />
++                {room?.onLimit ? <RailLimitMark /> : null}
+               </Toolbar.Button>
+             );
+ 
+@@ -190,22 +205,24 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+             );
+ 
+             return (
+-              <div
+-                key={entry.instanceId}
+-                className="relative w-full"
+-                data-model-picker-provider={entry.instanceId}
+-              >
+-                <Tooltip>
+-                  <TooltipTrigger render={trigger} />
+-                  <TooltipPopup
+-                    side={PICKER_TOOLTIP_SIDE}
+-                    sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
+-                    align="center"
+-                  >
+-                    {tooltip}
+-                  </TooltipPopup>
+-                </Tooltip>
+-              </div>
++              <Fragment key={entry.instanceId}>
++                {entryIndex === liveEntries.length && entryIndex > 0 ? (
++                  <div className="border-b border-border/70" aria-hidden="true" />
++                ) : null}
++                <div className="relative w-full" data-model-picker-provider={entry.instanceId}>
++                  <Tooltip>
++                    <TooltipTrigger render={trigger} />
++                    <TooltipPopup
++                      side={PICKER_TOOLTIP_SIDE}
++                      sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
++                      align="center"
++                    >
++                      {tooltip}
++                      {room ? <div className="text-muted-foreground">{room.text}</div> : null}
++                    </TooltipPopup>
++                  </Tooltip>
++                </div>
++              </Fragment>
+             );
+           })}
+         </div>
 diff --git a/apps/web/src/components/chat/ProviderInstanceIcon.tsx b/apps/web/src/components/chat/ProviderInstanceIcon.tsx
 index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf078167b235e1 100644
 --- a/apps/web/src/components/chat/ProviderInstanceIcon.tsx
@@ -8134,6 +8246,57 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
          </span>
        ) : null}
      </span>
+diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f20b7d47a 100644
+--- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
++++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
+@@ -109,6 +109,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
+ import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
+ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+ import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
++import { BatonLiveBadge } from "./BatonLiveBadge";
++import { BatonThreadTitleText } from "../chat/BatonThreadTitle";
+ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
+ import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
+ import { InlineButton } from "../ui/button";
+@@ -533,6 +535,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
+ 
+ type SidebarThreadRowProps = {
+   thread: SidebarThreadSummary;
++  /** Tessaya: a live session running now (P5), decided once for the whole list. */
++  batonLive?: boolean;
+   // "folder" is a one-line row inside a boring sidebar project folder;
+   // "folder-multiline" adds the card's branch and PR line under it.
+   variant: "card" | "slim" | "folder" | "folder-multiline";
+@@ -1044,7 +1048,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+       )}
+       dir={textDirection(thread.title)}
+     >
+-      {thread.title}
++      <BatonThreadTitleText
++        environmentId={thread.environmentId}
++        threadId={thread.id}
++        title={thread.title}
++      />
+     </span>
+   );
+   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
+@@ -1175,6 +1183,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+         aria-hidden
+         className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+       >
++        <BatonLiveBadge live={props.batonLive === true} />
+         {remoteMachineIcon}
+         <SidebarProviderStack
+           thread={thread}
+@@ -1185,6 +1194,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+   );
+   const titleLineIcons = metaLineEmpty ? (
+     <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
++      <BatonLiveBadge live={props.batonLive === true} />
+       {remoteMachineIcon}
+       <SidebarProviderStack
+         thread={thread}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
 index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536a26b441b 100644
 --- a/apps/web/src/routes/__root.tsx

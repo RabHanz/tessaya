@@ -16,7 +16,13 @@ NodeFS.mkdirSync(out, { recursive: true });
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 setTimeout(() => Electron.app.exit(3), 3 * 60_000).unref();
 
-const view = (phase: string, label: string) => ({ phase, label, tone: "voice", wave: "live", caption: "" });
+const view = (phase: string, label: string) => ({
+  phase,
+  label,
+  tone: "voice",
+  wave: "live",
+  caption: "",
+});
 const STEPS: ReadonlyArray<readonly [string, string]> = [
   ["start (nothing shown)", ""],
   ["listening", `window.pill.show(${JSON.stringify(view("listening", "Listening"))})`],
@@ -53,10 +59,23 @@ void Electron.app.whenReady().then(async () => {
     )) as { shown: boolean; complete: boolean; w: number; src: string };
     const ok = !probe.shown || (probe.complete && probe.w > 0);
     if (!ok) bad += 1;
-    NodeFS.writeFileSync(NodePath.join(out, `${String(index).padStart(2, "0")}-${name.replaceAll(/[^a-z]+/gi, "-")}.png`), (await win.webContents.capturePage()).toPNG());
-    rows.push(`| ${name} | ${probe.shown ? "on screen" : "not shown"} | src ${probe.src} | ${probe.w} | ${ok ? "ok" : "BROKEN ICON"} |`);
+    NodeFS.writeFileSync(
+      NodePath.join(
+        out,
+        `${String(index).padStart(2, "0")}-${name.replaceAll(/[^a-z]+/gi, "-")}.png`,
+      ),
+      (await win.webContents.capturePage()).toPNG(),
+    );
+    rows.push(
+      `| ${name} | ${probe.shown ? "on screen" : "not shown"} | src ${probe.src} | ${probe.w} | ${ok ? "ok" : "BROKEN ICON"} |`,
+    );
   }
-  const text = [`### Pill icon in every state: ${bad === 0 ? "all fine" : `${bad} broken`}`, "| state | icon | source | naturalWidth | result |", "| --- | --- | --- | --- | --- |", ...rows].join("\n");
+  const text = [
+    `### Pill icon in every state: ${bad === 0 ? "all fine" : `${bad} broken`}`,
+    "| state | icon | source | naturalWidth | result |",
+    "| --- | --- | --- | --- | --- |",
+    ...rows,
+  ].join("\n");
   NodeFS.writeFileSync(NodePath.join(out, "results.md"), text);
   console.log(text);
   Electron.app.exit(bad === 0 ? 0 : 1);

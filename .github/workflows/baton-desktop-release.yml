@@ -32,6 +32,10 @@ on:
         description: "Version to release, e.g. 1.0.0 (tag baton-v<version> is created at the current commit if it doesn't exist)"
         required: true
         type: string
+      dry_run:
+        description: "Build every installer but publish no release (CI proof of the build)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -158,6 +162,12 @@ jobs:
       - name: Setup pnpm
         run: corepack enable
 
+      # The sidecar's graphics-card build (native/baton-dictation gpu.rs) needs the Vulkan SDK's headers and shader compiler.
+      - uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.363.1
+          install_runtime: false
+          cache: true
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -270,6 +280,7 @@ jobs:
   publish:
     name: Publish GitHub release
     needs: [resolve_version, build_linux, build_windows, build_macos]
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -1,10 +1,15 @@
 import { assert, it } from "@effect/vitest";
-import { ProviderThreadId, ThreadId } from "@t3tools/contracts";
+import { ProjectId, ProviderInstanceId, ProviderThreadId, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
 import { deliverContextHandoffs } from "../orchestration-v2/ContextHandoffDelivery.ts";
-import { takesNoContextHandoff } from "./BatonLiveInstance.ts";
+import { ThreadManagementProviderInstanceDisabledError } from "../orchestration-v2/ThreadManagementService.ts";
+import {
+  liveSendingUnavailable,
+  noteLiveSendingUnavailable,
+  takesNoContextHandoff,
+} from "./BatonLiveInstance.ts";
 import { supersedeLiveHandoffs } from "./LiveSessionMirror.ts";
 
 const THREAD = ThreadId.make("baton-live4:11111111-2222-4333-8444-555555555555");
@@ -81,3 +86,28 @@ it.effect(
       assert.strictEqual(injected, 0);
     }),
 );
+
+it("says plainly why a terminal session cannot be sent to on this computer, never that its instance is disabled", () => {
+  const here = { platform: "linux", herdr: true, script: true, node: true };
+  assert.strictEqual(liveSendingUnavailable(here), null);
+  assert.include(
+    liveSendingUnavailable({ ...here, platform: "win32" }) ?? "",
+    "does not run on Windows",
+  );
+  assert.include(liveSendingUnavailable({ ...here, herdr: false }) ?? "", "not installed");
+  assert.include(
+    liveSendingUnavailable({ ...here, script: false }) ?? "",
+    "agent is not installed",
+  );
+  assert.include(liveSendingUnavailable({ ...here, node: false }) ?? "", "no Node.js");
+  noteLiveSendingUnavailable(liveSendingUnavailable({ ...here, platform: "win32" }));
+  const refusal = new ThreadManagementProviderInstanceDisabledError({
+    projectId: ProjectId.make("8f4e1b1e"),
+    instanceId: ProviderInstanceId.make("baton-live"),
+  }).message;
+  assert.strictEqual(
+    refusal,
+    "Sending isn't available for terminal sessions on this computer yet: Herdr, which carries messages into terminal sessions, does not run on Windows.",
+  );
+  noteLiveSendingUnavailable(null);
+});

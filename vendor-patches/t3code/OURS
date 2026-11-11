@@ -1,0 +1,4 @@
+# Upstream paths Tessaya replaces whole: on a sync conflict, patches.sh rebase keeps Tessaya's file.
+# Only for files where upstream's text is T3's own identity (contacts, icons), never code.
+.github/SECURITY.md
+apps/web/public/manifest.webmanifest

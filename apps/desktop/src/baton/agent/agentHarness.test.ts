@@ -22,7 +22,7 @@ const notepadTrace: ReadonlyArray<Step> = [
   { tool: "type_text", args: { text: "notepad", why: "search for Notepad" } },
   { tool: "click_element", args: { label: "Notepad", why: "open Notepad" } },
   { tool: "wait_for", args: { label: "Text Editor", seconds: 5 } },
-  { tool: "type_text", args: { text: "Baton task one", why: "the line he asked for" } },
+  { tool: "type_text", args: { text: "Tessaya task one", why: "the line he asked for" } },
   { tool: "press_keys", args: { keys: ["ctrl", "s"], why: "save" } },
 ];
 
@@ -79,7 +79,7 @@ const rig = async (opts: { yes: boolean; his?: (t: string) => boolean; window?: 
 
 describe("the hands, dry", () => {
   it("lets a clean Notepad run through, asking nothing except for the words typed after a screenshot", async () => {
-    const r = await rig({ yes: false, his: (t) => t === "Baton task one" });
+    const r = await rig({ yes: false, his: (t) => t === "Tessaya task one" });
     const outcomes: boolean[] = [];
     for (const step of notepadTrace) outcomes.push((await r.call(step)).isError !== true);
     // "notepad" was typed after a screenshot and is not his words, and Ctrl+S is not a navigation key: both asked.

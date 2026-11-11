@@ -26,6 +26,7 @@ import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import type * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import type { BatonJobService } from "./BatonJobService.ts";
 import type { WorkSessionService } from "./WorkSessionService.ts";
+import type { BatonMemoryService } from "./BatonMemoryService.ts";
 
 export class BatonJobReactor extends Context.Service<
   BatonJobReactor,
@@ -43,6 +44,7 @@ export const layer = Layer.effect(
       | ProviderRegistry.ProviderRegistry
       | AdoptedSessionService
       | ServerConfig.ServerConfig
+      | BatonMemoryService
     >();
     return {
       start: Effect.fn("BatonJobReactor.start")(function* () {

@@ -33,7 +33,7 @@ describe("a twelve-minute dictation, all at once", () => {
       text: raw.replace(/ of the long/g, ""),
       stage: "model",
     }));
-    const result = await oneShot.flush();
+    const result = await oneShot.flush(null);
     expect(result).toMatchObject({ status: "pasted", failed: false });
     expect(pasted).toHaveLength(1);
     for (let i = 1; i <= 48; i += 1) expect(pasted[0]).toContain(`Sentence number ${i} dictation`);
@@ -50,7 +50,7 @@ describe("a twelve-minute dictation, all at once", () => {
       async () => ({ text: "  ", stage: "model" }),
     ]) {
       const { oneShot, pasted } = harness(clean);
-      const result = await oneShot.flush();
+      const result = await oneShot.flush(null);
       expect(result).toMatchObject({ status: "pasted", failed: true });
       expect(pasted[0]).toBe(sentences.join(" "));
     }
@@ -61,7 +61,7 @@ describe("a twelve-minute dictation, all at once", () => {
       async (raw) => ({ text: raw, stage: "model" }),
       false,
     );
-    expect(await oneShot.flush()).toMatchObject({ status: "kept" });
+    expect(await oneShot.flush(null)).toMatchObject({ status: "kept" });
     expect(pasted).toEqual([]);
     expect(saved.at(-1)).toHaveLength(48);
     expect(oneShot.pending()).toHaveLength(48);
@@ -71,7 +71,7 @@ describe("a twelve-minute dictation, all at once", () => {
     const { oneShot, saved, pasted } = harness(async (raw) => ({ text: raw, stage: "model" }));
     oneShot.discard();
     expect(saved.at(-1)).toEqual([]);
-    expect(await oneShot.flush()).toMatchObject({ status: "empty" });
+    expect(await oneShot.flush(null)).toMatchObject({ status: "empty" });
     expect(pasted).toEqual([]);
   });
 
@@ -89,8 +89,42 @@ describe("a twelve-minute dictation, all at once", () => {
     });
     oneShot.push("first dictation");
     late = () => oneShot.push("second dictation");
-    await oneShot.flush();
+    await oneShot.flush(null);
     expect(pasted).toEqual(["first dictation"]);
     expect(oneShot.pending()).toEqual(["second dictation"]);
+  });
+
+  it("two dictations ending close together each paste once, each into its own window", async () => {
+    const pasted: Array<readonly [string, string]> = [];
+    let slow: (() => void) | null = null;
+    const oneShot = createOneShot<{ readonly exe: string }>({
+      save: () => {},
+      // The first one's clean-up is the slow one: the second must still wait for it, and keep its own window.
+      clean: async (raw) => {
+        if (raw === "first") await new Promise<void>((resolve) => (slow = resolve));
+        return { text: raw, stage: "model" };
+      },
+      fit: async (text) => text,
+      // Keys held for a dictation's ghost are its own, and go only once its paste has landed.
+      beforePaste: async (_raw, _text, app) => void pasted.push(["hold", app.exe]),
+      paste: async (text, app) => (pasted.push([text, app.exe]), app.exe === "notepad.exe"),
+      afterPaste: (app) => void pasted.push(["release", app.exe]),
+    });
+    oneShot.push("first");
+    const a = oneShot.flush({ exe: "notepad.exe" });
+    oneShot.push("second");
+    const b = oneShot.flush({ exe: "code.exe" });
+    await Promise.resolve();
+    (slow as (() => void) | null)?.();
+    await Promise.all([a, b]);
+    expect(pasted).toEqual([
+      ["hold", "notepad.exe"],
+      ["first", "notepad.exe"],
+      ["release", "notepad.exe"],
+      ["hold", "code.exe"],
+      ["second", "code.exe"],
+      ["release", "code.exe"],
+    ]);
+    expect(oneShot.pending()).toEqual(["second"]);
   });
 });

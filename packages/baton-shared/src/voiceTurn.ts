@@ -29,6 +29,8 @@ export interface TurnState {
   readonly open: boolean;
   /** The window closed under something else: the end shows when that finishes. */
   readonly closing: boolean;
+  /** Dictation is being written out or tidied: the waveform sweeps instead of hearing him. */
+  readonly tidying?: boolean;
 }
 
 export type TurnEvent =
@@ -40,7 +42,7 @@ export type TurnEvent =
   | { readonly type: "target"; readonly name: string | null }
   /** The assistant is looking, driving or teaching; null when it stops. */
   | { readonly type: "activity"; readonly label: string | null; readonly caption?: string }
-  | { readonly type: "dictating"; readonly caption: string | null }
+  | { readonly type: "dictating"; readonly caption: string | null; readonly tidying?: boolean }
   | { readonly type: "muted"; readonly on: boolean }
   /** A brief confirmation: "Pasted", "Sent". */
   | { readonly type: "done"; readonly label: string }
@@ -168,6 +170,7 @@ export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
         caption: event.caption,
         open: state.open,
         closing: state.closing,
+        tidying: event.tidying === true,
       };
     case "muted":
       if (event.on) return { ...IDLE_TURN, phase: "muted" };
@@ -252,6 +255,7 @@ export const turnView = (state: TurnState): TurnView | null => {
   const parts = [state.caption, state.detail].filter((part) => part !== null);
   return {
     ...view,
+    ...(state.phase === "dictating" && state.tidying === true ? { wave: "sweep" as const } : {}),
     label: state.label ?? view.label,
     caption: parts.length > 0 ? parts[0]! : null,
   };
@@ -281,6 +285,75 @@ export const frameLevel = (frame: Int16Array): number => {
   let peak = 0;
   for (let i = 0; i < frame.length; i += 8) peak = Math.max(peak, Math.abs(frame[i]!));
   return Math.min(1, Math.sqrt(peak / 32768) * 1.4);
+};
+
+/** Voiced frames the speech reference is taken over: 3 s at 50 frames a second. */
+const REFERENCE_FRAMES = 150;
+/** Over voiced frames the floor only creeps up this far a frame (0.5 dB a second), so a long sentence never lifts it. */
+const FLOOR_CREEP_DB = 0.01;
+/** Digital silence reads no lower than this, so it never drags the floor below any real room. */
+const QUIETEST_DB = -90;
+/** Bars span this many dB below his reference; 3 dB above it is the top. */
+const SHOWN_RANGE_DB = 20;
+/** A frame this far over the noise floor is his voice. */
+const VOICED_OVER_FLOOR_DB = 9;
+/** A peak stays this many frames (80 ms) before it falls, so a syllable's top is seen. */
+const PEAK_HOLD_FRAMES = 4;
+
+/**
+ * The pill's bars against his own speech level (a display AGC): dB over his reference (the p90 of voiced frames in the
+ * last 3 s) above a floor learned only from the room, with a short peak hold. `reset` at each recording and new mic.
+ * Display only: recognition, silence detection and the mic test keep `frameLevel`.
+ */
+export const createSpeechGain = () => {
+  let floor: number | null = null;
+  let reference = -30;
+  const voiced: number[] = [];
+  let held = 0;
+  let holding = 0;
+  const gain = (level: number): number => {
+    // frameLevel is 1.4 * sqrt(peak): back to the peak in dBFS.
+    const db = Math.max(QUIETEST_DB, level > 0 ? 40 * Math.log10(level / 1.4) : QUIETEST_DB);
+    // The room is learned only from frames that are not his voice: down quickly, up slowly. Digital silence (a muted
+    // or starting device) says nothing about the room and is left out.
+    const silent = db <= QUIETEST_DB;
+    if (!silent) floor ??= db;
+    const isVoiced = floor !== null && db > floor + VOICED_OVER_FLOOR_DB;
+    if (floor !== null && !silent)
+      floor = isVoiced ? floor + FLOOR_CREEP_DB : floor + (db - floor) * (db < floor ? 0.3 : 0.05);
+    if (isVoiced) {
+      voiced.push(db);
+      if (voiced.length > REFERENCE_FRAMES) voiced.shift();
+      const sorted = [...voiced].sort((a, b) => a - b);
+      reference = Math.min(
+        -6,
+        Math.max(
+          -50,
+          (floor ?? -90) + VOICED_OVER_FLOOR_DB + 6,
+          sorted[Math.floor(sorted.length * 0.9)]!,
+        ),
+      );
+    }
+    const shown = isVoiced
+      ? Math.max(0, Math.min(1, (db - reference + SHOWN_RANGE_DB) / (SHOWN_RANGE_DB + 3)))
+      : 0;
+    if (shown >= held) {
+      held = shown;
+      holding = PEAK_HOLD_FRAMES;
+    } else if (holding > 0) holding -= 1;
+    else held = Math.max(shown, held * 0.6);
+    return held;
+  };
+  return Object.assign(gain, {
+    /** A new recording or microphone: its own room and his level there, learned afresh. */
+    reset: () => {
+      floor = null;
+      reference = -30;
+      voiced.length = 0;
+      held = 0;
+      holding = 0;
+    },
+  });
 };
 
 /** A spoken cancel, with any wake word already stripped: it dismisses the pill at once. */

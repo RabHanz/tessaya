@@ -11,3 +11,10 @@
 0010-public-hygiene.patch
 0011-baton-cloud-approve-scope.patch
 0012-upstream-quarantine.patch
+0013-one-picker.patch
+0014-provider-change-guard.patch
+0015-live-instance-label.patch
+0016-accounts-settings.patch
+0017-dictation-cleanup-key.patch
+0018-overload-resilience.patch
+0019-composer-mic.patch

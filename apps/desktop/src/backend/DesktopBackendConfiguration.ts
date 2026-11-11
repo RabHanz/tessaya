@@ -542,6 +542,12 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
                 environment.resourcesPath,
                 "memory-model",
               ),
+              // Terminal threads: the agent that types into a session, run by this same executable as Node.
+              BATON_LIVE_ACP: environment.path.join(
+                environment.resourcesPath,
+                "baton-live",
+                "baton-live-acp.mjs",
+              ),
             }
           : {}),
         T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),

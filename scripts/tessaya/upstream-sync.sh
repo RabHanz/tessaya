@@ -92,6 +92,17 @@ if [ "$rc" -ne 0 ]; then
   exit "$rc"
 fi
 
+# OURS files keep Tessaya's text whole, so upstream's change to them is dropped: it goes in the report (and the PR body)
+# for a person to read, never silently.
+ours_changed="$( (grep -vE '^\s*(#|$)' vendor-patches/t3code/OURS 2> /dev/null || true) | while read -r f; do
+  git diff --quiet "$pin" "$target" -- "$f" || echo "$f"; done)"
+if [ -n "$ours_changed" ]; then
+  { printf '\n### Upstream changes not taken (OURS: Tessaya keeps its own file)\n\nRead these: a contact, icon or policy change may need doing in Tessaya'"'"'s own text.\n\n```diff\n'
+    git diff "$pin" "$target" -- $ours_changed | head -200
+    printf '```\n'
+  } >> "$report"
+fi
+
 echo "==> Regenerating pnpm-lock.yaml"
 # A new pin can name a new Node or pnpm; install it first (idempotent, checksum-verified).
 bash scripts/tessaya/toolchain-install.sh > /dev/null

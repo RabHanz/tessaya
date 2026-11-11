@@ -11,6 +11,10 @@ import {
   positionOf,
   snapPosition,
   spotFrom,
+  baseOf,
+  createLowerHold,
+  grownBounds,
+  frostBounds,
 } from "./pillPlacement.ts";
 
 const size = { width: 420, height: 52 };
@@ -193,5 +197,73 @@ describe("which screen the pill shows on", () => {
     });
     expect(sharedSpot({ "7": { fx: 1, fy: 1 } })).toEqual({ fx: 1, fy: 1 });
     expect(sharedSpot({})).toBeUndefined();
+  });
+});
+
+describe("the grown window and the cleanup's hold", () => {
+  const base = { x: 750, y: 900, width: 420, height: 80 };
+  it("grows upward from his spot, or downward when there is no room above, and the base never moves", () => {
+    const up = grownBounds(base, 320, hd);
+    expect(up).toEqual({ bounds: { x: 750, y: 660, width: 420, height: 320 }, down: false });
+    expect(baseOf(up.bounds, 80, up.down)).toEqual(base);
+    const top = { ...base, y: 10 };
+    const down = grownBounds(top, 320, hd);
+    expect(down).toEqual({ bounds: { x: 750, y: 10, width: 420, height: 320 }, down: true });
+    expect(baseOf(down.bounds, 80, down.down)).toEqual(top);
+    // A short screen: as tall as it has room for, never shorter than the pill.
+    expect(grownBounds(top, 320, { ...hd, height: 200 }).bounds.height).toBe(190);
+    expect(grownBounds(base, 80, hd)).toEqual({ bounds: base, down: false });
+  });
+  it("frosts the capsule inside the grown window, inset so the system corners stay hidden", () => {
+    const grown = grownBounds({ x: 750, y: 960, width: 420, height: 80 }, 320, hd).bounds;
+    expect(frostBounds(grown, { x: 98.4, y: 220.6, width: 224, height: 72 })).toEqual({
+      x: 851,
+      y: 944,
+      width: 218,
+      height: 66,
+    });
+    // Grown downward the capsule hangs from the top; the frost follows it, not the window.
+    const down = grownBounds({ x: 750, y: 10, width: 420, height: 80 }, 320, hd).bounds;
+    expect(frostBounds(down, { x: 148, y: 18, width: 124, height: 34 })?.y).toBe(31);
+    expect(frostBounds(grown, { x: 190, y: 250, width: 36, height: 6 })).toBeNull();
+  });
+  it("defers a lower to the end of the cleanup, and drops it when the pill is raised again", () => {
+    let now = 0;
+    const timers: Array<{ at: number; run: () => void; on: boolean }> = [];
+    let lowered = 0;
+    const hold = createLowerHold({
+      now: () => now,
+      after: (ms, run) => {
+        const t = { at: now + ms, run, on: true };
+        timers.push(t);
+        return () => (t.on = false);
+      },
+      lower: () => (lowered += 1),
+    });
+    const tick = (to: number) => {
+      now = to;
+      for (const t of timers.filter((t) => t.on && t.at <= to)) {
+        t.on = false;
+        t.run();
+      }
+    };
+    expect(hold.defer()).toBe(false);
+    hold.holdUntil(3000);
+    expect(hold.defer()).toBe(true);
+    tick(2999);
+    expect(lowered).toBe(0);
+    tick(3000);
+    expect(lowered).toBe(1);
+    hold.holdUntil(6000);
+    hold.defer();
+    hold.raised();
+    tick(7000);
+    expect(lowered).toBe(1);
+    // A shorter hold from the page takes over the provisional one.
+    hold.holdUntil(9000);
+    hold.defer();
+    hold.holdUntil(7500);
+    tick(7500);
+    expect(lowered).toBe(2);
   });
 });

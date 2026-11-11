@@ -1,6 +1,7 @@
 import { Pressable, ScrollView } from "react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
+import { setBatonLiveOnly, useBatonLiveOnly } from "../threads/batonLiveOnly";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
   HomeListFilterMenuEnvironment,
@@ -17,6 +18,7 @@ export function ThreadListFilters(props: {
   /** List padding the scroller bleeds through so pills start where row content does. */
   readonly gutter: number;
 }) {
+  const liveOnly = useBatonLiveOnly();
   const selectedEnvironment = props.environments.find(
     (environment) => environment.environmentId === props.selectedEnvironmentId,
   );
@@ -27,7 +29,7 @@ export function ThreadListFilters(props: {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      style={{ marginHorizontal: -props.gutter }}
+      style={{ marginHorizontal: -props.gutter, overflow: "visible" }}
       contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, gap: 8 }}
     >
       <ListFilterMenu
@@ -98,6 +100,16 @@ export function ThreadListFilters(props: {
           <SymbolView name="xmark.circle.fill" size={18} tintColorClassName="accent-icon-muted" />
         </Pressable>
       ) : null}
+      <ListFilterMenu
+        label={liveOnly ? "Live only" : "All threads"}
+        accessibilityLabel="Filter threads to live sessions"
+        active={liveOnly}
+        actions={[
+          { id: "all", title: "All threads", state: liveOnly ? "off" : "on" },
+          { id: "live", title: "Live only", state: liveOnly ? "on" : "off" },
+        ]}
+        onSelect={(id) => setBatonLiveOnly(id === "live")}
+      />
     </ScrollView>
   );
 }

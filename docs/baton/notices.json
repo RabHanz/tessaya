@@ -6,7 +6,8 @@
     "CC-BY-4.0": "docs/baton/licences/CC-BY-4.0.txt",
     "CC-BY-NC-SA-4.0": "docs/baton/licences/CC-BY-NC-SA-4.0.txt",
     "OFL-1.1-newsreader": "docs/baton/licences/OFL-newsreader.txt",
-    "OFL-1.1-schibsted-grotesk": "docs/baton/licences/OFL-schibsted-grotesk.txt"
+    "OFL-1.1-schibsted-grotesk": "docs/baton/licences/OFL-schibsted-grotesk.txt",
+    "OFL-1.1-bricolage-grotesque": "docs/baton/licences/OFL-bricolage-grotesque.txt"
   },
   "entries": {
     "npm:onnxruntime-node": {
@@ -63,6 +64,12 @@
       "licence": "MIT OR Apache-2.0",
       "holder": "Erick Tryzelaar, David Tolnay",
       "mention": "serde_json"
+    },
+    "crate:tungstenite": {
+      "name": "tungstenite",
+      "licence": "MIT OR Apache-2.0",
+      "holder": "Alexey Galakhov, Jason Housley",
+      "mention": "tungstenite"
     },
     "crate:windows": {
       "name": "windows (windows-rs)",
@@ -123,6 +130,12 @@
       "licence": "OFL-1.1-newsreader",
       "holder": "The Newsreader Project Authors",
       "mention": "Newsreader"
+    },
+    "font:Bricolage Grotesque": {
+      "name": "Bricolage Grotesque",
+      "licence": "OFL-1.1-bricolage-grotesque",
+      "holder": "The Bricolage Grotesque Project Authors",
+      "mention": "Bricolage Grotesque"
     },
     "font:Schibsted Grotesk": {
       "name": "Schibsted Grotesk",

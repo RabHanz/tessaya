@@ -170,7 +170,12 @@ export const createSessionsBridge = (input: {
     labelOf,
     request: async (request, waitMs) => {
       // Opening a thread and typing over T3's own session keep the window's path, which brings the window up.
-      if (request.kind === "open" || request.kind === "send" || !(await windowClosed()))
+      if (
+        request.kind === "open" ||
+        request.kind === "send" ||
+        request.kind === "showLive" ||
+        !(await windowClosed())
+      )
         return ask(request, waitMs);
       if (here === null) await readDoor();
       return here === null ? null : answerOnDoor(request, { here, labelOf, direct });
@@ -214,3 +219,17 @@ export const createSessionsBridge = (input: {
     },
   };
 };
+
+/**
+ * T3's list filtered to live sessions (P5). A window opened cold has not mounted its sidebar yet, and a request sent
+ * before that is lost, so it is asked again until the sidebar answers, for at most `tries` short waits.
+ */
+export async function showLiveWhenReady(
+  bridge: Pick<SessionsBridge, "request"> | undefined,
+  tries = 10,
+): Promise<boolean> {
+  for (let i = 0; bridge !== undefined && i < tries; i += 1) {
+    if ((await bridge.request({ kind: "showLive" }, 2_000))?.ok === true) return true;
+  }
+  return false;
+}

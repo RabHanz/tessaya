@@ -51,6 +51,15 @@ describe("the shared conversation", () => {
       }),
     );
     expect(saved).toMatchObject({ persona: "assistant", speaker: "saved:sam" });
+    // The project a turn was in and whether it read outside content survive the file (MEM-18's walls and taint).
+    expect(
+      parseTurn(
+        JSON.stringify({ ...turn(5, "ship it", "Shipped."), project: "shop", tainted: true }),
+      ),
+    ).toMatchObject({ project: "shop", tainted: true });
+    expect(
+      parseTurn(JSON.stringify({ ...turn(6, "a", "b"), project: 7, tainted: "yes" })),
+    ).not.toHaveProperty("tainted");
     expect(
       parseTurn(JSON.stringify({ ...turn(3, "hi", "Hello."), speaker: "boss" }))?.speaker,
     ).toBe(undefined);

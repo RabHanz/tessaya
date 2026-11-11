@@ -25,6 +25,7 @@ import { causeErrorTag } from "@t3tools/shared/observability";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import * as Cookies from "effect/http/Cookies";
@@ -38,6 +39,9 @@ import { traceAuthenticatedRelayRequest, traceRelayRequest } from "../cloud/trac
 import { deriveAuthClientMetadata } from "./utils.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
 import { requestUrl } from "../requestUrl.ts";
+
+// Decoded, not tested: a renamed scope spelling must come back as the scope, not be dropped.
+const decodeGrantScope = Schema.decodeUnknownOption(AuthGrantScope);
 
 const CREDENTIAL_RESPONSE_HEADERS = {
   "cache-control": "no-store",
@@ -360,7 +364,9 @@ export const layer = HttpApiBuilder.group(
             const requestedScopes =
               args.payload.scope === undefined
                 ? undefined
-                : (parseOAuthScope(args.payload.scope)?.filter(Schema.is(AuthGrantScope)) ?? null);
+                : (parseOAuthScope(args.payload.scope)?.flatMap((scope) =>
+                    Option.toArray(decodeGrantScope(scope)),
+                  ) ?? null);
             if (requestedScopes === null || requestedScopes?.length === 0) {
               return yield* failEnvironmentInvalidRequest("invalid_scope");
             }

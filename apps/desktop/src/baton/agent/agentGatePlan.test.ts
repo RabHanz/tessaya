@@ -2,7 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { inApprovedSteps } from "@t3tools/baton-shared/trust";
 
-import { createAgentGate, createCutInMark, createTaint, stopsOnCutIn } from "./agentGate.ts";
+import {
+  createAgentGate,
+  createCutInMark,
+  createTaint,
+  forOperator,
+  stopsOnCutIn,
+} from "./agentGate.ts";
 
 const STEPS = ['type "hello world" into the note', "drag the file into the folder", "press Enter"];
 
@@ -32,6 +38,35 @@ const call = (tool: string, input: Record<string, unknown>) => ({
 });
 const batch = (...steps: Array<{ tool: string; args: Record<string, unknown> }>) =>
   call("act_batch", { steps });
+
+describe("a drive's or lesson's gate", () => {
+  it("has no plan grant of his, keeps its keys to itself, and asks before typing once tainted", async () => {
+    const asked: string[] = [];
+    const hisKeys: unknown[] = [];
+    const taint = createTaint();
+    // His assistant's inputs, as gateFor passes them, then the drive's own.
+    const his: Parameters<typeof createAgentGate>[0] = {
+      actWithoutAsking: () => true,
+      taint,
+      textIsHis: () => true,
+      focusedWindow: async () => ({ label: "notepad.exe: notes", shell: false, window: 7 }),
+      confirm: async (p) => (asked.push(p.title), true),
+      record: () => undefined,
+      inPlan: () => STEPS,
+      keysAllowed: (at) => void hisKeys.push(at),
+    };
+    const gate = createAgentGate({
+      ...his,
+      ...forOperator({ taint, textIsHis: (text) => text === "hello world" }),
+    });
+    await gate(call("type_text", { text: "hello world", why: "w" }));
+    expect(asked).toEqual([]);
+    taint.mark();
+    await gate(call("type_text", { text: "hello world", why: "w" }));
+    expect(asked).toHaveLength(1);
+    expect(hisKeys).toEqual([]);
+  });
+});
 
 describe("a plan he approved", () => {
   it("covers typing that is in a step and a drag, after a read", async () => {

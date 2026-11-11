@@ -190,3 +190,86 @@ export const pickScreen = <S extends Screen>(
 /** His one place for every screen; a place saved per screen by an older version stands in until he moves it again. */
 export const sharedSpot = (spots: Readonly<Record<string, Spot>>): Spot | undefined =>
   spots["any"] ?? Object.values(spots)[0];
+
+/**
+ * The window for the base pill grown to `tall`: upward when the work area has room, else downward, so the base
+ * rect (his saved spot) never moves. `down` says which, for the page to anchor its capsule.
+ */
+export const grownBounds = (
+  base: Area,
+  tall: number,
+  area: Area,
+): { bounds: Area; down: boolean } => {
+  const extra = tall - base.height;
+  if (extra <= 0) return { bounds: base, down: false };
+  if (base.y - extra >= area.y)
+    return { bounds: { ...base, y: base.y - extra, height: tall }, down: false };
+  const room = area.y + area.height - base.y;
+  return { bounds: { ...base, height: Math.max(base.height, Math.min(tall, room)) }, down: true };
+};
+
+/** The base pill inside a window grown by `grownBounds`. */
+export const baseOf = (bounds: Area, height: number, down: boolean): Area => ({
+  ...bounds,
+  y: down ? bounds.y : bounds.y + bounds.height - height,
+  height,
+});
+
+/**
+ * The acrylic window under the island, in screen DIP: the capsule pulled in 3 px, so the system's 8 px corners stay
+ * inside its 17 px ones. Null when the capsule is too small to frost.
+ */
+export const frostBounds = (window: Area, capsule: Area): Area | null => {
+  const inset = 3;
+  const width = Math.round(capsule.width) - 2 * inset;
+  const height = Math.round(capsule.height) - 2 * inset;
+  if (width < 16 || height < 16) return null;
+  return {
+    x: Math.round(window.x + capsule.x) + inset,
+    y: Math.round(window.y + capsule.y) + inset,
+    width,
+    height,
+  };
+};
+
+/** Lowering the pill waits while its cleanup plays; anything raising it drops the wait. */
+export const createLowerHold = (io: {
+  readonly now: () => number;
+  readonly after: (ms: number, run: () => void) => () => void;
+  readonly lower: () => void;
+}) => {
+  let until = 0;
+  let wanted = false;
+  let cancel: (() => void) | null = null;
+  const arm = () => {
+    cancel?.();
+    cancel = null;
+    if (!wanted) return;
+    const wait = until - io.now();
+    if (wait > 0) {
+      cancel = io.after(wait, arm);
+      return;
+    }
+    wanted = false;
+    io.lower();
+  };
+  return {
+    holding: () => io.now() < until,
+    /** Holds lowering until `at` (ms, the same clock as `now`; 0 ends the hold). */
+    holdUntil: (at: number) => {
+      until = at;
+      arm();
+    },
+    /** True when the lower is deferred to the end of the hold. */
+    defer: (): boolean => {
+      if (io.now() >= until) return false;
+      wanted = true;
+      arm();
+      return true;
+    },
+    raised: () => {
+      wanted = false;
+      arm();
+    },
+  };
+};

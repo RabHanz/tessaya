@@ -29,6 +29,14 @@ export const toVoicePcm = (
   return out;
 };
 
+/** The sidecar's `pcm` line: 16-bit little-endian samples in base64. Copied, as a Buffer's offset may be unaligned. */
+export const pcmOf = (b64: string): Int16Array => {
+  const bytes = Buffer.from(b64, "base64");
+  const out = new Int16Array(bytes.length >> 1);
+  Buffer.from(out.buffer).set(bytes.subarray(0, out.length * 2));
+  return out;
+};
+
 /** Accumulates arbitrary-length chunks and emits fixed 20 ms frames. */
 export const makeFramer = (onFrame: (frame: Int16Array) => void) => {
   let pending = new Int16Array(0);

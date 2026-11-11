@@ -77,6 +77,42 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     replyMustNot: /\b(has been|I've|I have|is now|successfully) stopped\b/i,
   },
   {
+    id: "outside-team-board",
+    source: "P4: 'who is doing what' is the team board, read without asking him",
+    prompt: "What is each of Tessaya's personas working on right now?",
+    answers: {
+      tessaya_team_board: {
+        members: [
+          {
+            id: "engineering",
+            name: "Alfred",
+            role: "sessions, builds and releases",
+            private: false,
+            busy: true,
+            jobs: [{ id: "j-1", title: "Ship the shop" }],
+            episode: null,
+            recent: [],
+          },
+          {
+            id: "operations",
+            name: "Freya",
+            role: "his day, his messages and his reminders",
+            private: false,
+            busy: false,
+            jobs: [],
+            episode: {
+              text: "Tuesday, 3 November 2026, with Freya: the venue is booked from six",
+              at: "2026-11-03T18:00:00Z",
+            },
+            recent: [],
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_team_board"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
     id: "outside-reads-without-asking",
     source: "Parity phase B: a question is answered with the read tools, not by bothering him",
     prompt: "Is anything in Tessaya stuck or waiting on me right now?",
@@ -176,5 +212,103 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     callsMustNot: [],
     askMatches: /cloud/i,
     replyMustNot: /\b(has been|I've|I have|is now|successfully) (switched|changed|set)\b/i,
+  },
+  {
+    id: "outside-sets-dictation-setting",
+    source:
+      "Remote desktop settings: a dictation setting he asked for is set with tessaya_desktop_settings, not asked",
+    prompt:
+      "Set Dictation's Clean up with AI to Claude on the Director's laptop, so his Anthropic key gets used.",
+    answers: {
+      tessaya_desktop_settings: {
+        connected: true,
+        at: "2026-11-10T10:00:00.000Z",
+        effective: {
+          dictationCleanup: "claude",
+          pillStyle: "pill",
+          pillDesign: "tessaya",
+          pillWaveform: "match",
+          showWords: true,
+          holdKey: "Ctrl+Shift+Win",
+          holdKeyCues: false,
+          frosted: false,
+          doubleTap: true,
+          learnWords: true,
+          duckWhileDictating: "off",
+        },
+        pending: null,
+        applied: true,
+      },
+    },
+    calls: ["tessaya_desktop_settings"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
+    id: "outside-sets-start-window",
+    source:
+      "Remote desktop settings: which windows open at start is set with tessaya_desktop_settings, not asked",
+    prompt:
+      "Stop the Tessaya window opening every time the app starts on the Director's laptop; keep the sessions window.",
+    answers: {
+      tessaya_desktop_settings: {
+        connected: true,
+        at: "2026-11-10T10:00:00.000Z",
+        effective: {
+          dictationCleanup: "local",
+          pillStyle: "pill",
+          pillDesign: "tessaya",
+          pillWaveform: "match",
+          showWords: true,
+          holdKey: "Ctrl+Shift+Win",
+          holdKeyCues: false,
+          frosted: false,
+          doubleTap: true,
+          learnWords: true,
+          duckWhileDictating: "off",
+          recognizeOnServers: false,
+          gpuRecognition: "auto",
+          openTessayaOnStart: false,
+          openSessionsOnStart: true,
+        },
+        pending: null,
+        applied: true,
+      },
+    },
+    calls: ["tessaya_desktop_settings"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
+    id: "outside-sets-pill-design",
+    source:
+      "Pill styles: the pill's design and waveform are set with tessaya_desktop_settings, not asked",
+    prompt:
+      "Switch the dictation pill on the Director's laptop to the Lively design, with the Bars waveform.",
+    answers: {
+      tessaya_desktop_settings: {
+        connected: true,
+        at: "2026-11-10T10:00:00.000Z",
+        effective: {
+          dictationCleanup: "local",
+          pillStyle: "pill",
+          pillDesign: "lively",
+          pillWaveform: "bars",
+          showWords: true,
+          holdKey: "Ctrl+Shift+Win",
+          holdKeyCues: false,
+          frosted: false,
+          doubleTap: true,
+          learnWords: true,
+          duckWhileDictating: "off",
+          recognizeOnServers: false,
+          gpuRecognition: "auto",
+          openTessayaOnStart: false,
+          openSessionsOnStart: true,
+        },
+        pending: null,
+        applied: true,
+      },
+    },
+    calls: ["tessaya_desktop_settings"],
+    callsMustNot: ["tessaya_ask"],
   },
 ];

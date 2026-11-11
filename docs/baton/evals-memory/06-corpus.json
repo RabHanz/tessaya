@@ -1,5 +1,5 @@
 {
-  "about": "His scale (MEM-14): about three hundred synthetic items in his style, never copied from a live store, and recall cases for direct words, paraphrase, superseded facts, two-item answers and questions nothing should answer. Every case asks for the per-sentence block, the path that fuses keywords and meaning. A case marked pending names the work it waits for; MEM-13 rows pass once the local model is present.",
+  "about": "His scale (MEM-14): about three hundred synthetic items in his style, never copied from a live store, and recall cases for direct words, paraphrase, superseded facts, two-item answers and questions nothing should answer. Every case asks for the per-sentence block, the path that fuses keywords and meaning. A case marked pending names the work it waits for; MEM-13 rows pass once the local model is present. MEM-18 adds episodes (kind episode, the day in words first, as the cheap model writes them) and cases that ask what happened, by persona, job, session or day.",
   "items": [
     {
       "key": "p-spelling",
@@ -2154,6 +2154,66 @@
       "kind": "fact",
       "text": "The company phone line forwards to my mobile",
       "source": "user"
+    },
+    {
+      "key": "e-freya-venue",
+      "kind": "episode",
+      "text": "Tuesday, 3 November 2026, with Freya: He asked what to tell the venue about Saturday. Freya said to book the room from six, not seven, and to ask whether the bar stays open late. He said he would ring them.",
+      "source": "thread"
+    },
+    {
+      "key": "e-shop-job",
+      "kind": "episode",
+      "text": "Tuesday, 3 November 2026, the job \"shop README\": The README was rewritten with install steps and a screenshot. The pull request was opened and is waiting for review.",
+      "source": "thread"
+    },
+    {
+      "key": "e-alfred-deploy",
+      "kind": "episode",
+      "text": "Wednesday, 4 November 2026, with Alfred: He asked why the deploy failed. Alfred found an expired token in the CI secrets; it was renewed and the deploy passed.",
+      "source": "thread"
+    },
+    {
+      "key": "e-scheduler-session",
+      "kind": "episode",
+      "text": "Thursday, 5 November 2026, the session \"scheduler refactor\": The cron parser was replaced and tests were added. It ended settled, with one flaky test noted for later.",
+      "source": "thread"
+    },
+    {
+      "key": "e-sebastian-mics",
+      "kind": "episode",
+      "text": "Monday, 2 November 2026, with Sebastian: He asked for microphone options under two hundred pounds. Sebastian compared three and suggested the Shure MV7.",
+      "source": "thread"
+    },
+    {
+      "key": "e-freya-dinner",
+      "kind": "episode",
+      "text": "Friday, 6 November 2026, with Freya: He asked to book dinner for Saturday. Freya found a table for eight at the Italian place and he confirmed it.",
+      "source": "thread"
+    },
+    {
+      "key": "f-staging-helsinki",
+      "kind": "fact",
+      "text": "The staging server runs in Helsinki since the November move",
+      "source": "user"
+    },
+    {
+      "key": "e-staging-falkenstein",
+      "kind": "episode",
+      "text": "Monday, 2 November 2026, with Alfred: He asked where to put the staging server. Alfred moved it to Falkenstein and checked the deploy.",
+      "source": "thread"
+    },
+    {
+      "key": "f-piano-wednesday",
+      "kind": "fact",
+      "text": "Piano lessons are on Wednesday evenings",
+      "source": "user"
+    },
+    {
+      "key": "e-piano-monday",
+      "kind": "episode",
+      "text": "Monday, 2 November 2026, with Freya: He asked her to find a piano teacher. Freya booked a first lesson for Monday afternoon and added it to the calendar.",
+      "source": "thread"
     }
   ],
   "cases": [
@@ -2935,6 +2995,66 @@
       "scopeRef": "harbor-app",
       "present": ["hb-deploy"],
       "absent": ["ac-deploy"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "what did Freya tell me about the venue",
+      "present": ["e-freya-venue"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "what did the shop job do on Tuesday",
+      "present": ["e-shop-job"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "why did the deploy fail last week",
+      "present": ["e-alfred-deploy"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "how did the scheduler refactor session end",
+      "present": ["e-scheduler-session"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "which microphone did Sebastian suggest",
+      "present": ["e-sebastian-mics"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "where are we having dinner on Saturday",
+      "present": ["e-freya-dinner"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "what did I talk about with Freya on Friday",
+      "present": ["e-freya-dinner"]
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "where does the staging server run",
+      "top": "f-staging-helsinki"
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "which city is the staging server in",
+      "top": "f-staging-helsinki"
+    },
+    {
+      "recall": true,
+      "group": "episode",
+      "query": "when are my piano lessons",
+      "top": "f-piano-wednesday"
     }
   ]
 }

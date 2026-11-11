@@ -135,7 +135,12 @@ const scanTranscripts = (
 
 let cached: { at: number; limit: number; rows: ReadonlyArray<TranscriptInfo> } | null = null;
 
-const BATON = process.env["BATON_BIN"] ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
+const localBin = (name: string) => NodePath.join(NodeOS.homedir(), ".local", "bin", name);
+// A box whose launchers predate the rename has only `baton`.
+export const TESSAYA_CLI =
+  process.env["TESSAYA_BIN"] ??
+  process.env["BATON_BIN"] ??
+  (NodeFS.existsSync(localBin("tessaya")) ? localBin("tessaya") : localBin("baton"));
 
 export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
   machine: NodeOS.hostname(),
@@ -176,11 +181,14 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
   baton: (args) =>
     new Promise((resolve) =>
       NodeChildProcess.execFile(
-        BATON,
+        TESSAYA_CLI,
         [...args],
         {
           timeout: 45_000,
-          env: { ...process.env, PATH: `${NodePath.dirname(BATON)}:${process.env["PATH"] ?? ""}` },
+          env: {
+            ...process.env,
+            PATH: `${NodePath.dirname(TESSAYA_CLI)}:${process.env["PATH"] ?? ""}`,
+          },
           windowsHide: true,
         },
         (error, stdout, stderr) =>

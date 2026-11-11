@@ -88,7 +88,13 @@ import {
   stripInlineContextReferences,
 } from "~/lib/composerContextReferences";
 import {
+  collectComposerContextReferences,
+  replaceComposerContextReferences,
+  toKindScopedComposerContextId,
+} from "@t3tools/shared/composerContextReferences";
+import {
   previewAnnotationContextLabel,
+  resolveUserMessageContext,
   reviewCommentContextLabel,
   terminalContextReference,
 } from "../lib/composerContextRecords";
@@ -488,6 +494,8 @@ export function resolveComposerProviderSelection(input: {
   candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
   lockedProvider: ProviderDriverKind | null;
   lockedInstanceId: ProviderInstanceId | null | undefined;
+  /** The user's pick for a provider handoff: the only way a started thread leaves its driver. */
+  handoffInstanceId?: ProviderInstanceId | null | undefined;
 }) {
   const requestedInstanceId = input.candidateInstanceIds.find(
     (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
@@ -512,7 +520,15 @@ export function resolveComposerProviderSelection(input: {
       (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
       (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
   );
+  const handoffEntry = input.entries.find(
+    (entry) =>
+      input.handoffInstanceId != null &&
+      entry.instanceId === input.handoffInstanceId &&
+      entry.enabled &&
+      entry.isAvailable,
+  );
   const selectedProviderEntry =
+    handoffEntry ??
     input.candidateInstanceIds
       .map((candidate) =>
         compatibleEntries.find(
@@ -747,10 +763,47 @@ export function cloneComposerImageForRetry(
   }
 }
 
+/**
+ * A rewind restores a message's attachments under fresh ids, while its text still names the
+ * sent ones. Maps each chip to its restored attachment through the message's context records
+ * (contextId -> attachmentId), by attachment position, never by name.
+ */
+export function relinkRewoundAttachmentReferences(
+  text: string,
+  message: Pick<ChatMessage, "text" | "context" | "attachments">,
+  restored: ReadonlyArray<{ type: "image" | "file"; id: string }>,
+): string {
+  const restoredByAttachmentId = new Map(
+    (message.attachments ?? []).flatMap((attachment, index) => {
+      const target = restored[index];
+      return target ? [[attachment.id, target] as const] : [];
+    }),
+  );
+  const relinked = new Map<string, string>();
+  for (const record of resolveUserMessageContext(message).records) {
+    if ((record.kind !== "image" && record.kind !== "file") || !("attachmentId" in record)) {
+      continue;
+    }
+    const target = restoredByAttachmentId.get(record.attachmentId);
+    if (target && target.type === record.kind) {
+      relinked.set(record.contextId, toKindScopedComposerContextId(target.type, target.id));
+    }
+  }
+  if (relinked.size === 0) return text;
+  return replaceComposerContextReferences(text, (occurrence) => {
+    const contextId = relinked.get(occurrence.contextId);
+    return contextId === undefined
+      ? occurrence.source
+      : occurrence.source.replace(`/${occurrence.contextId})`, `/${contextId})`);
+  });
+}
+
 export function deriveComposerSendState(options: {
   prompt: string;
   imageCount: number;
   existingAttachmentCount?: number;
+  /** The draft's images and files; image and file chips without one here are listed as unattached. */
+  attachments?: ReadonlyArray<{ type: "image" | "file"; id: string }>;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   elementContextCount?: number;
 }): {
@@ -758,13 +811,31 @@ export function deriveComposerSendState(options: {
   sendableTerminalContexts: TerminalContextDraft[];
   expiredTerminalContextCount: number;
   hasSendableContent: boolean;
+  unattachedLabels: string[];
 } {
   const trimmedPrompt = stripInlineContextReferences(options.prompt).trim();
   const sendableTerminalContexts = filterTerminalContextsWithText(options.terminalContexts);
   const expiredTerminalContextCount =
     options.terminalContexts.length - sendableTerminalContexts.length;
   const elementContextCount = options.elementContextCount ?? 0;
+  const attachedIds = new Set<string>(
+    (options.attachments ?? []).map((attachment) =>
+      toKindScopedComposerContextId(attachment.type, attachment.id),
+    ),
+  );
+  // A chip can outlive its attachment (a reload drops images that never reached storage);
+  // sending it would deliver the text without the image.
+  const unattachedLabels = options.attachments
+    ? collectComposerContextReferences(options.prompt)
+        .filter(
+          (occurrence) =>
+            (occurrence.kind === "image" || occurrence.kind === "file") &&
+            !attachedIds.has(occurrence.contextId),
+        )
+        .map((occurrence) => occurrence.label)
+    : [];
   return {
+    unattachedLabels: [...new Set(unattachedLabels)],
     trimmedPrompt,
     sendableTerminalContexts,
     expiredTerminalContextCount,

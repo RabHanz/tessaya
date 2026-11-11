@@ -56,6 +56,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "s.volume": "voice",
   "v.cues": "voice",
   "v.holdKeyCues": "voice",
+  "v.frosted": "voice",
   "v.pillPlace": "voice",
   "v.pillMove": "voice",
   "v.pillRest": "voice",
@@ -77,6 +78,8 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.cloudTest": "dictation",
   "v.copyLast": "dictation",
   "v.learnWords": "dictation",
+  "v.showWords": "dictation",
+  "v.pillStyle": "dictation",
   "v.doubleTap": "dictation",
   "v.language": "dictation",
   "v.duck": "dictation",
@@ -110,6 +113,8 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "pr.awFocus": "privacy",
   "pr.awJobs": "privacy",
   "v.login": "general",
+  "v.startHome": "general",
+  "v.startSessions": "general",
   "v.notice": "general",
   "v.dnd": "general",
   "v.snooze": "general",
@@ -117,6 +122,8 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.brief": "general",
   "v.appearance": "appearance",
   "v.palette": "appearance",
+  "v.pillDesign": "appearance",
+  "v.pillWaveform": "appearance",
   "v.motion": "appearance",
   "v.glass": "appearance",
   "v.check": "advanced",
@@ -124,8 +131,6 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.micTest": "advanced",
   "v.file": "advanced",
   "setup.hold": "setup",
-  "n.empty": "sessions",
-  "n.note": "sessions",
 };
 
 export const tabOf = (id: string): TabId => {

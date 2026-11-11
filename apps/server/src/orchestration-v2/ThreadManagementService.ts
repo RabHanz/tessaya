@@ -1,7 +1,13 @@
+import { pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
 } from "@t3tools/contracts";
+import {
+  BATON_LIVE_INSTANCE,
+  liveSendingRefusal,
+  liveSendingUnavailableReason,
+} from "../baton/BatonLiveInstance.ts";
 import type {
   ProjectionRecordField,
   ProjectionRecordFilter,
@@ -67,6 +73,7 @@ import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimi
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 
@@ -321,7 +328,10 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
   },
 ) {
   override get message(): string {
-    return `Provider instance "${this.instanceId}" is disabled for project ${this.projectId}.`;
+    // Tessaya: the Terminal instance is off only where sending cannot work; say why in his words.
+    if (this.instanceId === BATON_LIVE_INSTANCE)
+      return liveSendingRefusal(liveSendingUnavailableReason());
+    return `Provider instance "${instanceLabel(this.instanceId)}" is disabled for project ${this.projectId}.`;
   }
 }
 
@@ -730,7 +740,12 @@ const make = Effect.gen(function* () {
             assertProviderInstanceEnabled({
               projectId: projection.thread.projectId,
               commandId: command.commandId,
-              instanceId: (command.modelSelection ?? projection.thread.modelSelection).instanceId,
+              // The instance the turn runs on: the orchestrator pins it the same way.
+              instanceId: pinnedLiveSelection(
+                command.threadId,
+                command.modelSelection ?? projection.thread.modelSelection,
+                projection.thread.modelSelection,
+              ).instanceId,
             }),
           ),
         );

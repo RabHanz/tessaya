@@ -8,7 +8,7 @@
  * to become one. Each session in the registry (`~/.claude/sessions/<pid>.json`, D68) gets a thread
  * under the T3 project its directory belongs to, written with the same events upstream's own
  * agent-session import writes, and its transcript is followed so new messages arrive as they are
- * written. The thread's provider is the "Live session" instance: T3's own ACP Registry driver
+ * written. The thread's provider is the "Terminal session" instance: T3's own ACP Registry driver
  * running `scripts/tessaya/live/baton-live-acp.mjs`, so the composer's send becomes a turn that
  * types into the session's Herdr pane (adopting it first when needed).
  *
@@ -69,11 +69,20 @@ import {
   type LiveTranscriptMessage,
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
 
-import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
+import {
+  BATON_LIVE_INSTANCE,
+  liveSendingUnavailable,
+  noteLiveSendingUnavailable,
+} from "./BatonLiveInstance.ts";
+import { makeSessionHomes } from "./SessionHomes.ts";
+import { carriesMain, decideMainPin } from "./MainSession.ts";
+import { pointAtSessionEvents } from "./MoveIntoTessaya.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 
@@ -90,6 +99,7 @@ import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { resendKept, sessionOfThread, stampKept } from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
 import { splitPaneRef } from "./HerdrAdapterLive.ts";
+import { liveQueueDir } from "./BatonLiveQueue.ts";
 // @ts-expect-error -- plain JS shared with the live agent, which runs without a build; typed below
 import * as panePrompt from "../../../../scripts/tessaya/live/pane-prompt.mjs";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
@@ -105,10 +115,46 @@ import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
 import { stateFile } from "@t3tools/baton-shared/stateDir";
+import { wentIdle } from "@t3tools/baton-shared/liveModel";
+import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);
-const DRIVER = ProviderDriverKind.make("acpRegistry");
-const MODEL = "live";
+export const LIVE_DRIVER = ProviderDriverKind.make("acpRegistry");
+const DRIVER = LIVE_DRIVER;
+export const LIVE_MODEL = "live";
+const MODEL = LIVE_MODEL;
+
+/**
+ * The "Terminal session" instance. Its config must decode as AcpRegistrySettings, whose customModels are bare slugs:
+ * an instance that fails to decode is dropped, and every live thread then fails with "no adapter registered".
+ * The agent script itself names the model "Claude Code".
+ */
+export const liveProviderInstance = (
+  node: string,
+  script: string,
+  options: {
+    /** Off when sending cannot work here: Terminal is then left out of the picker, and a turn says why. */
+    readonly enabled?: boolean;
+    /** The node is the desktop's own Electron, which runs a script only as Node. */
+    readonly electron?: boolean;
+  } = {},
+) => ({
+  driver: DRIVER,
+  displayName: "Terminal session",
+  // Schema key order: the settings comparison below is by JSON, so a reordered copy would be rewritten every start.
+  ...(options.electron === true
+    ? { environment: [{ name: "ELECTRON_RUN_AS_NODE", value: "1", sensitive: false }] }
+    : {}),
+  enabled: options.enabled ?? true,
+  config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
+});
+
+/** The node found is this server's own Electron, which runs a script only with ELECTRON_RUN_AS_NODE. */
+const isElectronNode = (node: string): boolean =>
+  process.env.ELECTRON_RUN_AS_NODE === "1" && node === process.execPath;
+
+const herdrPresent = (): boolean => NodeFS.existsSync(panePrompt.herdrBin());
+
 /**
  * Id namespace of live threads. "baton-live" (2026-10-27 rounds 1–2) back-filled older history
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
@@ -176,10 +222,12 @@ interface PanePrompt {
   readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
   readonly customIndex: number | null;
   readonly key: string;
+  /** A permission dialog's own words, behind its plain question. */
+  readonly details?: string;
 }
 
-const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
-const screenTail: (screen: string) => string = panePrompt.screenTail;
+export const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
+const parseWaitingScreen: (screen: string) => PanePrompt | null = panePrompt.parseWaitingScreen;
 
 /** The visible screen of a Herdr pane read in-process (no node child per read), or null when Herdr cannot read it. */
 const readPane = (paneRef: string, lines: number): Effect.Effect<string | null> => {
@@ -195,23 +243,16 @@ const readPane = (paneRef: string, lines: number): Effect.Effect<string | null> 
   });
 };
 
-const readPanePrompt = (pane: string): Effect.Effect<PanePrompt | null> =>
-  readPane(pane, 80).pipe(
-    Effect.map((screen) => (screen === null ? null : parsePanePrompt(screen))),
-  );
-
-/** The last lines on a waiting pane; empty when it cannot be read. */
-const readPaneScreen = (pane: string): Effect.Effect<string> =>
-  readPane(pane, 40).pipe(Effect.map((screen) => (screen === null ? "" : screenTail(screen))));
-
 /**
- * A session that is waiting but whose prompt cannot be read as options (a plain terminal, or a screen the reader does not
- * know) still gets a question in its thread, so the thread never says "waiting" and shows nothing.
+ * The card a waiting session's screen raises (D88): its prompt, or Enter and Esc for a screen Tessaya has no reader
+ * for. Null once a read shows the pane back at its input box, so the card raised earlier expires; undefined when the
+ * read failed, which says nothing about the screen, so the card stays. A session outside Herdr cannot be read or
+ * pressed, so its card offers bringing it into Herdr.
  */
-export const unreadPrompt = (
+export const waitingPrompt = (
   session: { sessionId: string; herdrPane: string | null },
-  screen: string,
-): PanePrompt =>
+  screen: string | null,
+): PanePrompt | null | undefined =>
   session.herdrPane === null
     ? {
         key: `plain:${session.sessionId}`,
@@ -228,22 +269,77 @@ export const unreadPrompt = (
         ],
         customIndex: null,
       }
-    : {
-        key: `screen:${session.sessionId}:${screen.length}:${screen.slice(-40)}`,
-        header: "In the terminal",
-        context: "",
-        question:
-          screen === ""
-            ? "Claude Code is waiting on something in its terminal that Tessaya could not read as a question."
-            : `Claude Code is waiting in its terminal:\n${screen}`,
-        options: [
-          {
-            label: "I'll answer it in the terminal",
-            description: "Open the pane in Herdr and answer it there.",
-          },
-        ],
-        customIndex: null,
-      };
+    : screen === null
+      ? undefined
+      : parseWaitingScreen(screen);
+
+/**
+ * Whether the card for the prompt still on screen stays. One T3 closed comes back only when it was answered, the bridge
+ * has since finished with that answer (`answeredAt`, its marker) and the prompt still shows: an answer that pressed
+ * nothing. A dismissed or expired card stays closed, and a card is raised again at most once while the session's
+ * descriptor is unchanged: a later write is a new ask, which may be the same command again.
+ */
+export const keepAsk = (
+  ask: { readonly at: number; readonly again: boolean; readonly updatedAt: string | null },
+  state: {
+    readonly pending: boolean;
+    readonly answered: boolean;
+    readonly answeredAt: number | null;
+    readonly updatedAt: string | null;
+  },
+) =>
+  state.pending ||
+  !state.answered ||
+  (ask.again && ask.updatedAt === state.updatedAt) ||
+  state.answeredAt === null ||
+  state.answeredAt < ask.at;
+
+/** When the live bridge last finished pressing a card's answer for the session (its `<id>.answered`), or null. */
+const answeredAt = (sessionId: string): number | null => {
+  try {
+    const at = Number(
+      NodeFS.readFileSync(
+        NodePath.join(liveQueueDir(), `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.answered`),
+        "utf8",
+      ),
+    );
+    return Number.isFinite(at) ? at : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Whether a waiting session's card needs its pane read again: its descriptor changed, the last read is
+ * PROMPT_REREAD_MS old, or the bridge finished an answer since (a pressed or stale answer settles on the next tick).
+ */
+export const promptReadDue = (
+  read: { readonly updatedAt: string | null; readonly at: number } | null,
+  updatedAt: string | null,
+  nowMs: number,
+  answered: () => number | null,
+) =>
+  read === null ||
+  read.updatedAt !== updatedAt ||
+  nowMs - read.at >= PROMPT_REREAD_MS ||
+  (answered() ?? -Infinity) >= read.at;
+
+/** The T3 question a terminal prompt becomes. T3 sends its answer back as "<question>\n<answer>". */
+export const askQuestion = (found: PanePrompt, overview: string) => ({
+  id: "answer",
+  header: (found.header ?? "Terminal").slice(0, 60),
+  question: [overview, found.context, found.question]
+    .filter((part) => part.length > 0)
+    .join(". ")
+    .replace(/[ \t]+/g, " ")
+    .slice(-1_400),
+  options: found.options.map((option) => ({
+    label: option.label,
+    description: option.description.length > 0 ? option.description : option.label,
+  })),
+  ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
+  ...(found.details === undefined ? {} : { details: found.details }),
+});
 
 const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolStep =>
   "kind" in entry;
@@ -431,6 +527,8 @@ export const findNode = (): string | null => {
   } catch {}
   const candidates = [
     process.env.BATON_LIVE_NODE,
+    // The desktop's server runs on Electron as Node: the same executable runs the agent.
+    process.env.ELECTRON_RUN_AS_NODE === "1" ? process.execPath : undefined,
     stateFile(home, "node"),
     NodePath.join(home, "bin", "node"),
     ...nvmNodes,
@@ -522,14 +620,21 @@ const MISSING_GRACE_MS = 3 * 60_000;
  * caller's memory across ticks of when each thread's session was first seen missing; this updates it.
  */
 export const endedMirrorThreads = (
-  shells: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "updatedAt">>,
+  shells: ReadonlyArray<
+    Pick<OrchestrationV2ThreadShell, "id" | "updatedAt" | "providerInstanceId">
+  >,
   liveSessionIds: ReadonlySet<string>,
   missingSince: Map<ThreadId, number>,
   nowMs: number,
+  /** The main session's thread: it stays in the list whether or not its session runs. */
+  mainThreadId: string | null = null,
 ): ReadonlyArray<ThreadId> => {
+  // A thread moved into Tessaya is off the live instance and continues without a terminal.
   const missing = shells.filter(
     (t) =>
       String(t.id).startsWith(`${PREFIX}:`) &&
+      String(t.id) !== mainThreadId &&
+      t.providerInstanceId === LIVE_INSTANCE_ID &&
       !liveSessionIds.has(String(t.id).slice(PREFIX.length + 1)),
   );
   const ids = new Set(missing.map((t) => t.id));
@@ -753,6 +858,8 @@ interface Follow {
   turn: boolean;
   /** What the thread last showed: working or not (null until read). */
   shown: boolean | null;
+  /** The session's status at the last tick, to see it go idle without a T3 turn. */
+  lastStatus?: string | null;
   checkedAt: number;
   /** The terminal prompt shown in T3 as a question (D88), until it leaves the screen. */
   ask: {
@@ -760,6 +867,12 @@ interface Follow {
     readonly requestId: RuntimeRequestId;
     readonly itemId: TurnItemId;
     readonly request: OrchestrationV2RuntimeRequest;
+    /** When it was raised (ms). */
+    readonly at: number;
+    /** It is the same prompt raised again, so it is not raised a third time. */
+    readonly again: boolean;
+    /** The session descriptor's time when it was raised. */
+    readonly updatedAt: string | null;
   } | null;
   /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
   promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
@@ -848,6 +961,7 @@ export const askRunId = (
 
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
+  const moves = yield* Effect.serviceOption(ThreadAccountMoves);
   const weave = yield* BatonWeaveService;
   const settings = yield* ServerSettingsService;
   const { attachmentsDir, stateDir, logsDir } = yield* ServerConfig.ServerConfig;
@@ -863,6 +977,75 @@ const make = Effect.gen(function* () {
     appendResumeLog(NodePath.join(logsDir, "baton-mirror.ndjson"), record);
   };
 
+  const homes = makeSessionHomes({
+    engine,
+    stateDir,
+    instances: settings.getSettings.pipe(
+      Effect.map((current) => current.providerInstances),
+      Effect.orElseSucceed(() => ({})),
+    ),
+    log: (record) => mirrorLog(null, record),
+    live: { driver: DRIVER, model: MODEL },
+  });
+
+  /** The main session (MainSession.ts): its thread, the session it is on, and the pane that session last ran in. */
+  const mainFile = NodePath.join(stateDir, "tessaya-main.json");
+  const main = {
+    seen: yield* settings.getSettings.pipe(
+      Effect.map((current) => current.mainThreadId),
+      Effect.orElseSucceed(() => null),
+    ),
+    wasPinned: true,
+    sessionId: null as string | null,
+    pane: ((): string | null => {
+      try {
+        const pane = (JSON.parse(NodeFS.readFileSync(mainFile, "utf8")) as { pane?: unknown }).pane;
+        return typeof pane === "string" ? pane : null;
+      } catch {
+        return null;
+      }
+    })(),
+  };
+  const saveMainPane = (pane: string): void => {
+    try {
+      NodeFS.writeFileSync(mainFile, JSON.stringify({ pane }));
+    } catch {}
+  };
+  const trackMain = (mainThreadId: string | null, live: ReadonlyArray<ClaudeLiveSession>) =>
+    Effect.gen(function* () {
+      const shell =
+        mainThreadId === null ? null : yield* engine.threadShell(ThreadId.make(mainThreadId));
+      const pinned = (shell?.pinnedAt ?? null) !== null;
+      const action =
+        shell === null || (shell.archivedAt ?? null) !== null
+          ? "none"
+          : decideMainPin({
+              main: mainThreadId,
+              seenMain: main.seen,
+              pinned,
+              wasPinned: main.wasPinned,
+            });
+      if (action === "pin" && shell !== null) {
+        if (yield* engine.pinThread({ tag: "main-session", threadId: shell.id }))
+          mirrorLog(null, { event: "main-pinned", thread: mainThreadId });
+      } else if (action === "clear") {
+        yield* settings.updateSettings({ mainThreadId: null }).pipe(Effect.ignore);
+        mirrorLog(null, { event: "main-unpinned-cleared", thread: mainThreadId });
+      }
+      main.seen = action === "clear" ? null : mainThreadId;
+      main.wasPinned = action === "pin" || pinned;
+      main.sessionId =
+        mainThreadId === null
+          ? null
+          : ((yield* engine.activeProviderThread(ThreadId.make(mainThreadId)))?.nativeThreadRef
+              ?.nativeId ?? null);
+      const pane = live.find((s) => s.sessionId === main.sessionId)?.herdrPane ?? null;
+      if (pane !== null && pane !== main.pane) {
+        main.pane = pane;
+        saveMainPane(pane);
+      }
+    });
+
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
   const owned = new Set<string>();
@@ -877,19 +1060,24 @@ const make = Effect.gen(function* () {
   const ensureProviderInstance = Effect.gen(function* () {
     const script = agentScript();
     const node = findNode();
-    if (!NodeFS.existsSync(script) || node === null) {
-      yield* Effect.logWarning("Tessaya live threads: no agent script or Node, sending is off", {
+    const reason = liveSendingUnavailable({
+      platform: yield* HostProcess.Platform,
+      herdr: herdrPresent(),
+      script: NodeFS.existsSync(script),
+      node: node !== null,
+    });
+    noteLiveSendingUnavailable(reason);
+    if (reason !== null)
+      yield* Effect.logWarning("Tessaya live threads: sending is off here", {
+        reason,
         script,
         node,
       });
-      return;
-    }
-    const wanted = {
-      driver: DRIVER,
-      displayName: "Live session",
-      enabled: true,
-      config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
-    };
+    // Registered either way, so its threads are Terminal threads that say why, not an unknown instance.
+    const wanted = liveProviderInstance(node ?? process.execPath, script, {
+      enabled: reason === null,
+      electron: node !== null && isElectronNode(node),
+    });
     const current = (yield* settings.getSettings).providerInstances[LIVE_INSTANCE_ID];
     // @effect-diagnostics-next-line globalJsonInEffect:off - settings values, always serialisable.
     if (JSON.stringify(current) === JSON.stringify(wanted)) return;
@@ -1390,6 +1578,11 @@ const make = Effect.gen(function* () {
    */
   const working = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
+      // A queued model, effort or account change goes in when the session stops working, turn or not.
+      const before = follow.lastStatus;
+      follow.lastStatus = session.status;
+      if (wentIdle(before, session.status) && Option.isSome(moves))
+        yield* moves.value.settleLive(session.sessionId);
       // A question waiting on its answer is part of the turn, not the end of it (D88).
       const busy = session.status === "busy" || session.status === "waiting";
       if (busy) follow.idleSince = null;
@@ -1494,71 +1687,49 @@ const make = Effect.gen(function* () {
       if (
         session.status === "waiting" &&
         follow.ask !== null &&
-        follow.promptRead !== null &&
-        follow.promptRead.updatedAt === session.updatedAt &&
-        nowMs - follow.promptRead.at < PROMPT_REREAD_MS
+        !promptReadDue(follow.promptRead, session.updatedAt, nowMs, () =>
+          answeredAt(session.sessionId),
+        )
       )
         return;
       follow.promptRead =
         session.status === "waiting" ? { updatedAt: session.updatedAt, at: nowMs } : null;
-      const read =
-        session.status === "waiting" && session.herdrPane !== null
-          ? yield* readPanePrompt(session.herdrPane)
-          : null;
-      // Waiting with nothing readable to show is still a question in the thread (not "waiting" and silence).
       const found =
-        read !== null && read.options.length > 0
-          ? read
-          : session.status === "waiting"
-            ? unreadPrompt(
-                session,
-                session.herdrPane === null ? "" : yield* readPaneScreen(session.herdrPane),
-              )
-            : null;
+        session.status !== "waiting"
+          ? null
+          : waitingPrompt(
+              session,
+              session.herdrPane === null ? null : yield* readPane(session.herdrPane, 80),
+            );
+      if (found === undefined) return;
       mirrorLog(`prompt:${session.sessionId}`, {
         event: "prompt",
         sessionId: session.sessionId,
         status: session.status,
         pane: session.herdrPane,
-        readable: read !== null && read.options.length > 0,
         shown: found?.key ?? null,
       });
-      if (follow.ask !== null && follow.ask.key === found?.key) return;
+      const again = follow.ask !== null && follow.ask.key === found?.key;
+      if (again && follow.ask !== null) {
+        const pending =
+          (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending";
+        const item = pending ? null : yield* engine.turnItem(follow.threadId, follow.ask.itemId);
+        const answered = item?.type === "user_input_request" && item.questionAnswer !== undefined;
+        if (
+          keepAsk(follow.ask, {
+            pending,
+            answered,
+            answeredAt: answeredAt(session.sessionId),
+            updatedAt: session.updatedAt,
+          })
+        )
+          return;
+      }
       const now = yield* DateTime.now;
+      // Answered in T3, the request is resolved already; answered in the terminal or its screen gone, it expires.
       if (follow.ask !== null) {
-        const open = follow.ask;
         follow.ask = null;
-        // Answered in T3, the request is resolved already; answered in the terminal, it expires.
-        if ((yield* engine.runtimeRequestStatus(follow.threadId, open.requestId)) === "pending") {
-          const item = yield* engine.turnItem(follow.threadId, open.itemId);
-          yield* engine.writeEvents({
-            events: [
-              {
-                id: EventId.make(`${open.requestId}:expired`),
-                type: "runtime-request.updated",
-                threadId: follow.threadId,
-                occurredAt: now,
-                payload: { ...open.request, status: "expired", resolvedAt: now },
-              },
-              ...(item === null
-                ? []
-                : [
-                    {
-                      id: EventId.make(`${open.itemId}:closed`),
-                      type: "turn-item.updated" as const,
-                      threadId: follow.threadId,
-                      occurredAt: now,
-                      payload: {
-                        ...item,
-                        status: "completed" as const,
-                        completedAt: now,
-                        updatedAt: now,
-                      },
-                    },
-                  ]),
-            ],
-          });
-        }
+        yield* expireOtherAsks(follow, null);
       }
       // Once per thread per server start, and whenever the card on screen changes: older pending cards go.
       if (!sweptAsks.has(String(follow.threadId))) {
@@ -1570,7 +1741,6 @@ const make = Effect.gen(function* () {
       const requestId = RuntimeRequestId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       const itemId = TurnItemId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       const nodeId = NodeId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
-      // One line: T3 sends the answer back as "<question>\n<answer>".
       // A tabbed form shows its other questions too, from the transcript's exact text; the pane question stays last
       // because T3 sends the answer back keyed by it.
       const overview =
@@ -1588,11 +1758,6 @@ const make = Effect.gen(function* () {
               ),
             ).slice(0, 900)
           : "";
-      const question = [overview, found.context, found.question]
-        .filter((part) => part.length > 0)
-        .join(". ")
-        .replace(/[ \t]+/g, " ")
-        .slice(-1_400);
       const request = {
         id: requestId,
         nodeId,
@@ -1605,7 +1770,15 @@ const make = Effect.gen(function* () {
         resolvedAt: null,
       };
       yield* expireOtherAsks(follow, String(requestId));
-      follow.ask = { key: found.key, requestId, itemId, request };
+      follow.ask = {
+        key: found.key,
+        requestId,
+        itemId,
+        request,
+        at: stamp,
+        again,
+        updatedAt: session.updatedAt,
+      };
       const askRun = askRunId(follow.target, yield* engine.threadRuns(follow.threadId));
       yield* engine.writeEvents({
         events: [
@@ -1632,18 +1805,7 @@ const make = Effect.gen(function* () {
               type: "user_input_request",
               requestId,
               responseMode: "message",
-              questions: [
-                {
-                  id: "answer",
-                  header: (found.header ?? "Terminal").slice(0, 60),
-                  question,
-                  options: found.options.map((option) => ({
-                    label: option.label,
-                    description: option.description.length > 0 ? option.description : option.label,
-                  })),
-                  ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
-                },
-              ],
+              questions: [askQuestion(found, overview)],
             },
           },
           {
@@ -1678,13 +1840,54 @@ const make = Effect.gen(function* () {
 
   const startFollowing = (session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      const threadId = liveThreadId(session.sessionId);
+      // A Tessaya thread's own session, open in a terminal: that thread, which already holds its history. The same for
+      // the main session restarted under a new id in its pane: it stays the main thread.
+      const home = homes.ofSession(session.sessionId);
+      const mainThreadId = main.seen;
+      const carried =
+        home === null &&
+        mainThreadId !== null &&
+        carriesMain({
+          mainSessionId: main.sessionId,
+          mainPane: main.pane,
+          liveSessionIds: new Set((yield* readAllProfileLiveSessions()).map((s) => s.sessionId)),
+          session,
+        });
+      if (carried) {
+        const thread = yield* engine.appThread(ThreadId.make(mainThreadId));
+        if (thread !== null)
+          yield* engine.writeEvents({
+            events: pointAtSessionEvents({
+              thread,
+              driver: DRIVER,
+              instanceId: LIVE_INSTANCE_ID,
+              model: MODEL,
+              sessionId: session.sessionId,
+              now: yield* DateTime.now,
+              stamp: Date.now(),
+            }),
+          });
+        main.sessionId = session.sessionId;
+        mirrorLog(null, {
+          event: "main-carried",
+          thread: mainThreadId,
+          sessionId: session.sessionId,
+        });
+      }
+      const threadId =
+        home !== null
+          ? ThreadId.make(home.threadId)
+          : carried
+            ? ThreadId.make(mainThreadId)
+            : liveThreadId(session.sessionId);
+      const keepsHistory = home !== null || carried;
       const path = transcriptPath(session);
       const size = path === null ? 0 : NodeFS.statSync(path).size;
       // Long tool-heavy sessions hold few messages per megabyte: read back until there are enough.
       let from = size;
       let history: Array<LiveTranscriptMessage> = [];
       while (
+        !keepsHistory &&
         path !== null &&
         from > 0 &&
         history.length < FIRST_MESSAGES &&
@@ -1899,6 +2102,7 @@ const make = Effect.gen(function* () {
 
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
+    yield* homes.refresh.pipe(Effect.andThen(homes.link(live)), Effect.ignoreCause({ log: true }));
     // Before any heal rewrites a thread's native id, so kept messages still find their thread.
     yield* stampKept(engine, weave).pipe(Effect.ignoreCause);
     mirrorLog("live-set", {
@@ -1942,7 +2146,12 @@ const make = Effect.gen(function* () {
     const liveIds = new Set(live.map((s) => s.sessionId));
     const open = yield* engine.threadShells;
     forgetUnarchived(endedArchived, open);
-    for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now())) {
+    const mainThreadId = yield* settings.getSettings.pipe(
+      Effect.map((current) => current.mainThreadId),
+      Effect.orElseSucceed(() => null),
+    );
+    yield* trackMain(mainThreadId, live).pipe(Effect.ignoreCause({ log: true }));
+    for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now(), mainThreadId)) {
       if (continued.has(id)) continue;
       if (sentFromT3(yield* threadMessages(id))) continued.add(id);
       else if (yield* engine.archiveThread({ tag: "live", threadId: id })) {

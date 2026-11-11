@@ -25,7 +25,13 @@ const run = (cfg: typeof chord, events: ReadonlyArray<MouseEvent>) => {
     const step = reduceMouse(state, event, cfg);
     state = step.state;
     return step.actions.map((a: MouseAction) =>
-      a.kind === "fire" ? `fire:${a.id}` : a.kind === "replay_down" ? `replay:${a.button}` : a.kind,
+      a.kind === "fire"
+        ? `fire:${a.id}`
+        : a.kind === "release"
+          ? `release:${a.id}`
+          : a.kind === "replay_down"
+            ? `replay:${a.button}`
+            : a.kind,
     );
   });
 };
@@ -56,7 +62,11 @@ describe("the mouse reducer", () => {
       { type: "up", t: 30, button: "middle" },
     ];
     expect(run(EMPTY_BINDINGS, events)).toEqual([["pass"], ["pass"]]);
-    expect(run(middle, events)).toEqual([["fire:m", "consume"], ["consume"]]);
+    // Its release is reported too, so a button held to dictate ends when he lets go.
+    expect(run(middle, events)).toEqual([
+      ["fire:m", "consume"],
+      ["release:m", "consume"],
+    ]);
   });
 
   it("passes every click at once when no chord is bound, so nothing is delayed", () => {

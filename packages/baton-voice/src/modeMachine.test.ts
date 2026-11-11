@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_TIMINGS,
   initialVoiceState,
+  isLoneBreath,
   reduceVoice,
   namedWake,
   stripWake,
@@ -427,5 +428,13 @@ describe("a spoken cancel", () => {
       { type: "utterance", text: "never mind", at: 100 },
     ]);
     expect(state.mode).toBe("sleeping");
+  });
+});
+
+describe("isLoneBreath", () => {
+  it("drops only a breath, never a word or a yes he could mean", () => {
+    for (const text of ["Um.", "uhh", "er", "Erm"]) expect(isLoneBreath(text), text).toBe(true);
+    for (const text of ["Yeah.", "Okay", "Mm-hm.", "Mm", "um, send it", "no", ""])
+      expect(isLoneBreath(text), text).toBe(false);
   });
 });

@@ -463,3 +463,52 @@ it.effect("scrubs secrets from talk notes kept before #410, once, keeping every 
     assert.deepStrictEqual(yield* again.talks("2026-10-01"), ["kept after"]);
   }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );
+
+it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))(
+  "recall with episodes (MEM-18)",
+  (it) => {
+    it.effect(
+      "a fact beats a stale episode, at most two episodes join a question not about the past, and day words find only episodes",
+      () =>
+        Effect.gen(function* () {
+          const memory = yield* BatonMemoryService;
+          const fact = yield* memory.add({
+            kind: "fact",
+            text: "The staging server now runs in Helsinki",
+            source: "user",
+          });
+          for (const text of [
+            "Monday, 1 December 1969, with Alfred: the staging server was moved to Falkenstein",
+            "Tuesday, 2 December 1969, with Alfred: the disk on the staging server was resized to 80 GB",
+            'Wednesday, 3 December 1969, the job "certs": the staging server certificates were renewed',
+          ]) {
+            yield* memory.add({ kind: "episode", text, source: "thread" });
+          }
+          const kinds = (ids: ReadonlyArray<string>) =>
+            Effect.forEach(ids, (id) =>
+              Effect.map(memory.list({ admin: true }), (all) => all.find((i) => i.id === id)?.kind),
+            );
+          const now = yield* memory.recall({ text: "where does the staging server run" });
+          assert.strictEqual(now.ids[0], fact.id);
+          assert.isAtMost((yield* kinds(now.ids)).filter((k) => k === "episode").length, 2);
+          // Asked about what happened, every matching episode may come back.
+          const past = yield* memory.recall({ text: "what did we do with the staging server" });
+          assert.strictEqual((yield* kinds(past.ids)).filter((k) => k === "episode").length, 3);
+          // The test clock is Thursday 1 January 1970: "yesterday" is Wednesday 31 December, for episodes only.
+          const note = yield* memory.add({
+            kind: "note",
+            text: "Wednesday 31 December is the office party",
+            source: "user",
+          });
+          const party = yield* memory.add({
+            kind: "episode",
+            text: "Wednesday, 31 December 1969, with Freya: he asked about the caterer; she booked one",
+            source: "thread",
+          });
+          const yesterday = yield* memory.recall({ text: "what did Freya say yesterday" });
+          assert.include(yesterday.ids, party.id);
+          assert.notInclude(yesterday.ids, note.id);
+        }),
+    );
+  },
+);

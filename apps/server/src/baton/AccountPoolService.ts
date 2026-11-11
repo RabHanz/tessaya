@@ -36,6 +36,7 @@ import {
 } from "@t3tools/baton-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -188,6 +189,16 @@ const runCswapWith =
       );
       return { stdout: stdout ?? "", stderr: stderr ?? "", code: exitCode };
     }).pipe(Effect.scoped);
+
+/** `cswap list --token-status`: each slot's credential described (kind, expiry, refresh token), never its value. */
+export const makeTokenStatusReader =
+  (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => (): Effect.Effect<string> =>
+    runCswapWith(spawner)(["list", "--token-status"]).pipe(
+      Effect.map((result) => (result.code === 0 ? result.stdout : "")),
+      // cswap fetches usage over the network; a hung call must not hold the accounts list.
+      Effect.timeout(Duration.seconds(5)),
+      Effect.orElseSucceed(() => ""),
+    );
 
 /** Reads cswap's pool. Exported for the provider snapshot, which needs the same reading (D92). */
 export const makePoolReader =

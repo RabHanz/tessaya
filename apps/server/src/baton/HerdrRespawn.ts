@@ -11,9 +11,13 @@
  * control path is the pane, not the account.
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 
+import { sessionHolderPid, sessionHolders } from "./ClaudeLiveSessions.ts";
 import { parseHerdrForeground, splitPaneRef } from "./HerdrAdapterLive.ts";
 
 const run = (args: ReadonlyArray<string>): Promise<{ ok: boolean; stdout: string }> =>
@@ -25,19 +29,19 @@ const run = (args: ReadonlyArray<string>): Promise<{ ok: boolean; stdout: string
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** tessaya-claude (LIVE-ACCOUNT): the conversation keeps, or gets, its own config dir, so its login can move live. */
+export const TESSAYA_CLAUDE = NodePath.join(NodeOS.homedir(), ".local", "bin", "tessaya-claude");
+const claudeCommand = () => (NodeFS.existsSync(TESSAYA_CLAUDE) ? "tessaya-claude" : "claude");
+
 /** The argv sequence, separate so it is testable without Herdr. */
-export const respawnPlan = (paneRef: string, sessionId: string) => {
+export const respawnPlan = (paneRef: string, sessionId: string, claude = claudeCommand()) => {
   const { session, pane } = splitPaneRef(paneRef);
   const prefix = session === null || session === "default" ? [] : ["--session", session];
   return {
     prefix,
     pane,
-    exit: [
-      [...prefix, "pane", "send-text", pane, "/exit"],
-      [...prefix, "pane", "send-keys", pane, "enter"],
-    ],
     probe: [...prefix, "pane", "process-info", "--pane", pane],
-    resume: [...prefix, "pane", "run", pane, `claude --resume ${sessionId}`],
+    resume: [...prefix, "pane", "run", pane, `${claude} --resume ${sessionId}`],
   };
 };
 
@@ -50,7 +54,9 @@ export const respawnClaudeInPane = (input: {
       return { respawned: false, detail: "not a Claude session id" };
     }
     const plan = respawnPlan(input.paneRef, input.sessionId);
-    for (const args of plan.exit) await run(args);
+    // Never /exit typed into the pane: it could submit his draft. SIGTERM to the verified pid instead.
+    if (!(await Effect.runPromise(endClaudeTerminal(input.sessionId))))
+      return { respawned: false, detail: "the session did not exit within 15 s; left as it was" };
     for (let i = 0; i < 40; i += 1) {
       await sleep(250);
       const info = await run(plan.probe);
@@ -62,4 +68,22 @@ export const respawnClaudeInPane = (input: {
       }
     }
     return { respawned: false, detail: "the session did not exit within 10 s; left as it was" };
+  });
+
+/**
+ * Ends a Claude session's terminal process with SIGTERM to each pid whose descriptor still checks out (claude, same
+ * start time), never by typing into the pane, which could submit a draft. True only once no verified process holds the
+ * session (within 15 s); false at once when one of them is an SDK process, which is not a terminal's to end.
+ */
+export const endClaudeTerminal = (sessionId: string): Effect.Effect<boolean> =>
+  Effect.promise(async () => {
+    const holders = sessionHolders(sessionId).filter((h) => h.verified);
+    if (holders.some((h) => h.sdk)) return false;
+    for (const holder of holders) {
+      try {
+        process.kill(holder.pid, "SIGTERM");
+      } catch {}
+    }
+    for (let i = 0; i < 60 && sessionHolderPid(sessionId) !== null; i += 1) await sleep(250);
+    return sessionHolderPid(sessionId) === null;
   });

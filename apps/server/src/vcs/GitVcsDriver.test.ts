@@ -1254,6 +1254,26 @@ it.effect("GitVcsDriver treats a missing git executable as outside any repositor
   }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
+it.effect("GitVcsDriver does not spawn git for a folder with no .git above it", () =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    // The filesystem root, because a temp folder can sit inside a checkout (TMPDIR in a worktree).
+    const cwd = path.parse(path.resolve(".")).root;
+    let spawned = 0;
+    const driver = yield* GitVcsDriver.makeVcsDriverShape().pipe(
+      Effect.provideService(
+        VcsProcess.VcsProcess,
+        VcsProcess.VcsProcess.of({
+          run: () => Effect.sync(() => spawned++).pipe(Effect.andThen(Effect.die("git spawned"))),
+        }),
+      ),
+    );
+
+    assert.strictEqual(yield* driver.detectRepository(cwd), null);
+    assert.strictEqual(spawned, 0);
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
 it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
   "GitVcsDriver detects a repository whose path contains a newline",
   () =>

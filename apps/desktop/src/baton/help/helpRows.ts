@@ -56,6 +56,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
     "What did Freya tell me about the venue?",
     "Searches what you and one persona said to each other.",
   ],
+  team_board: ["What is Alfred working on?", "Each persona's jobs and its last conversation."],
   memory_remember: ["Remember that I prefer tabs", "Keeps a note you can edit in Memory."],
   memory_forget: ["Forget that note about tabs", "Removes a memory."],
   history_search: ["What did we decide about pricing?", "Searches past work across your projects."],
@@ -72,6 +73,14 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   job_grant: ["Let that job retry by itself", "A standing permission for one job."],
   job_revoke: ["Take that permission back", "Removes a standing permission."],
   job_handoff: ["Hand that job to Codex", "Moves it to another worker."],
+  thread_move_into_tessaya: [
+    "Move that terminal session into Tessaya",
+    "Ends it in the terminal; the same conversation continues here. Asks first.",
+  ],
+  thread_open_in_terminal: [
+    "Open that thread in a terminal",
+    "Its session moves to a Herdr pane until the pane closes. Asks first.",
+  ],
   skill_draft: ["Turn that job into a skill", "Writes a draft you review."],
   watch_report: ["What is stuck?", "Sessions that failed, stalled or wait for you."],
   approvals_list: ["What is waiting for my yes?", "Everything that needs an answer."],

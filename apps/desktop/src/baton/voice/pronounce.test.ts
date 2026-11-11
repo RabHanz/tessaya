@@ -5,8 +5,8 @@ import { pronounce, pronounceFrom } from "./pronounce.ts";
 describe("what the voice is given to say", () => {
   it.each([
     // [what she wrote, what the voice is given]
-    // As written until the round trip picks a spelling: "Tess-ay-uh" was heard as "Tessa are".
-    ["Tessaya will check it.", "Tessaya will check it."],
+    // His pick by ear (pronounce-4, #4): "Tess-ay-uh" was heard as "Tessa are".
+    ["Tessaya will check it.", "Tessayya will check it."],
     ["Ask Freya's window.", "Ask Fray-uh's window."],
     ["Baton is up, and T3 too.", "Batton is up, and T three too."],
     // The product only: "a baton" is the word.
@@ -83,6 +83,8 @@ describe("what the voice is given to say", () => {
     );
     // His spelling of Freya is not respelled again by the built-in one.
     expect(pronounce("Freya.", { Freya: "Freya" })).toBe("Freya.");
+    // His own spelling of her name still beats the built-in one.
+    expect(pronounce("Tessaya here.", { Tessaya: "Tess-AY-ya" })).toBe("Tess-AY-ya here.");
   });
 
   it("reads his list from the settings file, keeping only word and text pairs", () => {

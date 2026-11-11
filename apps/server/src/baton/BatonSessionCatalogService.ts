@@ -2,6 +2,7 @@
 /** The session catalog as a service, so the RPC door, agents and MCP all reach the same methods. */
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import type {
+  BatonSessionDefaultsResult,
   BatonCatalogSession,
   BatonCatalogState,
   BatonReattachResult,
@@ -17,13 +18,17 @@ import {
   DEFAULT_RUNTIME_MODE,
   ProjectId,
   ProviderDriverKind,
+  ProviderInstanceId,
   ThreadId,
   defaultInstanceIdForDriver,
+  type ProviderInstanceConfig,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -33,16 +38,36 @@ import * as ServerConfig from "../config.ts";
 import { AgentSessionImporter } from "../project/AgentSessionImporter.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 
-import { LIVE_INSTANCE_ID, liveThreadId, rebindThread } from "./LiveSessionMirror.ts";
+import {
+  LIVE_DRIVER,
+  LIVE_INSTANCE_ID,
+  LIVE_MODEL,
+  liveThreadId,
+  rebindThread,
+  supersedeLiveHandoffs,
+} from "./LiveSessionMirror.ts";
 import { decideReattach } from "./BindingHealth.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { resendKept, stampKept } from "./UnboundMessages.ts";
 import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
+import { BatonAccounts } from "./BatonAccounts.ts";
+import { endClaudeTerminal } from "./HerdrRespawn.ts";
+import { openInTerminal, type OpenResult } from "./OpenInTerminal.ts";
+import {
+  claudeHomeOf,
+  instancesForLogin,
+  moveIntoTessaya,
+  resumeInstance,
+  pointAtSessionEvents,
+  type MoveResult,
+} from "./MoveIntoTessaya.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
-import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
+import { isTessayaOwnFolder, sessionHolderPid } from "./ClaudeLiveSessions.ts";
+import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   autoResumeAllowed,
   autoResumedWithin,
@@ -70,8 +95,13 @@ import {
   type WatchdogOutcome,
 } from "@t3tools/baton-shared/watch";
 import { turnsInFlight } from "@t3tools/baton-shared/turnsInFlight";
-import { createSessionCatalog, sendOutcome, type CatalogPorts } from "./SessionCatalog.ts";
-import { realCatalogPorts } from "./SessionCatalogLive.ts";
+import {
+  createSessionCatalog,
+  newSessionSelection,
+  sendOutcome,
+  type CatalogPorts,
+} from "./SessionCatalog.ts";
+import { realCatalogPorts, TESSAYA_CLI } from "./SessionCatalogLive.ts";
 
 export class BatonSessionCatalogService extends Context.Service<
   BatonSessionCatalogService,
@@ -134,6 +164,19 @@ export class BatonSessionCatalogService extends Context.Service<
       cwd?: string;
       confirmPane?: string;
     }) => Effect.Effect<typeof BatonReattachResult.Type>;
+    readonly mainSession: (input: {
+      threadId: string;
+      main: boolean;
+    }) => Effect.Effect<typeof BatonSessionDefaultsResult.Type>;
+    readonly sessionDefaults: Effect.Effect<typeof BatonSessionDefaultsResult.Type>;
+    readonly openInTerminal: (input: {
+      threadId: string;
+      stopTurn?: boolean;
+    }) => Effect.Effect<OpenResult>;
+    readonly moveIntoTessaya: (input: {
+      threadId: string;
+      providerChangeApproved?: boolean;
+    }) => Effect.Effect<MoveResult>;
     readonly kept: (input: {
       threadId: string;
       retryId?: string;
@@ -206,6 +249,8 @@ export const layer = Layer.effect(
     const importer = yield* Effect.serviceOption(AgentSessionImporter);
     const engine = yield* Effect.serviceOption(BatonEngine);
     const record = yield* Effect.serviceOption(BatonRecordService);
+    const accounts = yield* Effect.serviceOption(BatonAccounts);
+    const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
     const registry = yield* Effect.serviceOption(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
@@ -327,19 +372,51 @@ export const layer = Layer.effect(
                   .slice(0, 160)}`,
               };
             });
-    // A new session on a machine with no Herdr: a T3 thread in that folder's project, on the Claude provider, with the
-    // model, effort and first message asked for. The project is found by its exact folder, so no other project is touched.
+    // A new session as a Tessaya thread (Where new sessions run, and always with no Herdr): a thread in that folder's
+    // project, on the Claude provider, with the model, effort and first message asked for. The project is found by its
+    // exact folder, so no other project is touched.
     const claudeInstance = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));
-    const launch: CatalogPorts["launch"] = !noHerdr
-      ? undefined
-      : Option.isNone(projects) || Option.isNone(engine)
-        ? async () => ({ detail: MISSING })
+    const newSessionsInTerminal: CatalogPorts["newSessionsInTerminal"] = () =>
+      noHerdr || Option.isNone(serverSettings)
+        ? Promise.resolve(false)
+        : Effect.runPromiseWith(services)(
+            serverSettings.value.getSettings.pipe(
+              Effect.map((current) => current.newSessionsRun === "terminal"),
+              Effect.orElseSucceed(() => false),
+            ),
+          );
+    const launch: CatalogPorts["launch"] =
+      Option.isNone(projects) || Option.isNone(engine)
+        ? noHerdr
+          ? async () => ({ detail: MISSING })
+          : undefined
         : (input) =>
             Effect.runPromiseWith(services)(
               Effect.gen(function* () {
                 if (isTessayaOwnFolder(input.cwd)) return { detail: OWN_FOLDER };
+                const defaultSelection = Option.isSome(serverSettings)
+                  ? yield* serverSettings.value.getSettings.pipe(
+                      Effect.map((current) => current.defaultModelSelection),
+                      Effect.orElseSucceed(() => null),
+                    )
+                  : null;
+                const selection = newSessionSelection({
+                  defaultSelection,
+                  defaultIsClaude:
+                    defaultSelection !== null &&
+                    Option.isSome(registry) &&
+                    (yield* registry.value.getInstance(defaultSelection.instanceId))?.driverKind ===
+                      "claudeAgent",
+                  fallbackInstance: claudeInstance,
+                  fallbackModel:
+                    DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] ??
+                    "claude-opus-5-5",
+                  askedModel: input.model,
+                });
                 if (Option.isSome(registry)) {
-                  const instance = yield* registry.value.getInstance(claudeInstance);
+                  const instance = yield* registry.value.getInstance(
+                    ProviderInstanceId.make(selection.instanceId),
+                  );
                   const snapshot =
                     instance === undefined ? null : yield* instance.snapshot.getSnapshot;
                   if (
@@ -365,20 +442,14 @@ export const layer = Layer.effect(
                       title: NodePath.basename(input.cwd) || input.cwd,
                       workspaceRoot: input.cwd,
                     });
-                const family = (input.model ?? "").trim().toLowerCase();
-                const model =
-                  family === "" || family === "opus"
-                    ? (DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] ??
-                      "claude-opus-5-5")
-                    : input.model!.trim();
                 const effort = (input.effort ?? "").trim().toLowerCase();
                 const threadId = yield* engine.value.launchThread({
                   tag: "new-session",
                   projectId: project.id,
                   title: NodePath.basename(input.cwd) || "New session",
                   modelSelection: {
-                    instanceId: claudeInstance,
-                    model,
+                    instanceId: ProviderInstanceId.make(selection.instanceId),
+                    model: selection.model,
                     ...(effort === "" ? {} : { options: [{ id: "effort", value: effort }] }),
                   },
                   runtimeMode: DEFAULT_RUNTIME_MODE,
@@ -432,7 +503,7 @@ export const layer = Layer.effect(
     const ports: CatalogPorts = {
       ...real,
       ...(thread === undefined ? {} : { thread }),
-      ...(launch === undefined ? {} : { launch }),
+      ...(launch === undefined ? {} : { launch, newSessionsInTerminal }),
       ...(thread === undefined || Option.isNone(engine)
         ? {}
         : {
@@ -617,6 +688,21 @@ export const layer = Layer.effect(
       }
       return { enabled, resumed, skipped };
     };
+    const fallbackDefaults: typeof BatonSessionDefaultsResult.Type = {
+      newSessionsRun: "tessaya",
+      mainThreadId: null,
+    };
+    const defaults: Effect.Effect<typeof BatonSessionDefaultsResult.Type> = Option.isSome(
+      serverSettings,
+    )
+      ? serverSettings.value.getSettings.pipe(
+          Effect.map((current) => ({
+            newSessionsRun: current.newSessionsRun,
+            mainThreadId: current.mainThreadId,
+          })),
+          Effect.orElseSucceed(() => fallbackDefaults),
+        )
+      : Effect.succeed(fallbackDefaults);
     return BatonSessionCatalogService.of({
       list: Effect.fn("BatonSessionCatalogService.list")(function* (input: {
         query?: string;
@@ -756,6 +842,335 @@ export const layer = Layer.effect(
             state: "not-running" as const,
             pane: null,
             detail: "Could not reattach this thread.",
+          }),
+        ),
+      ),
+      sessionDefaults: defaults,
+      mainSession: Effect.fn("BatonSessionCatalogService.mainSession")(function* (input: {
+        threadId: string;
+        main: boolean;
+      }) {
+        if (Option.isSome(serverSettings)) {
+          const current = yield* defaults;
+          // Stopping one that is not the main session leaves the main one alone.
+          if (input.main || current.mainThreadId === input.threadId)
+            yield* serverSettings.value
+              .updateSettings({ mainThreadId: input.main ? input.threadId : null })
+              .pipe(Effect.ignore);
+        }
+        return yield* defaults;
+      }),
+      openInTerminal: Effect.fn("BatonSessionCatalogService.openInTerminal")(
+        function* (input: { threadId: string; stopTurn?: boolean }) {
+          if (Option.isNone(engine) || noHerdr)
+            return { state: "refused", pane: null, detail: "No Herdr here." } as const;
+          const e = engine.value;
+          const id = ThreadId.make(input.threadId);
+          const before = yield* e.threadShell(id);
+          const sessionOf = e
+            .activeProviderThread(id)
+            .pipe(Effect.map((active) => active?.nativeThreadRef?.nativeId ?? null));
+          const pointTo = Effect.fn("BatonSessionCatalogService.openPoint")(function* (target: {
+            driver: string;
+            instanceId: string;
+            model: string;
+            sessionId: string;
+          }) {
+            const thread = yield* e.appThread(id);
+            if (thread === null) return yield* Effect.fail("no thread record");
+            yield* e.writeEvents({
+              events: pointAtSessionEvents({
+                thread,
+                ...target,
+                now: yield* DateTime.now,
+                stamp: Date.now(),
+              }),
+            });
+          });
+          let sessionId: string | null = null;
+          const result = yield* openInTerminal(
+            {
+              shell: (threadId) =>
+                e.threadShell(ThreadId.make(threadId)).pipe(
+                  Effect.map((shell) =>
+                    shell === null
+                      ? null
+                      : {
+                          running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+                        },
+                  ),
+                ),
+              home: Effect.fn("BatonSessionCatalogService.openHome")(function* (threadId) {
+                const id = ThreadId.make(threadId);
+                const shell = yield* e.threadShell(id);
+                const active = yield* e.activeProviderThread(id);
+                const sessionId = active?.nativeThreadRef?.nativeId ?? null;
+                if (shell === null || active?.driver !== "claudeAgent" || sessionId === null)
+                  return null;
+                const cwd =
+                  shell.worktreePath ??
+                  (yield* e.projects).find((p) => p.id === shell.projectId)?.workspaceRoot ??
+                  null;
+                if (cwd === null) return null;
+                const instances: Readonly<Record<string, ProviderInstanceConfig>> = Option.isSome(
+                  serverSettings,
+                )
+                  ? yield* serverSettings.value.getSettings.pipe(
+                      Effect.map((current) => current.providerInstances),
+                      Effect.orElseSucceed(() => ({})),
+                    )
+                  : {};
+                return {
+                  sessionId,
+                  cwd,
+                  configDir: claudeHomeOf(instances[String(shell.providerInstanceId)]),
+                };
+              }),
+              stopTurn: Effect.fn("BatonSessionCatalogService.openStopTurn")(function* (threadId) {
+                yield* e.interruptThread({
+                  tag: "open-in-terminal",
+                  threadId: ThreadId.make(threadId),
+                });
+                for (let i = 0; i < 60; i += 1) {
+                  const shell = yield* e.threadShell(ThreadId.make(threadId));
+                  if (
+                    shell === null ||
+                    shell.activeRunId === null ||
+                    shell.activeRunId === undefined
+                  )
+                    return true;
+                  yield* Effect.sleep("250 millis");
+                }
+                return false;
+              }),
+              toTerminal: Effect.fn("BatonSessionCatalogService.openToTerminal")(
+                function* () {
+                  sessionId = yield* sessionOf;
+                  if (sessionId === null) return false;
+                  yield* pointTo({
+                    driver: LIVE_DRIVER,
+                    instanceId: LIVE_INSTANCE_ID,
+                    model: LIVE_MODEL,
+                    sessionId,
+                  });
+                  return true;
+                },
+                Effect.orElseSucceed(() => false),
+              ),
+              back: Effect.fn("BatonSessionCatalogService.openBack")(
+                function* () {
+                  if (before === null || sessionId === null) return;
+                  yield* pointTo({
+                    driver: "claudeAgent",
+                    instanceId: String(before.providerInstanceId),
+                    model: before.modelSelection.model,
+                    sessionId,
+                  });
+                },
+                Effect.ignoreCause({ log: true }),
+              ),
+              detach: (threadId) =>
+                e
+                  .detachSessions({ tag: "open-in-terminal", threadId: ThreadId.make(threadId) })
+                  .pipe(Effect.ignoreCause({ log: true })),
+              held: (sessionId) => Effect.sync(() => sessionHolderPid(sessionId) !== null),
+              released: Effect.fn("BatonSessionCatalogService.openReleased")(function* (sessionId) {
+                for (let i = 0; i < 60; i += 1) {
+                  if (sessionHolderPid(sessionId) === null) return true;
+                  yield* Effect.sleep("250 millis");
+                }
+                return false;
+              }),
+              launch: (home) =>
+                Effect.promise(
+                  () =>
+                    new Promise<{ pane: string | null; detail: string }>((resolve) =>
+                      NodeChildProcess.execFile(
+                        TESSAYA_CLI,
+                        ["--resume", home.sessionId, home.cwd],
+                        {
+                          timeout: 60_000,
+                          env: {
+                            ...process.env,
+                            // The pane's command runs on this login (tessaya-claude seeds the session's dir from it).
+                            TESSAYA_RESUME_CONFIG_DIR: home.configDir,
+                            PATH: `${NodePath.dirname(TESSAYA_CLI)}:${process.env["PATH"] ?? ""}`,
+                          },
+                        },
+                        (_error, stdout, stderr) => {
+                          const out = `${stdout}${stderr}`;
+                          const pane = /running in (\S+) pane (\S+)/.exec(out);
+                          resolve(
+                            pane === null
+                              ? { pane: null, detail: `tessaya said: ${out.trim().slice(0, 200)}` }
+                              : {
+                                  pane: `${pane[1]}~${pane[2]}`,
+                                  detail: `Open in Herdr ${pane[1]}. Closing it hands the thread back.`,
+                                },
+                          );
+                        },
+                      ),
+                    ),
+                ),
+            },
+            input,
+          );
+          appendResumeLog(
+            NodePath.join(
+              Option.isSome(config) ? config.value.logsDir : NodeOS.tmpdir(),
+              "baton-mirror.ndjson",
+            ),
+            { event: "open-in-terminal", thread: input.threadId, ...result },
+          );
+          return result;
+        },
+        Effect.catchCause((cause) =>
+          Effect.succeed({
+            state: "refused" as const,
+            pane: null,
+            detail: `Not opened: ${String(cause).slice(0, 200)}`,
+          }),
+        ),
+      ),
+      moveIntoTessaya: Effect.fn("BatonSessionCatalogService.moveIntoTessaya")(
+        function* (input: { threadId: string; providerChangeApproved?: boolean }) {
+          if (Option.isNone(engine))
+            return {
+              state: "refused",
+              detail: "No thread engine here.",
+              instanceId: null,
+            } as const;
+          const e = engine.value;
+          const liveNow = (sessionId: string) =>
+            Effect.promise(() => ports.live()).pipe(
+              Effect.map((live) => live.find((s) => s.sessionId === sessionId) ?? null),
+            );
+          const result = yield* moveIntoTessaya(
+            {
+              shell: (threadId) =>
+                e.threadShell(ThreadId.make(threadId)).pipe(
+                  Effect.map((shell) =>
+                    shell === null
+                      ? null
+                      : {
+                          instanceId: String(shell.providerInstanceId),
+                          running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+                        },
+                  ),
+                ),
+              session: (sessionId) =>
+                liveNow(sessionId).pipe(
+                  Effect.map((s) =>
+                    s === null
+                      ? null
+                      : {
+                          status: s.status,
+                          pane: s.herdrPane,
+                          account: s.account,
+                          configDir: s.configDir ?? null,
+                        },
+                  ),
+                ),
+              target: Effect.fn("BatonSessionCatalogService.moveTarget")(function* (target) {
+                const id = ThreadId.make(target.threadId);
+                const shell = yield* e.threadShell(id);
+                const live = yield* liveNow(target.sessionId);
+                const cwd =
+                  live?.cwd ??
+                  shell?.worktreePath ??
+                  (yield* e.projects).find((p) => p.id === shell?.projectId)?.workspaceRoot ??
+                  null;
+                if (cwd === null) return { refused: "the session's folder is not known." };
+                const list = Option.isSome(accounts) ? (yield* accounts.value.list).accounts : [];
+                const instances: Readonly<Record<string, ProviderInstanceConfig>> = Option.isSome(
+                  serverSettings,
+                )
+                  ? yield* serverSettings.value.getSettings.pipe(
+                      Effect.map((current) => current.providerInstances),
+                      Effect.orElseSucceed(() => ({})),
+                    )
+                  : {};
+                const candidates = instancesForLogin(list, target.login);
+                if (candidates.length === 0)
+                  return {
+                    refused: "no Claude account in Tessaya signs in as this session's login.",
+                  };
+                const instanceId = resumeInstance({
+                  candidates: candidates.map((candidate) => ({
+                    instanceId: candidate,
+                    home: claudeHomeOf(instances[candidate]),
+                  })),
+                  sessionConfigDir: target.running
+                    ? (target.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"))
+                    : null,
+                  transcript: (home) =>
+                    NodePath.join(
+                      home,
+                      "projects",
+                      claudeProjectSlug(cwd),
+                      `${target.sessionId}.jsonl`,
+                    ),
+                  realpath: (path) => {
+                    try {
+                      return NodeFS.realpathSync(path);
+                    } catch {
+                      return null;
+                    }
+                  },
+                  exists: (path) => NodeFS.existsSync(path),
+                });
+                if (instanceId === null)
+                  return {
+                    refused:
+                      "no Claude account in Tessaya reaches this session's transcript, so it would start empty. The terminal was left running.",
+                  };
+                return {
+                  instanceId,
+                  model:
+                    DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] ?? "default",
+                };
+              }),
+              endTerminal: (sessionId) => endClaudeTerminal(sessionId),
+              held: (sessionId) => Effect.sync(() => sessionHolderPid(sessionId) !== null),
+              point: Effect.fn("BatonSessionCatalogService.movePoint")(
+                function* (target) {
+                  const threadId = ThreadId.make(target.threadId);
+                  const thread = yield* e.appThread(threadId);
+                  if (thread === null) return false;
+                  yield* e.writeEvents({
+                    events: pointAtSessionEvents({
+                      thread,
+                      driver: "claudeAgent",
+                      instanceId: target.instanceId,
+                      model: target.model,
+                      sessionId: target.sessionId,
+                      now: yield* DateTime.now,
+                      stamp: Date.now(),
+                    }),
+                  });
+                  // Handoffs a heal left ready would be pasted into the resumed session's first turn.
+                  yield* supersedeLiveHandoffs(e, threadId);
+                  return true;
+                },
+                Effect.orElseSucceed(() => false),
+              ),
+            },
+            input,
+          );
+          appendResumeLog(
+            NodePath.join(
+              Option.isSome(config) ? config.value.logsDir : NodeOS.tmpdir(),
+              "baton-mirror.ndjson",
+            ),
+            { event: "move-into-tessaya", thread: input.threadId, ...result },
+          );
+          return result;
+        },
+        Effect.catchCause((cause) =>
+          Effect.succeed({
+            state: "refused" as const,
+            detail: `Not moved: ${String(cause).slice(0, 200)}`,
+            instanceId: null,
           }),
         ),
       ),

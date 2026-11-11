@@ -11,6 +11,10 @@ import {
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+
+import * as ServerConfig from "../config.ts";
+import { answerOpenRequest, takeOpenRequests } from "./TessayaSessionsFile.ts";
 
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
@@ -19,6 +23,41 @@ import * as FleetQuery from "./FleetQuery.ts";
 export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const catalog = yield* BatonSessionCatalogService;
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    // `tessaya resume --force` with the server up asks here; the turn is stopped through the orchestrator.
+    if (Option.isSome(config)) {
+      const stateDir = config.value.stateDir;
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.sleep("2 seconds").pipe(
+            Effect.andThen(
+              Effect.flatMap(Clock.currentTimeMillis, (now) =>
+                Effect.forEach(
+                  takeOpenRequests(stateDir, now),
+                  (request) =>
+                    catalog.openInTerminal({ threadId: request.threadId, stopTurn: true }).pipe(
+                      // Acted on first; only then the answer the CLI prints.
+                      Effect.tap((result) =>
+                        Effect.sync(() => answerOpenRequest(stateDir, request.id, result)),
+                      ),
+                      Effect.catchCause((cause) =>
+                        Effect.sync(() =>
+                          answerOpenRequest(stateDir, request.id, {
+                            state: "refused",
+                            detail: `Tessaya could not open it: ${String(cause).slice(0, 200)}`,
+                          }),
+                        ),
+                      ),
+                      Effect.ignoreCause,
+                    ),
+                  { discard: true },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     const record = yield* BatonRecordService;
     let state = watchRecordStart(
       yield* record
