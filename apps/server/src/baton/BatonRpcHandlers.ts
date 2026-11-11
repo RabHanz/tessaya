@@ -102,6 +102,7 @@ import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 import { WorkSessionService, workSessionStream } from "./WorkSessionService.ts";
 import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { R1Brain } from "../home/R1Brain.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { homeActorOf, serveHomeCall } from "../home/HomeCalls.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
@@ -134,6 +135,7 @@ export type BatonServices =
   | BatonCloudService
   | HomeAssistantService
   | HomeDevices
+  | R1Brain
   | BatonOneShot
   | BatonSessionCatalogService
   | BatonSessionsAcross

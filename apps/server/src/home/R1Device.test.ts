@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mqttPublishBytes, spokenReply, sseReply } from "./R1Device.ts";
+import {
+  dictionaryEntries,
+  houseTime,
+  mqttPublishBytes,
+  splitActs,
+  spokenReply,
+  sseReply,
+} from "./R1Device.ts";
 
 describe("R1Device", () => {
   it("says what really happened when an act waited or failed, never the model's 'done'", () => {
@@ -38,4 +45,40 @@ describe("R1Device", () => {
     expect(JSON.parse(lines[0]!.slice(6)).choices[0].delta.content).toBe("Hello.");
     expect(JSON.parse(lines[1]!.slice(6)).choices[0].finish_reason).toBe("stop");
   });
+});
+
+describe("the streamed R1 turn", () => {
+  it("reads the acts line first, holds while it is arriving, and treats anything else as speech", () => {
+    expect(splitActs("AC")).toBeNull();
+    expect(splitActs("ACTS [")).toBeNull();
+    expect(splitActs("ACTS []\nThe study light is on")).toEqual({
+      acts: [],
+      rest: "The study light is on",
+    });
+    const withAct = splitActs(
+      'ACTS [{"tool":"home_do","args":{"domain":"light","service":"turn_on"}}]\nOn it.',
+    );
+    expect(withAct?.acts.map((a) => a.tool)).toEqual(["home_do"]);
+    expect(splitActs("It is half past nine.")).toEqual({ acts: [], rest: "It is half past nine." });
+    // A broken or unknown act list is no act at all, never a guess.
+    expect(splitActs('ACTS [{"tool":"rm_rf","args":{}}]\nSure.')?.acts).toEqual([]);
+  });
+});
+
+it("tells her the time on the house's clock, with the zone named", () => {
+  // 04:28 UTC is 09:28 in Karachi.
+  expect(houseTime(Date.UTC(2026, 10, 11, 4, 28), "Asia/Karachi")).toBe(
+    "Wednesday, 11 November 2026 at 09:28 (Asia/Karachi)",
+  );
+});
+
+it("fixes his names in what the room heard, from the shared dictionary, as dictation does", async () => {
+  const { biasTranscript } = await import("@t3tools/baton-shared/vocabulary");
+  const entries = dictionaryEntries([
+    { term: "Tessaya", aliases: ["Tezaya"] },
+    { term: "VentureOS", aliases: [] },
+  ]);
+  expect(biasTranscript("Ask Tezaya about Venture OS", entries)).toBe(
+    "Ask Tessaya about VentureOS",
+  );
 });

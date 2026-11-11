@@ -1298,7 +1298,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "apis-anthropic",
     title: "Anthropic",
     to: "/settings/apis",
-    searchTerms: ["api key claude dictation cleanup voice"],
+    searchTerms: ["api key claude dictation cleanup voice room brain r1"],
   },
   {
     id: "home-assistant",
@@ -1319,6 +1319,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "NFC tags",
     to: "/settings/hardware",
     searchTerms: ["nfc tag tap dock mode r1"],
+  },
+  {
+    id: "room-brain",
+    title: "Room brain",
+    to: "/settings/home",
+    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
   },
   {
     id: "archive",

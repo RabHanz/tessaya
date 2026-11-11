@@ -20,7 +20,7 @@ index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 60c89ffc6b732db13fd880bedac4af057157415d..26e69d04fd93739e3f7da88a3c3b2fb1cd8ff821 100644
+index 60c89ffc6b732db13fd880bedac4af057157415d..79a603736c048c3e5ad677c714e9b49ba73ca81a 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -35,6 +35,9 @@ export type SettingsPath =
@@ -62,7 +62,7 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..26e69d04fd93739e3f7da88a3c3b2fb1
      ],
    },
    {
-@@ -1285,6 +1294,32 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1285,6 +1294,38 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["new 1password vault op cli account"],
      secretsFeatureOnly: true,
    },
@@ -70,7 +70,7 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..26e69d04fd93739e3f7da88a3c3b2fb1
 +    id: "apis-anthropic",
 +    title: "Anthropic",
 +    to: "/settings/apis",
-+    searchTerms: ["api key claude dictation cleanup voice"],
++    searchTerms: ["api key claude dictation cleanup voice room brain r1"],
 +  },
 +  {
 +    id: "home-assistant",
@@ -92,10 +92,16 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..26e69d04fd93739e3f7da88a3c3b2fb1
 +    to: "/settings/hardware",
 +    searchTerms: ["nfc tag tap dock mode r1"],
 +  },
++  {
++    id: "room-brain",
++    title: "Room brain",
++    to: "/settings/home",
++    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
++  },
    {
      id: "archive",
      title: "Archived threads",
-@@ -1316,6 +1351,9 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+@@ -1316,6 +1357,9 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
    "/settings/connections": "connections",
    "/settings/access": "connections",
    "/settings/secrets": null,

@@ -36,6 +36,7 @@ import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonCloudService from "./BatonCloudService.ts";
 import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
 import * as HomeAssistantService from "../home/HomeAssistantService.ts";
+import * as R1Brain from "../home/R1Brain.ts";
 import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
 import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
@@ -168,6 +169,8 @@ const servicesInner = IntentService.layer.pipe(
       AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer)),
       BatonEngine.layer,
       BatonOneShot.layer,
+      // The R1's warm brain; it starts a Claude process only once an R1 is set up and asks.
+      R1Brain.layer(R1Device.R1_STREAM_SYSTEM),
     ),
   ),
   // The Record under everything above, so any service can write to it.
