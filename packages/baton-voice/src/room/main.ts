@@ -15,6 +15,7 @@ import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "..
 import { createSpeakerStore } from "../speakerStore.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "./mqtt.ts";
+import { noteTime, pickRecogniser, type RecogniserState } from "./recognisers.ts";
 import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
@@ -35,7 +36,7 @@ const state = env("R1_STATE");
 const model = (file: string) => NodePath.join(models, file);
 
 /** Tessaya's recogniser (native/tessaya-recognizer) over its WebSocket protocol: words stream in, the text at the end. */
-const recogniser = (url: string, token: string) => (): RecogniserTurn => {
+const recogniserTurn = (url: string, token: string): RecogniserTurn => {
   const ws = new WebSocket(url, {
     headers: { authorization: `Bearer ${token}` },
   } as unknown as string[]);
@@ -75,6 +76,65 @@ const recogniser = (url: string, token: string) => (): RecogniserTurn => {
       return result;
     },
     cancel: () => ws.close(),
+  };
+};
+
+/** One health answer from a recogniser: its queue, or null when it did not answer within 1.5 s. */
+const health = (url: string, token: string) =>
+  new Promise<number | null>((resolve) => {
+    const ws = new WebSocket(url, {
+      headers: { authorization: `Bearer ${token}` },
+    } as unknown as string[]);
+    const done = (q: number | null) => {
+      clearTimeout(timer);
+      ws.close();
+      resolve(q);
+    };
+    const timer = setTimeout(() => done(null), 1_500);
+    ws.addEventListener("open", () => ws.send(JSON.stringify({ cmd: "health" })));
+    ws.addEventListener("message", (e) => {
+      const m =
+        typeof e.data === "string" ? (JSON.parse(e.data) as { ev?: string; queue?: number }) : {};
+      if (m.ev === "health") done(typeof m.queue === "number" ? m.queue : 0);
+    });
+    ws.addEventListener("error", () => done(null));
+  });
+
+/** His recognisers (`R1_RECOGNIZERS=url=tokenfile,...`), each turn to the quickest lately (recognisers.ts). */
+const recognisers = () => {
+  const list = (
+    process.env["R1_RECOGNIZERS"] ??
+    `${env("R1_RECOGNIZER_URL")}=${env("R1_RECOGNIZER_TOKEN_FILE")}`
+  )
+    .split(",")
+    .map((pair) => {
+      const [url, file] = pair.split("=") as [string, string];
+      return { url: url.trim(), token: NodeFS.readFileSync(file.trim(), "utf8").trim() };
+    });
+  let states: RecogniserState[] = list.map((r) => ({ url: r.url, queue: 0, recentMs: [] }));
+  const refresh = async () => {
+    const queues = await Promise.all(list.map((r) => health(r.url, r.token)));
+    states = states.map((s, i) => ({ ...s, queue: queues[i] ?? null }));
+  };
+  void refresh();
+  setInterval(() => void refresh(), 2_000);
+  return (): RecogniserTurn => {
+    const chosen = pickRecogniser(states) ?? states[0]!;
+    const token = list.find((r) => r.url === chosen.url)!.token;
+    const turn = recogniserTurn(chosen.url, token);
+    return {
+      ...turn,
+      finish: async () => {
+        const started = performance.now();
+        const text = await turn.finish();
+        const ms = performance.now() - started;
+        states = states.map((s) =>
+          s.url === chosen.url ? { ...s, recentMs: noteTime(s.recentMs, ms) } : s,
+        );
+        log(`recogniser ${chosen.url.replace(/^ws:\/\//, "")} ${Math.round(ms)} ms`);
+        return text;
+      },
+    };
   };
 };
 
@@ -207,7 +267,7 @@ const main = async () => {
         return { score: async (w) => (await scorer).score(w) };
       },
       smartTurn: (pcm) => smart.complete(pcm),
-      recognise: recogniser(env("R1_RECOGNIZER_URL"), secret("R1_RECOGNIZER_TOKEN_FILE")),
+      recognise: recognisers(),
       speaker: async (pcm) => {
         const at = Date.now();
         const vector = await embedder.embed(pcm);
