@@ -110,7 +110,7 @@ index 2b08c0b8345b6a1bbf62c21902ef9c089aa29fdf..7c63d5ad77efcb4e9dbb996175fb6473
                  createdBy: "user",
                  creationSource: "web",
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
-index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1d60d9742 100644
+index e9b26369983860b841824b82970a0ad64d2b8ab2..92f11394d179753f71f33df08cd90b9854ce8f67 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
 @@ -28,6 +28,7 @@ import * as Effect from "effect/Effect";
@@ -321,7 +321,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
                createdBy: "user",
                creationSource: "web",
                commandId: CommandId.make(`command:queued-provider-switch:${ordinal}`),
-@@ -2531,33 +2612,65 @@ describe("orchestration v2 provider switching", () => {
+@@ -2531,33 +2612,71 @@ describe("orchestration v2 provider switching", () => {
    it.live.each([
      [
        "detaches the previous instance's session when a send hands off to another instance",
@@ -338,24 +338,31 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
        "keeps a busy previous session running when a queued hand-off starts",
 -      { background: true, queued: true, sharedHistory: false },
 +      { background: true, queued: true, sharedHistory: false, hotSwap: false },
-+    ],
-+    [
-+      "holds a queued account switch when the busy session cannot take the new login",
-+      { background: true, queued: true, sharedHistory: true, hotSwap: false },
-+    ],
-+    [
-+      "moves a busy session to the new account in place when the switch is sent",
-+      { background: true, queued: false, sharedHistory: true, hotSwap: true },
      ],
      [
 -      "holds a queued account switch while the replaced session still runs background work",
 -      { background: true, queued: true, sharedHistory: true },
-+      "moves a busy session to the new account in place when a queued switch starts",
-+      { background: true, queued: true, sharedHistory: true, hotSwap: true },
++      "holds a queued account switch when the busy session cannot take the new login",
++      { background: true, queued: true, sharedHistory: true, hotSwap: false },
      ],
 -  ] as const)("%s", ([, { background, queued, sharedHistory }]) =>
-+  ] as const)("%s", ([, { background, queued, sharedHistory, hotSwap }]) =>
-     Effect.scoped(
+-    Effect.scoped(
++    [
++      "moves a busy session to the new account in place when the switch is sent",
++      { background: true, queued: false, sharedHistory: true, hotSwap: true },
++    ],
++    [
++      "moves a busy session to the new account in place when a queued switch starts",
++      { background: true, queued: true, sharedHistory: true, hotSwap: true },
++    ],
++    [
++      "moves a running turn's session to the new account in place when the account is set mid-turn",
++      { background: false, queued: true, sharedHistory: true, hotSwap: true, midTurn: true },
++    ],
++  ] as const)("%s", ([, row]) => {
++    const { background, queued, sharedHistory, hotSwap } = row;
++    const midTurn = "midTurn" in row;
++    return Effect.scoped(
        Effect.gen(function* () {
          const cwd = yield* checkpointWorkspace("handoff-releases-session");
          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
@@ -394,7 +401,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
          const adapters = [
            makeTestAdapter({
              instanceId: CLAUDE_MODEL_SELECTION.instanceId,
-@@ -2569,6 +2682,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2569,6 +2688,7 @@ describe("orchestration v2 provider switching", () => {
              backgroundWork,
              closedSessions,
              ...(queued ? { holdFirstTurn: firstStarted, releaseFirstTurn: releaseFirst } : {}),
@@ -402,7 +409,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
            }),
            makeTestAdapter({
              instanceId: secondSelection.instanceId,
-@@ -2577,6 +2691,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2577,6 +2697,7 @@ describe("orchestration v2 provider switching", () => {
              modelSelection: secondSelection,
              responseByRunOrdinal: { 2: "Second account complete" },
              capturedTurns,
@@ -410,7 +417,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
            }),
          ];
          // Without a shared continuation key, each Claude instance owns its own native history.
-@@ -2612,6 +2727,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2612,6 +2733,7 @@ describe("orchestration v2 provider switching", () => {
            const send = (ordinal: number, modelSelection: ModelSelection, attempt = "") =>
              orchestrator.dispatch({
                type: "message.dispatch",
@@ -418,7 +425,35 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
                createdBy: "user",
                creationSource: "web",
                commandId: CommandId.make(`command:handoff-releases-session:${ordinal}${attempt}`),
-@@ -2672,6 +2788,11 @@ describe("orchestration v2 provider switching", () => {
+@@ -2640,6 +2762,27 @@ describe("orchestration v2 provider switching", () => {
+ 
+           if (queued) {
+             yield* Deferred.await(firstStarted);
++            if (midTurn) {
++              // Rotation at a limit: the turn is mid-flight, and its next request must use the new login.
++              yield* orchestrator.dispatch({
++                type: "thread.model-selection.set",
++                commandId: CommandId.make("command:handoff-releases-session:mid-turn"),
++                threadId: handoffThreadId,
++                modelSelection: secondSelection,
++              });
++              // This adapter holds the turn inside startTurn, so the thread's effects run once it returns.
++              yield* Deferred.succeed(releaseFirst, undefined);
++              yield* worker.drain();
++              const after = yield* waitForIdle(handoffThreadId);
++              assert.equal(after.thread.providerInstanceId, secondSelection.instanceId);
++              assert.deepEqual(
++                after.runs.map((run) => [run.providerInstanceId, run.status]),
++                [[CLAUDE_MODEL_SELECTION.instanceId, "completed"]],
++              );
++              assert.deepEqual(yield* Ref.get(closedSessions), []);
++              assert.deepEqual(yield* Ref.get(switchedAccounts), [secondSelection.instanceId]);
++              return;
++            }
+             yield* send(2, secondSelection);
+             const queuedRunId = (yield* orchestrator.getThreadProjection(handoffThreadId)).runs[1]
+               ?.id;
+@@ -2672,6 +2815,11 @@ describe("orchestration v2 provider switching", () => {
                );
                return;
              }
@@ -430,7 +465,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
              // Resuming the native thread beside the busy session would fork its history.
              assert.deepEqual(
                afterQueue.runs.map((run) => [run.status, run.queueHeld === true]),
-@@ -2711,17 +2832,38 @@ describe("orchestration v2 provider switching", () => {
+@@ -2711,17 +2859,38 @@ describe("orchestration v2 provider switching", () => {
              // Native subagents live only in the adapter's roster, so the projection's
              // pendingBackgroundTasks stays empty while the probe still reports work.
              assert.deepEqual(afterFirst.providerThreads[0]?.pendingBackgroundTasks ?? [], []);
@@ -478,7 +513,18 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
            }
  
            yield* send(2, secondSelection);
-@@ -2816,6 +2958,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2764,8 +2933,8 @@ describe("orchestration v2 provider switching", () => {
+           ),
+         );
+       }),
+-    ),
+-  );
++    );
++  });
+ 
+   it.live.each(["immediately", "behind a running turn"] as const)(
+     "starts a fresh provider session %s and never hands earlier runs to a later provider",
+@@ -2816,6 +2985,7 @@ describe("orchestration v2 provider switching", () => {
              ) =>
                orchestrator.dispatch({
                  type: "message.dispatch",
@@ -486,7 +532,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
                  createdBy: "user",
                  creationSource: "web",
                  commandId: CommandId.make(`command:fresh-context:${key}:${name}`),
-@@ -2986,6 +3129,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2986,6 +3156,7 @@ describe("orchestration v2 provider switching", () => {
            ) =>
              orchestrator.dispatch({
                type: "message.dispatch",
@@ -494,7 +540,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
                createdBy: "user",
                creationSource: "web",
                commandId: CommandId.make(`command:fresh-context-reserved:${name}`),
-@@ -3148,6 +3292,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3148,6 +3319,7 @@ describe("orchestration v2 provider switching", () => {
              const dispatch = (text: string, modelSelection: ModelSelection) =>
                orchestrator.dispatch({
                  type: "message.dispatch",
@@ -502,7 +548,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
                  commandId: CommandId.make(text),
                  messageId: MessageId.make(text),
                  threadId,
-@@ -3340,6 +3485,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3340,6 +3512,7 @@ describe("orchestration v2 provider switching", () => {
            });
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -510,7 +556,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:queued-handoff-rejection:first"),
-@@ -3391,6 +3537,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3391,6 +3564,7 @@ describe("orchestration v2 provider switching", () => {
            });
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -518,7 +564,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:queued-handoff-rejection:claude"),
-@@ -3403,6 +3550,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3403,6 +3577,7 @@ describe("orchestration v2 provider switching", () => {
            });
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -526,7 +572,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:queued-handoff-rejection:later"),
-@@ -3674,6 +3822,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3674,6 +3849,7 @@ describe("orchestration v2 provider switching", () => {
  
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -534,7 +580,7 @@ index e9b26369983860b841824b82970a0ad64d2b8ab2..4519cabf6915da7170068c44b0f2b0f1
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:provider-switch:legacy-import:failed"),
-@@ -3691,6 +3840,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3691,6 +3867,7 @@ describe("orchestration v2 provider switching", () => {
            }
            yield* orchestrator.dispatch({
              type: "message.dispatch",

@@ -361,7 +361,7 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d694b38fe1 100644
+index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..7b1e2fdb2615e1ae14efe35097242c7160fa7ede 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,9 @@
@@ -466,7 +466,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
    const runtimePolicy = yield* RuntimePolicyV2;
    const threadForkService = yield* ThreadForkServiceV2;
    const threadDispatch = yield* ThreadCommandExecutor.ThreadCommandExecutor;
-@@ -1271,6 +1346,91 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1271,6 +1346,94 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
      return false;
    });
  
@@ -481,6 +481,8 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
 +      readonly activeProviderThread: OrchestrationV2ProviderThread | undefined;
 +      readonly targetModelSelection: ModelSelection;
 +      readonly freshContext: boolean;
++      /** A turn running on the session also keeps it: a rotation at a limit lands mid-turn. */
++      readonly turnRunning?: boolean;
 +    }) {
 +      const active = input.activeProviderThread;
 +      const target = input.targetModelSelection.instanceId;
@@ -536,7 +538,8 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
 +      if (Option.isNone(plan) || plan.value.transition.type !== "restart_and_resume") {
 +        return undefined;
 +      }
-+      return (yield* sessionHasBackgroundWork(session, input.projection.providerThreads))
++      return input.turnRunning === true ||
++        (yield* sessionHasBackgroundWork(session, input.projection.providerThreads))
 +        ? session
 +        : undefined;
 +    },
@@ -558,7 +561,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
    // Runs in every command transaction; avoid reading thousands of finished leaf nodes.
    const readCommandProjection = (threadId: ThreadId) =>
      projectionStore
-@@ -1739,13 +1899,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1739,13 +1902,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          (candidate) => candidate.id === storedQueuedRun.userMessageId,
        );
        const modelSelection = queuedRunModelSelection(projection, storedQueuedRun);
@@ -574,7 +577,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          return;
        }
        // Waits without a hold: lowering the thread's mode starts the queue again.
-@@ -1765,13 +1925,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1765,13 +1928,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        const settings = yield* serverSettings.getSettings.pipe(Effect.orDie);
        const projectOverride =
          settings.projectSettingsOverrides[projection.thread.projectId]?.providerInstances?.[
@@ -591,7 +594,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          : undefined;
        const instanceDisabledForProject =
          projectOverride !== undefined
-@@ -1782,7 +1942,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1782,7 +1945,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          instanceDisabledForProject ||
          (failureClass !== undefined &&
            failureClass !== "validation_error" &&
@@ -600,7 +603,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
        ) {
          const now = yield* DateTime.now;
          yield* writeSystemEvents(
-@@ -1799,6 +1959,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1799,6 +1962,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          );
          return;
        }
@@ -628,7 +631,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
        // Move queued ordinals after runs that started while they waited to preserve transcript and checkpoint order.
        // Started runs have prompts; cancelled queued messages do not.
        const newerRunIds = projection.runs
-@@ -1874,16 +2055,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1874,16 +2058,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        const followsLatestContext =
          !freshContext &&
          (followsCurrent || providerThreadPredatesBoundary(storedProviderThread, contextBoundary));
@@ -658,7 +661,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
        const queuedProviderThread: OrchestrationV2ProviderThread = targetProviderThread ?? {
          id: idAllocator.derive.providerThread({
            driver: targetAdapter.driver,
-@@ -1909,7 +2093,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -1909,7 +2096,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        };
        const selectionChanged = !modelSelectionsEqual(
          projection.thread.modelSelection,
@@ -667,7 +670,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
        );
        // The picker may already have moved ahead of the native conversation.
        const switchFromActiveProvider =
-@@ -2340,16 +2524,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -2340,16 +2527,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
              ? [
                  {
                    type:
@@ -688,7 +691,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
                      updatedAt: now,
                    },
                  },
-@@ -2469,6 +2653,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -2469,6 +2656,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            },
          ],
          [
@@ -705,7 +708,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
            ...sessionsToDetach.map((session) => ({
              id: `effect:${commandId}:provider-session.detach:${session.id}`,
              commandId,
-@@ -3557,9 +3751,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -3557,9 +3754,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            )
            .pipe(mapDispatchError(command))
        : null;
@@ -744,7 +747,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
              yield* providerAdapters.get(command.modelSelection.instanceId).pipe(
                Effect.mapError(
                  (cause) =>
-@@ -4324,6 +4547,45 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4324,6 +4550,56 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        yield* closePendingLinkRequests({ command, events, threadId: command.threadId, now });
      }
  
@@ -755,15 +758,26 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
 +      command.type === "thread.model-selection.set" || command.type === "provider.switch"
 +        ? command.modelSelection
 +        : undefined;
++    const activeForSwitch = providerContext?.providerThreads.find(
++      (providerThread) => providerThread.id === thread.activeProviderThreadId,
++    );
 +    const keptForAccountSwitch =
 +      switchTarget !== undefined && providerContext !== null
 +        ? yield* sessionKeptForAccountSwitch({
 +            projection: providerContext,
-+            activeProviderThread: providerContext.providerThreads.find(
-+              (providerThread) => providerThread.id === thread.activeProviderThreadId,
-+            ),
++            activeProviderThread: activeForSwitch,
 +            targetModelSelection: switchTarget,
 +            freshContext: false,
++            turnRunning:
++              activeForSwitch !== undefined &&
++              activeForSwitch.providerInstanceId !== switchTarget.instanceId &&
++              (yield* projectionStore
++                .getThreadRecords(command.threadId, ["runs"])
++                .pipe(mapDispatchError(command))).runs.some(
++                (run) =>
++                  run.providerInstanceId === activeForSwitch.providerInstanceId &&
++                  ["preparing", "starting", "running", "waiting"].includes(run.status),
++              ),
 +          })
 +        : undefined;
 +    if (keptForAccountSwitch !== undefined && switchTarget !== undefined) {
@@ -790,7 +804,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
      // Archive and settle stop idle background work; serialized commands prevent starts racing detach.
      // Settlement rejects active or blocked runs.
      const detachSessionIds = new Set(
-@@ -4339,7 +4601,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -4339,7 +4615,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                    (session) => !session.capabilities.sessions.supportsRuntimeModeSwitchInSession,
                  )
                  .map((session) => session.id)
@@ -801,7 +815,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
      );
      if (detachSessionIds.size > 0) {
        const liveSessions = (providerContext?.providerSessions ?? []).filter(
-@@ -5825,7 +6089,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5825,7 +6103,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ]);
        projection = applyToProjection(projection, event);
      }
@@ -841,7 +855,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
      let dispatchMode = resolveMessageDispatchIntent(
        projection,
        command.dispatchMode,
-@@ -6492,9 +6787,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6492,9 +6801,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        projection.thread.historyOrigin === "v1_import" && contextBoundary === 0
          ? yield* readHandoffItems(command.threadId, [null])
          : [];
@@ -866,7 +880,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
      // Account overlays share native history. Selection commands may already
      // have updated the app thread, so classify against the native thread's owner.
      const providerSwitchPlan = isProviderSwitch
-@@ -6510,7 +6819,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6510,7 +6833,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                  },
                },
              },
@@ -875,7 +889,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
            })
            .pipe(mapDispatchError(command))
        : null;
-@@ -6519,7 +6828,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6519,7 +6842,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        isProviderSwitch &&
        activeProviderThread.nativeThreadRef !== null &&
        providerSwitchPlan?.transition.type === "restart_and_resume";
@@ -884,7 +898,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
        ...projection.providerSessions.filter(
          (session) =>
            providerSwitchPlan?.releaseProviderSessionIds.includes(session.id) &&
-@@ -6528,8 +6837,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6528,8 +6851,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ),
        ...(freshContext ? sessionsReleasedByFreshContext(projection, activeProviderThread) : []),
      ]);
@@ -900,7 +914,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          return yield* new OrchestratorDispatchError({
            commandId: command.commandId,
            commandType: command.type,
-@@ -6539,6 +6854,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6539,6 +6868,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          });
        }
      }
@@ -910,7 +924,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
  
      if (
        pendingForkTransfer === undefined &&
-@@ -6546,12 +6864,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6546,12 +6878,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        (!isProviderSwitch || freshContext)
      ) {
        const reusableProviderThread = freshContext ? undefined : activeProviderThread;
@@ -925,7 +939,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
                cause,
              }),
          ),
-@@ -6561,7 +6879,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6561,7 +6893,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          (yield* mapDispatchError(command)(
            providerSessionIdFor({
              adapter,
@@ -934,7 +948,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
              threadId: command.threadId,
            }),
          ));
-@@ -6575,13 +6893,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6575,13 +6907,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
@@ -950,7 +964,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
                items: legacyImportItems,
                createdAt: now,
              })
-@@ -6592,7 +6911,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6592,7 +6925,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            ? {
                id: providerThreadId,
                driver: adapter.driver,
@@ -959,7 +973,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
                providerSessionId,
                appThreadId: command.threadId,
                ownerNodeId: null,
-@@ -6624,7 +6943,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6624,7 +6957,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            : yield* runtimePolicy
                .resolve({
                  thread: projection.thread,
@@ -968,7 +982,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
                })
                .pipe(
                  mapDispatchError(command),
-@@ -6645,8 +6964,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6645,8 +6978,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          id: runId,
          threadId: command.threadId,
          ordinal,
@@ -979,7 +993,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          providerThreadId,
          userMessageId: command.messageId,
          rootNodeId,
-@@ -6677,7 +6996,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6677,7 +7010,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          runId,
          attemptOrdinal: 1,
          rootNodeId,
@@ -988,7 +1002,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          providerThreadId,
          providerTurnId: null,
          reason: "initial",
-@@ -6784,7 +7103,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6784,7 +7117,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          type: "provider-thread.updated",
          threadId: command.threadId,
          driver: adapter.driver,
@@ -997,7 +1011,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          occurredAt: now,
          payload: providerThread,
        });
-@@ -6793,7 +7112,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6793,7 +7126,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            type: "context-handoff.updated",
            threadId: command.threadId,
            runId,
@@ -1006,7 +1020,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
            occurredAt: now,
            payload: legacyImportHandoff,
          });
-@@ -6803,7 +7122,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6803,7 +7136,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          threadId: command.threadId,
          runId,
          nodeId: rootNodeId,
@@ -1015,7 +1029,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          occurredAt: now,
          payload: run,
        });
-@@ -6813,7 +7132,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6813,7 +7146,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          threadId: command.threadId,
          runId,
          nodeId: rootNodeId,
@@ -1024,7 +1038,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          occurredAt: now,
          payload: attempt,
        });
-@@ -6822,7 +7141,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6822,7 +7155,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          threadId: command.threadId,
          runId,
          nodeId: rootNodeId,
@@ -1033,7 +1047,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          occurredAt: now,
          payload: rootNode,
        });
-@@ -6832,7 +7151,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6832,7 +7165,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            threadId: command.threadId,
            runId,
            nodeId: rootNodeId,
@@ -1042,7 +1056,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
            occurredAt: now,
            payload: checkpointScope,
          });
-@@ -6842,7 +7161,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6842,7 +7175,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          threadId: command.threadId,
          runId,
          nodeId: rootNodeId,
@@ -1051,7 +1065,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          occurredAt: now,
          payload: message,
        });
-@@ -6851,7 +7170,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6851,7 +7184,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          threadId: command.threadId,
          runId,
          nodeId: rootNodeId,
@@ -1060,7 +1074,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
          occurredAt: now,
          payload: notificationTurnItem(
            turnItem,
-@@ -6865,7 +7184,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6865,7 +7198,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            threadId: command.threadId,
            runId,
            nodeId: rootNodeId,
@@ -1069,7 +1083,7 @@ index 5d3c4391b1fe884bb0e6f4125f0ebc9873566694..75ddea00dcdf94fd755c3daf957e29d6
            occurredAt: now,
            payload: preparationTurnItem,
          });
-@@ -6898,6 +7217,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6898,6 +7231,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
            } satisfies PendingOrchestrationEffectV2,
          ]);
        }

@@ -29,15 +29,18 @@ copy would strand the original. Sessions on it keep the old behaviour.
 process (atomic rename, so the mtime changes). The orchestrator decides, the effect worker writes
 (`provider-session.switch-account`), so a refused command never moves a process.
 
-An account change keeps the session only when it runs background work and both instances share the native
-conversation (`restart_and_resume`). The thread records the new account at once; the turn runs on the kept session,
+An account change keeps the session only when it runs background work, or a turn when the change is
+`thread.model-selection.set` (the header chip, MCP, rotation at a limit mid-turn), and both instances share the
+native conversation (`restart_and_resume`). The thread records the new account at once; the turn runs on the kept session,
 so its run carries the old instance id, and MCP calls from that process are accepted for the run they serve. Rate-limit reports from that process go to the new account. Once the work
 ends, the next turn does the ordinary switch: the old process is released and the new instance resumes the
 conversation. Without background work nothing changes from before.
 
 Entry points all reach this path: the composer picker and a send (`message.dispatch`, immediate or queued), the
 header chip, the phone, `tessaya_desktop_settings`, MCP tools and automatic rotation (`ThreadAccountMoves`, which issues
-`thread.model-selection.set`).
+`thread.model-selection.set`). `ThreadAccountMoves` moves a thread with a running turn at once when both logins
+are tokens in one shared conversation, and writes an `account_switch` row to the Record; otherwise it waits for the
+turn to end, as before.
 
 ## Provider and setting changes
 

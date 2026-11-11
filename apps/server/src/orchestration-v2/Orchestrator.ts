@@ -1357,6 +1357,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       readonly activeProviderThread: OrchestrationV2ProviderThread | undefined;
       readonly targetModelSelection: ModelSelection;
       readonly freshContext: boolean;
+      /** A turn running on the session also keeps it: a rotation at a limit lands mid-turn. */
+      readonly turnRunning?: boolean;
     }) {
       const active = input.activeProviderThread;
       const target = input.targetModelSelection.instanceId;
@@ -1412,7 +1414,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (Option.isNone(plan) || plan.value.transition.type !== "restart_and_resume") {
         return undefined;
       }
-      return (yield* sessionHasBackgroundWork(session, input.projection.providerThreads))
+      return input.turnRunning === true ||
+        (yield* sessionHasBackgroundWork(session, input.projection.providerThreads))
         ? session
         : undefined;
     },
@@ -4554,15 +4557,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       command.type === "thread.model-selection.set" || command.type === "provider.switch"
         ? command.modelSelection
         : undefined;
+    const activeForSwitch = providerContext?.providerThreads.find(
+      (providerThread) => providerThread.id === thread.activeProviderThreadId,
+    );
     const keptForAccountSwitch =
       switchTarget !== undefined && providerContext !== null
         ? yield* sessionKeptForAccountSwitch({
             projection: providerContext,
-            activeProviderThread: providerContext.providerThreads.find(
-              (providerThread) => providerThread.id === thread.activeProviderThreadId,
-            ),
+            activeProviderThread: activeForSwitch,
             targetModelSelection: switchTarget,
             freshContext: false,
+            turnRunning:
+              activeForSwitch !== undefined &&
+              activeForSwitch.providerInstanceId !== switchTarget.instanceId &&
+              (yield* projectionStore
+                .getThreadRecords(command.threadId, ["runs"])
+                .pipe(mapDispatchError(command))).runs.some(
+                (run) =>
+                  run.providerInstanceId === activeForSwitch.providerInstanceId &&
+                  ["preparing", "starting", "running", "waiting"].includes(run.status),
+              ),
           })
         : undefined;
     if (keptForAccountSwitch !== undefined && switchTarget !== undefined) {

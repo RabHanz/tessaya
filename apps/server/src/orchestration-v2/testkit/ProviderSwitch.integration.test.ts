@@ -2634,8 +2634,14 @@ describe("orchestration v2 provider switching", () => {
       "moves a busy session to the new account in place when a queued switch starts",
       { background: true, queued: true, sharedHistory: true, hotSwap: true },
     ],
-  ] as const)("%s", ([, { background, queued, sharedHistory, hotSwap }]) =>
-    Effect.scoped(
+    [
+      "moves a running turn's session to the new account in place when the account is set mid-turn",
+      { background: false, queued: true, sharedHistory: true, hotSwap: true, midTurn: true },
+    ],
+  ] as const)("%s", ([, row]) => {
+    const { background, queued, sharedHistory, hotSwap } = row;
+    const midTurn = "midTurn" in row;
+    return Effect.scoped(
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("handoff-releases-session");
         const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
@@ -2756,6 +2762,27 @@ describe("orchestration v2 provider switching", () => {
 
           if (queued) {
             yield* Deferred.await(firstStarted);
+            if (midTurn) {
+              // Rotation at a limit: the turn is mid-flight, and its next request must use the new login.
+              yield* orchestrator.dispatch({
+                type: "thread.model-selection.set",
+                commandId: CommandId.make("command:handoff-releases-session:mid-turn"),
+                threadId: handoffThreadId,
+                modelSelection: secondSelection,
+              });
+              // This adapter holds the turn inside startTurn, so the thread's effects run once it returns.
+              yield* Deferred.succeed(releaseFirst, undefined);
+              yield* worker.drain();
+              const after = yield* waitForIdle(handoffThreadId);
+              assert.equal(after.thread.providerInstanceId, secondSelection.instanceId);
+              assert.deepEqual(
+                after.runs.map((run) => [run.providerInstanceId, run.status]),
+                [[CLAUDE_MODEL_SELECTION.instanceId, "completed"]],
+              );
+              assert.deepEqual(yield* Ref.get(closedSessions), []);
+              assert.deepEqual(yield* Ref.get(switchedAccounts), [secondSelection.instanceId]);
+              return;
+            }
             yield* send(2, secondSelection);
             const queuedRunId = (yield* orchestrator.getThreadProjection(handoffThreadId)).runs[1]
               ?.id;
@@ -2906,8 +2933,8 @@ describe("orchestration v2 provider switching", () => {
           ),
         );
       }),
-    ),
-  );
+    );
+  });
 
   it.live.each(["immediately", "behind a running turn"] as const)(
     "starts a fresh provider session %s and never hands earlier runs to a later provider",
