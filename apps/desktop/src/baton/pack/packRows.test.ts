@@ -107,7 +107,7 @@ describe("the roster in the window", () => {
     expect(setPersonaVoice(dir, "operations", "cosette")).toBe(true);
     expect(setPersonaVoice(dir, "operations", null)).toBe(true);
     expect(rows()[3]).toEqual(["v.persona:operations", "default"]);
-    expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("vera");
+    expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("azelma");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

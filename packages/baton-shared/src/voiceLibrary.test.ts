@@ -59,27 +59,28 @@ describe("what a persona speaks in", () => {
 
   it("falls back to the default for a voice the library does not have or a commercial build hides", () => {
     expect(resolvePersonaVoice({ voice: "nobody", cloudVoice: "nobody" }, on)).toEqual({
-      pocket: "anna",
+      pocket: "eve",
       cloud: null,
     });
     expect(resolvePersonaVoice({ voice: "cosette" }, on).pocket).toBe("cosette");
     expect(resolvePersonaVoice({ voice: "cosette" }, { ...on, commercial: true }).pocket).toBe(
-      "anna",
+      "eve",
     );
   });
 
   it("reads each persona's voices from the pack, his file over the default", () => {
     const pack = mergePack({
-      roles: { operations: "---\nvoice: eve\ncloud voice: en-gb-assistant-12\n---\n" },
+      roles: { operations: "---\nvoice: jane\ncloud voice: en-gb-assistant-12\n---\n" },
     });
     const voices = Object.fromEntries(
       pack.personas.map((p) => [p.name, resolvePersonaVoice(p, on)]),
     );
     expect(voices).toMatchObject({
-      Tessaya: { pocket: "anna", cloud: null },
-      Alfred: { pocket: "charles", cloud: null },
-      Sebastian: { pocket: "paul", cloud: null },
-      Freya: { pocket: "eve", cloud: "en-gb-assistant-12" },
+      // His picks by ear (2026-11-12) are the defaults; his own file still wins (Freya here).
+      Tessaya: { pocket: "eve", cloud: null },
+      Alfred: { pocket: "peter_yearsley", cloud: null },
+      Sebastian: { pocket: "michael", cloud: null },
+      Freya: { pocket: "jane", cloud: "en-gb-assistant-12" },
     });
   });
 });

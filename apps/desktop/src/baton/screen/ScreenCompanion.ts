@@ -47,6 +47,7 @@ import {
 import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
+import { DEFAULT_POCKET_VOICE } from "@t3tools/baton-shared/voiceLibrary";
 import { detectSecret } from "@t3tools/baton-shared/memory";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -255,7 +256,7 @@ const DEFAULTS: ScreenSettings = {
   claudeBinary: "claude",
   model: "claude-opus-5-5",
   output: "spoken",
-  voice: "anna",
+  voice: DEFAULT_POCKET_VOICE,
   volume: 1,
   actWithoutAsking: false,
   remoteHands: false,
