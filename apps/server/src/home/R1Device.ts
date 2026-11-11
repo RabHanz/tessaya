@@ -336,13 +336,17 @@ const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"]) =>
         Effect.andThen(Effect.sync(() => offered || say(`${HOLD_ON} `))),
         Effect.forkScoped,
       );
+      const startedAt = yield* Clock.currentTimeMillis;
       const { device, context } = yield* r1Gather(input);
+      const gatheredAt = yield* Clock.currentTimeMillis;
+      let firstAt: number | null = null;
       let text = "";
       let spoken = 0;
       const outcome = yield* brain.stream(r1Data(context).join("\n")).pipe(
         Stream.runForEach((delta) =>
-          Effect.sync(() => {
+          Effect.map(Clock.currentTimeMillis, (now) => {
             text += delta;
+            firstAt ??= now;
             const head = splitActs(text);
             if (head === null || head.acts.length > 0) return;
             if (head.rest.length > spoken) say(head.rest.slice(spoken));
@@ -351,6 +355,11 @@ const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"]) =>
         ),
         Effect.exit,
       );
+      // Where a slow turn's time went, for the room loop's latency work.
+      yield* Effect.logInfo("R1 turn timing", {
+        gatherMs: gatheredAt - startedAt,
+        brainFirstMs: firstAt === null ? null : firstAt - gatheredAt,
+      });
       const final = splitActs(text) ?? { acts: [], rest: "" };
       if (Exit.isFailure(outcome) || (final.rest.trim() === "" && final.acts.length === 0)) {
         // The warm brain failed or said nothing: the slower one-shot turn answers instead, whole.
