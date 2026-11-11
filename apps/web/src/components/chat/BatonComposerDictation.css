@@ -1,0 +1,327 @@
+/* Dictation in the chat box (tessaya-ops drafts/pill-styles composer.html). Every colour is a role of the app theme;
+   motion is opacity and transform only, and nothing loops: the waveform's canvas is the only thing drawn per frame. */
+.tdc-root {
+  --t-accent: var(--app-theme-accent, var(--primary));
+  --t-accent-fg: var(--app-theme-accent-foreground, var(--primary-foreground));
+  --t-text: var(--app-theme-text, var(--foreground));
+  --t-muted: var(--app-theme-text-muted, var(--muted-foreground));
+  --t-overlay: var(--app-theme-surface-overlay, var(--popover));
+  --t-canvas: var(--app-theme-canvas, var(--background));
+  --t-warning: var(--app-theme-warning, var(--warning));
+  --tdc-pop: cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+
+/* While the words are drawn over it, the editor, the model label and the microphone step aside. */
+[data-tessaya-dictating] [data-testid="composer-editor"] {
+  visibility: hidden;
+}
+[data-tessaya-dictating] [data-chat-composer-footer-controls],
+[data-tessaya-dictating] button[aria-label="Start voice input"] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/* ---- the words, at the caret ---- */
+.tdc-words {
+  position: absolute;
+  inset: 0;
+  margin: -0.25rem;
+  padding: 0.25rem;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: var(--t-text);
+  pointer-events: none;
+}
+.tdc-w {
+  display: inline-block;
+  white-space: pre;
+  transition: color 0.14s ease-out;
+}
+.tdc-w.new {
+  animation: tdc-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.tdc-w.tentative {
+  color: var(--t-muted);
+}
+.tdc-w.struck {
+  color: var(--t-muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--t-muted) 70%, transparent);
+}
+.tdc-w.gone {
+  animation: tdc-gone 0.2s ease-out both;
+}
+.tdc-w.added {
+  animation: tdc-in 0.2s ease-out both;
+}
+.tdc-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 1.1em;
+  vertical-align: -0.2em;
+  margin: 0 -0.75px;
+  background: var(--t-text);
+}
+@keyframes tdc-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+@keyframes tdc-gone {
+  to {
+    opacity: 0;
+    filter: blur(3px);
+  }
+}
+
+/* ---- the control, centred in the footer ---- */
+.tdc {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 3px;
+  border-radius: 14px;
+  background: var(--tdc-surf);
+  box-shadow: var(--tdc-edge);
+  color: var(--tdc-fg);
+  translate: -50% -50%;
+  animation: tdc-on 0.32s var(--tdc-pop) both;
+}
+.tdc.held {
+  padding: 0 10px;
+}
+.tdc.sink {
+  animation: tdc-sink 0.22s ease-in both;
+}
+.tdc.sink > * {
+  animation: none;
+}
+@keyframes tdc-sink {
+  to {
+    opacity: 0;
+    translate: -50% -30%;
+  }
+}
+.tdc canvas {
+  display: block;
+  width: 64px;
+  height: 18px;
+  color: var(--tdc-wave);
+  border-color: var(--tdc-wave2, var(--tdc-wave));
+}
+.tdc button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  padding: 0;
+  border-radius: 11px;
+  background: none;
+  color: var(--tdc-fg2);
+  cursor: pointer;
+  transition:
+    border-radius 0.2s var(--tdc-pop),
+    transform 0.2s var(--tdc-pop);
+}
+.tdc button::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+.tdc button svg {
+  width: 12px;
+  height: 12px;
+}
+.tdc button:active {
+  border-radius: 6px;
+  transform: scale(0.9);
+}
+.tdc button:focus-visible {
+  outline: 2px solid var(--tdc-ok);
+  outline-offset: 2px;
+}
+.tdc button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.tdc .ok {
+  background: var(--tdc-ok);
+  color: var(--tdc-on-ok);
+}
+/* Hands-free: ✓ first, the waveform stretches out of it, then ✕. */
+.tdc.free > .ok {
+  animation: tdc-pop 0.3s var(--tdc-pop) both;
+}
+.tdc.free > canvas {
+  animation: tdc-stretch 0.3s var(--tdc-pop) 0.07s both;
+  transform-origin: 100% 50%;
+}
+.tdc.free > .no {
+  animation: tdc-pop 0.3s var(--tdc-pop) 0.15s both;
+}
+@keyframes tdc-on {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+@keyframes tdc-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+@keyframes tdc-stretch {
+  from {
+    opacity: 0;
+    transform: scaleX(0.2);
+  }
+}
+
+.tdc[data-design="tessaya"] {
+  --tdc-surf: color-mix(in srgb, var(--t-accent) 9%, var(--t-overlay));
+  --tdc-edge: inset 0 0 0 0.5px color-mix(in srgb, var(--t-text) 14%, transparent);
+  --tdc-fg: var(--t-text);
+  --tdc-fg2: var(--t-muted);
+  --tdc-ok: var(--t-accent);
+  --tdc-on-ok: var(--t-accent-fg);
+  --tdc-wave: var(--t-accent);
+  --tdc-wave2: color-mix(in srgb, var(--t-accent) 50%, var(--t-text));
+  --tdc-pop: linear(
+    0,
+    0.063,
+    0.185,
+    0.353,
+    0.508,
+    0.651,
+    0.773,
+    0.872,
+    0.953,
+    1.004,
+    1.036,
+    1.053,
+    1.059,
+    1.058,
+    1.051,
+    1.043,
+    1.034,
+    1.025,
+    1.017,
+    1.01,
+    1.005,
+    1.001,
+    0.999,
+    0.997,
+    1
+  );
+  font-family: "Schibsted Grotesk", var(--font-sans);
+}
+.tdc[data-design="tessaya"] .ok {
+  border-radius: 7px;
+}
+.tdc[data-design="quiet"] {
+  --tdc-surf: color-mix(in srgb, var(--t-text) 6%, transparent);
+  --tdc-edge: inset 0 0 0 0.5px color-mix(in srgb, var(--t-text) 12%, transparent);
+  --tdc-fg: var(--t-text);
+  --tdc-fg2: var(--t-muted);
+  --tdc-ok: var(--t-text);
+  --tdc-on-ok: var(--t-canvas);
+  --tdc-wave: var(--t-text);
+  --tdc-pop: linear(
+    0,
+    0.045,
+    0.133,
+    0.243,
+    0.36,
+    0.476,
+    0.595,
+    0.688,
+    0.768,
+    0.833,
+    0.886,
+    0.927,
+    0.958,
+    0.98,
+    0.996,
+    1.007,
+    1.013,
+    1.016,
+    1.017,
+    1.015,
+    1.012,
+    1.008,
+    1.005,
+    1.002,
+    1
+  );
+}
+/* Lively: separate pebbles, not one capsule. */
+.tdc[data-design="lively"] {
+  --tdc-surf: color-mix(in srgb, var(--t-accent) 16%, var(--t-overlay));
+  --tdc-fg: var(--t-text);
+  --tdc-fg2: var(--t-text);
+  --tdc-ok: var(--t-accent);
+  --tdc-on-ok: var(--t-accent-fg);
+  --tdc-wave: var(--t-accent);
+  --tdc-wave2: var(--t-warning);
+  gap: 4px;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  font-family: "Bricolage Grotesque", var(--font-sans);
+}
+.tdc[data-design="lively"] > * {
+  background: var(--tdc-surf);
+  border-radius: 8px;
+  animation: tdc-squash 0.5s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+.tdc[data-design="lively"] > canvas {
+  box-sizing: content-box;
+  padding: 4px 6px;
+  animation-delay: 0.07s;
+}
+.tdc[data-design="lively"] > .no {
+  animation-delay: 0.15s;
+}
+.tdc[data-design="lively"] button {
+  width: 26px;
+  height: 26px;
+}
+.tdc[data-design="lively"] .ok {
+  background: var(--tdc-ok);
+}
+@keyframes tdc-squash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.14, 0.86);
+  }
+  78% {
+    transform: scale(0.96, 1.05);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tdc,
+  .tdc > *,
+  .tdc-w {
+    animation: none !important;
+    transition: none !important;
+  }
+}

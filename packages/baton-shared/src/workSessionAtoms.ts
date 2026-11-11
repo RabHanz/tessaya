@@ -28,6 +28,7 @@ import {
   BATON_HANDOFF_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_WS_METHODS,
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BatonFleetResult,
   type WorkSession,
   type WorkSessionStreamItem,
@@ -454,6 +455,19 @@ export function createBatonWorkSessionAtoms<R, E>(
       tag: BATON_ACCOUNT_WS_METHODS.accountPool,
       staleTimeMs: 30_000,
       refreshIntervalMs: 60_000,
+    }),
+    /** The desktop's pill design and waveform (and its other shared settings), for the chat box's dictation. */
+    desktopSettingsQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:desktop-settings-query",
+      tag: BATON_DESKTOP_SETTINGS_WS_METHODS.get,
+      staleTimeMs: 30_000,
+      refreshIntervalMs: 60_000,
+    }),
+    desktopSettingsSet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:desktop-settings-set",
+      tag: BATON_DESKTOP_SETTINGS_WS_METHODS.set,
+      scheduler,
+      concurrency,
     }),
     accountsQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:baton:accounts-query",

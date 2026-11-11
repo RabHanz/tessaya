@@ -1,0 +1,48 @@
+diff --git a/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
+index 8045fb3dd3d4e8fd8036d6b949fc31169810d03a..e454b5d63b051c453f9a42a093f4b94c794741dc 100644
+--- a/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
++++ b/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
+@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
+ 
+ import { SettingsScreen } from "./components/SettingsScreen";
+ import { CodeAppearanceSection } from "./appearance/sections/CodeAppearanceSection";
++import { DictationAppearanceSection } from "./appearance/sections/DictationAppearanceSection";
+ import { TerminalAppearanceSection } from "./appearance/sections/TerminalAppearanceSection";
+ import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSection";
+ import { ThemeAppearanceSection } from "./appearance/sections/ThemeAppearanceSection";
+@@ -28,6 +29,7 @@ export function SettingsAppearanceRouteScreen() {
+         <TextAppearanceSection />
+         <TerminalAppearanceSection />
+         <CodeAppearanceSection />
++        <DictationAppearanceSection />
+       </ScrollView>
+     </SettingsScreen>
+   );
+diff --git a/apps/web/src/speech/useDictationShortcut.ts b/apps/web/src/speech/useDictationShortcut.ts
+index 6acbe5fac1ee33284943b887c3c8e8fb94a0f0c6..769b5dff4b958dcd85772d214976e6462041433d 100644
+--- a/apps/web/src/speech/useDictationShortcut.ts
++++ b/apps/web/src/speech/useDictationShortcut.ts
+@@ -6,6 +6,7 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
+ import { useClientSettings } from "../hooks/useSettings";
+ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
+ import { getTerminalFocusOwner } from "../lib/terminalFocus";
++import { noteDictationKey } from "./dictationKey";
+ 
+ const HOLD_THRESHOLD_MS = 300;
+ 
+@@ -87,6 +88,7 @@ export function useDictationShortcut(input: ShortcutInput) {
+       const press = pressed.current;
+       if (!press || (event && (event.code || event.key) !== press.code)) return;
+       pressed.current = null;
++      noteDictationKey(false);
+       if (shouldFinishDictationOnRelease(press.mode, performance.now() - press.startedAt)) {
+         void press.starting.then(() => {
+           if (!disposed && generation.current === press.generation)
+@@ -144,6 +146,7 @@ export function useDictationShortcut(input: ShortcutInput) {
+         mode,
+         starting: speech.start(),
+       };
++      noteDictationKey(mode !== "toggle");
+     };
+     const onBlur = () => finish(null);
+     const unsubscribe = subscribeKeys?.({

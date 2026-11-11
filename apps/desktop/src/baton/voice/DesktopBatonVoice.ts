@@ -329,9 +329,12 @@ import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../h
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
+import { createComposerDictation, routePill } from "./composerDictation.ts";
 import * as Electron from "electron";
 
 import {
+  BATON_COMPOSER_DICTATION_REPLY_CHANNEL,
+  BATON_COMPOSER_DICTATION_CHANNEL,
   BATON_COMPOSER_MIC_CHANNEL,
   BATON_VOICE_FOCUS_CHANNEL,
   BATON_VOICE_REQUEST_CHANNEL,
@@ -2073,13 +2076,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         input.onNote?.("ghost_start", { ...at, shown: not === null, ...not });
       });
   };
-  const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
+  const dictationWords = (text: string) =>
+    ghost.active() && !composer.active() ? ghost.words(text) : pill.words(text);
   /** The dictation whose ghost holds his typing keys until its paste lands (the sidecar's `hold_keys`); 0 for none. */
   let keyHold = 0;
   let keyHolds = 0;
   /** T3's composer microphone asked for Tessaya's dictation: its words go back to the composer, not through a paste. */
   let composerWaiter: ((text: string) => void) | null = null;
-  const oneShot = createOneShot<FocusedApp>({
+  const oneShotOptions: Parameters<typeof createOneShot<FocusedApp>>[0] = {
     // The paste never waits for the ghost (it held every paste ~2.8 s): its words go as the cleaned ones land.
     beforePaste: async (_raw, _text, app) => {
       ghostPlayed = ghost.active();
@@ -2148,6 +2152,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                   input.onNote?.("paste_refused", { why, chars: text.length });
                   return false;
                 }))(sidecar, app.window, app.title),
+  };
+  /** Our own chat box took the dictation: it takes the words itself, no paste (composerDictation.ts). */
+  const oneShot = createOneShot<FocusedApp>({
+    ...oneShotOptions,
+    paste: async (text, app) =>
+      (await composer.commit(text)) ? (ghostPlayed = true) : oneShotOptions.paste(text, app),
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
@@ -2176,7 +2186,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
-    if (result.status !== "pasted") ghost.stop();
+    if (result.status !== "pasted") (ghost.stop(), composer.cancel());
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     landed(result.text);
@@ -3643,6 +3653,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const discardKeyDictation = () => {
     discardNewest();
+    composer.cancel();
     sidecar?.finish();
   };
   /** One stray Esc must not lose his words, as in spoken dictation: the first asks, the second discards. */
@@ -3759,6 +3770,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       moveDictation("toggle");
       return { handled: true };
     }
+    // The chat box has this dictation already: its words reach it through `composer`, not this answer.
+    if (composer.active()) {
+      moveDictation("toggle");
+      return { handled: true };
+    }
     // The second press ends the recording; its words, cleaned, come back here (`paste` below).
     const words = new Promise<string>((resolve) => {
       composerWaiter = resolve;
@@ -3851,13 +3867,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       note = null;
       pressGate.want();
       startGhost();
+      void composer.start(keyHeldToTalk ? "held" : "free").then((claimed) => {
+        if (claimed) ghost.stop();
+        else pill.replay();
+      });
     } else if (event.ev === "latched") {
       keyHeldToTalk = false;
+      composer.mode("free");
       showDictation("Esc twice discards");
-    } else if (event.ev === "transcribing") showDictation("Writing it out", true);
-    else if (event.ev === "idle") {
+    } else if (event.ev === "transcribing") {
+      composer.finish();
+      showDictation("Writing it out", true);
+    } else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
+      composer.cancel();
       takeRecording(recordings, event.dictation);
       // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
@@ -3867,6 +3891,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (!pressGate.cancel()) showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();
+      composer.cancel();
       pressGate.cancel();
       takeRecording(recordings, event.dictation);
       note = event.message;
@@ -4108,7 +4133,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     loop?.activate("dismiss");
     input.onStop?.(quiet);
   };
-  const pill: VoicePill = createVoicePill({
+  const dictationAction = (insert: boolean) =>
+    dictatingByVoice
+      ? endVoiceDictation(insert)
+      : keyRecording()
+        ? insert
+          ? sidecar?.finish()
+          : discardKeyDictation()
+        : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
+          !insert && sidecarBusy
+          ? discardNewest()
+          : undefined;
+  const composer = createComposerDictation({
+    target: () => {
+      const window = Electron.BrowserWindow.getFocusedWindow();
+      if (window === null || window.isDestroyed()) return null;
+      const contents = window.webContents;
+      return {
+        send: (message) => contents.send(BATON_COMPOSER_DICTATION_CHANNEL, message),
+        gone: () => contents.isDestroyed(),
+      };
+    },
+    onAction: dictationAction,
+  });
+  Electron.ipcMain.on(BATON_COMPOSER_DICTATION_REPLY_CHANNEL, (event, reply: unknown) => {
+    // Our own windows only; preview panes load other people's pages.
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
+    if (typeof reply === "object" && reply !== null && "id" in reply && "type" in reply)
+      composer.reply(reply as Parameters<typeof composer.reply>[0]);
+  });
+  const pillOptions: Parameters<typeof createVoicePill>[0] = {
     look: () => ({ motion: settings.motion, glass: settings.glass }),
     menuItems: () => [
       {
@@ -4135,17 +4189,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     edge: () => settings.pillEdge,
     stateDir: input.stateDir,
     holdEscape: input.holdEscape,
-    onDictation: (insert) =>
-      dictatingByVoice
-        ? endVoiceDictation(insert)
-        : keyRecording()
-          ? insert
-            ? sidecar?.finish()
-            : discardKeyDictation()
-          : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
-            !insert && sidecarBusy
-            ? discardNewest()
-            : undefined,
+    onDictation: dictationAction,
     // ✕ | waveform | ✓ while the pill stays up on its own; a key or button held to talk ends on its release.
     voiceDictating: () => dictatingByVoice || (keyRecording() && !keyHeldToTalk),
     showWords: () => settings.showWords && !ghost.active(),
@@ -4174,7 +4218,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return back;
     },
     focusWindow: (window) => void sidecar?.focusWindow(window).catch(() => undefined),
-  });
+  };
+  const pill: VoicePill & { readonly replay: () => void } = routePill(
+    createVoicePill(pillOptions),
+    composer,
+  );
   let fullscreen = false;
   const restWanted = () =>
     restBarWanted({
