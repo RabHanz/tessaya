@@ -63,12 +63,12 @@ export interface DeviceOutcome {
 }
 
 /** Owner ops: never run for an agent without his yes. */
-export const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["reboot", "camera"]);
+const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["reboot", "camera"]);
 
-export const TRIAL_MS = 60_000;
-export const CAMERA_WINDOW_MS = 30_000;
-export const SHOT_KEEP_MS = 10 * 60_000;
-export const ASK_TTL_MS = 10 * 60_000;
+const TRIAL_MS = 60_000;
+const CAMERA_WINDOW_MS = 30_000;
+const SHOT_KEEP_MS = 10 * 60_000;
+const ASK_TTL_MS = 10 * 60_000;
 const ENROL_MS = 2 * 60_000;
 const REARM_AFTER_MS = [2_000, 8_000, 18_000] as const;
 export const MAX_SHOT_BYTES = 512 * 1024;
@@ -77,7 +77,7 @@ const SAMPLES_KEEP = 50;
 const SETTINGS_KEY = "devices.state";
 
 /** The room loop's per-turn metrics, in pipeline order. */
-export const STAGES = [
+const STAGES = [
   ["endpointMs", "End of speech"],
   ["asrMs", "Speech to text"],
   ["brainFirstMs", "Brain, first words"],
@@ -131,7 +131,7 @@ const json = (text: string): Record<string, unknown> | null => {
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
-export const median = (values: ReadonlyArray<number>): number | null => {
+const median = (values: ReadonlyArray<number>): number | null => {
   if (values.length === 0) return null;
   const sorted = [...values].toSorted((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
