@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
-import { chooseDictationCleanup } from "@t3tools/contracts";
+import { chooseDictationCleanup, ServerSettingsError } from "@t3tools/contracts";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
@@ -161,5 +161,40 @@ it.layer(services())("BatonDesktopSettings and the one cleanup setting", (it) =>
         yield* TestClock.adjust(APPLY_WAIT);
         yield* Fiber.join(set);
       }),
+  );
+});
+
+// A settings file that cannot be written (Windows holds it open): the desktop's choice cannot become the setting.
+const unwritable = Layer.effect(
+  ServerSettingsService,
+  Effect.gen(function* () {
+    const real = yield* ServerSettingsService;
+    return ServerSettingsService.of({
+      ...real,
+      updateSettings: () =>
+        Effect.fail(new ServerSettingsError({ settingsPath: "<memory>", operation: "write-file" })),
+    });
+  }),
+).pipe(Layer.provide(ServerSettingsService.layerTest()));
+
+it.layer(
+  settingsLayer.pipe(
+    Layer.provideMerge(recordLayer),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(unwritable),
+  ),
+)("BatonDesktopSettings when the one setting cannot be saved", (it) => {
+  it.effect("never hands the desktop a lower cleanup that nobody chose", () =>
+    Effect.gen(function* () {
+      const desktop = yield* BatonDesktopSettings;
+      const claude = { ...before, dictationCleanup: "claude" } as const;
+      for (const _ of [1, 2, 3]) {
+        const fiber = yield* desktop
+          .sync({ effective: claude, applied: 0 })
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        yield* TestClock.adjust(SYNC_HOLD);
+        assert.strictEqual((yield* Fiber.join(fiber)).change, null);
+      }
+    }),
   );
 });

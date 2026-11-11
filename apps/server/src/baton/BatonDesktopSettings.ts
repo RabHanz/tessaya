@@ -116,9 +116,10 @@ const make = Effect.gen(function* () {
       const universal = (yield* serverSettings.getSettings).dictationCleanup;
       const wanted = levelFollowing(universal.enabled, level);
       if (wanted === level) return;
-      // A first report before anyone chose carries his choice from before the one setting existed.
+      // Before anyone chose, the desktop's level is his choice: a save that failed is tried again, never handed back
+      // as "local", which the desktop would then keep as his own choice.
       const his =
-        previous === null ? universal.updatedAt === 0 : previous !== level && level !== handed;
+        universal.updatedAt === 0 || (previous !== level && level !== handed && previous !== null);
       if (his) return yield* choose(level);
       version += 1;
       handed = wanted;

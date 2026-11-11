@@ -18,7 +18,12 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
+import * as Option from "effect/Option";
+
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
+import { BatonRecordService, type RecordAppend } from "./BatonRecordService.ts";
 import { makeApplyLive } from "./LiveActions.ts";
 
 export class ThreadAccountMoveError extends Schema.TaggedError<ThreadAccountMoveError>()(
@@ -99,11 +104,19 @@ export class ThreadAccountMoves extends Context.Service<
   ThreadAccountMovesShape
 >()("t3/baton/ThreadAccountMoves") {}
 
+export interface MoveHooks {
+  /** True when a live session on `from` can take `to`'s login without a restart (hot account swap). */
+  readonly switchesInPlace?: (from: string, to: string) => Effect.Effect<boolean>;
+  readonly record?: (entry: RecordAppend) => Effect.Effect<void>;
+}
+
 export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
   engine: BatonEngineShape,
   sql: SqlClient.SqlClient,
   applyLive: ApplyLive,
+  hooks: MoveHooks = {},
 ) {
+  const switchesInPlace = hooks.switchesInPlace ?? (() => Effect.succeed(false));
   const stored = yield* sql<{ readonly thread_id: string; readonly instance_id: string }>`
     SELECT thread_id, instance_id FROM fabric_thread_account_moves
   `;
@@ -118,6 +131,7 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
   const move = Effect.fn("ThreadAccountMoves.move")(function* (
     threadId: ThreadId,
     instanceId: string,
+    how: string,
   ) {
     const shell = yield* engine.threadShell(threadId);
     if (shell === null) return yield* new ThreadAccountMoveError({ detail: "No such thread." });
@@ -127,6 +141,16 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
       threadId,
       modelSelection: selectionOnInstance(shell.modelSelection, instanceId),
     });
+    if (hooks.record !== undefined) {
+      yield* hooks.record({
+        kind: "account_switch",
+        actor: "tessaya",
+        project: shell.projectId,
+        ref: threadId,
+        subject: `Account ${shell.modelSelection.instanceId} → ${instanceId}`,
+        outcome: how,
+      });
+    }
   });
 
   const applyWhenIdle = Effect.fn("ThreadAccountMoves.applyWhenIdle")(
@@ -135,7 +159,7 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
       const runs = yield* engine.threadRuns(id);
       if (threadHasRunningTurn(runs) || threadHasQueuedRun(runs)) return;
       // Forgotten only after it worked, so a failed move is tried again on the next change.
-      yield* move(id, instanceId);
+      yield* move(id, instanceId, "moved when the turn ended");
       yield* forget(threadId);
       yield* Effect.logInfo("Tessaya moved a thread to another account", { threadId, instanceId });
     },
@@ -149,6 +173,16 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
         return yield* new ThreadAccountMoveError({ detail: "This is not a Claude thread." });
       }
       const runs = yield* engine.threadRuns(threadId);
+      // A running turn's process takes the new login now, so its next request is on the new account.
+      if (
+        threadHasRunningTurn(runs) &&
+        !threadHasQueuedRun(runs) &&
+        (yield* switchesInPlace(shell.modelSelection.instanceId, instanceId))
+      ) {
+        yield* move(threadId, instanceId, "switched in place during the turn");
+        yield* forget(threadId);
+        return { instanceId, timing: "now" as const };
+      }
       if (threadHasRunningTurn(runs)) {
         const now = DateTime.formatIso(yield* DateTime.now);
         yield* sql`
@@ -167,7 +201,7 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
         });
       }
       // A later choice replaces a waiting one.
-      yield* move(threadId, instanceId);
+      yield* move(threadId, instanceId, "switched");
       yield* forget(threadId);
       return { instanceId, timing: "now" as const };
     },
@@ -303,7 +337,37 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const engine = yield* BatonEngine;
     const sql = yield* SqlClient.SqlClient;
-    const moves = yield* makeMoves(engine, sql, yield* makeApplyLive);
+    const registry = yield* ProviderRegistry.ProviderRegistry;
+    const settings = yield* ServerSettingsService;
+    const record = yield* Effect.serviceOption(BatonRecordService);
+    // A token login in a shared conversation, the ones ClaudeSessionLogin can move under a live process.
+    const movableGroup = Effect.fn("ThreadAccountMoves.movableGroup")(
+      function* (instanceId: string) {
+        const instance = (yield* settings.getSettings).providerInstances[
+          ProviderInstanceId.make(instanceId)
+        ];
+        const provider = (yield* registry.getProviders).find(
+          (candidate) => candidate.instanceId === instanceId,
+        );
+        const token = instance?.environment?.some(
+          (variable) => variable.name === "CLAUDE_CODE_OAUTH_TOKEN",
+        );
+        return token === true && provider?.continuation?.groupKey !== undefined
+          ? `${provider.driver}|${provider.continuation.groupKey}`
+          : null;
+      },
+      Effect.orElseSucceed(() => null),
+    );
+    const moves = yield* makeMoves(engine, sql, yield* makeApplyLive, {
+      // Both token logins in one shared conversation: the orchestrator keeps the session and swaps its login.
+      switchesInPlace: (from, to) =>
+        Effect.all([movableGroup(from), movableGroup(to)]).pipe(
+          Effect.map(([a, b]) => a !== null && a === b),
+        ),
+      ...(Option.isSome(record)
+        ? { record: (entry: RecordAppend) => record.value.append(entry).pipe(Effect.ignoreCause) }
+        : {}),
+    });
     // Moves left waiting by a restart first, then every thread as it changes.
     yield* Effect.forEach(moves.pendingThreadIds(), moves.settle, { discard: true });
     yield* engine.changedThreads.pipe(Stream.runForEach(moves.settle), Effect.forkScoped);

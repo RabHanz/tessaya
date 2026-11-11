@@ -68,6 +68,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -3160,6 +3161,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly forkSession?: ClaudeAdapterV2.ClaudeAgentSdkQueryRunnerShape["forkSession"];
     readonly allocateSessionId?: Effect.Effect<string>;
     readonly displayName?: string;
+    readonly sessionLoginsDir?: string;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -3219,6 +3221,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         settings: options?.settings ?? DEFAULT_CLAUDE_SETTINGS,
         ...(options?.modelCatalog === undefined ? {} : { modelCatalog: options.modelCatalog }),
         environment: options?.environment ?? {},
+        ...(options?.sessionLoginsDir === undefined
+          ? {}
+          : { sessionLoginsDir: options.sessionLoginsDir }),
         attachmentsDir,
         fileSystem,
         path: yield* Path.Path,
@@ -5822,8 +5827,87 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     );
   });
 
+  it.effect("moves a running process to another account in place, its background shell kept", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-home-" });
+        const logins = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-logins-" });
+        const mcpOAuth = { server: { accessToken: "mcp-token" } };
+        yield* fileSystem.writeFileString(
+          path.join(home, ".credentials.json"),
+          JSON.stringify({ mcpOAuth }),
+        );
+        const harness = yield* makeWakeHarnessWithOptions({
+          environment: { CLAUDE_CONFIG_DIR: home, CLAUDE_CODE_OAUTH_TOKEN: "token-account-a" },
+          sessionLoginsDir: logins,
+        });
+        const now = yield* DateTime.now;
+        const turn = (ordinal: number) =>
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make(`attempt-account-switch:${ordinal}`),
+            text: `Request ${ordinal}`,
+            attachments: [],
+            providerTurnOrdinal: ordinal,
+          });
+        yield* harness.runtime.startTurn(turn(1));
+        const opened = harness.getOpenedOptions();
+        // The token is in a file the process re-reads, never in its environment.
+        const dir = opened?.env?.CLAUDE_CONFIG_DIR ?? "";
+        assert.isUndefined(opened?.env?.CLAUDE_CODE_OAUTH_TOKEN);
+        assert.equal(path.dirname(dir), logins);
+        assert.equal(
+          yield* fileSystem.readLink(path.join(dir, "projects")),
+          path.join(home, "projects"),
+        );
+        const login = fileSystem.readFileString(path.join(dir, ".credentials.json")).pipe(
+          Effect.map(
+            (text) =>
+              JSON.parse(text) as {
+                readonly claudeAiOauth: { readonly accessToken: string };
+                readonly mcpOAuth?: unknown;
+              },
+          ),
+        );
+        assert.equal((yield* login).claudeAiOauth.accessToken, "token-account-a");
+        yield* harness.offerAndWait(wakeTaskStarted);
+        yield* harness.offerAndWait(turnOneResult);
+        yield* Queue.take(harness.terminalReceipts);
+        assert.isTrue(yield* harness.hasPendingBackgroundWork);
+
+        const switched = yield* harness.runtime.switchAccount!({
+          instanceId: ProviderInstanceId.make("claudeAgent_second"),
+          secret: Redacted.make("token-account-b"),
+        });
+        assert.isTrue(switched);
+        assert.equal((yield* login).claudeAiOauth.accessToken, "token-account-b");
+        assert.deepEqual((yield* login).mcpOAuth, mcpOAuth);
+        assert.isTrue(yield* harness.hasPendingBackgroundWork);
+
+        // The next turn runs in the same process, still on the new login.
+        yield* harness.runtime.startTurn(turn(2));
+        assert.strictEqual(harness.getOpenedOptions(), opened);
+        assert.equal((yield* login).claudeAiOauth.accessToken, "token-account-b");
+        assert.lengthOf(harness.offeredMessages, 2);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    ),
+  );
+
   it.effect(
-    "applies model, effort and Fast changes to a process running a background shell, but not thinking or a cleared effort",
+    "applies model, effort and Fast changes to a process running a background shell, and runs thinking or a cleared effort on it unchanged",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -5881,23 +5965,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           assert.strictEqual(harness.getOpenedOptions(), originalOptions);
           assert.lengthOf(harness.offeredMessages, 4);
 
+          // A change the process cannot take live waits for the next process; the background shell keeps running.
           for (const [ordinal, selection] of [
             [5, CLAUDE_TEST_RESTART_MODEL_SELECTION],
             [6, { ...normal, model: "claude-haiku-4-5-20251001" }],
           ] as const) {
-            const refused = yield* harness.runtime
-              .startTurn(turn(ordinal, selection))
-              .pipe(Effect.result);
-            assert.equal(refused._tag, "Failure");
-            if (refused._tag === "Failure") {
-              assert.instanceOf(
-                refused.failure.cause,
-                ClaudeAdapterV2.ClaudeBackgroundWorkBlocksQueryReplacementError,
-              );
-            }
+            yield* harness.runtime.startTurn(turn(ordinal, selection));
+            yield* settle;
           }
           assert.strictEqual(harness.getOpenedOptions(), originalOptions);
-          assert.lengthOf(harness.offeredMessages, 4);
+          assert.lengthOf(harness.offeredMessages, 6);
           assert.lengthOf(harness.liveSelectionChanges, 3);
           assert.isTrue(yield* harness.hasPendingBackgroundWork);
         }).pipe(
@@ -16327,7 +16404,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  it.effect("refuses a thinking change that would kill a running background subagent", () =>
+  it.effect("runs a thinking change on the live process while a background subagent runs", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const changes = yield* makeChangeSignal;
@@ -16471,14 +16548,17 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               modelSelection: alternateModel,
             }),
           );
-        const refused = yield* switchTurn("attempt-claude-model-change-running-subagent-b").pipe(
-          Effect.flip,
-        );
-        assert.equal(
-          makeProviderFailure({ cause: refused, class: "provider_error" }).message,
-          new ClaudeAdapterV2.ClaudeBackgroundWorkBlocksQueryReplacementError().message,
-        );
+        // Replacing the process would end the subagent, so the turn runs on it; the change waits for the next one.
+        yield* switchTurn("attempt-claude-model-change-running-subagent-b");
         assert.lengthOf(processQueues, 1);
+        yield* Queue.offer(
+          firstProcess,
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000904",
+            result: "Ran on the live process.",
+          }),
+        );
+        yield* changes.until(() => terminals().length === 2);
 
         yield* runtime.interruptTurn({
           providerThread,
@@ -16495,7 +16575,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             result: "Switched model.",
           }),
         );
-        yield* changes.until(() => terminals().length === 2);
+        yield* changes.until(() => terminals().length === 3);
         yield* runtime.startTurn(
           makeClaudeTestTurnInput({
             threadId,
@@ -16783,7 +16863,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               }),
             )
             .pipe(Effect.exit);
-          assert.isTrue(Exit.isFailure(failedStart));
+          // The turn runs on the live process; nothing is reopened.
+          assert.isTrue(Exit.isSuccess(failedStart));
           assert.equal(openCount, 1);
           assert.isTrue(yield* hasPendingBackgroundWork);
         }).pipe(
