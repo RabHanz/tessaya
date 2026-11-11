@@ -106,7 +106,11 @@ describe("dictation into our own chat box", () => {
   it("the composer's waveform gets the frame's RMS in dBFS, as the pill's does", () => {
     const levels: number[] = [];
     const pill = routePill(
-      { on: () => undefined, micLevel: () => undefined, words: () => undefined },
+      {
+        on: () => undefined,
+        micLevel: (_value: number, _shown?: number, _frame?: Int16Array) => undefined,
+        words: () => undefined,
+      },
       { active: () => true, level: (db) => levels.push(db), words: () => undefined },
     );
     const frame = new Int16Array(640).fill(3277);
