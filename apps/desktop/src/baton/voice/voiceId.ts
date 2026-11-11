@@ -3,7 +3,11 @@
  * Voice ID on this computer (VOICE-ID): the voice model while it is on, the profiles, and enrolment by reading
  * aloud through Tessaya's own microphone. Settings drives it (voiceIdRows.ts). Only vectors are kept, never audio.
  */
-import type { SpeakerEmbedder, SpeakerProfile } from "@t3tools/baton-voice";
+import {
+  createSpeakerStore,
+  type SpeakerEmbedder,
+  type SpeakerProfile,
+} from "@t3tools/baton-voice";
 
 import {
   ENROLMENT_SENTENCES,
@@ -11,7 +15,6 @@ import {
   enrolSaved,
   SAVED_PERSON_LINES,
 } from "./speakerEnrolment.ts";
-import { createSpeakerStore } from "./speakerStore.ts";
 import type { VoiceIdModelState, VoiceIdSettings, VoiceIdView } from "./voiceIdRows.ts";
 
 const RATE = 16_000;
