@@ -147,7 +147,7 @@ import { createInOrder } from "./inOrder.ts";
 import { createCommandClips } from "./keyCommands.ts";
 import { beforeSpokenStop, keyDictationCommand } from "@t3tools/baton-shared/dictation";
 import { createVolumeDuck } from "./volumeDuck.ts";
-import { pronounceFrom } from "./pronounce.ts";
+import { pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import {
   createOutputWatch,
   outputDeviceFrom,
