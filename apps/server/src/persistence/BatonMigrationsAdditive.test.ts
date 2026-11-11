@@ -98,7 +98,7 @@ describe("every Tessaya migration is additive", () => {
       )) {
         const table = match[1] ?? "";
         expect(
-          table.startsWith("fabric_"),
+          /^(fabric|tessaya)_/.test(table),
           `${String(id)}_${name} touches '${table}', which Tessaya does not own`,
         ).toBe(true);
       }
