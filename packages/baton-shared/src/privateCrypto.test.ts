@@ -9,7 +9,7 @@ import {
   openBoxKey,
   openFrom,
   openItem,
-  pinKey,
+  pinKeyAsync,
   randomKey,
   recoveryKey,
   sealItem,
@@ -23,23 +23,23 @@ const salt = Buffer.alloc(16, 7);
 const pepper = Buffer.alloc(32, 9);
 
 describe("private store keys", () => {
-  it("opens with the right PIN and pepper only, and only for its own store", () => {
+  it("opens with the right PIN and pepper only, and only for its own store", async () => {
+    const pinKey = (pin: string, pep: Buffer, store: string) =>
+      pinKeyAsync(pin, salt, pep, store, FAST);
     const dek = randomKey();
-    const wrapped = wrapKey(pinKey("27182818", salt, pepper, "s1", FAST), dek, "s1", "pin");
-    expect(unwrapKey(pinKey("27182818", salt, pepper, "s1", FAST), wrapped, "s1", "pin")).toEqual(
-      dek,
-    );
+    const wrapped = wrapKey(await pinKey("27182818", pepper, "s1"), dek, "s1", "pin");
+    expect(unwrapKey(await pinKey("27182818", pepper, "s1"), wrapped, "s1", "pin")).toEqual(dek);
     for (const [pin, pep, store] of [
       ["27182819", pepper, "s1"],
       ["27182818", Buffer.alloc(32, 8), "s1"],
       ["27182818", pepper, "s2"],
     ] as const) {
-      expect(() => unwrapKey(pinKey(pin, salt, pep, store, FAST), wrapped, store, "pin")).toThrow();
+      const kek = await pinKey(pin, pep, store);
+      expect(() => unwrapKey(kek, wrapped, store, "pin")).toThrow();
     }
     // A PIN wrap is not a recovery wrap.
-    expect(() =>
-      unwrapKey(pinKey("27182818", salt, pepper, "s1", FAST), wrapped, "s1", "recovery"),
-    ).toThrow();
+    const kek = await pinKey("27182818", pepper, "s1");
+    expect(() => unwrapKey(kek, wrapped, "s1", "recovery")).toThrow();
   });
 
   it("opens with the recovery code alone, without the pepper", () => {

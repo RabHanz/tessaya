@@ -7,33 +7,37 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import {
-  DEFAULT_KDF,
-  deriveKey,
-  open,
-  randomKey,
-  seal,
-  type KdfParams,
-  type Sealed,
-} from "./vaultCrypto.ts";
+import { DEFAULT_KDF, open, randomKey, seal, type KdfParams, type Sealed } from "./vaultCrypto.ts";
 
 export const PRIVATE_FORMAT = "tessaya-private-v1";
 
-/** A PIN key: scrypt makes each guess cost, the pepper (kept outside the database) makes a copied database useless. */
-export const pinKey = (
+/**
+ * A PIN key: scrypt makes each guess cost, the pepper (kept outside the database) makes a copied database useless. It
+ * runs on libuv's pool, so the server keeps answering during an unlock.
+ */
+export const pinKeyAsync = (
   pin: string,
   salt: Buffer,
   pepper: Buffer,
   storeId: string,
   kdf: KdfParams = DEFAULT_KDF,
-): Buffer => {
-  const stretched = deriveKey(pin, salt, kdf);
-  try {
-    return hkdf(stretched, pepper, `${PRIVATE_FORMAT}|pin|${storeId}`);
-  } finally {
-    stretched.fill(0);
-  }
-};
+): Promise<Buffer> =>
+  new Promise((resolve, reject) =>
+    NodeCrypto.scrypt(
+      pin.normalize("NFKC"),
+      salt,
+      32,
+      { N: kdf.N, r: kdf.r, p: kdf.p, maxmem: 256 * kdf.N * kdf.r },
+      (error, stretched) => {
+        if (error !== null) return reject(error);
+        try {
+          resolve(hkdf(stretched, pepper, `${PRIVATE_FORMAT}|pin|${storeId}`));
+        } finally {
+          stretched.fill(0);
+        }
+      },
+    ),
+  );
 
 /** A recovery code is 256 random bits, so it needs no stretching and no pepper: a backup restores with it alone. */
 export const recoveryKey = (code: Buffer, storeId: string): Buffer =>
