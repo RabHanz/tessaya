@@ -90,7 +90,8 @@ export const INTERJECTIONS: ReadonlyArray<readonly [string, RegExp, Respelling]>
   ["mm-hmm", /^(m+-?h+m+|mhm+)$/, { say: "Mm hm" }],
   ["uh-huh", /^uh-?huh$/, { say: "Uh huh" }],
   ["uh-oh", /^uh-?oh$/, { say: "Uh oh" }],
-  ["hmm", /^(h+m{2,}|hm)$/, { say: "Hmmm" }],
+  // "Hmmm" sends Eve into a 13-second babble on a long line (recogniser check, 2026-11-12); "Hmm" is safe.
+  ["hmm", /^(h+m{2,}|hm)$/, { say: "Hmm" }],
   ["ugh", /^u+g+h+$/, { say: "Uhhgh" }],
   ["ah", /^a+h+$/, { say: "Ahh" }],
   ["oh", /^o+h+$/, { say: "Oh" }],
