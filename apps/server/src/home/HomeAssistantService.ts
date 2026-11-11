@@ -155,6 +155,8 @@ export class HomeAssistantService extends Context.Service<
   HomeAssistantService,
   {
     readonly status: Effect.Effect<HomeStatus>;
+    /** The house's own time zone from Home Assistant's config ("UTC" until connected), for anything said aloud. */
+    readonly timeZone: Effect.Effect<string>;
     /** Validates first (an admin user, since automations need one), then stores the token in the secret store. */
     readonly connect: (input: {
       readonly url: string;
@@ -1515,6 +1517,7 @@ const make = Effect.gen(function* () {
 
   return HomeAssistantService.of({
     status: Effect.sync(() => ({ ...status, entities: states.size })),
+    timeZone: Effect.sync(() => timeZone),
     connect,
     disconnect,
     find,

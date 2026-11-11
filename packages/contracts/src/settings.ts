@@ -1249,6 +1249,8 @@ export const CloudSpeechCredentials = Schema.Struct({
 });
 /** Read only by the direct-API dictation cleanup, never placed in any environment variable. */
 export const DictationCleanupCredentials = Schema.Struct({ anthropic: CloudSpeechCredential });
+export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
+export type RoomBrain = typeof RoomBrain.Type;
 
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
@@ -1286,6 +1288,8 @@ export const ServerSettings = Schema.Struct({
   dictationCleanupCredentials: DictationCleanupCredentials.pipe(
     Schema.withDecodingDefault(Effect.succeed({ anthropic: "" })),
   ),
+  // Tessaya: how the room device's turn reaches Claude. "auto" tries the Anthropic key above first, then the subscription.
+  roomBrain: RoomBrain.pipe(Schema.withDecodingDefault(Effect.succeed("auto" as const))),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
   ),
@@ -1716,6 +1720,7 @@ export const ServerSettingsPatch = Schema.Struct({
   dictationCleanupCredentials: Schema.optionalKey(
     Schema.Struct({ anthropic: Schema.optionalKey(SettingsSecretValue) }),
   ),
+  roomBrain: Schema.optionalKey(RoomBrain),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),
   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),

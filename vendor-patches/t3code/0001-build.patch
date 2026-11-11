@@ -182,7 +182,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..6f45c7aecce09ceaeb55a27731aee067
      "test": "vp test run --config ../vite.config.ts --dir ."
    },
 diff --git a/knip.jsonc b/knip.jsonc
-index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..fb659d03d1591cc0cedde7f4a56f07ec6ce7bc89 100644
+index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc4549539667 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -36,6 +36,9 @@
@@ -281,13 +281,17 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..fb659d03d1591cc0cedde7f4a56f07ec
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -152,6 +181,9 @@
+@@ -152,6 +181,13 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
 +    // The contracts and shared packages are declared for the types Baton re-exports.
 +    "packages/baton-shared": { "ignoreDependencies": ["@t3tools/contracts"] },
-+    "packages/baton-voice": { "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"] },
++    "packages/baton-voice": {
++      // The R1 room loop and its replay harness run as programs on the voice host (deploy/r1-voice).
++      "entry": ["src/room/main.ts!", "src/room/replay.ts!"],
++      "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"],
++    },
      "packages/effect-acp": {
        "includeEntryExports": true,
        "entry": ["test/fixtures/*.ts"],

@@ -1,0 +1,236 @@
+Hot account swap: a busy session takes the new account login in place (docs/baton/HOT_ACCOUNT_SWAP.md).
+
+diff --git a/apps/server/src/mcp/McpToolAccess.test.ts b/apps/server/src/mcp/McpToolAccess.test.ts
+index 6d63287f4eb2ab10b62534f607353c54e2e71d5c..62e40b7ce683f0b1295824ce93253de91368feb1 100644
+--- a/apps/server/src/mcp/McpToolAccess.test.ts
++++ b/apps/server/src/mcp/McpToolAccess.test.ts
+@@ -31,6 +31,8 @@ const backgroundThreadId = ThreadId.make("thread:background");
+ const oldProviderThreadId = ThreadId.make("thread:old-provider-background");
+ const archivedThreadId = ThreadId.make("thread:archived-background");
+ const unknownOwnerThreadId = ThreadId.make("thread:unknown-background-owner");
++// The thread moved to another account while its session, kept for background work, runs the active run.
++const keptSessionThreadId = ThreadId.make("thread:kept-session");
+ 
+ const backgroundShell = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) => ({
+   ...liveThreadShell(threadId, { activeRunId: null }),
+@@ -47,6 +49,7 @@ const shells = new Map([
+   ],
+   [fullAccessThreadId, liveThreadShell(fullAccessThreadId)],
+   [endedThreadId, liveThreadShell(endedThreadId, { activeRunId: null })],
++  [keptSessionThreadId, liveThreadShell(keptSessionThreadId)],
+   [backgroundThreadId, backgroundShell(backgroundThreadId, ProviderInstanceId.make("codex"))],
+   [oldProviderThreadId, backgroundShell(oldProviderThreadId, ProviderInstanceId.make("claude"))],
+   [
+@@ -229,6 +232,17 @@ const mismatchedProvider = {
+   ...background,
+   thread: { ...background.thread!, providerInstanceId: ProviderInstanceId.make("claude") },
+ };
++const keptSession = {
++  ...threadCaller(keptSessionThreadId),
++  thread: {
++    ...threadCaller(keptSessionThreadId).thread!,
++    providerInstanceId: ProviderInstanceId.make("claude"),
++  },
++};
++const mismatchedActiveRun = {
++  ...supervised,
++  thread: { ...supervised.thread!, providerInstanceId: ProviderInstanceId.make("claude") },
++};
+ const supervisedClient = clientCaller("approval-required");
+ const fullAccessClient = clientCaller("full-access");
+ const readOnlyClient = clientCaller("read-only");
+@@ -260,6 +274,8 @@ it.effect.each([
+   ["acts_as_caller", background, {}, "ran"],
+   ["acts_as_caller", oldProviderBackground, {}, "parent_not_active"],
+   ["acts_as_caller", mismatchedProvider, {}, "parent_not_active"],
++  ["acts_as_caller", keptSession, {}, "ran"],
++  ["acts_as_caller", mismatchedActiveRun, {}, "parent_not_active"],
+   ["acts_as_caller", archivedBackground, {}, "parent_not_active"],
+   ["acts_as_caller", unknownOwnerBackground, {}, "parent_not_active"],
+   ["acts_as_caller", fullAccessClient, {}, "thread_credential_required"],
+@@ -322,6 +338,17 @@ it.effect.each([
+       probeServer(
+         Layer.mock(ThreadManagement.ThreadManagementService)({
+           getThreadShell: (threadId) => Effect.succeed(shells.get(threadId) ?? null),
++          getThreadRecords: (threadId) =>
++            Effect.succeed({
++              runs: [
++                {
++                  id: shells.get(threadId)?.activeRunId,
++                  providerInstanceId: ProviderInstanceId.make(
++                    threadId === keptSessionThreadId ? "claude" : "codex",
++                  ),
++                },
++              ],
++            } as never),
+         }),
+       ),
+     ),
+diff --git a/apps/server/src/mcp/threadAccess.ts b/apps/server/src/mcp/threadAccess.ts
+index 4bf90f0182fc472a8c3f355221bd5b5fcc619ff1..8c234038ab68d0cf569c4ccd9c35ebd485cf1a8c 100644
+--- a/apps/server/src/mcp/threadAccess.ts
++++ b/apps/server/src/mcp/threadAccess.ts
+@@ -138,17 +138,29 @@ export const isLiveCallerShell = (
+       false));
+ 
+ /** Thread callers need a live run or its background subagent in an unarchived thread. OAuth clients rely on their session and ceiling. */
+-export function assertLiveCaller({ caller, scope }: Caller) {
+-  if (caller === undefined) return Effect.void;
+-  return isLiveCallerShell(caller, scope.thread?.providerInstanceId)
+-    ? Effect.void
+-    : Effect.fail(
+-        new OrchestratorMcpFailure({
+-          code: "parent_not_active",
+-          message: "The calling provider no longer owns an active thread run.",
+-        }),
+-      );
+-}
++export const assertLiveCaller = Effect.fn("mcp.assertLiveCaller")(function* ({
++  caller,
++  scope,
++  threads,
++}: Caller) {
++  if (caller === undefined || isLiveCallerShell(caller, scope.thread?.providerInstanceId)) return;
++  const notActive = new OrchestratorMcpFailure({
++    code: "parent_not_active",
++    message: "The calling provider no longer owns an active thread run.",
++  });
++  const activeRunId = caller.activeRunId;
++  if (caller.archivedAt !== null || activeRunId === null) return yield* notActive;
++  // Tessaya (hot account swap): a session kept across an account change runs the active run as its own instance.
++  const { runs } = yield* threads
++    .getThreadRecords(caller.id, ["runs"])
++    .pipe(Effect.mapError(unavailable));
++  if (
++    runs.find((run) => run.id === activeRunId)?.providerInstanceId !==
++    scope.thread?.providerInstanceId
++  ) {
++    return yield* notActive;
++  }
++});
+ 
+ export const assertFullAccess = (context: Caller, message: string) =>
+   context.limits.runtimeMode === "full-access" && context.limits.interactionMode === "default"
+diff --git a/apps/server/src/orchestration-v2/EffectOutbox.ts b/apps/server/src/orchestration-v2/EffectOutbox.ts
+index 92e1e01ad43f2a4a4b43b0a3dad7038d75a9725a..935cac5d07fbe9e8476cdb5baf52d1ef606cf3b0 100644
+--- a/apps/server/src/orchestration-v2/EffectOutbox.ts
++++ b/apps/server/src/orchestration-v2/EffectOutbox.ts
+@@ -3,6 +3,7 @@ import {
+   CheckpointScopeId,
+   CommandId,
+   MessageId,
++  ProviderInstanceId,
+   NodeId,
+   ProviderSessionId,
+   RunAttemptId,
+@@ -40,6 +41,12 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
+     detail: Schema.optional(Schema.String),
+     revokeMcpCredential: Schema.optional(Schema.Boolean),
+   }),
++  // Tessaya (hot account swap): the live process takes the target instance's login.
++  Schema.Struct({
++    type: Schema.Literal("provider-session.switch-account"),
++    providerSessionId: ProviderSessionId,
++    targetInstanceId: ProviderInstanceId,
++  }),
+   Schema.Struct({
+     type: Schema.Literal("provider-turn.start"),
+     runId: RunId,
+@@ -136,6 +143,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
+ ] as const satisfies ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
+ 
+ export const PROCESS_BOUND_EFFECT_TYPES = [
++  "provider-session.switch-account",
+   "provider-turn.start",
+   "provider-turn.interrupt",
+   "provider-turn.steer",
+diff --git a/apps/server/src/orchestration-v2/EffectWorker.test.ts b/apps/server/src/orchestration-v2/EffectWorker.test.ts
+index 2329f2aa20cf02e5691a77501014c7fabeb2943e..83f05dde02dc543fffe598e6feb252aeb88a68f7 100644
+--- a/apps/server/src/orchestration-v2/EffectWorker.test.ts
++++ b/apps/server/src/orchestration-v2/EffectWorker.test.ts
+@@ -107,6 +107,7 @@ function layerExecutorFor(input: {
+         open: () => Effect.die("unused open"),
+         get: () => Effect.succeedNone,
+         isLive: () => Effect.succeed(false),
++        switchAccount: () => Effect.succeed(false),
+         close: () => Effect.void,
+         closeInstance: () => Effect.void,
+         release: () => record("release"),
+diff --git a/apps/server/src/orchestration-v2/EffectWorker.ts b/apps/server/src/orchestration-v2/EffectWorker.ts
+index c5b5ea9b383a943bfe97ef1170791cd31473d09f..1ce0bb5d3d06e5353c3853b302d310b0d42d023e 100644
+--- a/apps/server/src/orchestration-v2/EffectWorker.ts
++++ b/apps/server/src/orchestration-v2/EffectWorker.ts
+@@ -138,6 +138,15 @@ export const layerExecutor: Layer.Layer<
+                     }),
+                 ),
+               );
++          case "provider-session.switch-account":
++            return providerSessions.switchAccount(effect.request).pipe(
++              Effect.tap((switched) =>
++                switched
++                  ? Effect.void
++                  : Effect.logWarning("The live session kept its account", effect.request),
++              ),
++              Effect.asVoid,
++            );
+           case "provider-turn.start":
+             return providerTurnStart
+               .start({ threadId: effect.threadId, runId: effect.request.runId, willRetry })
+diff --git a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
+index 55e2a9e50e3ef329a36c2d2c07e38a9a6a8e094e..d274ecfa2a0bfb878eace80ee42dce549e2a053f 100644
+--- a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
++++ b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
+@@ -287,6 +287,7 @@ it.effect(
+               providerSessionId === oldSessionId ? Option.some(runtime) : Option.none(),
+             ),
+           isLive: (providerSessionId) => Effect.succeed(providerSessionId === oldSessionId),
++          switchAccount: () => Effect.succeed(false),
+           close: () => Effect.void,
+           closeInstance: () => Effect.void,
+           release: () => Effect.void,
+diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
+index e94740e34712f2a98c66aef8612b8786db2c7d28..1a3d2f281789a3ed1f5901d252eadb8d5e545fa1 100644
+--- a/packages/provider-core/src/server/ProviderAdapter.ts
++++ b/packages/provider-core/src/server/ProviderAdapter.ts
+@@ -37,7 +37,10 @@ import {
+ import * as Context from "effect/Context";
+ import * as Schema from "effect/Schema";
+ import type * as Effect from "effect/Effect";
++import type * as Redacted from "effect/Redacted";
+ import type * as Scope from "effect/Scope";
++
++import type { ManagedServerProvider } from "./snapshot.ts";
+ import type * as Stream from "effect/Stream";
+ 
+ import type {
+@@ -604,6 +607,13 @@ export type ProviderAdapterV2SubagentOutcome = {
+   readonly result: OrchestrationV2Subagent["result"];
+ };
+ 
++/** An instance's login that a live session of the same driver can take over in place. */
++export interface ProviderAdapterV2AccountLogin {
++  readonly instanceId: ProviderInstanceId;
++  readonly secret: Redacted.Redacted<string>;
++  readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
++}
++
+ export interface ProviderAdapterV2SessionRuntime {
+   readonly instanceId: ProviderInstanceId;
+   readonly driver: ProviderDriverKind;
+@@ -620,6 +630,8 @@ export interface ProviderAdapterV2SessionRuntime {
+     providerThread: OrchestrationV2ProviderThread,
+     options?: { readonly includeSubagents?: boolean },
+   ) => Effect.Effect<boolean>;
++  /** Moves the live process to another login without restarting it; false when it cannot. */
++  readonly switchAccount?: (login: ProviderAdapterV2AccountLogin) => Effect.Effect<boolean>;
+   /** Set only if all session background tasks end with its process; otherwise threads must keep Waiting. */
+   readonly backgroundTasksEndWithProcess?: true;
+   readonly getModelContextWindow?: (
+@@ -711,5 +723,7 @@ export class ProviderAdapterV2 extends Context.Service<
+     readonly openSession: (
+       input: ProviderAdapterV2OpenSessionInput,
+     ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;
++    /** Present when this instance's login can be handed to another instance's live session. */
++    readonly accountLogin?: ProviderAdapterV2AccountLogin;
+   }
+ >()("@t3tools/provider-core/server/ProviderAdapter/ProviderAdapterV2") {}

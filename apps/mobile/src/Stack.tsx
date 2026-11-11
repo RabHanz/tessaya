@@ -93,6 +93,7 @@ import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsCl
 import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
 import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
 import { SettingsHomeRouteScreen } from "./features/settings/SettingsHomeRouteScreen";
+import { SettingsHardwareRouteScreen } from "./features/settings/SettingsHardwareRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
@@ -212,6 +213,11 @@ const SETTINGS_SCREENS = {
     screen: SettingsHomeRouteScreen,
     linking: "settings/home",
     options: settingsPage("Home"),
+  }),
+  SettingsHardware: createNativeStackScreen({
+    screen: SettingsHardwareRouteScreen,
+    linking: "settings/hardware",
+    options: settingsPage("Hardware"),
   }),
   SettingsEnvironmentMaintenance: createNativeStackScreen({
     screen: SettingsEnvironmentMaintenanceRouteScreen,
