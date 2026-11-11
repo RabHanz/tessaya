@@ -19,6 +19,7 @@ describe("a paired device's turn, overlapping one of his", () => {
       planShow: async () => "approved",
       guided: async () => "started",
       vault: { list: async () => "github-token", use: async () => "", savePending: async () => "" },
+      rememberPrivate: async () => "Kept in his private memories.",
     } as unknown as ToolHost;
     const slot = createOutsideSlot({
       host,
@@ -56,6 +57,9 @@ describe("a paired device's turn, overlapping one of his", () => {
     expect(await slot.host.memory("deploy key")).toBe("Nothing earlier matches.");
     expect(memoryCalls.every(([, args]) => args["agent"] === undefined)).toBe(true);
     expect(slot.host.vault).toBeUndefined();
+    // Nor a private store: a device's turn cannot keep or read anyone's private memories.
+    expect(slot.host.rememberPrivate).toBeUndefined();
+    expect(buildBatonTools(slot.host).map((t) => t.name)).not.toContain("private_remember");
     const vaultList = buildBatonTools(slot.host).find((t) => t.name === "vault_list")!;
     expect((await vaultList.run({})).text).toBe("There is no vault on this computer.");
 

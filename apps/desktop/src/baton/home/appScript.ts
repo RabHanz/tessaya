@@ -182,11 +182,11 @@ function wakeRow(items) {
 }
 const memEditing = new Set(), memWhy = new Set();
 function memoryRow(c) {
-  const id = c.id.slice(2), wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text');
+  const pv = !!c.store, pre = pv ? 'm.pv.' : 'm.', id = c.id.slice(pv ? 5 : 2), wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text');
   if (memEditing.has(c.id)) {
     const a = $('textarea', 'memedit'); a.id = 'in-e-' + c.id; a.maxLength = 500; a.setAttribute('aria-label', 'Edit this memory'); a.value = drafts.has('e-' + c.id) ? drafts.get('e-' + c.id) : c.label; a.oninput = () => drafts.set('e-' + c.id, a.value);
     const done = () => { memEditing.delete(c.id); drafts.delete('e-' + c.id); };
-    const save = $('button', 'btn primary', 'Save'); save.onclick = () => { const v = a.value.trim(); done(); if (v) set('m.edit:' + id, v); else render(); };
+    const save = $('button', 'btn primary', 'Save'); save.onclick = () => { const v = a.value.trim(); done(); if (v) set(pre + 'edit:' + id, v); else render(); };
     const cancel = $('button', 'btn quiet', 'Cancel'); cancel.onclick = () => { done(); render(); };
     const acts = $('div', 'memacts'); acts.append(save, cancel); t.append(a, acts); r.appendChild(t); wrap.appendChild(r); return wrap;
   }
@@ -195,13 +195,15 @@ function memoryRow(c) {
   r.appendChild(t);
   const acts = $('div', 'memacts');
   if (c.why) { const wy = $('button', 'btn quiet', memWhy.has(c.id) ? 'Hide why' : 'Why?'); wy.setAttribute('aria-expanded', String(memWhy.has(c.id))); wy.onclick = () => { if (memWhy.has(c.id)) memWhy.delete(c.id); else memWhy.add(c.id); render(); }; acts.appendChild(wy); }
-  if (c.held) { const keep = $('button', 'btn primary', 'Keep'); keep.onclick = () => set('m.accept:' + id, null); acts.appendChild(keep); }
+  if (c.held) { const keep = $('button', 'btn primary', 'Keep'); keep.onclick = () => set(pre + 'accept:' + id, null); acts.appendChild(keep); }
   else if (c.section !== 'Replaced') {
-    const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
     const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { memEditing.add(c.id); render(); };
-    const hi = $('button', 'btn quiet', 'History'); hi.onclick = () => set('m.history:' + id, null); acts.append(pin, ed, hi);
+    // A private memory has no pin and no history: only its words change.
+    if (pv) acts.appendChild(ed);
+    else { const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
+      const hi = $('button', 'btn quiet', 'History'); hi.onclick = () => set('m.history:' + id, null); acts.append(pin, ed, hi); }
   }
-  const fg = $('button', 'btn quiet', c.held ? 'Dismiss' : 'Forget'); fg.onclick = () => set('m.forget:' + id, null); acts.appendChild(fg);
+  const fg = $('button', 'btn quiet', c.held && !pv ? 'Dismiss' : 'Forget'); fg.onclick = () => set(pre + 'forget:' + id, null); acts.appendChild(fg);
   r.appendChild(acts); wrap.appendChild(r); return wrap;
 }
 function catalogBar(c) {
@@ -325,6 +327,65 @@ function vaultBar(c) {
   }
   return w;
 }
+function pvPeople(c) {
+  const w = $('div', 'rowwrap stack membar');
+  if (c.recovery) {
+    const k = $('div', 'row'), t = $('div', 'text'); t.append($('div', 'label', L('pv.recovery.title', { name: c.recovery.name })), $('div', 'hint', L('pv.recovery.hint')), $('div', 'hpre vaultkey', c.recovery.code));
+    const bx = $('div', 'memacts'); for (const [k2, to, cls] of [['pv.recovery.save', 'm.pv.recoverySave', 'btn'], ['pv.recovery.copy', 'm.pv.recoveryCopy', 'btn'], ['pv.recovery.done', 'm.pv.recoveryDone', 'btn primary']]) { const b = $('button', cls, L(k2)); b.onclick = () => set(to, null); bx.appendChild(b); }
+    k.append(t, bx); w.appendChild(k);
+  }
+  const pinForm = (key, ph, button, primary, to) => vtForm([vtInput(key, ph, 'password')], { label: button, primary }, () => { const v = drafts.get(key) || ''; drafts.delete(key); if (v) set(to, v); else render(); });
+  for (const p of c.people) {
+    const r = $('div', 'row'), t = $('div', 'text'), nm = $('div', 'label', p.name); if (p.state !== 'open' && p.state !== 'everyday') { const k = icon('lock', 13); k.style.marginLeft = '6px'; k.setAttribute('aria-hidden', 'true'); nm.appendChild(k); }
+    t.append(nm, $('div', 'hint', p.note)); r.appendChild(t);
+    const b = $('button', 'btn quiet', L(p.selected ? 'pv.showing' : 'pv.show')); b.setAttribute('aria-pressed', String(p.selected)); b.setAttribute('aria-label', L('pv.show') + ': ' + p.name); b.onclick = () => set('m.pv.pick:' + p.id, null); r.appendChild(b); w.appendChild(r);
+    if (!p.selected || p.state === 'open' || p.state === 'everyday') continue;
+    if (p.state === 'locked') w.appendChild(pinForm('pv-pin-' + p.id, L('pv.pin'), L('pv.open'), true, 'm.pv.unlock:' + p.id));
+    w.appendChild(pinForm('pv-rec-' + p.id, L('pv.recoveryCode'), L('pv.useRecovery'), false, 'm.pv.recover:' + p.id));
+    if (p.admin) { const tl = $('div', 'memtools'), a = $('button', 'btn quiet', L('pv.openAdmin')); a.onclick = () => set('m.pv.admin:' + p.id, null); tl.appendChild(a); w.appendChild(tl); }
+  }
+  const multi = (keys, button, primary, to, fields) => { const ins = keys.map(([k, ph, type]) => vtInput(k, ph, type)); return vtForm(ins, { label: button, primary }, () => { const v = {}; keys.forEach(([k], n) => { v[fields[n]] = ins[n].value; drafts.delete(k); }); set(to, JSON.stringify(v)); }); };
+  if (c.canSetup) { w.appendChild($('div', 'hint memstatus', L('pv.setup.hint'))); w.appendChild(multi([['pv-new', L('pv.setup.pin'), 'password'], ['pv-new2', L('pv.again'), 'password']], L('pv.setup.button'), true, 'm.pv.setup', ['pin', 'again'])); }
+  if (c.ownerOpen) {
+    w.appendChild($('h3', 'vaulthead', L('pv.add.title')));
+    if (c.voices.length === 0) w.appendChild($('div', 'hint memstatus', L('pv.add.noVoices')));
+    else {
+      const pick = $('select'); pick.id = 'in-pv-aid'; pick.setAttribute('aria-label', L('pv.add.profile'));
+      for (const v of c.voices) { const o = $('option', '', v.name); o.value = v.id; pick.appendChild(o); }
+      if (drafts.has('pv-aid')) pick.value = drafts.get('pv-aid'); pick.onchange = () => drafts.set('pv-aid', pick.value);
+      const ins = [vtInput('pv-an', L('pv.add.name')), vtInput('pv-ap', L('pv.add.pin'), 'password'), vtInput('pv-ap2', L('pv.again'), 'password')];
+      w.appendChild(vtForm([pick, ...ins], { label: L('pv.add.button'), primary: false }, () => {
+        const v = { personId: pick.value, name: ins[0].value, pin: ins[1].value, again: ins[2].value };
+        for (const k of ['pv-aid', 'pv-an', 'pv-ap', 'pv-ap2']) drafts.delete(k);
+        set('m.pv.addPerson', JSON.stringify(v));
+      }));
+    }
+  }
+  if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
+  return w;
+}
+function pvBar(c) {
+  const s = c.store, w = $('div', 'rowwrap stack membar'), f = $('form', 'vocab'), q = $('input'), dq = 'pv-q-' + s; q.type = 'text'; q.id = 'in-' + dq; q.placeholder = L('pv.search'); q.setAttribute('aria-label', L('pv.search')); q.value = drafts.has(dq) ? drafts.get(dq) : c.query;
+  let tm = null; q.oninput = () => { drafts.set(dq, q.value); clearTimeout(tm); tm = setTimeout(() => set('m.pv.query', q.value), 250); };
+  f.onsubmit = e => { e.preventDefault(); clearTimeout(tm); set('m.pv.query', q.value); }; f.appendChild(q); w.appendChild(f);
+  const tools = $('div', 'memtools');
+  const lk = $('button', 'btn', L('pv.lock')); lk.onclick = () => { drafts.delete(dq); set('m.pv.lock:' + s, null); }; tools.appendChild(lk);
+  const au = $('button', 'btn quiet', L('pv.audit')); au.setAttribute('aria-pressed', String(c.audit !== null)); au.onclick = () => set('m.pv.audit:' + s, null); tools.appendChild(au);
+  if (c.canDelete) { const dl = $('button', 'btn quiet', L(c.confirmDelete ? 'pv.deleteSure' : 'pv.delete')); dl.onclick = () => set('m.pv.delete:' + s, null); tools.appendChild(dl); }
+  w.appendChild(tools);
+  const rr = $('div', 'row'), rt = $('div', 'text'); rt.append($('div', 'label', L('pv.recall')), $('div', 'hint', L('pv.recall.hint')));
+  const sw = $('button', 'sw'); sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', String(!c.recallOff)); sw.setAttribute('aria-label', L('pv.recall')); sw.onclick = () => set('m.pv.recall:' + s, c.recallOff); rr.append(rt, sw); w.appendChild(rr);
+  const ek = 'pv-exp-' + s; w.appendChild(vtForm([vtInput(ek, L('pv.export.pin'), 'password')], { label: L('pv.export') }, () => { const v = drafts.get(ek) || ''; drafts.delete(ek); set('m.pv.export:' + s, v); }));
+  if (c.canChangePin) { const ks = [['pv-cp0-' + s, L('pv.changePin.old')], ['pv-cp1-' + s, L('pv.changePin.new')], ['pv-cp2-' + s, L('pv.again')]], ins = ks.map(([k, ph]) => vtInput(k, ph, 'password'));
+    w.appendChild(vtForm(ins, { label: L('pv.changePin') }, () => { const v = JSON.stringify({ pin: ins[0].value, newPin: ins[1].value, again: ins[2].value }); ks.forEach(([k]) => drafts.delete(k)); set('m.pv.changePin:' + s, v); })); }
+  if (c.audit) {
+    w.appendChild($('h3', 'vaulthead', L('pv.audit')));
+    const ok = $('div', 'hint memstatus', L(c.audit.intact ? 'pv.audit.intact' : 'pv.audit.changed')); if (!c.audit.intact) ok.style.color = 'var(--warn)'; ok.setAttribute('role', 'status'); w.appendChild(ok);
+    if (!c.audit.rows.length) w.appendChild($('div', 'hint memstatus', L('pv.audit.none')));
+    for (const a of c.audit.rows) { const r = $('div', 'kv'); r.append($('div', null, a.line), $('time', 'hint', clock(a.at))); w.appendChild(r); }
+  }
+  return w;
+}
 function vaultItem(c) {
   const wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text'); t.append($('div', 'label', c.label), $('div', 'hint', c.hint));
   if (c.revealed !== null) { const v = $('div', 'hpre vaultkey', c.revealed); v.setAttribute('role', 'status'); t.appendChild(v); }
@@ -342,6 +403,8 @@ function row(c) {
   if (c.kind === 'list') return listRow(c);
   if (c.kind === 'memory') return memoryRow(c);
   if (c.kind === 'memoryBar') return memoryBar(c);
+  if (c.kind === 'privatePeople') return pvPeople(c);
+  if (c.kind === 'privateBar') return pvBar(c);
   if (c.kind === 'catalogBar') return catalogBar(c);
   if (c.kind === 'catalogRow') return catalogRow(c);
   // A choice shows its options where it is: a few short ones as buttons, more as a menu, a list with notes below its label.

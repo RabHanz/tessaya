@@ -1,3 +1,4 @@
+import { PRIVATE_ASSISTANT_OPS } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";
@@ -24,7 +25,18 @@ describe("the phone page files", () => {
       "/maskable-512.png",
     ]);
   });
-  it("sets text only through textContent, never innerHTML", () => {
-    expect(SCRIPT).not.toContain("innerHTML");
+  it("sets text only through textContent, never as markup", () => {
+    for (const markup of ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"])
+      expect(SCRIPT).not.toContain(markup);
+  });
+  it("keeps what a private store holds in memory only: no browser storage, no service worker cache", () => {
+    for (const storage of ["localStorage", "sessionStorage", "indexedDB", "caches"])
+      expect(SCRIPT + SERVICE_WORKER).not.toContain(storage);
+  });
+  it("has a Memories view that asks only for the ops the phone is allowed", () => {
+    expect(SCRIPT).toContain('["mem", "Memories"]');
+    const ops = [...SCRIPT.matchAll(/op: "(\w+)"/g)].map((m) => m[1]!);
+    expect(ops).toEqual(expect.arrayContaining(["people", "list", "unlock", "setup", "export"]));
+    for (const op of ops) expect(PRIVATE_ASSISTANT_OPS.has(op), op).toBe(false);
   });
 });

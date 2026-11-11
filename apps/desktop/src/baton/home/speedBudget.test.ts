@@ -15,8 +15,9 @@ import { TABS, tabOf } from "./tabs.ts";
 describe("the window's speed budget", () => {
   it("keeps the page small: script, stylesheet apart from fonts, and the whole document", () => {
     const cssWithoutFonts = APP_CSS.replace(/url\(data:[^)]*\)/g, "url()");
-    // 121,000 until History's redesign (about 6,500 for its rows, actions and day summary).
-    expect(APP_SCRIPT.length).toBeLessThan(128_500);
+    // 121,000 until History's redesign (about 6,500 for its rows, actions and day summary); 128,500 until
+    // Memory's People area (about 9,500 for private stores: their forms, audit and words).
+    expect(APP_SCRIPT.length).toBeLessThan(138_000);
     expect(cssWithoutFonts.length).toBeLessThan(45_000); // 43,000 until History's redesign
     expect(HOME_DOCUMENT.length).toBeLessThan(420_000);
   });

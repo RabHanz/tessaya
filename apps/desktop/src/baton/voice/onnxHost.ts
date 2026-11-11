@@ -7,6 +7,8 @@
 import {
   createOpenWakeWordScorer,
   createSileroScorer,
+  createSpeakerEmbedder,
+  type SpeakerEmbedder,
   type OpenWakeWordPaths,
   type OpenWakeWordScorer,
   type SileroScorer,
@@ -15,20 +17,32 @@ import {
 export type OnnxRequest =
   | { readonly op: "open-wake"; readonly id: number; readonly paths: OpenWakeWordPaths }
   | { readonly op: "open-vad"; readonly id: number; readonly path: string }
+  | {
+      readonly op: "open-speaker";
+      readonly id: number;
+      readonly path: string;
+      readonly model: string;
+    }
+  | { readonly op: "speaker"; readonly id: number; readonly pcm: Int16Array }
   | { readonly op: "wake" | "vad"; readonly id: number; readonly chunk: Int16Array }
   | { readonly op: "reset-wake" | "reset-vad" };
 
 export type OnnxReply =
-  | { readonly id: number; readonly value: number | ReadonlyArray<number> }
+  | { readonly id: number; readonly value: number | ReadonlyArray<number> | null }
   | { readonly id: number; readonly error: string };
 
 /** One request at a time, in order, so a reset never lands in the middle of a score. */
 export const serveOnnx = (
   post: (reply: OnnxReply) => void,
-  make = { wake: createOpenWakeWordScorer, vad: createSileroScorer },
+  make: {
+    readonly wake: typeof createOpenWakeWordScorer;
+    readonly vad: typeof createSileroScorer;
+    readonly speaker?: typeof createSpeakerEmbedder;
+  } = { wake: createOpenWakeWordScorer, vad: createSileroScorer, speaker: createSpeakerEmbedder },
 ) => {
   let wake: OpenWakeWordScorer | null = null;
   let vad: SileroScorer | null = null;
+  let speaker: SpeakerEmbedder | null = null;
   let queue: Promise<void> = Promise.resolve();
   const run = async (request: OnnxRequest) => {
     switch (request.op) {
@@ -44,6 +58,14 @@ export const serveOnnx = (
       case "vad":
         if (vad === null) throw new Error("no speech model open");
         return post({ id: request.id, value: await vad.score(request.chunk) });
+      case "open-speaker":
+        speaker = await (make.speaker ?? createSpeakerEmbedder)(request.path, request.model);
+        return post({ id: request.id, value: 0 });
+      case "speaker": {
+        if (speaker === null) throw new Error("no speaker model open");
+        const vector = await speaker.embed(request.pcm);
+        return post({ id: request.id, value: vector === null ? null : Array.from(vector) });
+      }
       case "reset-wake":
         return wake?.reset();
       case "reset-vad":
@@ -202,6 +224,22 @@ export const createOnnxHost = (input: {
         chunkSamples: await open(request),
         score: (chunk) => call({ op: "vad", id: (id += 1), chunk }, 0),
         reset: () => child?.postMessage({ op: "reset-vad" }),
+        close: release(request),
+      };
+    },
+    /** The speaker model (VOICE-ID). While the worker is down every clip is unscored, so the turn is unverified. */
+    speaker: async (path: string, model: string): Promise<HostedScorer<SpeakerEmbedder>> => {
+      const request = { op: "open-speaker" as const, id: (id += 1), path, model };
+      await open(request);
+      return {
+        model,
+        embed: async (pcm) => {
+          const value = await call<ReadonlyArray<number> | null>(
+            { op: "speaker", id: (id += 1), pcm },
+            null,
+          );
+          return value === null ? null : Float32Array.from(value);
+        },
         close: release(request),
       };
     },

@@ -12,6 +12,7 @@
  * @module baton-voice/core
  */
 import type { EchoGuard } from "./echoGuard.ts";
+import type { SpeakerIdentity } from "./speaker.ts";
 import type { ContextBusState } from "@t3tools/baton-shared/contextBus";
 import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
 import {
@@ -306,6 +307,13 @@ export const createVoiceCore = (input: {
   readonly echo?: EchoGuard;
   /** Headphones: the mic cannot hear the voice, so it listens all the time and his speech over it is a barge-in. */
   readonly speakerMode?: () => "speakers" | "headphones";
+  /** Voice ID: whose voice a turn is, and whether it may open a turn or cut in. Absent: everyone is heard as before. */
+  readonly speaker?: {
+    readonly hear: (pcm: Int16Array, use: "turn" | "barge") => Promise<SpeakerIdentity>;
+    readonly admits: (identity: SpeakerIdentity, use: "turn" | "barge") => boolean;
+    /** Speech over her voice needed before a cut-in is judged by voice; null cuts in at once, as before. */
+    readonly bargeMs: () => number | null;
+  };
 }): BatonVoiceCore => {
   const timings = input.timings ?? DEFAULT_TIMINGS;
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
@@ -429,8 +437,11 @@ export const createVoiceCore = (input: {
     readonly target: string | null;
     readonly wake: string | null;
     readonly cutIn: CutIn | null;
+    readonly speaker: SpeakerIdentity | null;
     readonly go: Promise<() => Promise<RouteOutcome>>;
   } | null = null;
+  /** Whose voice the words going to the router are (Voice ID); null when unknown or typed. */
+  let speakerNow: SpeakerIdentity | null = null;
   const wakeOf = (text: string) => namedWake(text, timings.wakeWords ?? []) ?? addressee;
   const thinkAhead = (text: string, cutIn: CutIn | null) => {
     ahead = null;
@@ -440,11 +451,12 @@ export const createVoiceCore = (input: {
     const [effect] = effects;
     if (effects.length !== 1 || effect?.kind !== "command") return;
     const wake = wakeOf(text);
-    const context = { bus, now: now(), mostRecentWorkSessionId: lastTarget, wake, cutIn };
+    const speaker = speakerNow;
+    const context = { bus, now: now(), mostRecentWorkSessionId: lastTarget, wake, cutIn, speaker };
     const go = prepare(effect, context);
     // A discarded one fails quietly; a kept one fails where it is awaited.
     go.catch(() => undefined);
-    ahead = { effect, bus, target: lastTarget, wake, cutIn, go };
+    ahead = { effect, bus, target: lastTarget, wake, cutIn, speaker, go };
   };
   let transcribing = 0;
   /** Where each segment still being recognised began, so held words wait for speech that may join them. */
@@ -511,7 +523,8 @@ export const createVoiceCore = (input: {
         early.bus === bus &&
         early.target === lastTarget &&
         early.wake === addressee &&
-        early.cutIn === steer;
+        early.cutIn === steer &&
+        early.speaker === speakerNow;
       const outcome = await Promise.race([
         thought
           ? // He may carry on while it is still being thought out: then it never acts.
@@ -522,6 +535,7 @@ export const createVoiceCore = (input: {
               mostRecentWorkSessionId: lastTarget,
               wake: addressee,
               cutIn: steer,
+              speaker: speakerNow,
             }),
         ...(turn ? [dropped] : []),
       ]);
@@ -585,6 +599,7 @@ export const createVoiceCore = (input: {
       const cleaned = text.trim();
       if (NOISE.test(cleaned)) return;
       lastTranscript = cleaned;
+      speakerNow = null;
       emit({ type: "transcript", text: cleaned, at: now() });
       await dispatch({ type: "utterance", text: cleaned, at: now() });
     });
@@ -660,6 +675,11 @@ export const createVoiceCore = (input: {
         .transcribe(machine.mode === "dictation" ? trimQuietTail(pcm) : pcm)
         .finally(() => (recogniseMs = Date.now() - began));
     };
+    // Whose voice, in parallel with recognition and from the same audio; dictation is his keys' own.
+    const who =
+      input.speaker === undefined || machine.mode === "dictation"
+        ? null
+        : input.speaker.hear(pcm, "turn").catch(() => null);
     const heard = (
       waitFor === null ? recognise() : waitFor.then((ok) => (ok ? recognise() : ""))
     ).finally(() => {
@@ -706,6 +726,11 @@ export const createVoiceCore = (input: {
       ) {
         return emit({ type: "nothing" });
       }
+      const identity = dictating || who === null ? null : await who;
+      // Voice ID: a voice the switches keep out opens no turn and gets no reply (the wake drop).
+      if (identity !== null && input.speaker?.admits(identity, "turn") === false)
+        return emit({ type: "dropped", text: cleaned, reason: `${identity.kind} voice` });
+      if (!dictating) speakerNow = identity;
       const said = turn.prefix === null ? cleaned : `${turn.prefix} ${cleaned}`;
       // In the follow-up window nobody said the name: only what reads as meant for Tessaya goes on, and
       // the rest is let go without extending the window, so a TV in the room cannot keep it open.
@@ -1083,6 +1108,28 @@ export const createVoiceCore = (input: {
   let scoredSpeech = 0;
   let ducked = false;
   let cueUntil = 0;
+  /** Voice ID: speech over her voice being judged before it may cut in (D3). She stays ducked meanwhile. */
+  let judging: { readonly from: number; readonly ms: number; asked: boolean } | null = null;
+  const judgeBarge = (j: NonNullable<typeof judging>) => {
+    j.asked = true;
+    const pcm = joined(recent.filter((r) => r.end > j.from).map((r) => r.frame));
+    void (input.speaker?.hear(pcm, "barge") ?? Promise.resolve(null))
+      .catch(() => null)
+      .then((identity) => {
+        if (judging !== j || disposed) return;
+        judging = null;
+        bargeRun = 0;
+        if (ducked) emit({ type: "barge_duck", on: false });
+        ducked = false;
+        if (identity !== null && input.speaker?.admits(identity, "barge") === false) {
+          emit({ type: "dropped", text: "", reason: `${identity.kind} voice over her` });
+          return;
+        }
+        if (!speaking) return;
+        acceptWake(1, j.from, null, true);
+        enqueue(woke(null));
+      });
+  };
 
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
@@ -1387,13 +1434,21 @@ export const createVoiceCore = (input: {
       bargeRun = flagged ? bargeRun + frame.length : 0;
       if (flagged) lastNearEndAt = samples;
       if (bargeRun >= msToSamples(NEAR_RUN_MS)) lastNearRunAt = samples;
-      if (bargeRun >= msToSamples(BARGE_MS)) {
+      if (judging !== null) {
+        // Ducked while the voice is judged: once there is enough of it, the verdict decides.
+        if (samples - judging.from >= msToSamples(judging.ms) && !judging.asked)
+          judgeBarge(judging);
+      } else if (bargeRun >= msToSamples(BARGE_MS)) {
         const onset = bargeRun;
         bargeRun = 0;
-        if (ducked) emit({ type: "barge_duck", on: false });
-        ducked = false;
-        acceptWake(1, samples - onset, null, true);
-        enqueue(woke(null));
+        const ms = input.speaker?.bargeMs() ?? null;
+        if (ms !== null) judging = { from: samples - onset, ms, asked: false };
+        else {
+          if (ducked) emit({ type: "barge_duck", on: false });
+          ducked = false;
+          acceptWake(1, samples - onset, null, true);
+          enqueue(woke(null));
+        }
       } else if (bargeRun >= msToSamples(DUCK_MS) && !ducked) {
         ducked = true;
         emit({ type: "barge_duck", on: true });
@@ -1401,8 +1456,9 @@ export const createVoiceCore = (input: {
         ducked = false;
         emit({ type: "barge_duck", on: false });
       }
-    } else if (bargeRun > 0) {
+    } else if (bargeRun > 0 || judging !== null) {
       bargeRun = 0;
+      judging = null;
       if (ducked) emit({ type: "barge_duck", on: false });
       ducked = false;
     }

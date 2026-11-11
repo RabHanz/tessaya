@@ -1,14 +1,17 @@
 import type { ComposerDictationMessage } from "@t3tools/baton-contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { waveEngine } from "@t3tools/baton-shared/waveform";
+
 import { COMMIT_MS, createComposerDictation, routePill } from "./composerDictation.ts";
 
 /** A chat box that answers as `answer` says, or never when it returns null. */
-const box = (answer: (m: ComposerDictationMessage) => boolean | null) => {
+const box = (answer: (m: ComposerDictationMessage) => boolean | null, focused = true) => {
   const sent: ComposerDictationMessage[] = [];
   const actions: boolean[] = [];
   const composer = createComposerDictation({
     target: () => ({
+      focused: () => focused,
       send: (m) => {
         sent.push(m);
         const ok = answer(m);
@@ -84,5 +87,34 @@ describe("dictation into our own chat box", () => {
     active = false;
     pill.replay();
     expect(shown).toEqual(["dictating"]);
+  });
+
+  it("anywhere else the pill shows at once: no claim is asked of a window whose chat box is not focused", async () => {
+    const { composer, sent } = box(() => true, false);
+    expect(await composer.start("held")).toBe(false);
+    expect(composer.active()).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
+  it("the press and the recording that follows are one dictation, its mode told, never restarted", async () => {
+    const { composer, sent } = box(() => true);
+    void composer.start("held");
+    expect(await composer.start("free")).toBe(true);
+    expect(sent.map((m) => m.type)).toEqual(["start", "mode"]);
+  });
+
+  it("the composer's waveform gets the frame's RMS in dBFS, as the pill's does", () => {
+    const levels: number[] = [];
+    const pill = routePill(
+      {
+        on: () => undefined,
+        micLevel: (_value: number, _shown?: number, _frame?: Int16Array) => undefined,
+        words: () => undefined,
+      },
+      { active: () => true, level: (db) => levels.push(db), words: () => undefined },
+    );
+    const frame = new Int16Array(640).fill(3277);
+    pill.micLevel(0.5, 0.5, frame);
+    expect(levels).toEqual([waveEngine().frameDb(frame)]);
   });
 });

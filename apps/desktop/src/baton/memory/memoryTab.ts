@@ -217,6 +217,9 @@ export const createMemoryTab = (input: {
     /** Opening the tab reads the server; it is read again after every change. */
     load,
     act,
+    /** How many live memories, once the server has answered. */
+    count: (): number | null =>
+      items === null ? null : items.filter((i) => i.supersededBy === null && !i.proposed).length,
     controls: (): ReadonlyArray<HomeControl> =>
       items === null
         ? noteControls(input.notes.list())

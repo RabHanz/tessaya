@@ -414,6 +414,8 @@ export const make = Effect.gen(function* () {
         ? DateTime.formatIso(DateTime.makeUnsafe(ms + EPISODE_TTL_DAYS * DAY_MS))
         : null);
     const proposed = draft.tainted === true && draft.source !== "user";
+    // An import keeps the date it was first written where it came from; anything else is written now.
+    const born = draft.source === "import" && draft.createdAt !== undefined ? draft.createdAt : at;
     yield* sql`
       INSERT INTO fabric_memory_items (
         id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
@@ -421,7 +423,7 @@ export const make = Effect.gen(function* () {
       ) VALUES (
         ${id}, ${draft.kind}, ${text}, ${draft.source}, ${draft.sourceRef ?? null}, ${scope},
         ${scopeRef}, ${startingConfidence(draft)}, ${draft.pinned === true ? 1 : 0},
-        ${proposed ? 1 : 0}, ${at}, ${at}, NULL, ${expiresAt}, NULL, ${origin}, ${at}
+        ${proposed ? 1 : 0}, ${born}, ${born}, NULL, ${expiresAt}, NULL, ${origin}, ${at}
       )
     `.pipe(Effect.orDie);
     const created = yield* requireItem(id);

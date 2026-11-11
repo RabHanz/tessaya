@@ -29,7 +29,7 @@ export const ISLAND_CSS = `
 #p.isl #row>*{position:absolute;left:0;top:0;margin:0}
 #p.isl #row>#wv{display:contents}
 #p.isl #wv>*{position:absolute;left:0;top:0;margin:0}
-#p.isl :is(#mk,#gl,#d,#t,#c,#st,#bal){display:none!important}
+#p.isl :is(#mk,#gl,#d,#t,#c,#st){display:none!important}
 #p.isl[data-esc=on] #dx{color:var(--fail)}
 :root[data-design=lively] #p.isl{left:50%;top:auto;bottom:${PILL_BELOW}px;width:auto!important;height:auto!important;translate:-50% 0;clip-path:none}
 :root[data-design=lively] #p.isl #row{position:relative;width:auto;height:auto}
@@ -79,6 +79,26 @@ export const flowWords = (
 };
 
 /**
+ * Where the island's head sits in a window `winW` wide, the capsule `ww` wide: the capsule centred in the window, the
+ * waveform at the capsule's centre in every state, the dot just left of it as in the pill, ✕ and ✓ at the ends.
+ * `parts` are the measured [width, height] of each. Self-contained: it runs in the pill's page.
+ */
+export const islandHead = (
+  winW: number,
+  ww: number,
+  parts: {
+    readonly dx: readonly [number, number];
+    readonly dv: readonly [number, number];
+    readonly mic: readonly [number, number];
+    readonly w: readonly [number, number];
+  },
+): { x0: number; dx: number; dv: number; mic: number; w: number } => {
+  const x0 = (winW - ww) / 2;
+  const w = x0 + (ww - parts.w[0]) / 2;
+  return { x0, dx: x0 + 4, dv: x0 + ww - 4 - parts.dv[0], mic: w - 8 - parts.mic[0], w };
+};
+
+/**
  * How far D's text scrolls up so its last line stays in the field, in whole lines, as a textarea does: its first line
  * starts `top` down the box, and the box is `height` tall.
  */
@@ -97,7 +117,7 @@ const D=${variant === "D"},LIVE_LINES=D?99:5,MAXW=${ISLAND_WIDTH},FLOW01=[{at:0,
 // E's measures come from the design on show (islandLook, at each start); D only uses PH and PAD for nothing.
 let PH=26,PBASE=76,PAD=8,PADX=12,WT=0,TMAX=MAXW-24,IS={lively:false,cr:20};
 const SHRINK_MS=D?0:600;
-const flowWords=${flowWords.toString()},ghostScroll=${ghostScroll.toString()};
+const flowWords=${flowWords.toString()},ghostScroll=${ghostScroll.toString()},islandHead=${islandHead.toString()};
 let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0,TOP=0,BOXH=0,FONT=14,EMPTY=false;
 // D: the field's own font, line height, text width, where the caret sits on its line, and the text box it scrolls in.
 const setField=(fontPx,linePx,width,indent,top,height)=>{LINE=linePx;FW=width;INDENT=indent;TOP=top;BOXH=height;FONT=fontPx;for(const el of[vp,mE])el.style.font='400 '+fontPx+'px/'+linePx+'px var(--sans)';};
@@ -211,17 +231,17 @@ const paintE=(ww,h,sc,tuck)=>{const p_=$('p'),vc=$('vc'),down=document.body.clas
  for(const id of['dx','dv'])$(id).style.opacity=String(1-.65*tuck);
  let vx,vy,vw,vh0,bot;
  if(!IS.lively){
-  const vis=PH+h,top=down?${PILL_LINE}-PH:BH-${PILL_BELOW}-vis,x0=(MAXW-ww)/2,r=PH/2+(IS.cr-PH/2)*clamp(h/24);
+  // Centred in the window it is actually in: at a fractional display scale the window can come out a pixel off 420.
+  const head=islandHead(innerWidth,ww,IS),x0=head.x0;
+  const vis=PH+h,top=down?${PILL_LINE}-PH:BH-${PILL_BELOW}-vis,r=PH/2+(IS.cr-PH/2)*clamp(h/24);
   p_.style.clipPath='inset('+top.toFixed(2)+'px '+x0.toFixed(2)+'px '+(BH-top-vis).toFixed(2)+'px '+x0.toFixed(2)+'px round '+r.toFixed(2)+'px)';
   rimTo(x0,top,ww,vis,r);VIS={x:x0,y:top,w:ww,h:vis};
-  // The head is the pill's own row: ✕ and ✓ at its ends, the dot and the waveform as in the pill; with words and no ✓/✕
-  // the waveform moves to the card's corner as the drafts' one-line card has it.
-  const k=p_.dataset.voice==='on'?0:clamp(h/LINE),cy=(e)=>top+(PH-e[1])/2;
-  $('dx').style.transform='translate('+(x0+4).toFixed(2)+'px,'+cy(IS.dx).toFixed(2)+'px)';
-  $('dv').style.transform='translate('+(x0+ww-4-IS.dv[0]).toFixed(2)+'px,'+cy(IS.dv).toFixed(2)+'px)';
-  $('mic').style.transform='translate('+(x0+12).toFixed(2)+'px,'+cy(IS.mic).toFixed(2)+'px)';$('mic').style.opacity=String(1-k);
-  const wx=x0+(ww-IS.w[0])/2,wy=cy(IS.w);
-  $('w').style.transform='translate('+(wx+(x0+PADX-wx)*k).toFixed(2)+'px,'+(wy+(top+10-wy)*k).toFixed(2)+'px)';
+  // The head is the pill's own row and stays centred as the card grows under it: ✕ and ✓ at its ends.
+  const cy=(e)=>top+(PH-e[1])/2;
+  $('dx').style.transform='translate('+head.dx.toFixed(2)+'px,'+cy(IS.dx).toFixed(2)+'px)';
+  $('dv').style.transform='translate('+head.dv.toFixed(2)+'px,'+cy(IS.dv).toFixed(2)+'px)';
+  $('mic').style.transform='translate('+head.mic.toFixed(2)+'px,'+cy(IS.mic).toFixed(2)+'px)';
+  $('w').style.transform='translate('+head.w.toFixed(2)+'px,'+cy(IS.w).toFixed(2)+'px)';
   vx=x0+PADX;vy=top+PH+WT;vw=ww;bot=h-PAD+4;}
  else{
   // Lively: the pebbles stay put; the card above them (below them when the window grew down) is cut to the words.
