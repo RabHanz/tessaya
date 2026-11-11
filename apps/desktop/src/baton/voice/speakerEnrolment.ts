@@ -247,7 +247,11 @@ export const SAVED_PERSON_LINES = [
 
 /** A profile id from a name: never "owner", never one already taken. */
 export const personId = (name: string, taken: ReadonlyArray<string>): string => {
-  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "person";
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "person";
   const free = (id: string) => id !== "owner" && !taken.includes(id);
   if (free(base)) return base;
   for (let n = 2; ; n += 1) if (free(`${base}-${n}`)) return `${base}-${n}`;
