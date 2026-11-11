@@ -39,14 +39,17 @@ export interface SpeakerPolicy {
 }
 
 /**
- * 3D-Speaker CAM++ (VoxCeleb), voiceid-bench REPORT 2026-11-08, enrolment of 60 s or more:
- * listen 0.10 (about 1% of his 2 s clips missed), steer at the equal-error point (0.22 on one 2 s clip, 0.28 on
- * 3 averaged), act at 0.1% false accepts (0.40 on a 4 s clip, 0.36 on 3 averaged 2 s clips).
+ * 3D-Speaker CAM++ (VoxCeleb), raw cosine, 60-clip seed. Calibrated 2026-11-11 on his held-out Wispr clips and on
+ * 173 public speakers enrolled the same way, against 16k-690k impostor trials (Common Voice, VoxCeleb1, EdACC,
+ * LibriSpeech, South Asian TTS). Each cut-off holds for both him and the public speakers:
+ * - listen (a cut-in, one 2 s clip): misses 1.4% of his and 2.1% of others' clips; lets in 0.6-2.9% of other voices.
+ * - steer (a turn, 2-10 s): FRR 1.7% / 1.9%, FAR 1.2% / 0.14%.
+ * - act (verified, one 4 s clip): FAR 0.09% / 0.01%, FRR 1.6% / 2.8%; on 3 averaged 2 s clips FAR 0.03%.
  */
 export const CAMPLUS_POLICY: Omit<SpeakerPolicy, "model"> = {
   minSpeechMs: 2_000,
-  single: { listen: 0.1, steer: 0.22, act: 0.4 },
-  averaged: { listen: 0.1, steer: 0.28, act: 0.36 },
+  single: { listen: 0.36, steer: 0.45, act: 0.53 },
+  averaged: { listen: 0.36, steer: 0.45, act: 0.47 },
   margin: 0.05,
 };
 /** One clip must be this long to be scored at the "act" level on its own. */
