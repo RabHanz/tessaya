@@ -20,6 +20,7 @@ import {
   BATON_COMMITMENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
+  BATON_HOME_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
@@ -203,6 +204,10 @@ export function createBatonWorkSessionAtoms<R, E>(
     cloudApprove: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:cloud-approve",
       tag: BATON_CLOUD_WS_METHODS.approve,
+    }),
+    homeCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:home",
+      tag: BATON_HOME_WS_METHODS.call,
     }),
     commitmentsList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-list",
