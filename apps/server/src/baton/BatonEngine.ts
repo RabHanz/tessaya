@@ -36,12 +36,16 @@ import type { BatonSessionStateInput } from "@t3tools/baton-contracts";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
+import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { ProjectService } from "../project/ProjectService.ts";
@@ -296,9 +300,39 @@ export const make = Effect.gen(function* () {
   const uuid = random.uuidV4();
   const commandId = (tag: string) => Effect.map(uuid, (id) => CommandId.make(`baton:${tag}:${id}`));
 
-  const threadShells = orchestrator.getShellSnapshot().pipe(
-    Effect.map((snapshot) => snapshot.threads),
-    Effect.catchCause(() => Effect.succeed([] as ReadonlyArray<OrchestrationV2ThreadShell>)),
+  const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
+  const scope = yield* Scope.Scope;
+  type Shells = ReadonlyArray<OrchestrationV2ThreadShell>;
+  const readShells = orchestrator
+    .getShellSnapshot({ location: "active" })
+    .pipe(Effect.map((snapshot): Shells => snapshot.threads));
+  // Under memory pressure one read took 15 s and every poll meanwhile queued another on the
+  // reader pool, so callers share one read per event high-water mark; a caller leaving never cancels it.
+  type ReadError = Effect.Error<typeof readShells>;
+  let shared:
+    | { readonly sequence: number; readonly shells: Deferred.Deferred<Shells, ReadError> }
+    | undefined;
+  const sharedRead = (sequence: number) =>
+    Effect.suspend(() => {
+      if (shared?.sequence === sequence) return Deferred.await(shared.shells);
+      const entry = { sequence, shells: Deferred.makeUnsafe<Shells, ReadError>() };
+      shared = entry;
+      return readShells.pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            if (Exit.isFailure(exit) && shared === entry) shared = undefined;
+          }),
+        ),
+        Effect.exit,
+        Effect.flatMap((exit) => Deferred.done(entry.shells, exit)),
+        Effect.forkIn(scope),
+        Effect.andThen(Deferred.await(entry.shells)),
+      );
+    });
+  const threadShells = applicationEvents.latestApplicationSequence.pipe(
+    Effect.option,
+    Effect.flatMap(Option.match({ onNone: () => readShells, onSome: sharedRead })),
+    Effect.catchCause(() => Effect.succeed([] as Shells)),
   );
 
   const threadShell = (threadId: ThreadId) =>

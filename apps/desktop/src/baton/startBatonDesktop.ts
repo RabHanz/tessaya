@@ -41,6 +41,7 @@ import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { markPhase, startStallWatch } from "./lifecycle/mainStall.ts";
+import { liftInheritedPriority } from "./lifecycle/processPriority.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -152,6 +153,10 @@ export const startBatonDesktop = Effect.gen(function* () {
       });
     }
     markPhase("start-guard:end");
+    if (environment.platform === "win32") {
+      const inherited = liftInheritedPriority();
+      if (inherited !== null) lifecycle.note("priority-lifted", { from: inherited });
+    }
     Electron.app.on("render-process-gone", (_event, contents, details) =>
       lifecycle.note("render-process-gone", {
         reason: details.reason,
