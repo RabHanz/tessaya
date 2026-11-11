@@ -83,8 +83,8 @@ export const createSpeakerIdentity = (input: {
       policy: input.policy,
     };
     const identity = identityOf(
-      // Turns too are judged at "steer": "listen" (0.10) lets about 32% of other voices through (voiceid-bench).
-      decideSpeaker({ ...base, use: "steer" }),
+      // A cut-in is one 2 s clip and stops nothing for good, so it is judged at "listen"; a turn at "steer".
+      decideSpeaker({ ...base, use: use === "barge" ? "listen" : "steer" }),
       decideSpeaker({ ...base, use: "act" }),
       at,
     );
