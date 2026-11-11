@@ -28,6 +28,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
+import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
@@ -121,10 +122,16 @@ function makeTestAdapter(input: {
   readonly releaseFirstTurn?: Deferred.Deferred<void>;
   readonly backgroundWork?: Ref.Ref<boolean>;
   readonly closedSessions?: Ref.Ref<ReadonlyArray<string>>;
+  /** Gives the instance a movable login and its sessions a switchAccount that records the target. */
+  readonly switchedAccounts?: Ref.Ref<ReadonlyArray<string>>;
 }): ProviderAdapter.ProviderAdapterV2["Service"] {
+  const switchedAccounts = input.switchedAccounts;
   return {
     instanceId: input.instanceId,
     driver: input.driver,
+    ...(switchedAccounts === undefined
+      ? {}
+      : { accountLogin: { instanceId: input.instanceId, secret: Redacted.make("test-login") } }),
     getCapabilities: () => Effect.succeed(input.capabilities),
     planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
     openSession: (sessionInput) =>
@@ -156,6 +163,14 @@ function makeTestAdapter(input: {
           providerSessionId: sessionInput.providerSessionId,
           providerSession,
           events: Stream.fromPubSub(events),
+          ...(switchedAccounts === undefined
+            ? {}
+            : {
+                switchAccount: (login) =>
+                  Ref.update(switchedAccounts, (ids) => [...ids, login.instanceId]).pipe(
+                    Effect.as(true),
+                  ),
+              }),
           ...(input.pendingBackgroundWork === undefined
             ? {}
             : {
@@ -2597,33 +2612,65 @@ describe("orchestration v2 provider switching", () => {
   it.live.each([
     [
       "detaches the previous instance's session when a send hands off to another instance",
-      { background: false, queued: false, sharedHistory: false },
+      { background: false, queued: false, sharedHistory: false, hotSwap: false },
     ],
     [
-      "refuses the hand-off while the previous instance still runs background work",
-      { background: true, queued: false, sharedHistory: false },
+      "keeps a busy previous session running when an immediate hand-off starts",
+      { background: true, queued: false, sharedHistory: false, hotSwap: false },
     ],
     [
       "keeps a busy previous session running when a queued hand-off starts",
-      { background: true, queued: true, sharedHistory: false },
+      { background: true, queued: true, sharedHistory: false, hotSwap: false },
     ],
     [
-      "holds a queued account switch while the replaced session still runs background work",
-      { background: true, queued: true, sharedHistory: true },
+      "holds a queued account switch when the busy session cannot take the new login",
+      { background: true, queued: true, sharedHistory: true, hotSwap: false },
     ],
-  ] as const)("%s", ([, { background, queued, sharedHistory }]) =>
+    [
+      "moves a busy session to the new account in place when the switch is sent",
+      { background: true, queued: false, sharedHistory: true, hotSwap: true },
+    ],
+    [
+      "moves a busy session to the new account in place when a queued switch starts",
+      { background: true, queued: true, sharedHistory: true, hotSwap: true },
+    ],
+  ] as const)("%s", ([, { background, queued, sharedHistory, hotSwap }]) =>
     Effect.scoped(
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("handoff-releases-session");
         const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
         const backgroundWork = yield* Ref.make(background);
         const closedSessions = yield* Ref.make<ReadonlyArray<string>>([]);
+        const switchedAccounts = yield* Ref.make<ReadonlyArray<string>>([]);
         const firstStarted = yield* Deferred.make<void>();
         const releaseFirst = yield* Deferred.make<void>();
         const secondSelection: ModelSelection = {
           ...CLAUDE_MODEL_SELECTION,
           instanceId: ProviderInstanceId.make("claude-second-account"),
         };
+        // The second turn after an in-place move: same session, same provider thread, new login.
+        const assertMovedInPlace = Effect.fn(function* (
+          projection: OrchestrationV2ThreadProjection,
+          firstSessionId: string | undefined,
+        ) {
+          assert.equal(projection.thread.providerInstanceId, secondSelection.instanceId);
+          assert.deepEqual(
+            projection.runs.map((run) => [run.providerInstanceId, run.status]),
+            [
+              [CLAUDE_MODEL_SELECTION.instanceId, "completed"],
+              [CLAUDE_MODEL_SELECTION.instanceId, "completed"],
+            ],
+          );
+          assert.deepEqual(yield* Ref.get(switchedAccounts), [secondSelection.instanceId]);
+          assert.deepEqual(yield* Ref.get(closedSessions), []);
+          assert.deepEqual(
+            projection.providerSessions.map((session) => [session.id, session.status]),
+            [[firstSessionId, "ready"]],
+          );
+          const turns = yield* Ref.get(capturedTurns);
+          assert.lengthOf(turns, 2);
+          assert.equal(turns[1]?.providerThreadId, turns[0]?.providerThreadId);
+        });
         const adapters = [
           makeTestAdapter({
             instanceId: CLAUDE_MODEL_SELECTION.instanceId,
@@ -2635,6 +2682,7 @@ describe("orchestration v2 provider switching", () => {
             backgroundWork,
             closedSessions,
             ...(queued ? { holdFirstTurn: firstStarted, releaseFirstTurn: releaseFirst } : {}),
+            ...(hotSwap ? { switchedAccounts } : {}),
           }),
           makeTestAdapter({
             instanceId: secondSelection.instanceId,
@@ -2643,6 +2691,7 @@ describe("orchestration v2 provider switching", () => {
             modelSelection: secondSelection,
             responseByRunOrdinal: { 2: "Second account complete" },
             capturedTurns,
+            ...(hotSwap ? { switchedAccounts } : {}),
           }),
         ];
         // Without a shared continuation key, each Claude instance owns its own native history.
@@ -2739,6 +2788,11 @@ describe("orchestration v2 provider switching", () => {
               );
               return;
             }
+            if (hotSwap) {
+              yield* worker.drain();
+              yield* assertMovedInPlace(yield* waitForIdle(handoffThreadId), firstSession?.id);
+              return;
+            }
             // Resuming the native thread beside the busy session would fork its history.
             assert.deepEqual(
               afterQueue.runs.map((run) => [run.status, run.queueHeld === true]),
@@ -2778,17 +2832,38 @@ describe("orchestration v2 provider switching", () => {
             // Native subagents live only in the adapter's roster, so the projection's
             // pendingBackgroundTasks stays empty while the probe still reports work.
             assert.deepEqual(afterFirst.providerThreads[0]?.pendingBackgroundTasks ?? [], []);
-            const refused = yield* send(2, secondSelection, ":refused").pipe(Effect.flip);
-            assert.include(String(refused.cause), "still running background agents or commands");
-            const unchanged = yield* orchestrator.getThreadProjection(handoffThreadId);
-            assert.lengthOf(unchanged.runs, 1);
-            assert.deepEqual(yield* Ref.get(closedSessions), []);
-            assert.equal(unchanged.thread.providerInstanceId, CLAUDE_MODEL_SELECTION.instanceId);
+            // Background work never blocks the send.
+            yield* send(2, secondSelection);
+            yield* worker.drain();
+            const afterBusySend = yield* waitForIdle(handoffThreadId);
+            yield* worker.drain();
+            if (hotSwap) {
+              yield* assertMovedInPlace(afterBusySend, firstSession?.id);
+              // Choosing the session's own account again moves its login back.
+              yield* send(3, CLAUDE_MODEL_SELECTION);
+              yield* worker.drain();
+              yield* waitForIdle(handoffThreadId);
+              assert.deepEqual(yield* Ref.get(switchedAccounts), [
+                secondSelection.instanceId,
+                CLAUDE_MODEL_SELECTION.instanceId,
+              ]);
+              return;
+            }
+            // The hand-off runs in its own session; the busy one stays up until its work ends.
             assert.deepEqual(
-              unchanged.providerSessions.map((session) => [session.id, session.status]),
-              [[firstSession!.id, "ready"]],
+              afterBusySend.runs.map((run) => [run.providerInstanceId, run.status]),
+              [
+                [CLAUDE_MODEL_SELECTION.instanceId, "completed"],
+                [secondSelection.instanceId, "completed"],
+              ],
             );
-            yield* Ref.set(backgroundWork, false);
+            assert.deepEqual(yield* Ref.get(closedSessions), []);
+            assert.equal(
+              afterBusySend.providerSessions.find((session) => session.id === firstSession?.id)
+                ?.status,
+              "ready",
+            );
+            return;
           }
 
           yield* send(2, secondSelection);

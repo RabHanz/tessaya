@@ -138,17 +138,29 @@ export const isLiveCallerShell = (
       false));
 
 /** Thread callers need a live run or its background subagent in an unarchived thread. OAuth clients rely on their session and ceiling. */
-export function assertLiveCaller({ caller, scope }: Caller) {
-  if (caller === undefined) return Effect.void;
-  return isLiveCallerShell(caller, scope.thread?.providerInstanceId)
-    ? Effect.void
-    : Effect.fail(
-        new OrchestratorMcpFailure({
-          code: "parent_not_active",
-          message: "The calling provider no longer owns an active thread run.",
-        }),
-      );
-}
+export const assertLiveCaller = Effect.fn("mcp.assertLiveCaller")(function* ({
+  caller,
+  scope,
+  threads,
+}: Caller) {
+  if (caller === undefined || isLiveCallerShell(caller, scope.thread?.providerInstanceId)) return;
+  const notActive = new OrchestratorMcpFailure({
+    code: "parent_not_active",
+    message: "The calling provider no longer owns an active thread run.",
+  });
+  const activeRunId = caller.activeRunId;
+  if (caller.archivedAt !== null || activeRunId === null) return yield* notActive;
+  // Tessaya (hot account swap): a session kept across an account change runs the active run as its own instance.
+  const { runs } = yield* threads
+    .getThreadRecords(caller.id, ["runs"])
+    .pipe(Effect.mapError(unavailable));
+  if (
+    runs.find((run) => run.id === activeRunId)?.providerInstanceId !==
+    scope.thread?.providerInstanceId
+  ) {
+    return yield* notActive;
+  }
+});
 
 export const assertFullAccess = (context: Caller, message: string) =>
   context.limits.runtimeMode === "full-access" && context.limits.interactionMode === "default"
