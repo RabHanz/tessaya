@@ -53,6 +53,8 @@ export const createPrivateTab = (input: {
   /** Asks where to save it and writes it there; the path, or null if he cancelled. */
   readonly saveFile: (name: string, contents: string) => Promise<string | null>;
   readonly everydayCount: () => number | null;
+  /** The people Voice ID has saved (Settings > Voice). */
+  readonly voices?: () => ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly refresh: () => void;
   readonly now?: () => number;
 }) => {
@@ -213,8 +215,10 @@ export const createPrivateTab = (input: {
       } else void made({ name: text("pv.owner"), pin: f.pin ?? "" }, text("pv.owner"), false);
     } else if (id === "m.pv.addPerson") {
       const f = parse(textValue);
-      const name = (f.name ?? "").trim();
       const personId = (f.personId ?? "").trim();
+      // Their name as Voice ID saved it, unless he typed another.
+      const name =
+        (f.name ?? "").trim() || (input.voices?.().find((v) => v.id === personId)?.name ?? "");
       if (name === "" || personId === "") status = text("pv.add.missing");
       else if (f.pin !== f.again) status = text("pv.pins.differ");
       else {
@@ -363,6 +367,7 @@ export const createPrivateTab = (input: {
         audit,
         confirmDelete,
         everydayCount: input.everydayCount(),
+        voices: input.voices?.() ?? [],
         now: at,
       });
     },

@@ -154,6 +154,8 @@ export type HomeControl =
       readonly canSetup: boolean;
       /** His store is open: he may add a person. */
       readonly ownerOpen: boolean;
+      /** Saved Voice ID people with no store yet: the only ones a store can be made for. */
+      readonly voices: ReadonlyArray<{ readonly id: string; readonly name: string }>;
       /** Shown once, after a store is made, until he says it is saved. */
       readonly recovery: { readonly name: string; readonly code: string } | null;
       readonly status: string;

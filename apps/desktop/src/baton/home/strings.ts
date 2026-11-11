@@ -144,11 +144,13 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "pv.again": "The same PIN again",
     "pv.setup.button": "Make my private store",
     "pv.add.title": "Add a person",
-    "pv.add.name": "Their name",
-    "pv.add.profile": "Their voice profile id",
+    "pv.add.name": "Their name (Voice ID's, if left empty)",
+    "pv.add.profile": "Whose voice",
+    "pv.add.noVoices":
+      "Save their voice in Settings > Voice first: a person's store follows their voice.",
     "pv.add.pin": "Their PIN, 6 digits",
     "pv.add.button": "Add",
-    "pv.add.missing": "Give their name and their voice profile id.",
+    "pv.add.missing": "Pick whose voice it is.",
     "pv.pins.differ": "The two PINs are not the same.",
     "pv.recovery.title": "Recovery code for {name}",
     "pv.recovery.hint":
