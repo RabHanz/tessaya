@@ -1,4 +1,4 @@
-# The R1 room voice loop as a `systemctl --user` unit on the voice host (onnyx). Its CPU weight ranks it far above the
+# The R1 room voice loop as a `systemctl --user` unit on the voice host. Its CPU weight ranks it far above the
 # coding lanes in the same user's cgroup while a conversation is running; idle, it uses next to nothing. A user unit
 # cannot lower its nice value; to rank it above login sessions too, root runs once:
 #   systemctl set-property user@<uid>.service CPUWeight=10000
