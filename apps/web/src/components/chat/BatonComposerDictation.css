@@ -1,6 +1,7 @@
 /* Dictation in the chat box (tessaya-ops drafts/pill-styles composer.html). Every colour is a role of the app theme;
    motion is opacity and transform only, and nothing loops: the waveform's canvas is the only thing drawn per frame. */
-.tdc-root {
+[data-tdc],
+[data-tdc-words] {
   --t-accent: var(--app-theme-accent, var(--primary));
   --t-accent-fg: var(--app-theme-accent-foreground, var(--primary-foreground));
   --t-text: var(--app-theme-text, var(--foreground));
@@ -23,7 +24,7 @@
 }
 
 /* ---- the words, at the caret ---- */
-.tdc-words {
+[data-tdc-words] {
   position: absolute;
   inset: 0;
   margin: -0.25rem;
@@ -34,29 +35,29 @@
   color: var(--t-text);
   pointer-events: none;
 }
-.tdc-w {
+[data-tdc-w] {
   display: inline-block;
   white-space: pre;
   transition: color 0.14s ease-out;
 }
-.tdc-w.new {
+[data-tdc-w][data-live] {
   animation: tdc-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-.tdc-w.tentative {
+[data-tdc-w="tentative"] {
   color: var(--t-muted);
 }
-.tdc-w.struck {
+[data-tdc-w="struck"] {
   color: var(--t-muted);
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, var(--t-muted) 70%, transparent);
 }
-.tdc-w.gone {
+[data-tdc-w="gone"] {
   animation: tdc-gone 0.2s ease-out both;
 }
-.tdc-w.added {
+[data-tdc-w="new"] {
   animation: tdc-in 0.2s ease-out both;
 }
-.tdc-caret {
+[data-tdc-caret] {
   display: inline-block;
   width: 1.5px;
   height: 1.1em;
@@ -78,7 +79,7 @@
 }
 
 /* ---- the control, centred in the footer ---- */
-.tdc {
+[data-tdc] {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -95,13 +96,13 @@
   translate: -50% -50%;
   animation: tdc-on 0.32s var(--tdc-pop) both;
 }
-.tdc.held {
+[data-tdc="held"] {
   padding: 0 10px;
 }
-.tdc.sink {
+[data-tdc][data-leaving] {
   animation: tdc-sink 0.22s ease-in both;
 }
-.tdc.sink > * {
+[data-tdc][data-leaving] > * {
   animation: none;
 }
 @keyframes tdc-sink {
@@ -110,14 +111,14 @@
     translate: -50% -30%;
   }
 }
-.tdc canvas {
+[data-tdc] canvas {
   display: block;
   width: 64px;
   height: 18px;
   color: var(--tdc-wave);
   border-color: var(--tdc-wave2, var(--tdc-wave));
 }
-.tdc button {
+[data-tdc] button {
   position: relative;
   display: grid;
   place-items: center;
@@ -133,40 +134,40 @@
     border-radius 0.2s var(--tdc-pop),
     transform 0.2s var(--tdc-pop);
 }
-.tdc button::before {
+[data-tdc] button::before {
   content: "";
   position: absolute;
   inset: -5px;
 }
-.tdc button svg {
+[data-tdc] button svg {
   width: 12px;
   height: 12px;
 }
-.tdc button:active {
+[data-tdc] button:active {
   border-radius: 6px;
   transform: scale(0.9);
 }
-.tdc button:focus-visible {
+[data-tdc] button:focus-visible {
   outline: 2px solid var(--tdc-ok);
   outline-offset: 2px;
 }
-.tdc button:disabled {
+[data-tdc] button:disabled {
   opacity: 0.45;
   cursor: default;
 }
-.tdc .ok {
+[data-tdc] [data-part="ok"] {
   background: var(--tdc-ok);
   color: var(--tdc-on-ok);
 }
 /* Hands-free: ✓ first, the waveform stretches out of it, then ✕. */
-.tdc.free > .ok {
+[data-tdc="free"] > [data-part="ok"] {
   animation: tdc-pop 0.3s var(--tdc-pop) both;
 }
-.tdc.free > canvas {
+[data-tdc="free"] > canvas {
   animation: tdc-stretch 0.3s var(--tdc-pop) 0.07s both;
   transform-origin: 100% 50%;
 }
-.tdc.free > .no {
+[data-tdc="free"] > [data-part="no"] {
   animation: tdc-pop 0.3s var(--tdc-pop) 0.15s both;
 }
 @keyframes tdc-on {
@@ -188,7 +189,7 @@
   }
 }
 
-.tdc[data-design="tessaya"] {
+[data-tdc][data-design="tessaya"] {
   --tdc-surf: color-mix(in srgb, var(--t-accent) 9%, var(--t-overlay));
   --tdc-edge: inset 0 0 0 0.5px color-mix(in srgb, var(--t-text) 14%, transparent);
   --tdc-fg: var(--t-text);
@@ -224,12 +225,11 @@
     0.997,
     1
   );
-  font-family: "Schibsted Grotesk", var(--font-sans);
 }
-.tdc[data-design="tessaya"] .ok {
+[data-tdc][data-design="tessaya"] [data-part="ok"] {
   border-radius: 7px;
 }
-.tdc[data-design="quiet"] {
+[data-tdc][data-design="quiet"] {
   --tdc-surf: color-mix(in srgb, var(--t-text) 6%, transparent);
   --tdc-edge: inset 0 0 0 0.5px color-mix(in srgb, var(--t-text) 12%, transparent);
   --tdc-fg: var(--t-text);
@@ -266,7 +266,7 @@
   );
 }
 /* Lively: separate pebbles, not one capsule. */
-.tdc[data-design="lively"] {
+[data-tdc][data-design="lively"] {
   --tdc-surf: color-mix(in srgb, var(--t-accent) 16%, var(--t-overlay));
   --tdc-fg: var(--t-text);
   --tdc-fg2: var(--t-text);
@@ -278,26 +278,25 @@
   padding: 0;
   background: none;
   box-shadow: none;
-  font-family: "Bricolage Grotesque", var(--font-sans);
 }
-.tdc[data-design="lively"] > * {
+[data-tdc][data-design="lively"] > * {
   background: var(--tdc-surf);
   border-radius: 8px;
   animation: tdc-squash 0.5s cubic-bezier(0.3, 0.7, 0.4, 1) both;
 }
-.tdc[data-design="lively"] > canvas {
+[data-tdc][data-design="lively"] > canvas {
   box-sizing: content-box;
   padding: 4px 6px;
   animation-delay: 0.07s;
 }
-.tdc[data-design="lively"] > .no {
+[data-tdc][data-design="lively"] > [data-part="no"] {
   animation-delay: 0.15s;
 }
-.tdc[data-design="lively"] button {
+[data-tdc][data-design="lively"] button {
   width: 26px;
   height: 26px;
 }
-.tdc[data-design="lively"] .ok {
+[data-tdc][data-design="lively"] [data-part="ok"] {
   background: var(--tdc-ok);
 }
 @keyframes tdc-squash {
@@ -318,9 +317,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tdc,
-  .tdc > *,
-  .tdc-w {
+  [data-tdc],
+  [data-tdc] > *,
+  [data-tdc-w] {
     animation: none !important;
     transition: none !important;
   }

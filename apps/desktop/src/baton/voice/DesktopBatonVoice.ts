@@ -2186,7 +2186,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
-    if (result.status !== "pasted") (ghost.stop(), composer.cancel());
+    if (result.status !== "pasted") {
+      ghost.stop();
+      composer.cancel();
+    }
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     landed(result.text);

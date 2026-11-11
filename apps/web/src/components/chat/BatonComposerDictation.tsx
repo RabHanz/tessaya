@@ -13,7 +13,7 @@ import {
   parseColour,
 } from "@t3tools/baton-shared/composerDictation";
 import { waveEngine, type Rgb } from "@t3tools/baton-shared/waveform";
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 import "./BatonComposerDictation.css";
 
@@ -31,39 +31,41 @@ export const dictatingAttribute = (state: ComposerDictation) =>
 export function BatonDictationWords(props: { readonly state: ComposerDictation }) {
   const { state } = props;
   const caretRef = useRef<HTMLSpanElement>(null);
-  const count = state.phase === "listening" || state.phase === "working" ? state.heard.length : 0;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the caret in view inside the clipped overlay as words arrive
-  useEffect(() => {
+  useLayoutEffect(() => {
     caretRef.current?.scrollIntoView({ block: "nearest" });
-  }, [count]);
+  });
   if (state.phase === "idle") return null;
   const { before, after } = draftAround(state.base);
   const { lead, tail } = spacingAt(state.base);
+  // Words only grow at the end while he speaks, so a word's place is its identity and its entrance plays once.
   const words =
     state.phase === "settling"
-      ? state.words.map((w) => ({
+      ? state.words.map((w, at) => ({ at, text: w.text, look: w.kind as string }))
+      : (state.phase === "cancelling" ? state.words : liveWords(state)).map((w, at) => ({
+          at,
           text: w.text,
-          className: w.kind === "gone" ? "gone" : w.kind === "new" ? "added" : "",
-        }))
-      : (state.phase === "cancelling" ? state.words : liveWords(state)).map((w) => ({
-          text: w.text,
-          className: state.phase === "cancelling" ? "gone" : `new ${w.tone}`,
+          look: state.phase === "cancelling" ? "gone" : (w.tone as string),
         }));
   return (
     <div
       aria-live="polite"
       aria-label="Dictation"
-      className="tdc-root tdc-words font-(family-name:--font-composer,var(--font-sans)) text-(length:--font-size-prompt,var(--text-sm)) leading-relaxed max-sm:pointer-coarse:text-(length:--font-size-prompt-touch)"
+      data-tdc-words=""
+      className="font-(family-name:--font-composer,var(--font-sans)) text-(length:--font-size-prompt,var(--text-sm)) leading-relaxed max-sm:pointer-coarse:text-(length:--font-size-prompt-touch)"
     >
       {before}
       {words.length > 0 ? lead : null}
-      {words.map((w, i) => (
-        // Words only grow at the end while he speaks, so the index keeps each one's entrance once.
-        <span key={i} className={`tdc-w ${w.className}`}>
-          {i === words.length - 1 ? w.text : `${w.text} `}
+      {words.map((w) => (
+        <span
+          key={w.at}
+          data-tdc-w={w.look}
+          data-live={state.phase === "settling" ? undefined : ""}
+        >
+          {w.at === words.length - 1 ? w.text : `${w.text} `}
         </span>
       ))}
-      {state.phase === "settling" ? null : <span ref={caretRef} className="tdc-caret" />}
+      {state.phase === "settling" ? null : <span ref={caretRef} data-tdc-caret="" />}
       {words.length > 0 ? tail : null}
       {after}
     </div>
@@ -75,7 +77,46 @@ const rgbOf = (css: string): Rgb => {
   return [r, g, b];
 };
 
-/** The design's waveform, drawn from the microphone's level; only while he can be heard is it drawn each frame. */
+/** Draws the design's waveform into `canvas`; while `live`, every frame from the level, else once, still. */
+const drawWave = (
+  canvas: HTMLCanvasElement,
+  wave: WaveName,
+  level: RefObject<number>,
+  live: boolean,
+): (() => void) => {
+  const g = canvas.getContext("2d");
+  if (g === null) return () => undefined;
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = W * ratio;
+  canvas.height = H * ratio;
+  const L = ENGINE.createLevel();
+  const moving = live && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const clock = { frame: 0, last: performance.now(), raf: 0 };
+  let colours = { c1: [0, 0, 0] as Rgb, c2: [0, 0, 0] as Rgb, c3: [0, 0, 0] as Rgb, dark: false };
+  const draw = (t: number) => {
+    // The theme can change under it; its colours are read again twice a second, not every frame.
+    if (clock.frame++ % 30 === 0) {
+      const style = getComputedStyle(canvas);
+      const c2 = rgbOf(style.borderTopColor);
+      const dark = document.documentElement.classList.contains("dark");
+      colours = { c1: rgbOf(style.color), c2, c3: c2, dark };
+    }
+    L.tick(ENGINE.dbOf(live ? level.current : 0), (t - clock.last) / 1000);
+    clock.last = t;
+    g.setTransform(ratio, 0, 0, ratio, 0, 0);
+    g.clearRect(0, 0, W, H);
+    ENGINE[wave](g, W, H, moving ? L.at : () => 0, "dict", colours, t);
+  };
+  draw(clock.last);
+  if (!moving) return () => undefined;
+  const loop = (t: number) => {
+    draw(t);
+    clock.raf = requestAnimationFrame(loop);
+  };
+  clock.raf = requestAnimationFrame(loop);
+  return () => cancelAnimationFrame(clock.raf);
+};
+
 function Waveform(props: {
   readonly wave: WaveName;
   readonly level: RefObject<number>;
@@ -85,43 +126,7 @@ function Waveform(props: {
   const { wave, level, live } = props;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives the canvas from requestAnimationFrame while the microphone is open
   useEffect(() => {
-    const canvas = ref.current;
-    const g = canvas?.getContext("2d");
-    if (!canvas || !g) return;
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = W * ratio;
-    canvas.height = H * ratio;
-    const L = ENGINE.createLevel();
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let colours = { c1: [0, 0, 0] as Rgb, c2: [0, 0, 0] as Rgb, c3: [0, 0, 0] as Rgb, dark: false };
-    const readColours = () => {
-      const style = getComputedStyle(canvas);
-      const c1 = rgbOf(style.color);
-      const c2 = rgbOf(style.borderTopColor);
-      colours = { c1, c2, c3: c2, dark: document.documentElement.classList.contains("dark") };
-    };
-    let frame = 0;
-    let last = performance.now();
-    let raf = 0;
-    const draw = (t: number) => {
-      // The theme can change under it; its colours are read again twice a second, not every frame.
-      if (frame++ % 30 === 0) readColours();
-      L.tick(ENGINE.dbOf(live ? level.current : 0), (t - last) / 1000);
-      last = t;
-      g.setTransform(ratio, 0, 0, ratio, 0, 0);
-      g.clearRect(0, 0, W, H);
-      ENGINE[wave](g, W, H, live && !reduced ? L.at : () => 0, "dict", colours, t);
-    };
-    if (!live || reduced) {
-      draw(last);
-      return;
-    }
-    const loop = (t: number) => {
-      draw(t);
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    if (ref.current !== null) return drawWave(ref.current, wave, level, live);
   }, [wave, level, live]);
   return <canvas ref={ref} aria-hidden="true" width={W} height={H} />;
 }
@@ -161,13 +166,14 @@ export function BatonDictationControl(props: {
     <div
       role="group"
       aria-label="Dictation"
+      data-tdc={actions ? "free" : "held"}
       data-design={props.design}
-      className={`tdc-root tdc ${actions ? "free" : "held"}${leaving ? " sink" : ""}`}
+      data-leaving={leaving ? "" : undefined}
     >
       {actions ? (
         <button
           type="button"
-          className="no"
+          data-part="no"
           aria-label="Discard (Esc)"
           onPointerDown={(event) => event.preventDefault()}
           onClick={props.onCancel}
@@ -179,7 +185,7 @@ export function BatonDictationControl(props: {
       {actions ? (
         <button
           type="button"
-          className="ok"
+          data-part="ok"
           aria-label={state.phase === "working" ? "Insert without tidying" : "Insert"}
           onPointerDown={(event) => event.preventDefault()}
           onClick={props.onConfirm}

@@ -237,8 +237,6 @@ export const settleWords = (heard: string, final: string): ReadonlyArray<SettleW
   return out;
 };
 
-// ---- Colours: the pill designs mixed from the app theme's roles, for surfaces that cannot use CSS color-mix ----
-
 export const PILL_DESIGNS = ["tessaya", "quiet", "lively"] as const;
 export type PillDesign = (typeof PILL_DESIGNS)[number];
 export const PILL_WAVES = ["match", "mound", "bars", "beads"] as const;

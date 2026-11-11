@@ -62,7 +62,7 @@ it("draws T3's live words at the caret and a cancel leaves the draft exactly as 
   await screen.rerender(<Composer speech={idle} />);
   await expect.element(screen.getByLabelText("Phase")).toHaveTextContent("idle");
   await expect.element(screen.getByLabelText("Draft")).toHaveValue(DRAFT);
-  expect(screen.container.querySelector(".tdc-words")).toBeNull();
+  expect(screen.container.querySelector("[data-tdc-words]")).toBeNull();
 });
 
 /** The desktop's channel, as the preload exposes it, installed until disposed. */

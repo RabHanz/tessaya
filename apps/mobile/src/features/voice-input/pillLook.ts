@@ -17,8 +17,8 @@ import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { File, Paths } from "expo-file-system";
 import { useSyncExternalStore } from "react";
+import { useResolveClassNames } from "uniwind";
 
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 
 export interface PillChoice {
@@ -84,6 +84,11 @@ export const sharedEnvironmentsAtom = Atom.family((key: string) =>
   ),
 );
 
+const colourOf = (style: object, key: "backgroundColor" | "color") => {
+  const value = (style as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : "transparent";
+};
+
 export function useLocalPillChoice(): PillChoice {
   return useSyncExternalStore(subscribe, localChoice, localChoice);
 }
@@ -97,15 +102,24 @@ export function usePillLook(environmentId: EnvironmentId | null) {
       : batonWorkSessions.desktopSettingsQuery({ environmentId, input: {} }),
   );
   const choice = sharedChoice(viewOf(view)) ?? mine;
-  const theme = useUniwindTheme();
+  // The theme's roles as plain colours: the waveform and the pill are drawn with them, not with classes.
+  const bg = (style: object) => colourOf(style, "backgroundColor");
+  const fg = (style: object) => colourOf(style, "color");
+  const screen = useResolveClassNames("bg-screen");
+  const card = useResolveClassNames("bg-card");
+  const text = useResolveClassNames("text-foreground");
+  const muted = useResolveClassNames("text-foreground-muted");
+  const primary = useResolveClassNames("bg-primary");
+  const onPrimary = useResolveClassNames("text-primary-foreground");
+  const warning = useResolveClassNames("text-warning-foreground");
   const tokens = pillTokens(choice.design, {
-    canvas: theme["--color-screen"],
-    surfaceOverlay: theme["--color-card"],
-    text: theme["--color-foreground"],
-    textMuted: theme["--color-foreground-muted"],
-    accent: theme["--color-primary"],
-    accentForeground: theme["--color-primary-foreground"],
-    warning: theme["--color-warning-foreground"],
+    canvas: bg(screen),
+    surfaceOverlay: bg(card),
+    text: fg(text),
+    textMuted: fg(muted),
+    accent: bg(primary),
+    accentForeground: fg(onPrimary),
+    warning: fg(warning),
   });
   return { design: choice.design, wave: waveFor(choice.design, choice.wave), tokens };
 }
