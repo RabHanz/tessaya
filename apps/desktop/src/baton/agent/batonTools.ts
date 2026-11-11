@@ -4,6 +4,7 @@
  * does through the host. The host is the companion and the voice side; this file holds no Electron
  * and no I/O of its own, so each tool's arguments are checked here, before anything is touched.
  */
+import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
 import { HOME_TOOL_TEXT } from "@t3tools/baton-shared/homeTools";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-shared/operator";
 
@@ -153,6 +154,7 @@ type JobOp =
   | "cloud_usage"
   | "cloud_approve"
   | "home"
+  | "devices"
   | "trust_show"
   | "activity_today"
   | "record"
@@ -1202,6 +1204,97 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       inputSchema,
       run: async (a: Args) => ({ text: await host.jobs("home", { method, op, args: a }) }),
     })),
+    // His devices (the R1): the same tools and words as /mcp. The camera and a restart ask his phone on the server.
+    {
+      name: "device_list",
+      description: DEVICE_TOOL_TEXT.device_list,
+      inputSchema: object({}),
+      run: async () => ({
+        text: await host.jobs("devices", { method: "read", op: "list", args: {} }),
+      }),
+    },
+    {
+      name: "device_act",
+      description: DEVICE_TOOL_TEXT.device_act,
+      inputSchema: object(
+        {
+          id: { type: "string", maxLength: 60 },
+          op: {
+            type: "string",
+            enum: [
+              "eye",
+              "led",
+              "vibrate",
+              "say",
+              "mute",
+              "transport",
+              "transportConfirm",
+              "transportRevert",
+              "enrol",
+              "diag",
+            ],
+          },
+          mood: {
+            type: "string",
+            enum: [
+              "neutral",
+              "happy",
+              "sad",
+              "angry",
+              "curious",
+              "love",
+              "sleepy",
+              "surprise",
+              "thinking",
+            ],
+          },
+          color: { type: "string", enum: ["green", "red", "standby"] },
+          ms: { type: "number", minimum: 10, maximum: 1500 },
+          text: { type: "string", maxLength: 400 },
+          muted: { type: "boolean" },
+          transport: { type: "string", enum: ["inhouse", "agora"] },
+          cancel: { type: "boolean" },
+        },
+        ["id", "op"],
+      ),
+      run: async ({ op, ...args }: Args) => ({
+        text: await host.jobs("devices", { method: "act", op: String(op), args }),
+      }),
+    },
+    {
+      name: "device_owner",
+      description: DEVICE_TOOL_TEXT.device_owner,
+      inputSchema: object(
+        {
+          id: { type: "string", maxLength: 60 },
+          op: { type: "string", enum: ["camera", "reboot"] },
+        },
+        ["id", "op"],
+      ),
+      run: async ({ op, ...args }: Args) => ({
+        text: await host.jobs("devices", { method: "owner", op: String(op), args }),
+      }),
+    },
+    {
+      name: "device_tag",
+      description: DEVICE_TOOL_TEXT.device_tag,
+      inputSchema: object(
+        {
+          op: { type: "string", enum: ["assign", "remove"] },
+          uid: { type: "string", maxLength: 40 },
+          label: { type: "string", maxLength: 60 },
+          action: { type: "object" },
+        },
+        ["op", "uid"],
+      ),
+      run: async ({ op, ...args }: Args) => ({
+        text: await host.jobs("devices", {
+          method: "act",
+          op: op === "assign" ? "nfcAssign" : "nfcRemove",
+          args,
+        }),
+      }),
+    },
     {
       name: "cloud_approve",
       description:

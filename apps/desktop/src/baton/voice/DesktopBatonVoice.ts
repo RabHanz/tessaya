@@ -550,10 +550,10 @@ const FOCUSED_FIELD: BatonFocusTarget = {
   origin: null,
 };
 
-/** A house tool's call to this machine's server (deskCall: always its own door). */
+/** A house or device tool's call to this machine's server (deskCall: always its own door). */
 interface HomeBridgeRequest {
-  readonly kind: "home";
-  readonly op: "read" | "act";
+  readonly kind: "home" | "devices";
+  readonly op: "read" | "act" | "owner";
   readonly args: { readonly op: string; readonly args: Readonly<Record<string, unknown>> };
 }
 
@@ -2607,12 +2607,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     feeds: settings.needsFeeds,
     expect: settings.needsExpect,
   });
-  /** The house tools: the server answers ok with a value or a sentence; the model gets it as JSON text. */
-  const homeOp = async (args: Readonly<Record<string, unknown>>): Promise<string> => {
+  /** The house and device tools: the server answers ok with a value or a sentence; the model gets it as JSON text. */
+  const homeOp = async (
+    args: Readonly<Record<string, unknown>>,
+    kind: "home" | "devices" = "home",
+  ): Promise<string> => {
     try {
       const reply = (await requestKept({
-        kind: "home",
-        op: args["method"] === "act" ? "act" : "read",
+        kind,
+        op: args["method"] === "act" ? "act" : args["method"] === "owner" ? "owner" : "read",
         args: {
           op: String(args["op"] ?? ""),
           args: {
@@ -2801,6 +2804,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
       if (op === "home") return homeOp(args);
+      if (op === "devices") return homeOp(args, "devices");
       if (op === "note_add") {
         try {
           return `Saved to the Scratchpad [id: ${scratch.add(String(args["text"] ?? "")).id}].`;
