@@ -234,6 +234,12 @@ describe("who may change the desktop's dictation settings", () => {
       pillStyle: "field",
       holdKey: "F9",
     });
+    expect(patch({ pillDesign: "lively", pillWaveform: "bars" })).toEqual({
+      pillDesign: "lively",
+      pillWaveform: "bars",
+    });
+    expect(patch({ pillDesign: "neon" })).toBe(null);
+    expect(patch({ pillWaveform: "spiral" })).toBe(null);
     expect(patch({ dictationCleanup: "gpt" })).toBe(null);
     expect(patch({ holdKey: "Alt+F4" })).toBe(null);
     expect(patch({ frosted: "yes" })).toBe(null);

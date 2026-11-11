@@ -148,6 +148,37 @@ describe("localClean", () => {
     );
   });
 
+  it("sets out a list he announces, and leaves prose alone", () => {
+    const clean = (said: string) => localClean(said, "default");
+    expect(
+      clean("Pick up a few things from the shop. Bread for toast, oat milk, green apples."),
+    ).toBe("Pick up a few things from the shop:\n\n- Bread for toast\n- Oat milk\n- Green apples");
+    expect(
+      clean(
+        "Two problems in it. Don't show the client's name in public. Also, say it comes from the founder himself. And also make it simpler.",
+      ),
+    ).toBe(
+      "Two problems in it:\n\n1. Don't show the client's name in public.\n2. Say it comes from the founder himself.\n\nAnd also make it simpler.",
+    );
+    expect(
+      clean("I have two questions. Will it scratch the screen? And also, will it slide off?"),
+    ).toBe("I have two questions:\n\n1. Will it scratch the screen?\n2. Will it slide off?");
+    expect(
+      clean(
+        "We need to change a few things: make the text bigger, the video smoother, the logo sharper.",
+      ),
+    ).toBe(
+      "We need to change a few things:\n\n- Make the text bigger\n- The video smoother\n- The logo sharper",
+    );
+    for (const prose of [
+      "There are two ways to read it. I think the first is right.",
+      "A few things went wrong today, but we fixed them all before lunch.",
+      "Two problems came up. One was the login and it is fixed now, so we shipped it. Then we went home. Then we slept.",
+      "Check the logs, the build, the tests, and the deploy.",
+    ])
+      expect(clean(prose)).toBe(prose);
+  });
+
   it("writes punctuation, file names and addresses he speaks, and leaves the words when they are words", () => {
     const clean = (said: string, mode: "default" | "code" = "default") => localClean(said, mode);
     expect(clean("Status question mark")).toBe("Status?");
@@ -234,6 +265,8 @@ describe("checkRewrite", () => {
       "Now ensure a few things:\n\n1. Load up the design skill\n2. Make sure the pricing page works on mobile\n3. Check all 3 forms";
     expect(checkRewrite(said, listed)).toEqual({ ok: true });
     expect(checkRewrite(said, listed.replace("all 3", "all 4")).ok).toBe(false);
+    // A list set out on this machine is polished, not refused for its own "1." and "2.".
+    expect(checkRewrite(listed, listed.replace("Load up", "Load"))).toEqual({ ok: true });
     const bullets =
       "I want you to pick up a few things from the store:\n\n- Bread for sandwiches\n- Potato chips";
     expect(

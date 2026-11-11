@@ -11,31 +11,46 @@ export const ISLAND_WIDTH = 420;
 export const ISLAND_HEIGHT = 280;
 /** The window's margin under the capsule, plain or island. */
 export const PILL_BELOW = 6;
+/** The pill window's own height: the tallest capsule (34 px) and a little air. */
+export const PILL_HEIGHT = 40;
+/** The capsule's bottom edge, from the top of the pill's own window: where a window grown downward hangs it. */
+export const PILL_LINE = PILL_HEIGHT - PILL_BELOW;
 
+/**
+ * The island in each design. Tessaya and Quiet: one surface, #p, that fills the window and shows only the capsule
+ * its clip-path cuts (drawn each frame by drawI), so it grows without animating its size. Lively: the pill's pebbles
+ * stay as they are and the words sit on a card of their own above them, cut the same way.
+ */
 export const ISLAND_CSS = `
-:root{--glass:rgba(20,20,26,.96);--glass-solid:#14141a;--edge:rgba(255,255,255,.13);--itext:#fff;--grey:rgba(255,255,255,.46);--isoft:rgba(255,255,255,.62);--ibar:#ececef;--glow:rgba(236,236,239,.55);--accent:#5FB3B3}
-@media (prefers-color-scheme:light){:root{--glass:rgba(255,255,255,.96);--glass-solid:#fff;--edge:rgba(0,0,0,.16);--itext:#0f1012;--grey:rgba(15,16,18,.6);--isoft:rgba(15,16,18,.74);--ibar:#16171a;--glow:transparent;--accent:#14505A}}
-#p.isl{position:absolute;left:0;bottom:${PILL_BELOW}px;display:block;width:76px;height:26px;max-width:none;padding:0;border:0;border-radius:13px;overflow:hidden;background:var(--glass);box-shadow:inset 0 0 0 1px var(--edge);--text:var(--itext);--soft:var(--isoft);color:var(--text)}
-#p.isl[data-phase=dictating]{--bar:var(--ibar)}
-html.glass-reduced #p.isl,html.glass-off #p.isl{background:var(--glass-solid)}
-#p.isl>#mk,#p.isl>#d,#p.isl>#st,#p.isl>#t,#p.isl>#c{display:none!important}
-#p.isl .db{position:absolute;left:0;top:0;display:flex;width:22px;height:22px;margin:0;border-radius:7px;color:var(--soft)}
-#p.isl .db:hover{background:transparent;color:var(--text)}
-#p.isl[data-voice=off] .db{display:none}
-#p.isl #dv{color:var(--text)}
-#p.isl[data-esc=on] #dx{color:var(--red)}
-#p.isl #w{position:absolute;left:0;top:0;display:block}
-#vp{display:none;position:absolute;left:0;top:0;overflow:hidden;font:500 14px/20px var(--sans);pointer-events:none}
+#vc{display:none;position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+#p.isl #vc{display:block}
+#p.isl{left:0;top:0;bottom:auto;width:100%!important;height:100%!important;translate:none;transition:none;clip-path:inset(100%)}
+#p.isl #row{position:absolute;left:0;top:0;bottom:auto;translate:none;width:0;height:0;padding:0;animation:none}
+#p.isl #row>*{position:absolute;left:0;top:0;margin:0}
+#p.isl #row>#wv{display:contents}
+#p.isl #wv>*{position:absolute;left:0;top:0;margin:0}
+#p.isl :is(#mk,#gl,#d,#t,#c,#st,#bal){display:none!important}
+#p.isl[data-esc=on] #dx{color:var(--fail)}
+:root[data-design=lively] #p.isl{left:50%;top:auto;bottom:${PILL_BELOW}px;width:auto!important;height:auto!important;translate:-50% 0;clip-path:none}
+:root[data-design=lively] #p.isl #row{position:relative;width:auto;height:auto}
+:root[data-design=lively] #p.isl #row>*,:root[data-design=lively] #p.isl #wv>*{position:relative}
+:root[data-design=lively] #p.isl #row>#wv{display:flex}
+:root[data-design=lively] #p.isl #vc{left:50%;top:auto;bottom:calc(100% + 6px);translate:-50% 0;width:${ISLAND_WIDTH - 8}px;height:${ISLAND_HEIGHT - PILL_BELOW - 34 - 6}px;background:var(--surf);clip-path:inset(100%)}
+:root[data-design=lively] body.down #p.isl{top:${PILL_LINE}px;bottom:auto;translate:-50% -100%}
+:root[data-design=lively] body.down #p.isl #vc{bottom:auto;top:calc(100% + 6px)}
+#vp{display:none;position:absolute;left:0;top:0;overflow:hidden;font:400 16px/22px var(--font);pointer-events:none}
+:root[data-design=tessaya] #vp,:root[data-design=tessaya] #mE{font:420 20px/26px var(--said);letter-spacing:-.005em}
+:root[data-design=lively] #vp,:root[data-design=lively] #mE{line-height:23px}
 #p.isl #vp{display:block}
 #vp span{position:absolute;left:0;top:0;white-space:pre}
 #vp span.m span{position:static}
 #vp span.m .slot{position:relative;display:inline-block;vertical-align:top;height:1em}
 #vp span.m .g{position:absolute;left:0;top:0;transform-origin:0 85%}
-#mE{position:absolute;visibility:hidden;left:0;top:0;font:500 14px/20px var(--sans)}
+#mE{position:absolute;visibility:hidden;left:0;top:0;font:400 16px/22px var(--font)}
 #mE span{display:inline-block;vertical-align:top;white-space:pre}
 `;
 
-export const ISLAND_HTML = `<div id="vp" aria-hidden="true"></div>`;
+export const ISLAND_HTML = `<div id="vc"><div id="vp" aria-hidden="true"></div></div>`;
 export const ISLAND_MEASURE = `<div id="mE" aria-hidden="true"></div>`;
 
 /**
@@ -78,7 +93,9 @@ export const ghostScroll = (lines: number, top: number, line: number, height: nu
  */
 export const wordsScript = (variant: "E" | "D"): string => `
 const {clamp,prog,EMPH,DECEL,ACCEL,MD,FLOW,EXPAND_MS,SMOOTH,springAt,align,cleanupTimes,stepWidth}=(${pillEngine.toString()})();
-const D=${variant === "D"},PH=26,PBASE=76,PVOICE=112,LIVE_LINES=D?99:5,PAD=8,MAXW=${ISLAND_WIDTH},TMAX=MAXW-24,FLOW01=[{at:0,to:0},{at:0,to:1}];
+const D=${variant === "D"},LIVE_LINES=D?99:5,MAXW=${ISLAND_WIDTH},FLOW01=[{at:0,to:0},{at:0,to:1}];
+// E's measures come from the design on show (islandLook, at each start); D only uses PH and PAD for nothing.
+let PH=26,PBASE=76,PAD=8,PADX=12,WT=0,TMAX=MAXW-24,IS={lively:false,cr:20};
 const SHRINK_MS=D?0:600;
 const flowWords=${flowWords.toString()},ghostScroll=${ghostScroll.toString()};
 let ALL_LINES=7,I=null,iraf=0,LINE=20,FW=0,INDENT=0,TOP=0,BOXH=0,FONT=14,EMPTY=false;
@@ -98,7 +115,7 @@ const linesOf=pos=>pos.length?Math.round(pos[pos.length-1].y/LINE)+1:0;
 // The lines the window has room for (a short screen gives the island less).
 const roomLines=()=>D?99:Math.max(1,Math.floor((innerHeight-${PILL_BELOW}-PH-PAD-6)/LINE));
 const hOf=lines=>lines>0?Math.min(ALL_LINES,lines)*LINE+PAD:0;
-const wOf=t=>Math.max(PBASE,t+24);
+const wOf=t=>Math.max(PBASE,t+2*PADX);
 const mk=t=>{const s=document.createElement('span');s.textContent=t;vp.appendChild(s);return s;};
 const textC=D?'var(--field-ink)':'var(--text)',greyC=D?'var(--ghost-drop)':'var(--grey)',liveC=D?'var(--ghost)':textC;
 const mix=a=>p=>p>=1?a:p<=0?greyC:'color-mix(in srgb,'+a+' '+Math.round(p*100)+'%,'+greyC+')',mixC=mix(textC),mixL=mix(liveC);
@@ -117,9 +134,14 @@ const setWords=(next,now)=>{let k=0;while(k<next.length&&k<I.raw.length&&next[k]
  kickI(now+1200);};
 const island={
  on:()=>I!==null,
- start(){island.stop();I={raw:[],appear:[],rawS:[],steps:[],tw:0,W:[{at:0,to:PBASE}],Hh:[{at:0,to:0}],Sc:[{at:0,to:0}],R:null,C:null,P:Infinity,rawLines:0,until:0};kickI(performance.now()+50);},
- stop(){I=null;cancelAnimationFrame(iraf);iraf=0;vp.textContent='';if(D){vp.appendChild(Object.assign(document.createElement('i'),{id:'cr'}));return;}const p=$('p');for(const k of['left','width','height','borderRadius'])p.style[k]='';
-  for(const id of['dx','dv','w']){const s=$(id).style;s.opacity='';s.transform='';s.color='';}},
+ hasWords:()=>I!==null&&I.raw.length>0,
+ // The design or theme changed under it: measured again, drawn again.
+ restyle(){if(!I||D)return;islandLook();drawI(performance.now());kickI(performance.now()+50);},
+ start(){island.stop();if(!D)islandLook();I={raw:[],appear:[],rawS:[],steps:[],tw:0,W:[{at:0,to:PBASE}],Hh:[{at:0,to:0}],Sc:[{at:0,to:0}],R:null,C:null,P:Infinity,rawLines:0,until:0};
+  // Drawn now, not a frame later: the island is centred from its first frame.
+  if(!D)drawI(performance.now());kickI(performance.now()+50);},
+ stop(){I=null;cancelAnimationFrame(iraf);iraf=0;vp.textContent='';if(D){vp.appendChild(Object.assign(document.createElement('i'),{id:'cr'}));return;}const p=$('p');p.style.clipPath='';$('vc').style.clipPath='';VIS=null;box={W:0,H:0,w:0,h:0,r:0};
+  for(const id of['dx','dv','w','mic']){const s=$(id).style;s.opacity='';s.transform='';}},
  words(text){if(!I||I.R!==null)return;setWords(text.split(/\\s+/).filter(Boolean),performance.now());},
  // His ✓ (or the key's release): the pill opens to every line and the view scrolls back to the top, 0.75 s.
  release(){if(!I||I.R!==null)return;const now=performance.now();I.R=now;I.rawLines=I.steps.length?I.steps[I.steps.length-1].lines:0;
@@ -173,7 +195,48 @@ const morphAt=(M,q)=>{M.slot.style.width=(M.wo+(M.wn-M.wo)*q).toFixed(2)+'px';
  if(M.end){M.o.style.transform='scale('+(1-.4*q).toFixed(3)+')';M.n.style.transform='scale('+(.6+.4*q).toFixed(3)+')';}
  else{M.o.style.transform='translateY('+(-.35*q).toFixed(3)+'em)';M.n.style.transform='translateY('+(.35*(1-q)).toFixed(3)+'em)';}
  M.o.style.opacity=String(1-q);M.n.style.opacity=String(q);};
-const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infinity:L.R,P=L.P;
+// E: the design's measures, read from the page as the island starts (the pill's row is already the dictation pill).
+let VIS=null;
+const islandLook=()=>{const p=$('p'),row=$('row'),design=document.documentElement.dataset.design;
+ const lively=design==='lively',had=p.classList.contains('isl');
+ // Measured as the plain pill: the island starts as exactly the pill he sees.
+ p.classList.remove('isl');const rr=row.getBoundingClientRect(),size=id=>{const e=$(id);return [e.offsetWidth,e.offsetHeight];};
+ const parts={dx:size('dx'),dv:size('dv'),mic:size('mic'),w:size('w')};if(had)p.classList.add('isl');
+ LINE=parseFloat(getComputedStyle(mE).lineHeight)||22;PADX=16;
+ WT=lively?16:design==='tessaya'?4:2;PAD=lively?32:WT+14;
+ PH=lively?Math.round(rr.height)+6:Math.round(rr.height);PBASE=Math.round(rr.width);
+ TMAX=(design==='quiet'?380:design==='lively'?390:410)-2*PADX;
+ IS={lively,cr:design==='quiet'?22:lively?24:20,...parts,cw:$('vc').offsetWidth,ch:$('vc').offsetHeight};};
+const paintE=(ww,h,sc,tuck)=>{const p_=$('p'),vc=$('vc'),down=document.body.classList.contains('down'),BH=innerHeight;
+ for(const id of['dx','dv'])$(id).style.opacity=String(1-.65*tuck);
+ let vx,vy,vw,vh0,bot;
+ if(!IS.lively){
+  const vis=PH+h,top=down?${PILL_LINE}-PH:BH-${PILL_BELOW}-vis,x0=(MAXW-ww)/2,r=PH/2+(IS.cr-PH/2)*clamp(h/24);
+  p_.style.clipPath='inset('+top.toFixed(2)+'px '+x0.toFixed(2)+'px '+(BH-top-vis).toFixed(2)+'px '+x0.toFixed(2)+'px round '+r.toFixed(2)+'px)';
+  rimTo(x0,top,ww,vis,r);VIS={x:x0,y:top,w:ww,h:vis};
+  // The head is the pill's own row: ✕ and ✓ at its ends, the dot and the waveform as in the pill; with words and no ✓/✕
+  // the waveform moves to the card's corner as the drafts' one-line card has it.
+  const k=p_.dataset.voice==='on'?0:clamp(h/LINE),cy=(e)=>top+(PH-e[1])/2;
+  $('dx').style.transform='translate('+(x0+4).toFixed(2)+'px,'+cy(IS.dx).toFixed(2)+'px)';
+  $('dv').style.transform='translate('+(x0+ww-4-IS.dv[0]).toFixed(2)+'px,'+cy(IS.dv).toFixed(2)+'px)';
+  $('mic').style.transform='translate('+(x0+12).toFixed(2)+'px,'+cy(IS.mic).toFixed(2)+'px)';$('mic').style.opacity=String(1-k);
+  const wx=x0+(ww-IS.w[0])/2,wy=cy(IS.w);
+  $('w').style.transform='translate('+(wx+(x0+PADX-wx)*k).toFixed(2)+'px,'+(wy+(top+10-wy)*k).toFixed(2)+'px)';
+  vx=x0+PADX;vy=top+PH+WT;vw=ww;bot=h-PAD+4;}
+ else{
+  // Lively: the pebbles stay put; the card above them (below them when the window grew down) is cut to the words.
+  const cx=(IS.cw-ww)/2,ct=down?0:IS.ch-h;
+  vc.style.clipPath='inset('+ct.toFixed(2)+'px '+cx.toFixed(2)+'px '+(IS.ch-ct-h).toFixed(2)+'px '+cx.toFixed(2)+'px round 24px)';
+  const pr=p_.getBoundingClientRect(),cr=vc.getBoundingClientRect();
+  const x=Math.min(pr.left,cr.left+cx),y=h>0?Math.min(pr.top,cr.top+ct):pr.top;
+  VIS={x,y,w:Math.max(pr.right,cr.left+cx+ww)-x,h:Math.max(pr.bottom,h>0?cr.top+ct+h:0)-y};
+  vx=cx+PADX;vy=ct+WT;vw=ww;bot=h-PAD+4;}
+ const vh=(ALL_LINES+2)*LINE;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate('+vx.toFixed(2)+'px,'+vy.toFixed(2)+'px)';
+ vp.style.clipPath='inset(0 '+Math.max(0,TMAX-(vw-2*PADX)).toFixed(2)+'px '+Math.max(0,vh-bot).toFixed(2)+'px 0)';
+ // The top edge fades while lines are scrolled out of view above it.
+ const mkd=clamp(sc/LINE);vp.style.maskImage=vp.style.webkitMaskImage=mkd>.01?'linear-gradient(180deg,rgba(0,0,0,'+(1-.75*mkd).toFixed(3)+') 0,#000 14px)':'';
+ sendRect();};
+const drawI=t=>{const L=I,calm=isCalm(),C=L.C,R=L.R===null?Infinity:L.R,P=L.P;
  // The one progress: after the hold, a single curve from 0 to 1 that the words and the capsule all follow.
  const pc=C?t-R-C.MOVE_T:0,pp=!C?0:t>=P?1:pc<=0?0:pc>=C.MOVE_D||calm?1:clamp(springAt(FLOW01,pc,false,FLOW),0,1.02);
  const w=springAt(L.W,t,calm);let h,sc;
@@ -184,7 +247,7 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
   // From ✓ the capsule opens and the scroll returns to the top on one curve from where they were.
   else{const qo=calm?1:SMOOTH(prog(t,R,EXPAND_MS)),hAtR=Math.max(0,springAt(L.HhLive,R,calm));h=hAtR+(hRaw-hAtR)*qo;sc=springAt(L.ScLive,R,calm)*(1-qo);}}
  // Spoken dictation's ✓ and ✕ sit either side of the waveform: the capsule is wider only while they show.
- const ww=!D&&p_.dataset.voice==='on'?Math.max(w,PVOICE):w;
+ const ww=D?w:Math.max(w,PBASE);
  if(D){vp.style.width=FW+'px';
   // The text scrolls as a field does: the newest line stays in the box, and the cleanup's lines settle the same way.
   const sD=t<R||!C?springAt(L.Sc,t,calm):scD(L.rawLines)+(scD(L.linesB)-scD(L.rawLines))*pp;vp.style.transform='translateY('+(TOP-sD).toFixed(2)+'px)';sc=0;
@@ -195,15 +258,8 @@ const drawI=t=>{const L=I,calm=isCalm(),p_=D?null:$('p'),C=L.C,R=L.R===null?Infi
   // vp is tall enough to hold the box in its own coordinates, so its mask reaches every word on show.
   const top=sD-TOP;vp.style.height=(sD+BOXH).toFixed(2)+'px';
   vp.style.maskImage=vp.style.webkitMaskImage=sD>0?'linear-gradient(180deg,transparent 0,transparent '+top.toFixed(2)+'px,#000 '+(top+LINE/2).toFixed(2)+'px)':'';}else{
- p_.style.left=((MAXW-ww)/2).toFixed(2)+'px';p_.style.width=ww.toFixed(2)+'px';p_.style.height=(PH+h).toFixed(2)+'px';p_.style.borderRadius=(PH/2-clamp(h/24))+'px';
  const tuck=t<R?0:t<P?(calm?1:EMPH(prog(t,R,MD.medium2))):(calm?0:1-EMPH(prog(t,P,MD.medium2)));
- for(const id of['dx','dv'])$(id).style.opacity=String(1-.65*tuck);
- $('dv').style.color=t>=R&&t<P+200?'var(--accent)':'';
- $('dx').style.transform='translate(3px,2px)';$('dv').style.transform='translate('+(ww-25).toFixed(2)+'px,2px)';$('w').style.transform='translate('+(ww/2-27).toFixed(2)+'px,5px)';
- const vh=(ALL_LINES+2)*20;vp.style.width=TMAX+'px';vp.style.height=vh+'px';vp.style.transform='translate(12px,'+(PH-4)+'px)';
- vp.style.clipPath='inset(0 '+Math.max(0,12+TMAX-(ww-10)).toFixed(2)+'px '+Math.max(0,vh-(h-PAD+4)).toFixed(2)+'px 0)';
- // The top edge fades while lines are scrolled out of view above it.
- const mkd=clamp(sc/LINE);vp.style.maskImage=vp.style.webkitMaskImage=mkd>.01?'linear-gradient(180deg,rgba(0,0,0,'+(1-.75*mkd).toFixed(3)+') 0,#000 14px)':'';}
+ paintE(ww,h,sc,tuck);}
  if(!C){// While he talks, and after ✓ until the clean text: the newest partial's layout, each word arriving with a decelerated fade, rise and unblur.
   let s=L.steps[0];for(const x of L.steps)if(x.t<=t)s=x;if(!s)return;
   L.rawS.forEach((sp,i)=>{if(t<L.appear[i]||i>=s.n){hide(sp);return;}const p=calm?1:DECEL(prog(t,L.appear[i],MD.medium4));sp.style.color=liveC;sp.style.backgroundImage='';place(sp,s.pos[i].x,s.pos[i].y-sc+6*(1-p),p,3*(1-p));});

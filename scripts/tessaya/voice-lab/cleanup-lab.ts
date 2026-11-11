@@ -25,6 +25,7 @@ import {
   ADVERSARIAL_CASES,
   DEFAULT_CASES,
   DICTIONARY_CASES,
+  EXAMPLE_CASES,
   MODE_CASES,
   type CleanupCase,
 } from "./cleanup-cases.ts";
@@ -36,6 +37,7 @@ const labDictionary: ReadonlyArray<DictionaryEntry> =
     ? saved
     : await importWispr({ stateDir: state, appData: process.env["APPDATA"], entries: [] });
 let dictionary = labDictionary;
+let shown: ReadonlyArray<{ readonly raw: string; readonly kept: string }> = [];
 const rewriter = (always: boolean, limitMs?: number) =>
   makeRewriter({
     claudeBinary: "claude",
@@ -46,6 +48,7 @@ const rewriter = (always: boolean, limitMs?: number) =>
     dictionary: () => dictionary,
     ...(limitMs === undefined ? {} : { limitMs }),
     always,
+    examples: () => shown.map((e) => ({ ...e, mode: "default" as const })),
   });
 
 const sorted = (values: ReadonlyArray<number>) => [...values].sort((a, b) => a - b);
@@ -65,6 +68,7 @@ const cases = async (out: string, only?: string) => {
     for (const item of list) {
       const mode = (item.mode ?? "default") as "default";
       dictionary = item.dictionary ?? labDictionary;
+      shown = item.examples ?? [];
       const words = parseVocabulary(dictionary);
       // As the app does: the near-miss bias first, then the clean-up.
       const result = await r.clean({ raw: biasTranscript(item.raw, words), mode, level: "claude" });
@@ -93,6 +97,7 @@ const cases = async (out: string, only?: string) => {
   await run("adversarial", ADVERSARIAL_CASES);
   await run("modes", MODE_CASES);
   await run("dictionary", DICTIONARY_CASES);
+  await run("examples", EXAMPLE_CASES);
   NodeFS.writeFileSync(out, `${lines.join("\n")}\n`);
   r.dispose();
 };
