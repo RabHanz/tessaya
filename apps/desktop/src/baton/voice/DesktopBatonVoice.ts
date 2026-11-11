@@ -230,6 +230,7 @@ import {
 } from "@t3tools/baton-shared/initiative";
 import { detectSecret, REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
 import {
+  PRIVATE_MEMORY_NAME,
   SERVER_MEMORY_NAME,
   applyRestore,
   memoryRestore,
@@ -295,6 +296,7 @@ import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
+import { createPrivateTab } from "../memory/privateTab.ts";
 import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
@@ -5103,6 +5105,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     refresh: () => home.refresh(),
     reveal: (file) => Electron.shell.showItemInFolder(file),
   });
+  const privateTab =
+    input.privateMemory === undefined
+      ? null
+      : createPrivateTab({
+          memory: input.privateMemory,
+          hello: (message) => windowsHello(message, input.platform),
+          clipboard: {
+            read: () => Electron.clipboard.readText(),
+            write: (t) => Electron.clipboard.writeText(t),
+            clear: () => Electron.clipboard.clear(),
+          },
+          saveFile: async (name, contents) => {
+            const r = await Electron.dialog.showSaveDialog({
+              defaultPath: NodePath.join(Electron.app.getPath("documents"), name),
+            });
+            if (r.canceled || r.filePath === undefined) return null;
+            NodeFS.writeFileSync(r.filePath, contents, { mode: 0o600 });
+            return r.filePath;
+          },
+          everydayCount: () => memoryTab.count(),
+          refresh: () => home.refresh(),
+        });
   const cachedPack = cachedFor(3_000, () => [
     ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
     ...rosterControls(NodePath.join(input.stateDir, PACK_FOLDER)),
@@ -5969,7 +5993,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           args: { includeSuperseded: true, includeProposed: true, limit: 100_000 },
         }).catch(() => null)) as { items?: ReadonlyArray<MemoryItem> } | null)
       : null;
-    const plan = planBackup(input.stateDir, exported?.items ?? null);
+    const sealed = ((await input.privateMemory?.call("backup").catch(() => null)) ?? null) as {
+      dump?: string;
+    } | null;
+    const plan = planBackup(input.stateDir, exported?.items ?? null, sealed?.dump ?? null);
     const count = writeBackup(picked.filePath, plan);
     backupNote = `Saved ${count} files to ${picked.filePath}.${
       exported === null
@@ -6144,7 +6171,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...at("presence"),
       ...presenceControls(settings),
       ...at("memory"),
-      ...memoryTab.controls(),
+      ...(privateTab?.controls() ?? []),
+      ...(privateTab === null || privateTab.everyday() ? memoryTab.controls() : []),
       ...vaultTab.controls(),
       ...at("pack"),
       ...cachedPack(),
@@ -6950,6 +6978,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
+    if (privateTab?.act(id, value)) return;
     if (memoryTab.act(id, value)) return;
     if (vaultTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
@@ -7284,6 +7313,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             })
             .catch(() => {
               backupNote = `${backupNote ?? ""} Memory was not restored: open the sessions window and restore again.`;
+            })
+            .finally(pushHome);
+        }
+        const sealedBack = backupPreview.entries.find((e) => e.name === PRIVATE_MEMORY_NAME);
+        if (sealedBack !== undefined && input.privateMemory !== undefined) {
+          void input.privateMemory
+            .call("restore", { dump: sealedBack.data.toString("utf8") })
+            .then((r) => {
+              const out = r as { stores: number; items: number };
+              backupNote = `${backupNote ?? ""} Private memories: ${out.stores} store(s), ${out.items} item(s) back; each opens with its recovery code.`;
+            })
+            .catch((e: unknown) => {
+              backupNote = `${backupNote ?? ""} Private memories were not restored: ${e instanceof Error ? e.message : "the server did not answer"}.`;
             })
             .finally(pushHome);
         }
@@ -7781,7 +7823,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
-      if (tab === "memory") void memoryTab.load();
+      if (tab === "memory") {
+        void memoryTab.load();
+        void privateTab?.load();
+      } else privateTab?.close();
       if (tab === "approvals") void cloud.refresh().catch(() => undefined);
       // The Cloud page refreshes every minute while it is open, and not otherwise.
       if (cloudTimer !== null) {

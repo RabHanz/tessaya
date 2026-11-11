@@ -5,7 +5,14 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { applyRestore, memoryRestore, planBackup, previewRestore, writeBackup } from "./backup.ts";
+import {
+  PRIVATE_MEMORY_NAME,
+  applyRestore,
+  memoryRestore,
+  planBackup,
+  previewRestore,
+  writeBackup,
+} from "./backup.ts";
 import { backupControls } from "./backupRows.ts";
 import { makeZip, readZip } from "./zip.ts";
 
@@ -92,6 +99,22 @@ describe("backup and restore", () => {
     expect(memoryRestore(Buffer.from("not json"), "x")).toBeNull();
     expect(names.join()).not.toMatch(/vault/);
     expect(plan.skipped.map((s) => s.name)).toEqual(["scratchpad.json"]);
+  });
+
+  it("carries the private stores as the server's sealed dump and hands it back on restore", () => {
+    const from = tmp();
+    put(from, "snippets.json", "[]");
+    const dump =
+      '{"format":"tessaya-private-backup-v1","stores":[{"keys_json":"c2VhbGVk"}],"items":[]}';
+    const zipFile = NodePath.join(tmp(), "p.zip");
+    writeBackup(zipFile, planBackup(from, null, dump));
+    const preview = previewRestore(NodeFS.readFileSync(zipFile), tmp());
+    if (preview instanceof Error) throw preview;
+    expect(preview.rows).toContainEqual({ name: PRIVATE_MEMORY_NAME, action: "new" });
+    expect(preview.entries.find((e) => e.name === PRIVATE_MEMORY_NAME)?.data.toString("utf8")).toBe(
+      dump,
+    );
+    expect(planBackup(from, null).entries.some((e) => e.name === PRIVATE_MEMORY_NAME)).toBe(false);
   });
 
   it("previews first, then restores, keeping a .bak of what it replaces", () => {
