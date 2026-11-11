@@ -93,7 +93,11 @@ export interface VoiceIdView {
 
 const SECTION = "Voice ID";
 
-const SOURCE_LABEL = { wispr: "your Wispr recordings", spoken: "your read" } as const;
+const SOURCE_LABEL = {
+  wispr: "your Wispr recordings",
+  spoken: "your read",
+  adapted: "your recent turns",
+} as const;
 
 const statusOf = (
   view: VoiceIdView,
