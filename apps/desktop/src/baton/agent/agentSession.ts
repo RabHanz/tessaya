@@ -11,6 +11,7 @@ import {
   type ConversationTurn,
 } from "@t3tools/baton-shared/conversation";
 import type { Brain } from "@t3tools/baton-shared/osPack";
+import { PRIVATE_TURN_STUB } from "@t3tools/baton-shared/privateMemory";
 
 import type { ConversationLog } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
@@ -25,6 +26,8 @@ import {
 /** About this many turns, and the session is replaced and re-seeded; a long one gets slow and costly. */
 export const RECYCLE_TURNS = 40;
 export const RECYCLE_IDLE_MS = 6 * 60 * 60_000;
+/** A session that read private memories is replaced once this has passed: his store's own idle re-lock. */
+export const PRIVATE_HOLD_MS = 5 * 60_000;
 /** Every screenshot stays in the session's context; after this many the next sentence starts a fresh one. */
 export const RECYCLE_IMAGES = 12;
 /**
@@ -86,6 +89,8 @@ export interface AssistantAgent {
    * it dead or spent and started another ("recycled"), or found none ("cold").
    */
   readonly lastStart: () => SessionStart | null;
+  /** A private store locked, or the machine did: every session that read private memories goes, with what it heard. */
+  readonly forgetPrivate: () => void;
   /** What he said, with where he is; the reply streams to `onDelta` as it is written. */
   readonly say: (text: string, where: Where, onDelta?: (delta: string) => void) => Promise<string>;
   readonly dispose: () => void;
@@ -141,6 +146,10 @@ export const createAssistantAgent = (input: {
   readonly presence?: () => Promise<string>;
   /** How many images the tools have handed the assistant so far, ever. */
   readonly images?: () => number;
+  /** Whose private store this turn may read, from its voice or his typing; null for nobody's. Asked as it starts. */
+  readonly privateAllowed?: () => string | null;
+  /** Whose private memories this turn's recall used, or null: its words stay out of the file and of learning. */
+  readonly privateUsed?: () => string | null;
 }): AssistantAgent => {
   const now = input.now ?? Date.now;
   const logOf = (persona: string | undefined) =>
@@ -160,6 +169,9 @@ export const createAssistantAgent = (input: {
     // The newest conversation turn this session has in view, and the turns it wrote itself.
     seenId: number;
     readonly own: Set<number>;
+    /** Whose private memories it has read, and when last: it serves only that person, and not for long. */
+    privateFor: string | null;
+    privateAt: number;
   }
   /** One session per model, all on the same conversation file. */
   const pool = new Map<string, Warm>();
@@ -245,6 +257,8 @@ export const createAssistantAgent = (input: {
       images: 0,
       seenId: window.at(-1)?.id ?? 0,
       own: new Set(),
+      privateFor: null,
+      privateAt: 0,
     };
     void warm.session.then(
       () => (warm.ready = true),
@@ -253,6 +267,12 @@ export const createAssistantAgent = (input: {
     pool.set(key, warm);
     return warm;
   };
+
+  /** A session that read someone's private memories serves only them, only while their store would still be open. */
+  const privateSpent = (warm: Warm) =>
+    warm.privateFor !== null &&
+    (warm.privateFor !== (input.privateAllowed?.() ?? null) ||
+      now() - warm.privateAt > PRIVATE_HOLD_MS);
 
   const ensure = async (
     brain?: Brain,
@@ -271,7 +291,8 @@ export const createAssistantAgent = (input: {
           turns: found.turns,
           idleMs: now() - found.lastAt,
           images: found.images,
-        })
+        }) &&
+        !privateSpent(found)
       ) {
         return { agent: current, warm: found };
       }
@@ -318,6 +339,16 @@ export const createAssistantAgent = (input: {
       input.presence?.().catch(() => "") ?? "",
       input.recall?.(text, project).catch(() => "") ?? "",
     ]);
+    // Read again when the turn is written: a private memory may also be kept during it.
+    const privateNow = () => {
+      const used = input.privateUsed?.() ?? null;
+      if (used !== null) {
+        warm.privateFor = used;
+        warm.privateAt = now();
+      }
+      return used;
+    };
+    privateNow();
     const recent = log.recent(8);
     const last = recent.at(-1);
     // His own last exchange with this persona: a device's turn, a refusal or a note is not one.
@@ -372,11 +403,13 @@ export const createAssistantAgent = (input: {
         ? ""
         : `said to ${from.name} just now:\n${conversationBlock({ recent: handed, earlier: [], by: from.name, ...labels(from.id) })}`;
     const record = (reply: string, note?: string) => {
+      const used = privateNow();
       warm.own.add(
         log.add({
           route: "answer",
-          said: text,
-          reply,
+          // A private turn's words stay in the session that heard them, never in the file.
+          said: used === null ? text : PRIVATE_TURN_STUB,
+          reply: used === null ? reply : PRIVATE_TURN_STUB,
           ...(note === undefined ? {} : { note }),
           ...(where.window === null ? {} : { target: { label: where.window } }),
           ...(where.persona === undefined ? {} : { persona: where.persona.id }),
@@ -431,7 +464,7 @@ export const createAssistantAgent = (input: {
     warm.turns += 1;
     warm.lastAt = now();
     touch();
-    input.learn?.(text, reply, project);
+    if (privateNow() === null) input.learn?.(text, reply, project);
     record(reply);
     return reply;
   };
@@ -475,6 +508,9 @@ export const createAssistantAgent = (input: {
       });
       queue = run.catch(() => undefined);
       return run;
+    },
+    forgetPrivate: () => {
+      for (const [key, warm] of pool) if (warm.privateFor !== null) drop(key);
     },
     dispose: () => {
       generation += 1;

@@ -6,6 +6,7 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { useClientSettings } from "../hooks/useSettings";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
+import { noteDictationKey } from "./dictationKey";
 
 const HOLD_THRESHOLD_MS = 300;
 
@@ -87,6 +88,7 @@ export function useDictationShortcut(input: ShortcutInput) {
       const press = pressed.current;
       if (!press || (event && (event.code || event.key) !== press.code)) return;
       pressed.current = null;
+      noteDictationKey(false);
       if (shouldFinishDictationOnRelease(press.mode, performance.now() - press.startedAt)) {
         void press.starting.then(() => {
           if (!disposed && generation.current === press.generation)
@@ -144,6 +146,7 @@ export function useDictationShortcut(input: ShortcutInput) {
         mode,
         starting: speech.start(),
       };
+      noteDictationKey(mode !== "toggle");
     };
     const onBlur = () => finish(null);
     const unsubscribe = subscribeKeys?.({

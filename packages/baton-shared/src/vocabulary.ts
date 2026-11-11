@@ -592,7 +592,8 @@ export const withOwnWords = (
  * His words written split or joined ("Wispr flow" or "WisprFlow" for Wispr Flow, "T 3" for T3) put back as he spells
  * them: a split form of his own term is never an ordinary word. Two or three words in a row, nothing between.
  */
-export const joinSplitTerms = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+export const joinSplitTerms = (heard: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+  let text = heard;
   const terms = new Map<string, string>();
   for (const e of withOwnWords(entries)) {
     const term = e.replacement ?? e.phrase;
@@ -601,6 +602,13 @@ export const joinSplitTerms = (text: string, entries: ReadonlyArray<VocabularyEn
       terms.set(key, term);
   }
   if (terms.size === 0) return text;
+  // The split form with a dotted acronym ("venture O.S.") is his word too, where the letters complete it.
+  text = text.replace(
+    /([\p{L}\p{N}]+) ((?:\p{L}\.){2,})/gu,
+    (found: string, head: string, dotted: string) => {
+      return terms.get(`${head}${dotted.replace(/\./g, "")}`.toLowerCase()) ?? found;
+    },
+  );
   const words = [...text.matchAll(new RegExp(`${WORD_START}[\\p{L}\\p{N}]+${WORD_END}`, "gu"))];
   let out = "";
   let from = 0;
@@ -742,6 +750,17 @@ export const biasTranscript = (
     if (word.length < 5 || NAMES.has(word.toLowerCase())) return word;
     for (const term of terms) {
       if (word === term || word[0]!.toLowerCase() !== term[0]!.toLowerCase()) continue;
+      // A whole part of a compound term ("Alpha" of AlphaOS, up to its capital) is an ordinary word: "a new alpha"
+      // is never AlphaOS, though "alphas" still is. A clipped spelling ("claud" for Claude) is not a part.
+      const w = word.toLowerCase();
+      const bare = term.toLowerCase();
+      const boundary = (at: number) =>
+        at > 0 && at < term.length && /[\p{Lu}\p{N}]/u.test(term[at]!);
+      if (
+        (bare.startsWith(w) && boundary(w.length)) ||
+        (bare.endsWith(w) && boundary(term.length - w.length))
+      )
+        continue;
       if (
         similar(word, term) >= 1 - (term.length >= 8 ? 2 : 1) / term.length &&
         Math.abs(word.length - term.length) <= 2

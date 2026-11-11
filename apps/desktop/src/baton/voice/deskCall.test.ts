@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { deskCall } from "./deskCall.ts";
+import { deskCall, serverOnly } from "./deskCall.ts";
 
 describe("a request answered by this machine's server while T3 is closed", () => {
   it("shapes job, memory, commitment and weave calls as the sidebar does, and leaves the window's own requests alone", () => {
@@ -57,6 +57,12 @@ describe("a request answered by this machine's server while T3 is closed", () =>
       deskCall({ kind: "cloud", op: "act", args: { id: "c1" }, environmentId: "env-laptop" }, here),
     ).toEqual({ method: "baton.cloud.act", input: { id: "c1" } });
     expect(deskCall({ kind: "cloud", op: "environments", args: {} })).toBeNull();
+    expect(deskCall({ kind: "home", op: "act", args: { op: "do" } })).toEqual({
+      method: "baton.home.call",
+      input: { op: "do", kind: "act" },
+    });
+    expect(deskCall({ kind: "home", op: "answer", args: {} })).toBeNull();
+    expect(serverOnly({ kind: "home", op: "read" })).toBe(true);
     expect(deskCall({ kind: "job", op: "handoff", args: { id: "w1", instance: "Codex" } })).toEqual(
       {
         method: "baton.job.handoff",

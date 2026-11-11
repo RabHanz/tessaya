@@ -31,7 +31,6 @@ import {
   cleanupLevelFor,
   DICTATION_MODES,
   MODE_LABELS,
-  strictestCleanup,
   type CleanupLevel,
   type DictationMode,
 } from "@t3tools/baton-shared/dictationCleanup";
@@ -148,7 +147,7 @@ import { createInOrder } from "./inOrder.ts";
 import { createCommandClips } from "./keyCommands.ts";
 import { beforeSpokenStop, keyDictationCommand } from "@t3tools/baton-shared/dictation";
 import { createVolumeDuck } from "./volumeDuck.ts";
-import { pronounceFrom } from "./pronounce.ts";
+import { pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import {
   createOutputWatch,
   outputDeviceFrom,
@@ -230,6 +229,7 @@ import {
 } from "@t3tools/baton-shared/initiative";
 import { detectSecret, REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
 import {
+  PRIVATE_MEMORY_NAME,
   SERVER_MEMORY_NAME,
   applyRestore,
   memoryRestore,
@@ -295,6 +295,8 @@ import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
+import { createPrivateTab } from "../memory/privateTab.ts";
+import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
 import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
@@ -332,9 +334,14 @@ import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../h
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
+import { createComposerDictation, routePill } from "./composerDictation.ts";
+import { cleanupLevelNow } from "./cleanupLevel.ts";
 import * as Electron from "electron";
 
 import {
+  BATON_COMPOSER_DICTATION_REPLY_CHANNEL,
+  BATON_COMPOSER_DICTATION_CHANNEL,
+  BATON_COMPOSER_FOCUS_CHANNEL,
   BATON_COMPOSER_MIC_CHANNEL,
   BATON_VOICE_FOCUS_CHANNEL,
   BATON_VOICE_REQUEST_CHANNEL,
@@ -406,6 +413,8 @@ import {
   modelPresent,
   PARAKEET_FAST_MODEL,
   PARAKEET_MODEL,
+  personalModelsDir,
+  verifyPersonalModel,
   SPEAKER_MODEL,
   machinePicksFast,
   slowStartsAfter,
@@ -561,6 +570,13 @@ const FOCUSED_FIELD: BatonFocusTarget = {
   origin: null,
 };
 
+/** A house tool's call to this machine's server (deskCall: always its own door). */
+interface HomeBridgeRequest {
+  readonly kind: "home";
+  readonly op: "read" | "act";
+  readonly args: { readonly op: string; readonly args: Readonly<Record<string, unknown>> };
+}
+
 interface MicSetting {
   /** Part of the device name, as Windows shows it. */
   readonly name: string;
@@ -673,8 +689,11 @@ interface VoiceSettings {
   readonly needsExpect: ReadonlyArray<string>;
   readonly pillEdge: "bottom" | "top";
   readonly dictation: "baton" | "wispr";
-  /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
-  readonly speechModel: "v3" | "fast";
+  /**
+   * "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker; "personal" is his own fine-tune,
+   * used only while it verifies against its manifest (verifyPersonalModel), else v3.
+   */
+  readonly speechModel: "v3" | "fast" | "personal";
   /** Who set speechModel: unset is the default, which a weak machine may change (machinePicksFast); his pick never. */
   readonly speechModelPicked?: "you" | "machine";
   /** Starts in a row whose model load was slow (slowStartsAfter). */
@@ -940,6 +959,8 @@ export const readSettings = (path: string): VoiceSettings => {
 /** Longer than the spoken 15 s, for reading; a typed yes must still run out. */
 const TYPED_CONFIRM_MS = 30_000;
 const APP_CHECK_MS = 500;
+/** A clean-up slower than this says where its time went. */
+const SLOW_CLEANUP_MS = 400;
 /** A second Esc within this discards a dictation. */
 const ESC_AGAIN_MS = 2_000;
 /** How long "Discarded · click to undo" stays. */
@@ -1130,6 +1151,8 @@ export interface DesktopBatonVoiceInput {
   readonly mainWindowUp?: () => Promise<boolean>;
   /** One Tessaya method on this machine's own server, for when T3's window is closed. */
   readonly direct?: (method: string, input: unknown, timeoutMs?: number) => Promise<unknown>;
+  /** His private memory stores on this machine's server, for the Memory tab. */
+  readonly privateMemory?: PrivateMemory;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** The voice match model in the voice model worker (VOICE-ID); absent, Voice ID cannot run here. */
@@ -1316,6 +1339,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     appData: input.env["APPDATA"],
     onChange: () => pushHome(),
     ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+    // Deleting a person deletes their private store with them.
+    ...(input.privateMemory === undefined
+      ? {}
+      : { onPersonDeleted: (id: string) => void input.privateMemory?.onPersonDeleted(id) }),
   });
   voiceId.sync();
   /** Who is speaking, for the core, the approval path and the memory stores (one identity for all). */
@@ -1525,13 +1552,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     examples: (text, mode) => styleIndex?.nearest(text, mode, 4) ?? [],
   });
   /** Held to where the words came from and where he is now. Unknown counts as secret. */
-  const levelNow = async (spokenIn: { readonly exe: string; readonly title: string }) => {
-    const now = await Promise.race([
-      sidecar?.foreground().catch(() => null) ?? Promise.resolve(null),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
-    ]);
-    return strictestCleanup(settings.dictationCleanup, [spokenIn, now ?? { exe: "", title: "" }]);
-  };
+  const levelNow = (spokenIn: { readonly exe: string; readonly title: string }) =>
+    cleanupLevelNow(
+      settings.dictationCleanup,
+      spokenIn,
+      () => sidecar?.foreground() ?? Promise.resolve(null),
+      APP_CHECK_MS,
+    );
   const snippets = createSnippetStore(input.stateDir);
   const transforms = createTransformStore(input.stateDir);
   const styles = createStyleStore(input.stateDir);
@@ -1604,7 +1631,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Clean-up, then the spoken cues he saved expand (Snippets). */
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
     // Words that look like a secret are never put in a Claude prompt, whatever the level.
+    const started = Date.now();
     const level = detectSecret(raw) === null ? await levelNow(app) : "local";
+    const levelMs = Date.now() - started;
     const out = await rewriter.clean({
       raw: raw,
       mode: chooseMode(app, settings.appModes),
@@ -1615,6 +1644,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
     if (out.stage === "fallback")
       input.onNote?.("dictation_cleanup", { fallback: out.why ?? "unknown" });
+    // Which part of a slow clean-up took the time, so the next one names it (a local 1.5 s on 0.1.105 could not be).
+    if (Date.now() - started > SLOW_CLEANUP_MS)
+      input.onNote?.("dictation_cleanup_slow", {
+        levelMs,
+        cleanMs: Date.now() - started - levelMs,
+        level,
+        stage: out.stage,
+      });
     const styled =
       chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw"
         ? out.text
@@ -2118,13 +2155,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         input.onNote?.("ghost_start", { ...at, shown: not === null, ...not });
       });
   };
-  const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
+  const dictationWords = (text: string) =>
+    ghost.active() && !composer.active() ? ghost.words(text) : pill.words(text);
   /** The dictation whose ghost holds his typing keys until its paste lands (the sidecar's `hold_keys`); 0 for none. */
   let keyHold = 0;
   let keyHolds = 0;
   /** T3's composer microphone asked for Tessaya's dictation: its words go back to the composer, not through a paste. */
   let composerWaiter: ((text: string) => void) | null = null;
-  const oneShot = createOneShot<FocusedApp>({
+  const oneShotOptions: Parameters<typeof createOneShot<FocusedApp>>[0] = {
     // The paste never waits for the ghost (it held every paste ~2.8 s): its words go as the cleaned ones land.
     beforePaste: async (_raw, _text, app) => {
       ghostPlayed = ghost.active();
@@ -2193,6 +2231,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                   input.onNote?.("paste_refused", { why, chars: text.length });
                   return false;
                 }))(sidecar, app.window, app.title),
+  };
+  /** Our own chat box took the dictation: it takes the words itself, no paste (composerDictation.ts). */
+  const oneShot = createOneShot<FocusedApp>({
+    ...oneShotOptions,
+    paste: async (text, app) => {
+      const ours = composer.active();
+      const took = await composer.commit(text);
+      // Which way the words went, for the turn log: the chat box took them, or they fell back to the paste.
+      if (ours) input.onNote?.("composer_commit", { took, chars: text.length });
+      return took ? (ghostPlayed = true) : oneShotOptions.paste(text, app);
+    },
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
@@ -2221,7 +2270,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
-    if (result.status !== "pasted") ghost.stop();
+    if (result.status !== "pasted") {
+      ghost.stop();
+      composer.cancel();
+    }
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     landed(result.text);
@@ -2462,7 +2514,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
       | BatonCloudBridgeRequest
-      | BatonPhoneBridgeRequest,
+      | BatonPhoneBridgeRequest
+      | HomeBridgeRequest,
   ): Promise<unknown> => {
     // With T3's window closed, this machine's server answers instead of opening the window; acting on another
     // computer is refused in a sentence, since only T3's own session to it may do that.
@@ -2516,7 +2569,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
       | BatonCloudBridgeRequest
-      | BatonPhoneBridgeRequest,
+      | BatonPhoneBridgeRequest
+      | HomeBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -2630,6 +2684,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     feeds: settings.needsFeeds,
     expect: settings.needsExpect,
   });
+  /** The house tools: the server answers ok with a value or a sentence; the model gets it as JSON text. */
+  const homeOp = async (args: Readonly<Record<string, unknown>>): Promise<string> => {
+    try {
+      const reply = (await requestKept({
+        kind: "home",
+        op: args["method"] === "act" ? "act" : "read",
+        args: {
+          op: String(args["op"] ?? ""),
+          args: {
+            ...(args["args"] as Readonly<Record<string, unknown>>),
+            surface: "assistant",
+            who: "Tessaya",
+          },
+        },
+      })) as { ok?: boolean; error?: string; value?: unknown } | null;
+      if (reply?.ok !== true) return reply?.error ?? "Home did not answer.";
+      return JSON.stringify(reply.value ?? null).slice(0, 8000);
+    } catch (error) {
+      return error instanceof Error ? error.message : "Home did not answer.";
+    }
+  };
   const weaveOp = async (
     op: "weave_send" | "weave_list",
     args: Readonly<Record<string, unknown>>,
@@ -2802,6 +2877,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return said;
       }
       if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
+      if (op === "home") return homeOp(args);
       if (op === "note_add") {
         try {
           return `Saved to the Scratchpad [id: ${scratch.add(String(args["text"] ?? "")).id}].`;
@@ -3693,6 +3769,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const discardKeyDictation = () => {
     discardNewest();
+    composer.cancel();
     sidecar?.finish();
   };
   /** One stray Esc must not lose his words, as in spoken dictation: the first asks, the second discards. */
@@ -3809,6 +3886,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       moveDictation("toggle");
       return { handled: true };
     }
+    // The chat box has this dictation already: its words reach it through `composer`, not this answer.
+    if (composer.active()) {
+      moveDictation("toggle");
+      return { handled: true };
+    }
     // The second press ends the recording; its words, cleaned, come back here (`paste` below).
     const words = new Promise<string>((resolve) => {
       composerWaiter = resolve;
@@ -3846,7 +3928,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "key_edge")
       return input.onNote?.("key_edge", { down: event.down, at: event.at });
     // The pill on the press itself; the microphone opens 80 to 140 ms later (`recording`).
-    if (event.ev === "pressed") return pressGate.press();
+    // His own chat box has the keyboard: it takes the dictation now, before the press could show the pill.
+    if (event.ev === "pressed") {
+      claimComposer("held");
+      return pressGate.press();
+    }
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
       // Words for a dictation that is no longer the newest (late from his server after a new key press) are dropped.
@@ -3899,15 +3985,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         .catch(() => undefined);
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
+      claimComposer(keyHeldToTalk ? "held" : "free");
       pressGate.want();
       startGhost();
     } else if (event.ev === "latched") {
       keyHeldToTalk = false;
+      composer.mode("free");
       showDictation("Esc twice discards");
-    } else if (event.ev === "transcribing") showDictation("Writing it out", true);
-    else if (event.ev === "idle") {
+    } else if (event.ev === "transcribing") {
+      composer.finish();
+      showDictation("Writing it out", true);
+    } else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
+      composer.cancel();
       takeRecording(recordings, event.dictation);
       // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
@@ -3917,6 +4008,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (!pressGate.cancel()) showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();
+      composer.cancel();
       pressGate.cancel();
       takeRecording(recordings, event.dictation);
       note = event.message;
@@ -4159,7 +4251,48 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     loop?.activate("dismiss");
     input.onStop?.(quiet);
   };
-  const pill: VoicePill = createVoicePill({
+  const dictationAction = (insert: boolean) =>
+    dictatingByVoice
+      ? endVoiceDictation(insert)
+      : keyRecording()
+        ? insert
+          ? sidecar?.finish()
+          : discardKeyDictation()
+        : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
+          !insert && sidecarBusy
+          ? discardNewest()
+          : undefined;
+  /** Which of our windows say their chat box has the keyboard, by webContents id. */
+  const composerFocus = new Map<number, boolean>();
+  Electron.ipcMain.on(BATON_COMPOSER_FOCUS_CHANNEL, (event, focused: unknown) => {
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
+    composerFocus.set(event.sender.id, focused === true);
+  });
+  const composer = createComposerDictation({
+    target: () => {
+      const window = Electron.BrowserWindow.getFocusedWindow();
+      if (window === null || window.isDestroyed()) return null;
+      const contents = window.webContents;
+      return {
+        send: (message) => contents.send(BATON_COMPOSER_DICTATION_CHANNEL, message),
+        gone: () => contents.isDestroyed(),
+        focused: () => composerFocus.get(contents.id) === true,
+      };
+    },
+    onAction: dictationAction,
+  });
+  const claimComposer = (mode: "held" | "free") =>
+    void composer.start(mode).then((claimed) => {
+      if (claimed) ghost.stop();
+      else pill.replay();
+    });
+  Electron.ipcMain.on(BATON_COMPOSER_DICTATION_REPLY_CHANNEL, (event, reply: unknown) => {
+    // Our own windows only; preview panes load other people's pages.
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
+    if (typeof reply === "object" && reply !== null && "id" in reply && "type" in reply)
+      composer.reply(reply as Parameters<typeof composer.reply>[0]);
+  });
+  const pillOptions: Parameters<typeof createVoicePill>[0] = {
     look: () => ({ motion: settings.motion, glass: settings.glass }),
     menuItems: () => [
       {
@@ -4186,17 +4319,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     edge: () => settings.pillEdge,
     stateDir: input.stateDir,
     holdEscape: input.holdEscape,
-    onDictation: (insert) =>
-      dictatingByVoice
-        ? endVoiceDictation(insert)
-        : keyRecording()
-          ? insert
-            ? sidecar?.finish()
-            : discardKeyDictation()
-          : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
-            !insert && sidecarBusy
-            ? discardNewest()
-            : undefined,
+    onDictation: dictationAction,
     // ✕ | waveform | ✓ while the pill stays up on its own; a key or button held to talk ends on its release.
     voiceDictating: () => dictatingByVoice || (keyRecording() && !keyHeldToTalk),
     showWords: () => settings.showWords && !ghost.active(),
@@ -4225,7 +4348,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return back;
     },
     focusWindow: (window) => void sidecar?.focusWindow(window).catch(() => undefined),
-  });
+  };
+  const pill: VoicePill & { readonly replay: () => void } = routePill(
+    createVoicePill(pillOptions),
+    composer,
+  );
   let fullscreen = false;
   const restWanted = () =>
     restBarWanted({
@@ -4437,6 +4564,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const speechModel = () =>
     settings.speechModel === "fast" ? PARAKEET_FAST_MODEL : PARAKEET_MODEL;
+  /** His own model's file once it has verified this session; the default whenever it is there and he has not picked. */
+  let personalPath: string | null = null;
+  const usePersonal = () =>
+    personalPath !== null &&
+    (settings.speechModel === "personal" ||
+      (settings.speechModel === "v3" && settings.speechModelPicked === undefined));
 
   /** Fetched once a session, quietly, the first time the wake path wants a model dictation does not use. */
   let wakeModelFetched = false;
@@ -4486,6 +4619,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       try {
         await startSidecar();
         for (;;) {
+          if (usePersonal() && personalPath !== null) {
+            parakeetPath = personalPath;
+            note = null;
+            configureDictation();
+            render();
+            return personalPath;
+          }
           const model = speechModel();
           markPhase("speech-model-ensure:begin", { file: model.file });
           const path = await ensureModel({
@@ -4500,7 +4640,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               render();
             },
           }).finally(() => markPhase("speech-model-ensure:end"));
-          if (model === speechModel()) {
+          if (model === speechModel() && !usePersonal()) {
             parakeetPath = path;
             note = null;
             configureDictation();
@@ -4835,7 +4975,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       speech: {
         present,
-        label: settings.speechModel === "fast" ? "Parakeet Fast" : "Parakeet v3",
+        label: usePersonal()
+          ? "Personal"
+          : settings.speechModel === "fast"
+            ? "Parakeet Fast"
+            : "Parakeet v3",
         sizeMb: Math.round(model.size / 1e6),
       },
       signIn: (await input.extras?.signIn().catch(() => null)) ?? null,
@@ -5014,6 +5158,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     refresh: () => home.refresh(),
     reveal: (file) => Electron.shell.showItemInFolder(file),
   });
+  const privateTab =
+    input.privateMemory === undefined
+      ? null
+      : createPrivateTab({
+          memory: input.privateMemory,
+          voices: () =>
+            voiceId
+              .profiles()
+              .filter((p) => p.kind === "saved")
+              .map((p) => ({ id: p.id, name: p.name })),
+          hello: (message) => windowsHello(message, input.platform),
+          clipboard: {
+            read: () => Electron.clipboard.readText(),
+            write: (t) => Electron.clipboard.writeText(t),
+            clear: () => Electron.clipboard.clear(),
+          },
+          saveFile: async (name, contents) => {
+            const r = await Electron.dialog.showSaveDialog({
+              defaultPath: NodePath.join(Electron.app.getPath("documents"), name),
+            });
+            if (r.canceled || r.filePath === undefined) return null;
+            NodeFS.writeFileSync(r.filePath, contents, { mode: 0o600 });
+            return r.filePath;
+          },
+          everydayCount: () => memoryTab.count(),
+          refresh: () => home.refresh(),
+        });
   const cachedPack = cachedFor(3_000, () => [
     ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
     ...rosterControls(NodePath.join(input.stateDir, PACK_FOLDER)),
@@ -5880,7 +6051,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           args: { includeSuperseded: true, includeProposed: true, limit: 100_000 },
         }).catch(() => null)) as { items?: ReadonlyArray<MemoryItem> } | null)
       : null;
-    const plan = planBackup(input.stateDir, exported?.items ?? null);
+    const sealed = ((await input.privateMemory?.call("backup").catch(() => null)) ?? null) as {
+      dump?: string;
+    } | null;
+    const plan = planBackup(input.stateDir, exported?.items ?? null, sealed?.dump ?? null);
     const count = writeBackup(picked.filePath, plan);
     backupNote = `Saved ${count} files to ${picked.filePath}.${
       exported === null
@@ -6055,7 +6229,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...at("presence"),
       ...presenceControls(settings),
       ...at("memory"),
-      ...memoryTab.controls(),
+      ...(privateTab?.controls() ?? []),
+      ...(privateTab === null || privateTab.everyday() ? memoryTab.controls() : []),
       ...vaultTab.controls(),
       ...at("pack"),
       ...cachedPack(),
@@ -6237,8 +6412,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? { hint: "Picked for this computer, which is slow for the larger model." }
           : {}),
         kind: "choice",
-        value: settings.speechModel,
+        value: usePersonal()
+          ? "personal"
+          : settings.speechModel === "personal"
+            ? "v3"
+            : settings.speechModel,
         options: [
+          ...(personalPath === null ? [] : [{ value: "personal", label: "Personal (yours)" }]),
           { value: "v3", label: "25 European languages, slower" },
           { value: "fast", label: "English, 3x quicker" },
         ],
@@ -6861,6 +7041,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
+    if (privateTab?.act(id, value)) return;
     if (memoryTab.act(id, value)) return;
     if (vaultTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
@@ -7198,6 +7379,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             })
             .finally(pushHome);
         }
+        const sealedBack = backupPreview.entries.find((e) => e.name === PRIVATE_MEMORY_NAME);
+        if (sealedBack !== undefined && input.privateMemory !== undefined) {
+          void input.privateMemory
+            .call("restore", { dump: sealedBack.data.toString("utf8") })
+            .then((r) => {
+              const out = r as { stores: number; items: number };
+              backupNote = `${backupNote ?? ""} Private memories: ${out.stores} store(s), ${out.items} item(s) back; each opens with its recovery code.`;
+            })
+            .catch((e: unknown) => {
+              backupNote = `${backupNote ?? ""} Private memories were not restored: ${e instanceof Error ? e.message : "the server did not answer"}.`;
+            })
+            .finally(pushHome);
+        }
         // Or the copies in memory are saved over what was just restored.
         settings = readSettings(settingsPath);
         dictionary = readDictionary(input.stateDir, dictionary);
@@ -7432,7 +7626,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ dictationCleanupChosen: true, dictationCleanup: value });
       syncCleanupSession();
     } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
-      const code = languageCode(id.endsWith(":add") ? settings.speechModel : "v3", value);
+      // His personal model is a v3 fine-tune: the same languages.
+      const code = languageCode(
+        id.endsWith(":add") && settings.speechModel === "fast" ? "fast" : "v3",
+        value,
+      );
       const v3Code = code === undefined ? languageCode("v3", value) : undefined;
       if (settings.speechModelPicked === "machine" && v3Code !== undefined) {
         languageOffer = v3Code;
@@ -7479,7 +7677,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
       render();
     } else if (id === "v.cloudTest") void testCloud();
-    else if (id === "v.speechModel" && (value === "v3" || value === "fast")) setSpeechModel(value);
+    else if (
+      id === "v.speechModel" &&
+      (value === "v3" || value === "fast" || (value === "personal" && personalPath !== null))
+    )
+      setSpeechModel(value);
     else if (id === "v.speechModelOffer" && languageOffer !== null) {
       save({ languages: [...new Set([...settings.languages, languageOffer])] });
       languageOffer = null;
@@ -7692,7 +7894,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
-      if (tab === "memory") void memoryTab.load();
+      if (tab === "memory") {
+        void memoryTab.load();
+        void privateTab?.load();
+      } else privateTab?.close();
       if (tab === "approvals") void cloud.refresh().catch(() => undefined);
       // The Cloud page refreshes every minute while it is open, and not otherwise.
       if (cloudTimer !== null) {
@@ -7982,6 +8187,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   holdMainAtLaunch(!launch.sessions);
   if (launch.tessaya) setTimeout(() => home.open(), 2_000).unref();
+  void verifyPersonalModel(personalModelsDir(NodeOS.homedir())).then((found) => {
+    // Never the folder's contents: only whether it verified, and why not.
+    if (found.ok) personalPath = found.path;
+    else if (found.why !== "none") input.onNote?.("personal_model", { refused: found.why });
+    if (usePersonal() && parakeetPath !== null && parakeetPath !== personalPath) requestDictation();
+    else render();
+  });
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
   const atLaunch = dictationAtLaunch({
     available: binary !== null,

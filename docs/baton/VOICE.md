@@ -102,22 +102,22 @@ tray says so and no microphone opens. Everything audio goes through
 `baton-dictation.exe` (`native/baton-dictation`, D97): `serve` over JSON lines for the keys, recording,
 Parakeet and paste; `record` piped in as the wake path's microphone.
 
-| Setting in `<state dir>/fabric-voice.json` | Default                                                                                                     | Also in the tray        |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `dictation`                                | `baton`; `wispr` holds no key                                                                               | Dictation               |
-| `holdKey`, `toggleKey`                     | `Alt+Win`, `Ctrl+Alt+Shift+Space`                                                                           |                         |
-| `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v`                                                                    |                         |
-| `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold                                                | Wake words              |
-| `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker                                                                  | Dictation               |
-| `dictationCleanup`                         | `claude`; `local`, `off`                                                                                    | Dictation, Clean-up     |
-| `cleanupModel`, `claudeBinary`             | `haiku`, `claude`                                                                                           |                         |
-| `appModes`                                 | `{}`; his writing mode per app, by exe                                                                      | Dictation, Writing mode |
-| `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)                                                                                   | Microphone              |
-| `enabled`                                  | `false`: listening is opt-in                                                                                | Always listening        |
-| `sounds`                                   | `true`                                                                                                      | Sounds                  |
-| `pillAtRest`                               | `false`                                                                                                     | Pill                    |
-| `pillEdge`                                 | `bottom`; `top`                                                                                             | Pill                    |
-| `pronounce`                                | `{}`; his own word → how to say it (`{"Kiro": "Keer-oh"}`), over the built-in respellings in `pronounce.ts` |                         |
+| Setting in `<state dir>/fabric-voice.json` | Default                                                                                                                      | Also in the tray        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `dictation`                                | `baton`; `wispr` holds no key                                                                                                | Dictation               |
+| `holdKey`, `toggleKey`                     | `Alt+Win`, `Ctrl+Alt+Shift+Space`                                                                                            |                         |
+| `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v`                                                                                     |                         |
+| `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold                                                                 | Wake words              |
+| `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker                                                                                   | Dictation               |
+| `dictationCleanup`                         | `local`; `claude`, `off`. Follows the one `dictationCleanup` server setting (below)                                          | Dictation, Clean-up     |
+| `cleanupModel`, `claudeBinary`             | `haiku`, `claude`                                                                                                            |                         |
+| `appModes`                                 | `{}`; his writing mode per app, by exe                                                                                       | Dictation, Writing mode |
+| `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)                                                                                                    | Microphone              |
+| `enabled`                                  | `false`: listening is opt-in                                                                                                 | Always listening        |
+| `sounds`                                   | `true`                                                                                                                       | Sounds                  |
+| `pillAtRest`                               | `false`                                                                                                                      | Pill                    |
+| `pillEdge`                                 | `bottom`; `top`                                                                                                              | Pill                    |
+| `pronounce`                                | `{}`; his own word → how to say it (`{"Kiro": "Keer-oh"}`), over the built-in respellings in `baton-shared/src/pronounce.ts` |                         |
 
 Tray → Edit voice settings opens the file; saved edits apply within two seconds. Dictation works with
 "Always listening" off. The wake, VAD and feature models ship with the app. Parakeet (740 MB,
@@ -138,6 +138,12 @@ sense and changes nothing else; dictated text is text, never instructions.
 At the claude level every dictation of 8 words or more goes to the model, tidy or not: measured against Wispr's final
 text on 8,266 of his own dictations, the model brought even well-punctuated text closer, and the local rules alone
 cannot (DICT-FID). Shorter ones are pasted at once unless he corrected himself in them.
+
+The level follows the one `dictationCleanup` server setting (`packages/contracts/src/dictationCleanup.ts`), which every
+environment, browser and the phone share: `BatonDesktopSettings` on this machine's server hands the desktop the level
+the setting asks for (`claude` is on; `local` and `off` are both off) and turns his own change on the desktop, or an
+agent's through `tessaya_desktop_settings`, into the setting. With the saved Anthropic key the model is the setting's
+when it is a Claude model; the `claude` CLI fallback still uses `cleanupModel`.
 
 The dictionary is `<state dir>/voice/dictionary.json`, a list of `{phrase, replacement}` he can edit. If it is
 missing, Wispr's table is read once, read-only.

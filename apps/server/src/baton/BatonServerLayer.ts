@@ -34,6 +34,8 @@ import * as BatonJobService from "./BatonJobService.ts";
 import * as BatonRecordService from "./BatonRecordService.ts";
 import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonCloudService from "./BatonCloudService.ts";
+import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
+import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
 import * as BatonSessionsAcross from "./BatonSessionsAcross.ts";
 import * as BatonWeaveService from "./BatonWeaveService.ts";
@@ -42,6 +44,8 @@ import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
 import * as BatonMemoryReactor from "./BatonMemoryReactor.ts";
 import * as BatonMemoryEmbedder from "./BatonMemoryEmbedder.ts";
 import * as BatonMemoryService from "./BatonMemoryService.ts";
+import * as BatonPrivateMemoryService from "./BatonPrivateMemoryService.ts";
+import * as BatonVoiceLibrary from "./BatonVoiceLibrary.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonPhoneInbox from "./BatonPhoneInbox.ts";
@@ -118,6 +122,11 @@ const servicesInner = IntentService.layer.pipe(
       BatonPhoneInbox.layer,
       BatonDesktopSettings.layer,
       BatonCloudService.layer,
+      // Home Assistant: one connection per server, its cards on the phone inbox (a sibling, so provided here).
+      HomeAssistantService.layer.pipe(
+        Layer.provide(HomeAssistantConnection.layer),
+        Layer.provide(BatonPhoneInbox.layer),
+      ),
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
       // on a machine with no Herdr found no way to start a thread.
       BatonSessionCatalogService.layer.pipe(
@@ -152,6 +161,9 @@ const servicesInner = IntentService.layer.pipe(
       BatonOneShot.layer,
     ),
   ),
+  // Beside the mergeAll above, not in it: one more member there loses its types.
+  Layer.provideMerge(BatonPrivateMemoryService.layer),
+  Layer.provideMerge(BatonVoiceLibrary.layer),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(BatonRecordService.layer),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.

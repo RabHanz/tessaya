@@ -53,6 +53,7 @@ import {
   chooseTranscriptCleanup,
   useCleanupGrant,
 } from "../../speech/voiceConsent";
+import { useChooseDictationCleanup } from "../../speech/dictationCleanupSync";
 import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
 import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";
 import {
@@ -108,6 +109,7 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
 import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
 import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
 import { AdvancedSettings } from "./AdvancedSettings";
+import { VoiceLibrarySections } from "./VoiceLibrarySettings";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingResetButton,
@@ -455,7 +457,6 @@ function ProjectDictionaryRow() {
 function CleanupModelRow() {
   const { environment, connectedEnvironments } = useSettingsScope();
   const settings = useScopedSettings();
-  const updateSettings = useUpdateScopedSettings();
   const providersByEnvironment = useEnvironmentProviders();
   const providers =
     (environment?.serverConfig
@@ -466,7 +467,8 @@ function CleanupModelRow() {
   );
   const instanceEntries = providerInstanceEntriesFor(textGenerationProviders, settings, null);
   const hasProvider = instanceEntries.some((entry) => entry.enabled && entry.isAvailable);
-  const dedicated = settings.speechPostProcessingModelSelection !== null;
+  const chooseCleanup = useChooseDictationCleanup();
+  const dedicated = settings.dictationCleanup.model !== null;
   const selection = resolveAppModelSelectionState(
     {
       ...settings,
@@ -491,24 +493,23 @@ function CleanupModelRow() {
       toastManager.add({ type: "error", title: "Cleanup model not saved", description: reason });
       return;
     }
-    updateSettings({ speechPostProcessingModelSelection: next });
+    chooseCleanup({ model: next });
   };
   return (
     <SettingsRow
-      serverScoped
-      settingKeys={["speechPostProcessingModelSelection"]}
+      settingKeys={["dictationCleanup"]}
       {...searchableSetting("speech-post-processing-model")}
       title="Cleanup model"
       description={
         dedicated
-          ? `Drafts on ${environment?.label ?? "this environment"} use this model for cleanup instead of the environment’s text generation model.`
-          : `Cleanup currently uses the text generation model on ${environment?.label ?? "this environment"}. Pick another model if you want a cheaper or faster one.`
+          ? "Every environment, the desktop and the phone use this model for cleanup instead of the environment’s text generation model."
+          : "Cleanup uses each environment’s text generation model. Pick another model if you want a cheaper or faster one; the choice applies everywhere."
       }
       resetAction={
         dedicated ? (
           <SettingResetButton
             label="cleanup model"
-            onClick={() => updateSettings({ speechPostProcessingModelSelection: null })}
+            onClick={() => chooseCleanup({ model: null })}
           />
         ) : null
       }
@@ -1093,6 +1094,7 @@ function TranscriptionTest(props: {
 
 export function VoiceSettingsPanel() {
   const cleanupEnabled = useCleanupGrant() !== null;
+  const chooseCleanup = useChooseDictationCleanup();
   const settings = useClientSettings();
   const settingsScope = useOptionalSettingsScope();
   const destination = useVoiceTranscriptionDestination();
@@ -1527,12 +1529,15 @@ export function VoiceSettingsPanel() {
       <SettingsSection id={searchableSetting("speech-post-processing").id} title="Cleanup">
         <SettingsRow
           title="Clean up transcripts with a provider"
-          description="Sends the transcript and nearby draft text to the text generation provider on the draft’s environment to fix punctuation, numbers, and spoken corrections. Sends text only; off by default."
+          description="Sends the transcript and nearby draft text, never audio, to the draft environment’s text generation provider to fix punctuation, numbers and corrections. Off by default; one setting everywhere."
           control={
             <Switch
               aria-label="Clean up transcripts with a provider"
               checked={cleanupEnabled}
-              onCheckedChange={chooseTranscriptCleanup}
+              onCheckedChange={(enabled) => {
+                chooseTranscriptCleanup(enabled);
+                chooseCleanup({ enabled });
+              }}
             />
           }
         />
@@ -1610,6 +1615,7 @@ export function VoiceSettingsPanel() {
           />
         ) : null}
       </SettingsSection>
+      <VoiceLibrarySections />
     </SettingsPageContainer>
   );
 }

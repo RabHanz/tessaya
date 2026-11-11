@@ -42,6 +42,7 @@ import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { markPhase, startStallWatch } from "./lifecycle/mainStall.ts";
 import { liftInheritedPriority } from "./lifecycle/processPriority.ts";
+import { busyFileOf, busyFilePath, writeBusyFile } from "./lifecycle/busyFile.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -53,12 +54,14 @@ import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
 import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
-import { createSpeaker, type VoiceChoice } from "./voice/voiceSpeaker.ts";
+import { createSpeaker, type Synthesise, type VoiceChoice } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
 import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
+import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
+import { runFreyaImport } from "./memory/freyaImport.ts";
 
 /** The one line a voice speaks when he plays or picks it. */
 const AUDITION_LINE = "Hello, this is how I sound.";
@@ -71,6 +74,8 @@ const VOICE_LOG_MAX_FILES = 5;
 const LAUNCH_WARM_MS = 5_000;
 /** How often, while an update waits, this machine's server is asked whether a session is mid-turn. */
 const IN_FLIGHT_MS = 5_000;
+/** Long enough for this machine's server to be up; a plan that still finds it down waits for the next start. */
+const FREYA_IMPORT_DELAY_MS = 30_000;
 
 export const startBatonDesktop = Effect.gen(function* () {
   adoptTessayaEnv(process.env);
@@ -236,7 +241,13 @@ export const startBatonDesktop = Effect.gen(function* () {
     };
     /** A session turn running on this machine that a restart would cut off; set once the server is reachable. */
     let inFlight: string | null = null;
+    let inFlightAnswered = false;
     let readInFlight = async (): Promise<void> => {};
+    const busyNow = () => ({
+      voiceBusy: voice?.busy() ?? false,
+      assistantBusy: screen?.active() ?? false,
+      inFlight,
+    });
     // The release feed is this repository's (D137); the restart is announced, then waits for quiet.
     const batonUpdates = createBatonUpdater({
       skip: (version) => isBad(guard, version),
@@ -270,11 +281,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           }
         });
       },
-      busy: () => ({
-        voiceBusy: voice?.busy() ?? false,
-        assistantBusy: screen?.active() ?? false,
-        inFlight,
-      }),
+      busy: busyNow,
       headsUp: (version, restartAt) => {
         voice?.openHome();
         lifecycle.note("update-heads-up", {
@@ -340,13 +347,48 @@ export const startBatonDesktop = Effect.gen(function* () {
     /** Undefined until a wake; null for a hotkey, which answers as the lead. */
     let lastWake: string | null | undefined;
     /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
-    const chooseVoice = (name: PocketVoice | "system"): VoiceChoice => {
+    const chooseVoice = (
+      name: PocketVoice | "system",
+      cloud: string | null = null,
+    ): VoiceChoice => {
       if (name === "system") return { kind: "system" };
       const synth = pocket.synthesise(name);
-      return synth === null
-        ? { kind: "wait", ready: pocket.ensure(name) }
-        : { kind: "synth", synth };
+      if (synth === null) return { kind: "wait", ready: pocket.ensure(name) };
+      return cloud === null || Date.now() < cloudQuietUntil
+        ? { kind: "synth", synth, voice: name }
+        : { kind: "synth", synth: cloudSynth(cloud, synth), voice: cloud, engine: "gemini" };
     };
+    /** After a cloud line fails (offline, no key), the persona's own voice speaks for five minutes before trying again. */
+    let cloudQuietUntil = 0;
+    const cloudSynth =
+      (cloud: string, fallback: Synthesise): Synthesise =>
+      (text) => {
+        let cancelled = false;
+        let inner: ReturnType<Synthesise> | null = null;
+        const stream = (async function* () {
+          const reply = (await direct("baton.voice.call", {
+            kind: "act",
+            op: "say",
+            args: { voice: cloud, text },
+          }).catch(() => null)) as { ok?: boolean; value?: { base64?: string } } | null;
+          if (cancelled) return;
+          if (reply?.ok === true && typeof reply.value?.base64 === "string") {
+            yield Buffer.from(reply.value.base64, "base64");
+            return;
+          }
+          cloudQuietUntil = Date.now() + 5 * 60_000;
+          // Gemini's tags mean nothing to Pocket: said without them.
+          inner = fallback(text.replace(/<[^<>]{1,30}>/g, " "));
+          yield* inner.stream;
+        })();
+        return {
+          stream,
+          cancel: () => {
+            cancelled = true;
+            inner?.cancel();
+          },
+        };
+      };
     const voicePlayer = createVoicePlayer(
       (level) => voice?.onSpeechLevel(level),
       () => screen?.volume() ?? 1,
@@ -354,7 +396,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
-      voice: () => chooseVoice(screen?.voice() ?? "anna"),
+      voice: () => chooseVoice(screen?.voice() ?? "anna", screen?.cloudVoice() ?? null),
       player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
@@ -420,11 +462,11 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
     };
     // This machine's own server, with the desktop's local token, as the remote-hands loop calls it.
-    const direct = async (method: string, body: unknown, timeoutMs = 20_000): Promise<unknown> => {
+    const own = async (path: string, body: unknown, timeoutMs = 20_000): Promise<unknown> => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
-      const response = await fetch(new URL(`/tessaya/desk/${method}`, config.value.httpBaseUrl), {
+      const response = await fetch(new URL(path, config.value.httpBaseUrl), {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -437,6 +479,28 @@ export const startBatonDesktop = Effect.gen(function* () {
       if (!response.ok) throw new Error(json.message ?? "That could not be done. Nothing changed.");
       return json.value;
     };
+    const direct = (method: string, body: unknown, timeoutMs?: number) =>
+      own(`/tessaya/desk/${method}`, body, timeoutMs);
+    // His private stores live on this machine's own server: always asked here, never through T3's window.
+    const privateMemory = createPrivateMemory((op, args = {}) =>
+      own("/tessaya/private", { op, ...args }),
+    );
+    // The screen locked or the machine slept: this desktop's stores close, and so do sessions that read them.
+    const lockPrivate = () => {
+      void privateMemory.lockAll();
+      screen?.forgetPrivate();
+    };
+    Electron.powerMonitor.on("lock-screen", lockPrivate);
+    Electron.powerMonitor.on("suspend", lockPrivate);
+    // A Freya import plan he dropped in comes in once this machine's server answers, then is deleted.
+    setTimeout(
+      () =>
+        void runFreyaImport(environment.stateDir, {
+          memory: (op, args) => direct(`baton.memory.${op}`, args),
+          private: privateMemory.call,
+        }).catch(() => undefined),
+      FREYA_IMPORT_DELAY_MS,
+    ).unref();
     // While an update waits, what a restart would cut off here (SESS-SURVIVE): it restarts only when nothing is mid-turn.
     readInFlight = async () => {
       try {
@@ -448,13 +512,27 @@ export const startBatonDesktop = Effect.gen(function* () {
           threads: Array.isArray(found?.threads) ? found.threads : [],
           live: Array.isArray(found?.live) ? found.live : [],
         });
+        inFlightAnswered = true;
       } catch {
         // A server that does not answer has no turn of its own running to cut off.
         inFlight = null;
+        inFlightAnswered = false;
       }
     };
+    // Read always, not only while an update waits: an installer outside the app reads the busy file.
+    const busyFile = busyFilePath(environment.logDir);
     setInterval(() => {
-      if (batonUpdates.ready()) void readInFlight();
+      void readInFlight().then(() =>
+        writeBusyFile(
+          busyFile,
+          busyFileOf({
+            busy: busyNow(),
+            serverAnswered: inFlightAnswered,
+            now: new Date(),
+            pid: process.pid,
+          }),
+        ),
+      );
     }, IN_FLIGHT_MS).unref();
     // Each assistant turn goes to the Record on this machine's server, so "what happened?" has what she was asked and did.
     const noteTurn = (kind: string, fields: Readonly<Record<string, unknown>>) => {
@@ -513,6 +591,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         platform: environment.platform,
         env: hostEnvironment,
         direct,
+        privateMemory,
         speak: (text) => {
           spokenThisTurn.push(text);
           return speaker.speak(text);
@@ -610,6 +689,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       mainWindowUp: t3Up,
       direct,
+      privateMemory,
       // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
       // subscription session. The wait matches the server's 1.2 s limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {

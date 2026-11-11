@@ -191,6 +191,8 @@ import {
   BatonSessionsAcrossResult,
 } from "./sessionCatalog.ts";
 import { BATON_CLOUD_WS_METHODS, BatonCloudCallInput, BatonCloudCallResult } from "./cloud.ts";
+import { BATON_HOME_WS_METHODS, BatonHomeCallInput, BatonHomeCallResult } from "./home.ts";
+import { BATON_VOICE_WS_METHODS, BatonVoiceCallInput, BatonVoiceCallResult } from "./voice.ts";
 import {
   BATON_COMMITMENT_WS_METHODS,
   BatonCommitmentError,
@@ -501,6 +503,18 @@ const WsBatonCloudApproveRpc = Rpc.make(BATON_CLOUD_WS_METHODS.approve, {
 const WsBatonCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
   payload: BatonCloudCallInput,
   success: BatonCloudCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonHomeCallRpc = Rpc.make(BATON_HOME_WS_METHODS.call, {
+  payload: BatonHomeCallInput,
+  success: BatonHomeCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonVoiceCallRpc = Rpc.make(BATON_VOICE_WS_METHODS.call, {
+  payload: BatonVoiceCallInput,
+  success: BatonVoiceCallResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1070,6 +1084,10 @@ export const BATON_METHOD_OF: ReadonlyMap<string, string> = new Map(
   ]),
 );
 
-export const BatonRpcGroup = RpcGroup.make(...BATON_RPCS, ...TESSAYA_ALIASES).middleware(
-  BatonRpcScopeAuthorization,
-);
+// Newer methods join without a tessaya.* twin: one more aliased pair tips the group past what the checker can infer.
+export const BatonRpcGroup = RpcGroup.make(
+  ...BATON_RPCS,
+  ...TESSAYA_ALIASES,
+  WsBatonHomeCallRpc,
+  WsBatonVoiceCallRpc,
+).middleware(BatonRpcScopeAuthorization);

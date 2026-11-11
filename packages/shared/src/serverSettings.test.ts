@@ -1,5 +1,7 @@
 import {
+  DEFAULT_DICTATION_CLEANUP,
   DEFAULT_SERVER_SETTINGS,
+  withMigratedDictationCleanup,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -1002,7 +1004,8 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
     ]);
     const base = { ...DEFAULT_SERVER_SETTINGS, textGenerationModelSelection: textGeneration };
     expect(resolveSpeechPostProcessingModelSelection(base)).toBe(textGeneration);
-    const pinned = applyServerSettingsPatch(base, { speechPostProcessingModelSelection: cleanup });
+    const chosen = { ...base.dictationCleanup, model: cleanup, updatedAt: 1 };
+    const pinned = applyServerSettingsPatch(base, { dictationCleanup: chosen });
     expect(resolveSpeechPostProcessingModelSelection(pinned)).toEqual(cleanup);
     expect(
       resolveSpeechPostProcessingModelSelection({
@@ -1027,8 +1030,57 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
       ] as never),
     ).toBe(textGeneration);
     expect(
-      applyServerSettingsPatch(pinned, { speechPostProcessingModelSelection: null })
-        .speechPostProcessingModelSelection,
+      applyServerSettingsPatch(pinned, {
+        dictationCleanup: { ...chosen, model: null, updatedAt: 2 },
+      }).dictationCleanup.model,
     ).toBeNull();
+  });
+
+  it("takes only a newer dictation cleanup, whole, so every environment's copy converges", () => {
+    const haiku = createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-haiku-5-5", [
+      { id: "effort", value: "low" },
+    ]);
+    const sonnet = createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-sonnet");
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      dictationCleanup: { enabled: true, engine: "t3", model: haiku, updatedAt: 200 },
+    });
+    const older = { enabled: false, engine: "tessaya", model: null, updatedAt: 100 } as const;
+    expect(applyServerSettingsPatch(current, { dictationCleanup: older }).dictationCleanup).toBe(
+      current.dictationCleanup,
+    );
+    const newer = { enabled: true, engine: "t3", model: sonnet, updatedAt: 300 } as const;
+    // Replaced, not merged: haiku's options must not stick to sonnet.
+    expect(applyServerSettingsPatch(current, { dictationCleanup: newer }).dictationCleanup).toEqual(
+      newer,
+    );
+    // The same writes in either order end in the same copy.
+    const tie = { ...older, updatedAt: 200 };
+    const a = applyServerSettingsPatch(
+      applyServerSettingsPatch(current, { dictationCleanup: tie }),
+      {
+        dictationCleanup: current.dictationCleanup,
+      },
+    );
+    const b = applyServerSettingsPatch(
+      applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, { dictationCleanup: tie }),
+      { dictationCleanup: current.dictationCleanup },
+    );
+    expect(a.dictationCleanup).toEqual(b.dictationCleanup);
+  });
+});
+
+describe("withMigratedDictationCleanup", () => {
+  it("moves T3's per-environment cleanup model into the one setting, once", () => {
+    const haiku = createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-haiku-5-5");
+    const legacy = { ...DEFAULT_SERVER_SETTINGS, speechPostProcessingModelSelection: haiku };
+    const migrated = withMigratedDictationCleanup(legacy);
+    expect(migrated.dictationCleanup).toEqual({ ...DEFAULT_DICTATION_CLEANUP, model: haiku });
+    expect(migrated.speechPostProcessingModelSelection).toBeNull();
+    expect(withMigratedDictationCleanup(migrated)).toBe(migrated);
+    // A choice already made anywhere wins over the old per-environment model.
+    const chosen = { ...DEFAULT_DICTATION_CLEANUP, enabled: true, updatedAt: 5 };
+    expect(
+      withMigratedDictationCleanup({ ...legacy, dictationCleanup: chosen }).dictationCleanup,
+    ).toBe(chosen);
   });
 });

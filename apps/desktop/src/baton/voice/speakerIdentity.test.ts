@@ -90,6 +90,13 @@ describe("the speaker identity service", () => {
     expect(t.service.admits(guest, "turn")).toBe(true);
   });
 
+  it("judges a cut-in at the listen cut-off and a turn at the stricter steer one", async () => {
+    const { listen, steer } = CAMPLUS_POLICY.single;
+    const t = setup({}, at((listen + steer) / 2));
+    expect((await t.service.hear(t.seconds(2), "barge")).kind).toBe("owner");
+    expect((await t.service.hear(t.seconds(2), "turn")).kind).toBe("guest");
+  });
+
   it("follows his voice from a confident turn only when adaptation is on", async () => {
     const off = setup({ adapt: false });
     await off.service.hear(off.seconds(4), "turn");

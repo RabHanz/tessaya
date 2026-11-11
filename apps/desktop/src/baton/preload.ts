@@ -58,6 +58,18 @@ export function exposeBatonDesktopBridge(): void {
     setBatonVoiceFocus: (workSessionId) =>
       ipcRenderer.send(Channels.BATON_VOICE_FOCUS_CHANNEL, workSessionId),
     composerMic: () => ipcRenderer.invoke(Channels.BATON_COMPOSER_MIC_CHANNEL),
+    onComposerDictation: (handler) => {
+      const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {
+        const reply = handler(message as Parameters<typeof handler>[0]);
+        if (reply !== null)
+          ipcRenderer.send(Channels.BATON_COMPOSER_DICTATION_REPLY_CHANNEL, reply);
+      };
+      ipcRenderer.on(Channels.BATON_COMPOSER_DICTATION_CHANNEL, listener);
+      return () => ipcRenderer.removeListener(Channels.BATON_COMPOSER_DICTATION_CHANNEL, listener);
+    },
+    setComposerFocus: (focused) => ipcRenderer.send(Channels.BATON_COMPOSER_FOCUS_CHANNEL, focused),
+    replyComposerDictation: (reply) =>
+      ipcRenderer.send(Channels.BATON_COMPOSER_DICTATION_REPLY_CHANNEL, reply),
   };
   contextBridge.exposeInMainWorld("batonDesktopBridge", bridge);
 }

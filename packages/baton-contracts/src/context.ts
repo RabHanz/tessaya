@@ -318,7 +318,34 @@ export interface BatonDesktopBridge {
    * press that ends a recording answers with its cleaned words, for the composer to insert at the caret.
    */
   readonly composerMic?: () => Promise<{ readonly handled: boolean; readonly text?: string }>;
+  /** Tessaya's dictation drawn inside this window's chat box; see `ComposerDictationMessage`. */
+  readonly onComposerDictation?: (
+    handler: (message: ComposerDictationMessage) => ComposerDictationReply | null,
+  ) => () => void;
+  /** Whether a chat box in this window has the keyboard: the desktop claims a dictation for it before any pill shows. */
+  readonly setComposerFocus?: (focused: boolean) => void;
+  /** ✓ or ✕ pressed on the chat box's dictation control. */
+  readonly replyComposerDictation?: (reply: ComposerDictationReply) => void;
 }
+
+/**
+ * The desktop's dictation into the chat box that has the keyboard, instead of a floating pill and a paste. `start`
+ * and `commit` wait for the window's answer (`claimed`, `took`); without one the desktop pastes as it always has.
+ * `level` is the microphone frame's RMS in dBFS.
+ */
+export type ComposerDictationMessage =
+  | { readonly type: "start"; readonly id: number; readonly mode: "held" | "free" }
+  | { readonly type: "mode"; readonly id: number; readonly mode: "held" | "free" }
+  | { readonly type: "level"; readonly id: number; readonly db: number }
+  | { readonly type: "words"; readonly id: number; readonly text: string }
+  | { readonly type: "finish"; readonly id: number }
+  | { readonly type: "commit"; readonly id: number; readonly text: string }
+  | { readonly type: "cancel"; readonly id: number };
+
+/** The window's answer: to `start` and `commit`, or ✓ / ✕ pressed in the chat box (`action`). */
+export type ComposerDictationReply =
+  | { readonly type: "claimed" | "took"; readonly id: number; readonly ok: boolean }
+  | { readonly type: "action"; readonly id: number; readonly insert: boolean };
 
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
 export const batonDesktopBridge = (): BatonDesktopBridge | undefined =>

@@ -10,6 +10,7 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
 import { AuthBatonHandsHostScope, AuthStandardClientScopes } from "@t3tools/contracts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
+import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
 import { routes } from "./BatonTessayaRoutes.ts";
 
@@ -109,5 +110,43 @@ it.effect("tells memory who reads on the desktop's direct door, from the session
       expect(response.status).toBe(200);
     }
     expect(readers).toEqual(["client", "desktop"]);
+  }),
+);
+
+it.effect("serves private memory only to his own sessions, as that session, with no-store", () =>
+  Effect.gen(function* () {
+    const callers: unknown[] = [];
+    const store = BatonPrivateMemoryService.of({
+      people: Effect.gen(function* () {
+        callers.push(yield* PrivateCaller);
+        return [];
+      }),
+    } as never);
+    const post = (session: EnvironmentAuth.AuthenticatedSession, body: unknown) =>
+      serve("/tessaya/private", {
+        session,
+        runtime: Context.make(BatonPrivateMemoryService, store) as never,
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      });
+    const phone = {
+      sessionId: "phone-1" as never,
+      subject: "one-time-token",
+      method: "browser-session-cookie",
+      scopes: AuthStandardClientScopes,
+    } as const;
+    const ok = yield* post(phone, { op: "people" });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("cache-control")).toBe("no-store");
+    expect(callers).toEqual([{ session: "phone-1", desktop: false }]);
+    expect(
+      (yield* post({ ...phone, method: "bearer-access-token", subject: "x" }, { op: "people" }))
+        .status,
+    ).toBe(403);
+    expect((yield* post(phone, { op: "recall", turn: {} })).status).toBe(400);
+    expect((yield* post(phone, { op: "backup" })).status).toBe(403);
   }),
 );
