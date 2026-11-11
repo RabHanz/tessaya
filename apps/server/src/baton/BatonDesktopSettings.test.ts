@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
+import { chooseDictationCleanup } from "@t3tools/contracts";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
@@ -14,6 +15,7 @@ import {
   layer as settingsLayer,
 } from "./BatonDesktopSettings.ts";
 import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 
 const before: DesktopVoiceSettings = {
   dictationCleanup: "local",
@@ -33,9 +35,13 @@ const before: DesktopVoiceSettings = {
   openSessionsOnStart: true,
 };
 
-const layer = it.layer(
-  settingsLayer.pipe(Layer.provideMerge(recordLayer), Layer.provideMerge(SqlitePersistenceMemory)),
-);
+const services = () =>
+  settingsLayer.pipe(
+    Layer.provideMerge(recordLayer),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(ServerSettingsService.layerTest()),
+  );
+const layer = it.layer(services());
 const manager = { actor: 'outside:"manager"', scope: "mcp full-access: orchestration" };
 
 layer("BatonDesktopSettings", (it) => {
@@ -105,5 +111,55 @@ layer("BatonDesktopSettings", (it) => {
       const rows = yield* (yield* BatonRecordService).query({ kind: "desktop_settings" });
       assert.strictEqual(rows[0]?.outcome, "not applied");
     }),
+  );
+});
+
+it.layer(services())("BatonDesktopSettings and the one cleanup setting", (it) => {
+  it.effect(
+    "the desktop's cleanup follows the one setting, and a change there or by an agent becomes it",
+    () =>
+      Effect.gen(function* () {
+        const desktop = yield* BatonDesktopSettings;
+        const server = yield* ServerSettingsService;
+        const universal = server.getSettings.pipe(Effect.map((s) => s.dictationCleanup));
+        const quietSync = Effect.fn("test.quietSync")(function* (
+          effective: DesktopVoiceSettings,
+          applied: number,
+        ) {
+          const fiber = yield* desktop
+            .sync({ effective, applied })
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* TestClock.adjust(SYNC_HOLD);
+          return (yield* Fiber.join(fiber)).change;
+        });
+        const claude = { ...before, dictationCleanup: "claude" } as const;
+
+        // Before anyone chose, the desktop's model cleanup is his choice: it becomes the one setting.
+        assert.strictEqual(yield* quietSync(claude, 0), null);
+        assert.isTrue((yield* universal).enabled);
+        assert.isAbove((yield* universal).updatedAt, 0);
+
+        // Turned off elsewhere (another environment, carried here): handed to the desktop at once, code-only.
+        yield* server.updateSettings({
+          dictationCleanup: chooseDictationCleanup(yield* universal, { enabled: false }, 10_000),
+        });
+        const change = (yield* desktop.sync({ effective: claude, applied: 0 })).change;
+        assert.deepStrictEqual(change?.patch, { dictationCleanup: "local" });
+        // Taking it is not his own change, so the setting stays off.
+        assert.strictEqual(yield* quietSync(before, change?.version ?? 0), null);
+        assert.isFalse((yield* universal).enabled);
+
+        // His own change on the desktop turns it on everywhere.
+        assert.strictEqual(yield* quietSync(claude, change?.version ?? 0), null);
+        assert.isTrue((yield* universal).enabled);
+
+        // As does an agent's, through tessaya_desktop_settings.
+        const set = yield* desktop
+          .set({ dictationCleanup: "off" })
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        assert.isFalse((yield* universal).enabled);
+        yield* TestClock.adjust(APPLY_WAIT);
+        yield* Fiber.join(set);
+      }),
   );
 });

@@ -14,6 +14,8 @@ const SHARED_SERVER_SETTING_KEYS = [
   "newWorktreesStartFromOrigin",
   "sourceControlWritingStyle",
   "textGenerationModelSelection",
+  // Tessaya: the one dictation cleanup setting, on every environment.
+  "dictationCleanup",
 ] as const satisfies ReadonlyArray<keyof ServerSettings & keyof ServerSettingsPatch>;
 
 const SHARED_KEY_SET = new Set<string>(SHARED_SERVER_SETTING_KEYS);

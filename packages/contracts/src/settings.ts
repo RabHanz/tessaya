@@ -33,6 +33,7 @@ import {
   ProviderOptionSelections,
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
+import { DictationCleanup, DictationCleanupSetting } from "./dictationCleanup.ts";
 import { ProjectScript, type ProjectMutation } from "./project.ts";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
@@ -1294,10 +1295,12 @@ export const ServerSettings = Schema.Struct({
   ),
   // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
   speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  // Null follows textGenerationModelSelection; a selection pins transcript cleanup to its own model.
+  // Tessaya: read only to move it into `dictationCleanup.model`, which replaced it.
   speechPostProcessingModelSelection: Schema.NullOr(ModelSelection).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
+  // Tessaya: one setting for every environment and client (dictationCleanup.ts).
+  dictationCleanup: DictationCleanupSetting,
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1718,6 +1721,7 @@ export const ServerSettingsPatch = Schema.Struct({
   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
   speechProjectCustomWords: Schema.optionalKey(SpeechCustomWords),
   speechPostProcessingModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+  dictationCleanup: Schema.optionalKey(DictationCleanup),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
   ),
@@ -1959,3 +1963,5 @@ export const ClientSettingsPatch = Schema.Struct({
   mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;
+
+export * from "./dictationCleanup.ts";
