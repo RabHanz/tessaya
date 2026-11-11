@@ -4,12 +4,16 @@
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
 // Opaque and square: App Store Connect rejects an icon with an alpha channel.
 const icon = fromRepoRoot("assets/baton/tessaya-ios-1024.png");
+// The bundle ID is the maintainer's own, so it comes from the shell or the EAS project's
+// environment variables, not the repository. Read at import, before the repo .env is applied.
+const UNSET_BUNDLE_ID = "com.example.tessaya";
+const bundleIdentifier = process.env.TESSAYA_IOS_BUNDLE_ID?.trim() || UNSET_BUNDLE_ID;
 
 export const TESSAYA_VARIANT = {
   appName: "Tessaya",
   scheme: "tessaya",
-  iosBundleIdentifier: "com.signzart.tessaya",
-  androidPackage: "com.signzart.tessaya",
+  iosBundleIdentifier: bundleIdentifier,
+  androidPackage: bundleIdentifier,
   relyingParty: "clerk.t3.codes",
   assets: {
     appIcon: icon,
@@ -25,7 +29,16 @@ export const TESSAYA_VARIANT = {
   },
 } as const;
 
-export const TESSAYA_EAS = {
+export function tessayaEas() {
+  if (bundleIdentifier === UNSET_BUNDLE_ID) {
+    throw new Error(
+      "APP_VARIANT=tessaya needs TESSAYA_IOS_BUNDLE_ID in the shell or EAS environment.",
+    );
+  }
+  return TESSAYA_EAS;
+}
+
+const TESSAYA_EAS = {
   owner: "rabhanz",
   slug: "tessaya",
   projectId: "dba25d42-105c-4f99-9157-643bc3cffc4f",

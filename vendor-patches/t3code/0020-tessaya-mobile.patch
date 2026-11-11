@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/app.config.test.ts b/apps/mobile/app.config.test.ts
-index 9be2204d5132c981804fa616a26a9c14b0b63fd6..72124f99bc6f7dcde2d15aaa9a0389c1b088db68 100644
+index 9be2204d5132c981804fa616a26a9c14b0b63fd6..9e96ebe161e7c99f17dba6f527591fe403a273cb 100644
 --- a/apps/mobile/app.config.test.ts
 +++ b/apps/mobile/app.config.test.ts
 @@ -21,7 +21,7 @@ async function loadConfig(variant: string | undefined) {
@@ -11,30 +11,32 @@ index 9be2204d5132c981804fa616a26a9c14b0b63fd6..72124f99bc6f7dcde2d15aaa9a0389c1
    );
  });
  
-@@ -45,3 +45,14 @@ it.each([
+@@ -45,3 +45,16 @@ it.each([
    ]);
    expect(assetLinks.map((link) => link.target.package_name)).toContain(identifier);
  });
 +
 +it("gives the tessaya variant its own identity, Expo project and Apple team", async () => {
 +  const production = await loadConfig("production");
++  await expect(loadConfig("tessaya")).rejects.toThrow("TESSAYA_IOS_BUNDLE_ID");
++  vi.stubEnv("TESSAYA_IOS_BUNDLE_ID", "com.example.mine");
 +  const tessaya = await loadConfig("tessaya");
 +  expect(production.extra?.eas?.projectId).toBe("d763fcb8-d37c-41ea-a773-b54a0ab4a454");
-+  expect(tessaya.ios?.bundleIdentifier).toBe("com.signzart.tessaya");
++  expect(tessaya.ios?.bundleIdentifier).toBe("com.example.mine");
 +  expect(tessaya.ios?.appleTeamId).toBe("W6HK93B4Q5");
 +  expect(tessaya.owner).toBe("rabhanz");
 +  expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
 +  expect(tessaya.updates?.url).not.toBe(production.updates?.url);
 +});
 diff --git a/apps/mobile/app.config.ts b/apps/mobile/app.config.ts
-index 97eb9b0cadcab34bdaf5ede898f2ad77e8fb9d7d..29aa1467dd66357e8e34aaecd034ec6fa95edb45 100644
+index 97eb9b0cadcab34bdaf5ede898f2ad77e8fb9d7d..b7ec90b2834ccb9ebf4d0e3439665dc6d02c0a39 100644
 --- a/apps/mobile/app.config.ts
 +++ b/apps/mobile/app.config.ts
 @@ -2,8 +2,9 @@ import type { ExpoConfig } from "expo/config";
  
  import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
  import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
-+import { TESSAYA_EAS, TESSAYA_VARIANT } from "./tessaya.config.ts";
++import { TESSAYA_VARIANT, tessayaEas } from "./tessaya.config.ts";
  
 -type AppVariant = "development" | "preview" | "production";
 +type AppVariant = "development" | "preview" | "production" | "tessaya";
@@ -67,7 +69,7 @@ index 97eb9b0cadcab34bdaf5ede898f2ad77e8fb9d7d..29aa1467dd66357e8e34aaecd034ec6f
 +// Tessaya's builds and updates live in its own Expo project and Apple team.
 +const easIdentity =
 +  APP_VARIANT === "tessaya"
-+    ? TESSAYA_EAS
++    ? tessayaEas()
 +    : {
 +        owner: "pingdotgg",
 +        slug: "t3-code",

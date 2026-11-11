@@ -2,7 +2,7 @@ import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
-import { TESSAYA_EAS, TESSAYA_VARIANT } from "./tessaya.config.ts";
+import { TESSAYA_VARIANT, tessayaEas } from "./tessaya.config.ts";
 
 type AppVariant = "development" | "preview" | "production" | "tessaya";
 
@@ -124,7 +124,7 @@ const variant = VARIANT_CONFIG[APP_VARIANT];
 // Tessaya's builds and updates live in its own Expo project and Apple team.
 const easIdentity =
   APP_VARIANT === "tessaya"
-    ? TESSAYA_EAS
+    ? tessayaEas()
     : {
         owner: "pingdotgg",
         slug: "t3-code",

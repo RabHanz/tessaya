@@ -48,9 +48,11 @@ it.each([
 
 it("gives the tessaya variant its own identity, Expo project and Apple team", async () => {
   const production = await loadConfig("production");
+  await expect(loadConfig("tessaya")).rejects.toThrow("TESSAYA_IOS_BUNDLE_ID");
+  vi.stubEnv("TESSAYA_IOS_BUNDLE_ID", "com.example.mine");
   const tessaya = await loadConfig("tessaya");
   expect(production.extra?.eas?.projectId).toBe("d763fcb8-d37c-41ea-a773-b54a0ab4a454");
-  expect(tessaya.ios?.bundleIdentifier).toBe("com.signzart.tessaya");
+  expect(tessaya.ios?.bundleIdentifier).toBe("com.example.mine");
   expect(tessaya.ios?.appleTeamId).toBe("W6HK93B4Q5");
   expect(tessaya.owner).toBe("rabhanz");
   expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
