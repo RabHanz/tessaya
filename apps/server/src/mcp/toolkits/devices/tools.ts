@@ -29,8 +29,8 @@ const Id = Schema.String.check(Schema.isMaxLength(60)).annotate({
   description: "The device id from device_list, e.g. r1-3d57b3.",
 });
 
-/** The act ops an agent may use; forgetting a device is his, in Settings → Devices. */
-export const AGENT_ACT_OPS = [
+/** The act ops an agent may use; forgetting a device is his, in Settings → Hardware. */
+const AGENT_ACT_OPS = [
   "eye",
   "led",
   "vibrate",
