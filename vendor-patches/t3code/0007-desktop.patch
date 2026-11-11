@@ -72,13 +72,23 @@ index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc4
            }
          }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
 diff --git a/apps/desktop/src/backend/DesktopBackendConfiguration.ts b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..4f4c652794e5c14b9a2d40914e6a8a51bb1da04e 100644
+index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..278b34651ee5d00b5a32cbc6f577f67a1dc009ab 100644
 --- a/apps/desktop/src/backend/DesktopBackendConfiguration.ts
 +++ b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-@@ -535,6 +535,21 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
+@@ -26,6 +26,7 @@ import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
+ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+ import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
+ import * as DesktopWslServerTree from "../wsl/DesktopWslServerTree.ts";
++import { voiceDoorEnv } from "../baton/voice/voiceDoor.ts";
+ 
+ export class DesktopBackendObservabilitySettingsReadError extends Schema.TaggedError<DesktopBackendObservabilitySettingsReadError>()(
+   "DesktopBackendObservabilitySettingsReadError",
+@@ -535,6 +536,23 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
          ...backendChildEnvPatch(),
          ELECTRON_RUN_AS_NODE: "1",
          T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
++        // Tessaya voice: phones and browsers dictating here are heard by this app's recogniser.
++        ...voiceDoorEnv(environment.platform),
 +        // Memory recall by meaning (MEM-13): the model ships in the app's resources, not beside Electron's executable.
 +        ...(environment.isPackaged
 +          ? {

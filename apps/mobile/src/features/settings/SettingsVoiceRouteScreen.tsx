@@ -30,6 +30,7 @@ import {
   hasEnvironmentVoiceCapture,
 } from "../voice-input/voiceDestination";
 import { VoiceModelSection } from "./VoiceModelSection";
+import { TessayaVoiceEngineSection } from "./TessayaVoiceEngineSection";
 import { CloudVoiceSection } from "./CloudVoiceSection";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
@@ -280,10 +281,13 @@ export function SettingsVoiceRouteScreen() {
               />
             ))}
         {grantEnvironment && grant?.destination.kind === "environment" ? (
-          <VoiceModelSection
-            environmentId={grantEnvironment.environmentId}
-            label={grantEnvironment.label}
-          />
+          <>
+            <TessayaVoiceEngineSection environment={grantEnvironment} />
+            <VoiceModelSection
+              environmentId={grantEnvironment.environmentId}
+              label={grantEnvironment.label}
+            />
+          </>
         ) : null}
         {!grant && transcriber === null ? (
           <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
