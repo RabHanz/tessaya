@@ -1,0 +1,191 @@
+diff --git a/apps/mobile/app.config.test.ts b/apps/mobile/app.config.test.ts
+index 9be2204d5132c981804fa616a26a9c14b0b63fd6..9e96ebe161e7c99f17dba6f527591fe403a273cb 100644
+--- a/apps/mobile/app.config.test.ts
++++ b/apps/mobile/app.config.test.ts
+@@ -21,7 +21,7 @@ async function loadConfig(variant: string | undefined) {
+ 
+ it.each(["prod", ""])("rejects APP_VARIANT=%j before selecting production IDs", async (value) => {
+   await expect(loadConfig(value)).rejects.toThrow(
+-    "APP_VARIANT must be development, preview, or production.",
++    "APP_VARIANT must be development, preview, production, or tessaya.",
+   );
+ });
+ 
+@@ -45,3 +45,16 @@ it.each([
+   ]);
+   expect(assetLinks.map((link) => link.target.package_name)).toContain(identifier);
+ });
++
++it("gives the tessaya variant its own identity, Expo project and Apple team", async () => {
++  const production = await loadConfig("production");
++  await expect(loadConfig("tessaya")).rejects.toThrow("TESSAYA_IOS_BUNDLE_ID");
++  vi.stubEnv("TESSAYA_IOS_BUNDLE_ID", "com.example.mine");
++  const tessaya = await loadConfig("tessaya");
++  expect(production.extra?.eas?.projectId).toBe("d763fcb8-d37c-41ea-a773-b54a0ab4a454");
++  expect(tessaya.ios?.bundleIdentifier).toBe("com.example.mine");
++  expect(tessaya.ios?.appleTeamId).toBe("W6HK93B4Q5");
++  expect(tessaya.owner).toBe("rabhanz");
++  expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
++  expect(tessaya.updates?.url).not.toBe(production.updates?.url);
++});
+diff --git a/apps/mobile/app.config.ts b/apps/mobile/app.config.ts
+index 97eb9b0cadcab34bdaf5ede898f2ad77e8fb9d7d..b7ec90b2834ccb9ebf4d0e3439665dc6d02c0a39 100644
+--- a/apps/mobile/app.config.ts
++++ b/apps/mobile/app.config.ts
+@@ -2,8 +2,9 @@ import type { ExpoConfig } from "expo/config";
+ 
+ import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
+ import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
++import { TESSAYA_VARIANT, tessayaEas } from "./tessaya.config.ts";
+ 
+-type AppVariant = "development" | "preview" | "production";
++type AppVariant = "development" | "preview" | "production" | "tessaya";
+ 
+ const repoEnv = loadRepoEnv();
+ Object.assign(process.env, repoEnv);
+@@ -102,6 +103,7 @@ const VARIANT_CONFIG = {
+     relyingParty: "clerk.t3.codes",
+     assets: RELEASE_ASSETS,
+   },
++  tessaya: TESSAYA_VARIANT,
+ } as const;
+ 
+ function resolveAppVariant(value: string | undefined): AppVariant {
+@@ -109,15 +111,26 @@ function resolveAppVariant(value: string | undefined): AppVariant {
+     case "development":
+     case "preview":
+     case "production":
++    case "tessaya":
+       return value;
+     case undefined:
+       return "production";
+     default:
+-      throw new Error("APP_VARIANT must be development, preview, or production.");
++      throw new Error("APP_VARIANT must be development, preview, production, or tessaya.");
+   }
+ }
+ 
+ const variant = VARIANT_CONFIG[APP_VARIANT];
++// Tessaya's builds and updates live in its own Expo project and Apple team.
++const easIdentity =
++  APP_VARIANT === "tessaya"
++    ? tessayaEas()
++    : {
++        owner: "pingdotgg",
++        slug: "t3-code",
++        projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
++        appleTeamId: "ARK85ZXQ4Z",
++      };
+ // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
+ const HOSTED_APP_HOST = "app.t3.codes";
+ const iosBundleIdentifier = isIosPersonalTeamBuild
+@@ -229,7 +242,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
+ 
+ const config: ExpoConfig = {
+   name: variant.appName,
+-  slug: "t3-code",
++  slug: easIdentity.slug,
+   platforms: ["ios", "android"],
+   scheme: variant.scheme,
+   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.2.0",
+@@ -242,7 +255,7 @@ const config: ExpoConfig = {
+   userInterfaceStyle: "automatic",
+   updates: {
+     enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
++    url: `https://u.expo.dev/${easIdentity.projectId}`,
+     checkAutomatically: "ON_LOAD",
+     fallbackToCacheTimeout: 0,
+   },
+@@ -252,7 +265,7 @@ const config: ExpoConfig = {
+     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
+     bundleIdentifier: iosBundleIdentifier,
+     // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
+-    appleTeamId: "ARK85ZXQ4Z",
++    appleTeamId: easIdentity.appleTeamId,
+     associatedDomains: [
+       `applinks:${variant.relyingParty}`,
+       `webcredentials:${variant.relyingParty}`,
+@@ -480,11 +493,11 @@ const config: ExpoConfig = {
+       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
+     },
+     eas: {
+-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
++      projectId: easIdentity.projectId,
+       observe: { endpointUrl: observeEndpointUrl },
+     },
+   },
+-  owner: "pingdotgg",
++  owner: easIdentity.owner,
+   experiments: {
+     // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
+     reactCompiler: true,
+diff --git a/apps/mobile/eas.json b/apps/mobile/eas.json
+index f773c2c5bbc3a498f24beb36037c74eaca31d68d..909a72cf1fb4ee7f4105134e1c1577fd8ab7bd41 100644
+--- a/apps/mobile/eas.json
++++ b/apps/mobile/eas.json
+@@ -75,6 +75,15 @@
+       "ios": {
+         "image": "macos-tahoe-26.6-xcode-27.1"
+       }
++    },
++    "tessaya": {
++      "extends": "production",
++      "env": {
++        "APP_VARIANT": "tessaya",
++        "NODE_OPTIONS": "--max-old-space-size=4096",
++        "SOURCEMAP_FILE": "/tmp/t3code-ios-main.jsbundle.map"
++      },
++      "channel": "tessaya"
+     }
+   },
+   "submit": {
+@@ -88,6 +97,11 @@
+       "android": {
+         "track": "internal"
+       }
++    },
++    "tessaya": {
++      "ios": {
++        "appleTeamId": "W6HK93B4Q5"
++      }
+     }
+   }
+ }
+diff --git a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
+index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..11f3791c105097d1c15eb9b1a7a54f1e96e5e43e 100644
+--- a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
++++ b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
+@@ -14,6 +14,7 @@ import {
+   isAppUpdateCheckAvailable,
+   registerHiddenUpdateTap,
+   runAppUpdateCheck,
++  runningUpdateLabel,
+ } from "../updates/app-updates";
+ import { SettingsRow } from "./components/SettingsRow";
+ import { SettingsSection } from "./components/SettingsSection";
+@@ -53,7 +54,7 @@ function AppSettingsSection() {
+   // Match app.config.ts's production fallback to avoid mislabeling builds as development.
+   const variant = (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? "production";
+   const variantLabel = variant === "production" ? "" : capitalize(variant);
+-  const versionLabel = variantLabel ? `${version} · ${variantLabel}` : version;
++  const versionLabel = [version, variantLabel, runningUpdateLabel()].filter(Boolean).join(" · ");
+   const updateCheckAvailable = isAppUpdateCheckAvailable();
+   const busy =
+     updateState === "checking" || updateState === "downloading" || updateState === "restarting";
+diff --git a/apps/mobile/src/features/updates/app-updates.ts b/apps/mobile/src/features/updates/app-updates.ts
+index 914bb3797685a501e06307b7459fe5f0960f22d1..46c16b4fcfe9806268c7c40e48b03001493bf438 100644
+--- a/apps/mobile/src/features/updates/app-updates.ts
++++ b/apps/mobile/src/features/updates/app-updates.ts
+@@ -91,6 +91,11 @@ export function isAppUpdateCheckAvailable(client: Pick<AppUpdateClient, "isEnabl
+   return client.isEnabled && !(typeof __DEV__ !== "undefined" && __DEV__);
+ }
+ 
++/** Short id of the over-the-air update running now, or null when the build's own bundle runs. */
++export function runningUpdateLabel(): string | null {
++  return Updates.isEmbeddedLaunch ? null : (Updates.updateId?.slice(0, 8) ?? null);
++}
++
+ export function registerHiddenUpdateTap(count: number): {
+   readonly nextCount: number;
+   readonly shouldCheck: boolean;

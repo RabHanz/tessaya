@@ -2,8 +2,9 @@ import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+import { TESSAYA_VARIANT, tessayaEas } from "./tessaya.config.ts";
 
-type AppVariant = "development" | "preview" | "production";
+type AppVariant = "development" | "preview" | "production" | "tessaya";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -102,6 +103,7 @@ const VARIANT_CONFIG = {
     relyingParty: "clerk.t3.codes",
     assets: RELEASE_ASSETS,
   },
+  tessaya: TESSAYA_VARIANT,
 } as const;
 
 function resolveAppVariant(value: string | undefined): AppVariant {
@@ -109,15 +111,26 @@ function resolveAppVariant(value: string | undefined): AppVariant {
     case "development":
     case "preview":
     case "production":
+    case "tessaya":
       return value;
     case undefined:
       return "production";
     default:
-      throw new Error("APP_VARIANT must be development, preview, or production.");
+      throw new Error("APP_VARIANT must be development, preview, production, or tessaya.");
   }
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
+// Tessaya's builds and updates live in its own Expo project and Apple team.
+const easIdentity =
+  APP_VARIANT === "tessaya"
+    ? tessayaEas()
+    : {
+        owner: "pingdotgg",
+        slug: "t3-code",
+        projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+        appleTeamId: "ARK85ZXQ4Z",
+      };
 // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
 const HOSTED_APP_HOST = "app.t3.codes";
 const iosBundleIdentifier = isIosPersonalTeamBuild
@@ -229,7 +242,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "t3-code",
+  slug: easIdentity.slug,
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.2.0",
@@ -242,7 +255,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   updates: {
     enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+    url: `https://u.expo.dev/${easIdentity.projectId}`,
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -252,7 +265,7 @@ const config: ExpoConfig = {
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
     // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
-    appleTeamId: "ARK85ZXQ4Z",
+    appleTeamId: easIdentity.appleTeamId,
     associatedDomains: [
       `applinks:${variant.relyingParty}`,
       `webcredentials:${variant.relyingParty}`,
@@ -480,11 +493,11 @@ const config: ExpoConfig = {
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
     eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+      projectId: easIdentity.projectId,
       observe: { endpointUrl: observeEndpointUrl },
     },
   },
-  owner: "pingdotgg",
+  owner: easIdentity.owner,
   experiments: {
     // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
     reactCompiler: true,

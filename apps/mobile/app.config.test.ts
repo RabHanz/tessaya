@@ -21,7 +21,7 @@ async function loadConfig(variant: string | undefined) {
 
 it.each(["prod", ""])("rejects APP_VARIANT=%j before selecting production IDs", async (value) => {
   await expect(loadConfig(value)).rejects.toThrow(
-    "APP_VARIANT must be development, preview, or production.",
+    "APP_VARIANT must be development, preview, production, or tessaya.",
   );
 });
 
@@ -44,4 +44,17 @@ it.each([
     { scheme: "https", host, pathPrefix: "/threads/" },
   ]);
   expect(assetLinks.map((link) => link.target.package_name)).toContain(identifier);
+});
+
+it("gives the tessaya variant its own identity, Expo project and Apple team", async () => {
+  const production = await loadConfig("production");
+  await expect(loadConfig("tessaya")).rejects.toThrow("TESSAYA_IOS_BUNDLE_ID");
+  vi.stubEnv("TESSAYA_IOS_BUNDLE_ID", "com.example.mine");
+  const tessaya = await loadConfig("tessaya");
+  expect(production.extra?.eas?.projectId).toBe("d763fcb8-d37c-41ea-a773-b54a0ab4a454");
+  expect(tessaya.ios?.bundleIdentifier).toBe("com.example.mine");
+  expect(tessaya.ios?.appleTeamId).toBe("W6HK93B4Q5");
+  expect(tessaya.owner).toBe("rabhanz");
+  expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
+  expect(tessaya.updates?.url).not.toBe(production.updates?.url);
 });
