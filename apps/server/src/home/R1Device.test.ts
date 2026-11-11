@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mqttPublishBytes, splitActs, spokenReply, sseReply } from "./R1Device.ts";
+import { houseTime, mqttPublishBytes, splitActs, spokenReply, sseReply } from "./R1Device.ts";
 
 describe("R1Device", () => {
   it("says what really happened when an act waited or failed, never the model's 'done'", () => {
@@ -56,4 +56,11 @@ describe("the streamed R1 turn", () => {
     // A broken or unknown act list is no act at all, never a guess.
     expect(splitActs('ACTS [{"tool":"rm_rf","args":{}}]\nSure.')?.acts).toEqual([]);
   });
+});
+
+it("tells her the time on the house's clock, with the zone named", () => {
+  // 04:28 UTC is 09:28 in Karachi.
+  expect(houseTime(Date.UTC(2026, 10, 11, 4, 28), "Asia/Karachi")).toBe(
+    "Wednesday, 11 November 2026 at 09:28 (Asia/Karachi)",
+  );
 });

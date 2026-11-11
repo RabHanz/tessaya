@@ -1,8 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off preferSchemaOverJson:off
 /**
- * The room's fast brain: one Claude Code process (Haiku, no tools, thinking off) started ahead of the turn and
- * waiting on stdin, so a turn pays only the model's first token (about 1 s measured on hetzner), not the CLI's
- * start-up (about 3 s). Each process answers one turn and exits; the next is already waiting.
+ * The room's brain, routed per turn by the `roomBrain` setting (no restart): his Anthropic key from Settings → APIs
+ * (Haiku streamed, quickest), or his subscription via a Claude Code process started ahead and waiting on stdin
+ * (one turn each). "auto" uses the key, and the subscription when the key fails before a word was said.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeOS from "node:os";
@@ -13,6 +13,9 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+
+import { ServerSettingsService } from "../serverSettings.ts";
+import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 
 export class R1BrainError extends Schema.TaggedError<R1BrainError>()("R1BrainError", {
   detail: Schema.String,
@@ -66,6 +69,8 @@ interface Warm {
 
 /** @public */
 export const make = Effect.fn("R1Brain.make")(function* (system: string, model = "haiku") {
+  const settings = yield* ServerSettingsService;
+  const api = yield* DictationCleanupApi;
   let ready: Warm | null = null;
   const spawn = (): Warm => {
     const proc = NodeChildProcess.spawn(
@@ -128,11 +133,19 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
   };
   yield* Effect.addFinalizer(() => Effect.sync(() => ready?.proc.kill()));
 
-  const stream = (user: string) =>
+  /** Which way the next turn goes: the key, the subscription, or the key with the subscription behind it. */
+  const route = Effect.gen(function* () {
+    const mode = (yield* settings.getSettings).roomBrain;
+    if (mode !== "auto") return mode;
+    return (yield* api.configured) ? ("auto" as const) : ("subscription" as const);
+  }).pipe(Effect.orElseSucceed(() => "subscription" as const));
+
+  const viaSubscription = (user: string) =>
     Stream.callback<string, R1BrainError>((queue) =>
       Effect.gen(function* () {
         const warm = take();
-        ready = spawn();
+        // The next subscription turn's process starts now, unless turns go by the key.
+        if ((yield* route) === "subscription") ready = spawn();
         yield* Effect.addFinalizer(() => Effect.sync(() => warm.proc.kill()));
         const failed = yield* Effect.callback<string | null>((resume) => {
           warm.onLine = (line) => {
@@ -151,8 +164,36 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
         else yield* Queue.end(queue);
       }),
     );
-  const warm = Effect.sync(() => {
-    ready ??= spawn();
+
+  const viaKey = (user: string) =>
+    api.stream({ system, message: user, maxTokens: 400 }).pipe(
+      Stream.mapError(
+        (error) =>
+          new R1BrainError({
+            detail: error._tag === "DictationCleanupError" ? `key: ${error.reason}` : "settings",
+          }),
+      ),
+    );
+
+  const stream = (user: string) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const way = yield* route;
+        yield* Effect.logInfo("R1 brain route", { way });
+        if (way === "subscription") return viaSubscription(user);
+        if (way === "api") return viaKey(user);
+        // auto: the subscription answers only if the key failed before a word was said, so nothing is said twice.
+        let said = false;
+        return viaKey(user).pipe(
+          Stream.tap(() => Effect.sync(() => void (said = true))),
+          Stream.catchCause((cause) => (said ? Stream.failCause(cause) : viaSubscription(user))),
+        );
+      }),
+    );
+
+  // Only the subscription route needs a process waiting; the key route never starts one.
+  const warm = Effect.gen(function* () {
+    if ((yield* route) === "subscription") ready ??= spawn();
   });
   return { stream, warm } satisfies R1Brain["Service"];
 });

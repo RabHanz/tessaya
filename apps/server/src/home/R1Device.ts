@@ -11,7 +11,6 @@ import * as NodeNet from "node:net";
 import { recordText } from "@t3tools/baton-shared/audit";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -152,6 +151,10 @@ export const spokenReply = (say: string, outcomes: ReadonlyArray<ActOutcome>): s
 
 const quoted = (value: unknown) => JSON.stringify(value);
 
+/** Now, on the house's clock, as she should say it (never UTC unless the house is on it). */
+export const houseTime = (ms: number, timeZone: string) =>
+  `${new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "full", timeStyle: "short" }).format(ms)} (${timeZone})`;
+
 interface R1Context {
   readonly heard: string;
   readonly history: ReadonlyArray<{ readonly role: string; readonly content: string }>;
@@ -258,7 +261,7 @@ const r1Gather = Effect.fn("R1Device.gather")(function* (input: R1Heard) {
     automations,
     memories,
     voice: input.voice,
-    now: DateTime.formatIso(yield* DateTime.now),
+    now: houseTime(yield* Clock.currentTimeMillis, yield* home.timeZone),
   };
   return { device, context };
 });
