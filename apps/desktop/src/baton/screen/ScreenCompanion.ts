@@ -156,6 +156,13 @@ import {
 } from "./browserRoute.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
+import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
+import {
+  PRIVATE_TURN_STUB,
+  privatePersonOf,
+  type PrivateTurn,
+  type SpeakerLike,
+} from "@t3tools/baton-shared/privateMemory";
 import { windowsHello } from "../vault/hello.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { redactForHistory } from "../vault/redact.ts";
@@ -508,6 +515,8 @@ export interface ScreenCompanion {
       readonly outside?: boolean;
       /** He cut her off: what she had said by then. */
       readonly cutIn?: CutIn | null;
+      /** Who Voice ID heard (its `SpeakerIdentity`); none for a typed ask or with Voice ID off. */
+      readonly speaker?: SpeakerLike | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
   readonly setActions: (actions: AssistantActions) => void;
@@ -527,6 +536,8 @@ export interface ScreenCompanion {
   readonly warm: (wake?: string | null) => void;
   /** Only the assistant's sessions, with no first-run checks: for the warm-up at launch. */
   readonly warmAssistant: () => void;
+  /** A private store locked, or the machine did: sessions that read private memories go. */
+  readonly forgetPrivate: () => void;
   /** A turn or dictation began from this wake word: its persona answers from here, in its own voice. */
   readonly addressed: (wake: string | null) => void;
   readonly openAskBox: () => void;
@@ -636,6 +647,8 @@ export const startScreenCompanion = (input: {
   readonly env: NodeJS.ProcessEnv;
   /** This machine's own server, whether or not T3's window is up. */
   readonly direct?: (method: string, body: unknown) => Promise<unknown>;
+  /** His private memory stores on this machine's server: read and written only for the speaker's own store. */
+  readonly privateMemory?: PrivateMemory;
   /** Baton's one voice, injected so this module never loads the voice models. */
   readonly speak: (text: string) => Promise<void>;
   /** A turn finished with nothing further coming, for the cue after a wake word. */
@@ -1027,6 +1040,9 @@ export const startScreenCompanion = (input: {
 
   /** This turn came by voice, so its questions can be answered by voice too. */
   let voiceTurn = false;
+  /** Who Voice ID heard on this turn, and whose private memories it used (their words stay out of logs and learning). */
+  let turnSpeaker: SpeakerLike | null = null;
+  let privateUsedNow: string | null = null;
   /** Who is answering: picked from the roster at each sentence, and the voice follows it. */
   let face: Persona = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
     wake: null,
@@ -2563,6 +2579,23 @@ export const startScreenCompanion = (input: {
         ask,
       ),
     remember: (text) => memory.remember(text),
+    ...(input.privateMemory === undefined
+      ? {}
+      : {
+          rememberPrivate: async (text: string, about: string | null) => {
+            const out = await input
+              .privateMemory!.remember(privateTurn(), text, about)
+              .catch((error: unknown) => ({
+                stored: false,
+                whose: null,
+                reason: error instanceof Error ? error.message : "That could not be kept.",
+              }));
+            if (!out.stored) return `Not kept: ${out.reason ?? "that could not be kept."}`;
+            // The turn now carries private words: they stay out of the file, the logs and learning.
+            privateUsedNow ??= privateWho();
+            return `Kept in ${out.whose === "yours" ? "his" : `${out.whose}'s`} private memories. Say so in a few words.`;
+          },
+        }),
     forget: (id) => memory.forget(id),
     pin: (id, pinned) => memory.pin(id, pinned),
     memoryHistory: (id) => memory.history(id),
@@ -2723,10 +2756,32 @@ export const startScreenCompanion = (input: {
     lastTree = undefined;
   };
   const beginTurn = (said: string) => {
+    privateUsedNow = null;
     cutIns.begin();
     memory.beginTurn();
     agentTaint.reset(said);
     freshTurn();
+  };
+  /** This turn as the private stores judge it: his own session, typed or by voice, read anything outside yet or not. */
+  const privateTurn = (): PrivateTurn => ({
+    route: "assistant",
+    typed: !voiceTurn,
+    tainted: agentTaint.on(),
+    speaker: turnSpeaker,
+  });
+  const privateWho = () => {
+    const who = privatePersonOf(privateTurn());
+    return "personId" in who ? who.personId : null;
+  };
+  /** The speaker's own private memories for this sentence; after them, anything this turn sends or writes asks first. */
+  const recallPrivate = async (text: string): Promise<string> => {
+    const who = privateWho();
+    if (who === null || input.privateMemory === undefined) return "";
+    const found = await input.privateMemory.recall(privateTurn(), text);
+    if (found.count === 0) return "";
+    privateUsedNow = who;
+    agentTaint.mark();
+    return found.block;
   };
   const agentOf = (): AssistantAgent => {
     agent ??= createAssistantAgent({
@@ -2747,7 +2802,10 @@ export const startScreenCompanion = (input: {
         const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
         return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
       },
+      privateAllowed: () => privateWho(),
+      privateUsed: () => privateUsedNow,
       recall: async (text, project) => {
+        const own = await recallPrivate(text);
         const learned = skillsForTurn(
           skillsDir(),
           { text, app: appOf(focus?.label ?? null), persona: face.id, project },
@@ -2755,7 +2813,7 @@ export const startScreenCompanion = (input: {
         );
         turns.current().skills.push(...learned.slugs);
         const remembered = await memory.forSentence(text, project);
-        return [remembered, learned.block].filter((b) => b !== "").join("\n\n");
+        return [remembered, own, learned.block].filter((b) => b !== "").join("\n\n");
       },
       tainted: () => agentTaint.on(),
       learn: (said, reply, project) => {
@@ -3056,8 +3114,8 @@ export const startScreenCompanion = (input: {
         ...who,
         skills: [...record().skills],
         project,
-        said: text,
-        reply,
+        said: privateUsedNow === null ? text : PRIVATE_TURN_STUB,
+        reply: privateUsedNow === null ? reply : PRIVATE_TURN_STUB,
         decisions: [...record().decisions],
         routes: [...record().routes],
         firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
@@ -3084,7 +3142,7 @@ export const startScreenCompanion = (input: {
         model: brain.brain.model,
         effort: brain.brain.effort,
         tier: brain.tier,
-        said: text,
+        said: privateUsedNow === null ? text : PRIVATE_TURN_STUB,
         error: error instanceof Error ? error.message : String(error),
         totalMs: Date.now() - started,
         tools: [...record().tools],
@@ -3113,6 +3171,7 @@ export const startScreenCompanion = (input: {
       wake = null,
       outside = false,
       cutIn = null,
+      speaker = null,
     }: Parameters<ScreenCompanion["said"]>[1],
     turn: {
       readonly onEnd?: () => void;
@@ -3122,6 +3181,7 @@ export const startScreenCompanion = (input: {
   ): ReturnType<ScreenCompanion["said"]> => {
     const started = Date.now();
     voiceTurn = !typed;
+    turnSpeaker = speaker;
     woke = wake;
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
@@ -3439,6 +3499,7 @@ export const startScreenCompanion = (input: {
         spareLook = visionFor("look");
       }
     },
+    forgetPrivate: () => agent?.forgetPrivate(),
     warmAssistant: () => {
       if (!disposed) warmTiers();
     },

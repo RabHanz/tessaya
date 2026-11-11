@@ -59,6 +59,7 @@ import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
 import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
+import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
 
 /** The one line a voice speaks when he plays or picks it. */
 const AUDITION_LINE = "Hello, this is how I sound.";
@@ -420,11 +421,11 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
     };
     // This machine's own server, with the desktop's local token, as the remote-hands loop calls it.
-    const direct = async (method: string, body: unknown, timeoutMs = 20_000): Promise<unknown> => {
+    const own = async (path: string, body: unknown, timeoutMs = 20_000): Promise<unknown> => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
-      const response = await fetch(new URL(`/tessaya/desk/${method}`, config.value.httpBaseUrl), {
+      const response = await fetch(new URL(path, config.value.httpBaseUrl), {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -437,6 +438,19 @@ export const startBatonDesktop = Effect.gen(function* () {
       if (!response.ok) throw new Error(json.message ?? "That could not be done. Nothing changed.");
       return json.value;
     };
+    const direct = (method: string, body: unknown, timeoutMs?: number) =>
+      own(`/tessaya/desk/${method}`, body, timeoutMs);
+    // His private stores live on this machine's own server: always asked here, never through T3's window.
+    const privateMemory = createPrivateMemory((op, args = {}) =>
+      own("/tessaya/private", { op, ...args }),
+    );
+    // The screen locked or the machine slept: this desktop's stores close, and so do sessions that read them.
+    const lockPrivate = () => {
+      void privateMemory.lockAll();
+      screen?.forgetPrivate();
+    };
+    Electron.powerMonitor.on("lock-screen", lockPrivate);
+    Electron.powerMonitor.on("suspend", lockPrivate);
     // While an update waits, what a restart would cut off here (SESS-SURVIVE): it restarts only when nothing is mid-turn.
     readInFlight = async () => {
       try {
@@ -512,6 +526,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         platform: environment.platform,
         env: hostEnvironment,
         direct,
+        privateMemory,
         speak: (text) => {
           spokenThisTurn.push(text);
           return speaker.speak(text);
@@ -609,6 +624,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       mainWindowUp: t3Up,
       direct,
+      privateMemory,
       // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
       // subscription session. The wait matches the server's 1.2 s limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {

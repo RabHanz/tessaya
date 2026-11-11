@@ -292,6 +292,7 @@ import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
+import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
 import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
@@ -1110,6 +1111,8 @@ export interface DesktopBatonVoiceInput {
   readonly mainWindowUp?: () => Promise<boolean>;
   /** One Tessaya method on this machine's own server, for when T3's window is closed. */
   readonly direct?: (method: string, input: unknown, timeoutMs?: number) => Promise<unknown>;
+  /** His private memory stores on this machine's server, for the Memory tab. */
+  readonly privateMemory?: PrivateMemory;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** His environment, for the `claude` that cleans text up. */
