@@ -36,6 +36,7 @@ import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
   askSourceOf,
+  privateRefusal,
   refusedAsDevice,
   layer as batonAuthorization,
   memoryViewerOf,
@@ -267,6 +268,36 @@ describe("who may change which account runs his work", () => {
       expect(refusedAsDevice(method, his)).toBe(false);
     }
     expect(refusedAsDevice(BATON_ACCOUNT_WS_METHODS.onLimit, device)).toBe(false);
+  });
+
+  it("keeps private memories from a token's device, which may be an agent, and gives each op its scope", () => {
+    const desktop = [...AuthStandardClientScopes, AuthBatonHandsHostScope];
+    const agent = {
+      method: "bearer-access-token",
+      scopes: AuthStandardClientScopes,
+      subject: "x",
+    } as const;
+    const phone = {
+      method: "browser-session-cookie",
+      scopes: AuthStandardClientScopes,
+      subject: "one-time-token",
+    } as const;
+    const desk = { method: "bearer-access-token", scopes: desktop, subject: "desktop" } as const;
+    for (const op of ["people", "list", "unlock", "recall"])
+      expect(privateRefusal(agent, op)).toBe(
+        "Private memories open only from his own desktop or a browser he paired.",
+      );
+    expect(privateRefusal(phone, "list")).toBe(null);
+    expect(privateRefusal(phone, "unlock")).toBe(null);
+    expect(privateRefusal({ ...phone, scopes: [AuthOrchestrationReadScope] }, "list")).toBe(null);
+    expect(privateRefusal({ ...phone, scopes: [AuthOrchestrationReadScope] }, "unlock")).toBe(
+      `Needs ${AuthOrchestrationOperateScope}.`,
+    );
+    // What feeds or reads the assistant, imports, deletes by voice ID or backs up is the desktop's own session only.
+    for (const op of ["recall", "remember", "deposit", "personDeleted", "backup", "restore"]) {
+      expect(privateRefusal(phone, op)).toBe(`Needs ${AuthBatonHandsHostScope}.`);
+      expect(privateRefusal(desk, op)).toBe(null);
+    }
   });
 });
 

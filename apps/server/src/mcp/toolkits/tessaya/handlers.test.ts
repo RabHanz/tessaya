@@ -101,6 +101,11 @@ it.effect(
     }),
 );
 
+it("gives an outside agent no tool that reaches a private memory store", () => {
+  for (const name of Object.keys(TessayaToolkit.tools))
+    expect(name).not.toMatch(/private|vault|personal/i);
+});
+
 it.effect(
   "an outside agent can ask whether anything is mid-turn before it updates or installs (SESS-SURVIVE)",
   () =>

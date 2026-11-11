@@ -78,6 +78,7 @@ import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
 import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -117,6 +118,7 @@ export type BatonServices =
   | BatonEngine
   | BatonJobService
   | BatonMemoryService
+  | BatonPrivateMemoryService
   | BatonMemorySync
   | BatonCommitmentService
   | BatonRecordService
