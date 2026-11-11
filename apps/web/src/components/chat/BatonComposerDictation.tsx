@@ -10,7 +10,6 @@ import {
   type ComposerDictation,
   type PillDesign,
   type WaveName,
-  parseColour,
 } from "@t3tools/baton-shared/composerDictation";
 import { waveEngine, type Rgb } from "@t3tools/baton-shared/waveform";
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
@@ -38,6 +37,7 @@ export function BatonDictationWords(props: { readonly state: ComposerDictation }
   if (state.phase === "idle") return null;
   const { before, after } = draftAround(state.base);
   const { lead, tail } = spacingAt(state.base);
+  const live = state.phase === "listening" || state.phase === "working";
   // Words only grow at the end while he speaks, so a word's place is its identity and its entrance plays once.
   const words =
     state.phase === "settling"
@@ -60,7 +60,7 @@ export function BatonDictationWords(props: { readonly state: ComposerDictation }
         <span
           key={w.at}
           data-tdc-w={w.look}
-          data-live={state.phase === "settling" ? undefined : ""}
+          data-live={live ? "" : undefined}
         >
           {w.at === words.length - 1 ? w.text : `${w.text} `}
         </span>
@@ -72,8 +72,17 @@ export function BatonDictationWords(props: { readonly state: ComposerDictation }
   );
 }
 
+/** Any CSS colour as sRGB: the browser converts it (oklch, color-mix) by painting one pixel. */
+const probe =
+  typeof document === "undefined"
+    ? null
+    : document.createElement("canvas").getContext("2d", { willReadFrequently: true });
 const rgbOf = (css: string): Rgb => {
-  const [r, g, b] = parseColour(css);
+  if (probe === null) return [0, 0, 0];
+  probe.clearRect(0, 0, 1, 1);
+  probe.fillStyle = css;
+  probe.fillRect(0, 0, 1, 1);
+  const [r = 0, g = 0, b = 0] = probe.getImageData(0, 0, 1, 1).data;
   return [r, g, b];
 };
 
