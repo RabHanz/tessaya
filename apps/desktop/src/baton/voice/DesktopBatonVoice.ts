@@ -332,6 +332,7 @@ import { createDictationHold } from "./dictationHold.ts";
 import * as Electron from "electron";
 
 import {
+  BATON_COMPOSER_MIC_CHANNEL,
   BATON_VOICE_FOCUS_CHANNEL,
   BATON_VOICE_REQUEST_CHANNEL,
   BATON_VOICE_RESPONSE_CHANNEL,
@@ -673,6 +674,8 @@ interface VoiceSettings {
   /** Cloud tasks: off until he turns them on. */
   readonly cloud?: Partial<CloudSettings>;
   readonly paste: PasteMethod;
+  /** T3's composer microphone on this desktop: Tessaya's dictation (the default) or T3's own voice input. */
+  readonly composerMic: "tessaya" | "t3";
   /** The languages he speaks; empty detects any. */
   readonly languages: ReadonlyArray<string>;
   /** Who turns his speech into words: this computer (default), or a cloud provider on his own key. */
@@ -790,6 +793,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   holdKey: HOLD_KEY,
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
+  composerMic: "tessaya",
   languages: ["en"],
   recognition: "local",
   cloudProvider: "openai",
@@ -875,6 +879,7 @@ export const readSettings = (path: string): VoiceSettings => {
       holdKeyDefaults: HOLD_KEY_DEFAULTS,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
+      composerMic: saved["composerMic"] === "t3" ? "t3" : "tessaya",
       showWords: saved["showWords"] !== false,
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
@@ -2072,6 +2077,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The dictation whose ghost holds his typing keys until its paste lands (the sidecar's `hold_keys`); 0 for none. */
   let keyHold = 0;
   let keyHolds = 0;
+  /** T3's composer microphone asked for Tessaya's dictation: its words go back to the composer, not through a paste. */
+  let composerWaiter: ((text: string) => void) | null = null;
   const oneShot = createOneShot<FocusedApp>({
     // The paste never waits for the ghost (it held every paste ~2.8 s): its words go as the cleaned ones land.
     beforePaste: async (_raw, _text, app) => {
@@ -2104,41 +2111,43 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ? Promise.resolve(text)
         : fitToCaret(text, app).then((t) => (dictationTimer?.fitted(), t)),
     paste: (text, app) =>
-      noteNext
-        ? Promise.resolve(
-            (() => {
-              noteNext = false;
-              try {
-                scratch.add(text);
-                input.extras?.notice("Saved to your Scratchpad.");
-                return true;
-              } catch {
-                return false;
-              }
-            })(),
-          )
-        : sidecar === null || app.window === undefined
-          ? // Never into whatever has the keyboard now: with no window of its own the words are kept.
-            Promise.resolve(false)
-          : ((side: NonNullable<typeof sidecar>, target: number, title: string) =>
-              pasteInOrder(async () => {
-                // One helper call: its window forward, the same window and page checked (his words were not for
-                // another), then the paste.
-                const why = await side
-                  .pasteChecked(text, target, title, (late) => {
-                    if (late !== "ok") return;
-                    // It landed after all: its copy card would only invite a second paste.
-                    toast.retract(text);
-                    pill.on({ type: "done", label: "Pasted after all" });
-                    input.onNote?.("paste_late", { chars: text.length });
-                  })
-                  .catch(() => "refused" as const);
-                if (why === "ok") return true;
-                keptWhy = why;
-                // Which check stopped it, never the words: a refusal that keeps happening shows in the turn log.
-                input.onNote?.("paste_refused", { why, chars: text.length });
-                return false;
-              }))(sidecar, app.window, app.title),
+      composerWaiter !== null
+        ? Promise.resolve((composerWaiter(text), true))
+        : noteNext
+          ? Promise.resolve(
+              (() => {
+                noteNext = false;
+                try {
+                  scratch.add(text);
+                  input.extras?.notice("Saved to your Scratchpad.");
+                  return true;
+                } catch {
+                  return false;
+                }
+              })(),
+            )
+          : sidecar === null || app.window === undefined
+            ? // Never into whatever has the keyboard now: with no window of its own the words are kept.
+              Promise.resolve(false)
+            : ((side: NonNullable<typeof sidecar>, target: number, title: string) =>
+                pasteInOrder(async () => {
+                  // One helper call: its window forward, the same window and page checked (his words were not for
+                  // another), then the paste.
+                  const why = await side
+                    .pasteChecked(text, target, title, (late) => {
+                      if (late !== "ok") return;
+                      // It landed after all: its copy card would only invite a second paste.
+                      toast.retract(text);
+                      pill.on({ type: "done", label: "Pasted after all" });
+                      input.onNote?.("paste_late", { chars: text.length });
+                    })
+                    .catch(() => "refused" as const);
+                  if (why === "ok") return true;
+                  keptWhy = why;
+                  // Which check stopped it, never the words: a refusal that keeps happening shows in the turn log.
+                  input.onNote?.("paste_refused", { why, chars: text.length });
+                  return false;
+                }))(sidecar, app.window, app.title),
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
@@ -3740,6 +3749,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (entry === "hold_up") heldByButton = false;
     return step;
   };
+  const COMPOSER_WAIT_MS = 60_000;
+  Electron.ipcMain.handle(BATON_COMPOSER_MIC_CHANNEL, async (event) => {
+    // Our own windows only; preview panes load other people's pages.
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return { handled: false };
+    if (settings.composerMic === "t3" || settings.dictation !== "baton" || binary === null)
+      return { handled: false };
+    if (!keyRecording()) {
+      moveDictation("toggle");
+      return { handled: true };
+    }
+    // The second press ends the recording; its words, cleaned, come back here (`paste` below).
+    const words = new Promise<string>((resolve) => {
+      composerWaiter = resolve;
+      setTimeout(() => resolve(""), COMPOSER_WAIT_MS);
+    });
+    moveDictation("toggle");
+    const text = await words;
+    composerWaiter = null;
+    return { handled: true, text };
+  });
   const recordingFramer = makeFramer((frame) => {
     const level = frameLevel(frame);
     pill.micLevel(level, pillGain(level), frame);
@@ -6215,6 +6244,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.doubleTap,
       },
       {
+        id: "v.composerMic",
+        section: "Dictation",
+        label: "Microphone in the T3 composer",
+        hint: "Tessaya voice runs the chat box's microphone through this dictation: its recognition, clean-up and your words. Press once to start, again to insert. T3 built-in uses T3's own voice input and its Voice settings.",
+        kind: "choice",
+        value: settings.composerMic,
+        options: [
+          { value: "tessaya", label: "Tessaya voice (recommended)" },
+          { value: "t3", label: "T3 built-in" },
+        ],
+      },
+      {
         id: "v.learnWords",
         section: "Dictation",
         label: "Learn words from my edits",
@@ -7485,6 +7526,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ recognizers: settings.recognizers.filter((u) => u !== value) });
       configureDictation();
       render();
+    } else if (id === "v.composerMic") {
+      save({ composerMic: value === "t3" ? "t3" : "tessaya" });
     } else if (id === "v.doubleTap") {
       save({ doubleTap: on });
       configureDictation();

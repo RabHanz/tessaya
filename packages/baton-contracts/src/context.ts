@@ -313,6 +313,11 @@ export interface BatonDesktopBridge {
   ) => () => void;
   /** §14 rung 3 for the voice core: the work session on screen, or null. */
   readonly setBatonVoiceFocus?: (workSessionId: string | null) => void;
+  /**
+   * T3's composer microphone, offered to Tessaya's dictation first. `handled` false: T3's own voice input runs. The
+   * press that ends a recording answers with its cleaned words, for the composer to insert at the caret.
+   */
+  readonly composerMic?: () => Promise<{ readonly handled: boolean; readonly text?: string }>;
 }
 
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */

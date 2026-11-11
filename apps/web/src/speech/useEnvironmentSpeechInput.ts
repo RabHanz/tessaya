@@ -38,6 +38,7 @@ import {
 import { useEnvironment } from "../state/environments";
 import { useEnvironmentScope, usePreparedConnection } from "../state/session";
 import { createBrowserVoiceInputPlatform } from "./browserVoiceInput";
+import { tryTessayaComposerMic } from "./tessayaComposerMic";
 import { preferredSpeechLanguages } from "./preferredSpeechLanguages";
 import { runEnvironmentSpeech } from "./runEnvironmentSpeech";
 import { bindAudioGrant, readCleanupGrant, useAudioChoice } from "./voiceConsent";
@@ -477,6 +478,12 @@ export function useEnvironmentSpeechInput(input: HookInput) {
 
   const start = useStableCallback(async () => {
     if (latestRef.current.input.disabled || (setup.open && setup.downloading)) return;
+    // Voice settings' model test (cleanup false) always tests T3's own voice input.
+    if (
+      latestRef.current.input.cleanup !== false &&
+      (await tryTessayaComposerMic(latestRef.current.input))
+    )
+      return;
     if (!grantId) {
       if (destination.offerFirstRunSetup && latestRef.current.input.offerSetup !== false)
         await navigate({ to: "/settings/voice", hash: "voice-transcription-destination" });
