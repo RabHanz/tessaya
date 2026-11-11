@@ -257,6 +257,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage("SettingsThreads", "text.bubble", "Threads"),
         page("SettingsScheduledTasks", "clock", "Scheduled tasks"),
         serverPage("SettingsHome", "house", "Home"),
+        serverPage("SettingsHardware", "face.smiling", "Hardware"),
       ],
     },
     {

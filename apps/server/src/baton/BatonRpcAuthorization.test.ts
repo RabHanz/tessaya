@@ -15,6 +15,8 @@ import {
   BATON_MEMORY_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_HOME_WS_METHODS,
+  BATON_DEVICES_WS_METHODS,
+  BATON_VOICE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BatonRecordAppendInput,
@@ -127,6 +129,34 @@ describe("who may import memory from a folder", () => {
     expect(missingBatonScope(call, [AuthOrchestrationReadScope], { ...read, kind: "other" })).toBe(
       AuthOrchestrationOperateScope,
     );
+    // The voice library the same way: a preview is a read, a persona's voice or the Google key is operate.
+    const voice = BATON_VOICE_WS_METHODS.call;
+    const preview = { kind: "read", op: "preview", args: {} };
+    expect(missingBatonScope(voice, [AuthOrchestrationReadScope], preview)).toBeNull();
+    expect(
+      missingBatonScope(voice, [AuthOrchestrationReadScope], { ...preview, kind: "act" }),
+    ).toBe(AuthOrchestrationOperateScope);
+  });
+
+  it("scopes a devices call by its kind: read looks, act operates, owner needs the approval scope", () => {
+    const call = BATON_DEVICES_WS_METHODS.call;
+    const read = { kind: "read", op: "list", args: {} };
+    expect(missingBatonScope(call, [AuthOrchestrationReadScope], read)).toBeNull();
+    expect(missingBatonScope(call, [AuthOrchestrationReadScope], { ...read, kind: "act" })).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(missingBatonScope(call, AuthStandardClientScopes, { ...read, kind: "owner" })).toBe(
+      AuthBatonCloudApproveScope,
+    );
+    expect(
+      missingBatonScope(call, [...AuthStandardClientScopes, AuthBatonCloudApproveScope], {
+        ...read,
+        kind: "owner",
+      }),
+    ).toBeNull();
+    expect(missingBatonScope(call, [AuthOrchestrationReadScope], { ...read, kind: "other" })).toBe(
+      AuthOrchestrationOperateScope,
+    );
   });
 
   it("lets only the desktop app's own session search through walls", () => {
@@ -158,7 +188,10 @@ describe("rename R1: every method also answers as tessaya.*", () => {
     } as const;
     // Methods added after the rename have one name only (see BatonRpcGroup in baton-contracts).
     for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES).filter(
-      (t) => t !== BATON_HOME_WS_METHODS.call,
+      (t) =>
+        t !== BATON_HOME_WS_METHODS.call &&
+        t !== BATON_DEVICES_WS_METHODS.call &&
+        t !== BATON_VOICE_WS_METHODS.call,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(refusedAsDevice(renamed, device), renamed).toBe(refusedAsDevice(tag, device));
@@ -177,7 +210,10 @@ describe("rename R1: every method also answers as tessaya.*", () => {
     const payloads = [undefined, { text: "deploy key", admin: true }, { action: "run" }];
     // Methods added after the rename have one name only (see BatonRpcGroup in baton-contracts).
     for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES).filter(
-      (t) => t !== BATON_HOME_WS_METHODS.call,
+      (t) =>
+        t !== BATON_HOME_WS_METHODS.call &&
+        t !== BATON_DEVICES_WS_METHODS.call &&
+        t !== BATON_VOICE_WS_METHODS.call,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(BatonRpcGroup.requests.has(renamed), renamed).toBe(true);

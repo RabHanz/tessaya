@@ -21,6 +21,8 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
+  BATON_DEVICES_WS_METHODS,
+  BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
@@ -208,6 +210,14 @@ export function createBatonWorkSessionAtoms<R, E>(
     homeCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:home",
       tag: BATON_HOME_WS_METHODS.call,
+    }),
+    devicesCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:devices",
+      tag: BATON_DEVICES_WS_METHODS.call,
+    }),
+    voiceCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:voice",
+      tag: BATON_VOICE_WS_METHODS.call,
     }),
     commitmentsList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-list",

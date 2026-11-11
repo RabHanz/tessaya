@@ -21,6 +21,10 @@ const povey = Float64Array.from(
   { length: FRAME },
   (_, i) => (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FRAME - 1))) ** 0.85,
 );
+const hamming = Float64Array.from(
+  { length: FRAME },
+  (_, i) => 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (FRAME - 1)),
+);
 
 /** Each mel bin's weights over the FFT bins it covers, as Kaldi's MelBanks builds them. */
 const banks = (() => {
@@ -89,10 +93,15 @@ const powerSpectrum = (frame: Float64Array): void => {
   for (let k = 0; k < FFT / 2; k += 1) power[k] = re[k]! * re[k]! + im[k]! * im[k]!;
 };
 
-/** 16 kHz PCM (int16 scale) to frames × 80 log mel energies, mean-subtracted per bin. Empty under one frame. */
+/**
+ * 16 kHz PCM (int16 scale) to frames × 80 log mel energies, mean-subtracted per bin. Empty under one frame.
+ * SenseVoice was trained on the same bank with a Hamming window and no mean subtraction (sherpa-onnx's front end).
+ */
 export const fbank = (
   pcm: Int16Array,
+  options: { readonly window?: "povey" | "hamming"; readonly subtractMean?: boolean } = {},
 ): { readonly frames: number; readonly data: Float32Array } => {
+  const taper = options.window === "hamming" ? hamming : povey;
   const frames = pcm.length < FRAME ? 0 : 1 + Math.floor((pcm.length - FRAME) / SHIFT);
   const data = new Float32Array(frames * BINS);
   const frame = new Float64Array(FFT);
@@ -104,7 +113,7 @@ export const fbank = (
     for (let i = 0; i < FRAME; i += 1) frame[i] = pcm[f * SHIFT + i]! - mean;
     for (let i = FRAME - 1; i > 0; i -= 1) frame[i] = frame[i]! - PREEMPH * frame[i - 1]!;
     frame[0] = frame[0]! - PREEMPH * frame[0]!;
-    for (let i = 0; i < FRAME; i += 1) frame[i] = frame[i]! * povey[i]!;
+    for (let i = 0; i < FRAME; i += 1) frame[i] = frame[i]! * taper[i]!;
     powerSpectrum(frame);
     for (let m = 0; m < BINS; m += 1) {
       const { first, weights } = banks[m]!;
@@ -113,6 +122,7 @@ export const fbank = (
       data[f * BINS + m] = Math.log(Math.max(e, FLT_EPSILON));
     }
   }
+  if (options.subtractMean === false) return { frames, data };
   for (let m = 0; m < BINS; m += 1) {
     let sum = 0;
     for (let f = 0; f < frames; f += 1) sum += data[f * BINS + m]!;

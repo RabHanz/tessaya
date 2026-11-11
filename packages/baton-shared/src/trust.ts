@@ -185,6 +185,7 @@ const UNATTENDED_TOOLS: ReadonlySet<string> = new Set([
   "home_find",
   "home_state",
   "home_automations",
+  "device_list",
   "watch_report",
   "what_happened",
   "morning_brief",

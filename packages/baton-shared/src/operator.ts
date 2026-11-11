@@ -160,6 +160,7 @@ const BATON_QUIET = new Set([
   "home_find",
   "home_state",
   "home_automations",
+  "device_list",
 ]);
 /** Tools only a remote hands session has; the assistant's own table never holds them. */
 export const REMOTE_ONLY_TOOLS: ReadonlySet<string> = new Set([
@@ -215,6 +216,9 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "home_undo",
   "home_automation_save",
   "home_automation_set",
+  "device_act",
+  "device_owner",
+  "device_tag",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -365,8 +369,11 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "home_undo":
     case "home_automation_save":
     case "home_automation_set":
-      // The server judges every house change by its own tiers and sends a risky one to his phone; a change that
-      // follows something it read asks here first.
+    case "device_act":
+    case "device_owner":
+    case "device_tag":
+      // The server judges every house and device change by its own rules and sends a risky one to his phone; a change
+      // that follows something it read asks here first.
       return outgoing
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };

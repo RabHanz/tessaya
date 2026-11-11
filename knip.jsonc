@@ -183,7 +183,11 @@
     },
     // The contracts and shared packages are declared for the types Baton re-exports.
     "packages/baton-shared": { "ignoreDependencies": ["@t3tools/contracts"] },
-    "packages/baton-voice": { "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"] },
+    "packages/baton-voice": {
+      // The R1 room loop and its replay harness run as programs on the voice host (deploy/r1-voice).
+      "entry": ["src/room/main.ts!", "src/room/replay.ts!"],
+      "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"],
+    },
     "packages/effect-acp": {
       "includeEntryExports": true,
       "entry": ["test/fixtures/*.ts"],

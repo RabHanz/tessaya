@@ -192,6 +192,12 @@ import {
 } from "./sessionCatalog.ts";
 import { BATON_CLOUD_WS_METHODS, BatonCloudCallInput, BatonCloudCallResult } from "./cloud.ts";
 import { BATON_HOME_WS_METHODS, BatonHomeCallInput, BatonHomeCallResult } from "./home.ts";
+import { BATON_VOICE_WS_METHODS, BatonVoiceCallInput, BatonVoiceCallResult } from "./voice.ts";
+import {
+  BATON_DEVICES_WS_METHODS,
+  BatonDevicesCallInput,
+  BatonDevicesCallResult,
+} from "./devices.ts";
 import {
   BATON_COMMITMENT_WS_METHODS,
   BatonCommitmentError,
@@ -508,6 +514,18 @@ const WsBatonCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
 const WsBatonHomeCallRpc = Rpc.make(BATON_HOME_WS_METHODS.call, {
   payload: BatonHomeCallInput,
   success: BatonHomeCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonDevicesCallRpc = Rpc.make(BATON_DEVICES_WS_METHODS.call, {
+  payload: BatonDevicesCallInput,
+  success: BatonDevicesCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonVoiceCallRpc = Rpc.make(BATON_VOICE_WS_METHODS.call, {
+  payload: BatonVoiceCallInput,
+  success: BatonVoiceCallResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1082,4 +1100,6 @@ export const BatonRpcGroup = RpcGroup.make(
   ...BATON_RPCS,
   ...TESSAYA_ALIASES,
   WsBatonHomeCallRpc,
+  WsBatonDevicesCallRpc,
+  WsBatonVoiceCallRpc,
 ).middleware(BatonRpcScopeAuthorization);
