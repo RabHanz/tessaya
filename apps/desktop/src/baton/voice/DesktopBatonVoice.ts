@@ -31,7 +31,6 @@ import {
   cleanupLevelFor,
   DICTATION_MODES,
   MODE_LABELS,
-  strictestCleanup,
   type CleanupLevel,
   type DictationMode,
 } from "@t3tools/baton-shared/dictationCleanup";
@@ -336,11 +335,13 @@ import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
 import { createComposerDictation, routePill } from "./composerDictation.ts";
+import { cleanupLevelNow } from "./cleanupLevel.ts";
 import * as Electron from "electron";
 
 import {
   BATON_COMPOSER_DICTATION_REPLY_CHANNEL,
   BATON_COMPOSER_DICTATION_CHANNEL,
+  BATON_COMPOSER_FOCUS_CHANNEL,
   BATON_COMPOSER_MIC_CHANNEL,
   BATON_VOICE_FOCUS_CHANNEL,
   BATON_VOICE_REQUEST_CHANNEL,
@@ -958,6 +959,8 @@ export const readSettings = (path: string): VoiceSettings => {
 /** Longer than the spoken 15 s, for reading; a typed yes must still run out. */
 const TYPED_CONFIRM_MS = 30_000;
 const APP_CHECK_MS = 500;
+/** A clean-up slower than this says where its time went. */
+const SLOW_CLEANUP_MS = 400;
 /** A second Esc within this discards a dictation. */
 const ESC_AGAIN_MS = 2_000;
 /** How long "Discarded · click to undo" stays. */
@@ -1549,13 +1552,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     examples: (text, mode) => styleIndex?.nearest(text, mode, 4) ?? [],
   });
   /** Held to where the words came from and where he is now. Unknown counts as secret. */
-  const levelNow = async (spokenIn: { readonly exe: string; readonly title: string }) => {
-    const now = await Promise.race([
-      sidecar?.foreground().catch(() => null) ?? Promise.resolve(null),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
-    ]);
-    return strictestCleanup(settings.dictationCleanup, [spokenIn, now ?? { exe: "", title: "" }]);
-  };
+  const levelNow = (spokenIn: { readonly exe: string; readonly title: string }) =>
+    cleanupLevelNow(
+      settings.dictationCleanup,
+      spokenIn,
+      () => sidecar?.foreground() ?? Promise.resolve(null),
+      APP_CHECK_MS,
+    );
   const snippets = createSnippetStore(input.stateDir);
   const transforms = createTransformStore(input.stateDir);
   const styles = createStyleStore(input.stateDir);
@@ -1628,7 +1631,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Clean-up, then the spoken cues he saved expand (Snippets). */
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
     // Words that look like a secret are never put in a Claude prompt, whatever the level.
+    const started = Date.now();
     const level = detectSecret(raw) === null ? await levelNow(app) : "local";
+    const levelMs = Date.now() - started;
     const out = await rewriter.clean({
       raw: raw,
       mode: chooseMode(app, settings.appModes),
@@ -1639,6 +1644,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
     if (out.stage === "fallback")
       input.onNote?.("dictation_cleanup", { fallback: out.why ?? "unknown" });
+    // Which part of a slow clean-up took the time, so the next one names it (a local 1.5 s on 0.1.105 could not be).
+    if (Date.now() - started > SLOW_CLEANUP_MS)
+      input.onNote?.("dictation_cleanup_slow", {
+        levelMs,
+        cleanMs: Date.now() - started - levelMs,
+        level,
+        stage: out.stage,
+      });
     const styled =
       chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw"
         ? out.text
@@ -2222,8 +2235,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Our own chat box took the dictation: it takes the words itself, no paste (composerDictation.ts). */
   const oneShot = createOneShot<FocusedApp>({
     ...oneShotOptions,
-    paste: async (text, app) =>
-      (await composer.commit(text)) ? (ghostPlayed = true) : oneShotOptions.paste(text, app),
+    paste: async (text, app) => {
+      const ours = composer.active();
+      const took = await composer.commit(text);
+      // Which way the words went, for the turn log: the chat box took them, or they fell back to the paste.
+      if (ours) input.onNote?.("composer_commit", { took, chars: text.length });
+      return took ? (ghostPlayed = true) : oneShotOptions.paste(text, app);
+    },
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
@@ -3910,7 +3928,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "key_edge")
       return input.onNote?.("key_edge", { down: event.down, at: event.at });
     // The pill on the press itself; the microphone opens 80 to 140 ms later (`recording`).
-    if (event.ev === "pressed") return pressGate.press();
+    // His own chat box has the keyboard: it takes the dictation now, before the press could show the pill.
+    if (event.ev === "pressed") {
+      claimComposer("held");
+      return pressGate.press();
+    }
     // At a pause the words so far are cleaned while he still holds, so a release right after has its answer ready.
     if (event.ev === "partial") {
       // Words for a dictation that is no longer the newest (late from his server after a new key press) are dropped.
@@ -3963,12 +3985,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         .catch(() => undefined);
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
+      claimComposer(keyHeldToTalk ? "held" : "free");
       pressGate.want();
       startGhost();
-      void composer.start(keyHeldToTalk ? "held" : "free").then((claimed) => {
-        if (claimed) ghost.stop();
-        else pill.replay();
-      });
     } else if (event.ev === "latched") {
       keyHeldToTalk = false;
       composer.mode("free");
@@ -4243,6 +4262,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           !insert && sidecarBusy
           ? discardNewest()
           : undefined;
+  /** Which of our windows say their chat box has the keyboard, by webContents id. */
+  const composerFocus = new Map<number, boolean>();
+  Electron.ipcMain.on(BATON_COMPOSER_FOCUS_CHANNEL, (event, focused: unknown) => {
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
+    composerFocus.set(event.sender.id, focused === true);
+  });
   const composer = createComposerDictation({
     target: () => {
       const window = Electron.BrowserWindow.getFocusedWindow();
@@ -4251,10 +4276,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return {
         send: (message) => contents.send(BATON_COMPOSER_DICTATION_CHANNEL, message),
         gone: () => contents.isDestroyed(),
+        focused: () => composerFocus.get(contents.id) === true,
       };
     },
     onAction: dictationAction,
   });
+  const claimComposer = (mode: "held" | "free") =>
+    void composer.start(mode).then((claimed) => {
+      if (claimed) ghost.stop();
+      else pill.replay();
+    });
   Electron.ipcMain.on(BATON_COMPOSER_DICTATION_REPLY_CHANNEL, (event, reply: unknown) => {
     // Our own windows only; preview panes load other people's pages.
     if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
