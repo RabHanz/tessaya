@@ -20,7 +20,7 @@ index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4df26460dc 100644
+index 60c89ffc6b732db13fd880bedac4af057157415d..132c01438997743734643ce47eec0d2be8592151 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -35,6 +35,8 @@ export type SettingsPath =
@@ -59,7 +59,7 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4d
      ],
    },
    {
-@@ -1285,6 +1291,18 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1285,6 +1291,24 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["new 1password vault op cli account"],
      secretsFeatureOnly: true,
    },
@@ -67,7 +67,7 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4d
 +    id: "apis-anthropic",
 +    title: "Anthropic",
 +    to: "/settings/apis",
-+    searchTerms: ["api key claude dictation cleanup voice"],
++    searchTerms: ["api key claude dictation cleanup voice room brain r1"],
 +  },
 +  {
 +    id: "home-assistant",
@@ -75,10 +75,16 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4d
 +    to: "/settings/home",
 +    searchTerms: ["house lights automations devices smart home r1"],
 +  },
++  {
++    id: "room-brain",
++    title: "Room brain",
++    to: "/settings/home",
++    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
++  },
    {
      id: "archive",
      title: "Archived threads",
-@@ -1316,6 +1334,8 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+@@ -1316,6 +1340,8 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
    "/settings/connections": "connections",
    "/settings/access": "connections",
    "/settings/secrets": null,
