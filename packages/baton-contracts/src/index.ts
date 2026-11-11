@@ -22,6 +22,7 @@ export * from "./dictation.ts";
 export * from "./memory.ts";
 export * from "./weave.ts";
 export * from "./cloud.ts";
+export * from "./home.ts";
 export * from "./sessionCatalog.ts";
 export * from "./watch.ts";
 export * from "./workSession.ts";

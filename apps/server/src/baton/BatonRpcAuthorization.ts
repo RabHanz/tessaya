@@ -27,6 +27,7 @@ import {
   BATON_COMMITMENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
+  BATON_HOME_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
@@ -141,6 +142,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_CLOUD_WS_METHODS.act]: AuthOrchestrationOperateScope,
   // Approving is its own scope: only the desktop app's session and a client paired for it have it.
   [BATON_CLOUD_WS_METHODS.approve]: AuthBatonCloudApproveScope,
+  // Home: looking is a read; acting is operate (each act is risk-checked again on the server); his yes to one
+  // that waited is the approval scope, so no assistant, agent or device approves its own request.
+  [BATON_HOME_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.
@@ -257,6 +261,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_CLOUD_WS_METHODS.read,
   BATON_CLOUD_WS_METHODS.act,
   BATON_CLOUD_WS_METHODS.approve,
+  BATON_HOME_WS_METHODS.call,
   // Every live session here and on each linked environment, and typing into a pane here.
   BATON_SESSIONS_WS_METHODS.across,
   // This machine's own catalog with T3's window closed; another machine's goes through the window.
@@ -329,15 +334,24 @@ export const missingBatonScope = (
   const fields = typeof payload === "object" && payload !== null ? payload : {};
   // Only the desktop app's own session holds hands-host, and no grant can: seeing through memory walls is his own view,
   // and only the desktop works the phone inbox (taking his asks, answering them, mirroring its questions).
-  const desktopOnly =
+  const desktopOnly: Array<AuthEnvironmentScope> =
     ((tag === BATON_MEMORY_WS_METHODS.search || tag === BATON_MEMORY_WS_METHODS.historySearch) &&
       (fields as { admin?: unknown }).admin === true) ||
     // Running the pull now spends the history script here and writes held proposals: his desktop's Memory tab only.
     (tag === BATON_MEMORY_WS_METHODS.pull && (fields as { action?: unknown }).action === "run") ||
     (tag === BATON_PHONE_WS_METHODS.call &&
-      !PHONE_CLIENT_OPS.has(String((fields as { op?: unknown }).op)))
+      !PHONE_CLIENT_OPS.has(String((fields as { op?: unknown }).op))) ||
+    // A home act that says his gate already said yes: only his desktop's own session holds that gate.
+    (tag === BATON_HOME_WS_METHODS.call &&
+      (fields as { args?: { approved?: unknown } }).args?.approved === true)
       ? [AuthBatonHandsHostScope]
       : [];
+  // A home call's kind sets its scope: acting is operate, his yes is the approval scope.
+  const homeKind =
+    tag === BATON_HOME_WS_METHODS.call ? (fields as { kind?: unknown }).kind : undefined;
+  if (homeKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
+  else if (homeKind === "answer") desktopOnly.push(AuthBatonCloudApproveScope);
+  else if (homeKind !== undefined && homeKind !== "read") return AuthOrchestrationOperateScope;
   return [...all, ...desktopOnly].find((scope) => !scopes.includes(scope)) ?? null;
 };
 
