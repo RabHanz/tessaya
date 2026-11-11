@@ -67,6 +67,7 @@ export function exposeBatonDesktopBridge(): void {
       ipcRenderer.on(Channels.BATON_COMPOSER_DICTATION_CHANNEL, listener);
       return () => ipcRenderer.removeListener(Channels.BATON_COMPOSER_DICTATION_CHANNEL, listener);
     },
+    setComposerFocus: (focused) => ipcRenderer.send(Channels.BATON_COMPOSER_FOCUS_CHANNEL, focused),
     replyComposerDictation: (reply) =>
       ipcRenderer.send(Channels.BATON_COMPOSER_DICTATION_REPLY_CHANNEL, reply),
   };

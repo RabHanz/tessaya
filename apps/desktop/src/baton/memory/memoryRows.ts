@@ -74,12 +74,12 @@ const KINDS: ReadonlyArray<readonly [MemoryKind, string]> = [
   ["note", "Notes"],
 ];
 
-const matches = (item: MemoryItem, words: ReadonlyArray<string>): boolean => {
+export const memoryMatches = (item: MemoryItem, words: ReadonlyArray<string>): boolean => {
   const hay = `${item.text} ${item.kind} ${item.scopeRef ?? ""}`.toLowerCase();
   return words.every((w) => hay.includes(w));
 };
 
-const meta = (item: MemoryItem, used: boolean): string =>
+export const memoryMeta = (item: MemoryItem, used: boolean): string =>
   [
     item.kind,
     item.source === "user" ? "your words" : `${Math.round(item.confidence * 100)}% sure`,
@@ -131,13 +131,13 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
         s.filter === "all" || s.filter === "held" || s.filter === "replaced" || i.kind === s.filter,
     )
     .filter((i) => !s.usedOnly || s.usedIds.has(i.id))
-    .filter((i) => matches(i, words));
+    .filter((i) => memoryMatches(i, words));
 
   const row = (item: MemoryItem, section: string): HomeControl => ({
     id: `m:${item.id}`,
     section,
     label: item.text,
-    hint: meta(item, s.usedIds.has(item.id)),
+    hint: memoryMeta(item, s.usedIds.has(item.id)),
     kind: "memory",
     pinned: item.pinned,
     held: item.proposed,

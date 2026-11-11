@@ -356,6 +356,29 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["commit_add"],
   },
   {
+    id: "private-remember-family",
+    source:
+      "Director 2026-11-11: private memories go to his encrypted store, not the shared Memory tab",
+    said: "remember that my daughter's birthday is on the third of February",
+    first: ["private_remember"],
+    not: ["memory_remember"],
+  },
+  {
+    id: "private-remember-faith",
+    source:
+      "Director 2026-11-11: private memories go to his encrypted store, not the shared Memory tab",
+    said: "keep this between us: I've started praying fajr at the mosque again",
+    first: ["private_remember"],
+    not: ["memory_remember"],
+  },
+  {
+    id: "remember-work-preference",
+    source: "Control for private-remember: an ordinary preference stays in the shared Memory tab",
+    said: "remember that I like the office fan at thirty percent when I work",
+    first: ["memory_remember"],
+    not: ["private_remember"],
+  },
+  {
     id: "remember-site",
     source: "Help page: memory_search",
     said: "what do you remember about the shop site?",

@@ -17,6 +17,7 @@
  *
  * @module baton-voice/router
  */
+import type { SpeakerIdentity } from "./speaker.ts";
 import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
 import type { BatonIntentResolution } from "@t3tools/baton-contracts";
 import {
@@ -58,6 +59,8 @@ export interface RouteContext {
   readonly wake?: string | null;
   /** He cut her off: what she had said by then. His words carry on from it. */
   readonly cutIn?: CutIn | null;
+  /** Whose voice said it (Voice ID); absent or null when unknown, typed, or Voice ID is off. */
+  readonly speaker?: SpeakerIdentity | null;
 }
 
 export type RouteOutcome =
