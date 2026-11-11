@@ -440,6 +440,10 @@ describe("what may leave the machine", () => {
     );
     expect(cleanupLevelFor("claude", { exe: "", title: "" })).toBe("local");
     expect(cleanupLevelFor("claude", { exe: "winword.exe", title: "Report.docx" })).toBe("claude");
+    // Tessaya's own chat box: the title is a thread's name.
+    expect(cleanupLevelFor("claude", { exe: "Tessaya.exe", title: "Fix the login page" })).toBe(
+      "claude",
+    );
   });
 });
 

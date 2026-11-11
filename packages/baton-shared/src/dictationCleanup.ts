@@ -95,13 +95,15 @@ const SECRET_TITLE =
 
 /**
  * The most a dictation here may do. Password managers and sign-in pages stay on this machine
- * whatever he chose, and so does an app Baton could not name.
+ * whatever he chose, and so does an app Baton could not name. Tessaya's own window is safe: its
+ * title is a thread's name, and "Fix the login page" is not a sign-in page.
  */
 export const cleanupLevelFor = <Level extends string>(
   level: Level | "local",
   app: { readonly exe: string; readonly title: string },
 ): Level | "local" => {
   const exe = app.exe.toLowerCase().replace(/\.(exe|app)$/, "");
+  if (exe === "tessaya") return level;
   return exe.length === 0 || SECRET_APP.test(exe) || SECRET_TITLE.test(app.title) ? "local" : level;
 };
 
