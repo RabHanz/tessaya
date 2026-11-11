@@ -148,6 +148,7 @@ export const tabOf = (id: string): TabId => {
   if (/^trust[:.]/.test(id)) return "trust";
   if (/^help[:.]/.test(id)) return "help";
   if (/^bk[:.]/.test(id)) return "history";
+  if (/^vid[:.]/.test(id)) return "voice";
   if (/^sn[:.]/.test(id)) return "snippets";
   if (/^tr[:.]/.test(id)) return "transforms";
   if (/^st[:.]/.test(id)) return "style";

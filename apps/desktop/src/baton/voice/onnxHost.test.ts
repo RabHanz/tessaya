@@ -55,6 +55,10 @@ const fakeChildren = (failsToLoad: (n: number) => boolean = () => false) => {
           load("vad");
           return { chunkSamples: 512, score: async () => 0.8, reset: () => undefined };
         },
+        speaker: async (_path: string, model: string) => {
+          load("speaker");
+          return { model, embed: async () => Float32Array.from([0.6, 0.8]) };
+        },
       },
     );
     children.push(me);
@@ -175,4 +179,18 @@ it("fails the first load, so voice reports it instead of listening to nothing", 
   await host.wake(paths).catch((e: unknown) => (error = e));
   assert.match(String(error), /exited \(3\)/);
   assert.deepEqual(crashes, [[3, false]]);
+});
+
+it("embeds a voice through the worker, and gives no vector while it is down, so the turn is unverified", async () => {
+  const { children, host } = await listening();
+  const speaker = await host.speaker("campplus.onnx", "m");
+  assert.deepEqual(Array.from((await speaker.embed(new Int16Array(32_000)))!), [
+    Float32Array.from([0.6])[0],
+    Float32Array.from([0.8])[0],
+  ]);
+  children[0]!.exit(1);
+  assert.isNull(await speaker.embed(new Int16Array(32_000)));
+  await vi.advanceTimersByTimeAsync(1_000);
+  assert.include(children[1]!.opened, "speaker");
+  host.close();
 });

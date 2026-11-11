@@ -53,7 +53,7 @@ import Migration0021 from "./Migrations/Baton/021_MemoryVersions.ts";
 import Migration0022 from "./Migrations/Baton/022_Settings.ts";
 import Migration0023 from "./Migrations/Baton/023_WeaveQueue.ts";
 import Migration0024 from "./Migrations/Baton/024_LiveQueue.ts";
-// 25 is the home lane's.
+import Migration0025 from "./Migrations/Baton/025_Home.ts";
 import Migration0026 from "./Migrations/Baton/026_PrivateMemory.ts";
 
 /**
@@ -88,6 +88,7 @@ const batonMigrationEntries = [
   [22, "Settings", Migration0022],
   [23, "WeaveQueue", Migration0023],
   [24, "LiveQueue", Migration0024],
+  [25, "Home", Migration0025],
   [26, "PrivateMemory", Migration0026],
 ] as const;
 

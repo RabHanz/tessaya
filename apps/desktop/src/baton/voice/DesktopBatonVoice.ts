@@ -44,6 +44,9 @@ import {
   stripWake,
   type BatonVoiceCore,
   type EchoGuard,
+  CAMPLUS_POLICY,
+  voiceApproval,
+  type SpeakerEmbedder,
   type SttProvider,
   type VoiceCoreEvent,
   type VoiceIntentClient,
@@ -332,9 +335,12 @@ import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../h
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
+import { createComposerDictation, routePill } from "./composerDictation.ts";
 import * as Electron from "electron";
 
 import {
+  BATON_COMPOSER_DICTATION_REPLY_CHANNEL,
+  BATON_COMPOSER_DICTATION_CHANNEL,
   BATON_COMPOSER_MIC_CHANNEL,
   BATON_VOICE_FOCUS_CHANNEL,
   BATON_VOICE_REQUEST_CHANNEL,
@@ -406,12 +412,23 @@ import {
   modelPresent,
   PARAKEET_FAST_MODEL,
   PARAKEET_MODEL,
+  SPEAKER_MODEL,
   machinePicksFast,
   slowStartsAfter,
   wakeModelFor,
   weakMachine,
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
+import { createVoiceId } from "./voiceId.ts";
+import { createSpeakerIdentity, type SpeakerIdentityService } from "./speakerIdentity.ts";
+import {
+  parseVoiceIdSettings,
+  VOICE_ID_DEFAULTS,
+  VOICE_ID_SWITCHES,
+  voiceIdControls,
+  type VoiceIdSettings,
+} from "./voiceIdRows.ts";
+import type { HostedScorer } from "./onnxHost.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
 import { createRecogniserPriority, type RecogniserPriority } from "./recogniserPriority.ts";
 import type {
@@ -550,6 +567,13 @@ const FOCUSED_FIELD: BatonFocusTarget = {
   origin: null,
 };
 
+/** A house tool's call to this machine's server (deskCall: always its own door). */
+interface HomeBridgeRequest {
+  readonly kind: "home";
+  readonly op: "read" | "act";
+  readonly args: { readonly op: string; readonly args: Readonly<Record<string, unknown>> };
+}
+
 interface MicSetting {
   /** Part of the device name, as Windows shows it. */
   readonly name: string;
@@ -615,6 +639,8 @@ interface VoiceSettings {
   readonly pronounce: Readonly<Record<string, string>>;
   /** Over speakers: hear him through her voice (the echo guard). Measured, not yet reliable enough to be the default. */
   readonly voiceBargeIn: boolean;
+  /** Voice ID and its switches (voiceIdRows.ts). */
+  readonly voiceId: VoiceIdSettings;
   /** Two quick taps of the dictation key keep the microphone open until the next press. */
   readonly doubleTap: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
@@ -765,6 +791,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   outputDevice: "auto",
   pronounce: {},
   voiceBargeIn: false,
+  voiceId: VOICE_ID_DEFAULTS,
   doubleTap: true,
   keepVoice: false,
   keepDays: 30,
@@ -894,6 +921,7 @@ export const readSettings = (path: string): VoiceSettings => {
       outputDevice: outputDeviceFrom(saved),
       pronounce: pronounceFrom(saved["pronounce"]),
       voiceBargeIn: saved["voiceBargeIn"] === true,
+      voiceId: parseVoiceIdSettings(saved["voiceId"]),
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
       palette: parsePalette(saved["palette"]),
@@ -1030,6 +1058,8 @@ export interface VoiceCoreHooks {
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
   readonly echo: EchoGuard | undefined;
   readonly speakerMode: () => "speakers" | "headphones";
+  /** Voice ID: whose voice each turn and cut-in is. */
+  readonly speaker: SpeakerIdentityService;
 }
 
 /** Linear resampling to the microphone's 16 kHz, for the echo guard's reference only. */
@@ -1117,6 +1147,8 @@ export interface DesktopBatonVoiceInput {
   readonly privateMemory?: PrivateMemory;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
+  /** The voice match model in the voice model worker (VOICE-ID); absent, Voice ID cannot run here. */
+  readonly speakerModel?: (path: string, model: string) => Promise<HostedScorer<SpeakerEmbedder>>;
   /** His environment, for the `claude` that cleans text up. */
   /** `tessaya-voice`; null only in a build that left it out. */
   readonly dictationBinary: string | null;
@@ -1286,6 +1318,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // A left click is what an icon invites, and without this it did nothing on Windows.
   tray.on("click", () => home.open());
   const modelsDir = NodePath.join(input.stateDir, "voice", "models");
+  const voiceId = createVoiceId({
+    stateDir: input.stateDir,
+    ownerName: () => "You",
+    settings: () => settings.voiceId,
+    ensureModel: () => ensureModel({ dir: modelsDir, model: SPEAKER_MODEL, onProgress: () => {} }),
+    openModel: async (path) => {
+      if (input.speakerModel === undefined) throw new Error("No voice model worker here.");
+      return input.speakerModel(path, SPEAKER_MODEL.id);
+    },
+    model: SPEAKER_MODEL.id,
+    appData: input.env["APPDATA"],
+    onChange: () => pushHome(),
+    ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+    // Deleting a person deletes their private store with them.
+    ...(input.privateMemory === undefined
+      ? {}
+      : { onPersonDeleted: (id: string) => void input.privateMemory?.onPersonDeleted(id) }),
+  });
+  voiceId.sync();
+  /** Who is speaking, for the core, the approval path and the memory stores (one identity for all). */
+  const speakerIdentity = createSpeakerIdentity({
+    voiceId,
+    settings: () => settings.voiceId,
+    policy: { ...CAMPLUS_POLICY, model: SPEAKER_MODEL.id },
+    now: Date.now,
+    ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+  });
   const binary = input.dictationBinary;
   let sidecar: DictationSidecar | null = null;
   let parakeetPath: string | null = null;
@@ -2078,13 +2137,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         input.onNote?.("ghost_start", { ...at, shown: not === null, ...not });
       });
   };
-  const dictationWords = (text: string) => (ghost.active() ? ghost.words(text) : pill.words(text));
+  const dictationWords = (text: string) =>
+    ghost.active() && !composer.active() ? ghost.words(text) : pill.words(text);
   /** The dictation whose ghost holds his typing keys until its paste lands (the sidecar's `hold_keys`); 0 for none. */
   let keyHold = 0;
   let keyHolds = 0;
   /** T3's composer microphone asked for Tessaya's dictation: its words go back to the composer, not through a paste. */
   let composerWaiter: ((text: string) => void) | null = null;
-  const oneShot = createOneShot<FocusedApp>({
+  const oneShotOptions: Parameters<typeof createOneShot<FocusedApp>>[0] = {
     // The paste never waits for the ghost (it held every paste ~2.8 s): its words go as the cleaned ones land.
     beforePaste: async (_raw, _text, app) => {
       ghostPlayed = ghost.active();
@@ -2153,6 +2213,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                   input.onNote?.("paste_refused", { why, chars: text.length });
                   return false;
                 }))(sidecar, app.window, app.title),
+  };
+  /** Our own chat box took the dictation: it takes the words itself, no paste (composerDictation.ts). */
+  const oneShot = createOneShot<FocusedApp>({
+    ...oneShotOptions,
+    paste: async (text, app) =>
+      (await composer.commit(text)) ? (ghostPlayed = true) : oneShotOptions.paste(text, app),
   });
   let openTurn: string | null = null;
   /** Why the last flush kept its words rather than pasting them. */
@@ -2181,7 +2247,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (app.window !== undefined) showDictation("Tidying…", true);
     ghostPlayed = false;
     const result = await oneShot.flush(app);
-    if (result.status !== "pasted") ghost.stop();
+    if (result.status !== "pasted") {
+      ghost.stop();
+      composer.cancel();
+    }
     if (result.status === "pasted") dictationTimer?.pasted();
     if (result.status === "empty") return showDictation(null);
     landed(result.text);
@@ -2422,7 +2491,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
       | BatonCloudBridgeRequest
-      | BatonPhoneBridgeRequest,
+      | BatonPhoneBridgeRequest
+      | HomeBridgeRequest,
   ): Promise<unknown> => {
     // With T3's window closed, this machine's server answers instead of opening the window; acting on another
     // computer is refused in a sentence, since only T3's own session to it may do that.
@@ -2476,7 +2546,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
       | BatonCloudBridgeRequest
-      | BatonPhoneBridgeRequest,
+      | BatonPhoneBridgeRequest
+      | HomeBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -2590,6 +2661,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     feeds: settings.needsFeeds,
     expect: settings.needsExpect,
   });
+  /** The house tools: the server answers ok with a value or a sentence; the model gets it as JSON text. */
+  const homeOp = async (args: Readonly<Record<string, unknown>>): Promise<string> => {
+    try {
+      const reply = (await requestKept({
+        kind: "home",
+        op: args["method"] === "act" ? "act" : "read",
+        args: {
+          op: String(args["op"] ?? ""),
+          args: {
+            ...(args["args"] as Readonly<Record<string, unknown>>),
+            surface: "assistant",
+            who: "Tessaya",
+          },
+        },
+      })) as { ok?: boolean; error?: string; value?: unknown } | null;
+      if (reply?.ok !== true) return reply?.error ?? "Home did not answer.";
+      return JSON.stringify(reply.value ?? null).slice(0, 8000);
+    } catch (error) {
+      return error instanceof Error ? error.message : "Home did not answer.";
+    }
+  };
   const weaveOp = async (
     op: "weave_send" | "weave_list",
     args: Readonly<Record<string, unknown>>,
@@ -2762,6 +2854,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return said;
       }
       if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
+      if (op === "home") return homeOp(args);
       if (op === "note_add") {
         try {
           return `Saved to the Scratchpad [id: ${scratch.add(String(args["text"] ?? "")).id}].`;
@@ -3110,6 +3203,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       };
     },
     confirm: (prompt) => core?.confirm(prompt) ?? null,
+    // D4: while Voice ID runs, a spoken yes stands alone only for ordinary things and only in his voice.
+    spokenYes: (risk) =>
+      !speakerIdentity.running() ||
+      !voiceApproval(speakerIdentity.current(), risk, settings.voiceId.voiceYes).cardRequired,
+    savedMessages: () => settings.voiceId.savedMessages,
     folder: (window) => focusedFolder(window, input.platform),
     grammarPlaces: async (said) => {
       if (mainContents === null) return false;
@@ -3648,6 +3746,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const discardKeyDictation = () => {
     discardNewest();
+    composer.cancel();
     sidecar?.finish();
   };
   /** One stray Esc must not lose his words, as in spoken dictation: the first asks, the second discards. */
@@ -3764,6 +3863,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       moveDictation("toggle");
       return { handled: true };
     }
+    // The chat box has this dictation already: its words reach it through `composer`, not this answer.
+    if (composer.active()) {
+      moveDictation("toggle");
+      return { handled: true };
+    }
     // The second press ends the recording; its words, cleaned, come back here (`paste` below).
     const words = new Promise<string>((resolve) => {
       composerWaiter = resolve;
@@ -3856,13 +3960,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       note = null;
       pressGate.want();
       startGhost();
+      void composer.start(keyHeldToTalk ? "held" : "free").then((claimed) => {
+        if (claimed) ghost.stop();
+        else pill.replay();
+      });
     } else if (event.ev === "latched") {
       keyHeldToTalk = false;
+      composer.mode("free");
       showDictation("Esc twice discards");
-    } else if (event.ev === "transcribing") showDictation("Writing it out", true);
-    else if (event.ev === "idle") {
+    } else if (event.ev === "transcribing") {
+      composer.finish();
+      showDictation("Writing it out", true);
+    } else if (event.ev === "idle") {
       // Nothing came of it (too short, or stopped): no words will carry its window or its discard.
       ghost.stop();
+      composer.cancel();
       takeRecording(recordings, event.dictation);
       // A key that "did not fire" is often one let go within 200 ms: the log tells the two apart.
       if (event.tap === true) input.onNote?.("dictation_dropped", { reason: "short_tap" });
@@ -3872,6 +3984,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (!pressGate.cancel()) showDictation(null);
     } else if (event.ev === "error") {
       ghost.stop();
+      composer.cancel();
       pressGate.cancel();
       takeRecording(recordings, event.dictation);
       note = event.message;
@@ -3999,6 +4112,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         choose(next);
         note = next.kind === "default" ? next.reason : null;
         configureDictation();
+        speakerIdentity.reset();
         await loop?.switchDevice(choiceDeviceId(next));
         render();
       } else if (listChanged) {
@@ -4113,7 +4227,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     loop?.activate("dismiss");
     input.onStop?.(quiet);
   };
-  const pill: VoicePill = createVoicePill({
+  const dictationAction = (insert: boolean) =>
+    dictatingByVoice
+      ? endVoiceDictation(insert)
+      : keyRecording()
+        ? insert
+          ? sidecar?.finish()
+          : discardKeyDictation()
+        : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
+          !insert && sidecarBusy
+          ? discardNewest()
+          : undefined;
+  const composer = createComposerDictation({
+    target: () => {
+      const window = Electron.BrowserWindow.getFocusedWindow();
+      if (window === null || window.isDestroyed()) return null;
+      const contents = window.webContents;
+      return {
+        send: (message) => contents.send(BATON_COMPOSER_DICTATION_CHANNEL, message),
+        gone: () => contents.isDestroyed(),
+      };
+    },
+    onAction: dictationAction,
+  });
+  Electron.ipcMain.on(BATON_COMPOSER_DICTATION_REPLY_CHANNEL, (event, reply: unknown) => {
+    // Our own windows only; preview panes load other people's pages.
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
+    if (typeof reply === "object" && reply !== null && "id" in reply && "type" in reply)
+      composer.reply(reply as Parameters<typeof composer.reply>[0]);
+  });
+  const pillOptions: Parameters<typeof createVoicePill>[0] = {
     look: () => ({ motion: settings.motion, glass: settings.glass }),
     menuItems: () => [
       {
@@ -4140,17 +4283,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     edge: () => settings.pillEdge,
     stateDir: input.stateDir,
     holdEscape: input.holdEscape,
-    onDictation: (insert) =>
-      dictatingByVoice
-        ? endVoiceDictation(insert)
-        : keyRecording()
-          ? insert
-            ? sidecar?.finish()
-            : discardKeyDictation()
-          : // Released and still being written out: ✕ still throws it away (✓ is what happens anyway).
-            !insert && sidecarBusy
-            ? discardNewest()
-            : undefined,
+    onDictation: dictationAction,
     // ✕ | waveform | ✓ while the pill stays up on its own; a key or button held to talk ends on its release.
     voiceDictating: () => dictatingByVoice || (keyRecording() && !keyHeldToTalk),
     showWords: () => settings.showWords && !ghost.active(),
@@ -4179,7 +4312,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return back;
     },
     focusWindow: (window) => void sidecar?.focusWindow(window).catch(() => undefined),
-  });
+  };
+  const pill: VoicePill & { readonly replay: () => void } = routePill(
+    createVoicePill(pillOptions),
+    composer,
+  );
   let fullscreen = false;
   const restWanted = () =>
     restBarWanted({
@@ -4538,6 +4675,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }),
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
+      speaker: speakerIdentity,
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
       recording: () => sidecarBusy,
       verifyWake: async (pcm, word, score) => {
@@ -4702,6 +4840,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (keyRecording()) hearKeyCommand(frame, level);
         else commandClips.reset();
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
+        voiceId.push(frame);
       },
       // The core's router has already sent the words on; this is the HUD's line.
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
@@ -6018,6 +6157,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...styleControls(styles.read(), settings.dictationCleanup),
       ...insightControls(deepInsights()),
       ...voiceProfileControls(profileValue),
+      ...voiceIdControls(voiceId.view(loop !== null)),
       {
         id: "d.import",
         section: "Vocabulary files",
@@ -6822,6 +6962,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
   };
 
+  /** One confirmation that says what goes with it, then the profile is deleted at once. */
+  const forgetVoice = async (id: string, what: string) => {
+    const answer = await (input.extras?.ask({
+      title: `Delete ${what}?`,
+      detail:
+        id === "owner"
+          ? "Tessaya will not know your voice until you enrol again."
+          : "Tessaya will not know their voice any more, and what she remembers for them is deleted too.",
+      buttons: ["Delete", "Cancel"],
+      cancel: 1,
+      expiresMs: 60_000,
+    }) ?? Promise.resolve(1));
+    if (answer === 0) voiceId.remove(id);
+  };
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
     if (privateTab?.act(id, value)) return;
@@ -7586,7 +7740,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (value === "auto" || value === "headphones" || value === "speakers")
     )
       save({ outputDevice: value });
-    else if (id === "v.voiceBargeIn") {
+    else if (VOICE_ID_SWITCHES[id] !== undefined) {
+      save({ voiceId: { ...settings.voiceId, [VOICE_ID_SWITCHES[id]]: on } });
+      voiceId.sync();
+    } else if (id === "vid.enrol") voiceId.read({ kind: "owner" });
+    else if (id === "vid.enrol:later") void forgetVoice("owner", "your voice profile");
+    else if (id === "vid.people:add" && typeof value === "string" && value.trim() !== "")
+      voiceId.read({ kind: "saved", name: value.trim().slice(0, 40) });
+    else if (id === "vid.people:rm" && typeof value === "string") {
+      const person = voiceId.profiles().find((p) => p.kind === "saved" && p.name === value);
+      if (person !== undefined) void forgetVoice(person.id, `${person.name}'s voice`);
+    } else if (id === "v.voiceBargeIn") {
       save({ voiceBargeIn: on });
       void relisten();
     } else if (id === "v.quietSpeech") {
@@ -7796,6 +7960,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     reselect();
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     configureDictation();
+    speakerIdentity.reset();
     await loop?.switchDevice(choiceDeviceId(choice));
     render();
   };
