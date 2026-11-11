@@ -36,6 +36,7 @@ import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonCloudService from "./BatonCloudService.ts";
 import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
 import * as HomeAssistantService from "../home/HomeAssistantService.ts";
+import * as R1Device from "../home/R1Device.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
 import * as BatonSessionsAcross from "./BatonSessionsAcross.ts";
 import * as BatonWeaveService from "./BatonWeaveService.ts";
@@ -199,5 +200,5 @@ export const workers = Layer.effectDiscard(
   Layer.provideMerge(BatonWeaveService.drainer),
 );
 
-/** The phone page at /tessaya and its API. */
-export const routes = BatonTessayaRoutes.routes;
+/** The phone page at /tessaya and its API, and the R1 desk device's chat endpoint. */
+export const routes = Layer.merge(BatonTessayaRoutes.routes, R1Device.routes);
