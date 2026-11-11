@@ -91,6 +91,11 @@ export function isAppUpdateCheckAvailable(client: Pick<AppUpdateClient, "isEnabl
   return client.isEnabled && !(typeof __DEV__ !== "undefined" && __DEV__);
 }
 
+/** Short id of the over-the-air update running now, or null when the build's own bundle runs. */
+export function runningUpdateLabel(): string | null {
+  return Updates.isEmbeddedLaunch ? null : (Updates.updateId?.slice(0, 8) ?? null);
+}
+
 export function registerHiddenUpdateTap(count: number): {
   readonly nextCount: number;
   readonly shouldCheck: boolean;
