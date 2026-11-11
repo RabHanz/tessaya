@@ -26,6 +26,7 @@ import {
   type OpenWakeWordScorer,
   type RouteOutcome,
   type SileroScorer,
+  type SpeakerIdentity,
   type SttProvider,
   type TtsProvider,
   type VoiceCoreEvent,
@@ -195,6 +196,8 @@ export interface BrainVoiceHook {
       readonly wake?: string | null;
       /** He cut her off: what she had said by then. */
       readonly cutIn?: CutIn | null;
+      /** Whose voice said it (Voice ID). */
+      readonly speaker?: SpeakerIdentity | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
 }
@@ -218,6 +221,7 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
         focused.workSessionId === null ? null : `${focused.workSessionId} (${focused.evidence})`,
       wake: context.wake ?? null,
       cutIn: context.cutIn ?? null,
+      speaker: context.speaker ?? null,
     });
     return decision.kind === "refused"
       ? { kind: "refused", reply: decision.reply, reason: "high_risk" }
@@ -315,6 +319,8 @@ export const createDesktopVoiceCore = async (input: {
   readonly onEvent?: (event: VoiceCoreEvent) => void;
   /** Hears him over Baton's own voice through the speakers. */
   readonly echo?: EchoGuard;
+  /** Voice ID: whose voice each turn and each cut-in is (speakerIdentity.ts). */
+  readonly speaker?: Parameters<typeof createVoiceCore>[0]["speaker"];
   readonly speakerMode?: () => "speakers" | "headphones";
   /** Where the wake and speech models run; in this process when absent (tests, scripts). */
   readonly scorers?: {
@@ -384,6 +390,7 @@ export const createDesktopVoiceCore = async (input: {
     ...(input.recording === undefined ? {} : { recording: input.recording }),
     ...(input.echo === undefined ? {} : { echo: input.echo }),
     ...(input.speakerMode === undefined ? {} : { speakerMode: input.speakerMode }),
+    ...(input.speaker === undefined ? {} : { speaker: input.speaker }),
   });
   const dispose = core.dispose;
   Object.assign(core, {

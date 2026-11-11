@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { BatonPrivateStore } from "@t3tools/baton-contracts";
 import type { MemoryItem } from "@t3tools/baton-shared/memory";
 
+import type { HomeControl } from "../home/batonHome.ts";
 import { memoryControls, memoryIdOf, type MemoryTabState } from "./memoryRows.ts";
+import { privateControls } from "./privateRows.ts";
 
 const item = (over: Partial<MemoryItem>): MemoryItem => ({
   id: "a",
@@ -130,5 +133,63 @@ describe("his lessons on the Memory page", () => {
     );
     const row = memoryControls(state({ items: lessons })).find((c) => c.id === "m.lessons");
     expect(row?.kind === "check" && row.detail).toContain("2 of 50");
+  });
+});
+
+describe("the People area's rows", () => {
+  const NOW = Date.parse("2026-01-01T12:00:00.000Z");
+  const store = (over: Partial<BatonPrivateStore>): BatonPrivateStore => ({
+    id: "s-owner",
+    personId: "owner",
+    name: "You",
+    kind: "owner",
+    items: 4,
+    open: false,
+    openUntil: null,
+    recallOff: false,
+    lastOpenedAt: null,
+    waitUntil: null,
+    recoveryOnly: false,
+    ...over,
+  });
+  const sami = store({ id: "s-sami", personId: "sami", name: "Sami", kind: "person", items: 1 });
+  const people = (stores: ReadonlyArray<BatonPrivateStore>) =>
+    privateControls({
+      stores,
+      selected: "everyday",
+      items: null,
+      query: "",
+      status: "",
+      recovery: null,
+      admin: new Set(),
+      audit: null,
+      confirmDelete: false,
+      everydayCount: 12,
+      voices: [],
+      now: NOW,
+    })[0] as Extract<HomeControl, { kind: "privatePeople" }>;
+
+  it("offers Open as admin on a person's store only while his own is open, and says when each locks", () => {
+    expect(people([store({}), sami]).people.map((p) => [p.name, p.admin, p.note])).toEqual([
+      ["You (everyday)", false, "12 memories"],
+      ["You, private", false, "4 memories · locked"],
+      ["Sami", false, "1 memory · locked"],
+    ]);
+    const open = people([store({ open: true, openUntil: "2026-01-01T12:03:10.000Z" }), sami]);
+    expect(open.people.map((p) => [p.name, p.admin, p.note])).toEqual([
+      ["You (everyday)", false, "12 memories"],
+      ["You, private", false, "4 memories · open, locks in 4 min"],
+      ["Sami", true, "1 memory · locked"],
+    ]);
+    // A lease past its end is locked, whatever the last answer said.
+    const lapsed = people([store({ open: true, openUntil: "2026-01-01T11:59:00.000Z" }), sami]);
+    expect(lapsed.people[2]!.admin).toBe(false);
+    expect(lapsed.ownerOpen).toBe(false);
+    const waiting = people([
+      store({ recoveryOnly: true }),
+      { ...sami, waitUntil: "2026-01-01T12:15:00.000Z" },
+    ]);
+    expect(waiting.people.map((p) => p.state)).toEqual(["everyday", "recovery", "wait"]);
+    expect(people([sami]).canSetup).toBe(true);
   });
 });

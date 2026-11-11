@@ -16,6 +16,7 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
+  BATON_VOICE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BatonRecordAppendInput,
@@ -38,6 +39,7 @@ import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
   askSourceOf,
+  privateRefusal,
   refusedAsDevice,
   layer as batonAuthorization,
   memoryViewerOf,
@@ -127,6 +129,13 @@ describe("who may import memory from a folder", () => {
     expect(missingBatonScope(call, [AuthOrchestrationReadScope], { ...read, kind: "other" })).toBe(
       AuthOrchestrationOperateScope,
     );
+    // The voice library the same way: a preview is a read, a persona's voice or the Google key is operate.
+    const voice = BATON_VOICE_WS_METHODS.call;
+    const preview = { kind: "read", op: "preview", args: {} };
+    expect(missingBatonScope(voice, [AuthOrchestrationReadScope], preview)).toBeNull();
+    expect(
+      missingBatonScope(voice, [AuthOrchestrationReadScope], { ...preview, kind: "act" }),
+    ).toBe(AuthOrchestrationOperateScope);
   });
 
   it("scopes a devices call by its kind: read looks, act operates, owner needs the approval scope", () => {
@@ -179,7 +188,10 @@ describe("rename R1: every method also answers as tessaya.*", () => {
     } as const;
     // Methods added after the rename have one name only (see BatonRpcGroup in baton-contracts).
     for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES).filter(
-      (t) => t !== BATON_HOME_WS_METHODS.call && t !== BATON_DEVICES_WS_METHODS.call,
+      (t) =>
+        t !== BATON_HOME_WS_METHODS.call &&
+        t !== BATON_DEVICES_WS_METHODS.call &&
+        t !== BATON_VOICE_WS_METHODS.call,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(refusedAsDevice(renamed, device), renamed).toBe(refusedAsDevice(tag, device));
@@ -198,7 +210,10 @@ describe("rename R1: every method also answers as tessaya.*", () => {
     const payloads = [undefined, { text: "deploy key", admin: true }, { action: "run" }];
     // Methods added after the rename have one name only (see BatonRpcGroup in baton-contracts).
     for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES).filter(
-      (t) => t !== BATON_HOME_WS_METHODS.call && t !== BATON_DEVICES_WS_METHODS.call,
+      (t) =>
+        t !== BATON_HOME_WS_METHODS.call &&
+        t !== BATON_DEVICES_WS_METHODS.call &&
+        t !== BATON_VOICE_WS_METHODS.call,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(BatonRpcGroup.requests.has(renamed), renamed).toBe(true);
@@ -324,6 +339,36 @@ describe("who may change which account runs his work", () => {
       expect(refusedAsDevice(method, his)).toBe(false);
     }
     expect(refusedAsDevice(BATON_ACCOUNT_WS_METHODS.onLimit, device)).toBe(false);
+  });
+
+  it("keeps private memories from a token's device, which may be an agent, and gives each op its scope", () => {
+    const desktop = [...AuthStandardClientScopes, AuthBatonHandsHostScope];
+    const agent = {
+      method: "bearer-access-token",
+      scopes: AuthStandardClientScopes,
+      subject: "x",
+    } as const;
+    const phone = {
+      method: "browser-session-cookie",
+      scopes: AuthStandardClientScopes,
+      subject: "one-time-token",
+    } as const;
+    const desk = { method: "bearer-access-token", scopes: desktop, subject: "desktop" } as const;
+    for (const op of ["people", "list", "unlock", "recall"])
+      expect(privateRefusal(agent, op)).toBe(
+        "Private memories open only from his own desktop or a browser he paired.",
+      );
+    expect(privateRefusal(phone, "list")).toBe(null);
+    expect(privateRefusal(phone, "unlock")).toBe(null);
+    expect(privateRefusal({ ...phone, scopes: [AuthOrchestrationReadScope] }, "list")).toBe(null);
+    expect(privateRefusal({ ...phone, scopes: [AuthOrchestrationReadScope] }, "unlock")).toBe(
+      `Needs ${AuthOrchestrationOperateScope}.`,
+    );
+    // What feeds or reads the assistant, imports, deletes by voice ID or backs up is the desktop's own session only.
+    for (const op of ["recall", "remember", "deposit", "personDeleted", "backup", "restore"]) {
+      expect(privateRefusal(phone, op)).toBe(`Needs ${AuthBatonHandsHostScope}.`);
+      expect(privateRefusal(desk, op)).toBe(null);
+    }
   });
 });
 
