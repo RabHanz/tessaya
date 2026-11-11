@@ -127,6 +127,12 @@ describe("createSpeaker on the OS voice", () => {
       "Freya asked Kiro about the PR.",
       "Fray-uh asked Keer-oh about the P R.",
     ]);
+    // A stage direction is a sound between the words, never words; an interjection is respelled for the voice.
+    synthesised.length = 0;
+    noted.length = 0;
+    await speaker.speak("Ugh. *sighs* Fine.");
+    expect(synthesised).toEqual(["Uhhgh.", "Fine."]);
+    expect(noted).toEqual(["Ugh. Fine."]);
   });
 
   it("shows a line of only emoji, and says nothing without calling it unsaid", async () => {

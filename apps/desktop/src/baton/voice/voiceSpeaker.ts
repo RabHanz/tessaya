@@ -10,7 +10,9 @@
  */
 import type { TtsProvider } from "@t3tools/baton-voice";
 
-import { pronounce } from "./pronounce.ts";
+import { hasDirection, speechPieces, withoutDirections } from "@t3tools/baton-shared/interjections";
+import { pronounce } from "@t3tools/baton-shared/pronounce";
+import { spliceSpeech } from "@t3tools/baton-shared/speechSplice";
 
 /** Plays a WAV as its bytes arrive; resolves false if there was nothing to play. */
 export interface VoicePlayer {
@@ -96,7 +98,13 @@ const readAhead = (
 /** What the chosen voice is right now. Only "system" ever reaches the OS voice. */
 export type VoiceChoice =
   | { readonly kind: "system" }
-  | { readonly kind: "synth"; readonly synth: Synthesise }
+  /** `voice` names the voice, for its interjection picks; `engine` says whether it takes Gemini's tags. */
+  | {
+      readonly kind: "synth";
+      readonly synth: Synthesise;
+      readonly voice?: string;
+      readonly engine?: "pocket" | "gemini";
+    }
   /** Not loaded yet: resolves true when it is, false when it cannot be. */
   | { readonly kind: "wait"; readonly ready: Promise<boolean> };
 
@@ -136,20 +144,45 @@ export const createSpeaker = (input: {
   let tail: Promise<void> = Promise.resolve();
   let generating: Promise<void> = Promise.resolve();
 
-  const startSource = (synth: Synthesise, mine: number, text: string) => {
+  const startSource = (
+    choice: Extract<VoiceChoice, { kind: "synth" }>,
+    mine: number,
+    raw: string,
+  ) => {
     const previous = generating;
-    // The engine takes one sentence at a time.
-    const source = readAhead(
-      (async function* () {
-        await previous;
-        if (mine !== generation) return;
-        const job = synth(text);
-        running.add(job.cancel);
+    const his = input.respellings?.() ?? {};
+    // Gemini's own tags (`<sigh>`) pass through; everything around them is made sayable.
+    const sayable = (text: string) =>
+      text
+        .split(/(<[a-z -]{1,30}>)/)
+        .map((part, i) => (i % 2 === 1 ? part : speakableText(pronounce(part, his))))
+        .join(" ")
+        .trim();
+    const pieces = speechPieces(raw, choice.voice ?? "", {
+      his,
+      ...(choice.engine === undefined ? {} : { engine: choice.engine }),
+    }).map((p) => (p.kind === "text" ? { ...p, text: sayable(p.text) } : p));
+    const say = (text: string) => {
+      const job = choice.synth(text);
+      running.add(job.cancel);
+      return (async function* () {
         try {
           yield* job.stream;
         } finally {
           running.delete(job.cancel);
         }
+      })();
+    };
+    // The engine takes one sentence at a time.
+    const source = readAhead(
+      (async function* () {
+        await previous;
+        if (mine !== generation) return;
+        const only = pieces.length === 1 ? pieces[0] : undefined;
+        // Plain words stream as they come; only a line with a sound in it is spliced.
+        if (only?.kind === "text") yield* say(only.text);
+        else if (pieces.length > 0)
+          for await (const chunk of spliceSpeech(pieces, say)) yield Buffer.from(chunk);
       })(),
     );
     generating = source.finished;
@@ -158,19 +191,22 @@ export const createSpeaker = (input: {
 
   const run = (raw: string, pick: () => VoiceChoice, force: boolean): Promise<void> => {
     if (!force && input.silent?.() === true) return Promise.resolve();
-    const text = speakableText(raw);
-    if (text.length === 0) return Promise.resolve();
+    // A stage direction ("*sighs*") is a sound or nothing, never words.
+    const sound = hasDirection(raw);
+    const plain = sound ? withoutDirections(raw) : raw;
+    const text = speakableText(plain);
+    if (text.length === 0 && !sound) return Promise.resolve();
     // What is shown stays as written; only the voice is given it respelled. Her echo is checked against both.
-    const spoken = speakableText(pronounce(raw, input.respellings?.() ?? {}));
-    input.onText?.(text);
+    const spoken = speakableText(pronounce(plain, input.respellings?.() ?? {}));
+    if (text.length > 0) input.onText?.(text);
     if (spoken !== text && spoken.length > 0) input.onText?.(spoken);
     // Nothing left to say (only emoji): shown, and not a line the voice failed on.
-    if (spoken.length === 0) return Promise.resolve();
+    if (spoken.length === 0 && !sound) return Promise.resolve();
     const mine = generation;
     const first = pick();
     let source: ReturnType<typeof readAhead> | null = null;
     if (first.kind === "synth") {
-      source = startSource(first.synth, mine, spoken);
+      source = startSource(first, mine, raw);
     }
     if (queued === 0) input.onActive?.(true);
     queued += 1;
@@ -184,12 +220,12 @@ export const createSpeaker = (input: {
         if (mine !== generation) return;
         choice = ok ? pick() : first;
         if (choice.kind === "synth") {
-          source = startSource(choice.synth, mine, spoken);
+          source = startSource(choice, mine, raw);
         }
       }
       if (choice.kind === "system") {
         input.onPlaying?.(text);
-        await input.os.speak(spoken).catch(() => undefined);
+        if (spoken.length > 0) await input.os.speak(spoken).catch(() => undefined);
       } else if (source === null) {
         input.onUnavailable?.(text);
       } else {

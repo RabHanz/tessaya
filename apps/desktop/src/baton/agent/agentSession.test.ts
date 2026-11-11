@@ -283,6 +283,55 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("keeps a private turn's words out of the file and learning, and its session only for that person, briefly", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    let clock = Date.parse("2026-11-11T10:00:00Z");
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    const learned: string[] = [];
+    let used: string | null = null;
+    let allowed: string | null = "owner";
+    const agent = createAssistantAgent({
+      start: async (prompt) => (started.push(prompt), fakeSession([])),
+      conversation,
+      now: () => clock,
+      clockLine: () => "Wednesday 10:00",
+      beginTurn: () => void (used = null),
+      recall: async (text) => {
+        if (text.includes("anniversary")) used = "owner";
+        return used === null ? "" : "private memories (yours): - Anniversary is in August";
+      },
+      learn: (said) => void learned.push(said),
+      privateAllowed: () => allowed,
+      privateUsed: () => used,
+    });
+    await agent.say("when is my anniversary", { window: null, session: null });
+    expect(conversation.recent(1)[0]).toMatchObject({
+      said: "[private turn]",
+      reply: "[private turn]",
+    });
+    expect(learned).toEqual([]);
+    // His next sentence keeps the session; a turn nobody verified gets a fresh one, without what it heard.
+    await agent.say("thanks", { window: null, session: null });
+    expect(started).toHaveLength(1);
+    expect(learned).toEqual(["thanks"]);
+    allowed = null;
+    await agent.say("what did you just tell him", { window: null, session: null });
+    expect(started).toHaveLength(2);
+    // Past the store's idle re-lock, even his own next turn starts fresh.
+    allowed = "owner";
+    await agent.say("when is my anniversary", { window: null, session: null });
+    clock += 6 * 60_000;
+    await agent.say("and again", { window: null, session: null });
+    expect(started).toHaveLength(3);
+    // The screen locked: the session that read them goes.
+    await agent.say("when is my anniversary", { window: null, session: null });
+    agent.forgetPrivate();
+    await agent.say("hello", { window: null, session: null });
+    expect(started).toHaveLength(4);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("starts a new session, seeded again, when the old one dies or has run long", async () => {
     expect(shouldRecycle({ alive: true, turns: 3, idleMs: 1000 })).toBe(false);
     expect(shouldRecycle({ alive: false, turns: 0, idleMs: 0 })).toBe(true);

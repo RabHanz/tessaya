@@ -106,7 +106,7 @@ const drawWave = (
       const dark = document.documentElement.classList.contains("dark");
       colours = { c1: rgbOf(style.color), c2, c3: c2, dark };
     }
-    L.tick(ENGINE.dbOf(live ? level.current : 0), (t - clock.last) / 1000);
+    L.tick(live ? level.current : ENGINE.dbOf(0), (t - clock.last) / 1000);
     clock.last = t;
     g.setTransform(ratio, 0, 0, ratio, 0, 0);
     g.clearRect(0, 0, W, H);

@@ -6,7 +6,7 @@ laptop is still to be taken.
 
 | What                                                    | Before                                                       | After                                                                        | Budget (test) |
 | ------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- | ------------- |
-| Page script                                             | 82,761 characters                                            | same                                                                         | under 128,500 |
+| Page script                                             | 82,761 characters                                            | same                                                                         | under 138,000 |
 | Stylesheet without the three embedded fonts             | 27,719                                                       | same                                                                         | under 45,000  |
 | Whole document (fonts included)                         | 525,549                                                      | same                                                                         | under 420,000 |
 | Text given to the window as a `data:` URL               | 603,348 characters, percent-encoded and parsed on every open | none: the page is a file in the state folder, rewritten only when it changes |               |
@@ -19,7 +19,7 @@ one per palette and theme (six, 110 to 150 KB each) in `apps/desktop/resources/t
 only the one in use when a sting plays, so the document went from about 720,000 to 384,000 characters and its
 budget from 740,000 to 420,000. Subsetting the fonts further is the next real saving.
 
-The page script budget is 112,000 since 2026-11-05: the greeting picker and its 50 lines added about 4,400 characters. It was 113,000 from 2026-11-06 for the marks that play on click (about 900 characters), was 116,000 from the tour (an offer on Home, resuming, facts per step, about 3,600), was 118,000 from the merges of 2026-11-06 (#539, #548 and others), and is 128,500 since History's redesign (plain-language rows, inline actions, a day summary) took main to about 127,600.
+The page script budget is 112,000 since 2026-11-05: the greeting picker and its 50 lines added about 4,400 characters. It was 113,000 from 2026-11-06 for the marks that play on click (about 900 characters), was 116,000 from the tour (an offer on Home, resuming, facts per step, about 3,600), was 118,000 from the merges of 2026-11-06 (#539, #548 and others), and is 128,500 since History's redesign (plain-language rows, inline actions, a day summary) took main to about 127,600, and is 138,000 since Memory's People area (private stores under a PIN, about 9,500 with their words) took it to about 136,400.
 
 The stylesheet budget is 41,500 since 2026-11-05: the Damson and Madder palettes add a light and a dark accent rule each. It is 42,500 since 2026-11-06: the glass tokens, the marks' hover and click breaths, and the Settings window's larger frame. It is 45,000 since History's redesign (about 1,600 for its rows).
 

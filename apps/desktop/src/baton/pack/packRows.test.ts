@@ -103,6 +103,8 @@ describe("the roster in the window", () => {
     expect(setPersonaVoice(dir, "operations", "anna")).toBe(true);
     expect(rows()[3]).toEqual(["v.persona:operations", "anna"]);
     expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("anna");
+    // Every library voice is offered, personal-use ones too (outside a commercial build).
+    expect(setPersonaVoice(dir, "operations", "cosette")).toBe(true);
     expect(setPersonaVoice(dir, "operations", null)).toBe(true);
     expect(rows()[3]).toEqual(["v.persona:operations", "default"]);
     expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("vera");

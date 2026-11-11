@@ -76,6 +76,7 @@ const desktop = () => {
       };
     },
     replyComposerDictation: vi.fn(),
+    setComposerFocus: vi.fn(),
   };
   const host = globalThis as { batonDesktopBridge?: unknown };
   host.batonDesktopBridge = bridge;
@@ -131,4 +132,19 @@ it("leaves the words to the desktop's paste when the draft changed under the dic
     ok: false,
   });
   await expect.element(screen.getByLabelText("Draft")).toHaveValue(DRAFT);
+});
+
+it("tells the desktop when its chat box has the keyboard, so a dictation is claimed before any pill shows", async () => {
+  using channel = desktop();
+  await using screen = await render(
+    <>
+      <Composer speech={idle} />
+      <button type="button">Elsewhere</button>
+    </>,
+    { router: false },
+  );
+  (screen.getByLabelText("Draft").element() as HTMLTextAreaElement).focus();
+  expect(channel.bridge.setComposerFocus).toHaveBeenLastCalledWith(true);
+  (screen.getByRole("button", { name: "Elsewhere" }).element() as HTMLButtonElement).focus();
+  expect(channel.bridge.setComposerFocus).toHaveBeenLastCalledWith(false);
 });
