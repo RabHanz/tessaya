@@ -18,4 +18,6 @@
 0017-dictation-cleanup-key.patch
 0018-overload-resilience.patch
 0019-composer-mic.patch
-0020-composer-dictation.patch
+0020-theme-variant-seeds.patch
+0021-one-dictation-cleanup.patch
+0022-composer-dictation.patch

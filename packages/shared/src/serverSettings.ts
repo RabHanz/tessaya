@@ -10,6 +10,7 @@ import {
   isUnconfiguredDefaultInstanceEnabled,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
+  isNewerDictationCleanup,
   isProviderTextGenerationCapable,
   type ModelSelection,
   type ProjectId,
@@ -161,7 +162,7 @@ export function resolveSpeechPostProcessingModelSelection(
   settings: ServerSettings,
   providers?: ReadonlyArray<ServerProvider>,
 ): ModelSelection {
-  const selection = settings.speechPostProcessingModelSelection;
+  const selection = settings.dictationCleanup.model;
   if (!selection || !isModelSelectionProviderEnabled(settings, selection)) {
     return settings.textGenerationModelSelection;
   }
@@ -400,6 +401,8 @@ export function applyServerSettingsPatch(
     backgroundActivityProfile,
     backgroundActivity,
     worktreeCleanup: worktreeCleanupPatch,
+    // Tessaya: replaced whole, and only by a newer choice, so every environment's copy converges.
+    dictationCleanup: dictationCleanupPatch,
     // Merged per entry below; its `null` removals must not reach deepMerge.
     usageLimitSources: usageLimitSourcesPatch,
     secretProviders: secretProvidersPatch,
@@ -542,6 +545,10 @@ export function applyServerSettingsPatch(
       : {}),
     ...(patch.providerInstances !== undefined
       ? { providerInstances: patch.providerInstances }
+      : {}),
+    ...(dictationCleanupPatch !== undefined &&
+    isNewerDictationCleanup(dictationCleanupPatch, current.dictationCleanup)
+      ? { dictationCleanup: dictationCleanupPatch }
       : {}),
     ...(patch.worktreesDirectory !== undefined &&
     patch.worktreesDirectory !== current.worktreesDirectory
