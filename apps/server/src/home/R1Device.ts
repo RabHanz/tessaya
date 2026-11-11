@@ -9,6 +9,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeNet from "node:net";
 
 import { recordText } from "@t3tools/baton-shared/audit";
+import { biasTranscript, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -24,6 +25,7 @@ import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { BatonMemoryService } from "../baton/BatonMemoryService.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
 import { R1Brain } from "./R1Brain.ts";
 import { HomeAssistantService, type HomeActor, type R1Device } from "./HomeAssistantService.ts";
@@ -234,7 +236,23 @@ interface R1Heard {
 }
 
 /** The house, the last action and memories for this turn, and the eyes set to thinking. */
-const r1Gather = Effect.fn("R1Device.gather")(function* (input: R1Heard) {
+/** His shared dictionary as vocabulary entries: each term spelt his way, its aliases as the forms it is heard as. */
+export const dictionaryEntries = (
+  words: ReadonlyArray<{ readonly term: string; readonly aliases: ReadonlyArray<string> }>,
+): ReadonlyArray<VocabularyEntry> =>
+  words.map((w) => ({ phrase: w.term, replacement: null, heard: w.aliases }));
+
+const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard) {
+  // His names, as dictation fixes them ("Tessa" → "Tessaya"), from the environment's shared dictionary.
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const words =
+    settings._tag === "None"
+      ? []
+      : yield* settings.value.getSettings.pipe(
+          Effect.map((s) => s.speechProjectCustomWords),
+          Effect.orElseSucceed(() => []),
+        );
+  const input = { ...raw, heard: biasTranscript(raw.heard, dictionaryEntries(words)) };
   const home = yield* HomeAssistantService;
   const device = yield* home.device;
   yield* eyes(device, "thinking", 15_000).pipe(Effect.forkDetach);

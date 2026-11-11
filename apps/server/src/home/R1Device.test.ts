@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { houseTime, mqttPublishBytes, splitActs, spokenReply, sseReply } from "./R1Device.ts";
+import {
+  dictionaryEntries,
+  houseTime,
+  mqttPublishBytes,
+  splitActs,
+  spokenReply,
+  sseReply,
+} from "./R1Device.ts";
 
 describe("R1Device", () => {
   it("says what really happened when an act waited or failed, never the model's 'done'", () => {
@@ -63,4 +70,13 @@ it("tells her the time on the house's clock, with the zone named", () => {
   expect(houseTime(Date.UTC(2026, 10, 11, 4, 28), "Asia/Karachi")).toBe(
     "Wednesday, 11 November 2026 at 09:28 (Asia/Karachi)",
   );
+});
+
+it("fixes his names in what the room heard, from the shared dictionary, as dictation does", async () => {
+  const { biasTranscript } = await import("@t3tools/baton-shared/vocabulary");
+  const entries = dictionaryEntries([
+    { term: "Tessaya", aliases: ["Tezaya"] },
+    { term: "VentureOS", aliases: [] },
+  ]);
+  expect(biasTranscript("Ask Tezaya about Venture OS", entries)).toBe("Ask Tessaya about VentureOS");
 });
