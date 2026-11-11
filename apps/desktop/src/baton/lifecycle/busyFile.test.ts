@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import { describe, expect, it } from "vite-plus/test";
 
 import { BUSY_FILE_FRESH_MS, busyFileOf, safeToReplace } from "./busyFile.ts";
