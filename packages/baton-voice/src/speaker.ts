@@ -39,12 +39,9 @@ export interface SpeakerPolicy {
 }
 
 /**
- * 3D-Speaker CAM++ (VoxCeleb), raw cosine, 60-clip seed. Calibrated 2026-11-11 on his held-out Wispr clips and on
- * 173 public speakers enrolled the same way, against 16k-690k impostor trials (Common Voice, VoxCeleb1, EdACC,
- * LibriSpeech, South Asian TTS). Each cut-off holds for both him and the public speakers:
- * - listen (a cut-in, one 2 s clip): misses 1.4% of his and 2.1% of others' clips; lets in 0.6-2.9% of other voices.
- * - steer (a turn, 2-10 s): FRR 1.7% / 1.9%, FAR 1.2% / 0.14%.
- * - act (verified, one 4 s clip): FAR 0.09% / 0.01%, FRR 1.6% / 2.8%; on 3 averaged 2 s clips FAR 0.03%.
+ * CAM++ raw cosine, 60-clip seed, calibrated 2026-11-11 on his held-out clips and 173 public speakers (PR body has the
+ * table). listen (one 2 s cut-in): FRR <= 2.1%. steer (a 2-10 s turn): FRR <= 1.9%, FAR <= 1.2%. act (verified,
+ * one 4 s clip): FAR <= 0.09%, FRR <= 2.8%; on 3 averaged 2 s clips FAR 0.03%.
  */
 export const CAMPLUS_POLICY: Omit<SpeakerPolicy, "model"> = {
   minSpeechMs: 2_000,
