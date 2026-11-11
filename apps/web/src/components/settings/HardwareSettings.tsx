@@ -17,6 +17,7 @@ import {
   clock,
   deviceStatusLine,
   msText,
+  speakerLine,
   tagActionLine,
   transportLine,
   when,
@@ -419,6 +420,8 @@ function DeviceControls({
         />
       </SettingsSection>
 
+      {d.speaker === null ? null : <SpeakerSection device={d} busy={busy} run={run} />}
+
       <TagsSection device={d} tags={tags} busy={busy} run={run} />
 
       <SettingsSection title={`Camera · ${id}`}>
@@ -604,6 +607,118 @@ function DeviceControls({
 }
 
 const ACTIONS = ["mute", "unmute", ...R1_MOODS.map((m) => `mood:${m}`), "scene"] as const;
+const OUTPUT_LABEL = { auto: "Speaker, else R1", bt: "Speaker only", onboard: "R1 only" } as const;
+
+/** Shown only once the R1's firmware reports it can drive a Bluetooth speaker. */
+function SpeakerSection({
+  device: d,
+  busy,
+  run,
+}: {
+  readonly device: DeviceView;
+  readonly busy: boolean;
+  readonly run: Run;
+}) {
+  const id = d.id;
+  const s = d.speaker!;
+  const off = busy || d.online !== true;
+  const linked = s.state === "connected" || s.state === "streaming";
+  return (
+    <SettingsSection title={`Bluetooth speaker · ${id}`}>
+      <SettingsRow
+        title={s.saved?.name ?? "Speaker"}
+        description={speakerLine(s)}
+        control={
+          <span className="flex gap-1.5">
+            {s.saved === null ? null : linked ? (
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={off}
+                onClick={() => void run("act", "speaker", { id, action: "disconnect" })}
+              >
+                Disconnect
+              </Button>
+            ) : (
+              <Button
+                size="xs"
+                disabled={off || s.state === "connecting"}
+                onClick={() => void run("act", "speaker", { id, action: "connect" })}
+              >
+                Connect
+              </Button>
+            )}
+            {s.saved === null ? null : (
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={off}
+                onClick={() => void run("act", "speaker", { id, action: "forget" })}
+              >
+                Forget
+              </Button>
+            )}
+          </span>
+        }
+      />
+      <SettingsRow
+        title="Replies play on"
+        control={
+          <Select
+            value={s.output}
+            disabled={off}
+            onValueChange={(output) => void run("act", "speaker", { id, action: "route", output })}
+          >
+            <SelectTrigger size="sm">
+              <SelectValue>{OUTPUT_LABEL[s.output]}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              <SelectItem value="auto">{OUTPUT_LABEL.auto}</SelectItem>
+              <SelectItem value="bt">{OUTPUT_LABEL.bt}</SelectItem>
+              <SelectItem value="onboard">{OUTPUT_LABEL.onboard}</SelectItem>
+            </SelectPopup>
+          </Select>
+        }
+      />
+      <SettingsRow
+        title="Pair a speaker"
+        description={
+          s.scannedAt === null
+            ? "Put the speaker in pairing mode, then scan."
+            : `${s.found.length} found at ${clock(s.scannedAt)}. Pick one to pair.`
+        }
+        control={
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={off || s.state === "scanning"}
+            onClick={() => void run("act", "speaker", { id, action: "scan" })}
+          >
+            {s.state === "scanning" ? "Scanning…" : "Scan"}
+          </Button>
+        }
+      >
+        {s.found.length === 0 ? null : (
+          <div className="flex flex-wrap gap-1.5 pt-2">
+            {s.found.map((f) => (
+              <Button
+                key={f.mac}
+                size="sm"
+                variant={s.saved?.mac === f.mac ? "secondary" : "outline"}
+                disabled={off}
+                onClick={() => void run("act", "speaker", { id, action: "pair", mac: f.mac })}
+              >
+                {f.name || f.mac}
+                {f.audio ? null : " (not audio)"}
+              </Button>
+            ))}
+          </div>
+        )}
+      </SettingsRow>
+    </SettingsSection>
+  );
+}
+
 const choiceLabel = (a: string) =>
   a === "scene"
     ? "Run a scene"

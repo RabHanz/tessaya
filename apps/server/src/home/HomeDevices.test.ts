@@ -240,3 +240,66 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect(
+  "keeps the speaker controls off until the firmware says it drives one, then sends them and folds what it reports",
+  () => {
+    const { sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* TestClock.adjust("20 seconds");
+      sent.length = 0;
+      const pair = {
+        kind: "act",
+        op: "speaker",
+        args: { id: ID, action: "pair", mac: "AA:BB:CC:DD:EE:FF" },
+      } as const;
+
+      const early = yield* serveDevicesCall(pair, me);
+      assert.isFalse(early.ok);
+      assert.include(early.error, "cannot drive a Bluetooth speaker");
+      assert.isNull((yield* devices.overview).devices[0]!.speaker);
+      assert.lengthOf(sent, 0);
+
+      yield* devices.receive(`${root}/state/caps`, '{"fw":"smp-0.1.0","bt_speaker":true}');
+      const badMac = yield* serveDevicesCall(
+        { kind: "act", op: "speaker", args: { id: ID, action: "pair", mac: "AA:BB" } },
+        me,
+      );
+      assert.isFalse(badMac.ok);
+      assert.isTrue((yield* serveDevicesCall(pair, me)).ok);
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/bt/pair", payload: { mac: "AA:BB:CC:DD:EE:FF" } },
+      ]);
+
+      yield* devices.receive(
+        `${root}/event/bt/devices`,
+        '{"devices":[{"mac":"AA:BB:CC:DD:EE:FF","name":"Flip 5","rssi":-58,"audio":true},{"mac":"junk"}]}',
+      );
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"streaming","mac":"AA:BB:CC:DD:EE:FF","name":"Flip 5","out":"auto","saved":true}',
+      );
+      const speaker = (yield* devices.overview).devices[0]!.speaker!;
+      assert.deepStrictEqual(
+        [
+          speaker.state,
+          speaker.saved,
+          speaker.output,
+          speaker.found.length,
+          speaker.found[0]!.name,
+        ],
+        ["streaming", { mac: "AA:BB:CC:DD:EE:FF", name: "Flip 5" }, "auto", 1, "Flip 5"],
+      );
+
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"idle","mac":"","saved":false,"out":"onboard"}',
+      );
+      const after = (yield* devices.overview).devices[0]!.speaker!;
+      assert.deepStrictEqual([after.state, after.saved, after.output], ["idle", null, "onboard"]);
+    }).pipe(Effect.provide(layer));
+  },
+);

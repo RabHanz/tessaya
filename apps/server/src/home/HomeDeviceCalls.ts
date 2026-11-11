@@ -4,6 +4,8 @@
  */
 import {
   BATON_DEVICES_ACT_OPS,
+  DEVICE_SPEAKER_ACTIONS,
+  DEVICE_SPEAKER_OUTPUTS,
   BATON_DEVICES_OWNER_OPS,
   BATON_DEVICES_READ_OPS,
   DEVICE_TRANSPORTS,
@@ -18,6 +20,7 @@ import * as Schema from "effect/Schema";
 
 import {
   HomeDevices,
+  MAC,
   type DeviceActor,
   type DeviceCommand,
   type DeviceRefusedError,
@@ -86,6 +89,16 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   ),
   diag: plain({ op: "diag" }),
   forget: plain({ op: "forget" }),
+  speaker: op(
+    Schema.Struct({
+      id: Id,
+      action: Schema.Literals(DEVICE_SPEAKER_ACTIONS),
+      mac: Schema.optionalKey(Schema.String.check(Schema.isPattern(MAC))),
+      name: Schema.optionalKey(Text(32)),
+      output: Schema.optionalKey(Schema.Literals(DEVICE_SPEAKER_OUTPUTS)),
+    }),
+    (a, devices, by) => devices.command(a.id, { op: "speaker", ...a }, by),
+  ),
   reboot: plain({ op: "reboot" }),
   camera: plain({ op: "camera" }),
   nfcAssign: op(
