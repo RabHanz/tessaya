@@ -44,7 +44,7 @@ index a04c1df8872779c19f2d2aecad2e767433365671..c253c25eb148723470e7b174ebc50bac
  }
  
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index b36119eb581d9e9b8837e340dbfaffa2809643ed..72784831ef02835369204b34be841cb17ebee125 100644
+index b36119eb581d9e9b8837e340dbfaffa2809643ed..f87c761f9aca4a81f7a831abbfa13c68e634857f 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 @@ -53,6 +53,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
@@ -64,7 +64,33 @@ index b36119eb581d9e9b8837e340dbfaffa2809643ed..72784831ef02835369204b34be841cb1
    }
  }
  
-@@ -2571,7 +2572,7 @@ export const layerWithOptions = (
+@@ -172,6 +173,11 @@ export interface ProviderSessionManagerV2Shape {
+     ProviderSessionManagerV2Error
+   >;
+   readonly isLive: (providerSessionId: ProviderSessionId) => Effect.Effect<boolean>;
++  /** Tessaya (hot account swap): the live process takes another instance's login in place. */
++  readonly switchAccount: (input: {
++    readonly providerSessionId: ProviderSessionId;
++    readonly targetInstanceId: ProviderInstanceId;
++  }) => Effect.Effect<boolean>;
+   readonly close: (
+     providerSessionId: ProviderSessionId,
+   ) => Effect.Effect<void, ProviderSessionManagerV2Error>;
+@@ -2530,6 +2536,13 @@ export const layerWithOptions = (
+           Ref.get(sessions).pipe(
+             Effect.map((current) => current.has(sessionKey(providerSessionId))),
+           ),
++        switchAccount: Effect.fn("ProviderSessionManager.switchAccount")(function* (input) {
++          const entry = (yield* Ref.get(sessions)).get(sessionKey(input.providerSessionId));
++          const target = yield* Effect.option(registry.get(input.targetInstanceId));
++          const login = Option.isSome(target) ? target.value.accountLogin : undefined;
++          if (entry?.runtime.switchAccount === undefined || login === undefined) return false;
++          return yield* entry.runtime.switchAccount(login);
++        }),
+         get: Effect.fn("ProviderSessionManager.get")(
+           function* (providerSessionId) {
+             const entry = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
+@@ -2571,7 +2584,7 @@ export const layerWithOptions = (
                  releaseEntry({
                    providerSessionId: entry.runtime.providerSessionId,
                    reason: "manual_shutdown",

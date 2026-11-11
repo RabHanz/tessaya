@@ -3,6 +3,7 @@ import {
   CheckpointScopeId,
   CommandId,
   MessageId,
+  ProviderInstanceId,
   NodeId,
   ProviderSessionId,
   RunAttemptId,
@@ -39,6 +40,12 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     providerSessionId: ProviderSessionId,
     detail: Schema.optional(Schema.String),
     revokeMcpCredential: Schema.optional(Schema.Boolean),
+  }),
+  // Tessaya (hot account swap): the live process takes the target instance's login.
+  Schema.Struct({
+    type: Schema.Literal("provider-session.switch-account"),
+    providerSessionId: ProviderSessionId,
+    targetInstanceId: ProviderInstanceId,
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.start"),
@@ -136,6 +143,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
 ] as const satisfies ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
 
 export const PROCESS_BOUND_EFFECT_TYPES = [
+  "provider-session.switch-account",
   "provider-turn.start",
   "provider-turn.interrupt",
   "provider-turn.steer",

@@ -149,6 +149,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -182,6 +183,10 @@ import {
   mergeClaudeProcessEnvironment,
   resolveClaudeHomePath,
 } from "../../provider/Drivers/ClaudeHome.ts";
+import {
+  makeClaudeSessionLogin,
+  pruneClaudeSessionLogins,
+} from "../../provider/Drivers/ClaudeSessionLogin.ts";
 import * as BatonClaudeAccountHome from "../../provider/Drivers/ClaudeAccountHome.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
@@ -4870,6 +4875,8 @@ export interface ClaudeAdapterV2Options {
   readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
+  // Tessaya (hot account swap): token logins live in per-session config dirs under here.
+  readonly sessionLoginsDir?: string;
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
@@ -4908,6 +4915,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   ).pipe(Effect.provideService(Path.Path, path));
   const hostEnvironment = yield* HostProcess.Environment;
   const hostPlatform = yield* HostProcess.Platform;
+  const sessionLoginHomeDirectory = yield* HostProcess.HomeDirectory;
+  const accountToken = adapterOptions.environment.CLAUDE_CODE_OAUTH_TOKEN?.trim() ?? "";
   const customHome =
     adapterOptions.settings.homePath.trim().length > 0 ||
     adapterOptions.environment.CLAUDE_CONFIG_DIR !== hostEnvironment.CLAUDE_CONFIG_DIR;
@@ -5112,6 +5121,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
     driver: CLAUDE_PROVIDER,
+    ...(adapterOptions.sessionLoginsDir === undefined || accountToken.length === 0
+      ? {}
+      : {
+          accountLogin: {
+            instanceId: adapterOptions.instanceId,
+            secret: Redacted.make(accountToken),
+            ...(adapterOptions.onUsageLimits === undefined
+              ? {}
+              : { onUsageLimits: adapterOptions.onUsageLimits }),
+          },
+        }),
     getCapabilities: Effect.fn("ClaudeAdapterV2.getCapabilities")(function () {
       return Effect.succeed(ClaudeProviderCapabilitiesV2);
     }),
@@ -5177,6 +5197,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         const interruptedTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const steeredTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const queryContext = yield* Ref.make<ClaudeLiveQueryContext | null>(null);
+        const sessionLogin = makeClaudeSessionLogin({
+          root: adapterOptions.sessionLoginsDir,
+          providerSessionId: input.providerSessionId,
+          environment: adapterOptions.environment,
+          homeDirectory: sessionLoginHomeDirectory,
+          onUsageLimits: adapterOptions.onUsageLimits,
+        });
         // Wake buffers replay result frames, so ledger growth is measured once on arrival.
         const resultLedgerUsage = new WeakMap<SDKMessage, ClaudeLedgerUsage>();
         const resultsReportingNewContextWindow = new WeakSet<SDKMessage>();
@@ -8868,8 +8895,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               : { overageIncluded: undefined };
             const update = claudeRateLimitEventToUpdate(rateLimitInfo, names);
             const now = yield* DateTime.now;
-            if (update && adapterOptions.onUsageLimits) {
-              yield* adapterOptions.onUsageLimits({
+            const onUsageLimits =
+              sessionLogin === null ? adapterOptions.onUsageLimits : sessionLogin.onUsageLimits();
+            if (update && onUsageLimits) {
+              yield* onUsageLimits({
                 ...update,
                 checkedAt: DateTime.formatIso(now),
               });
@@ -10895,6 +10924,22 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return existing;
           }
 
+          // Tessaya (hot account swap): background work keeps the process; a selection it cannot take live waits for
+          // the next process. A different tool or permission policy still refuses below, so a turn never runs looser.
+          if (
+            existing !== null &&
+            existing.nativeThreadId === nativeThreadId &&
+            existing.queryPolicyKey === queryPolicyKey &&
+            !existing.stopping &&
+            (yield* liveProcessRunsBackgroundWork(existing))
+          ) {
+            yield* Effect.logInfo("Claude keeps its live process for background work", {
+              providerSessionId: input.providerSessionId,
+              runningModel: existing.selection.apiModelId,
+              requestedModel: compiledSelection.apiModelId,
+            });
+            return existing;
+          }
           // Replacing this thread's process kills its background work, even with a new native identity.
           if (
             existing !== null &&
@@ -10953,12 +10998,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ...(launchArgSettings === undefined
               ? {}
               : { sdkSettings: claudeSdkLaunchArgSettings(launchArgSettings) }),
-            environment: claudeQueryEnvironment(
-              adapterOptions.environment,
-              turnInput.appThread,
-              turnInput.appThread.lineage.relationshipToParent === "subagent"
-                ? yield* resolveSubagentPromptCacheTtl(turnInput.runtimePolicy.cwd)
-                : undefined,
+            environment: yield* (sessionLogin === null ? Effect.succeed : sessionLogin.prepare)(
+              claudeQueryEnvironment(
+                adapterOptions.environment,
+                turnInput.appThread,
+                turnInput.appThread.lineage.relationshipToParent === "subagent"
+                  ? yield* resolveSubagentPromptCacheTtl(turnInput.runtimePolicy.cwd)
+                  : undefined,
+              ),
             ),
             tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
             ...(mcpOverrides.allowedTools === undefined
@@ -11839,6 +11886,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           getModelContextWindow: (selection) => claudeContextWindow(selection) ?? undefined,
           events: Stream.fromEffectRepeat(Queue.take(events)),
           backgroundTasksEndWithProcess: true,
+          ...(sessionLogin === null ? {} : { switchAccount: sessionLogin.switchTo }),
           hasPendingBackgroundWork: Effect.gen(function* () {
             for (const roster of (yield* Ref.get(pendingBackgroundTasksByNativeThread)).values()) {
               if (roster.size > 0) {
@@ -12427,6 +12475,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     // Baton (D52): a second account's home shares the primary's skills, memory and settings.
     yield* BatonClaudeAccountHome.materializeForConfig(config);
     const path = yield* Path.Path;
+    const sessionLoginsDir = path.join(serverConfig.stateDir, "claude-session-logins");
+    yield* pruneClaudeSessionLogins(sessionLoginsDir);
     const random = yield* SecureRandom.SecureRandom;
     const binaryPath = yield* resolveClaudeSdkExecutablePath(
       expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
@@ -12438,6 +12488,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
       settings: { ...config, enabled, binaryPath },
       environment: claudeEnvironment,
       attachmentsDir: serverConfig.attachmentsDir,
+      sessionLoginsDir,
       fileSystem,
       path,
       random,

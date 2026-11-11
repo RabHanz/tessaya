@@ -173,6 +173,11 @@ export interface ProviderSessionManagerV2Shape {
     ProviderSessionManagerV2Error
   >;
   readonly isLive: (providerSessionId: ProviderSessionId) => Effect.Effect<boolean>;
+  /** Tessaya (hot account swap): the live process takes another instance's login in place. */
+  readonly switchAccount: (input: {
+    readonly providerSessionId: ProviderSessionId;
+    readonly targetInstanceId: ProviderInstanceId;
+  }) => Effect.Effect<boolean>;
   readonly close: (
     providerSessionId: ProviderSessionId,
   ) => Effect.Effect<void, ProviderSessionManagerV2Error>;
@@ -2531,6 +2536,13 @@ export const layerWithOptions = (
           Ref.get(sessions).pipe(
             Effect.map((current) => current.has(sessionKey(providerSessionId))),
           ),
+        switchAccount: Effect.fn("ProviderSessionManager.switchAccount")(function* (input) {
+          const entry = (yield* Ref.get(sessions)).get(sessionKey(input.providerSessionId));
+          const target = yield* Effect.option(registry.get(input.targetInstanceId));
+          const login = Option.isSome(target) ? target.value.accountLogin : undefined;
+          if (entry?.runtime.switchAccount === undefined || login === undefined) return false;
+          return yield* entry.runtime.switchAccount(login);
+        }),
         get: Effect.fn("ProviderSessionManager.get")(
           function* (providerSessionId) {
             const entry = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
