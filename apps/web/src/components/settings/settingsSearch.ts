@@ -37,6 +37,7 @@ export type SettingsPath =
   | "/settings/secrets"
   | "/settings/apis"
   | "/settings/home"
+  | "/settings/hardware"
   | "/settings/maintenance"
   | "/settings/labs"
   | "/settings/about"
@@ -107,6 +108,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/secrets": "Secrets",
   "/settings/apis": "APIs",
   "/settings/home": "Home",
+  "/settings/hardware": "Hardware",
   "/settings/maintenance": "Maintenance",
   "/settings/labs": "Labs",
   "/settings/about": "About",
@@ -153,6 +155,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
       "/settings/apis",
       "/settings/home",
+      "/settings/hardware",
     ],
   },
   {
@@ -1304,9 +1307,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["house lights automations devices smart home r1"],
   },
   {
+    id: "hardware-devices",
+    title: "Hardware devices",
+    to: "/settings/hardware",
+    searchTerms: [
+      "devices r1 agora desk device eyes mood mute camera reboot voice transport latency",
+    ],
+  },
+  {
+    id: "hardware-nfc",
+    title: "NFC tags",
+    to: "/settings/hardware",
+    searchTerms: ["nfc tag tap dock mode r1"],
+  },
+  {
     id: "room-brain",
     title: "Room brain",
-    to: "/settings/home",
+    to: "/settings/hardware",
     searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
   },
   {
@@ -1342,6 +1359,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/secrets": null,
   "/settings/apis": null,
   "/settings/home": null,
+  "/settings/hardware": null,
   "/settings/scheduled-tasks": null,
   "/settings/maintenance": null,
   "/settings/labs": null,

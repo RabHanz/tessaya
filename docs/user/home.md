@@ -42,3 +42,24 @@ Every change she makes in the house can be undone for 24 hours: Settings → Hom
 to undo it. Undo puts the devices back as Home Assistant had them just before (if Home Assistant restarted since,
 that snapshot is gone). Deleting one of her automations can be undone for 7 days. Every action is in the Record and
 in Home Assistant's logbook.
+
+## The R1 desk device (Settings → Hardware)
+
+Settings → Hardware shows each Agora R1 this server hears: online, battery, Wi-Fi, firmware and when it was last
+seen, with its controls. To add one, give its id, the MQTT broker it listens on and its device key under **Set up an
+R1**. **Forget** removes all of it from this server again.
+
+- **Mute** stops it listening and speaking until you unmute it.
+- **Voice transport:** in-house is Tessaya's own room voice. Trying Agora's cloud goes back to in-house, muted, after
+  60 seconds unless you press **Keep**; **Revert to in-house** works at any time. After every restart the server sets
+  in-house voice again, since the device forgets it.
+- **Room brain:** how the R1's turns reach Claude: your Anthropic key from Settings → APIs (quickest), your Claude
+  subscription, or Automatic (the key, then the subscription if the key fails). It applies from the next thing you say.
+- **NFC tags:** tap a tag on the R1, then name it and choose what a tap does (mute, unmute, show a mood, or run a
+  Home Assistant scene, which still asks first when the scene is a risky one).
+- **Camera:** one picture, only when you press **Take one**. A "Camera on" badge shows while it waits for the
+  picture. The picture is kept in memory for 10 minutes, never written to disk, and **Delete now** removes it sooner.
+  When an agent or the assistant asks for a picture or a restart, you get the question on your phone first.
+- **Diagnostics:** how long each stage of a spoken turn took, and the device's recent log.
+
+Volume and firmware updates need new firmware and come later.
