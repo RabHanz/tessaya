@@ -412,6 +412,8 @@ import {
   modelPresent,
   PARAKEET_FAST_MODEL,
   PARAKEET_MODEL,
+  personalModelsDir,
+  verifyPersonalModel,
   SPEAKER_MODEL,
   machinePicksFast,
   slowStartsAfter,
@@ -686,8 +688,11 @@ interface VoiceSettings {
   readonly needsExpect: ReadonlyArray<string>;
   readonly pillEdge: "bottom" | "top";
   readonly dictation: "baton" | "wispr";
-  /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
-  readonly speechModel: "v3" | "fast";
+  /**
+   * "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker; "personal" is his own fine-tune,
+   * used only while it verifies against its manifest (verifyPersonalModel), else v3.
+   */
+  readonly speechModel: "v3" | "fast" | "personal";
   /** Who set speechModel: unset is the default, which a weak machine may change (machinePicksFast); his pick never. */
   readonly speechModelPicked?: "you" | "machine";
   /** Starts in a row whose model load was slow (slowStartsAfter). */
@@ -4528,6 +4533,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const speechModel = () =>
     settings.speechModel === "fast" ? PARAKEET_FAST_MODEL : PARAKEET_MODEL;
+  /** His own model's file once it has verified this session; the default whenever it is there and he has not picked. */
+  let personalPath: string | null = null;
+  const usePersonal = () =>
+    personalPath !== null &&
+    (settings.speechModel === "personal" ||
+      (settings.speechModel === "v3" && settings.speechModelPicked === undefined));
 
   /** Fetched once a session, quietly, the first time the wake path wants a model dictation does not use. */
   let wakeModelFetched = false;
@@ -4577,6 +4588,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       try {
         await startSidecar();
         for (;;) {
+          if (usePersonal() && personalPath !== null) {
+            parakeetPath = personalPath;
+            note = null;
+            configureDictation();
+            render();
+            return personalPath;
+          }
           const model = speechModel();
           markPhase("speech-model-ensure:begin", { file: model.file });
           const path = await ensureModel({
@@ -4591,7 +4609,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               render();
             },
           }).finally(() => markPhase("speech-model-ensure:end"));
-          if (model === speechModel()) {
+          if (model === speechModel() && !usePersonal()) {
             parakeetPath = path;
             note = null;
             configureDictation();
@@ -4926,7 +4944,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       speech: {
         present,
-        label: settings.speechModel === "fast" ? "Parakeet Fast" : "Parakeet v3",
+        label: usePersonal()
+          ? "Personal"
+          : settings.speechModel === "fast"
+            ? "Parakeet Fast"
+            : "Parakeet v3",
         sizeMb: Math.round(model.size / 1e6),
       },
       signIn: (await input.extras?.signIn().catch(() => null)) ?? null,
@@ -6359,8 +6381,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? { hint: "Picked for this computer, which is slow for the larger model." }
           : {}),
         kind: "choice",
-        value: settings.speechModel,
+        value: usePersonal()
+          ? "personal"
+          : settings.speechModel === "personal"
+            ? "v3"
+            : settings.speechModel,
         options: [
+          ...(personalPath === null ? [] : [{ value: "personal", label: "Personal (yours)" }]),
           { value: "v3", label: "25 European languages, slower" },
           { value: "fast", label: "English, 3x quicker" },
         ],
@@ -7568,7 +7595,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ dictationCleanupChosen: true, dictationCleanup: value });
       syncCleanupSession();
     } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
-      const code = languageCode(id.endsWith(":add") ? settings.speechModel : "v3", value);
+      // His personal model is a v3 fine-tune: the same languages.
+      const code = languageCode(
+        id.endsWith(":add") && settings.speechModel === "fast" ? "fast" : "v3",
+        value,
+      );
       const v3Code = code === undefined ? languageCode("v3", value) : undefined;
       if (settings.speechModelPicked === "machine" && v3Code !== undefined) {
         languageOffer = v3Code;
@@ -7615,7 +7646,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
       render();
     } else if (id === "v.cloudTest") void testCloud();
-    else if (id === "v.speechModel" && (value === "v3" || value === "fast")) setSpeechModel(value);
+    else if (
+      id === "v.speechModel" &&
+      (value === "v3" || value === "fast" || (value === "personal" && personalPath !== null))
+    )
+      setSpeechModel(value);
     else if (id === "v.speechModelOffer" && languageOffer !== null) {
       save({ languages: [...new Set([...settings.languages, languageOffer])] });
       languageOffer = null;
@@ -8121,6 +8156,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   holdMainAtLaunch(!launch.sessions);
   if (launch.tessaya) setTimeout(() => home.open(), 2_000).unref();
+  void verifyPersonalModel(personalModelsDir(NodeOS.homedir())).then((found) => {
+    // Never the folder's contents: only whether it verified, and why not.
+    if (found.ok) personalPath = found.path;
+    else if (found.why !== "none") input.onNote?.("personal_model", { refused: found.why });
+    if (usePersonal() && parakeetPath !== null && parakeetPath !== personalPath) requestDictation();
+    else render();
+  });
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
   const atLaunch = dictationAtLaunch({
     available: binary !== null,
