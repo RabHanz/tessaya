@@ -1295,13 +1295,19 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "apis-anthropic",
     title: "Anthropic",
     to: "/settings/apis",
-    searchTerms: ["api key claude dictation cleanup voice"],
+    searchTerms: ["api key claude dictation cleanup voice room brain r1"],
   },
   {
     id: "home-assistant",
     title: "Home Assistant",
     to: "/settings/home",
     searchTerms: ["house lights automations devices smart home r1"],
+  },
+  {
+    id: "room-brain",
+    title: "Room brain",
+    to: "/settings/home",
+    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
   },
   {
     id: "archive",
