@@ -20,19 +20,20 @@ index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4df26460dc 100644
+index 60c89ffc6b732db13fd880bedac4af057157415d..403302ec7bfbefb331cabde9ac735ca5f175afe3 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -35,6 +35,8 @@ export type SettingsPath =
+@@ -35,6 +35,9 @@ export type SettingsPath =
    | "/settings/connections"
    | "/settings/access"
    | "/settings/secrets"
 +  | "/settings/apis"
 +  | "/settings/home"
++  | "/settings/hardware"
    | "/settings/maintenance"
    | "/settings/labs"
    | "/settings/about"
-@@ -93,7 +95,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+@@ -93,7 +96,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
    "/settings/diffs": "Diffs & pull requests",
    "/settings/keybindings": "Keybindings",
    "/settings/snap-shot": "SnapShots",
@@ -41,25 +42,27 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4d
    "/settings/threads": "Threads",
    "/settings/browser": "Browser",
    "/settings/devices": "Devices",
-@@ -103,6 +105,8 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+@@ -103,6 +106,9 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
    "/settings/connections": "Environments",
    "/settings/access": "Sharing & access",
    "/settings/secrets": "Secrets",
 +  "/settings/apis": "APIs",
 +  "/settings/home": "Home",
++  "/settings/hardware": "Hardware",
    "/settings/maintenance": "Maintenance",
    "/settings/labs": "Labs",
    "/settings/about": "About",
-@@ -147,6 +151,8 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+@@ -147,6 +153,9 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
        "/settings/connections",
        "/settings/access",
        ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
 +      "/settings/apis",
 +      "/settings/home",
++      "/settings/hardware",
      ],
    },
    {
-@@ -1285,6 +1291,18 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1285,6 +1294,38 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["new 1password vault op cli account"],
      secretsFeatureOnly: true,
    },
@@ -67,7 +70,7 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4d
 +    id: "apis-anthropic",
 +    title: "Anthropic",
 +    to: "/settings/apis",
-+    searchTerms: ["api key claude dictation cleanup voice"],
++    searchTerms: ["api key claude dictation cleanup voice room brain r1"],
 +  },
 +  {
 +    id: "home-assistant",
@@ -75,15 +78,36 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4d
 +    to: "/settings/home",
 +    searchTerms: ["house lights automations devices smart home r1"],
 +  },
++  {
++    id: "hardware-devices",
++    title: "Hardware devices",
++    to: "/settings/hardware",
++    searchTerms: [
++      "devices r1 agora desk device eyes mood mute camera reboot voice transport latency",
++    ],
++  },
++  {
++    id: "hardware-nfc",
++    title: "NFC tags",
++    to: "/settings/hardware",
++    searchTerms: ["nfc tag tap dock mode r1"],
++  },
++  {
++    id: "room-brain",
++    title: "Room brain",
++    to: "/settings/hardware",
++    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
++  },
    {
      id: "archive",
      title: "Archived threads",
-@@ -1316,6 +1334,8 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+@@ -1316,6 +1357,9 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
    "/settings/connections": "connections",
    "/settings/access": "connections",
    "/settings/secrets": null,
 +  "/settings/apis": null,
 +  "/settings/home": null,
++  "/settings/hardware": null,
    "/settings/scheduled-tasks": null,
    "/settings/maintenance": null,
    "/settings/labs": null,

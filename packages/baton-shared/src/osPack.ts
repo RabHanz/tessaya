@@ -52,6 +52,8 @@ export interface Persona {
   /** Null when no wake word reaches it; it still answers to its name. */
   readonly wake: string | null;
   readonly voice: string;
+  /** Its Gemini voice (`cloud voice:`), spoken while cloud voices are on; its Pocket voice stays the fallback. */
+  readonly cloudVoice?: string;
   /** One line of who it is and how it sounds, for its turns. */
   readonly role: string;
   readonly lead: boolean;
@@ -119,6 +121,17 @@ export const splitFront = (
   return { fields, body: text.slice(m[0].length).trim() };
 };
 
+/** The text with one front-matter field set (or taken out when `value` is null), the rest of the file untouched. */
+export const withFrontField = (text: string, key: string, value: string | null): string => {
+  const m = FRONT_MATTER.exec(text);
+  const lines = (m?.[1]?.split(/\r?\n/) ?? []).filter(
+    (line) => line.split(":")[0]?.trim().toLowerCase() !== key,
+  );
+  if (value !== null) lines.push(`${key}: ${value}`);
+  const body = m === null ? text : text.slice(m[0].length);
+  return lines.length === 0 ? body : `---\n${lines.join("\n")}\n---\n${body}`;
+};
+
 const listOf = (field: string | undefined): ReadonlyArray<string> =>
   (field ?? "")
     .split(",")
@@ -141,6 +154,7 @@ const face = (
     name: name === "" ? "Tessaya" : name,
     wake: wake === "" ? null : wake,
     voice: (fields["voice"] ?? "").toLowerCase(),
+    ...(fields["cloud voice"] ? { cloudVoice: fields["cloud voice"].toLowerCase() } : {}),
     role: fields["role"] ?? "",
     lead,
     tools: tools === undefined || tools.trim() === "" ? null : listOf(tools),

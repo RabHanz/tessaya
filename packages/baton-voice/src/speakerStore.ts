@@ -6,7 +6,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { SpeakerProfile } from "@t3tools/baton-voice";
+import type { SpeakerProfile } from "./speaker.ts";
 
 interface Stored extends Omit<SpeakerProfile, "centroid"> {
   readonly centroid: string;

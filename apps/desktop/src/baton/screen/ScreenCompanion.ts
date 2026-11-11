@@ -442,6 +442,7 @@ export interface AssistantActions {
       | "cloud_usage"
       | "cloud_approve"
       | "home"
+      | "devices"
       | "trust_show"
       | "activity_today"
       | "record"
@@ -566,6 +567,8 @@ export interface ScreenCompanion {
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
+  /** The speaking persona's Gemini voice (`cloud voice:` in its pack file), or null. */
+  readonly cloudVoice: () => string | null;
   readonly volume: () => number;
   /** The one Stop: everything running for him comes down; `quiet` (Esc, a click, "never mind") says nothing. */
   readonly stop: (quiet?: boolean) => void;
@@ -3631,6 +3634,7 @@ export const startScreenCompanion = (input: {
       },
     },
     voice: voiceNow,
+    cloudVoice: () => (voiceNow() === "system" ? null : (face.cloudVoice ?? null)),
     volume: () => settings.volume,
     ask: windows.ask,
     askMirrored: (box, needs) =>

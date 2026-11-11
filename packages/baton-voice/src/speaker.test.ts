@@ -37,6 +37,10 @@ const sarah: SpeakerProfile = {
 };
 /** A unit vector at this cosine to (1, 0, 0). */
 const at = (c: number) => v(c, Math.sqrt(1 - c * c), 0);
+const { single, averaged } = CAMPLUS_POLICY;
+/** Just over and just under a cut-off, so the rows hold whatever the calibration sets. */
+const over = (c: number) => at(c + 0.02);
+const under = (c: number) => at(c - 0.02);
 /** Clips of this turn, each as long as `ms`. */
 const decide = (
   vectors: Float32Array[],
@@ -74,18 +78,22 @@ describe("decideSpeaker", () => {
   });
 
   it("holds each use to its own cut-off, and acts on one clip only when it is 4 s long", () => {
-    expect(decide([at(0.25)], 2000, "listen").kind).toBe("owner");
-    expect(decide([at(0.25)], 2000, "steer").kind).toBe("owner");
-    expect(decide([at(0.2)], 2000, "steer").kind).toBe("guest");
-    expect(decide([at(0.45)], 2000, "act").kind).toBe("unverified");
-    expect(decide([at(0.45)], 4000, "act").kind).toBe("owner");
-    expect(decide([at(0.38)], 4000, "act").kind).toBe("guest");
+    expect(decide([over(single.listen)], 2000, "listen").kind).toBe("owner");
+    expect(decide([under(single.listen)], 2000, "listen").kind).toBe("guest");
+    expect(decide([over(single.steer)], 2000, "steer").kind).toBe("owner");
+    expect(decide([under(single.steer)], 2000, "steer").kind).toBe("guest");
+    expect(decide([over(single.act)], 2000, "act").kind).toBe("unverified");
+    expect(decide([over(single.act)], 4000, "act").kind).toBe("owner");
+    expect(decide([under(single.act)], 4000, "act").kind).toBe("guest");
   });
 
   it("averages 3 consecutive clips and uses the averaged cut-offs", () => {
-    expect(decide([at(0.3), at(0.3), at(0.27)], 2000, "steer").kind).toBe("owner");
-    expect(decide([at(0.3), at(0.25), at(0.25)], 2000, "steer").kind).toBe("guest");
-    expect(decide([at(0.38), at(0.37), at(0.36)], 2000, "act").kind).toBe("owner");
+    const s = averaged.steer;
+    expect(decide([at(s + 0.03), at(s + 0.03), at(s - 0.01)], 2000, "steer").kind).toBe("owner");
+    expect(decide([at(s + 0.03), at(s - 0.03), at(s - 0.03)], 2000, "steer").kind).toBe("guest");
+    expect(
+      decide([over(averaged.act), over(averaged.act), over(averaged.act)], 2000, "act").kind,
+    ).toBe("owner");
   });
 
   it("names a saved person, and calls a near tie between two people nobody's", () => {
@@ -116,22 +124,27 @@ describe("decideSpeaker fails closed", () => {
       kind: "unverified",
       why: "too-short",
     });
-    expect(decide([at(0.45)], 3000, "act")).toEqual({ kind: "unverified", why: "too-short" });
-    expect(decide([at(0.45)], 4000, "act").kind).toBe("owner");
-    expect(decide([at(0.38), at(0.38), at(0.38)], 2000, "act").kind).toBe("owner");
+    expect(decide([over(single.act)], 3000, "act")).toEqual({
+      kind: "unverified",
+      why: "too-short",
+    });
+    expect(decide([over(single.act)], 4000, "act").kind).toBe("owner");
+    expect(
+      decide([over(averaged.act), over(averaged.act), over(averaged.act)], 2000, "act").kind,
+    ).toBe("owner");
     const mixed = decideSpeaker({
       model: "m",
       clips: [
         { vector: at(0.9), ms: 500 },
         { vector: at(0.9), ms: 500 },
-        { vector: at(0.3), ms: 2000 },
+        { vector: over(single.steer), ms: 2000 },
       ],
       profiles: [owner],
       policy,
       use: "steer",
     });
     // One long clip and two short ones: scored as one clip, at the one-clip cut-off.
-    expect(mixed).toMatchObject({ kind: "owner", score: expect.closeTo(0.3, 5) });
+    expect(mixed).toMatchObject({ kind: "owner", score: expect.closeTo(single.steer + 0.02, 5) });
   });
 });
 

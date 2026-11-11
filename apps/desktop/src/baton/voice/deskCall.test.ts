@@ -63,6 +63,12 @@ describe("a request answered by this machine's server while T3 is closed", () =>
     });
     expect(deskCall({ kind: "home", op: "answer", args: {} })).toBeNull();
     expect(serverOnly({ kind: "home", op: "read" })).toBe(true);
+    expect(deskCall({ kind: "devices", op: "owner", args: { op: "camera" } })).toEqual({
+      method: "baton.devices.call",
+      input: { op: "camera", kind: "owner" },
+    });
+    expect(deskCall({ kind: "devices", op: "answer", args: {} })).toBeNull();
+    expect(serverOnly({ kind: "devices", op: "read" })).toBe(true);
     expect(deskCall({ kind: "job", op: "handoff", args: { id: "w1", instance: "Codex" } })).toEqual(
       {
         method: "baton.job.handoff",
