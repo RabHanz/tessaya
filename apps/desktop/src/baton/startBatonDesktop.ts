@@ -42,6 +42,7 @@ import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { markPhase, startStallWatch } from "./lifecycle/mainStall.ts";
 import { liftInheritedPriority } from "./lifecycle/processPriority.ts";
+import { busyFileOf, busyFilePath, writeBusyFile } from "./lifecycle/busyFile.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -240,7 +241,13 @@ export const startBatonDesktop = Effect.gen(function* () {
     };
     /** A session turn running on this machine that a restart would cut off; set once the server is reachable. */
     let inFlight: string | null = null;
+    let inFlightAnswered = false;
     let readInFlight = async (): Promise<void> => {};
+    const busyNow = () => ({
+      voiceBusy: voice?.busy() ?? false,
+      assistantBusy: screen?.active() ?? false,
+      inFlight,
+    });
     // The release feed is this repository's (D137); the restart is announced, then waits for quiet.
     const batonUpdates = createBatonUpdater({
       skip: (version) => isBad(guard, version),
@@ -274,11 +281,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           }
         });
       },
-      busy: () => ({
-        voiceBusy: voice?.busy() ?? false,
-        assistantBusy: screen?.active() ?? false,
-        inFlight,
-      }),
+      busy: busyNow,
       headsUp: (version, restartAt) => {
         voice?.openHome();
         lifecycle.note("update-heads-up", {
@@ -474,13 +477,27 @@ export const startBatonDesktop = Effect.gen(function* () {
           threads: Array.isArray(found?.threads) ? found.threads : [],
           live: Array.isArray(found?.live) ? found.live : [],
         });
+        inFlightAnswered = true;
       } catch {
         // A server that does not answer has no turn of its own running to cut off.
         inFlight = null;
+        inFlightAnswered = false;
       }
     };
+    // Read always, not only while an update waits: an installer outside the app reads the busy file.
+    const busyFile = busyFilePath(environment.logDir);
     setInterval(() => {
-      if (batonUpdates.ready()) void readInFlight();
+      void readInFlight().then(() =>
+        writeBusyFile(
+          busyFile,
+          busyFileOf({
+            busy: busyNow(),
+            serverAnswered: inFlightAnswered,
+            now: new Date(),
+            pid: process.pid,
+          }),
+        ),
+      );
     }, IN_FLIGHT_MS).unref();
     // Each assistant turn goes to the Record on this machine's server, so "what happened?" has what she was asked and did.
     const noteTurn = (kind: string, fields: Readonly<Record<string, unknown>>) => {

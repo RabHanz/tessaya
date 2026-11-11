@@ -60,3 +60,20 @@ The Now page reads the file (read only; `BATON_CLOUD_LOGINS_FILE` overrides the 
 logins" row under what works, "unknown" when there is no file, and a needs-you row naming each account
 that is `renew-soon` or `expired` ("Renew the cloud login for <account>: it needs you at a browser").
 These logins are cloud-only. Tessaya and T3 never use them as a provider.
+
+## Is Tessaya mid-turn? (for installers)
+
+While Tessaya runs it rewrites `baton-busy.json` in its log folder every 5 seconds: `at`, `pid`,
+`busy` and `why`. `busy` is true while a T3 thread has an active run (including one waiting on an
+approval or a question), a Claude Code session says it is busy, or Tessaya is speaking, listening or
+driving the screen. It is also true while the server does not answer, because then nobody knows.
+This is the same check the app's own updater waits on. Replace the app only on a file under 20
+seconds old that says `busy: false`, or when Tessaya is not running at all:
+
+```
+$f = "$env:USERPROFILE\.t3\userdata\logs\baton-busy.json"
+$b = Get-Content $f -Raw -EA 0 | ConvertFrom-Json -EA 0
+$idle = -not (Get-Process Tessaya -EA 0) -or ($b -and $b.busy -eq $false -and ([datetimeoffset]::UtcNow - [datetimeoffset]$b.at).TotalSeconds -lt 20)
+```
+
+The rule is `safeToReplace` in `apps/desktop/src/baton/lifecycle/busyFile.ts`.
