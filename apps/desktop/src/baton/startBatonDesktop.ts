@@ -35,6 +35,7 @@ import {
 } from "@t3tools/baton-shared/startGuard";
 import { BATON_SESSIONS_WS_METHODS } from "@t3tools/baton-contracts";
 import { approvalRecord } from "@t3tools/baton-shared/approvals";
+import { DEFAULT_POCKET_VOICE } from "@t3tools/baton-shared/voiceLibrary";
 import { inFlightLine } from "@t3tools/baton-shared/turnsInFlight";
 import { releasesUrl } from "@t3tools/baton-shared/repo";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
@@ -396,7 +397,8 @@ export const startBatonDesktop = Effect.gen(function* () {
     );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
-      voice: () => chooseVoice(screen?.voice() ?? "anna", screen?.cloudVoice() ?? null),
+      voice: () =>
+        chooseVoice(screen?.voice() ?? DEFAULT_POCKET_VOICE, screen?.cloudVoice() ?? null),
       player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
@@ -720,7 +722,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         screen?.stop(quiet);
       },
       audition: (name) => {
-        const picked = (name ?? screen?.voice() ?? "anna") as PocketVoice | "system";
+        const picked = (name ?? screen?.voice() ?? DEFAULT_POCKET_VOICE) as PocketVoice | "system";
         if (picked === "system") {
           voice?.onNote("System voice has no sample. Pick one of Tessaya's voices to hear it.");
           return;

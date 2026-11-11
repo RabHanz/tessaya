@@ -250,7 +250,8 @@ export const POCKET_VOICE_FILES = POCKET_TABLE.map(([name, size, sha256]) => ({
   size,
   sha256,
 }));
-export const DEFAULT_POCKET_VOICE: PocketVoiceName = "anna";
+/** The lead's voice, and the fallback for a voice the library does not have (his pick, 2026-11-12). */
+export const DEFAULT_POCKET_VOICE: PocketVoiceName = "eve";
 
 export interface LibraryVoice {
   readonly engine: "pocket" | "gemini";
