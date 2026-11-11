@@ -2,10 +2,39 @@ Dictation cleanup through his own Anthropic key: the secret settings field dicta
 status/save/test endpoints in the voice HTTP group, the client calls, and Settings -> APIs -> Anthropic.
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..2cd2a833575370ec8f9cbf2f59c3d83ea7b08dbb 100644
+index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..3d24b3238ab62c1d73bce0d3c1d74466a70de99d 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
-@@ -1643,6 +1643,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1074,6 +1074,28 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+     }).pipe(Effect.provide(layerServerSettings())),
+   );
+ 
++  it.effect("saves after the legacy cleanup model moves into dictationCleanup", () =>
++    Effect.gen(function* () {
++      const serverConfig = yield* ServerConfig.ServerConfig;
++      const fileSystem = yield* FileSystem.FileSystem;
++      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
++
++      yield* fileSystem.writeFileString(
++        serverConfig.settingsPath,
++        '{"speechPostProcessingModelSelection":{"instanceId":"codex","model":"gpt-mini"}}',
++      );
++      yield* serverSettings.updateSettings({ dictationCleanupCredentials: { anthropic: "" } });
++
++      const persisted = JSON.parse(yield* fileSystem.readFileString(serverConfig.settingsPath));
++      assert.deepEqual(persisted.dictationCleanup, {
++        enabled: false,
++        engine: "t3",
++        model: { instanceId: "codex", model: "gpt-mini" },
++        updatedAt: 0,
++      });
++    }).pipe(Effect.provide(layerServerSettings())),
++  );
++
+   it.effect("folds a legacy in-config enabled flag into the envelope on load", () =>
+     Effect.gen(function* () {
+       const serverConfig = yield* ServerConfig.ServerConfig;
+@@ -1643,6 +1665,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
          const hub = UsageLimitSourceId.make("hub");
          const withUsage = yield* serverSettings.updateSettings({
            cloudSpeechCredentials: { openai: usageReference, xai: "literal-fixture" },
@@ -13,7 +42,7 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..2cd2a833575370ec8f9cbf2f59c3d83e
            usageLimitSources: {
              [hub]: {
                kind: "cliproxy",
-@@ -1693,6 +1694,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1693,6 +1716,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            xai: SECRET_REDACTED,
            openrouter: "",
          });
@@ -27,7 +56,7 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..2cd2a833575370ec8f9cbf2f59c3d83e
          assert.equal(legacy.sourceControlHosts.bitbucket?.accessToken, SECRET_REDACTED);
          assert.equal(legacy.usageLimitSources[hub]?.managementKey, SECRET_REDACTED);
          assert.equal(legacy.easDeviceHosts[0]?.accessToken, SECRET_REDACTED);
-@@ -1703,6 +1711,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1703,6 +1733,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
          assert.equal(configOf(legacy, openCode)?.serverPassword, SECRET_REDACTED);
          const echoed = yield* serverSettings.updateSettings({
            cloudSpeechCredentials: legacy.cloudSpeechCredentials,
@@ -35,7 +64,7 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..2cd2a833575370ec8f9cbf2f59c3d83e
            sourceControlHosts: legacy.sourceControlHosts,
            usageLimitSources: legacy.usageLimitSources,
            easDeviceHosts: legacy.easDeviceHosts,
-@@ -1720,6 +1729,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1720,6 +1751,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            xai: "literal-fixture",
            openrouter: "",
          });
@@ -43,7 +72,7 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..2cd2a833575370ec8f9cbf2f59c3d83e
          assert.deepEqual(echoed.easDeviceHosts[0]?.accessToken, easReference);
          assert.deepEqual(echoed.simlockDeviceHosts[0]?.agentToken, simlockReference);
          assert.deepEqual(configOf(echoed, antigravity)?.apiKey, antigravityReference);
-@@ -1817,6 +1827,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1817,6 +1849,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
          "cloudSpeechCredentials.openai",
          "cloudSpeechCredentials.xai",
          "cloudSpeechCredentials.openrouter",
