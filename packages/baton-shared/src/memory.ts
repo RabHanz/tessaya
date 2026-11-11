@@ -59,6 +59,8 @@ export interface MemoryDraft {
   readonly tainted?: boolean;
   /** The id this one replaces; the old item stays as history. */
   readonly supersedes?: string;
+  /** When an imported item was first written where it came from (Freya's memories keep their dates). Imports only. */
+  readonly createdAt?: string;
 }
 
 export interface MemoryQuery {

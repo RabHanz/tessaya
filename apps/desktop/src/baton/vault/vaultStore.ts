@@ -28,7 +28,7 @@ import {
   seal,
   type KdfParams,
   type Sealed,
-} from "./vaultCrypto.ts";
+} from "@t3tools/baton-shared/vaultCrypto";
 
 // @effect-diagnostics-next-line extendsNativeError:off -- a Promise API, never in an Effect failure channel.
 export class VaultError extends Error {

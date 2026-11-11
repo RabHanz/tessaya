@@ -13,7 +13,7 @@ import {
   POCKET_ALL_VOICES,
   type PocketVoice,
 } from "../../../apps/desktop/src/baton/voice/pocketVoice.ts";
-import { pronounce } from "../../../apps/desktop/src/baton/voice/pronounce.ts";
+import { pronounce } from "../../../packages/baton-shared/src/pronounce.ts";
 import { speakableText } from "../../../apps/desktop/src/baton/voice/voiceSpeaker.ts";
 import {
   candidateFile,

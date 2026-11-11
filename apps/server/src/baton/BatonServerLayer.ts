@@ -45,6 +45,8 @@ import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
 import * as BatonMemoryReactor from "./BatonMemoryReactor.ts";
 import * as BatonMemoryEmbedder from "./BatonMemoryEmbedder.ts";
 import * as BatonMemoryService from "./BatonMemoryService.ts";
+import * as BatonPrivateMemoryService from "./BatonPrivateMemoryService.ts";
+import * as BatonVoiceLibrary from "./BatonVoiceLibrary.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonPhoneInbox from "./BatonPhoneInbox.ts";
@@ -160,6 +162,9 @@ const servicesInner = IntentService.layer.pipe(
       BatonOneShot.layer,
     ),
   ),
+  // Beside the mergeAll above, not in it: one more member there loses its types.
+  Layer.provideMerge(BatonPrivateMemoryService.layer),
+  Layer.provideMerge(BatonVoiceLibrary.layer),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(BatonRecordService.layer),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.

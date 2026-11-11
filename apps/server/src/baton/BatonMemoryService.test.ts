@@ -37,6 +37,22 @@ layer("BatonMemoryService", (it) => {
       });
       assert.strictEqual(kept.confidence, 1);
       assert.isFalse(kept.proposed);
+      // An import keeps the date it was first written where it came from; nobody else may set one.
+      const imported = yield* memory.add({
+        kind: "fact",
+        text: "The office fan runs low at night",
+        source: "import",
+        sourceRef: "freya:park/fact/57",
+        createdAt: "2026-06-14T03:05:56.000Z",
+      });
+      assert.strictEqual(imported.createdAt, "2026-06-14T03:05:56.000Z");
+      const his = yield* memory.add({
+        kind: "fact",
+        text: "The study lamp is warm white",
+        source: "user",
+        createdAt: "2020-01-01T00:00:00.000Z",
+      });
+      assert.notStrictEqual(his.createdAt, "2020-01-01T00:00:00.000Z");
     }),
   );
 

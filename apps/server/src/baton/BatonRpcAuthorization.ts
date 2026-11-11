@@ -28,9 +28,12 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
+  BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
+  PRIVATE_ASSISTANT_OPS,
+  PRIVATE_READ_OPS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -145,6 +148,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // Home: looking is a read; acting is operate (each act is risk-checked again on the server); his yes to one
   // that waited is the approval scope, so no assistant, agent or device approves its own request.
   [BATON_HOME_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // Voices: listing and previews are reads; a persona's voice, the Google key and a cloud line are operate.
+  [BATON_VOICE_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.
@@ -262,6 +267,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_CLOUD_WS_METHODS.act,
   BATON_CLOUD_WS_METHODS.approve,
   BATON_HOME_WS_METHODS.call,
+  // A persona's cloud voice, said by this machine's server.
+  BATON_VOICE_WS_METHODS.call,
   // Every live session here and on each linked environment, and typing into a pane here.
   BATON_SESSIONS_WS_METHODS.across,
   // This machine's own catalog with T3's window closed; another machine's goes through the window.
@@ -352,6 +359,11 @@ export const missingBatonScope = (
   if (homeKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
   else if (homeKind === "answer") desktopOnly.push(AuthBatonCloudApproveScope);
   else if (homeKind !== undefined && homeKind !== "read") return AuthOrchestrationOperateScope;
+  // A voice call likewise: listing and previews are reads, changing a voice or the key is operate.
+  const voiceKind =
+    tag === BATON_VOICE_WS_METHODS.call ? (fields as { kind?: unknown }).kind : undefined;
+  if (voiceKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
+  else if (voiceKind !== undefined && voiceKind !== "read") return AuthOrchestrationOperateScope;
   return [...all, ...desktopOnly].find((scope) => !scopes.includes(scope)) ?? null;
 };
 
@@ -385,6 +397,33 @@ export const HIS_OWN_METHODS: ReadonlySet<string> = new Set([
   BATON_ACCOUNT_WS_METHODS.setOnLimit,
   BATON_ACCOUNT_WS_METHODS.threadKeep,
 ]);
+
+/** Which session is asking, so a private store opens for that device only, and whether it is his desktop's own. */
+export const privateCallerOf = (session: Pick<AuthenticatedSession, "scopes" | "sessionId">) => ({
+  session: String(session.sessionId),
+  desktop: session.scopes.includes(AuthBatonHandsHostScope),
+});
+
+/**
+ * Why this session may not make this private-memory request, or null. Private memories are only for people at his
+ * desktop or a browser he paired, never a token's device, which may be an agent. Reads need read, changes operate, and
+ * what only the desktop's own assistant does needs hands-host too. Served on its own route: one more method in the RPC
+ * group turns its handler types to `any`.
+ */
+export const privateRefusal = (
+  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
+  op: string,
+): string | null => {
+  if (askSourceOf(session) !== "phone")
+    return "Private memories open only from his own desktop or a browser he paired.";
+  const needs = [
+    AuthOrchestrationReadScope,
+    ...(PRIVATE_READ_OPS.has(op) ? [] : [AuthOrchestrationOperateScope]),
+    ...(PRIVATE_ASSISTANT_OPS.has(op) ? [AuthBatonHandsHostScope] : []),
+  ];
+  const missing = needs.find((scope) => !session.scopes.includes(scope));
+  return missing === undefined ? null : `Needs ${missing}.`;
+};
 
 export const refusedAsDevice = (
   tag: string,

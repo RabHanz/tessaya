@@ -6,11 +6,16 @@
  */
 import type { ComposerDictationMessage, ComposerDictationReply } from "@t3tools/baton-contracts";
 import type { TurnEvent } from "@t3tools/baton-shared/voiceTurn";
+import { waveEngine } from "@t3tools/baton-shared/waveform";
+
+const WAVE = waveEngine();
 
 /** A renderer that can take the dictation: our window that had the keyboard as it started. */
 export interface ComposerTarget {
   readonly send: (message: ComposerDictationMessage) => void;
   readonly gone: () => boolean;
+  /** The window says its chat box has the keyboard (it reports every focus change), so it is asked at all. */
+  readonly focused: () => boolean;
 }
 
 /** How long a composer has to claim the dictation before the pill shows, and to take the words before they paste. */
@@ -24,6 +29,7 @@ interface Session {
   readonly target: ComposerTarget;
   /** Null while the claim is out. */
   claimed: boolean | null;
+  claim: Promise<boolean>;
 }
 
 export const createComposerDictation = (input: {
@@ -62,24 +68,35 @@ export const createComposerDictation = (input: {
   };
 
   return {
-    /** A recording started. Resolves true when a composer took it; until then `active()` already holds the pill. */
+    /**
+     * The key went down, or a recording started: the press and its recording are one dictation, so a second call
+     * only tells its mode. Only a window whose chat box has the keyboard is asked; `active()` holds the pill from
+     * this moment, before anything could show it. Resolves true when the chat box took it.
+     */
     start: (mode: "held" | "free"): Promise<boolean> => {
-      const old = end();
-      if (old !== null && old.claimed === true && !old.target.gone())
-        old.target.send({ type: "cancel", id: old.id });
+      const current = live();
+      if (current !== null) {
+        current.target.send({ type: "mode", id: current.id, mode });
+        return current.claim;
+      }
+      end();
       const target = input.target();
-      if (target === null) return Promise.resolve(false);
-      const s: Session = { id: ++seq, target, claimed: null };
+      if (target === null || !target.focused()) return Promise.resolve(false);
+      const id = ++seq;
+      const claimed = (s: Session) =>
+        ask(s, { type: "start", id, mode }, "claimed", CLAIM_MS).then((ok) => {
+          if (session === s) s.claimed = ok;
+          return ok && session === s;
+        });
+      const s: Session = { id, target, claimed: null, claim: Promise.resolve(false) };
       session = s;
-      return ask(s, { type: "start", id: s.id, mode }, "claimed", CLAIM_MS).then((ok) => {
-        if (session === s) s.claimed = ok;
-        return ok && session === s;
-      });
+      s.claim = claimed(s);
+      return s.claim;
     },
     /** A composer has (or may yet claim) this dictation: the floating pill and the paste stay away. */
     active: () => live() !== null,
     mode: (mode: "held" | "free") => tell((id) => ({ type: "mode", id, mode })),
-    level: (rms: number) => tell((id) => ({ type: "level", id, rms })),
+    level: (db: number) => tell((id) => ({ type: "level", id, db })),
     words: (text: string) => tell((id) => ({ type: "words", id, text })),
     finish: () => tell((id) => ({ type: "finish", id })),
     /** The cleaned words: true when the composer took them; false pastes them as before. */
@@ -137,7 +154,9 @@ export const routePill = <
       pill.on(event, options);
     },
     micLevel: (value, shown, frame) => {
-      if (composer.active()) composer.level(value);
+      // The frame's own RMS in dBFS, as the pill draws it: the shown level is a square root, too flat to move it.
+      if (composer.active())
+        composer.level(frame === undefined ? WAVE.dbOf(value) : WAVE.frameDb(frame));
       else pill.micLevel(value, shown, frame);
     },
     words: (text) => (composer.active() ? composer.words(text) : pill.words(text)),

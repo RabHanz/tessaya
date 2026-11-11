@@ -94,6 +94,8 @@ export const BatonMemoryDraft = Schema.Struct({
   tainted: Schema.optionalKey(Schema.Boolean),
   /** The id this one replaces; the old item stays as history. */
   supersedes: Schema.optionalKey(Schema.String),
+  /** When an imported item was first written where it came from. Honoured for `source: "import"` only. */
+  createdAt: Schema.optionalKey(IsoDateTime),
 });
 export type BatonMemoryDraft = typeof BatonMemoryDraft.Type;
 
