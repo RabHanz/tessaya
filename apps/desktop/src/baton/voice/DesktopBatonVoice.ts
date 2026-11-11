@@ -44,6 +44,8 @@ import {
   stripWake,
   type BatonVoiceCore,
   type EchoGuard,
+  CAMPLUS_POLICY,
+  voiceApproval,
   type SpeakerEmbedder,
   type SttProvider,
   type VoiceCoreEvent,
@@ -412,6 +414,7 @@ import {
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createVoiceId } from "./voiceId.ts";
+import { createSpeakerIdentity, type SpeakerIdentityService } from "./speakerIdentity.ts";
 import {
   parseVoiceIdSettings,
   VOICE_ID_DEFAULTS,
@@ -1042,6 +1045,8 @@ export interface VoiceCoreHooks {
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
   readonly echo: EchoGuard | undefined;
   readonly speakerMode: () => "speakers" | "headphones";
+  /** Voice ID: whose voice each turn and cut-in is. */
+  readonly speaker: SpeakerIdentityService;
 }
 
 /** Linear resampling to the microphone's 16 kHz, for the echo guard's reference only. */
@@ -1313,6 +1318,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
   });
   voiceId.sync();
+  /** Who is speaking, for the core, the approval path and the memory stores (one identity for all). */
+  const speakerIdentity = createSpeakerIdentity({
+    voiceId,
+    settings: () => settings.voiceId,
+    policy: { ...CAMPLUS_POLICY, model: SPEAKER_MODEL.id },
+    now: Date.now,
+    ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+  });
   const binary = input.dictationBinary;
   let sidecar: DictationSidecar | null = null;
   let parakeetPath: string | null = null;
@@ -3137,6 +3150,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       };
     },
     confirm: (prompt) => core?.confirm(prompt) ?? null,
+    // D4: while Voice ID runs, a spoken yes stands alone only for ordinary things and only in his voice.
+    spokenYes: (risk) =>
+      !speakerIdentity.running() ||
+      !voiceApproval(speakerIdentity.current(), risk, settings.voiceId.voiceYes).cardRequired,
+    savedMessages: () => settings.voiceId.savedMessages,
     folder: (window) => focusedFolder(window, input.platform),
     grammarPlaces: async (said) => {
       if (mainContents === null) return false;
@@ -4026,6 +4044,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         choose(next);
         note = next.kind === "default" ? next.reason : null;
         configureDictation();
+        speakerIdentity.reset();
         await loop?.switchDevice(choiceDeviceId(next));
         render();
       } else if (listChanged) {
@@ -4565,6 +4584,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }),
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
+      speaker: speakerIdentity,
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
       recording: () => sidecarBusy,
       verifyWake: async (pcm, word, score) => {
@@ -7806,6 +7826,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     reselect();
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     configureDictation();
+    speakerIdentity.reset();
     await loop?.switchDevice(choiceDeviceId(choice));
     render();
   };

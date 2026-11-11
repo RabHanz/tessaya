@@ -15,7 +15,7 @@ export interface SpeakerProfile {
   /** The mean of the kept enrolment vectors, length 1. */
   readonly centroid: Float32Array;
   readonly samples: number;
-  readonly sources: ReadonlyArray<"wispr" | "spoken">;
+  readonly sources: ReadonlyArray<"wispr" | "spoken" | "adapted">;
   readonly enrolledAt: string;
   /** Saved people: what they said when they agreed, and when. */
   readonly consentNote?: string;
@@ -160,4 +160,144 @@ export const enrol = (
   return centroid === null
     ? null
     : { centroid, kept: kept.length, dropped: vectors.length - kept.length };
+};
+
+/**
+ * Who is speaking, for everything downstream: the turn's trust path, the memory stores, the approval path. One
+ * shape for all of them, so nobody invents a second identity.
+ */
+export interface SpeakerIdentity {
+  readonly kind: "owner" | "saved" | "guest" | "unverified";
+  /** "owner" or a saved profile's id; null for a guest or unverified. */
+  readonly personId: string | null;
+  readonly name: string | null;
+  /** Raw cosine to the matched centroid (to the nearest one for a guest); null when unverified. */
+  readonly confidence: number | null;
+  /** This turn's own clips cleared the "act" cut-off. Never true for an inherited verdict. */
+  readonly verified: boolean;
+  /** A short follow-up carrying the last verdict (same microphone, under `INHERIT_MS`). */
+  readonly inherited: boolean;
+  readonly at: number;
+}
+
+/** A short follow-up ("yes", "stop") keeps the last verdict this long, and only for listening. */
+export const INHERIT_MS = 15_000;
+
+export const UNVERIFIED = (at: number): SpeakerIdentity => ({
+  kind: "unverified",
+  personId: null,
+  name: null,
+  confidence: null,
+  verified: false,
+  inherited: false,
+  at,
+});
+
+/** The identity from this turn's verdicts at the listen and act levels. */
+export const identityOf = (
+  listen: SpeakerVerdict,
+  act: SpeakerVerdict,
+  at: number,
+): SpeakerIdentity => {
+  if (listen.kind === "unverified") return UNVERIFIED(at);
+  if (listen.kind === "guest")
+    return { ...UNVERIFIED(at), kind: "guest", confidence: listen.best };
+  const personId = listen.kind === "owner" ? "owner" : listen.id;
+  const verified =
+    (act.kind === "owner" && personId === "owner") || (act.kind === "saved" && act.id === personId);
+  return {
+    kind: listen.kind,
+    personId,
+    name: listen.kind === "saved" ? listen.name : null,
+    confidence: listen.score,
+    verified,
+    inherited: false,
+    at,
+  };
+};
+
+/** The Voice ID switches a verdict is weighed against (D1-D3, D8 in voiceid-plan.md). */
+export interface SpeakerGate {
+  readonly respondToOthers: boolean;
+  readonly offSilencesSaved: boolean;
+  readonly savedBarge: boolean;
+  readonly strictWhenUnavailable: boolean;
+}
+
+/**
+ * May this voice open a turn, or cut in over her? He always may. Identity only narrows: a voice that is let in
+ * still goes down the outside path unless it is his (see `speakerPath`).
+ */
+export const admits = (
+  identity: SpeakerIdentity,
+  gate: SpeakerGate,
+  use: "turn" | "barge",
+): boolean => {
+  switch (identity.kind) {
+    case "owner":
+      return true;
+    case "unverified":
+      return !gate.strictWhenUnavailable;
+    case "saved":
+      return use === "barge" ? gate.savedBarge : gate.respondToOthers || !gate.offSilencesSaved;
+    case "guest":
+      return use === "turn" && gate.respondToOthers;
+  }
+};
+
+/** His own path, or the outside one (fresh session, read-only, a proposal for anything that acts). */
+export const speakerPath = (identity: SpeakerIdentity | null): "his" | "outside" =>
+  identity === null || identity.kind === "owner" || identity.kind === "unverified"
+    ? "his"
+    : "outside";
+
+/**
+ * What a spoken yes is worth (D4), while Voice ID is running. `voiceFactor`: his voice, verified on this turn's own
+ * clips, counts as ONE approval factor (the Home Assistant path needs another). `cardRequired`: the spoken yes is not
+ * enough on its own. An ordinary yes from his voice (a short "yes" inherits his last verdict) needs no card when he
+ * allowed it; a risky act always needs the card on screen or on his phone.
+ */
+export const voiceApproval = (
+  identity: SpeakerIdentity | null,
+  risk: "ordinary" | "risky",
+  voiceYes: boolean,
+): { readonly voiceFactor: boolean; readonly cardRequired: boolean } => ({
+  voiceFactor:
+    identity !== null && identity.kind === "owner" && identity.verified && !identity.inherited,
+  cardRequired: risk === "risky" || !voiceYes || identity?.kind !== "owner",
+});
+
+/** How far one confident turn moves his centroid (D6). */
+const ADAPT_WEIGHT = 0.02;
+/** Only a turn this far above the act cut-off teaches: a doubtful one could pull him towards someone else. */
+const ADAPT_ABOVE_ACT = 0.1;
+
+/**
+ * His profile nudged towards one confident clip of this turn, or null when the clip should not teach. Only his own
+ * profile, only from a 4 s clip, only well above the act cut-off.
+ */
+// shortcut: no cap on total drift from the enrolment beyond the per-turn weight; add one if the eval shows creep.
+export const adaptProfile = (
+  profile: SpeakerProfile,
+  clip: SpeakerClip,
+  policy: SpeakerPolicy,
+): SpeakerProfile | null => {
+  if (profile.kind !== "owner" || profile.model !== policy.model || clip.ms < ACT_SINGLE_MS)
+    return null;
+  const score = cosine(clip.vector, profile.centroid);
+  if (!Number.isFinite(score) || score < policy.single.act + ADAPT_ABOVE_ACT) return null;
+  const v = unitOrNull(clip.vector);
+  if (v === null) return null;
+  const moved = unitOrNull(
+    profile.centroid.map((c, i) => (1 - ADAPT_WEIGHT) * c + ADAPT_WEIGHT * v[i]!),
+  );
+  return moved === null
+    ? null
+    : {
+        ...profile,
+        centroid: moved,
+        sources: profile.sources.includes("adapted")
+          ? profile.sources
+          : [...profile.sources, "adapted"],
+      };
 };

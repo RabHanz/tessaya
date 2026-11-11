@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, trimQuietTail, type VoiceCoreEvent } from "./core.ts";
 import type { EchoGuard } from "./echoGuard.ts";
+import { UNVERIFIED, type SpeakerIdentity } from "./speaker.ts";
 import { SET_ASIDE, type SttProvider } from "./types.ts";
 
 /** The stop path runs beside the core's queue, a few promise turns away. */
@@ -839,6 +840,93 @@ describe("cutting in by voice (docs/baton/BARGE_IN.md)", () => {
     r.spoken.value = true;
     r.push(0.5);
     expect(kinds(r.events)).toEqual(expect.arrayContaining(["duck:true", "barge_in"]));
+  });
+});
+
+describe("Voice ID in the core (VOICE-ID slice 4)", () => {
+  const identity = (kind: SpeakerIdentity["kind"]): SpeakerIdentity => ({
+    ...UNVERIFIED(0),
+    kind,
+    personId: kind === "owner" ? "owner" : null,
+  });
+  const rigWith = (kind: SpeakerIdentity["kind"]) => {
+    const events: VoiceCoreEvent[] = [];
+    const routed: Array<{ text: string; speaker: SpeakerIdentity | null | undefined }> = [];
+    const spoken = { value: false };
+    let fire = false;
+    let answer: (() => void) | null = null;
+    const core = createVoiceCore({
+      waitMs: () => 0,
+      wake: {
+        name: "fake",
+        reset: () => {},
+        process: () => {
+          const score = fire ? 1 : null;
+          fire = false;
+          return score;
+        },
+      },
+      vad: { name: "fake", reset: () => {}, isSpeech: () => spoken.value },
+      stt: { name: "fake", transcribe: async () => "what is the weather" },
+      speakerMode: () => "headphones",
+      router: {
+        route: async (effect, context) => {
+          if ("text" in effect) routed.push({ text: effect.text, speaker: context.speaker });
+          return { kind: "none" };
+        },
+      },
+      speaker: {
+        hear: (_pcm, use) =>
+          use === "barge"
+            ? new Promise((resolve) => (answer = () => resolve(identity(kind))))
+            : Promise.resolve(identity(kind)),
+        admits: (who) => who.kind === "owner",
+        bargeMs: () => 2_000,
+      },
+    });
+    core.subscribe((event) => events.push(event));
+    const push = (seconds: number) => {
+      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    };
+    return { core, push, events, spoken, routed, wake: () => (fire = true), verdict: () => answer?.() };
+  };
+  const kinds = (events: VoiceCoreEvent[]) =>
+    events.flatMap((e) =>
+      e.type === "barge_duck" ? [`duck:${e.on}`] : e.type === "barge_in" ? [e.type] : [],
+    );
+
+  it("drops a wake from a voice it keeps out, with no turn, and routes his with his identity", async () => {
+    for (const kind of ["guest", "owner"] as const) {
+      const r = rigWith(kind);
+      r.wake();
+      r.spoken.value = true;
+      r.push(2.5);
+      r.spoken.value = false;
+      r.push(1.5);
+      await r.core.idle();
+      if (kind === "guest") {
+        expect(r.routed).toEqual([]);
+        expect(r.events).toContainEqual(
+          expect.objectContaining({ type: "dropped", reason: "guest voice" }),
+        );
+      } else expect(r.routed.map((x) => x.speaker?.kind)).toEqual(["owner"]);
+    }
+  });
+
+  it("keeps her ducked while speech over her is judged, then cuts in only for his voice", async () => {
+    for (const kind of ["guest", "owner"] as const) {
+      const r = rigWith(kind);
+      r.core.setSpeaking(true);
+      r.push(1);
+      r.spoken.value = true;
+      r.push(2.5);
+      expect(kinds(r.events)).toEqual(["duck:true"]);
+      r.verdict();
+      await settled();
+      expect(kinds(r.events)).toEqual(
+        kind === "owner" ? ["duck:true", "duck:false", "barge_in"] : ["duck:true", "duck:false"],
+      );
+    }
   });
 });
 

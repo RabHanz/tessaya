@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { CAMPLUS_POLICY, cosine, decideSpeaker, enrol, type SpeakerProfile } from "./speaker.ts";
+import {
+  adaptProfile,
+  admits,
+  CAMPLUS_POLICY,
+  cosine,
+  decideSpeaker,
+  enrol,
+  identityOf,
+  speakerPath,
+  UNVERIFIED,
+  voiceApproval,
+  type SpeakerGate,
+  type SpeakerIdentity,
+  type SpeakerProfile,
+} from "./speaker.ts";
 
 const v = (...xs: number[]) => Float32Array.from(xs);
 const policy = { ...CAMPLUS_POLICY, model: "m" };
@@ -134,5 +148,76 @@ describe("enrol", () => {
     expect(enrol([v(1, 0, 0), v(1, 0, 0)])).toBeNull();
     expect(enrol([v(1, 0, 0), v(1, 0, 0), v(Number.NaN, 0, 0)])).toBeNull();
     expect(enrol([v(1, 0, 0), v(1, 0), v(1, 0, 0)])).toBeNull();
+  });
+});
+
+describe("the speaker identity", () => {
+  const owned = (vector: Float32Array, ms: number) =>
+    identityOf(decide([vector], ms, "listen"), decide([vector], ms, "act"), 1);
+
+  it("is verified only when this turn's own clip clears the act cut-off", () => {
+    expect(owned(at(0.6), 4_000)).toMatchObject({ kind: "owner", personId: "owner", verified: true });
+    expect(owned(at(0.6), 2_500)).toMatchObject({ kind: "owner", verified: false });
+    expect(owned(at(0.05), 4_000)).toMatchObject({ kind: "guest", personId: null, verified: false });
+    expect(owned(at(0.6), 1_000)).toEqual(UNVERIFIED(1));
+  });
+
+  const who = (kind: SpeakerIdentity["kind"], more: Partial<SpeakerIdentity> = {}) => ({
+    ...UNVERIFIED(0),
+    kind,
+    ...more,
+  });
+  const gate: SpeakerGate = {
+    respondToOthers: false,
+    offSilencesSaved: false,
+    savedBarge: false,
+    strictWhenUnavailable: false,
+  };
+
+  it.each([
+    // kind, gate change, turn, barge
+    ["owner", {}, true, true],
+    ["saved", {}, true, false],
+    ["saved", { offSilencesSaved: true }, false, false],
+    ["saved", { savedBarge: true }, true, true],
+    ["guest", {}, false, false],
+    ["guest", { respondToOthers: true }, true, false],
+    ["unverified", {}, true, true],
+    ["unverified", { strictWhenUnavailable: true }, false, false],
+  ] as const)("lets %s in with %j: turn %s, barge %s", (kind, change, turn, barge) => {
+    expect(admits(who(kind), { ...gate, ...change }, "turn")).toBe(turn);
+    expect(admits(who(kind), { ...gate, ...change }, "barge")).toBe(barge);
+  });
+
+  it("sends everyone but him down the outside path", () => {
+    expect(["owner", "unverified", "saved", "guest"].map((k) => speakerPath(who(k as never)))).toEqual(
+      ["his", "his", "outside", "outside"],
+    );
+  });
+
+  it("never lets a voice alone approve a risky act, and counts only his verified voice as a factor", () => {
+    const him = who("owner", { verified: true });
+    expect(voiceApproval(him, "risky", true)).toEqual({ voiceFactor: true, cardRequired: true });
+    expect(voiceApproval(him, "ordinary", true)).toEqual({ voiceFactor: true, cardRequired: false });
+    expect(voiceApproval(him, "ordinary", false).cardRequired).toBe(true);
+    expect(voiceApproval(who("owner", { verified: true, inherited: true }), "ordinary", true)).toEqual({
+      voiceFactor: false,
+      cardRequired: false,
+    });
+    expect(voiceApproval(who("saved", { verified: true }), "ordinary", true)).toEqual({
+      voiceFactor: false,
+      cardRequired: true,
+    });
+    expect(voiceApproval(who("unverified"), "ordinary", true).cardRequired).toBe(true);
+  });
+
+  it("adapts his profile a little, and only from a confident long clip of him", () => {
+    const moved = adaptProfile(owner, { vector: at(0.8), ms: 4_000 }, policy);
+    expect(moved?.sources).toEqual(["wispr", "adapted"]);
+    expect(cosine(moved!.centroid, owner.centroid)).toBeGreaterThan(0.999);
+    expect(cosine(moved!.centroid, at(0.8))).toBeGreaterThan(cosine(owner.centroid, at(0.8)));
+    expect(adaptProfile(owner, { vector: at(0.45), ms: 4_000 }, policy)).toBeNull();
+    expect(adaptProfile(owner, { vector: at(0.8), ms: 2_000 }, policy)).toBeNull();
+    expect(adaptProfile(sarah, { vector: v(0, 1, 0), ms: 4_000 }, policy)).toBeNull();
   });
 });

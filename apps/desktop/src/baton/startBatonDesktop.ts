@@ -469,8 +469,9 @@ export const startBatonDesktop = Effect.gen(function* () {
         ...(text("project") === "" ? {} : { project: text("project").slice(0, 200) }),
         subject: text("said").slice(0, 300),
         outcome: ok ? "answered" : "failed",
+        // Voice ID: whose voice it was, when known ("owner", "saved:<id>", "guest", "unverified").
         detail:
-          `${ok ? text("reply") : text("error")}${tools.length === 0 ? "" : ` (tools: ${[...new Set(tools)].join(", ")})`}`.slice(
+          `${text("speaker") === "" ? "" : `[voice: ${text("speaker")}] `}${ok ? text("reply") : text("error")}${tools.length === 0 ? "" : ` (tools: ${[...new Set(tools)].join(", ")})`}`.slice(
             0,
             1000,
           ),
@@ -676,6 +677,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         recording,
         echo,
         speakerMode,
+        speaker: voiceSpeaker,
       }) => {
         // The assistant's sessions start now, not at his first wake: a cold start took 27 s (0.1.68).
         setTimeout(() => screen?.warm(), LAUNCH_WARM_MS).unref();
@@ -716,6 +718,7 @@ export const startBatonDesktop = Effect.gen(function* () {
             recording,
             ...(echo === undefined ? {} : { echo }),
             speakerMode,
+            speaker: voiceSpeaker,
             scorers: onnx,
             ...(screen === null ? {} : { brain: screen }),
           })
