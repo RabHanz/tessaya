@@ -662,12 +662,19 @@ impl Live {
         if self.chunker.quiet_since(from, &self.heard) {
             return;
         }
-        let Some(piece) = self.chunker.preview() else {
+        // At his pause the last preview's settled words stand, as at release: only the second or so after them is
+        // decoded, so a release that comes during this decode waits less.
+        let (skip, kept) = if paused { self.settled_words(from) } else { (0, Vec::new()) };
+        let Some(piece) = self.chunker.preview(skip) else {
             return;
         };
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
-        let decoded = decode_words(session, piece, self.language.clone()).ok();
+        let decoded = decode_words(session, piece, self.language.clone()).ok().map(|(text, words)| {
+            let known = kept.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ");
+            let text = join_pieces(&[known, text]);
+            (text, kept.into_iter().chain(words.into_iter().map(|(end, w)| (end + skip, w))).collect::<EndedWords>())
+        });
         self.preview_words = decoded.as_ref().map(|(_, words)| words.clone()).unwrap_or_default();
         self.preview = decoded.map(|(text, _)| text);
         // At his pause the words may be all of it: the desktop starts their cleanup now, so a release finds it done.
@@ -679,6 +686,14 @@ impl Live {
             }));
         }
         self.preview_ms = started.elapsed().as_millis() as u64;
+    }
+
+    /// The last preview (it reached `reached`)'s words that ended well before it stopped, and where the last of them
+    /// ends: they stand, and only the audio after them is decoded again.
+    fn settled_words(&self, reached: usize) -> (usize, EndedWords) {
+        let safe = reached.saturating_sub(PREVIEW_SAFE);
+        let kept: EndedWords = self.preview_words.iter().take_while(|(end, _)| *end <= safe).cloned().collect();
+        (kept.last().map_or(0, |(end, _)| *end), kept)
     }
 
     /// The release's work on what was not yet decoded: the last piece, or nothing when the last preview already holds it.
@@ -699,12 +714,10 @@ impl Live {
                 self.pieces += 1;
             } else {
                 // The preview's words that ended well before it stopped are kept; only what follows is decoded.
-                let safe = self.previewed.saturating_sub(PREVIEW_SAFE);
-                let kept: Vec<&(usize, String)> = self.preview_words.iter().take_while(|(end, _)| *end <= safe).collect();
-                if let Some(&&(end, _)) = kept.last() {
-                    let words = kept.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ");
+                let (end, kept) = self.settled_words(self.previewed);
+                if !kept.is_empty() {
                     self.chunker.skip(end);
-                    self.text.push(words);
+                    self.text.push(kept.into_iter().map(|(_, w)| w).collect::<Vec<_>>().join(" "));
                 }
                 if let Some(piece) = self.chunker.finish() {
                     self.decode(session, piece);

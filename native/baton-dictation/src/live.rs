@@ -144,14 +144,17 @@ impl Chunker {
         self.pending.len()
     }
 
-    /// The audio since the last cut, with its context, left in place: a quick look at words not yet cut.
-    pub fn preview(&self) -> Option<Piece> {
-        if self.pending.is_empty() {
+    /// The audio since the last cut, from `skip` on (words before it are already known), with up to the context's
+    /// length of audio before it, left in place: a quick look at words not yet cut.
+    pub fn preview(&self, skip: usize) -> Option<Piece> {
+        if self.pending.len() <= skip {
             return None;
         }
+        let start = self.tail.len() + skip;
+        let from = start.saturating_sub(self.params.context_samples);
         let mut pcm = self.tail.clone();
         pcm.extend_from_slice(&self.pending);
-        Some(Piece { pcm, context: self.tail.len(), at_pause: false })
+        Some(Piece { pcm: pcm.split_off(from), context: start - from, at_pause: false })
     }
 
     /// Nothing but quiet in the uncut audio from `from` on, against the whole recording's floor and speech: a preview
@@ -524,10 +527,10 @@ mod tests {
     #[test]
     fn a_preview_looks_at_the_uncut_words_without_taking_them() {
         let mut chunker = Chunker::new(PARAMS);
-        assert!(chunker.preview().is_none());
+        assert!(chunker.preview(0).is_none());
         let speech = tone(1.0, 0.2);
         assert!(chunker.push(&speech).is_none());
-        let piece = chunker.preview().unwrap();
+        let piece = chunker.preview(0).unwrap();
         assert_eq!((piece.pcm.len(), piece.context, piece.at_pause), (RATE, 0, false));
         assert_eq!(chunker.pending_len(), RATE);
         assert_eq!(chunker.finish().unwrap().pcm.len(), RATE);
@@ -549,6 +552,22 @@ mod tests {
         whole.push(&heard);
         whole.skip(0);
         assert_eq!(whole.finish().unwrap().pcm.len(), 5 * RATE);
+    }
+
+    #[test]
+    fn a_pause_preview_after_a_preview_decodes_only_what_follows_its_safe_words() {
+        let params = ChunkParams { min_samples: 30 * RATE, max_samples: 30 * RATE, context_samples: 3 * RATE };
+        let mut chunker = Chunker::new(params);
+        let heard: Vec<f32> = (0..10 * RATE).map(|i| (i as f32 * 0.01).sin() * 0.1).collect();
+        assert!(chunker.push(&heard).is_none());
+        // An earlier preview's words were safe up to 8.5 s: the pause preview reads the rest with 3 s before it.
+        let piece = chunker.preview(17 * RATE / 2).unwrap();
+        assert_eq!(piece.context, 3 * RATE);
+        assert_eq!(&piece.pcm[..], &heard[11 * RATE / 2..]);
+        // Left in place: release still has all of it, and with nothing safe the preview is the whole stretch.
+        assert_eq!(chunker.pending_len(), 10 * RATE);
+        assert_eq!(chunker.preview(0).unwrap().pcm.len(), 10 * RATE);
+        assert!(chunker.preview(10 * RATE).is_none());
     }
 
     #[test]
