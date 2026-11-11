@@ -1368,10 +1368,20 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d576201bf1 100644
+index f6409a87074fda1cc83a97b39a484abaa519ed02..c1cb40b1fd05194b0714b483d34bf8e655287756 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1246,6 +1246,8 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -366,6 +366,9 @@ export type ModelPreferences = {
+ export const VoiceShortcutMode = Schema.Literals(["auto", "hold", "toggle"]);
+ export type VoiceShortcutMode = typeof VoiceShortcutMode.Type;
+ 
++export const SpeechEngine = Schema.Literals(["tessaya", "t3"]);
++export type SpeechEngine = typeof SpeechEngine.Type;
++
+ /**
+  * Where this device sends microphone audio. A cloud grant names the forwarding environment and
+  * the provider; an OpenRouter grant also names the exact model, since OpenRouter has no default.
+@@ -1246,6 +1249,8 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -1380,7 +1390,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1267,6 +1269,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1267,6 +1272,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1392,7 +1402,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1275,6 +1282,9 @@ export const ServerSettings = Schema.Struct({
+@@ -1275,6 +1285,9 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -1402,7 +1412,16 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1689,6 +1699,8 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1288,6 +1301,8 @@ export const ServerSettings = Schema.Struct({
+   speechPostProcessingModelSelection: Schema.NullOr(ModelSelection).pipe(
+     Schema.withDecodingDefault(Effect.succeed(null)),
+   ),
++  // Tessaya: which recogniser and cleanup clients get here. "t3" (upstream's) until Tessaya's measures at least as well.
++  speechEngine: SpeechEngine.pipe(Schema.withDecodingDefault(Effect.succeed("t3" as const))),
+   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
+     Schema.withDecodingDefault(Effect.succeed({})),
+   ),
+@@ -1689,6 +1704,8 @@ export const ServerSettingsPatch = Schema.Struct({
    worktreesDirectory: Schema.optionalKey(TrimmedString),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -1411,7 +1430,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
-@@ -1698,6 +1710,9 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1698,11 +1715,15 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -1421,3 +1440,9 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    speechModelId: Schema.optionalKey(Schema.String),
    speechAcceleration: Schema.optionalKey(SpeechAcceleration),
    speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
+   speechProjectCustomWords: Schema.optionalKey(SpeechCustomWords),
+   speechPostProcessingModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
++  speechEngine: Schema.optionalKey(SpeechEngine),
+   projectAgentBrowserAccessOverrides: Schema.optionalKey(
+     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
+   ),

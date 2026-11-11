@@ -396,6 +396,7 @@ import {
   type DictationStep,
 } from "./dictationEntry.ts";
 import { importWispr, makeRewriter, readDictionary } from "./dictationRewriter.ts";
+import { openVoiceDoor } from "./voiceDoor.ts";
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import {
@@ -1291,6 +1292,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let heldByButton = false;
   /** The sidecar is recording or writing out a key dictation (`busyAfter`). */
   let sidecarBusy = false;
+  // A phone or browser dictating to this machine is heard here too, unless his own dictation is running.
+  const voiceDoor = openVoiceDoor(input.platform, (pcm) =>
+    sidecar === null || sidecarBusy
+      ? Promise.resolve(null)
+      : makeSidecarStt(sidecar).transcribe(pcm),
+  );
   let lastDictation: string | null = null;
   /** Paste-last's words: the last real dictation, never a command, a discard or a secret (`lastLanded`). */
   const lastInserted = createLastLanded();
@@ -7861,6 +7868,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     encoder.dispose();
     toast.dispose();
     history?.close();
+    voiceDoor.close();
     sidecar?.dispose();
   });
 

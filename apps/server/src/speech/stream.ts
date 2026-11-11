@@ -15,6 +15,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Socket from "effect/socket/Socket";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as SpeechService from "./SpeechService.ts";
+import * as TessayaVoice from "./TessayaVoice.ts";
 
 const decodeCommand = Schema.decodeUnknownEffect(Schema.fromJsonString(SpeechStreamCommand));
 
@@ -92,7 +93,7 @@ export const runSpeechSocket = Effect.fn("speech.runSocket")(function* (
 export const speechStreamRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const auth = yield* EnvironmentAuth.EnvironmentAuth;
-    const speech = yield* SpeechService.SpeechService;
+    const speech = (yield* TessayaVoice.TessayaVoice).speech(yield* SpeechService.SpeechService);
     return HttpRouter.add(
       "GET",
       SPEECH_STREAM_PATH,
@@ -110,4 +111,4 @@ export const speechStreamRouteLayer = Layer.unwrap(
       }),
     );
   }),
-);
+).pipe(Layer.provide(TessayaVoice.layer));

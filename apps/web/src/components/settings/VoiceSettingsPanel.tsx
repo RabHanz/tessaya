@@ -103,6 +103,7 @@ import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
 import { MicrophoneTest } from "./MicrophoneTest";
+import { TessayaVoiceEngineRow } from "./TessayaVoiceEngineRow";
 import { CloudVoiceConfiguration } from "./CloudVoiceConfiguration";
 import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
 import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
@@ -1408,6 +1409,13 @@ export function VoiceSettingsPanel() {
             </p>
           ) : null}
         </SettingsSearchTarget>
+        {destination.environmentId && !destination.cloudProvider ? (
+          <TessayaVoiceEngineRow
+            environmentId={destination.environmentId}
+            label={chosenEnvironment?.label ?? "This environment"}
+            disabled={!canManageKey}
+          />
+        ) : null}
 
         {pendingCloud && cloudEnvironment && (
           <CloudVoiceConfiguration

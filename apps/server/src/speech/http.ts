@@ -24,6 +24,7 @@ import * as SpeechPostProcessing from "./postProcessing.ts";
 import * as CloudSpeech from "./CloudSpeech.ts";
 import * as DictationCleanupApi from "./DictationCleanupApi.ts";
 import * as SpeechService from "./SpeechService.ts";
+import * as TessayaVoice from "./TessayaVoice.ts";
 
 const MAX_TRANSCRIBE_BODY_BYTES = SpeechService.MAX_SPEECH_BYTES + SPEECH_MAX_OPTIONS_BYTES + 4;
 const parseAudio = Option.liftThrowable(decodeSpeechPcmRequest);
@@ -62,6 +63,8 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
     const cloud = yield* CloudSpeech.CloudSpeech;
     const cleanupApi = yield* DictationCleanupApi.DictationCleanupApi;
     const postProcessing = yield* SpeechPostProcessing.SpeechPostProcessing;
+    const tessaya = yield* TessayaVoice.TessayaVoice;
+    const heard = tessaya.speech(speech);
     const guard = Effect.fnUntraced(function* (
       endpoint: string,
       scope: AuthEnvironmentScope = AuthOrchestrationOperateScope,
@@ -215,7 +218,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
           yield* guard(args.endpoint.name);
           const decoded = parseAudio(args.payload);
           if (Option.isNone(decoded)) return yield* failEnvironmentInvalidRequest("invalid_audio");
-          const text = yield* speech
+          const text = yield* heard
             .transcribe(decoded.value.pcm, decoded.value.options)
             .pipe(mapSpeechError);
           return { text };
@@ -225,10 +228,15 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
         "postProcess",
         Effect.fn("environment.voice.postProcess")(function* (args) {
           yield* guard(args.endpoint.name);
+          if (yield* tessaya.cleansTranscripts) return { text: args.payload.transcript };
           return yield* postProcessing
             .process(args.payload)
             .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
         }),
       );
   }),
-).pipe(Layer.provide(bodyLimit), Layer.provide(SpeechPostProcessing.layer));
+).pipe(
+  Layer.provide(bodyLimit),
+  Layer.provide(SpeechPostProcessing.layer),
+  Layer.provide(TessayaVoice.layer),
+);

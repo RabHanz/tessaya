@@ -182,26 +182,31 @@ index f67129be60423ae9ceab2f0143ad4aec0e2fb26a..e2b744681198d4e383a5850b9f808f73
        expect(save).toHaveBeenLastCalledWith("xai", reference);
        expect((yield* setReference(reference.reference)).status).toBe(400);
 diff --git a/apps/server/src/speech/http.ts b/apps/server/src/speech/http.ts
-index eb4a7a01b88fb27d276f028b844c109cf57a988c..76ce99ea7cfc9b0187696fe8701b225e6d9cabfc 100644
+index eb4a7a01b88fb27d276f028b844c109cf57a988c..674671af7fd72fc570fdb98483587a0d8267c2ff 100644
 --- a/apps/server/src/speech/http.ts
 +++ b/apps/server/src/speech/http.ts
-@@ -22,6 +22,7 @@ import {
+@@ -22,7 +22,9 @@ import {
  } from "../auth/http.ts";
  import * as SpeechPostProcessing from "./postProcessing.ts";
  import * as CloudSpeech from "./CloudSpeech.ts";
 +import * as DictationCleanupApi from "./DictationCleanupApi.ts";
  import * as SpeechService from "./SpeechService.ts";
++import * as TessayaVoice from "./TessayaVoice.ts";
  
  const MAX_TRANSCRIBE_BODY_BYTES = SpeechService.MAX_SPEECH_BYTES + SPEECH_MAX_OPTIONS_BYTES + 4;
-@@ -59,6 +60,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+ const parseAudio = Option.liftThrowable(decodeSpeechPcmRequest);
+@@ -59,7 +61,10 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
    Effect.fnUntraced(function* (handlers) {
      const speech = yield* SpeechService.SpeechService;
      const cloud = yield* CloudSpeech.CloudSpeech;
 +    const cleanupApi = yield* DictationCleanupApi.DictationCleanupApi;
      const postProcessing = yield* SpeechPostProcessing.SpeechPostProcessing;
++    const tessaya = yield* TessayaVoice.TessayaVoice;
++    const heard = tessaya.speech(speech);
      const guard = Effect.fnUntraced(function* (
        endpoint: string,
-@@ -86,6 +88,35 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+       scope: AuthEnvironmentScope = AuthOrchestrationOperateScope,
+@@ -86,6 +91,35 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
              .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
          }),
        )
@@ -237,6 +242,32 @@ index eb4a7a01b88fb27d276f028b844c109cf57a988c..76ce99ea7cfc9b0187696fe8701b225e
        .handle(
          "cloudModels",
          Effect.fn("environment.voice.cloudModels")(function* (args) {
+@@ -184,7 +218,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+           yield* guard(args.endpoint.name);
+           const decoded = parseAudio(args.payload);
+           if (Option.isNone(decoded)) return yield* failEnvironmentInvalidRequest("invalid_audio");
+-          const text = yield* speech
++          const text = yield* heard
+             .transcribe(decoded.value.pcm, decoded.value.options)
+             .pipe(mapSpeechError);
+           return { text };
+@@ -194,10 +228,15 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+         "postProcess",
+         Effect.fn("environment.voice.postProcess")(function* (args) {
+           yield* guard(args.endpoint.name);
++          if (yield* tessaya.cleansTranscripts) return { text: args.payload.transcript };
+           return yield* postProcessing
+             .process(args.payload)
+             .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
+         }),
+       );
+   }),
+-).pipe(Layer.provide(bodyLimit), Layer.provide(SpeechPostProcessing.layer));
++).pipe(
++  Layer.provide(bodyLimit),
++  Layer.provide(SpeechPostProcessing.layer),
++  Layer.provide(TessayaVoice.layer),
++);
 diff --git a/apps/web/src/components/settings/CloudVoiceConfiguration.tsx b/apps/web/src/components/settings/CloudVoiceConfiguration.tsx
 index 95dcee4cffb456f48d81eea52334ba3a56c16842..aa1736965ac54843d59faa8e13d98da4777ef409 100644
 --- a/apps/web/src/components/settings/CloudVoiceConfiguration.tsx

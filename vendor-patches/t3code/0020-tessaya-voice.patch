@@ -1,0 +1,83 @@
+diff --git a/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
+index 5f7328214cb16b81c7b2817aea7d5f7992e776d6..2d359bafc9b380b9f506579f750bfe5871aef820 100644
+--- a/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
++++ b/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
+@@ -30,6 +30,7 @@ import {
+   hasEnvironmentVoiceCapture,
+ } from "../voice-input/voiceDestination";
+ import { VoiceModelSection } from "./VoiceModelSection";
++import { TessayaVoiceEngineSection } from "./TessayaVoiceEngineSection";
+ import { CloudVoiceSection } from "./CloudVoiceSection";
+ import type { EnvironmentId } from "@t3tools/contracts";
+ import { ThreadSwipeable } from "../home/thread-swipe-actions";
+@@ -280,10 +281,13 @@ export function SettingsVoiceRouteScreen() {
+               />
+             ))}
+         {grantEnvironment && grant?.destination.kind === "environment" ? (
+-          <VoiceModelSection
+-            environmentId={grantEnvironment.environmentId}
+-            label={grantEnvironment.label}
+-          />
++          <>
++            <TessayaVoiceEngineSection environment={grantEnvironment} />
++            <VoiceModelSection
++              environmentId={grantEnvironment.environmentId}
++              label={grantEnvironment.label}
++            />
++          </>
+         ) : null}
+         {!grant && transcriber === null ? (
+           <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
+diff --git a/apps/server/src/speech/stream.ts b/apps/server/src/speech/stream.ts
+index 60d5acb2334e2d98005eb976ff262b219d8adc20..f0d90110a82370ccfe8a72a3946bbea651ed7488 100644
+--- a/apps/server/src/speech/stream.ts
++++ b/apps/server/src/speech/stream.ts
+@@ -15,6 +15,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+ import * as Socket from "effect/socket/Socket";
+ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+ import * as SpeechService from "./SpeechService.ts";
++import * as TessayaVoice from "./TessayaVoice.ts";
+ 
+ const decodeCommand = Schema.decodeUnknownEffect(Schema.fromJsonString(SpeechStreamCommand));
+ 
+@@ -92,7 +93,7 @@ export const runSpeechSocket = Effect.fn("speech.runSocket")(function* (
+ export const speechStreamRouteLayer = Layer.unwrap(
+   Effect.gen(function* () {
+     const auth = yield* EnvironmentAuth.EnvironmentAuth;
+-    const speech = yield* SpeechService.SpeechService;
++    const speech = (yield* TessayaVoice.TessayaVoice).speech(yield* SpeechService.SpeechService);
+     return HttpRouter.add(
+       "GET",
+       SPEECH_STREAM_PATH,
+@@ -110,4 +111,4 @@ export const speechStreamRouteLayer = Layer.unwrap(
+       }),
+     );
+   }),
+-);
++).pipe(Layer.provide(TessayaVoice.layer));
+diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
+index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..829e4627ca828b11582bc26a8a89b1829f93e813 100644
+--- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
++++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
+@@ -103,6 +103,7 @@ import { Switch } from "../ui/switch";
+ import { Textarea } from "../ui/textarea";
+ import { toastManager } from "../ui/toast";
+ import { MicrophoneTest } from "./MicrophoneTest";
++import { TessayaVoiceEngineRow } from "./TessayaVoiceEngineRow";
+ import { CloudVoiceConfiguration } from "./CloudVoiceConfiguration";
+ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
+ import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
+@@ -1408,6 +1409,13 @@ export function VoiceSettingsPanel() {
+             </p>
+           ) : null}
+         </SettingsSearchTarget>
++        {destination.environmentId && !destination.cloudProvider ? (
++          <TessayaVoiceEngineRow
++            environmentId={destination.environmentId}
++            label={chosenEnvironment?.label ?? "This environment"}
++            disabled={!canManageKey}
++          />
++        ) : null}
+ 
+         {pendingCloud && cloudEnvironment && (
+           <CloudVoiceConfiguration
