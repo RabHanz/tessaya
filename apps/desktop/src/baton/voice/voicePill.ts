@@ -50,7 +50,7 @@ import {
 } from "./pillIsland.ts";
 import { ICON, LOOK_TOKENS_CSS, applyLookScript as pillLookScript } from "./pillLook.ts";
 import { onPillLook, pillLook, refreshPillTheme } from "./pillTheme.ts";
-import { waveEngine } from "./waveform.ts";
+import { waveEngine } from "@t3tools/baton-shared/waveform";
 import {
   CUE_TAIL_MS,
   PILL_PARTIAL,

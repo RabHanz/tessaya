@@ -18,6 +18,7 @@ import {
   type ServerSettingsPatch,
   type ManagedPolicySummary,
   globalIdleCompaction,
+  withMigratedDictationCleanup,
   isSecretReference,
   type SecretReference,
   withIdleCompaction,
@@ -823,6 +824,7 @@ const make = Effect.gen(function* () {
     // it to `idleCompaction`, so that switch goes to clients as a boolean. The
     // defaults gain the field too, which tells clients this server reads modes.
     settings = withIdleCompaction(settings, globalIdleCompaction(settings));
+    settings = withMigratedDictationCleanup(settings);
 
     // A file that failed to decode must stay on disk for the user to repair.
     const settingsFileTrusted = Option.isNone(parseFailure);

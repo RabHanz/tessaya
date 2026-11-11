@@ -1368,10 +1368,18 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d576201bf1 100644
+index f6409a87074fda1cc83a97b39a484abaa519ed02..3d28689e380b0a81821a7e47bdb7c13139ca136a 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1246,6 +1246,8 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -33,6 +33,7 @@ import {
+   ProviderOptionSelections,
+ } from "./model.ts";
+ import { ModelSelection } from "./modelSelection.ts";
++import { DictationCleanup, DictationCleanupSetting } from "./dictationCleanup.ts";
+ import { ProjectScript, type ProjectMutation } from "./project.ts";
+ import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
+ import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
+@@ -1246,6 +1247,8 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -1380,7 +1388,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1267,6 +1269,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1267,6 +1270,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1392,7 +1400,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1275,6 +1282,9 @@ export const ServerSettings = Schema.Struct({
+@@ -1275,6 +1283,9 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -1402,7 +1410,21 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1689,6 +1699,8 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1284,10 +1295,12 @@ export const ServerSettings = Schema.Struct({
+   ),
+   // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
+   speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+-  // Null follows textGenerationModelSelection; a selection pins transcript cleanup to its own model.
++  // Tessaya: read only to move it into `dictationCleanup.model`, which replaced it.
+   speechPostProcessingModelSelection: Schema.NullOr(ModelSelection).pipe(
+     Schema.withDecodingDefault(Effect.succeed(null)),
+   ),
++  // Tessaya: one setting for every environment and client (dictationCleanup.ts).
++  dictationCleanup: DictationCleanupSetting,
+   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
+     Schema.withDecodingDefault(Effect.succeed({})),
+   ),
+@@ -1689,6 +1702,8 @@ export const ServerSettingsPatch = Schema.Struct({
    worktreesDirectory: Schema.optionalKey(TrimmedString),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -1411,7 +1433,7 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
-@@ -1698,6 +1710,9 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1698,11 +1713,15 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -1421,3 +1443,15 @@ index f6409a87074fda1cc83a97b39a484abaa519ed02..5321d10136ec32f4ed2287d6ce7166d5
    speechModelId: Schema.optionalKey(Schema.String),
    speechAcceleration: Schema.optionalKey(SpeechAcceleration),
    speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
+   speechProjectCustomWords: Schema.optionalKey(SpeechCustomWords),
+   speechPostProcessingModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
++  dictationCleanup: Schema.optionalKey(DictationCleanup),
+   projectAgentBrowserAccessOverrides: Schema.optionalKey(
+     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
+   ),
+@@ -1944,3 +1963,5 @@ export const ClientSettingsPatch = Schema.Struct({
+   mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
+ });
+ export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;
++
++export * from "./dictationCleanup.ts";
