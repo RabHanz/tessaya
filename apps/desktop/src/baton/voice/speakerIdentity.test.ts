@@ -24,7 +24,8 @@ const setup = (over: Partial<VoiceIdSettings> = {}, vector = at(0.8)) => {
   let settings: VoiceIdSettings = { ...VOICE_ID_DEFAULTS, on: true, ...over };
   const service = createSpeakerIdentity({
     voiceId: {
-      embedder: () => (settings.on ? { model: "m", embed: async () => vector, close: () => {} } : null),
+      embedder: () =>
+        settings.on ? { model: "m", embed: async () => vector, close: () => {} } : null,
       profiles: () => profiles,
       save: (p) => (profiles = [p]),
     },

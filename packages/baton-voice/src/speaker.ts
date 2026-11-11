@@ -200,8 +200,7 @@ export const identityOf = (
   at: number,
 ): SpeakerIdentity => {
   if (listen.kind === "unverified") return UNVERIFIED(at);
-  if (listen.kind === "guest")
-    return { ...UNVERIFIED(at), kind: "guest", confidence: listen.best };
+  if (listen.kind === "guest") return { ...UNVERIFIED(at), kind: "guest", confidence: listen.best };
   const personId = listen.kind === "owner" ? "owner" : listen.id;
   const verified =
     (act.kind === "owner" && personId === "owner") || (act.kind === "saved" && act.id === personId);

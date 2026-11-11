@@ -156,9 +156,17 @@ describe("the speaker identity", () => {
     identityOf(decide([vector], ms, "listen"), decide([vector], ms, "act"), 1);
 
   it("is verified only when this turn's own clip clears the act cut-off", () => {
-    expect(owned(at(0.6), 4_000)).toMatchObject({ kind: "owner", personId: "owner", verified: true });
+    expect(owned(at(0.6), 4_000)).toMatchObject({
+      kind: "owner",
+      personId: "owner",
+      verified: true,
+    });
     expect(owned(at(0.6), 2_500)).toMatchObject({ kind: "owner", verified: false });
-    expect(owned(at(0.05), 4_000)).toMatchObject({ kind: "guest", personId: null, verified: false });
+    expect(owned(at(0.05), 4_000)).toMatchObject({
+      kind: "guest",
+      personId: null,
+      verified: false,
+    });
     expect(owned(at(0.6), 1_000)).toEqual(UNVERIFIED(1));
   });
 
@@ -190,17 +198,22 @@ describe("the speaker identity", () => {
   });
 
   it("sends everyone but him down the outside path", () => {
-    expect(["owner", "unverified", "saved", "guest"].map((k) => speakerPath(who(k as never)))).toEqual(
-      ["his", "his", "outside", "outside"],
-    );
+    expect(
+      ["owner", "unverified", "saved", "guest"].map((k) => speakerPath(who(k as never))),
+    ).toEqual(["his", "his", "outside", "outside"]);
   });
 
   it("never lets a voice alone approve a risky act, and counts only his verified voice as a factor", () => {
     const him = who("owner", { verified: true });
     expect(voiceApproval(him, "risky", true)).toEqual({ voiceFactor: true, cardRequired: true });
-    expect(voiceApproval(him, "ordinary", true)).toEqual({ voiceFactor: true, cardRequired: false });
+    expect(voiceApproval(him, "ordinary", true)).toEqual({
+      voiceFactor: true,
+      cardRequired: false,
+    });
     expect(voiceApproval(him, "ordinary", false).cardRequired).toBe(true);
-    expect(voiceApproval(who("owner", { verified: true, inherited: true }), "ordinary", true)).toEqual({
+    expect(
+      voiceApproval(who("owner", { verified: true, inherited: true }), "ordinary", true),
+    ).toEqual({
       voiceFactor: false,
       cardRequired: false,
     });

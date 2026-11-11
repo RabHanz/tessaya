@@ -1436,7 +1436,8 @@ export const createVoiceCore = (input: {
       if (bargeRun >= msToSamples(NEAR_RUN_MS)) lastNearRunAt = samples;
       if (judging !== null) {
         // Ducked while the voice is judged: once there is enough of it, the verdict decides.
-        if (samples - judging.from >= msToSamples(judging.ms) && !judging.asked) judgeBarge(judging);
+        if (samples - judging.from >= msToSamples(judging.ms) && !judging.asked)
+          judgeBarge(judging);
       } else if (bargeRun >= msToSamples(BARGE_MS)) {
         const onset = bargeRun;
         bargeRun = 0;

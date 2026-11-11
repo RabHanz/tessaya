@@ -888,7 +888,15 @@ describe("Voice ID in the core (VOICE-ID slice 4)", () => {
     const push = (seconds: number) => {
       for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
     };
-    return { core, push, events, spoken, routed, wake: () => (fire = true), verdict: () => answer?.() };
+    return {
+      core,
+      push,
+      events,
+      spoken,
+      routed,
+      wake: () => (fire = true),
+      verdict: () => answer?.(),
+    };
   };
   const kinds = (events: VoiceCoreEvent[]) =>
     events.flatMap((e) =>

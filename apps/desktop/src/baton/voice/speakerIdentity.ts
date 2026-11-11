@@ -34,9 +34,7 @@ export const createSpeakerIdentity = (input: {
   const running = () =>
     input.settings().on &&
     input.voiceId.embedder() !== null &&
-    input.voiceId
-      .profiles()
-      .some((p) => p.kind === "owner" && p.model === input.policy.model);
+    input.voiceId.profiles().some((p) => p.kind === "owner" && p.model === input.policy.model);
 
   const gate = (): SpeakerGate => {
     const s = input.settings();
@@ -53,7 +51,8 @@ export const createSpeakerIdentity = (input: {
       use,
       kind: identity.kind,
       personId: identity.personId,
-      confidence: identity.confidence === null ? null : Math.round(identity.confidence * 1000) / 1000,
+      confidence:
+        identity.confidence === null ? null : Math.round(identity.confidence * 1000) / 1000,
       verified: identity.verified,
       inherited: identity.inherited,
       ms,
