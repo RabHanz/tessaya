@@ -295,6 +295,7 @@ import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
+import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
 import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
@@ -1140,6 +1141,8 @@ export interface DesktopBatonVoiceInput {
   readonly mainWindowUp?: () => Promise<boolean>;
   /** One Tessaya method on this machine's own server, for when T3's window is closed. */
   readonly direct?: (method: string, input: unknown, timeoutMs?: number) => Promise<unknown>;
+  /** His private memory stores on this machine's server, for the Memory tab. */
+  readonly privateMemory?: PrivateMemory;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** The voice match model in the voice model worker (VOICE-ID); absent, Voice ID cannot run here. */
@@ -1326,6 +1329,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     appData: input.env["APPDATA"],
     onChange: () => pushHome(),
     ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+    // Deleting a person deletes their private store with them.
+    ...(input.privateMemory === undefined
+      ? {}
+      : { onPersonDeleted: (id: string) => void input.privateMemory?.onPersonDeleted(id) }),
   });
   voiceId.sync();
   /** Who is speaking, for the core, the approval path and the memory stores (one identity for all). */

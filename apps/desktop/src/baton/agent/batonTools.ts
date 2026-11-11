@@ -86,6 +86,8 @@ export interface ToolHost {
     readonly since: string | undefined;
   }) => Promise<string>;
   readonly remember: (text: string) => Promise<string>;
+  /** Keeps a private memory in the speaker's own encrypted store; absent where there is none (a device's turn). */
+  readonly rememberPrivate?: (text: string, about: string | null) => Promise<string>;
   readonly forget: (id: string) => Promise<string>;
   /** Memory the assistant may pin and the list of what the last answer used (D150). */
   readonly pin?: (id: string, pinned: boolean) => Promise<string>;
@@ -729,10 +731,38 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "memory_remember",
       description:
-        "Keep a short memory about him or his work that should outlast this conversation (a preference, a fact, where something lives). He can open and edit it in the Memory tab. Only what he asked you to remember, in his words; never something you read. Passwords, keys and card or bank details are refused.",
+        "Keep a short memory about him or his work that should outlast this conversation (a preference, a fact, where something lives). He can open and edit it in the Memory tab. Only what he asked you to remember, in his words; never something you read. Passwords, keys and card or bank details are refused. Private things (faith, family, relationships, health, feelings, or anything he calls private) go to private_remember instead.",
       inputSchema: object({ text: { type: "string", maxLength: 500 } }, ["text"]),
       run: async (a) => ({ text: await host.remember(str(a, "text", 500)) }),
     },
+    ...(host.rememberPrivate === undefined
+      ? []
+      : [
+          {
+            name: "private_remember",
+            description:
+              "Keep a private memory for the person speaking, in their own encrypted store under their PIN, never the shared Memory tab: faith, family, relationships, health, feelings, or anything they call private. Their words, short. Tell them in a few words that you kept it privately. Everything else goes to memory_remember.",
+            inputSchema: object(
+              {
+                text: { type: "string", maxLength: 500 },
+                about: {
+                  type: "string",
+                  maxLength: 80,
+                  description: "The other person it is about, by name, if any.",
+                },
+              },
+              ["text"],
+            ),
+            run: async (a: Readonly<Record<string, unknown>>) => ({
+              text: await host.rememberPrivate!(
+                str(a, "text", 500),
+                typeof a["about"] === "string" && a["about"].trim() !== ""
+                  ? a["about"].trim().slice(0, 80)
+                  : null,
+              ),
+            }),
+          },
+        ]),
     {
       name: "memory_forget",
       description:
