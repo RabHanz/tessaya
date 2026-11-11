@@ -90,6 +90,20 @@ fn last_pause(pcm: &[f32], from: usize) -> Option<usize> {
     None
 }
 
+/// How far a context's start may move to a quiet point (`quiet_point`).
+const SNAP: usize = RATE * 2 / 5;
+
+/// The quietest frame within `SNAP` of `at`, no later than `max`: a context starting mid-word can make the model write
+/// nothing at all (his clip 29fbd2fa: the whole 6.8 s piece came back empty, and right from 300 ms earlier).
+fn quiet_point(pcm: &[f32], at: usize, max: usize) -> usize {
+    let (lo, hi) = (at.saturating_sub(SNAP), (at + SNAP).min(max).min(pcm.len()));
+    if at == 0 || hi < lo + FRAME {
+        return at.min(max);
+    }
+    let levels = frame_levels(&pcm[lo..hi]);
+    lo + levels.iter().enumerate().min_by(|a, b| a.1.total_cmp(b.1)).map_or(0, |(i, _)| i) * FRAME
+}
+
 /// With no pause at all: the quietest moment of the last 1.5 s, the least bad place to split a word.
 fn quietest(pcm: &[f32]) -> usize {
     let from = pcm.len().saturating_sub(RATE * 3 / 2);
@@ -116,7 +130,7 @@ impl Chunker {
         let context = self.tail.len();
         let mut pcm = std::mem::take(&mut self.tail);
         pcm.extend_from_slice(&new);
-        let keep = pcm.len().saturating_sub(self.params.context_samples);
+        let keep = quiet_point(&pcm, pcm.len().saturating_sub(self.params.context_samples), pcm.len());
         self.tail = pcm[keep..].to_vec();
         self.scanned_at = 0;
         Piece { pcm, context, at_pause }
@@ -151,9 +165,9 @@ impl Chunker {
             return None;
         }
         let start = self.tail.len() + skip;
-        let from = start.saturating_sub(self.params.context_samples);
         let mut pcm = self.tail.clone();
         pcm.extend_from_slice(&self.pending);
+        let from = quiet_point(&pcm, start.saturating_sub(self.params.context_samples), start);
         Some(Piece { pcm: pcm.split_off(from), context: start - from, at_pause: false })
     }
 
@@ -193,13 +207,7 @@ impl Chunker {
     /// recording's own noise floor (its quietest tenth; his is about -67 dBFS). Relative to the floor, not to his
     /// speech, so a soft last sentence after loud ones still counts. A release takes a preview's words only without it.
     pub fn speech_after(&self, from: usize, heard: &[f32]) -> bool {
-        let floor = percentile(&frame_levels(heard), 0.1).max(SILENCE);
-        let over = floor * SPEECH_OVER_FLOOR;
-        let mut run = 0;
-        frame_levels(&self.pending[from.min(self.pending.len())..]).iter().any(|level| {
-            run = if *level > over { run + 1 } else { 0 };
-            run >= SPEECH_RUN
-        })
+        speech_in(&self.pending[from.min(self.pending.len())..], heard)
     }
 
     /// Capped at `QUIET_TAIL_MAX`: a longer tail may be a quiet last sentence, and is decoded.
@@ -232,6 +240,16 @@ impl Chunker {
         let (own_floor, own_loud) = (percentile(&own, 0.1), percentile(&own, 1.0));
         own.iter().all(|l| *l <= quiet) && own_loud <= own_floor * flat + SILENCE
     }
+}
+
+/// Speech in `audio` by `Chunker::speech_after`'s rule, against `heard`'s noise floor.
+pub fn speech_in(audio: &[f32], heard: &[f32]) -> bool {
+    let over = percentile(&frame_levels(heard), 0.1).max(SILENCE) * SPEECH_OVER_FLOOR;
+    let mut run = 0;
+    frame_levels(audio).iter().any(|level| {
+        run = if *level > over { run + 1 } else { 0 };
+        run >= SPEECH_RUN
+    })
 }
 
 /// A preview of the uncut words is due: half a second heard, then each second more, and never more than half the time
@@ -292,15 +310,10 @@ pub fn meter_b64(pcm: &[f32]) -> String {
     out
 }
 
-/// `next` without its first word when that repeats `prev`'s last, case and punctuation aside: a preview's word end can
-/// fall short of the word, so the decode after it hears that word again ("with with").
-pub fn without_repeat(prev: &str, next: &str) -> String {
+/// The same word, case and punctuation aside.
+pub fn same_word(a: &str, b: &str) -> bool {
     let bare = |w: &str| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
-    let (first, rest) = next.trim().split_once(' ').unwrap_or((next.trim(), ""));
-    match prev.split_whitespace().last() {
-        Some(last) if !first.is_empty() && bare(last) == bare(first) => rest.trim().to_string(),
-        _ => next.trim().to_string(),
-    }
+    !bare(a).is_empty() && bare(a) == bare(b)
 }
 
 /// Words that start after the context. A word straddling the seam belongs to the piece that
@@ -376,10 +389,11 @@ mod tests {
         let got = pieces(&mut Chunker::new(PARAMS), &pcm);
         assert_eq!(got.iter().map(|p| p.pcm.len() - p.context).sum::<usize>(), pcm.len());
         assert_eq!(got[0].context, 0);
-        assert_eq!(got[1].context, RATE);
+        let context = got[1].context;
+        assert!((RATE - SNAP..=RATE + SNAP).contains(&context), "context {context}");
         let seam = got[0].pcm.len();
-        assert_eq!(got[1].pcm[got[1].context..], pcm[seam..]);
-        assert_eq!(got[1].pcm[..got[1].context], pcm[seam - RATE..seam]);
+        assert_eq!(got[1].pcm[context..], pcm[seam..]);
+        assert_eq!(got[1].pcm[..context], pcm[seam - context..seam]);
     }
 
     #[test]
@@ -555,9 +569,8 @@ mod tests {
         // A preview's words were safe up to 4 s; release decodes the last second, with 3 s before it as context.
         chunker.skip(4 * RATE);
         let piece = chunker.finish().unwrap();
-        assert_eq!(piece.context, 3 * RATE);
-        assert_eq!(piece.pcm.len(), 4 * RATE);
-        assert_eq!(&piece.pcm[piece.context..], &heard[4 * RATE..]);
+        assert!((3 * RATE - SNAP..=3 * RATE + SNAP).contains(&piece.context));
+        assert_eq!(&piece.pcm[..], &heard[4 * RATE - piece.context..]);
         // Nothing safe: the whole uncut audio is decoded, as before.
         let mut whole = Chunker::new(ChunkParams { min_samples: 6 * RATE, max_samples: 15 * RATE, context_samples: 3 * RATE });
         whole.push(&heard);
@@ -573,12 +586,28 @@ mod tests {
         assert!(chunker.push(&heard).is_none());
         // An earlier preview's words were safe up to 8.5 s: the pause preview reads the rest with 3 s before it.
         let piece = chunker.preview(17 * RATE / 2).unwrap();
-        assert_eq!(piece.context, 3 * RATE);
-        assert_eq!(&piece.pcm[..], &heard[11 * RATE / 2..]);
+        assert!((3 * RATE - SNAP..=3 * RATE + SNAP).contains(&piece.context));
+        assert_eq!(&piece.pcm[..], &heard[17 * RATE / 2 - piece.context..]);
         // Left in place: release still has all of it, and with nothing safe the preview is the whole stretch.
         assert_eq!(chunker.pending_len(), 10 * RATE);
         assert_eq!(chunker.preview(0).unwrap().pcm.len(), 10 * RATE);
         assert!(chunker.preview(10 * RATE).is_none());
+    }
+
+    #[test]
+    fn a_context_starts_in_the_nearest_quiet_not_mid_word() {
+        // 3 s of context would start at 2 s, inside a word; a 60 ms gap 300 ms later is where it starts instead.
+        let mut heard = tone(2.3, 0.2);
+        heard.extend(tone(0.06, 0.2 / 300.0));
+        heard.extend(tone(2.74, 0.2));
+        let mut chunker = Chunker::new(ChunkParams { min_samples: 30 * RATE, max_samples: 30 * RATE, context_samples: 3 * RATE });
+        chunker.push(&heard);
+        let piece = chunker.preview(5 * RATE).unwrap();
+        let start = 5 * RATE - piece.context;
+        assert!((23 * RATE / 10..23 * RATE / 10 + RATE * 6 / 100).contains(&start), "starts at {start}");
+        // Never later than where the new audio starts, and nothing to snap to at the very start.
+        assert!(quiet_point(&heard, 5 * RATE, 5 * RATE - 100) <= 5 * RATE - 100);
+        assert_eq!(quiet_point(&heard, 0, RATE), 0);
     }
 
     #[test]
@@ -606,15 +635,6 @@ mod tests {
         // A preview that took 1.5 s waits for 3 s more audio, so decoding never takes more than half the time.
         assert!(!preview_due(RATE * 3, RATE / 2, 1_500));
         assert!(preview_due(RATE * 7 / 2, RATE / 2, 1_500));
-    }
-
-    #[test]
-    fn a_word_heard_on_both_sides_of_the_seam_is_written_once() {
-        assert_eq!(without_repeat("Will it not work with", "with just one hook?"), "just one hook?");
-        assert_eq!(without_repeat("so it really", "Really doesn't make sense."), "doesn't make sense.");
-        assert_eq!(without_repeat("all of the", "pages"), "pages");
-        assert_eq!(without_repeat("", "with you"), "with you");
-        assert_eq!(without_repeat("with", "with"), "");
     }
 
     #[test]

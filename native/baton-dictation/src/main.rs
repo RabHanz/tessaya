@@ -54,7 +54,7 @@ use handy_recorder::{
 use chord::{Chord, ChordOut, Ev as ChordEv};
 use keys::PasteMethod;
 use live::{
-    join_pieces, lift_gain, meter_b64, preview_due, without_repeat, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES, REUSE_FLAT,
+    join_pieces, lift_gain, meter_b64, preview_due, same_word, speech_in, ChunkParams, Chunker, Piece, METER_SAMPLES, REUSE_FLAT,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -417,31 +417,72 @@ fn infer(session: &mut Session, pcm: &mut Vec<f32>, language: Option<String>) ->
 
 /// The new words of one piece; the context before them only helps the model hear them.
 fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -> Result<String, String> {
-    decode_words(session, piece, language).map(|(text, _)| text)
+    decode_words(session, piece, language, None).map(|(text, _)| text)
 }
 
 /// A preview's words with where each ends, in samples of the uncut audio (`Live::preview_words`).
 type EndedWords = Vec<(usize, String)>;
 
-/// `decode_piece`, and each kept word with where it ends in the piece's new audio.
-fn decode_words(session: &mut Session, piece: Piece, language: Option<String>) -> Result<(String, EndedWords), String> {
-    let Piece { mut pcm, context, .. } = piece;
-    lift_gain(&mut pcm);
-    pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
-    let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
-    let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+/// How much shorter the context is on the one retry of a piece that came back empty although he spoke in it.
+const RETRY_TRIM: usize = 16_000 * 3 / 10;
+/// A first word starting this close to the seam, the same as the word before it, is that word heard twice.
+const SEAM_OVERLAP: usize = 16_000 * 3 / 20;
+
+/// The words of a run past `context` samples: where each starts and ends in the new audio, and the word.
+fn words_past(words: &[transcribe_cpp::Word], context: usize) -> Vec<(usize, usize, String)> {
     let context_ms = context as i64 / 16;
-    let ended = result
-        .words
+    words
         .iter()
         .filter(|w| context == 0 || w.t0_ms >= context_ms - 80)
         .filter(|w| !w.text.trim().is_empty())
-        .map(|w| (((w.t1_ms - context_ms).max(0) * 16) as usize, w.text.trim().to_string()))
-        .collect();
-    if context == 0 || result.words.is_empty() {
-        return Ok((result.text.trim().to_string(), ended));
+        .map(|w| {
+            let at = |ms: i64| ((ms - context_ms).max(0) * 16) as usize;
+            (at(w.t0_ms), at(w.t1_ms), w.text.trim().to_string())
+        })
+        .collect()
+}
+
+/// The decode after kept words (`after`, the last of them) heard that word again: its first word is the same and
+/// starts at the seam. Starting later, it is his own repeat ("really really") and stays.
+fn seam_repeat(after: Option<&str>, words: &[(usize, usize, String)]) -> bool {
+    matches!((after, words.first()), (Some(last), Some((start, _, first))) if *start <= SEAM_OVERLAP && same_word(last, first))
+}
+
+/// `decode_piece`, and each kept word with where it ends in the piece's new audio. `after`: the kept word just before
+/// this piece's new audio, written once if the model hears it again.
+fn decode_words(
+    session: &mut Session,
+    piece: Piece,
+    language: Option<String>,
+    after: Option<&str>,
+) -> Result<(String, EndedWords), String> {
+    let Piece { mut pcm, context, .. } = piece;
+    lift_gain(&mut pcm);
+    let heard = pcm.len();
+    pcm.resize(heard + TAIL_SAMPLES, 0.0);
+    let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
+    let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+    if context == 0 {
+        let words = words_past(&result.words, 0).into_iter().map(|(_, end, w)| (end, w)).collect();
+        return Ok((result.text.trim().to_string(), words));
     }
-    Ok((words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context_ms), ended))
+    let mut words = words_past(&result.words, context);
+    // Even from a quiet point a context can leave the model writing nothing although he spoke: once more with the
+    // context shorter, and if that is empty too, the new audio alone (his 29fbd2fa did both).
+    if words.is_empty() && speech_in(&pcm[context..heard], &pcm[..heard]) {
+        for from in [RETRY_TRIM.min(context), context] {
+            let retry = session.run(&pcm[from..], &options).map_err(|e| format!("transcribe: {e}"))?;
+            words = words_past(&retry.words, context - from);
+            if !words.is_empty() {
+                break;
+            }
+        }
+    }
+    if seam_repeat(after, &words) {
+        words.remove(0);
+    }
+    let text = words.iter().map(|(_, _, w)| w.as_str()).collect::<Vec<_>>().join(" ");
+    Ok((text, words.into_iter().map(|(_, end, w)| (end, w)).collect()))
 }
 
 /// A word ending this close to where a preview stopped may be cut off there: release decodes from before it.
@@ -589,7 +630,7 @@ impl Live {
         }
     }
 
-    fn decode(&mut self, session: &mut Session, piece: Piece) {
+    fn decode(&mut self, session: &mut Session, piece: Piece, after: Option<&str>) {
         // Dev only: the card fails after its first piece, to prove the CPU then writes every word.
         if self.on_gpu && self.pieces > 0 && std::env::var("TESSAYA_DEV_GPU_FAIL").as_deref() == Ok("1") {
             self.failed = Some("simulated graphics card failure".to_string());
@@ -597,9 +638,9 @@ impl Live {
         }
         let started = Instant::now();
         let at_pause = piece.at_pause;
-        match decode_piece(session, piece, self.language.clone()) {
-            Ok(text) if text.is_empty() => {}
-            Ok(text) => {
+        match decode_words(session, piece, self.language.clone(), after) {
+            Ok((text, _)) if text.is_empty() => {}
+            Ok((text, _)) => {
                 self.text.push(text);
                 // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
                 // starts their cleanup then, so a release right after finds it done (never for the cloud's words).
@@ -640,7 +681,7 @@ impl Live {
         let piece = self.chunker.push(&fresh);
         let Some(session) = session else { return };
         if let Some(piece) = piece {
-            return self.decode(session, piece);
+            return self.decode(session, piece, None);
         }
         if behind {
             return;
@@ -670,15 +711,13 @@ impl Live {
         };
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
-        let decoded = decode_words(session, piece, self.language.clone()).ok().map(|(text, mut words)| {
+        let after = kept.last().map(|(_, w)| w.clone());
+        let decoded = decode_words(session, piece, self.language.clone(), after.as_deref()).ok().map(|(text, words)| {
             if kept.is_empty() {
                 return (text, words);
             }
             let known = kept.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ");
-            if !words.is_empty() && without_repeat(&known, &words[0].1).is_empty() {
-                words.remove(0);
-            }
-            let text = join_pieces(&[known, words.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ")]);
+            let text = join_pieces(&[known, text]);
             (text, kept.into_iter().chain(words.into_iter().map(|(end, w)| (end + skip, w))).collect::<EndedWords>())
         });
         self.preview_words = decoded.as_ref().map(|(_, words)| words.clone()).unwrap_or_default();
@@ -712,7 +751,9 @@ impl Live {
         }
         if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
             // No speech since the last preview: its words are the rest, and nothing is decoded at release.
-            let reuse = self.preview.is_some() && !self.chunker.speech_after(self.previewed, &self.heard);
+            // An empty preview is not "nothing said": the model can miss a whole piece, and release decodes it again.
+            let reuse = self.preview.as_ref().is_some_and(|t| !t.is_empty())
+                && !self.chunker.speech_after(self.previewed, &self.heard);
             if let (true, Some(text)) = (reuse, self.preview.take()) {
                 self.chunker.finish();
                 if !text.is_empty() {
@@ -723,18 +764,13 @@ impl Live {
             } else {
                 // The preview's words that ended well before it stopped are kept; only what follows is decoded.
                 let (end, kept) = self.settled_words(self.previewed);
-                let seam = !kept.is_empty();
-                if seam {
+                let after = kept.last().map(|(_, w)| w.clone());
+                if !kept.is_empty() {
                     self.chunker.skip(end);
                     self.text.push(kept.into_iter().map(|(_, w)| w).collect::<Vec<_>>().join(" "));
                 }
-                let written = self.text.len();
                 if let Some(piece) = self.chunker.finish() {
-                    self.decode(session, piece);
-                }
-                let (before, after) = self.text.split_at_mut(written);
-                if let (true, Some(known), [tail]) = (seam, before.last(), after) {
-                    *tail = without_repeat(known, tail);
+                    self.decode(session, piece, after.as_deref());
                 }
             }
         }
@@ -783,7 +819,7 @@ impl Live {
             self.via = "fallback";
             let heard = self.heard.clone();
             if let (Some(piece), Some(session)) = (self.chunker.push(&heard), session.as_deref_mut()) {
-                self.decode(session, piece);
+                self.decode(session, piece, None);
             }
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
@@ -2679,6 +2715,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_word_heard_again_at_the_seam_is_written_once_but_his_own_repeat_stays() {
+        let words = |start: usize, first: &str| vec![(start, start + 3_000, first.to_string()), (9_000, 12_000, "x".into())];
+        // "with with": the decode after "...work with" heard "with" again, starting at the seam.
+        assert!(seam_repeat(Some("with"), &words(0, "with")));
+        assert!(seam_repeat(Some("Really,"), &words(2_000, "really")));
+        // "really really" he said: the second starts well after the seam.
+        assert!(!seam_repeat(Some("really"), &words(5_000, "really")));
+        assert!(!seam_repeat(Some("the"), &words(0, "pages")));
+        assert!(!seam_repeat(None, &words(0, "with")));
+        assert!(!seam_repeat(Some("with"), &[]));
+    }
 
     #[test]
     fn a_paste_stops_at_the_first_failed_check() {
