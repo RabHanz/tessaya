@@ -1323,7 +1323,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "room-brain",
     title: "Room brain",
-    to: "/settings/home",
+    to: "/settings/hardware",
     searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
   },
   {

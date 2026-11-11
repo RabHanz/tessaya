@@ -53,6 +53,8 @@ R1**. **Forget** removes all of it from this server again.
 - **Voice transport:** in-house is Tessaya's own room voice. Trying Agora's cloud goes back to in-house, muted, after
   60 seconds unless you press **Keep**; **Revert to in-house** works at any time. After every restart the server sets
   in-house voice again, since the device forgets it.
+- **Room brain:** how the R1's turns reach Claude: your Anthropic key from Settings → APIs (quickest), your Claude
+  subscription, or Automatic (the key, then the subscription if the key fails). It applies from the next thing you say.
 - **NFC tags:** tap a tag on the R1, then name it and choose what a tap does (mute, unmute, show a mood, or run a
   Home Assistant scene, which still asks first when the scene is a risky one).
 - **Camera:** one picture, only when you press **Take one**. A "Camera on" badge shows while it waits for the

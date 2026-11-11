@@ -32,6 +32,7 @@ import { ControlPill } from "../../components/ui/ControlPill";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -52,6 +53,13 @@ const TAG_CHOICES: ReadonlyArray<readonly [string, string]> = [
   ...R1_MOODS.map((m) => [`mood:${m}`, `Eyes: ${m}`] as const),
 ];
 type Kind = "read" | "act" | "owner";
+type RoomBrain = "auto" | "api" | "subscription";
+const ROOM_BRAINS = ["auto", "api", "subscription"] as const;
+const ROOM_BRAIN_LABELS = {
+  auto: "Automatic",
+  api: "Anthropic API key",
+  subscription: "Claude subscription",
+} as const;
 type Run = (
   kind: Kind,
   op: string,
@@ -83,6 +91,7 @@ export function SettingsHardwareRouteScreen() {
             <HardwareSections
               key={environment.environmentId}
               environmentId={environment.environmentId}
+              roomBrain={environment.serverConfig.settings.roomBrain}
               label={selectedTargets.length > 1 ? environment.label : null}
             />
           ))
@@ -116,11 +125,17 @@ function MoodEyes({ mood }: { readonly mood: R1Mood }) {
 
 function HardwareSections({
   environmentId,
+  roomBrain,
   label,
 }: {
   readonly environmentId: EnvironmentId;
+  readonly roomBrain: RoomBrain;
   readonly label: string | null;
 }) {
+  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "room brain update",
+    reportFailure: true,
+  });
   const devicesCall = useAtomCommand(batonWorkSessions.devicesCall, QUIET);
   const homeCall = useAtomCommand(batonWorkSessions.homeCall, QUIET);
   const [view, setView] = useState<DevicesOverview | null>(null);
@@ -212,6 +227,24 @@ function HardwareSections({
           prefix={prefix}
         />
       ))}
+
+      <SettingsSection title={`${prefix}Room brain`}>
+        <Row
+          title={ROOM_BRAIN_LABELS[roomBrain]}
+          description="Automatic uses your Anthropic key from Settings → APIs for the quickest answers, and your Claude subscription if the key fails. Changes apply from the next thing you say, on every R1 this server answers."
+        >
+          {ROOM_BRAINS.map((way) => (
+            <ControlPill
+              key={way}
+              variant={way === roomBrain ? "primary" : "pill"}
+              label={ROOM_BRAIN_LABELS[way]}
+              onPress={() =>
+                void updateSettings({ environmentId, input: { patch: { roomBrain: way } } })
+              }
+            />
+          ))}
+        </Row>
+      </SettingsSection>
 
       <SetupSection
         prefix={prefix}

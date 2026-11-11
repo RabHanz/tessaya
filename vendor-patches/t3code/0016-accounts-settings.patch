@@ -20,7 +20,7 @@ index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 60c89ffc6b732db13fd880bedac4af057157415d..79a603736c048c3e5ad677c714e9b49ba73ca81a 100644
+index 60c89ffc6b732db13fd880bedac4af057157415d..403302ec7bfbefb331cabde9ac735ca5f175afe3 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -35,6 +35,9 @@ export type SettingsPath =
@@ -95,7 +95,7 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..79a603736c048c3e5ad677c714e9b49b
 +  {
 +    id: "room-brain",
 +    title: "Room brain",
-+    to: "/settings/home",
++    to: "/settings/hardware",
 +    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
 +  },
    {

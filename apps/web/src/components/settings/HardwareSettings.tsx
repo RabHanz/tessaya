@@ -24,6 +24,7 @@ import {
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
@@ -187,6 +188,8 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
           environmentId={environmentId}
         />
       ))}
+
+      <RoomBrainSection environmentId={environmentId} />
 
       <SetupSection
         busy={busy}
@@ -782,6 +785,52 @@ function SetupSection({
           </div>
         </div>
       </SettingsRow>
+    </SettingsSection>
+  );
+}
+
+const ROOM_BRAIN_LABELS = {
+  auto: "Automatic",
+  api: "Anthropic API key",
+  subscription: "Claude subscription",
+} as const;
+
+/** How the R1's turns reach Claude; it applies from the next turn, with no restart. */
+function RoomBrainSection({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const roomBrain = useEnvironmentSettings(environmentId, (settings) => settings.roomBrain);
+  const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  return (
+    <SettingsSection title="Room brain">
+      <SettingsRow
+        {...searchableSetting("room-brain")}
+        title="Room brain"
+        description="Automatic uses your Anthropic key (Settings → APIs) for the quickest answers, and your Claude subscription if the key fails. Applies from the next thing you say."
+        control={
+          <Select
+            value={roomBrain ?? "auto"}
+            onValueChange={(value) =>
+              updateSettings({
+                roomBrain: value === "api" || value === "subscription" ? value : "auto",
+              })
+            }
+          >
+            <SelectTrigger size="sm" aria-label="Room brain">
+              <SelectValue>
+                {(value: string | null) =>
+                  ROOM_BRAIN_LABELS[(value ?? "auto") as keyof typeof ROOM_BRAIN_LABELS]
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              {(["auto", "api", "subscription"] as const).map((way) => (
+                <SelectItem key={way} value={way}>
+                  {ROOM_BRAIN_LABELS[way]}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        }
+      />
     </SettingsSection>
   );
 }
