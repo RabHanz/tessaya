@@ -111,7 +111,7 @@ const recognisers = () => {
       const [url, file] = pair.split("=") as [string, string];
       return { url: url.trim(), token: NodeFS.readFileSync(file.trim(), "utf8").trim() };
     });
-  let states: RecogniserState[] = list.map((r) => ({ url: r.url, queue: 0, recentMs: [] }));
+  let states: RecogniserState[] = list.map((r) => ({ url: r.url, queue: 0, recent: [] }));
   const refresh = async () => {
     const queues = await Promise.all(list.map((r) => health(r.url, r.token)));
     states = states.map((s, i) => ({ ...s, queue: queues[i] ?? null }));
@@ -119,7 +119,7 @@ const recognisers = () => {
   void refresh();
   setInterval(() => void refresh(), 2_000);
   return (): RecogniserTurn => {
-    const chosen = pickRecogniser(states) ?? states[0]!;
+    const chosen = pickRecogniser(states, Date.now()) ?? states[0]!;
     const token = list.find((r) => r.url === chosen.url)!.token;
     const turn = recogniserTurn(chosen.url, token);
     return {
@@ -129,7 +129,7 @@ const recognisers = () => {
         const text = await turn.finish();
         const ms = performance.now() - started;
         states = states.map((s) =>
-          s.url === chosen.url ? { ...s, recentMs: noteTime(s.recentMs, ms) } : s,
+          s.url === chosen.url ? { ...s, recent: noteTime(s.recent, ms, Date.now()) } : s,
         );
         log(`recogniser ${chosen.url.replace(/^ws:\/\//, "")} ${Math.round(ms)} ms`);
         return text;
