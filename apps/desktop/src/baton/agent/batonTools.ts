@@ -4,6 +4,7 @@
  * does through the host. The host is the companion and the voice side; this file holds no Electron
  * and no I/O of its own, so each tool's arguments are checked here, before anything is touched.
  */
+import { HOME_TOOL_TEXT } from "@t3tools/baton-shared/homeTools";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-shared/operator";
 
 import type { BatonTool, ToolOutput } from "./batonMcp.ts";
@@ -151,6 +152,7 @@ type JobOp =
   | "cloud_cancel"
   | "cloud_usage"
   | "cloud_approve"
+  | "home"
   | "trust_show"
   | "activity_today"
   | "record"
@@ -1116,6 +1118,90 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       inputSchema: object({}),
       run: async () => ({ text: await host.jobs("cloud_usage", {}) }),
     },
+    // The house (Home Assistant on his server): the same tools and words agents get on /mcp; the server risk-checks
+    // every write and sends a risky one to his phone, so these never carry his yes.
+    ...(
+      [
+        [
+          "home_find",
+          "read",
+          "find",
+          object({
+            text: { type: "string", maxLength: 200 },
+            area: { type: "string", maxLength: 100 },
+            domain: { type: "string", maxLength: 60 },
+            limit: { type: "number", minimum: 1, maximum: 50 },
+          }),
+        ],
+        [
+          "home_state",
+          "read",
+          "state",
+          object(
+            {
+              entityId: { type: "string", maxLength: 200 },
+              since: { type: "string", maxLength: 40 },
+            },
+            ["entityId"],
+          ),
+        ],
+        ["home_automations", "read", "automations", object({ all: { type: "boolean" } })],
+        [
+          "home_do",
+          "act",
+          "do",
+          object(
+            {
+              domain: { type: "string", maxLength: 60 },
+              service: { type: "string", maxLength: 80 },
+              target: { type: "object" },
+              data: { type: "object" },
+              why: { type: "string", maxLength: 500 },
+            },
+            ["domain", "service", "why"],
+          ),
+        ],
+        ["home_undo", "act", "undo", object({ id: { type: "string", maxLength: 120 } }, ["id"])],
+        [
+          "home_automation_save",
+          "act",
+          "automationSave",
+          object(
+            {
+              id: { type: "string", maxLength: 120 },
+              alias: { type: "string", maxLength: 120 },
+              kind: { type: "string", enum: ["permanent", "temporary", "scratch"] },
+              runInMinutes: { type: "number", minimum: 1, maximum: 1440 },
+              expiresInMinutes: { type: "number", minimum: 1 },
+              expiresAt: { type: "string", maxLength: 40 },
+              once: { type: "boolean" },
+              triggers: { type: "array" },
+              conditions: { type: "array" },
+              actions: { type: "array" },
+              request: { type: "string", maxLength: 500 },
+            },
+            ["alias", "kind", "actions", "request"],
+          ),
+        ],
+        [
+          "home_automation_set",
+          "act",
+          "automationSet",
+          object(
+            {
+              id: { type: "string", maxLength: 120 },
+              op: { type: "string", enum: ["pause", "resume", "delete"] },
+            },
+            ["id", "op"],
+          ),
+        ],
+      ] as const
+    ).map(([name, method, op, inputSchema]) => ({
+      name,
+      description: HOME_TOOL_TEXT[name],
+      inputSchema,
+      run: async (a: Args) => ({ text: await host.jobs("home", { method, op, args: a }) }),
+    })),
     {
       name: "cloud_approve",
       description:

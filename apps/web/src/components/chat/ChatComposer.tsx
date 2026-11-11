@@ -140,7 +140,14 @@ import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
 import { useDictationShortcut } from "../../speech/useDictationShortcut";
 import { useDictationSubmissionShortcut } from "../../speech/useDictationSubmissionShortcut";
 import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
-import { ComposerSpeechButton, ComposerSpeechRecordingPill } from "./ComposerSpeechButton";
+import { ComposerSpeechButton } from "./ComposerSpeechButton";
+import { useComposerPillLook } from "../../speech/useComposerPillLook";
+import { useTessayaComposerDictation } from "../../speech/useTessayaComposerDictation";
+import {
+  BatonDictationControl,
+  BatonDictationWords,
+  dictatingAttribute,
+} from "./BatonComposerDictation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
@@ -1879,6 +1886,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isComposerApprovalState ||
     activePendingIsResponding ||
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
+  const readSpeechDraft = () => {
+    const snapshot = readComposerSnapshot();
+    return {
+      text: snapshot.value,
+      selection: composerEditorRef.current?.readSelectionRange() ?? {
+        start: snapshot.expandedCursor,
+        end: snapshot.expandedCursor,
+      },
+    };
+  };
+  const commitSpeechDraft = (text: string, selection: { start: number; end: number }) => {
+    const snapshot = readComposerSnapshot();
+    const applied = applyPromptReplacement(0, snapshot.value.length, text, {
+      expectedText: snapshot.value,
+      focusEditorAfterReplace: false,
+    });
+    if (!applied) return;
+    const cursor = collapseExpandedComposerCursor(text, selection.start, isLiteralPendingAnswer);
+    setComposerCursor(cursor);
+    window.requestAnimationFrame(() => composerEditorRef.current?.focusAt(cursor));
+  };
   const speechInput = useEnvironmentSpeechInput({
     environmentId,
     projectId: activeProjectId,
@@ -1886,28 +1914,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ownerKey: questionAttachmentTarget ?? composerDraftTargetKey,
     draftText: prompt,
     disabled: dictationDisabled,
-    readDraft: () => {
-      const snapshot = readComposerSnapshot();
-      return {
-        text: snapshot.value,
-        selection: composerEditorRef.current?.readSelectionRange() ?? {
-          start: snapshot.expandedCursor,
-          end: snapshot.expandedCursor,
-        },
-      };
-    },
-    commitDraft: (text, selection) => {
-      const snapshot = readComposerSnapshot();
-      const applied = applyPromptReplacement(0, snapshot.value.length, text, {
-        expectedText: snapshot.value,
-        focusEditorAfterReplace: false,
-      });
-      if (!applied) return;
-      const cursor = collapseExpandedComposerCursor(text, selection.start, isLiteralPendingAnswer);
-      setComposerCursor(cursor);
-      window.requestAnimationFrame(() => composerEditorRef.current?.focusAt(cursor));
-    },
+    readDraft: readSpeechDraft,
+    commitDraft: commitSpeechDraft,
   });
+  const tessayaDictation = useTessayaComposerDictation({
+    speech: speechInput,
+    readDraft: readSpeechDraft,
+    commitDraft: commitSpeechDraft,
+    rootRef: composerFormRef,
+    disabled: dictationDisabled,
+  });
+  const pillLook = useComposerPillLook(environmentId);
   const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
   const voiceSendDisabledReason =
     sendDisabledReason ?? (speechInput.preparing ? "Preparing voice input" : null);
@@ -3519,7 +3536,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
               {composerAttachmentFileList}
 
-              <div className="relative">
+              <div className="relative" {...dictatingAttribute(tessayaDictation.state)}>
                 {previewFile ? (
                   <ComposerFilePreviewDialog
                     file={previewFile}
@@ -3582,10 +3599,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       projectSelectionRequired ||
                       isChoiceOnlyPendingQuestion ||
                       activePendingIsResponding ||
-                      speechInput.freezesEditor
+                      speechInput.freezesEditor ||
+                      tessayaDictation.freezesEditor
                     }
                   />
                 </ComposerContextActionsContext>
+                <BatonDictationWords state={tessayaDictation.state} />
                 {showMobilePendingAnswerActions ? (
                   <div
                     data-chat-composer-mobile-pending-actions="true"
@@ -3622,21 +3641,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               message={providerInputSubmissionError ?? composerSubmissionError}
             />
 
-            {speechInput.preview ? (
-              <div
-                aria-label="Live transcription"
-                className="mx-3 mb-3 max-h-32 overflow-y-auto rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap sm:mx-4"
-              >
-                <span>{speechInput.preview.committed}</span>
-                <span className="text-muted-foreground">{speechInput.preview.tentative}</span>
-              </div>
-            ) : null}
-
             {isComposerCollapsedMobile && speechInput.state.phase === "idle" ? null : (
               <div
                 data-chat-composer-footer="true"
+                {...dictatingAttribute(tessayaDictation.state)}
                 className={cn(
-                  "flex min-w-0 flex-nowrap items-center overflow-visible px-2 pb-2",
+                  "relative flex min-w-0 flex-nowrap items-center overflow-visible px-2 pb-2",
                   pendingUserInputs.length > 0 && "pt-2",
                   showMobilePendingAnswerActions &&
                     speechInput.state.phase === "idle" &&
@@ -3644,6 +3654,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
+                <BatonDictationControl
+                  state={tessayaDictation.state}
+                  design={pillLook.design}
+                  wave={pillLook.wave}
+                  level={tessayaDictation.level}
+                  onConfirm={tessayaDictation.confirm}
+                  onCancel={tessayaDictation.cancel}
+                />
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"
@@ -3720,28 +3738,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       : {})}
                   >
                     {speechInput.available ? (
-                      <>
-                        <ComposerSpeechRecordingPill
-                          state={speechInput.state}
-                          progress={null}
-                          finishShortcutLabel={dictationShortcutLabel}
-                          cancelShortcutLabel="Esc"
-                          level={speechInput.level}
-                          disabled={dictationDisabled}
-                          onStart={() => void speechInput.start()}
-                          onStop={() => void speechInput.stop()}
-                          onCancel={() => speechInput.cancel()}
-                          onSkipPostProcessing={() => speechInput.skipPostProcessing()}
-                        />
-                        <ComposerSpeechButton
-                          state={speechInput.state}
-                          progress={null}
-                          shortcutLabel={dictationShortcutLabel}
-                          disabled={dictationDisabled}
-                          onStart={() => void speechInput.start()}
-                          onCancel={() => speechInput.cancel()}
-                        />
-                      </>
+                      <ComposerSpeechButton
+                        state={speechInput.state}
+                        progress={null}
+                        shortcutLabel={dictationShortcutLabel}
+                        disabled={dictationDisabled}
+                        onStart={() => void speechInput.start()}
+                        onCancel={() => speechInput.cancel()}
+                      />
                     ) : null}
                     <VoiceInputSetup
                       environmentId={speechInput.transcriptionEnvironmentId}

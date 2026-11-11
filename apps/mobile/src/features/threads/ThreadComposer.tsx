@@ -33,7 +33,14 @@ import {
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
-import { I18nManager, Keyboard, Platform, View, type ViewStyle } from "react-native";
+import {
+  I18nManager,
+  Keyboard,
+  Platform,
+  useColorScheme,
+  View,
+  type ViewStyle,
+} from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
@@ -107,14 +114,13 @@ import { useComposerCommandMenu } from "./use-composer-command-menu";
 import type { ComposerEnvironmentCandidate } from "@t3tools/client-runtime/composerThreadItems";
 import { offersLinkedEnvironments } from "@t3tools/client-runtime/link-request";
 import {
-  ComposerDictationCancelAction,
   ComposerDictationDraftContent,
   ComposerDictationError,
-  ComposerDictationPrimaryAction,
   ComposerDictationStartAction,
-  ComposerDictationStatus,
   ComposerDictationToolbar,
 } from "../voice-input/ComposerDictationControl";
+import { usePillLook } from "../voice-input/pillLook";
+import { TessayaDictationPill } from "../voice-input/TessayaDictationPill";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
 import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
@@ -585,6 +591,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     voiceInput.elapsedSeconds,
   );
   const isVoiceInputPresented = voicePresentation.statusKind === "active";
+  const pillLook = usePillLook(props.environmentId);
+  const dark = useColorScheme() === "dark";
   const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
   const { layout, setComposerEditing } = useAdaptiveWorkspaceLayout();
   const floatingSidebarComposer = useAndroidFloatingTabs() && layout.usesSplitView;
@@ -1150,28 +1158,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 paddingTop={0}
                 style={{ gap: 0 }}
               >
-                <ComposerDictationCancelAction
-                  size={usesLargeControls ? "large" : "regular"}
-                  presentation={voicePresentation}
+                <TessayaDictationPill
+                  design={pillLook.design}
+                  wave={pillLook.wave}
+                  tokens={pillLook.tokens}
+                  dark={dark}
+                  levels={voiceInput.audioLevels}
+                  label={voicePresentation.statusLabel ?? "Dictation"}
+                  confirmable={voicePresentation.confirmationEnabled}
                   onCancel={voiceInput.cancel}
-                />
-                <ComposerDictationStatus
-                  audioLevels={voiceInput.audioLevels}
-                  elapsedSeconds={voiceInput.elapsedSeconds}
-                  phase={voiceInput.state.phase}
-                  presentation={voicePresentation}
+                  onConfirm={voiceInput.stop}
                 />
                 <View className="shrink-0 flex-row items-center">
-                  <ComposerDictationPrimaryAction
-                    size={usesLargeControls ? "large" : "regular"}
-                    state={voiceInput.state}
-                    presentation={voicePresentation}
-                    isAvailable={voiceInput.isAvailable}
-                    disabled={isSubmissionLocked}
-                    onStart={voiceInput.start}
-                    onConfirm={voiceInput.stop}
-                    onCancel={voiceInput.cancel}
-                  />
                   {showStopAction ? (
                     <ComposerActionButton
                       size={usesLargeControls ? "large" : "regular"}

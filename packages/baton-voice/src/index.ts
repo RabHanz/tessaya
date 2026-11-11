@@ -5,3 +5,5 @@ export * from "./router.ts";
 export * from "./core.ts";
 export * from "./providers/speech.ts";
 export * from "./providers/onnx.ts";
+export * from "./providers/speakerOnnx.ts";
+export * from "./speaker.ts";

@@ -30,6 +30,7 @@ import {
   hasEnvironmentVoiceCapture,
 } from "../voice-input/voiceDestination";
 import { VoiceModelSection } from "./VoiceModelSection";
+import { DictationCleanupSection } from "./DictationCleanupSection";
 import { CloudVoiceSection } from "./CloudVoiceSection";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
@@ -285,6 +286,7 @@ export function SettingsVoiceRouteScreen() {
             label={grantEnvironment.label}
           />
         ) : null}
+        <DictationCleanupSection />
         {!grant && transcriber === null ? (
           <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
         ) : null}

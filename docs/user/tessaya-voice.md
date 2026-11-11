@@ -12,6 +12,18 @@ Each wake word is a persona with its own name and voice: say "Freya" and Freya a
 
 Change a persona's voice in Settings, Personas and voices, and press **Play** to hear it; **Default** puts it back. Each persona is the front-matter (`name`, `wake`, `voice`, `role`, `model`, `effort`) at the top of its file in the operating-system pack folder. `model` and `effort` choose what that persona thinks on in its jobs, and the most it uses in conversation: the lead on `opus`, the others on `sonnet`, both at `medium`, unless you change them. In conversation a simple question (the time, what needs you, a yes) is answered on `haiku`, most sentences on `sonnet`, and only planning or a chain of actions on the persona's own model, so replies come sooner. To choose yourself, say "use Opus" (or Sonnet, Haiku), "think harder" or "go faster", or pick under **Model for conversation** and **Thinking effort** in Settings or **Model** in the tray menu; your choice holds, above any persona's own model, until you say "back to normal" or pick **Automatic**. An optional `tools` line (for example `tools: type_text, click_element, Read`) limits that persona to those tools; it can only take permissions away, never add any. `projects` (for example `projects: shop, site`) puts a persona on those projects' teams, and `leads` makes it a project's own lead, able to start, split, hand over and schedule that project's jobs (never cloud work, and a job it starts gets no folders of its own). Two projects can share a title: write `leads: shop@studio` for the shop project on the computer called studio; a bare `shop` counts only while one project has that title. Add `walled: shop` to the lead's file to wall a project's memories: only its team and Tessaya recall them. A question asking your yes names the persona that wants to act. Choosing **Quick** or **System voice** under **Voices** on the same page gives every persona that one voice.
 
+## Voice ID
+
+Voice ID lets Tessaya know when it is you speaking. Turn it on in Settings, Voice and wake words, Voice ID. The first time, it downloads a 30 MB voice model. Then press **Make my voice profile** and read the three sentences shown, with voice on. If **Use your Wispr recordings** is on, Tessaya also reads up to 60 of your Wispr Flow recordings, once and read-only. Your profile is a list of numbers, not audio, and it never leaves this computer. **Re-enrol** makes it again and **Delete** removes it.
+
+Under **People**, type someone's name and press **Add** while they sit with you. They say yes and read the lines shown. People you saved get read-only answers and can leave you a message, but they cannot make Tessaya act. Removing a person also removes what Tessaya remembers for them.
+
+- With **Respond to other people** off (the default), voices Tessaya does not know are ignored.
+- Only you can cut in by talking over her, unless **Saved people can talk over her** is on.
+- Your recognised voice can confirm everyday things. Anything risky still needs the card on screen or on your phone.
+- A very short reply ("yes", "stop") is too short to tell voices apart. It counts as unverified, and a risky yes then always needs the card.
+- If the model or your profile is missing, Tessaya hears everyone as before, unless **Ignore everyone if Voice ID cannot run** is on.
+
 ## Good to know
 
 - **Stop** it by saying "stop", "quiet", "enough" or "cancel" while it talks. It hears those with no wake word and nothing else said over its voice.
