@@ -51,7 +51,7 @@ export const SPEAKER_MODEL = {
  */
 export const wakeModelFor = (
   languages: ReadonlyArray<string>,
-  speechModel: "v3" | "fast",
+  speechModel: "v3" | "fast" | "personal",
 ): DownloadableModel | null =>
   speechModel !== "fast" && englishOnly(languages) ? PARAKEET_FAST_MODEL : null;
 
@@ -86,7 +86,7 @@ export const weakMachine = (machine: {
 
 export const machinePicksFast = (
   settings: {
-    readonly speechModel: "v3" | "fast";
+    readonly speechModel: "v3" | "fast" | "personal";
     readonly speechModelPicked?: "you" | "machine" | undefined;
     readonly languages: ReadonlyArray<string>;
   },
@@ -96,6 +96,45 @@ export const machinePicksFast = (
   settings.speechModelPicked === undefined &&
   settings.speechModel === "v3" &&
   englishOnly(settings.languages);
+
+/**
+ * His own fine-tuned model, which no release ships: `<home>/.tessaya/personal-models/manifest.json` names one GGUF in
+ * that folder with its size and sha256. The folder is his, not app state, so nothing here writes or deletes in it.
+ */
+export const personalModelsDir = (home: string): string =>
+  NodePath.join(home, ".tessaya", "personal-models");
+
+export type PersonalModel =
+  | { readonly ok: true; readonly path: string }
+  | { readonly ok: false; readonly why: "none" | "manifest" | "size" | "checksum" };
+
+/** The personal model, only when its bytes match its manifest; any mismatch is refused, so Standard is used. */
+export const verifyPersonalModel = async (dir: string): Promise<PersonalModel> => {
+  const raw = await NodeFSP.readFile(NodePath.join(dir, "manifest.json"), "utf8").catch(() => null);
+  if (raw === null) return { ok: false, why: "none" };
+  let manifest: { name?: unknown; size?: unknown; sha256?: unknown };
+  try {
+    manifest = JSON.parse(raw) as typeof manifest;
+  } catch {
+    return { ok: false, why: "manifest" };
+  }
+  const { name, size, sha256 } = manifest;
+  if (
+    typeof name !== "string" ||
+    NodePath.basename(name) !== name ||
+    !name.endsWith(".gguf") ||
+    typeof size !== "number" ||
+    typeof sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(sha256)
+  )
+    return { ok: false, why: "manifest" };
+  const path = NodePath.join(dir, name);
+  const stat = await NodeFSP.stat(path).catch(() => null);
+  if (stat?.size !== size) return { ok: false, why: "size" };
+  const hash = NodeCrypto.createHash("sha256");
+  await NodeStreamPromises.pipeline(NodeFS.createReadStream(path), hash);
+  return hash.digest("hex") === sha256 ? { ok: true, path } : { ok: false, why: "checksum" };
+};
 
 export interface DownloadableModel {
   readonly file: string;
