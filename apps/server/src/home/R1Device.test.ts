@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mqttPublishBytes, spokenReply, sseReply } from "./R1Device.ts";
+import { mqttPublishBytes, splitActs, spokenReply, sseReply } from "./R1Device.ts";
 
 describe("R1Device", () => {
   it("says what really happened when an act waited or failed, never the model's 'done'", () => {
@@ -37,5 +37,23 @@ describe("R1Device", () => {
     expect(lines.at(-1)).toBe("data: [DONE]");
     expect(JSON.parse(lines[0]!.slice(6)).choices[0].delta.content).toBe("Hello.");
     expect(JSON.parse(lines[1]!.slice(6)).choices[0].finish_reason).toBe("stop");
+  });
+});
+
+describe("the streamed R1 turn", () => {
+  it("reads the acts line first, holds while it is arriving, and treats anything else as speech", () => {
+    expect(splitActs("AC")).toBeNull();
+    expect(splitActs("ACTS [")).toBeNull();
+    expect(splitActs("ACTS []\nThe study light is on")).toEqual({
+      acts: [],
+      rest: "The study light is on",
+    });
+    const withAct = splitActs(
+      'ACTS [{"tool":"home_do","args":{"domain":"light","service":"turn_on"}}]\nOn it.',
+    );
+    expect(withAct?.acts.map((a) => a.tool)).toEqual(["home_do"]);
+    expect(splitActs("It is half past nine.")).toEqual({ acts: [], rest: "It is half past nine." });
+    // A broken or unknown act list is no act at all, never a guess.
+    expect(splitActs('ACTS [{"tool":"rm_rf","args":{}}]\nSure.')?.acts).toEqual([]);
   });
 });
