@@ -3,10 +3,26 @@ Usage details (ComposerPickerFooter children, onUsageLimitsCommand), and on mobi
 provider with account rows (BatonAccountRow), the session's real effort, and the header's limit chip.
 
 diff --git a/apps/mobile/src/features/threads/ThreadComposer.tsx b/apps/mobile/src/features/threads/ThreadComposer.tsx
-index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..d6f64acb819e870487cea5a25a04256c985c9a77 100644
+index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..0dc4d7428effb68e6887ec3cf3704af4f71b0013 100644
 --- a/apps/mobile/src/features/threads/ThreadComposer.tsx
 +++ b/apps/mobile/src/features/threads/ThreadComposer.tsx
-@@ -56,6 +56,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
+@@ -33,7 +33,14 @@ import {
+ import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
+ import type { ReactNode } from "react";
+ import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
+-import { I18nManager, Keyboard, Platform, View, type ViewStyle } from "react-native";
++import {
++  I18nManager,
++  Keyboard,
++  Platform,
++  useColorScheme,
++  View,
++  type ViewStyle,
++} from "react-native";
+ import { composerImageGallery } from "../../lib/composerImageGallery";
+ import { filePreviewGallery } from "../../lib/filePreviewGallery";
+ import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
+@@ -56,6 +63,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
  import { themeColorWithAlpha } from "../../lib/mobileTheme";
  import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
  import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -14,7 +30,33 @@ index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..d6f64acb819e870487cea5a25a04256c
  import {
    getComposerDraftSnapshot,
    composerDraftsAtom,
-@@ -730,6 +731,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
+@@ -106,14 +114,13 @@ import { useComposerCommandMenu } from "./use-composer-command-menu";
+ import type { ComposerEnvironmentCandidate } from "@t3tools/client-runtime/composerThreadItems";
+ import { offersLinkedEnvironments } from "@t3tools/client-runtime/link-request";
+ import {
+-  ComposerDictationCancelAction,
+   ComposerDictationDraftContent,
+   ComposerDictationError,
+-  ComposerDictationPrimaryAction,
+   ComposerDictationStartAction,
+-  ComposerDictationStatus,
+   ComposerDictationToolbar,
+ } from "../voice-input/ComposerDictationControl";
++import { usePillLook } from "../voice-input/pillLook";
++import { TessayaDictationPill } from "../voice-input/TessayaDictationPill";
+ import { useVoiceInputController } from "../voice-input/useVoiceInputController";
+ import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
+ import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
+@@ -584,6 +591,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
+     voiceInput.elapsedSeconds,
+   );
+   const isVoiceInputPresented = voicePresentation.statusKind === "active";
++  const pillLook = usePillLook(props.environmentId);
++  const dark = useColorScheme() === "dark";
+   const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
+   const { layout, setComposerEditing } = useAdaptiveWorkspaceLayout();
+   const floatingSidebarComposer = useAndroidFloatingTabs() && layout.usesSplitView;
+@@ -730,6 +739,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
    const openSettings = () => {
      settingsSheetPresentation.open();
    };
@@ -22,6 +64,44 @@ index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..d6f64acb819e870487cea5a25a04256c
  
    useFocusEffect(() => {
      if (!settingsRoutePresentedRef.current) {
+@@ -1148,28 +1158,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
+                 paddingTop={0}
+                 style={{ gap: 0 }}
+               >
+-                <ComposerDictationCancelAction
+-                  size={usesLargeControls ? "large" : "regular"}
+-                  presentation={voicePresentation}
++                <TessayaDictationPill
++                  design={pillLook.design}
++                  wave={pillLook.wave}
++                  tokens={pillLook.tokens}
++                  dark={dark}
++                  levels={voiceInput.audioLevels}
++                  label={voicePresentation.statusLabel ?? "Dictation"}
++                  confirmable={voicePresentation.confirmationEnabled}
+                   onCancel={voiceInput.cancel}
+-                />
+-                <ComposerDictationStatus
+-                  audioLevels={voiceInput.audioLevels}
+-                  elapsedSeconds={voiceInput.elapsedSeconds}
+-                  phase={voiceInput.state.phase}
+-                  presentation={voicePresentation}
++                  onConfirm={voiceInput.stop}
+                 />
+                 <View className="shrink-0 flex-row items-center">
+-                  <ComposerDictationPrimaryAction
+-                    size={usesLargeControls ? "large" : "regular"}
+-                    state={voiceInput.state}
+-                    presentation={voicePresentation}
+-                    isAvailable={voiceInput.isAvailable}
+-                    disabled={isSubmissionLocked}
+-                    onStart={voiceInput.start}
+-                    onConfirm={voiceInput.stop}
+-                    onCancel={voiceInput.cancel}
+-                  />
+                   {showStopAction ? (
+                     <ComposerActionButton
+                       size={usesLargeControls ? "large" : "regular"}
 diff --git a/apps/mobile/src/features/threads/ThreadHeader.tsx b/apps/mobile/src/features/threads/ThreadHeader.tsx
 index 955dd5d800b4927b7cc4707d6d817bf1aad0ce04..ddf1b7d07e8c64a9ed97cdfe626f70b166c53ed9 100644
 --- a/apps/mobile/src/features/threads/ThreadHeader.tsx
@@ -253,10 +333,26 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
        runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
        onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2e55a0e2b 100644
+index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb8225310f6ba718 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
-@@ -337,6 +337,8 @@ export interface ChatComposerHandle {
+@@ -140,7 +140,14 @@ import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
+ import { useDictationShortcut } from "../../speech/useDictationShortcut";
+ import { useDictationSubmissionShortcut } from "../../speech/useDictationSubmissionShortcut";
+ import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
+-import { ComposerSpeechButton, ComposerSpeechRecordingPill } from "./ComposerSpeechButton";
++import { ComposerSpeechButton } from "./ComposerSpeechButton";
++import { useComposerPillLook } from "../../speech/useComposerPillLook";
++import { useTessayaComposerDictation } from "../../speech/useTessayaComposerDictation";
++import {
++  BatonDictationControl,
++  BatonDictationWords,
++  dictatingAttribute,
++} from "./BatonComposerDictation";
+ import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
+ import { shortcutLabelForCommand } from "../../keybindings";
+ import {
+@@ -337,6 +344,8 @@ export interface ChatComposerHandle {
      environmentContexts: EnvironmentContextRecord[];
      selectedPromptEffort: string | null;
      selectedModelSelection: ModelSelection;
@@ -265,7 +361,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
      multipleModelSelections: ReadonlyArray<ModelSelection> | null;
      providerAvailable: boolean;
      selectedProvider: ProviderDriverKind;
-@@ -426,7 +428,10 @@ export interface ChatComposerProps {
+@@ -426,7 +435,10 @@ export interface ChatComposerProps {
    defaultRuntimeMode?: RuntimeMode;
    interactionMode: ProviderInteractionMode;
  
@@ -276,7 +372,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
    providerStatuses: ServerProvider[];
    providerCatalogKnown: boolean;
    activeProjectDefaultModelSelection: ModelSelection | null | undefined;
-@@ -555,6 +560,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -555,6 +567,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      runtimeMode,
      interactionMode: requestedInteractionMode,
      lockedProvider,
@@ -284,7 +380,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
      providerStatuses,
      providerCatalogKnown,
      activeProjectDefaultModelSelection,
-@@ -906,14 +912,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -906,14 +919,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        activeThreadModelSelection?.instanceId,
        activeProjectDefaultModelSelection?.instanceId,
      ],
@@ -323,7 +419,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
    const providerSetupInstanceId = noProviderAvailable
      ? (unavailableProviderInstanceId ??
        (lockedProvider === null
-@@ -951,7 +979,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -951,7 +986,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        ? attachmentBlockReason
        : (attachmentBlockReason ??
          runtimeModeCeilingDenial ??
@@ -334,7 +430,74 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
    const isSendDisabled = sendDisabledReason !== null;
    const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
    const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
-@@ -2471,6 +2501,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1849,6 +1886,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+     isComposerApprovalState ||
+     activePendingIsResponding ||
+     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
++  const readSpeechDraft = () => {
++    const snapshot = readComposerSnapshot();
++    return {
++      text: snapshot.value,
++      selection: composerEditorRef.current?.readSelectionRange() ?? {
++        start: snapshot.expandedCursor,
++        end: snapshot.expandedCursor,
++      },
++    };
++  };
++  const commitSpeechDraft = (text: string, selection: { start: number; end: number }) => {
++    const snapshot = readComposerSnapshot();
++    const applied = applyPromptReplacement(0, snapshot.value.length, text, {
++      expectedText: snapshot.value,
++      focusEditorAfterReplace: false,
++    });
++    if (!applied) return;
++    const cursor = collapseExpandedComposerCursor(text, selection.start, isLiteralPendingAnswer);
++    setComposerCursor(cursor);
++    window.requestAnimationFrame(() => composerEditorRef.current?.focusAt(cursor));
++  };
+   const speechInput = useEnvironmentSpeechInput({
+     environmentId,
+     projectId: activeProjectId,
+@@ -1856,28 +1914,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+     ownerKey: questionAttachmentTarget ?? composerDraftTargetKey,
+     draftText: prompt,
+     disabled: dictationDisabled,
+-    readDraft: () => {
+-      const snapshot = readComposerSnapshot();
+-      return {
+-        text: snapshot.value,
+-        selection: composerEditorRef.current?.readSelectionRange() ?? {
+-          start: snapshot.expandedCursor,
+-          end: snapshot.expandedCursor,
+-        },
+-      };
+-    },
+-    commitDraft: (text, selection) => {
+-      const snapshot = readComposerSnapshot();
+-      const applied = applyPromptReplacement(0, snapshot.value.length, text, {
+-        expectedText: snapshot.value,
+-        focusEditorAfterReplace: false,
+-      });
+-      if (!applied) return;
+-      const cursor = collapseExpandedComposerCursor(text, selection.start, isLiteralPendingAnswer);
+-      setComposerCursor(cursor);
+-      window.requestAnimationFrame(() => composerEditorRef.current?.focusAt(cursor));
+-    },
++    readDraft: readSpeechDraft,
++    commitDraft: commitSpeechDraft,
++  });
++  const tessayaDictation = useTessayaComposerDictation({
++    speech: speechInput,
++    readDraft: readSpeechDraft,
++    commitDraft: commitSpeechDraft,
++    rootRef: composerFormRef,
++    disabled: dictationDisabled,
+   });
++  const pillLook = useComposerPillLook(environmentId);
+   const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
+   const voiceSendDisabledReason =
+     sendDisabledReason ?? (speechInput.preparing ? "Preparing voice input" : null);
+@@ -2471,6 +2518,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        onModelPickerOpenChange={setIsComposerModelPickerOpen}
        modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
        getModelDisabledReason={getModelDisabledReason}
@@ -342,7 +505,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
      />
    );
    // An open question owns the space above the composer. Only a machine problem,
-@@ -3109,6 +3140,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3109,6 +3157,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
          environmentContexts: composerEnvironmentContexts,
          selectedPromptEffort,
          selectedModelSelection,
@@ -352,7 +515,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
          multipleModelSelections:
            routeKind === "draft" && multipleModelSelections !== null
              ? multipleModelSelections.map((selection) =>
-@@ -3181,6 +3215,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3181,6 +3232,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        reportedModelSelection,
        settings.planModeEnabled,
        selectedModelSelection,
@@ -361,7 +524,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
        multipleModelSelections,
        setMultipleModelSelections,
        routeKind,
-@@ -3369,7 +3405,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3369,7 +3422,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                    aria-label="Expand composer"
                  >
                    {prompt.trim() ||
@@ -373,7 +536,16 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
                  </button>
                  {collapsedComposerImagePreviews}
                  <button
-@@ -3534,9 +3573,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3480,7 +3536,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+ 
+               {composerAttachmentFileList}
+ 
+-              <div className="relative">
++              <div className="relative" {...dictatingAttribute(tessayaDictation.state)}>
+                 {previewFile ? (
+                   <ComposerFilePreviewDialog
+                     file={previewFile}
+@@ -3534,18 +3590,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                              ? "Add feedback to refine the plan, or leave this blank to implement it"
                              : projectSelectionRequired
                                ? "Choose a project above to start a thread"
@@ -387,6 +559,94 @@ index be106a251592ebba7d7f223fc889d1886768d089..b466127733b257cadf15617dd5542fa2
                      }
                      disabled={
                        projectSelectionRequired ||
+                       isChoiceOnlyPendingQuestion ||
+                       activePendingIsResponding ||
+-                      speechInput.freezesEditor
++                      speechInput.freezesEditor ||
++                      tessayaDictation.freezesEditor
+                     }
+                   />
+                 </ComposerContextActionsContext>
++                <BatonDictationWords state={tessayaDictation.state} />
+                 {showMobilePendingAnswerActions ? (
+                   <div
+                     data-chat-composer-mobile-pending-actions="true"
+@@ -3582,21 +3641,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+               message={providerInputSubmissionError ?? composerSubmissionError}
+             />
+ 
+-            {speechInput.preview ? (
+-              <div
+-                aria-label="Live transcription"
+-                className="mx-3 mb-3 max-h-32 overflow-y-auto rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap sm:mx-4"
+-              >
+-                <span>{speechInput.preview.committed}</span>
+-                <span className="text-muted-foreground">{speechInput.preview.tentative}</span>
+-              </div>
+-            ) : null}
+-
+             {isComposerCollapsedMobile && speechInput.state.phase === "idle" ? null : (
+               <div
+                 data-chat-composer-footer="true"
++                {...dictatingAttribute(tessayaDictation.state)}
+                 className={cn(
+-                  "flex min-w-0 flex-nowrap items-center overflow-visible px-2 pb-2",
++                  "relative flex min-w-0 flex-nowrap items-center overflow-visible px-2 pb-2",
+                   pendingUserInputs.length > 0 && "pt-2",
+                   showMobilePendingAnswerActions &&
+                     speechInput.state.phase === "idle" &&
+@@ -3604,6 +3654,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+                 )}
+               >
+                 {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
++                <BatonDictationControl
++                  state={tessayaDictation.state}
++                  design={pillLook.design}
++                  wave={pillLook.wave}
++                  level={tessayaDictation.level}
++                  onConfirm={tessayaDictation.confirm}
++                  onCancel={tessayaDictation.cancel}
++                />
+                 <div
+                   data-chat-composer-actions="right"
+                   data-chat-composer-transition-actions="true"
+@@ -3680,28 +3738,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+                       : {})}
+                   >
+                     {speechInput.available ? (
+-                      <>
+-                        <ComposerSpeechRecordingPill
+-                          state={speechInput.state}
+-                          progress={null}
+-                          finishShortcutLabel={dictationShortcutLabel}
+-                          cancelShortcutLabel="Esc"
+-                          level={speechInput.level}
+-                          disabled={dictationDisabled}
+-                          onStart={() => void speechInput.start()}
+-                          onStop={() => void speechInput.stop()}
+-                          onCancel={() => speechInput.cancel()}
+-                          onSkipPostProcessing={() => speechInput.skipPostProcessing()}
+-                        />
+-                        <ComposerSpeechButton
+-                          state={speechInput.state}
+-                          progress={null}
+-                          shortcutLabel={dictationShortcutLabel}
+-                          disabled={dictationDisabled}
+-                          onStart={() => void speechInput.start()}
+-                          onCancel={() => speechInput.cancel()}
+-                        />
+-                      </>
++                      <ComposerSpeechButton
++                        state={speechInput.state}
++                        progress={null}
++                        shortcutLabel={dictationShortcutLabel}
++                        disabled={dictationDisabled}
++                        onStart={() => void speechInput.start()}
++                        onCancel={() => speechInput.cancel()}
++                      />
+                     ) : null}
+                     <VoiceInputSetup
+                       environmentId={speechInput.transcriptionEnvironmentId}
 diff --git a/apps/web/src/components/chat/ComposerModelEffort.tsx b/apps/web/src/components/chat/ComposerModelEffort.tsx
 index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2ad1dd5aaf5463d62e5a4ba9fdb51373bce0d92b 100644
 --- a/apps/web/src/components/chat/ComposerModelEffort.tsx
