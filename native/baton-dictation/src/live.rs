@@ -16,8 +16,9 @@ const SPEECH_OVER_FLOOR: f32 = 3.98;
 const SPEECH_RUN: usize = 3;
 /// How uneven the quiet after a pause preview may be for the release to take the preview's words (`quiet_after`).
 pub const REUSE_FLAT: f32 = 4.0;
-/// Quiet this long after speech is a pause worth a preview (`Chunker::paused_since`): about where he lets go.
-const PAUSE_PREVIEW: usize = RATE * 3 / 10;
+/// Quiet this long after speech is a pause worth the final decode (`Chunker::paused_since`): he stops a few hundred ms
+/// before he lets go, so 200 ms starts it early enough to be done at release; a breath between words is shorter.
+const PAUSE_PREVIEW: usize = RATE / 5;
 
 #[derive(Clone, Copy)]
 pub struct ChunkParams {
@@ -393,6 +394,27 @@ mod tests {
         pcm.extend_from_slice(&more);
         assert!(chunker.push(&more).is_none());
         assert!(!chunker.pending_is_quiet(&pcm, 2.0));
+    }
+
+    #[test]
+    fn a_fifth_of_a_second_of_quiet_is_his_pause() {
+        // He stops a few hundred ms before he lets go: the final decode starts 200 ms into the quiet, not 300.
+        let mut chunker = Chunker::new(ChunkParams { min_samples: 6 * RATE, ..PARAMS });
+        // A recording opens on the room before he speaks: its floor.
+        let mut heard = tone(0.3, 0.2 / 300.0);
+        heard.extend_from_slice(&tone(2.0, 0.2));
+        chunker.push(&heard);
+        let hush = tone(0.22, 0.2 / 300.0);
+        heard.extend_from_slice(&hush);
+        chunker.push(&hush);
+        assert!(chunker.paused_since(0, &heard));
+        // A breath of 120 ms between words is not.
+        let mut talk = Chunker::new(ChunkParams { min_samples: 6 * RATE, ..PARAMS });
+        let mut said = tone(0.3, 0.2 / 300.0);
+        said.extend_from_slice(&tone(2.0, 0.2));
+        said.extend_from_slice(&tone(0.12, 0.2 / 300.0));
+        talk.push(&said);
+        assert!(!talk.paused_since(0, &said));
     }
 
     #[test]
