@@ -1,8 +1,10 @@
 /**
  * The desktop's dictation settings, changed from outside: a change waits here until the desktop's next sync takes it,
- * and the desktop reports what it then runs with. In memory only; the desktop's own file stays the truth. Each set is a
- * Record row: who, the change, and the values before and after.
+ * and the desktop reports what it then runs with. In memory only; the desktop's file stays the truth, except the cleanup
+ * level, which follows and sets the one `dictationCleanup` server setting. Each set is a Record row: who, the change,
+ * and the values before and after.
  */
+import { chooseDictationCleanup } from "@t3tools/contracts";
 import type {
   DesktopSettingsView,
   DesktopVoiceSettings,
@@ -17,7 +19,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
+import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
+
+type Level = DesktopVoiceSettings["dictationCleanup"];
+/** On is Tessaya's model cleanup; off keeps the desktop's own code-only or raw choice. */
+export const levelFollowing = (enabled: boolean, level: Level): Level =>
+  enabled ? "claude" : level === "claude" ? "local" : level;
 
 /** A sync with nothing to take waits this long for a change, so an idle desktop asks about twice a minute. */
 export const SYNC_HOLD = Duration.seconds(25);
@@ -60,6 +68,9 @@ export class BatonDesktopSettings extends Context.Service<
 
 const make = Effect.gen(function* () {
   const record = yield* Effect.serviceOption(BatonRecordService);
+  const serverSettings = yield* ServerSettingsService;
+  /** The last level handed to the desktop, so its report of taking it is not read as his own change. */
+  let handed: Level | null = null;
   let reported: { readonly at: number; readonly effective: DesktopVoiceSettings } | null = null;
   let pending: {
     readonly version: number;
@@ -87,9 +98,42 @@ const make = Effect.gen(function* () {
     pending: pending?.patch ?? null,
   }));
 
+  const choose = Effect.fn("BatonDesktopSettings.choose")(
+    function* (level: Level) {
+      const current = (yield* serverSettings.getSettings).dictationCleanup;
+      if (levelFollowing(current.enabled, level) === level) return;
+      const now = yield* Clock.currentTimeMillis;
+      yield* serverSettings.updateSettings({
+        dictationCleanup: chooseDictationCleanup(current, { enabled: level === "claude" }, now),
+      });
+    },
+    Effect.catchCause((cause) => Effect.logWarning("dictation cleanup choice not saved", cause)),
+  );
+
+  /** Hands the desktop the level the one setting asks for, unless the difference is his own new choice there. */
+  const follow = Effect.fn("BatonDesktopSettings.follow")(
+    function* (level: Level, previous: Level | null) {
+      const universal = (yield* serverSettings.getSettings).dictationCleanup;
+      const wanted = levelFollowing(universal.enabled, level);
+      if (wanted === level) return;
+      // A first report before anyone chose carries his choice from before the one setting existed.
+      const his =
+        previous === null ? universal.updatedAt === 0 : previous !== level && level !== handed;
+      if (his) return yield* choose(level);
+      version += 1;
+      handed = wanted;
+      pending = { version, at: yield* fresh, patch: { dictationCleanup: wanted } };
+    },
+    Effect.catchCause((cause) => Effect.logWarning("dictation cleanup not followed", cause)),
+  );
+
   const set = Effect.fn("BatonDesktopSettings.set")(function* (patch: DesktopVoiceSettingsPatch) {
     const by = yield* DesktopSettingsCaller;
     const before = reported?.effective ?? null;
+    if (patch.dictationCleanup !== undefined) {
+      yield* choose(patch.dictationCleanup);
+      handed = patch.dictationCleanup;
+    }
     version += 1;
     const mine = version;
     pending = { version: mine, at: yield* fresh, patch: { ...pending?.patch, ...patch } };
@@ -130,11 +174,13 @@ const make = Effect.gen(function* () {
     readonly effective: DesktopVoiceSettings;
     readonly applied: number;
   }) {
+    const previous = reported?.effective.dictationCleanup ?? null;
     reported = { at: yield* fresh, effective: input.effective };
     if (pending !== null && input.applied >= pending.version) pending = null;
     for (const waiter of waiters.filter((w) => input.applied >= w.version)) {
       yield* Deferred.succeed(waiter.done, undefined);
     }
+    if (pending === null) yield* follow(input.effective.dictationCleanup, previous);
     if (pending === null) {
       yield* Deferred.await(wake).pipe(Effect.timeoutOption(SYNC_HOLD));
       yield* fresh;

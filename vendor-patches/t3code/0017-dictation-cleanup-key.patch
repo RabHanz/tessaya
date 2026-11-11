@@ -293,30 +293,40 @@ index a85bc9e3301435290e114da4ae570b28dcee2b50..a458076c1a854130dce051879172731f
    ];
  }
 diff --git a/apps/web/src/components/settings/SettingsSidebarNav.tsx b/apps/web/src/components/settings/SettingsSidebarNav.tsx
-index e175fbc439f2281811e3630cec4ec3710b66ab33..60874247931257e872eafe6b0eaa13c402a7a43e 100644
+index e175fbc439f2281811e3630cec4ec3710b66ab33..4a570719f4451ca3fe3b432ff879a3cfed626373 100644
 --- a/apps/web/src/components/settings/SettingsSidebarNav.tsx
 +++ b/apps/web/src/components/settings/SettingsSidebarNav.tsx
-@@ -24,6 +24,7 @@ import {
+@@ -24,6 +24,8 @@ import {
    KeyboardIcon,
    KeyRoundIcon,
    MicIcon,
++  HouseIcon,
 +  PlugIcon,
    PaletteIcon,
    SearchIcon,
    ServerIcon,
-@@ -105,6 +106,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
+@@ -105,6 +107,8 @@ const SETTINGS_SECTION_ICONS: Readonly<
    "/settings/connections": ServerIcon,
    "/settings/access": ShieldCheckIcon,
    "/settings/secrets": KeyRoundIcon,
 +  "/settings/apis": PlugIcon,
++  "/settings/home": HouseIcon,
    "/settings/maintenance": WrenchIcon,
    "/settings/labs": FlaskConicalIcon,
    "/settings/about": InfoIcon,
 diff --git a/apps/web/src/routeTree.gen.ts b/apps/web/src/routeTree.gen.ts
-index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20581a540b 100644
+index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..08d03c3cdfbc3f074173812b7177e537debced91 100644
 --- a/apps/web/src/routeTree.gen.ts
 +++ b/apps/web/src/routeTree.gen.ts
-@@ -47,6 +47,7 @@ import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings
+@@ -37,6 +37,7 @@ import { Route as ChatSettingsMaintenanceRouteImport } from './routes/_chat.sett
+ import { Route as ChatSettingsLabsRouteImport } from './routes/_chat.settings.labs'
+ import { Route as ChatSettingsKeybindingsRouteImport } from './routes/_chat.settings.keybindings'
+ import { Route as ChatSettingsIntegrationsRouteImport } from './routes/_chat.settings.integrations'
++import { Route as ChatSettingsHomeRouteImport } from './routes/_chat.settings.home'
+ import { Route as ChatSettingsGeneralRouteImport } from './routes/_chat.settings.general'
+ import { Route as ChatSettingsDiffsRouteImport } from './routes/_chat.settings.diffs'
+ import { Route as ChatSettingsDiagnosticsRouteImport } from './routes/_chat.settings.diagnostics'
+@@ -47,6 +48,7 @@ import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings
  import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
  import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
  import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
@@ -324,7 +334,19 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
  import { Route as ChatSettingsAccessRouteImport } from './routes/_chat.settings.access'
  import { Route as ChatSettingsAboutRouteImport } from './routes/_chat.settings.about'
  import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
-@@ -246,6 +247,11 @@ const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
+@@ -196,6 +198,11 @@ const ChatSettingsIntegrationsRoute =
+     path: '/integrations',
+     getParentRoute: () => ChatSettingsRoute,
+   } as any)
++const ChatSettingsHomeRoute = ChatSettingsHomeRouteImport.update({
++  id: '/home',
++  path: '/home',
++  getParentRoute: () => ChatSettingsRoute,
++} as any)
+ const ChatSettingsGeneralRoute = ChatSettingsGeneralRouteImport.update({
+   id: '/general',
+   path: '/general',
+@@ -246,6 +253,11 @@ const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
    path: '/appearance',
    getParentRoute: () => ChatSettingsRoute,
  } as any)
@@ -336,7 +358,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
  const ChatSettingsAccessRoute = ChatSettingsAccessRouteImport.update({
    id: '/access',
    path: '/access',
-@@ -284,6 +290,7 @@ export interface FileRoutesByFullPath {
+@@ -284,6 +296,7 @@ export interface FileRoutesByFullPath {
    '/draft/$draftId': typeof ChatDraftDraftIdRoute
    '/settings/about': typeof ChatSettingsAboutRoute
    '/settings/access': typeof ChatSettingsAccessRoute
@@ -344,7 +366,15 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
    '/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/settings/archived': typeof ChatSettingsArchivedRoute
    '/settings/beta': typeof ChatSettingsBetaRoute
-@@ -327,6 +334,7 @@ export interface FileRoutesByTo {
+@@ -294,6 +307,7 @@ export interface FileRoutesByFullPath {
+   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
+   '/settings/diffs': typeof ChatSettingsDiffsRoute
+   '/settings/general': typeof ChatSettingsGeneralRoute
++  '/settings/home': typeof ChatSettingsHomeRoute
+   '/settings/integrations': typeof ChatSettingsIntegrationsRoute
+   '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
+   '/settings/labs': typeof ChatSettingsLabsRoute
+@@ -327,6 +341,7 @@ export interface FileRoutesByTo {
    '/draft/$draftId': typeof ChatDraftDraftIdRoute
    '/settings/about': typeof ChatSettingsAboutRoute
    '/settings/access': typeof ChatSettingsAccessRoute
@@ -352,7 +382,15 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
    '/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/settings/archived': typeof ChatSettingsArchivedRoute
    '/settings/beta': typeof ChatSettingsBetaRoute
-@@ -372,6 +380,7 @@ export interface FileRoutesById {
+@@ -337,6 +352,7 @@ export interface FileRoutesByTo {
+   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
+   '/settings/diffs': typeof ChatSettingsDiffsRoute
+   '/settings/general': typeof ChatSettingsGeneralRoute
++  '/settings/home': typeof ChatSettingsHomeRoute
+   '/settings/integrations': typeof ChatSettingsIntegrationsRoute
+   '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
+   '/settings/labs': typeof ChatSettingsLabsRoute
+@@ -372,6 +388,7 @@ export interface FileRoutesById {
    '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
    '/_chat/settings/about': typeof ChatSettingsAboutRoute
    '/_chat/settings/access': typeof ChatSettingsAccessRoute
@@ -360,7 +398,15 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
    '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
    '/_chat/settings/beta': typeof ChatSettingsBetaRoute
-@@ -417,6 +426,7 @@ export interface FileRouteTypes {
+@@ -382,6 +399,7 @@ export interface FileRoutesById {
+   '/_chat/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
+   '/_chat/settings/diffs': typeof ChatSettingsDiffsRoute
+   '/_chat/settings/general': typeof ChatSettingsGeneralRoute
++  '/_chat/settings/home': typeof ChatSettingsHomeRoute
+   '/_chat/settings/integrations': typeof ChatSettingsIntegrationsRoute
+   '/_chat/settings/keybindings': typeof ChatSettingsKeybindingsRoute
+   '/_chat/settings/labs': typeof ChatSettingsLabsRoute
+@@ -417,6 +435,7 @@ export interface FileRouteTypes {
      | '/draft/$draftId'
      | '/settings/about'
      | '/settings/access'
@@ -368,7 +414,15 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
      | '/settings/appearance'
      | '/settings/archived'
      | '/settings/beta'
-@@ -460,6 +470,7 @@ export interface FileRouteTypes {
+@@ -427,6 +446,7 @@ export interface FileRouteTypes {
+     | '/settings/diagnostics'
+     | '/settings/diffs'
+     | '/settings/general'
++    | '/settings/home'
+     | '/settings/integrations'
+     | '/settings/keybindings'
+     | '/settings/labs'
+@@ -460,6 +480,7 @@ export interface FileRouteTypes {
      | '/draft/$draftId'
      | '/settings/about'
      | '/settings/access'
@@ -376,7 +430,15 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
      | '/settings/appearance'
      | '/settings/archived'
      | '/settings/beta'
-@@ -504,6 +515,7 @@ export interface FileRouteTypes {
+@@ -470,6 +491,7 @@ export interface FileRouteTypes {
+     | '/settings/diagnostics'
+     | '/settings/diffs'
+     | '/settings/general'
++    | '/settings/home'
+     | '/settings/integrations'
+     | '/settings/keybindings'
+     | '/settings/labs'
+@@ -504,6 +526,7 @@ export interface FileRouteTypes {
      | '/_chat/draft/$draftId'
      | '/_chat/settings/about'
      | '/_chat/settings/access'
@@ -384,7 +446,29 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
      | '/_chat/settings/appearance'
      | '/_chat/settings/archived'
      | '/_chat/settings/beta'
-@@ -811,6 +823,13 @@ declare module '@tanstack/react-router' {
+@@ -514,6 +537,7 @@ export interface FileRouteTypes {
+     | '/_chat/settings/diagnostics'
+     | '/_chat/settings/diffs'
+     | '/_chat/settings/general'
++    | '/_chat/settings/home'
+     | '/_chat/settings/integrations'
+     | '/_chat/settings/keybindings'
+     | '/_chat/settings/labs'
+@@ -741,6 +765,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof ChatSettingsIntegrationsRouteImport
+       parentRoute: typeof ChatSettingsRoute
+     }
++    '/_chat/settings/home': {
++      id: '/_chat/settings/home'
++      path: '/home'
++      fullPath: '/settings/home'
++      preLoaderRoute: typeof ChatSettingsHomeRouteImport
++      parentRoute: typeof ChatSettingsRoute
++    }
+     '/_chat/settings/general': {
+       id: '/_chat/settings/general'
+       path: '/general'
+@@ -811,6 +842,13 @@ declare module '@tanstack/react-router' {
        preLoaderRoute: typeof ChatSettingsAppearanceRouteImport
        parentRoute: typeof ChatSettingsRoute
      }
@@ -398,7 +482,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
      '/_chat/settings/access': {
        id: '/_chat/settings/access'
        path: '/access'
-@@ -845,6 +864,7 @@ declare module '@tanstack/react-router' {
+@@ -845,6 +883,7 @@ declare module '@tanstack/react-router' {
  interface ChatSettingsRouteChildren {
    ChatSettingsAboutRoute: typeof ChatSettingsAboutRoute
    ChatSettingsAccessRoute: typeof ChatSettingsAccessRoute
@@ -406,7 +490,15 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
    ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
    ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
    ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
-@@ -875,6 +895,7 @@ interface ChatSettingsRouteChildren {
+@@ -855,6 +894,7 @@ interface ChatSettingsRouteChildren {
+   ChatSettingsDiagnosticsRoute: typeof ChatSettingsDiagnosticsRoute
+   ChatSettingsDiffsRoute: typeof ChatSettingsDiffsRoute
+   ChatSettingsGeneralRoute: typeof ChatSettingsGeneralRoute
++  ChatSettingsHomeRoute: typeof ChatSettingsHomeRoute
+   ChatSettingsIntegrationsRoute: typeof ChatSettingsIntegrationsRoute
+   ChatSettingsKeybindingsRoute: typeof ChatSettingsKeybindingsRoute
+   ChatSettingsLabsRoute: typeof ChatSettingsLabsRoute
+@@ -875,6 +915,7 @@ interface ChatSettingsRouteChildren {
  const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
    ChatSettingsAboutRoute: ChatSettingsAboutRoute,
    ChatSettingsAccessRoute: ChatSettingsAccessRoute,
@@ -414,6 +506,14 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b87692ff8da3bb061ba69d57f5eb3c20
    ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
    ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
    ChatSettingsBetaRoute: ChatSettingsBetaRoute,
+@@ -885,6 +926,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
+   ChatSettingsDiagnosticsRoute: ChatSettingsDiagnosticsRoute,
+   ChatSettingsDiffsRoute: ChatSettingsDiffsRoute,
+   ChatSettingsGeneralRoute: ChatSettingsGeneralRoute,
++  ChatSettingsHomeRoute: ChatSettingsHomeRoute,
+   ChatSettingsIntegrationsRoute: ChatSettingsIntegrationsRoute,
+   ChatSettingsKeybindingsRoute: ChatSettingsKeybindingsRoute,
+   ChatSettingsLabsRoute: ChatSettingsLabsRoute,
 diff --git a/apps/web/src/routes/_chat.settings.tsx b/apps/web/src/routes/_chat.settings.tsx
 index 7758c9ca559191b0a2ba6f0b14349f34af9803b2..d78d7f25fa874ca8a54443d10fab7c40430da7cb 100644
 --- a/apps/web/src/routes/_chat.settings.tsx

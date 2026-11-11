@@ -122,10 +122,12 @@ export const layer = Layer.effect(
 
     const cleanup = Effect.fn("DictationCleanupApi.cleanup")(
       function* (input: DictationCleanupRequest) {
+        // The one cleanup setting's model when it is Claude's; any other provider's model is not this key's.
+        const chosen = (yield* settings.getSettings).dictationCleanup.model?.model;
         const request = yield* authorized(
           HttpClientRequest.post(`${API}/messages`).pipe(
             HttpClientRequest.bodyJsonUnsafe({
-              model: MODEL,
+              model: chosen?.startsWith("claude-") ? chosen : MODEL,
               max_tokens: input.maxTokens,
               system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
               messages: [{ role: "user", content: input.message }],
