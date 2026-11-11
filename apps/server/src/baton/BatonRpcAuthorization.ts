@@ -31,6 +31,8 @@ import {
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
+  PRIVATE_ASSISTANT_OPS,
+  PRIVATE_READ_OPS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -385,6 +387,33 @@ export const HIS_OWN_METHODS: ReadonlySet<string> = new Set([
   BATON_ACCOUNT_WS_METHODS.setOnLimit,
   BATON_ACCOUNT_WS_METHODS.threadKeep,
 ]);
+
+/** Which session is asking, so a private store opens for that device only, and whether it is his desktop's own. */
+export const privateCallerOf = (session: Pick<AuthenticatedSession, "scopes" | "sessionId">) => ({
+  session: String(session.sessionId),
+  desktop: session.scopes.includes(AuthBatonHandsHostScope),
+});
+
+/**
+ * Why this session may not make this private-memory request, or null. Private memories are only for people at his
+ * desktop or a browser he paired, never a token's device, which may be an agent. Reads need read, changes operate, and
+ * what only the desktop's own assistant does needs hands-host too. Served on its own route: one more method in the RPC
+ * group turns its handler types to `any`.
+ */
+export const privateRefusal = (
+  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
+  op: string,
+): string | null => {
+  if (askSourceOf(session) !== "phone")
+    return "Private memories open only from his own desktop or a browser he paired.";
+  const needs = [
+    AuthOrchestrationReadScope,
+    ...(PRIVATE_READ_OPS.has(op) ? [] : [AuthOrchestrationOperateScope]),
+    ...(PRIVATE_ASSISTANT_OPS.has(op) ? [AuthBatonHandsHostScope] : []),
+  ];
+  const missing = needs.find((scope) => !session.scopes.includes(scope));
+  return missing === undefined ? null : `Needs ${missing}.`;
+};
 
 export const refusedAsDevice = (
   tag: string,
