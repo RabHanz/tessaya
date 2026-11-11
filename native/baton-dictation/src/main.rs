@@ -487,47 +487,29 @@ struct Live {
     settled: bool,
 }
 
-/// How long a connection to his server may take before the laptop decodes instead.
-const REMOTE_CONNECT: Duration = Duration::from_millis(400);
 /// How long release waits for his server's text before the laptop decodes everything it kept.
 const REMOTE_TEXT: Duration = Duration::from_millis(2_000);
 
-/// One dictation on his server: connecting in the background while the key is held, then streaming.
+/// One dictation on his server, begun on a connection the pool already holds open.
 struct Remote {
     /// The dictation this is: on each `partial`, so the desktop never shows one dictation's words on the next.
     id: u64,
-    connecting: Option<Receiver<Option<remote::Dictation>>>,
-    dictation: Option<remote::Dictation>,
+    dictation: remote::Dictation,
     /// Samples of `heard` already sent.
     sent: usize,
 }
 
 impl Remote {
-    /// Picks the server and opens the dictation off the engine's thread; audio waits in `heard` meanwhile.
-    fn connect(id: u64, servers: Vec<remote::Server>, language: Option<String>) -> Remote {
-        let (tx, rx) = channel();
-        thread::spawn(move || {
-            // The health check's own socket begins the dictation, so the whole choice stays inside REMOTE_CONNECT.
-            let chosen = remote::pick(&servers, REMOTE_CONNECT)
-                .and_then(|(_, socket)| remote::Dictation::begin(socket, language).ok());
-            let _ = tx.send(chosen);
-        });
-        Remote { id, connecting: Some(rx), dictation: None, sent: 0 }
+    /// The server chosen from the last pings, with no network wait; None: no server is ready, the laptop decodes.
+    fn connect(id: u64, servers: &[remote::Server], language: Option<String>) -> Option<Remote> {
+        let (_, socket, _) = remote::take_warm(servers)?;
+        let dictation = remote::Dictation::begin(socket, language).ok()?;
+        Some(Remote { id, dictation, sent: 0 })
     }
 
     /// Sends what is new and passes its live words on. False: the server failed or never answered.
     fn step(&mut self, heard: &[f32]) -> bool {
-        if let Some(rx) = &self.connecting {
-            match rx.try_recv() {
-                Ok(Some(dictation)) => {
-                    self.dictation = Some(dictation);
-                    self.connecting = None;
-                }
-                Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => return false,
-                Err(std::sync::mpsc::TryRecvError::Empty) => return true,
-            }
-        }
-        let Some(dictation) = &self.dictation else { return true };
+        let dictation = &self.dictation;
         if heard.len() > self.sent {
             dictation.audio(&heard[self.sent..]);
             self.sent = heard.len();
@@ -545,11 +527,8 @@ impl Remote {
     }
 
     /// The release: the rest of the audio, then its text within `REMOTE_TEXT`. None: the laptop decodes.
-    fn finish(mut self, heard: &[f32]) -> Option<(String, u64, bool)> {
-        if let Some(rx) = self.connecting.take() {
-            self.dictation = rx.recv_timeout(REMOTE_CONNECT).ok().flatten();
-        }
-        let dictation = self.dictation?;
+    fn finish(self, heard: &[f32]) -> Option<(String, u64, bool)> {
+        let dictation = self.dictation;
         if heard.len() > self.sent {
             dictation.audio(&heard[self.sent..]);
         }
@@ -983,7 +962,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 if path_of(&gpu) == Some(model.as_path()) =>
             {
                 // On the card: the CPU's model is not read for it, and is read only if the card fails.
-                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, language.clone()));
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, &servers, language.clone())).flatten();
                 // Woken while he speaks, so release does not pay for it; a failure here shows at his own decode.
                 if gpu_at.elapsed() >= gpu::IDLE {
                     if let Some((_, session)) = gpu.as_mut() {
@@ -1005,7 +984,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         Live::new(language, 0, Some(e))
                     }
                 };
-                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, fresh.language.clone()));
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, &servers, fresh.language.clone())).flatten();
                 live = Some(Live { id, keep, live_words: words, remote, ..fresh });
             }
             Ok(Work::Audio(id, mut pcm)) => {
@@ -2118,6 +2097,7 @@ fn serve() {
                                     *lead.borrow_mut() = None;
                                 }
                                 config = next;
+                                remote::keep_warm(&config.recognizers);
                                 meter_on.store(config.meter, Ordering::Relaxed);
                                 let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
                                 let local = config.model.is_some() && (config.external.is_none() || config.live_words);
