@@ -60,6 +60,7 @@ import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
+import { runFreyaImport } from "./memory/freyaImport.ts";
 
 /** The one line a voice speaks when he plays or picks it. */
 const AUDITION_LINE = "Hello, this is how I sound.";
@@ -72,6 +73,8 @@ const VOICE_LOG_MAX_FILES = 5;
 const LAUNCH_WARM_MS = 5_000;
 /** How often, while an update waits, this machine's server is asked whether a session is mid-turn. */
 const IN_FLIGHT_MS = 5_000;
+/** Long enough for this machine's server to be up; a plan that still finds it down waits for the next start. */
+const FREYA_IMPORT_DELAY_MS = 30_000;
 
 export const startBatonDesktop = Effect.gen(function* () {
   adoptTessayaEnv(process.env);
@@ -451,6 +454,15 @@ export const startBatonDesktop = Effect.gen(function* () {
     };
     Electron.powerMonitor.on("lock-screen", lockPrivate);
     Electron.powerMonitor.on("suspend", lockPrivate);
+    // A Freya import plan he dropped in comes in once this machine's server answers, then is deleted.
+    setTimeout(
+      () =>
+        void runFreyaImport(environment.stateDir, {
+          memory: (op, args) => direct(`baton.memory.${op}`, args),
+          private: privateMemory.call,
+        }).catch(() => undefined),
+      FREYA_IMPORT_DELAY_MS,
+    ).unref();
     // While an update waits, what a restart would cut off here (SESS-SURVIVE): it restarts only when nothing is mid-turn.
     readInFlight = async () => {
       try {
