@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SettingsScreen } from "./components/SettingsScreen";
 import { CodeAppearanceSection } from "./appearance/sections/CodeAppearanceSection";
+import { DictationAppearanceSection } from "./appearance/sections/DictationAppearanceSection";
 import { TerminalAppearanceSection } from "./appearance/sections/TerminalAppearanceSection";
 import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSection";
 import { ThemeAppearanceSection } from "./appearance/sections/ThemeAppearanceSection";
@@ -28,6 +29,7 @@ export function SettingsAppearanceRouteScreen() {
         <TextAppearanceSection />
         <TerminalAppearanceSection />
         <CodeAppearanceSection />
+        <DictationAppearanceSection />
       </ScrollView>
     </SettingsScreen>
   );

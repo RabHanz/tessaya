@@ -20,18 +20,19 @@ index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 60c89ffc6b732db13fd880bedac4af057157415d..eac9fa67d5c6d5530383519671d4e61887da50fa 100644
+index 60c89ffc6b732db13fd880bedac4af057157415d..9b811ec3bb69d990669af4acb338ab4df26460dc 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -35,6 +35,7 @@ export type SettingsPath =
+@@ -35,6 +35,8 @@ export type SettingsPath =
    | "/settings/connections"
    | "/settings/access"
    | "/settings/secrets"
 +  | "/settings/apis"
++  | "/settings/home"
    | "/settings/maintenance"
    | "/settings/labs"
    | "/settings/about"
-@@ -93,7 +94,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+@@ -93,7 +95,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
    "/settings/diffs": "Diffs & pull requests",
    "/settings/keybindings": "Keybindings",
    "/settings/snap-shot": "SnapShots",
@@ -40,23 +41,25 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..eac9fa67d5c6d5530383519671d4e618
    "/settings/threads": "Threads",
    "/settings/browser": "Browser",
    "/settings/devices": "Devices",
-@@ -103,6 +104,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+@@ -103,6 +105,8 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
    "/settings/connections": "Environments",
    "/settings/access": "Sharing & access",
    "/settings/secrets": "Secrets",
 +  "/settings/apis": "APIs",
++  "/settings/home": "Home",
    "/settings/maintenance": "Maintenance",
    "/settings/labs": "Labs",
    "/settings/about": "About",
-@@ -147,6 +149,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+@@ -147,6 +151,8 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
        "/settings/connections",
        "/settings/access",
        ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
 +      "/settings/apis",
++      "/settings/home",
      ],
    },
    {
-@@ -1285,6 +1288,12 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1285,6 +1291,18 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["new 1password vault op cli account"],
      secretsFeatureOnly: true,
    },
@@ -66,14 +69,21 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..eac9fa67d5c6d5530383519671d4e618
 +    to: "/settings/apis",
 +    searchTerms: ["api key claude dictation cleanup voice"],
 +  },
++  {
++    id: "home-assistant",
++    title: "Home Assistant",
++    to: "/settings/home",
++    searchTerms: ["house lights automations devices smart home r1"],
++  },
    {
      id: "archive",
      title: "Archived threads",
-@@ -1316,6 +1325,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+@@ -1316,6 +1334,8 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
    "/settings/connections": "connections",
    "/settings/access": "connections",
    "/settings/secrets": null,
 +  "/settings/apis": null,
++  "/settings/home": null,
    "/settings/scheduled-tasks": null,
    "/settings/maintenance": null,
    "/settings/labs": null,
