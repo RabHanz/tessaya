@@ -292,6 +292,17 @@ pub fn meter_b64(pcm: &[f32]) -> String {
     out
 }
 
+/// `next` without its first word when that repeats `prev`'s last, case and punctuation aside: a preview's word end can
+/// fall short of the word, so the decode after it hears that word again ("with with").
+pub fn without_repeat(prev: &str, next: &str) -> String {
+    let bare = |w: &str| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+    let (first, rest) = next.trim().split_once(' ').unwrap_or((next.trim(), ""));
+    match prev.split_whitespace().last() {
+        Some(last) if !first.is_empty() && bare(last) == bare(first) => rest.trim().to_string(),
+        _ => next.trim().to_string(),
+    }
+}
+
 /// Words that start after the context. A word straddling the seam belongs to the piece that
 /// heard it whole, which is this one, so the boundary sits slightly before the seam.
 pub fn words_after<'a>(words: impl Iterator<Item = (i64, &'a str)>, context_ms: i64) -> String {
@@ -595,6 +606,15 @@ mod tests {
         // A preview that took 1.5 s waits for 3 s more audio, so decoding never takes more than half the time.
         assert!(!preview_due(RATE * 3, RATE / 2, 1_500));
         assert!(preview_due(RATE * 7 / 2, RATE / 2, 1_500));
+    }
+
+    #[test]
+    fn a_word_heard_on_both_sides_of_the_seam_is_written_once() {
+        assert_eq!(without_repeat("Will it not work with", "with just one hook?"), "just one hook?");
+        assert_eq!(without_repeat("so it really", "Really doesn't make sense."), "doesn't make sense.");
+        assert_eq!(without_repeat("all of the", "pages"), "pages");
+        assert_eq!(without_repeat("", "with you"), "with you");
+        assert_eq!(without_repeat("with", "with"), "");
     }
 
     #[test]

@@ -54,7 +54,7 @@ use handy_recorder::{
 use chord::{Chord, ChordOut, Ev as ChordEv};
 use keys::PasteMethod;
 use live::{
-    join_pieces, lift_gain, meter_b64, preview_due, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES, REUSE_FLAT,
+    join_pieces, lift_gain, meter_b64, preview_due, without_repeat, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES, REUSE_FLAT,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -670,9 +670,15 @@ impl Live {
         };
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
-        let decoded = decode_words(session, piece, self.language.clone()).ok().map(|(text, words)| {
+        let decoded = decode_words(session, piece, self.language.clone()).ok().map(|(text, mut words)| {
+            if kept.is_empty() {
+                return (text, words);
+            }
             let known = kept.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ");
-            let text = join_pieces(&[known, text]);
+            if !words.is_empty() && without_repeat(&known, &words[0].1).is_empty() {
+                words.remove(0);
+            }
+            let text = join_pieces(&[known, words.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ")]);
             (text, kept.into_iter().chain(words.into_iter().map(|(end, w)| (end + skip, w))).collect::<EndedWords>())
         });
         self.preview_words = decoded.as_ref().map(|(_, words)| words.clone()).unwrap_or_default();
@@ -717,12 +723,18 @@ impl Live {
             } else {
                 // The preview's words that ended well before it stopped are kept; only what follows is decoded.
                 let (end, kept) = self.settled_words(self.previewed);
-                if !kept.is_empty() {
+                let seam = !kept.is_empty();
+                if seam {
                     self.chunker.skip(end);
                     self.text.push(kept.into_iter().map(|(_, w)| w).collect::<Vec<_>>().join(" "));
                 }
+                let written = self.text.len();
                 if let Some(piece) = self.chunker.finish() {
                     self.decode(session, piece);
+                }
+                let (before, after) = self.text.split_at_mut(written);
+                if let (true, Some(known), [tail]) = (seam, before.last(), after) {
+                    *tail = without_repeat(known, tail);
                 }
             }
         }
