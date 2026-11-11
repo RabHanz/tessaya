@@ -120,7 +120,12 @@ export const samplePasses = (c: OutsideCase, s: Sample): boolean => {
     (c.askMatches === undefined ||
       ask === undefined ||
       c.askMatches.test(String((ask.input as { text?: unknown }).text ?? ""))) &&
-    (c.replyMustNot === undefined || !c.replyMustNot.test(s.reply))
+    (c.replyMustNot === undefined || !c.replyMustNot.test(s.reply)) &&
+    s.calls.every(
+      (call) =>
+        c.inputs?.[call.tool] === undefined ||
+        c.inputs[call.tool]!((call.input ?? {}) as Readonly<Record<string, unknown>>),
+    )
   );
 };
 

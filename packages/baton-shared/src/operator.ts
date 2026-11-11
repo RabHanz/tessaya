@@ -156,6 +156,10 @@ const BATON_QUIET = new Set([
   "approvals_list",
   "job_revoke",
   "job_stop",
+  // The house: reads only.
+  "home_find",
+  "home_state",
+  "home_automations",
 ]);
 /** Tools only a remote hands session has; the assistant's own table never holds them. */
 export const REMOTE_ONLY_TOOLS: ReadonlySet<string> = new Set([
@@ -207,6 +211,10 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "cloud_dispatch",
   "cloud_cancel",
   "cloud_approve",
+  "home_do",
+  "home_undo",
+  "home_automation_save",
+  "home_automation_set",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -352,6 +360,15 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       // Routine: it only makes a request that waits for him. A brief built from something it read must say so.
       return outgoing && call.input["from_web_or_file"] !== true
         ? { verdict: "ask", why: "It follows something it read, and the brief does not say so." }
+        : { verdict: "allow" };
+    case "home_do":
+    case "home_undo":
+    case "home_automation_save":
+    case "home_automation_set":
+      // The server judges every house change by its own tiers and sends a risky one to his phone; a change that
+      // follows something it read asks here first.
+      return outgoing
+        ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "cloud_cancel":
     case "cloud_approve":

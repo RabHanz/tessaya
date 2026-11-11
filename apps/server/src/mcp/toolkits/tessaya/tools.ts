@@ -39,6 +39,7 @@ import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { HomeTools } from "../home/tools.ts";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -341,6 +342,7 @@ const SessionDefaultsTool = Tool.make("tessaya_session_defaults", {
   .annotate(Tool.OpenWorld, false);
 
 export const TessayaToolkit = Toolkit.make(
+  ...HomeTools,
   JobsTool,
   WatchTool,
   RecordTool,
