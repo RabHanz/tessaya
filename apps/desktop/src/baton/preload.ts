@@ -57,6 +57,7 @@ export function exposeBatonDesktopBridge(): void {
     },
     setBatonVoiceFocus: (workSessionId) =>
       ipcRenderer.send(Channels.BATON_VOICE_FOCUS_CHANNEL, workSessionId),
+    composerMic: () => ipcRenderer.invoke(Channels.BATON_COMPOSER_MIC_CHANNEL),
   };
   contextBridge.exposeInMainWorld("batonDesktopBridge", bridge);
 }

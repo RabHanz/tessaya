@@ -5,9 +5,19 @@ name: Tessaya dictation build
 on:
   push:
     branches: [main]
-    paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
+    paths:
+      [
+        "native/baton-dictation/**",
+        "native/tessaya-recognizer/**",
+        ".github/workflows/baton-dictation-build.yml",
+      ]
   pull_request:
-    paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
+    paths:
+      [
+        "native/baton-dictation/**",
+        "native/tessaya-recognizer/**",
+        ".github/workflows/baton-dictation-build.yml",
+      ]
 
 permissions:
   contents: read
@@ -15,24 +25,49 @@ permissions:
 jobs:
   windows:
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      # The graphics-card build (gpu.rs) needs the Vulkan SDK's headers and shader compiler.
+      - uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.363.1
+          install_runtime: false
+          cache: true
       - name: Build
         shell: bash
         env:
-          # Portable AVX2 floor: the runner's own CPU may be newer than the laptop's i7-8550U.
-          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-          # Nothing installs the VC++ redistributable, so the exe must not need it.
-          RUSTFLAGS: -C target-feature=+crt-static
+          # Portable AVX2 floor: the runner's own CPU may be newer than the laptop's i7-8550U. One CPU module, not ggml's
+          # per-ISA set.
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DGGML_CPU_ALL_VARIANTS=OFF
         run: |
-          cargo test --release --locked --manifest-path native/baton-dictation/Cargo.toml
-          cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
-          if grep -aqiE 'MSVCP140|VCRUNTIME140' native/baton-dictation/target/release/tessaya-voice.exe; then
-            echo "tessaya-voice.exe still imports the VC++ runtime" >&2
-            exit 1
-          fi
+          sdk="$(cygpath -m "$VULKAN_SDK")"
+          export TRANSCRIBE_CMAKE_ARGS="$TRANSCRIBE_CMAKE_ARGS -DCMAKE_PREFIX_PATH=$sdk"
+          # Nothing installs the VC++ redistributable, so neither the exe nor its modules may need it.
+          export RUSTFLAGS="-C target-feature=+crt-static -L native=$sdk/Lib"
+          cargo test --release --locked --features gpu --manifest-path native/baton-dictation/Cargo.toml
+          cargo build --release --locked --features gpu --manifest-path native/baton-dictation/Cargo.toml
+          cd native/baton-dictation/target/release
+          for f in tessaya-voice.exe transcribe.dll ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll; do
+            test -f "$f" || { echo "$f missing" >&2; exit 1; }
+            if grep -aqiE 'MSVCP140|VCRUNTIME140' "$f"; then
+              echo "$f imports the VC++ runtime" >&2
+              exit 1
+            fi
+          done
+      - name: Starts and recognises on a PC with no Vulkan driver (this runner)
+        shell: pwsh
+        run: |
+          if (Test-Path C:\Windows\System32\vulkan-1.dll) { Rename-Item C:\Windows\System32\vulkan-1.dll vulkan-1.dll.off }
+          $exe = "native/baton-dictation/target/release/tessaya-voice.exe"
+          $out = '{"cmd":"quit"}' | & $exe serve --gpu auto
+          if ($LASTEXITCODE -ne 0 -or -not ($out -match '"ev":"ready"')) { "the sidecar did not start"; exit 1 }
+          curl.exe -sSLf -o tdt.gguf "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf"
+          python -c "import wave,math,struct; w=wave.open('tone.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b''.join(struct.pack('<h', int(3000*math.sin(i/9))) for i in range(32000))); w.close()"
+          $lines = & $exe transcribe --gpu auto --model tdt.gguf tone.wav
+          $lines
+          if ($LASTEXITCODE -ne 0 -or ($lines -match '"error"')) { "the CPU did not recognise"; exit 1 }
       - name: Windows names the process Tessaya
         shell: pwsh
         run: |
@@ -44,6 +79,7 @@ jobs:
           name: baton-dictation-win-x64
           path: |
             native/baton-dictation/target/release/tessaya-voice.exe
+            native/baton-dictation/target/release/*.dll
             native/baton-dictation/Cargo.lock
 
   linux:
@@ -68,6 +104,25 @@ jobs:
           path: |
             native/baton-dictation/target/release/tessaya-voice
             ldd.txt
+
+  recognizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the recogniser service
+        env:
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
+        run: |
+          cargo test --release --locked --manifest-path native/tessaya-recognizer/Cargo.toml
+          cargo build --release --locked --examples --manifest-path native/tessaya-recognizer/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tessaya-recognizer-linux-x64
+          path: |
+            native/tessaya-recognizer/target/release/tessaya-recognizer
+            native/tessaya-recognizer/target/release/examples/replay
 
   macos:
     runs-on: macos-latest

@@ -22,6 +22,8 @@ import {
   startingConfidence,
   tokens,
   winner,
+  datedQuery,
+  asksAboutThePast,
   type MemoryChange,
   type MemoryHit,
   type MemoryDraft,
@@ -93,6 +95,8 @@ const refuse = (reason: string) => new BatonMemoryRefusedError({ reason });
 const DAY_MS = 86_400_000;
 const DEFAULT_LIMIT = 50;
 const CANDIDATES = 200;
+/** Episodes in the block of a question that is not about what happened (MEM-18). */
+const EPISODES_UNASKED = 2;
 /** A sentence's recall leaves out hits weaker than this: one shared word in a long sentence. */
 const RECALL_FLOOR = 0.25;
 /** Recall by meaning: the nearest items at or above this cosine join the keyword hits (bge-small: unrelated text sits below about 0.5; tuned on the recall eval). */
@@ -185,6 +189,7 @@ export class BatonMemoryService extends Context.Service<
       readonly text?: string | undefined;
       readonly scopeRef?: string | null | undefined;
       readonly agent?: string | undefined;
+      readonly timeZone?: string | undefined;
     }) => Effect.Effect<ReadonlyArray<MemoryItem>>;
     /** The memory block for a prompt; with `turnRef` it records which items the turn used. */
     readonly recall: (context: {
@@ -193,6 +198,8 @@ export class BatonMemoryService extends Context.Service<
       readonly budgetTokens?: number | undefined;
       readonly turnRef?: string | undefined;
       readonly agent?: string | undefined;
+      /** His zone, so "yesterday" is his day; the last one the desktop sent when absent. */
+      readonly timeZone?: string | undefined;
     }) => Effect.Effect<MemoryRecall>;
     readonly markUsed: (turnRef: string, ids: ReadonlyArray<string>) => Effect.Effect<void>;
     readonly used: (turnRef?: string) => Effect.Effect<ReadonlyArray<MemoryItem>>;
@@ -219,6 +226,9 @@ export class BatonMemoryService extends Context.Service<
     /** A switch kept with the memory (e.g. the scheduled learnings pull). */
     readonly flag: (key: string) => Effect.Effect<boolean>;
     readonly setFlag: (key: string, on: boolean) => Effect.Effect<void>;
+    /** A short value kept with the memory: his time zone, the day's count of cheap calls. */
+    readonly meta: (key: string) => Effect.Effect<string | null>;
+    readonly setMeta: (key: string, value: string) => Effect.Effect<void>;
     /** Notes what he talked about today (a few words), for the day's episode. */
     readonly noteTalk: (day: string, text: string) => Effect.Effect<void>;
     readonly talks: (day: string) => Effect.Effect<ReadonlyArray<string>>;
@@ -283,9 +293,17 @@ export const make = Effect.gen(function* () {
     (query.scope === undefined || item.scope === query.scope);
 
   const listAll = Effect.fn("BatonMemoryService.listAll")(function* (query: MemoryQuery = {}) {
-    const rows = yield* sql<ItemRow>`
-      SELECT * FROM fabric_memory_items ORDER BY pinned DESC, updated_at DESC
-    `.pipe(Effect.orDie);
+    // Kinds are narrowed in the query, so a read of episodes (the team board) does not load every item.
+    const rows = yield* (
+      query.kinds !== undefined && query.kinds.length > 0
+        ? sql<ItemRow>`
+          SELECT * FROM fabric_memory_items WHERE kind IN ${sql.in(query.kinds)}
+          ORDER BY pinned DESC, updated_at DESC
+        `
+        : sql<ItemRow>`
+          SELECT * FROM fabric_memory_items ORDER BY pinned DESC, updated_at DESC
+        `
+    ).pipe(Effect.orDie);
     return rows
       .map(fromRow)
       .filter((item) => matches(item, query))
@@ -607,19 +625,40 @@ export const make = Effect.gen(function* () {
     readonly text?: string | undefined;
     readonly scopeRef?: string | null | undefined;
     readonly agent?: string | undefined;
+    readonly timeZone?: string | undefined;
   }) {
     const now = yield* nowMs;
     const seen = yield* viewFor(context.agent, false);
     const words = context.text === undefined ? [] : tokens(context.text);
+    const where = {
+      ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
+      ...(context.agent === undefined ? {} : { agent: context.agent }),
+    };
+    // "yesterday" also asks for that day's name as an episode writes it (MEM-18): episodes only, so a note that
+    // happens to name the day is not pulled in.
+    const dated =
+      context.text === undefined
+        ? undefined
+        : datedQuery(context.text, now, context.timeZone ?? (yield* meta("timeZone")) ?? undefined);
+    const byDay =
+      dated === undefined || dated === context.text
+        ? []
+        : (yield* search({ text: dated, kinds: ["episode"], ...where, limit: 10 })).filter(
+            (hit) => hit.score >= RECALL_FLOOR,
+          );
     // A sentence gets what matches it: the standing set is already in the session's system prompt.
     const keyword =
       words.length > 0
-        ? (yield* search({
-            text: context.text!,
-            ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
-            ...(context.agent === undefined ? {} : { agent: context.agent }),
-            limit: 40,
-          })).filter((hit) => hit.score >= RECALL_FLOOR)
+        ? [
+            ...new Map(
+              [
+                ...(yield* search({ text: context.text!, ...where, limit: 40 })).filter(
+                  (hit) => hit.score >= RECALL_FLOOR,
+                ),
+                ...byDay,
+              ].map((hit) => [hit.item.id, hit]),
+            ).values(),
+          ]
         : null;
     // By meaning as well as by words, blended by rank; without a model this adds nothing.
     // The walls and the turn's project apply before the top 20 are cut, so nothing it may not use takes a place.
@@ -661,20 +700,24 @@ export const make = Effect.gen(function* () {
               ].map((item) => ({ item, score: effectiveConfidence(item, now) }));
             },
           );
-    return (
-      hits
-        // Another project's items stay out of a turn that names its project.
-        .filter(
-          ({ item }) =>
-            typeof context.scopeRef !== "string" ||
-            item.scope !== "project" ||
-            item.scopeRef === context.scopeRef,
-        )
-        .filter(({ item }) => seen(item))
-        .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
-        .toSorted((a, b) => b.score - a.score)
-        .map((hit) => hit.item)
-    );
+    const ranked = hits
+      // Another project's items stay out of a turn that names its project.
+      .filter(
+        ({ item }) =>
+          typeof context.scopeRef !== "string" ||
+          item.scope !== "project" ||
+          item.scopeRef === context.scopeRef,
+      )
+      .filter(({ item }) => seen(item))
+      .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
+      .toSorted((a, b) => b.score - a.score)
+      .map((hit) => hit.item);
+    if (context.text === undefined || asksAboutThePast(context.text)) return ranked;
+    // Not a question about what happened: a stale episode never outranks a fact, and two at most join the block.
+    return [
+      ...ranked.filter((item) => item.kind !== "episode"),
+      ...ranked.filter((item) => item.kind === "episode").slice(0, EPISODES_UNASKED),
+    ];
   });
 
   const recall = Effect.fn("BatonMemoryService.recall")(function* (context: {
@@ -683,6 +726,7 @@ export const make = Effect.gen(function* () {
     readonly budgetTokens?: number | undefined;
     readonly turnRef?: string | undefined;
     readonly agent?: string | undefined;
+    readonly timeZone?: string | undefined;
   }) {
     const ranked = yield* related(context);
     const out = memoryBlock(ranked, context.budgetTokens ?? DEFAULT_RECALL_TOKENS);
@@ -726,6 +770,18 @@ export const make = Effect.gen(function* () {
   });
   const setFlag = Effect.fn("BatonMemoryService.setFlag")(function* (key: string, on: boolean) {
     yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`flag:${key}`}, ${on ? "1" : "0"})`.pipe(
+      Effect.orDie,
+    );
+  });
+
+  const meta = Effect.fn("BatonMemoryService.meta")(function* (key: string) {
+    const rows = yield* sql<{
+      value: string;
+    }>`SELECT value FROM fabric_memory_meta WHERE key = ${`meta:${key}`}`.pipe(Effect.orDie);
+    return rows[0]?.value ?? null;
+  });
+  const setMeta = Effect.fn("BatonMemoryService.setMeta")(function* (key: string, value: string) {
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`meta:${key}`}, ${value})`.pipe(
       Effect.orDie,
     );
   });
@@ -1005,6 +1061,8 @@ export const make = Effect.gen(function* () {
     noteOnce,
     flag,
     setFlag,
+    meta,
+    setMeta,
     noteTalk,
     talks,
     syncHello,

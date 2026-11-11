@@ -9,6 +9,7 @@ import {
   AuthStandardClientScopes,
   BATON_ACCOUNT_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
@@ -16,10 +17,14 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BatonRecordAppendInput,
+  DesktopSettingsSetInput,
   AuthGrantScopes,
+  BatonRpcGroup,
   BatonRpcScopeAuthorization,
+  tessayaSpelling,
 } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
@@ -109,6 +114,46 @@ describe("who may import memory from a folder", () => {
   });
 });
 
+describe("rename R1: every method also answers as tessaya.*", () => {
+  it("refuses a token's device the account methods under either name", () => {
+    const device = {
+      method: "bearer-access-token",
+      scopes: AuthStandardClientScopes,
+      subject: "x",
+    } as const;
+    const his = {
+      method: "browser-session-cookie",
+      scopes: AuthStandardClientScopes,
+      subject: "one-time-token",
+    } as const;
+    for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES)) {
+      const renamed = tessayaSpelling(tag);
+      expect(refusedAsDevice(renamed, device), renamed).toBe(refusedAsDevice(tag, device));
+      expect(refusedAsDevice(renamed, his), renamed).toBe(false);
+    }
+    expect(refusedAsDevice("tessaya.account.setOnLimit", device)).toBe(true);
+  });
+
+  it("is in the group under both names and needs exactly what the old name needs, payload rules included", () => {
+    const callers = [
+      [],
+      AuthStandardClientScopes,
+      [AuthBatonMemorySyncScope],
+      [...AuthStandardClientScopes, AuthBatonHandsHostScope],
+    ];
+    const payloads = [undefined, { text: "deploy key", admin: true }, { action: "run" }];
+    for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES)) {
+      const renamed = tessayaSpelling(tag);
+      expect(BatonRpcGroup.requests.has(renamed), renamed).toBe(true);
+      for (const scopes of callers)
+        for (const payload of payloads)
+          expect(missingBatonScope(renamed, scopes, payload), renamed).toBe(
+            missingBatonScope(tag, scopes, payload),
+          );
+    }
+  });
+});
+
 describe("the desktop's direct door while T3's window is closed", () => {
   it("serves only methods with a declared scope, places jobs rather than starting them raw, and lets only the desktop's own session read a folder", () => {
     for (const method of DESK_METHODS)
@@ -166,6 +211,42 @@ describe("who may write the Record", () => {
     expect(decodes({ kind: "standing_job", outcome: "held" })).toBe(true);
     expect(decodes({ kind: "assistant_turn", outcome: "approved" })).toBe(false);
     expect(decodes({ kind: "approval", outcome: "ran" })).toBe(false);
+  });
+});
+
+const decodeSettingsSet = Schema.decodeUnknownOption(DesktopSettingsSetInput);
+
+describe("who may change the desktop's dictation settings", () => {
+  it("is only the desktop app's own session, and only the whitelisted fields and values", () => {
+    const desktop = [...AuthStandardClientScopes, AuthBatonHandsHostScope];
+    for (const method of Object.values(BATON_DESKTOP_SETTINGS_WS_METHODS)) {
+      // A paired phone or browser holds every standard scope and still may not.
+      expect(missingBatonScope(method, AuthStandardClientScopes)).toBe(AuthBatonHandsHostScope);
+      expect(missingBatonScope(tessayaSpelling(method), AuthStandardClientScopes)).toBe(
+        AuthBatonHandsHostScope,
+      );
+      expect(missingBatonScope(method, desktop)).toBe(null);
+    }
+    const patch = (value: Record<string, unknown>) =>
+      Option.getOrNull(decodeSettingsSet({ patch: value }))?.patch ?? null;
+    expect(patch({ dictationCleanup: "claude", pillStyle: "field", holdKey: "F9" })).toEqual({
+      dictationCleanup: "claude",
+      pillStyle: "field",
+      holdKey: "F9",
+    });
+    expect(patch({ pillDesign: "lively", pillWaveform: "bars" })).toEqual({
+      pillDesign: "lively",
+      pillWaveform: "bars",
+    });
+    expect(patch({ pillDesign: "neon" })).toBe(null);
+    expect(patch({ pillWaveform: "spiral" })).toBe(null);
+    expect(patch({ dictationCleanup: "gpt" })).toBe(null);
+    expect(patch({ holdKey: "Alt+F4" })).toBe(null);
+    expect(patch({ frosted: "yes" })).toBe(null);
+    // Fields outside the list never reach the desktop: its binary path, keys, audio keeping.
+    expect(patch({ claudeBinary: "/tmp/x", keepVoice: true, frosted: true })).toEqual({
+      frosted: true,
+    });
   });
 });
 

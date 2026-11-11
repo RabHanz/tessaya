@@ -49,6 +49,7 @@ import {
   createLocalDispatchSnapshot,
   deriveCommittedServerUserMessageIds,
   deriveComposerSendState,
+  relinkRewoundAttachmentReferences,
   deriveLockedProvider,
   hasServerAcknowledgedLocalDispatch,
   waitForRevertedMessage,
@@ -125,6 +126,75 @@ describe("deriveComposerSendState", () => {
     expect(state.trimmedPrompt).toBe("yoo  waddup");
     expect(state.expiredTerminalContextCount).toBe(1);
     expect(state.hasSendableContent).toBe(true);
+  });
+
+  it("names image and file chips whose attachment is no longer in the draft", () => {
+    const state = deriveComposerSendState({
+      prompt:
+        "see ![shot.png](t3-context://v1/image/image_kept) ![image.png](t3-context://v1/image/image_gone) [notes.txt](t3-context://v1/file/file_gone)",
+      imageCount: 1,
+      attachments: [{ type: "image", id: "kept" }],
+      terminalContexts: [],
+    });
+
+    expect(state.unattachedLabels).toEqual(["image.png", "notes.txt"]);
+  });
+
+  it("relinks a rewound message's two image.png chips by attachment, not by name", () => {
+    const record = (contextId: string, attachmentId: string) => ({
+      version: 1 as const,
+      kind: "image" as const,
+      contextId: contextId as never,
+      label: "image.png",
+      attachmentId,
+      name: "image.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+    });
+    const image = (id: string) => ({
+      type: "image" as const,
+      id,
+      name: "image.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+    });
+    const text =
+      "second ![image.png](t3-context://v1/image/image_b) first ![image.png](t3-context://v1/image/image_a)";
+    const message = {
+      text,
+      context: {
+        version: 1 as const,
+        records: [record("image_a", "srv-a"), record("image_b", "srv-b")],
+      },
+      attachments: [image("srv-a"), image("srv-b")],
+    };
+    const restored = [
+      { type: "image" as const, id: "new-a", name: "image.png" },
+      { type: "image" as const, id: "new-b", name: "image.png" },
+    ];
+    // An earlier chip in the draft with the same name keeps its own id.
+    const stray = "![image.png](t3-context://v1/image/image_stray) ";
+    const prompt = relinkRewoundAttachmentReferences(stray + text, message, restored);
+
+    expect(prompt).toBe(
+      `${stray}second ![image.png](t3-context://v1/image/image_new-b) first ![image.png](t3-context://v1/image/image_new-a)`,
+    );
+    const state = deriveComposerSendState({
+      prompt,
+      imageCount: 2,
+      attachments: restored,
+      terminalContexts: [],
+    });
+    // The stray chip has no attachment, so the guard still names it.
+    expect(state.unattachedLabels).toEqual(["image.png"]);
+    expect(
+      deriveComposerSendState({
+        prompt: prompt.slice(stray.length),
+        imageCount: 2,
+        attachments: restored,
+        terminalContexts: [],
+      }).unattachedLabels,
+    ).toEqual([]);
   });
 });
 
@@ -595,6 +665,30 @@ describe("resolveComposerProviderSelection", () => {
       ).toBeUndefined();
     },
   );
+
+  it("keeps a thread on its missing instance under handoff until the user picks another", () => {
+    const codex = entry("codex");
+    const claude = entry("claudeAgent");
+    const missingInstanceId = ProviderInstanceId.make("baton-live");
+    const thread = importedThread(missingInstanceId);
+    const resolve = (handoffInstanceId: ProviderInstanceId | null) =>
+      resolveComposerProviderSelection({
+        entries: [codex, claude],
+        candidateInstanceIds: [handoffInstanceId, missingInstanceId, codex.instanceId],
+        lockedProvider: deriveLockedProvider({
+          thread,
+          selectedProvider: handoffInstanceId,
+          threadProvider: missingInstanceId,
+          providers: [codex.snapshot, claude.snapshot],
+        }),
+        lockedInstanceId: missingInstanceId,
+        handoffInstanceId,
+      });
+
+    expect(resolve(null).selectedProviderEntry).toBeUndefined();
+    expect(resolve(null).unavailableProviderInstanceId).toBe(missingInstanceId);
+    expect(resolve(claude.instanceId).selectedProviderEntry?.instanceId).toBe(claude.instanceId);
+  });
 
   it("keeps a signed-out selection instead of silently switching providers", () => {
     const signedOutEntry = entry("antigravity", "google_work", {

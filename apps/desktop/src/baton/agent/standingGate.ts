@@ -3,6 +3,7 @@
  * before the device slot's own gate (taint on, no act-without-asking) has its say.
  */
 import type { Gate } from "./agentGate.ts";
+import { batonToolName } from "@t3tools/baton-shared/operator";
 
 export const standingGate =
   (
@@ -13,7 +14,7 @@ export const standingGate =
     },
   ): Gate =>
   async (call) => {
-    const name = call.tool.replace(/^mcp__baton__/, "");
+    const name = batonToolName(call.tool);
     if (!job.tools.includes(name))
       return { allow: false, reason: `${name} is not one of this job's tools.` };
     const verdict = job.judge(name);

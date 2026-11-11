@@ -3,10 +3,15 @@ import { ProjectId, WorkSessionId } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
+import { BatonEngine } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
 import { dailyEpisode } from "./BatonMemoryEpisode.ts";
+import { layer as learningLayer } from "./BatonMemoryLearning.ts";
+import { episodeFromSession } from "./BatonMemoryReactor.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
+import { BatonOneShot } from "./BatonOneShot.ts";
 import { WorkSessionService, layer as workSessionLayer } from "./WorkSessionService.ts";
 
 const layer = it.layer(
@@ -55,6 +60,76 @@ layer("dailyEpisode", (it) => {
         assert.isNotNull(episode?.expiresAt);
         // A restart the same day writes no second episode for the 2nd.
         assert.isNull(yield* dailyEpisode(2 * DAY + 10 * 3_600_000));
+      }),
+  );
+});
+
+let summary = "The scheduler refactor replaced the cron parser and ended settled.";
+const sessionPrompts: string[] = [];
+const sessionLayer = it.layer(
+  learningLayer.pipe(
+    Layer.provideMerge(memoryLayer),
+    Layer.provideMerge(jobLayer),
+    Layer.provideMerge(workSessionLayer),
+    Layer.provideMerge(
+      Layer.succeed(BatonOneShot, {
+        run: ((input: { readonly prompt: string }) => (
+          sessionPrompts.push(input.prompt),
+          Effect.succeed({ summary } as never)
+        )) as BatonOneShot["Service"]["run"],
+      }),
+    ),
+    Layer.provideMerge(
+      Layer.succeed(ServerConfig.ServerConfig, {
+        dbPath: "/nowhere/statev2.sqlite",
+      } as unknown as ServerConfig.ServerConfig["Service"]),
+    ),
+    Layer.provideMerge(
+      Layer.succeed(BatonEngine, {
+        recentMessages: () => Effect.succeed([]),
+        projects: Effect.succeed([{ id: "p", title: "shop" }]),
+      } as unknown as BatonEngine["Service"]),
+    ),
+    Layer.provideMerge(SqlitePersistenceMemory),
+  ),
+);
+
+sessionLayer("a work session's end (MEM-18)", (it) => {
+  it.effect(
+    "writes one episode when a session settles, none while active, and leaves a job to its own",
+    () =>
+      Effect.gen(function* () {
+        const sessions = yield* WorkSessionService;
+        const id = WorkSessionId.make("s-1");
+        const active = yield* sessions.create({
+          id,
+          projectId: ProjectId.make("p"),
+          title: "Scheduler refactor",
+        });
+        assert.isNull(yield* episodeFromSession(active));
+        const settled = yield* sessions.settle({ id });
+        const episode = (yield* episodeFromSession(settled))?.item;
+        assert.strictEqual(episode?.kind, "episode");
+        assert.include(
+          episode?.text ?? "",
+          'the session "Scheduler refactor": The scheduler refactor',
+        );
+        // Behind its project's wall, like any item learned there; the agent's words are framed as someone else's.
+        assert.deepEqual([episode?.scope, episode?.scopeRef], ["project", "shop"]);
+        assert.include(sessionPrompts.at(-1) ?? "", "written by an agent, not by him");
+        // The same end again writes nothing.
+        assert.strictEqual((yield* episodeFromSession(settled))?.outcome, "skip");
+        yield* (yield* BatonJobService).create({
+          id: WorkSessionId.make("job-2"),
+          projectId: ProjectId.make("p"),
+          title: "Shop",
+          goal: "Ship the shop",
+          permissions: { folders: [], projects: [], tools: ["read"] },
+        });
+        summary = "A job's session.";
+        assert.isNull(
+          yield* episodeFromSession(yield* sessions.settle({ id: WorkSessionId.make("job-2") })),
+        );
       }),
   );
 });

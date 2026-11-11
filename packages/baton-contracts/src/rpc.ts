@@ -8,6 +8,7 @@
  * scope table does not list; Baton's table is `BATON_RPC_REQUIRED_SCOPES` below.
  */
 import {
+  DictationCleanupError,
   EnvironmentAuthorizationError,
   OrchestrationDispatchCommandError,
 } from "@t3tools/contracts";
@@ -16,6 +17,7 @@ import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { BatonFleetInput, BatonFleetResult } from "./fleet.ts";
+import { tessayaSpelling, type TessayaSpelling } from "./renamed.ts";
 import {
   BATON_ADOPTED_WS_METHODS,
   AdoptedDiscoverInput,
@@ -70,6 +72,11 @@ import {
   BatonThreadKeptInput,
 } from "./accountPool.ts";
 import {
+  BATON_ACCOUNTS_WS_METHODS,
+  BatonAccountsListInput,
+  BatonAccountsListResult,
+} from "./accounts.ts";
+import {
   BATON_WS_METHODS,
   WorkSessionAttachThreadInput,
   WorkSessionCreateInput,
@@ -88,6 +95,11 @@ import {
   BatonLiveAdoptInput,
   BatonLiveSetModelInput,
   BatonLiveSetModelResult,
+  BatonLiveSetAccountInput,
+  BatonLiveSessionInput,
+  BatonLiveStateResult,
+  BatonLiveCancelQueuedResult,
+  BatonLiveSetAccountResult,
   BatonLiveAdoptResult,
   BatonLiveAttachInput,
   BatonLiveAttachResult,
@@ -103,12 +115,27 @@ import {
 } from "./record.ts";
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
 import {
+  BATON_DICTATION_WS_METHODS,
+  BatonDictationCleanupInput,
+  BatonDictationCleanupResult,
+  BatonDictationCleanupStatus,
+} from "./dictation.ts";
+import {
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
+  DesktopSettingsSetInput,
+  DesktopSettingsSyncInput,
+  DesktopSettingsSyncResult,
+  DesktopSettingsView,
+} from "./desktopSettings.ts";
+import {
   BATON_JOB_WS_METHODS,
   BatonJobGrantInput,
   BatonJobListResult,
   BatonJobRefInput,
   BatonJobRefineInput,
   BatonJobHandoffInput,
+  BatonTeamBoardInput,
+  BatonTeamBoardResult,
   BatonJobPlaceInput,
   BatonJobPlacementError,
   BatonJobStartInput,
@@ -137,6 +164,12 @@ import {
   BatonCatalogAutoResumeResult,
   BatonRetireHandoffInput,
   BatonReattachInput,
+  BatonMoveIntoTessayaInput,
+  BatonMoveIntoTessayaResult,
+  BatonOpenInTerminalInput,
+  BatonOpenInTerminalResult,
+  BatonMainSessionInput,
+  BatonSessionDefaultsResult,
   BatonKeptInput,
   BatonKeptResult,
   BatonReattachResult,
@@ -269,6 +302,12 @@ const WsBatonAccountWeeklyRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.weekly, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonAccountsListRpc = Rpc.make(BATON_ACCOUNTS_WS_METHODS.list, {
+  payload: BatonAccountsListInput,
+  success: BatonAccountsListResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonWorkSessionListRpc = Rpc.make(BATON_WS_METHODS.workSessionList, {
   payload: WorkSessionListInput,
   success: WorkSessionListResult,
@@ -338,6 +377,24 @@ const WsBatonLiveSetModelRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetModel, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonLiveSetAccountRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetAccount, {
+  payload: BatonLiveSetAccountInput,
+  success: BatonLiveSetAccountResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonLiveStateRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveState, {
+  payload: BatonLiveSessionInput,
+  success: BatonLiveStateResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonLiveCancelQueuedRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveCancelQueued, {
+  payload: BatonLiveSessionInput,
+  success: BatonLiveCancelQueuedResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
   payload: BatonHerdrSendInput,
   success: BatonHerdrSendResult,
@@ -358,6 +415,11 @@ const WsBatonJobPlaceRpc = Rpc.make(BATON_JOB_WS_METHODS.jobPlace, {
   payload: BatonJobPlaceInput,
   success: BatonJobStartResult,
   error: Schema.Union([BatonJobPlacementError, WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobTeamRpc = Rpc.make(BATON_JOB_WS_METHODS.jobTeam, {
+  payload: BatonTeamBoardInput,
+  success: BatonTeamBoardResult,
+  error: EnvironmentAuthorizationError,
 });
 const WsBatonJobHandoffRpc = Rpc.make(BATON_JOB_WS_METHODS.jobHandoff, {
   payload: BatonJobHandoffInput,
@@ -481,6 +543,26 @@ const WsBatonSessionsRetireHandoffRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.retir
 const WsBatonSessionsReattachRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.reattach, {
   payload: BatonReattachInput,
   success: BatonReattachResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsMoveIntoTessayaRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.moveIntoTessaya, {
+  payload: BatonMoveIntoTessayaInput,
+  success: BatonMoveIntoTessayaResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsOpenInTerminalRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.openInTerminal, {
+  payload: BatonOpenInTerminalInput,
+  success: BatonOpenInTerminalResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsMainSessionRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.mainSession, {
+  payload: BatonMainSessionInput,
+  success: BatonSessionDefaultsResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsDefaultsRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.sessionDefaults, {
+  payload: Schema.Struct({}),
+  success: BatonSessionDefaultsResult,
   error: CatalogErrors,
 });
 const WsBatonSessionsKeptRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.kept, {
@@ -674,6 +756,36 @@ const WsBatonRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonDictationCleanupApiRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupApi, {
+  payload: BatonDictationCleanupInput,
+  success: BatonDictationCleanupResult,
+  error: Schema.Union([DictationCleanupError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonDictationCleanupApiStatusRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupApiStatus, {
+  payload: Schema.Struct({}),
+  success: BatonDictationCleanupStatus,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonDesktopSettingsGetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.get, {
+  payload: Schema.Struct({}),
+  success: DesktopSettingsView,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonDesktopSettingsSetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.set, {
+  payload: DesktopSettingsSetInput,
+  success: DesktopSettingsView,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonDesktopSettingsSyncRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, {
+  payload: DesktopSettingsSyncInput,
+  success: DesktopSettingsSyncResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
@@ -813,7 +925,7 @@ export class BatonRpcScopeAuthorization extends RpcMiddleware.Service<BatonRpcSc
   { error: EnvironmentAuthorizationError },
 ) {}
 
-export const BatonRpcGroup = RpcGroup.make(
+const BATON_RPCS = [
   WsBatonAccountPoolRpc,
   WsBatonAccountUseRpc,
   WsBatonOnLimitRpc,
@@ -821,6 +933,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonThreadKeptRpc,
   WsBatonThreadKeepRpc,
   WsBatonAccountWeeklyRpc,
+  WsBatonAccountsListRpc,
   WsBatonWorkSessionListRpc,
   WsBatonWorkSessionCreateRpc,
   WsBatonWorkSessionUpdateRpc,
@@ -832,6 +945,9 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonLiveAttachRpc,
   WsBatonLiveAdoptRpc,
   WsBatonLiveSetModelRpc,
+  WsBatonLiveSetAccountRpc,
+  WsBatonLiveStateRpc,
+  WsBatonLiveCancelQueuedRpc,
   WsBatonWorkSessionSettleRpc,
   WsBatonWorkSessionUnsettleRpc,
   WsBatonWorkSessionArchiveRpc,
@@ -841,6 +957,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobStartRpc,
   WsBatonJobPlaceRpc,
   WsBatonJobHandoffRpc,
+  WsBatonJobTeamRpc,
   WsBatonJobAgreeRpc,
   WsBatonJobRefineRpc,
   WsBatonJobGrantRpc,
@@ -851,6 +968,11 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonWatchGetRpc,
   WsBatonRecordListRpc,
   WsBatonRecordAppendRpc,
+  WsBatonDictationCleanupApiRpc,
+  WsBatonDictationCleanupApiStatusRpc,
+  WsBatonDesktopSettingsGetRpc,
+  WsBatonDesktopSettingsSetRpc,
+  WsBatonDesktopSettingsSyncRpc,
   WsBatonWeaveSendRpc,
   WsBatonWeaveListRpc,
   WsBatonWeaveTickRpc,
@@ -863,6 +985,10 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonSessionsAutoResumeRpc,
   WsBatonSessionsRetireHandoffRpc,
   WsBatonSessionsReattachRpc,
+  WsBatonSessionsMoveIntoTessayaRpc,
+  WsBatonSessionsOpenInTerminalRpc,
+  WsBatonSessionsMainSessionRpc,
+  WsBatonSessionsDefaultsRpc,
   WsBatonSessionsKeptRpc,
   WsBatonSessionsWaitingRpc,
   WsBatonSessionsInFlightRpc,
@@ -913,4 +1039,37 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonAdoptedSendInputRpc,
   WsBatonAdoptedReadOutputRpc,
   WsBatonSubscribeWorkSessionsRpc,
-).middleware(BatonRpcScopeAuthorization);
+] as const;
+
+type TessayaAlias<R> =
+  R extends Rpc.Rpc<
+    infer Tag,
+    infer Payload,
+    infer Success,
+    infer Error,
+    infer Middleware,
+    infer Requires
+  >
+    ? Rpc.Rpc<TessayaSpelling<Tag>, Payload, Success, Error, Middleware, Requires>
+    : never;
+
+// Rename R1: every method also answers under its tessaya.* name, which the next build's clients call.
+const TESSAYA_ALIASES = BATON_RPCS.map((rpc) =>
+  Rpc.make(tessayaSpelling(rpc._tag), {
+    payload: rpc.payloadSchema,
+    success: rpc.successSchema,
+    error: rpc.errorSchema,
+  }),
+) as unknown as ReadonlyArray<TessayaAlias<(typeof BATON_RPCS)[number]>>;
+
+/** The name this build's handlers and scope table use, for a method called under either name. */
+export const BATON_METHOD_OF: ReadonlyMap<string, string> = new Map(
+  BATON_RPCS.flatMap((rpc) => [
+    [rpc._tag, rpc._tag],
+    [tessayaSpelling(rpc._tag), rpc._tag],
+  ]),
+);
+
+export const BatonRpcGroup = RpcGroup.make(...BATON_RPCS, ...TESSAYA_ALIASES).middleware(
+  BatonRpcScopeAuthorization,
+);

@@ -34,10 +34,13 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
   "Tessaya, stop" included, and it waits in a buffer (on disk too) rather than being typed as it comes. Only
   "stop dictation" (or "stop dictating"), the pill's ✓, ✕ or Esc ends it, back into the conversation with no
   wake word (D125). The stop phrase and ✓ paste the buffer in one go into that window, brought forward first;
-  ✕ and Esc throw it away. Before the paste, a card above the pill shows what was said in grey, the words the
-  clean-up kept turning white and the rest blurring away (`cleanupCard.ts`, 1.6 s; the clean text alone when motion
-  is reduced). If the window is gone, the text goes on the clipboard and the pill says so. The pill
-  stays up the whole time, naming the window and showing the last few words. Dictated text never reaches the
+  ✕ and Esc throw it away. The pill shows his words as they are recognised and, once the clean text is pasted,
+  plays the clean-up over them: the cut words grey and are struck, then one motion carries the kept words into the
+  clean paragraph (`pillIsland.ts`, Settings → Dictation → Show words as you speak). The paste never waits for it.
+  With Pill style "In the text box when possible" (opt-in; the default is the pill) the words are drawn as ghost text at the field's caret instead
+  (`pillGhost.ts`; the sidecar's `caret_at`, never for a password or secret field), the cleanup plays there and
+  the paste lands as the ghost goes (3 s at most); any key or click pastes at once. No caret, and the pill shows them.
+  If the window is gone, the text goes on the clipboard and the pill says so. Dictated text never reaches the
   environment. The hold key works the same way: release is ✓, Esc is ✕.
 
 While Tessaya speaks, a short stop phrase (stop, quiet, enough, that's enough, cancel, shut up)
@@ -102,7 +105,7 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | Setting in `<state dir>/fabric-voice.json` | Default                                                                                                     | Also in the tray        |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `dictation`                                | `baton`; `wispr` holds no key                                                                               | Dictation               |
-| `holdKey`, `toggleKey`                     | `Ctrl+Alt+Space`, `Ctrl+Alt+Shift+Space`                                                                    |                         |
+| `holdKey`, `toggleKey`                     | `Alt+Win`, `Ctrl+Alt+Shift+Space`                                                                           |                         |
 | `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v`                                                                    |                         |
 | `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold                                                | Wake words              |
 | `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker                                                                  | Dictation               |
@@ -144,7 +147,8 @@ missing, Wispr's table is read once, read-only.
 `scripts/tessaya/voice-lab`, all headless and nothing pasted: `whisper_lab.py` (quiet and whisper-like audio,
 `make` then `score`), `replay_lab.py` (release to text at real-time pace through `BATON_FAKE_MIC`),
 `cleanup-lab.ts` with `cleanup-cases.ts`, bundled by `bundle-cleanup.sh` (the rewrite on written cases and on
-his clips, aggregates only). One CPU-heavy laptop job at a time: a speed figure taken beside other work is void.
+his clips, aggregates only; `names` runs the app's whole path on Parakeet text kept outside the repo, for the
+per-name score against his Wispr finals). One CPU-heavy laptop job at a time: a speed figure taken beside other work is void.
 Quiet-speech numbers are in D104.
 
 `scripts/tessaya/voice-lab/voice-lab.ps1` on the laptop: `replay` and `dictation` use his stored Wispr

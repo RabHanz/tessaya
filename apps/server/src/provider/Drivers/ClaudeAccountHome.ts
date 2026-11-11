@@ -23,7 +23,11 @@
  * is a named error, and a shared entry that has become a real file is a named
  * error too — the two ways this silently forks are both refusals instead.
  */
+// @effect-diagnostics-next-line nodeBuiltinImport:off - Effect's symlink has no type argument, and Windows needs a junction to link without elevation.
+import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
+// @effect-diagnostics-next-line nodeBuiltinImport:off - the merge below is one promise run under a directory lock.
+import * as NodePath from "node:path";
 
 import { type ClaudeSettings } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
@@ -33,8 +37,97 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
 import { expandHomePath as expandHomePathFrom } from "@t3tools/provider-core/server/pathExpansion";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 const expandHomePath = (value: string): string => expandHomePathFrom(value, NodeOS.homedir());
+
+const MERGE_LOCK_STALE_MS = 10 * 60_000;
+
+const errorCode = (cause: unknown): unknown =>
+  typeof cause === "object" && cause !== null && "code" in cause ? cause.code : undefined;
+
+const missing = (cause: unknown) => {
+  if (errorCode(cause) === "ENOENT") return undefined;
+  throw cause;
+};
+
+/**
+ * Moves the conversations `from` holds into `to` and returns the paths both held. A hard link
+ * cannot replace an existing name, so a merge racing another (or Claude writing) never overwrites.
+ * On a clash the newer transcript (then the larger) ends in `to`; the other stays in `from`, which
+ * the caller keeps. Links are left where they are and never followed.
+ */
+const mergeConversations = async (
+  from: string,
+  to: string,
+  clashes: Array<string>,
+): Promise<void> => {
+  await NodeFSP.mkdir(to, { recursive: true });
+  for (const name of await NodeFSP.readdir(from)) {
+    const source = NodePath.join(from, name);
+    const destination = NodePath.join(to, name);
+    const sourceStat = await NodeFSP.lstat(source);
+    if (sourceStat.isDirectory()) {
+      const destinationStat = await NodeFSP.lstat(destination).catch(missing);
+      if (destinationStat === undefined || destinationStat.isDirectory()) {
+        await mergeConversations(source, destination, clashes);
+      } else {
+        clashes.push(destination);
+      }
+      continue;
+    }
+    if (!sourceStat.isFile()) continue;
+    try {
+      await NodeFSP.link(source, destination);
+      await NodeFSP.unlink(source);
+      continue;
+    } catch (cause) {
+      if (errorCode(cause) !== "EEXIST") throw cause;
+    }
+    clashes.push(destination);
+    const destinationStat = await NodeFSP.lstat(destination);
+    const sourceWins =
+      destinationStat.isFile() &&
+      (sourceStat.mtimeMs > destinationStat.mtimeMs ||
+        (sourceStat.mtimeMs === destinationStat.mtimeMs && sourceStat.size > destinationStat.size));
+    if (!sourceWins) continue;
+    // The shared copy is linked into the kept folder before the newer one replaces it.
+    await NodeFSP.link(destination, `${source}.shared-older`);
+    await NodeFSP.rename(source, destination);
+  }
+};
+
+/** One merge into a shared store at a time; a lock older than ten minutes is from a crash. */
+const mergeConversationsLocked = async (
+  from: string,
+  to: string,
+): Promise<ReadonlyArray<string>> => {
+  const lock = `${to}.merge.lock`;
+  const take = () =>
+    NodeFSP.mkdir(lock).then(
+      () => true,
+      (cause: unknown) => {
+        if (errorCode(cause) === "EEXIST") return false;
+        throw cause;
+      },
+    );
+  if (!(await take())) {
+    const lockStat = await NodeFSP.stat(lock).catch(missing);
+    // @effect-diagnostics-next-line globalDate:off - compared with a file's mtime, which is wall-clock.
+    if (lockStat !== undefined && Date.now() - lockStat.mtimeMs < MERGE_LOCK_STALE_MS) {
+      throw new Error(`Another merge into ${to} is running (${lock}).`);
+    }
+    await NodeFSP.rmdir(lock).catch(missing);
+    if (!(await take())) throw new Error(`Another merge into ${to} is running (${lock}).`);
+  }
+  try {
+    const clashes: Array<string> = [];
+    await mergeConversations(from, to, clashes);
+    return clashes;
+  } finally {
+    await NodeFSP.rmdir(lock).catch(missing);
+  }
+};
 
 /**
  * What belongs to the account and must never be shared.
@@ -96,7 +189,14 @@ export class ClaudeAccountHomeFileSystemError extends Schema.TaggedError<ClaudeA
   "ClaudeAccountHomeFileSystemError",
   {
     ...CONTEXT,
-    operation: Schema.Literals(["readLink", "makeDirectory", "readDirectory", "remove", "symlink"]),
+    operation: Schema.Literals([
+      "readLink",
+      "makeDirectory",
+      "readDirectory",
+      "remove",
+      "rename",
+      "symlink",
+    ]),
     path: Schema.String,
     entryName: Schema.optional(Schema.String),
     cause: Schema.Defect(),
@@ -205,8 +305,8 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
      *
      * Off by default and on only when a person asked for it: the usual caller
      * is a session starting, and a session starting must never move somebody's
-     * data. It exists because another tool (claude-swap) creates `plugins/` and
-     * `projects/` per account, and sharing those is exactly what was asked for.
+     * data. It exists because another tool (claude-swap) creates `plugins/` per
+     * account, and sharing it is exactly what was asked for. (`projects/` always joins the shared store.)
      */
     readonly adoptExisting?: boolean | undefined;
   },
@@ -263,66 +363,87 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
       }),
     );
 
-  yield* Effect.forEach(
-    CLAUDE_SHARED_ENTRIES,
-    (entryName) =>
-      Effect.gen(function* () {
-        const target = path.join(layout.sharedHomePath, entryName);
-        const link = path.join(accountHomePath, entryName);
-        const state = yield* readLinkState(link, entryName);
+  const isWindows = yield* HostProcess.isWindows;
 
-        if (state._tag === "NotSymlink") {
-          // The one case this must never do quietly: replace a real file the
-          // account has been writing to. Two configurations have forked, and
-          // only a person can say which one is the one they meant — unless they
-          // already did, by asking for this.
-          if (options?.adoptExisting !== true) {
-            return yield* new ClaudeAccountHomeEntryConflictError({
-              ...context,
-              entryName,
-              path: link,
-            });
-          }
-          const stamp = (yield* Effect.clockWith((clock) => clock.currentTimeMillis)).toString();
-          const kept = `${link}.account-local-${stamp}`;
-          yield* fileSystem.rename(link, kept).pipe(
-            Effect.catchTags({
-              PlatformError: (cause) => fail("remove", link, entryName)(cause),
-            }),
-          );
-          yield* Effect.logInfo("Kept this account's own copy beside the shared one", {
-            entryName,
-            kept,
+  const linkEntry = Effect.fn("ClaudeAccountHome.linkEntry")(function* (
+    entryName: (typeof CLAUDE_SHARED_ENTRIES)[number],
+  ) {
+    const target = path.join(layout.sharedHomePath, entryName);
+    const link = path.join(accountHomePath, entryName);
+    const state = yield* readLinkState(link, entryName);
+
+    if (state._tag === "NotSymlink") {
+      // projects/ holds the conversations, and one left here strands them on this account: every account must
+      // resume every thread. They join the shared store; a name both hold stays in the kept copy.
+      if (entryName === "projects") {
+        const clashes = yield* Effect.tryPromise({
+          try: () => mergeConversationsLocked(link, target),
+          catch: fail("rename", link, entryName),
+        });
+        if (clashes.length > 0) {
+          yield* Effect.logWarning("Conversations both accounts held; the newer is shared", {
+            clashes,
           });
         }
-        if (state._tag === "Symlink") {
-          const resolved = path.resolve(path.dirname(link), state.target);
-          if (resolved === target) return;
-          yield* fileSystem.remove(link).pipe(
-            Effect.catchTags({
-              PlatformError: (cause) => fail("remove", link, entryName)(cause),
-            }),
-          );
-        }
+      }
+      // The one case this must never do quietly: replace a real file the
+      // account has been writing to. Two configurations have forked, and
+      // only a person can say which one is the one they meant — unless they
+      // already did, by asking for this.
+      else if (options?.adoptExisting !== true) {
+        return yield* new ClaudeAccountHomeEntryConflictError({
+          ...context,
+          entryName,
+          path: link,
+        });
+      }
+      const stamp = (yield* Effect.clockWith((clock) => clock.currentTimeMillis)).toString();
+      const kept = `${link}.account-local-${stamp}`;
+      yield* fileSystem.rename(link, kept).pipe(
+        Effect.catchTags({
+          PlatformError: (cause) => fail("remove", link, entryName)(cause),
+        }),
+      );
+      yield* Effect.logInfo("Kept this account's own copy beside the shared one", {
+        entryName,
+        kept,
+      });
+    }
+    if (state._tag === "Symlink") {
+      const resolved = path.resolve(path.dirname(link), state.target);
+      if (resolved === target) return;
+      yield* fileSystem.remove(link).pipe(
+        Effect.catchTags({
+          PlatformError: (cause) => fail("remove", link, entryName)(cause),
+        }),
+      );
+    }
 
-        // A link to something that does not exist yet is not useful: a shared
-        // entry the primary has never created (no `skills/` on a fresh machine)
-        // becomes a real directory there first, so both accounts write into one
-        // place from the beginning.
-        const exists = yield* fileSystem.exists(target).pipe(Effect.orElseSucceed(() => false));
-        if (!exists) {
-          if (entryName.includes(".")) return;
-          yield* makeDirectory(target);
-        }
+    // A link to something that does not exist yet is not useful: a shared
+    // entry the primary has never created (no `skills/` on a fresh machine)
+    // becomes a real directory there first, so both accounts write into one
+    // place from the beginning.
+    const exists = yield* fileSystem.exists(target).pipe(Effect.orElseSucceed(() => false));
+    if (!exists) {
+      if (entryName.includes(".")) return;
+      yield* makeDirectory(target);
+    }
 
-        yield* fileSystem
-          .symlink(target, link)
-          .pipe(
-            Effect.catchTags({ PlatformError: (cause) => fail("symlink", link, entryName)(cause) }),
-          );
-      }),
-    { discard: true },
-  );
+    const isDirectory =
+      (yield* fileSystem.stat(target).pipe(Effect.orElseSucceed(() => undefined)))?.type ===
+      "Directory";
+    yield* Effect.tryPromise({
+      try: () =>
+        NodeFSP.symlink(target, link, isDirectory ? (isWindows ? "junction" : "dir") : "file"),
+      catch: fail("symlink", link, entryName),
+    });
+  });
+
+  // One entry that cannot link (a file link on Windows needs elevation) must not keep the others, projects/ above
+  // all, from linking; the first failure is still reported.
+  const failures = (yield* Effect.forEach(CLAUDE_SHARED_ENTRIES, (entryName) =>
+    Effect.result(linkEntry(entryName)),
+  )).flatMap((result) => (result._tag === "Failure" ? [result.failure] : []));
 
   // The account's own things must be the account's own. A credentials file that
   // is a link to another account's is the failure this whole layout exists to
@@ -342,6 +463,7 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
       }),
     { discard: true },
   );
+  if (failures[0] !== undefined) return yield* failures[0];
 });
 
 /**

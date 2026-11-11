@@ -71,6 +71,44 @@ describe("the Now area", () => {
       detail: "Tessaya never sends push notifications; everything arrives here or is said aloud.",
     });
   });
+  it("shows the team: what each persona is on and when it last talked, a private one only busy or free (P4)", () => {
+    const rows = nowControls(
+      {
+        ...EMPTY_NOW,
+        loaded: true,
+        team: [
+          {
+            id: "engineering",
+            name: "Alfred",
+            role: "sessions, builds and releases",
+            private: false,
+            busy: true,
+            jobs: [{ id: "j-1", title: "Ship the shop" }],
+            episode: { text: "Tuesday, 3 November 2026, with Alfred: the deploy passed", at: "x" },
+            recent: [],
+          },
+          {
+            id: "research",
+            name: "Sebastian",
+            role: "research",
+            private: true,
+            busy: false,
+            jobs: [],
+            episode: null,
+            recent: [],
+          },
+        ],
+      },
+      0,
+    );
+    const alfred = rows.find((r) => r.id === "now.team:engineering");
+    expect(alfred).toMatchObject({ section: "The team", label: "Alfred: Ship the shop" });
+    expect(alfred && "detail" in alfred ? alfred.detail : "").toContain("the deploy passed");
+    expect(rows.find((r) => r.id === "now.team:research")).toMatchObject({
+      label: "Sebastian: free",
+    });
+    for (const r of rows) expect(tabOf(r.id)).toBe("now");
+  });
   it("offers Continue for a job a restart cut off", () => {
     const rows = nowControls(
       { ...EMPTY_NOW, loaded: true, interrupted: [{ id: "j1", title: "Site" }] },

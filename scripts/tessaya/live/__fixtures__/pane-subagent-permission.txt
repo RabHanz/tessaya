@@ -1,0 +1,21 @@
+
+● Agent(Record all variants in both themes plus words-off)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+✻ Waiting for 1 background agent…
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command · from the general-purpose agent
+ Record all variants in both themes plus words-off
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ cd /srv/work/projects-00001/tessaya-ops/drafts/pill/v2/proto && rm -rf stills/* src/raw; timeout 900 node
+ src/record.mjs A,B,C,D dark,light 2>&1 | tail -10; timeout 300 node src/record.mjs A,D dark off 2>&1 | tail -3; ls
+ *.mp4
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Dangerous rm operation on statically-unresolvable target: /srv/work/projects-00001/t3code/stills/*
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No
+
+ Esc to cancel · Tab to amend

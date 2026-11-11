@@ -10,7 +10,8 @@ import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
-import { liveSessionIdOf } from "./BatonLiveModel";
+import { useAtomSet } from "@effect/atom-react";
+import { liveLoginAtom, livePaneAtom } from "./BatonLiveModel";
 
 const CHECK_MS = 30_000;
 type Found =
@@ -23,11 +24,18 @@ type Found =
   | "missing"
   | null;
 
-export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const sessionId = liveSessionIdOf(threadRef.threadId);
+export function BatonLiveBinding({
+  threadRef,
+  sessionId,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly sessionId: string | null;
+}) {
   const list = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
   const resume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
   const [found, setFound] = useState<Found>(null);
+  const setLogin = useAtomSet(liveLoginAtom(sessionId ?? ""));
+  const setPane = useAtomSet(livePaneAtom(sessionId ?? ""));
   const reattach = useAtomCommand(batonWorkSessions.sessionsReattach, { reportFailure: false });
   const kept = useAtomCommand(batonWorkSessions.sessionsKept, { reportFailure: false });
   const [messages, setMessages] = useState<ReadonlyArray<{ id: string; text: string }>>([]);
@@ -44,6 +52,8 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
       void list({ environmentId, input: { query: sessionId, limit: 10 } }).then((result) => {
         if (cancelled || result._tag !== "Success") return;
         const row = result.value.sessions.find((entry) => entry.id === sessionId);
+        setLogin(row?.account ?? null);
+        setPane(row?.pane ?? null);
         setFound(
           row === undefined
             ? "missing"
@@ -69,7 +79,7 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
       cancelled = true;
       clearInterval(timer);
     };
-  }, [environmentId, kept, list, sessionId, threadRef.threadId]);
+  }, [environmentId, kept, list, sessionId, setLogin, setPane, threadRef.threadId]);
 
   const banner = bindingBanner(found);
   const binding = bindingOf(found);
@@ -108,7 +118,8 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
       </Button>
     </span>
   ));
-  if (binding === null) return <>{keptUi}</>;
+  // A session in its pane is the normal case: the pane id lives in the header's ⋯ menu (BatonThreadHeader).
+  if (binding === null || (binding.kind === "pane" && banner === null)) return <>{keptUi}</>;
   const doReattach = () => {
     setBusy(true);
     void reattach({

@@ -27,7 +27,11 @@ export const addEntry = (
     entry.replacement === null || entry.replacement.trim().length === 0
       ? null
       : entry.replacement.trim();
-  return [{ phrase, replacement, source: "added" }, ...list.filter((e) => !same(e.phrase, phrase))];
+  const heard = list.find((e) => same(e.phrase, phrase))?.heard;
+  return [
+    { phrase, replacement, source: "added", ...(heard === undefined ? {} : { heard }) },
+    ...list.filter((e) => !same(e.phrase, phrase)),
+  ];
 };
 
 /** Changes the spelling or the phrase of one word and keeps what Baton learned about it. */

@@ -1308,6 +1308,10 @@ export default function ChatView(props: ChatViewProps) {
     ],
     lockedProvider,
     lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
+    handoffInstanceId:
+      supportsProviderSwitchingViaHandoff && composerModelSelectionExplicit
+        ? selectedProviderByThreadId
+        : null,
   });
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
@@ -2796,6 +2800,10 @@ export default function ChatView(props: ChatViewProps) {
     serverConfig?.environment.capabilities.sideChats === true;
   const sideChat = useSideChat({
     threadRef: sideChatsOffered && isServerThread ? activeThreadRef : null,
+    readSettings: () => ({
+      runtimeMode,
+      modelSelection: composerRef.current?.getSendContext().selectedModelSelection,
+    }),
     onError: (message) => {
       if (activeThread) setThreadError(activeThread.id, message);
     },
@@ -3710,6 +3718,7 @@ export default function ChatView(props: ChatViewProps) {
                                 defaultRuntimeMode={defaultRuntimeMode}
                                 interactionMode={interactionMode}
                                 lockedProvider={modelPickerLockedProvider}
+                                threadProvider={lockedProvider}
                                 providerStatuses={providerStatuses as ServerProvider[]}
                                 providerCatalogKnown={serverConfig !== null}
                                 activeProjectDefaultModelSelection={

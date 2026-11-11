@@ -24,6 +24,11 @@ export const BATON_LIVE_WS_METHODS = {
   liveAdopt: "baton.live.adopt",
   /** Set a live Claude session's model and effort with its own slash commands, confirmed from its transcript. */
   liveSetModel: "baton.live.setModel",
+  /** Move one live Claude session to another account (a cswap slot) while it runs: its own dir's credential is swapped. */
+  liveSetAccount: "baton.live.setAccount",
+  /** A session's real effort and model, and the change waiting for it to go idle (ACCOUNTS-2). */
+  liveState: "baton.live.state",
+  liveCancelQueued: "baton.live.cancelQueued",
 } as const;
 
 /** Where a live session is: a Herdr pane, or a Claude conversation by id. */
@@ -81,8 +86,53 @@ export const BatonLiveSetModelResult = Schema.Struct({
   detail: Schema.String,
   /** What the session itself said back, as it said it. */
   confirmed: Schema.Array(Schema.String),
+  /** With state "busy": the change waits and is applied when the session goes idle. */
+  queued: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonLiveSetModelResult = typeof BatonLiveSetModelResult.Type;
+
+export const BatonLiveSetAccountInput = Schema.Struct({
+  sessionId: TrimmedNonEmptyString,
+  /** The cswap slot (the pool account's key). */
+  accountKey: TrimmedNonEmptyString.check(Schema.isMaxLength(20)),
+  /** A session on the machine's shared login gets its own dir first: one restart in its pane, only when he asks. */
+  restart: Schema.optionalKey(Schema.Boolean),
+});
+export type BatonLiveSetAccountInput = typeof BatonLiveSetAccountInput.Type;
+
+export const BatonLiveSetAccountResult = Schema.Struct({
+  state: Schema.Literals([
+    "switched",
+    "unchanged",
+    "needs_restart",
+    "busy",
+    "not_in_herdr",
+    "not_running",
+    "refused",
+  ]),
+  detail: Schema.String,
+  queued: Schema.optionalKey(Schema.Boolean),
+});
+export type BatonLiveSetAccountResult = typeof BatonLiveSetAccountResult.Type;
+
+export const BatonLiveQueued = Schema.Struct({
+  model: Schema.optionalKey(Schema.String),
+  effort: Schema.optionalKey(Schema.String),
+  accountKey: Schema.optionalKey(Schema.String),
+  restart: Schema.optionalKey(Schema.Boolean),
+});
+export type BatonLiveQueued = typeof BatonLiveQueued.Type;
+
+export const BatonLiveSessionInput = Schema.Struct({ sessionId: TrimmedNonEmptyString });
+export const BatonLiveStateResult = Schema.Struct({
+  /** The session's own effort: its last /effort, its config dir's setting, else its model's default. */
+  effort: Schema.NullOr(Schema.String),
+  queued: Schema.NullOr(BatonLiveQueued),
+  /** Why the last queued change was not applied, until the next one is queued. */
+  failure: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
+export type BatonLiveStateResult = typeof BatonLiveStateResult.Type;
+export const BatonLiveCancelQueuedResult = Schema.Struct({ cancelled: Schema.Boolean });
 
 /**
  * Which project a live session belongs to, the same on every box (D72): the

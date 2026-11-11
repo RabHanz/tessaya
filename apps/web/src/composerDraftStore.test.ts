@@ -90,6 +90,7 @@ import {
   type ComposerImageAttachment,
   composerFileNeedsReattach,
   partializeComposerDraftStoreState,
+  restoreComposerImageBackups,
   useComposerDraftStore,
   DraftId,
 } from "./composerDraftStore";
@@ -414,6 +415,81 @@ describe("composerDraftStore file attachments", () => {
         source: { _tag: "pasted-text" },
       },
     ]);
+  });
+
+  it("restores a draft image whose bytes never reached localStorage after a reload", () => {
+    const store = useComposerDraftStore.getState();
+    const image = makeImage({ id: "img-reload", previewUrl: "blob:img-reload" });
+    store.addImages(threadRef, [image]);
+    store.setPrompt(threadRef, "look ![image.png](t3-context://v1/image/image_img-reload)");
+    const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    // The composer never serialized the image, as when the localStorage write misses.
+    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
+    useComposerDraftStore.setState(
+      persistApi.getOptions().merge(persisted, useComposerDraftStore.getState()),
+    );
+    expect(useComposerDraftStore.getState().draftsByThreadKey[threadKey]?.images).toEqual([]);
+
+    const backup = {
+      threadKey,
+      id: image.id,
+      name: image.name,
+      mimeType: image.mimeType,
+      sizeBytes: image.sizeBytes,
+      blob: image.file,
+    };
+    // A sent image whose delete had not landed is tombstoned; a dropped draft has no entry.
+    const sent = { ...backup, id: "img-sent" };
+    const orphan = { ...backup, threadKey: "dropped-draft" };
+    expect(
+      restoreComposerImageBackups([backup, sent, orphan], (candidate) => candidate === sent),
+    ).toEqual([sent, orphan]);
+
+    expect(useComposerDraftStore.getState().draftsByThreadKey["dropped-draft"]).toBeUndefined();
+    const restored = useComposerDraftStore.getState().draftsByThreadKey[threadKey];
+    expect(restored?.prompt).toContain("image_img-reload");
+    expect(restored?.images.map(({ id, name, file }) => ({ id, name, size: file.size }))).toEqual([
+      { id: "img-reload", name: "image.png", size: image.sizeBytes },
+    ]);
+  });
+
+  it("restores an image pasted on its own, with no text or chip, after a reload", () => {
+    const image = makeImage({ id: "img-alone", previewUrl: "blob:img-alone" });
+    useComposerDraftStore.getState().addImages(threadRef, [image]);
+    const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
+    useComposerDraftStore.setState(
+      persistApi.getOptions().merge(persisted, useComposerDraftStore.getState()),
+    );
+
+    const backup = {
+      threadKey,
+      id: image.id,
+      name: image.name,
+      mimeType: image.mimeType,
+      sizeBytes: image.sizeBytes,
+      blob: image.file,
+    };
+    expect(restoreComposerImageBackups([backup], () => false)).toEqual([]);
+    expect(
+      useComposerDraftStore.getState().draftsByThreadKey[threadKey]?.images.map(({ id }) => id),
+    ).toEqual(["img-alone"]);
   });
 
   it("persists a pending file as a needs-reattach marker instead of dropping it", () => {

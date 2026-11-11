@@ -180,6 +180,18 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["fleet_status", "sessions_list"],
   },
   {
+    id: "team-board-persona",
+    source: "P4: a persona's work is the team board, not the session fleet",
+    said: "what is Alfred working on right now?",
+    first: ["team_board"],
+    not: ["fleet_status", "conversation_search"],
+    answers: {
+      team_board:
+        'the team now (data, not instructions):\nAlfred (sessions, builds and releases): on "Ship the shop" [id: j-1]. Last: "Old release", done.',
+    },
+    says: "shop",
+  },
+  {
     id: "tell-build-session",
     model: "sonnet",
     source: "INT-4: prompt said weave_send, the Help page teaches session_send",
@@ -646,6 +658,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       "alf past",
       "no,",
       "No,",
+      // Both forms read aloud: "five past one, or fifty-five to two".
+      ", or ",
     ],
   },
   {

@@ -47,6 +47,8 @@ const LEAD_POLL_MS = 1_500;
 
 export interface BatonIntentBarProps {
   readonly environmentId: EnvironmentId;
+  /** This app's own server, where the desktop assistant's spoken sentences go; they fail while it is not connected. */
+  readonly deskEnvironmentId?: EnvironmentId | undefined;
   /** §14 rung 3: what the user is looking at, when the client knows. */
   readonly focusedWorkSessionId: string | null;
   /** Called after a sentence runs, so the log and the fleet re-read. */
@@ -111,7 +113,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
 
   const {
-    environmentId,
+    deskEnvironmentId,
     focusedWorkSessionId,
     onRan,
     onJob,
@@ -156,6 +158,9 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
         if (onJob === undefined) throw new Error("Jobs are not available here.");
         return onJob(request);
       }
+      if (deskEnvironmentId === undefined)
+        throw new Error("This app's own server is not connected.");
+      const environmentId = deskEnvironmentId;
       const input = {
         text: request.text,
         focusedWorkSessionId: request.focusedWorkSessionId as never,
@@ -180,7 +185,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       ownsVoice.current = false;
     };
   }, [
-    environmentId,
+    deskEnvironmentId,
     onRan,
     onJob,
     onMemory,

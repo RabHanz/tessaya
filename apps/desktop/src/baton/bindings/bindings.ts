@@ -101,7 +101,7 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
     id: "hold",
     label: "Hold to dictate",
     hint: "Dictate while the key is down.",
-    fallback: key("Ctrl+Alt+Space"),
+    fallback: key("Alt+Win"),
   },
   {
     id: "toggle",
@@ -238,7 +238,9 @@ const RESERVED: Readonly<Record<string, string>> = {
   "Alt+Tab": "Alt+Tab switches windows.",
   "Meta+Tab": "Win+Tab shows your open windows.",
   "Meta+L": "Win+L locks the computer.",
-  "Meta+D": "Win+D shows the desktop.",
+  // A mouse's "Show Desktop" button sends Win+D, which Windows' shell keeps: remapped to F13, it can be bound.
+  "Meta+D":
+    "Win+D belongs to Windows, which will not give it up. Remap that mouse button to F13 in its software, then bind F13.",
   "Ctrl+Escape": "Ctrl+Esc opens the Start menu.",
   "Ctrl+C": "Every app uses Ctrl+C to copy.",
   "Ctrl+V": "Every app uses Ctrl+V to paste.",
@@ -256,8 +258,14 @@ export const checkInput = (input: BindingInput): InputCheck => {
   const accelerator = normaliseAccelerator(input.accelerator);
   const parts = accelerator.split("+");
   const main = parts.at(-1) ?? "";
-  if (main === "" || (MODIFIERS as ReadonlyArray<string>).includes(main)) {
-    return { ok: false, reason: "Press a key as well, not only Ctrl, Alt, Shift or Win." };
+  // Modifiers alone hold only with Win and one more, as Wispr Flow's Ctrl+Win: Ctrl+Shift alone is half of every
+  // selection shortcut.
+  const modifierOnly = main === "" || (MODIFIERS as ReadonlyArray<string>).includes(main);
+  if (modifierOnly && !(parts.includes("Meta") && parts.length >= 2)) {
+    return {
+      ok: false,
+      reason: "Press a key as well, or hold Win with Ctrl or Shift.",
+    };
   }
   if (parts.length > MAX_KEYS)
     return { ok: false, reason: `Use at most ${MAX_KEYS} keys together.` };

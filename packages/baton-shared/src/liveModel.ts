@@ -7,11 +7,7 @@
  * until that line is there.
  */
 
-export const LIVE_MODEL_CHOICES: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
-  { id: "claude-opus-5-5", label: "Opus 5.5" },
-  { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-  { id: "claude-haiku-5-5", label: "Haiku 5.5" },
-];
+import { livePick, liveSessionIdOf } from "./liveThread.ts";
 
 export const LIVE_EFFORT_CHOICES = ["low", "medium", "high", "xhigh", "max"] as const;
 export type LiveEffort = (typeof LIVE_EFFORT_CHOICES)[number];
@@ -61,7 +57,11 @@ export interface LiveModelDeps {
   readonly mark: () => number | null;
   readonly since: (mark: number) => string;
   readonly wait: (ms: number) => Promise<void>;
+  /** The Claude provider's model slugs: a live session is Claude Code, so nothing else is typed into it. */
+  readonly claudeModels: ReadonlyArray<string>;
 }
+
+const CLAUDE_ALIASES = ["opus", "sonnet", "haiku"];
 
 const READBACK_TRIES = 16;
 const READBACK_EVERY_MS = 500;
@@ -76,6 +76,13 @@ export const setLiveModel = async (
     const text = modelCommand(input.model);
     if (text === null)
       return { state: "refused", detail: "That is not a model name.", confirmed: [] };
+    if (!CLAUDE_ALIASES.includes(input.model) && !deps.claudeModels.includes(input.model))
+      return {
+        state: "refused",
+        detail:
+          "A terminal session runs Claude Code; continue in a new thread for another provider.",
+        confirmed: [],
+      };
     steps.push({ kind: "model", text });
   }
   if (input.effort !== undefined) {
@@ -101,8 +108,13 @@ export const setLiveModel = async (
       confirmed: [],
     };
   }
-  if (session.status === "busy") {
-    return { state: "busy", detail: "It is working. Change it when it is idle.", confirmed: [] };
+  // A question or approval on screen would take the typed command as its answer.
+  if (session.status === "busy" || session.status === "waiting") {
+    const detail =
+      session.status === "busy"
+        ? "It is working. Change it when it is idle."
+        : "It is waiting on a question. Answer it first.";
+    return { state: "busy", detail, confirmed: [] };
   }
   const confirmed: string[] = [];
   for (const step of steps) {
@@ -156,3 +168,151 @@ export const setModelResumingStopped = async (deps: {
     detail: "The session was resumed but is not live yet. Try again in a moment.",
   };
 };
+
+const isEffort = (value: unknown): value is LiveEffort =>
+  typeof value === "string" && (LIVE_EFFORT_CHOICES as ReadonlyArray<string>).includes(value);
+
+/**
+ * The effort a terminal session runs at: its newest /effort or /model answer in the transcript, else its config dir's
+ * `effortLevel`, else its model's default. Null only when none of the three says.
+ */
+export const sessionEffort = (input: {
+  readonly transcriptTail: string;
+  readonly settingsJson: string | null;
+  readonly modelDefault: string | null;
+}): LiveEffort | null => {
+  for (const output of [...input.transcriptTail.matchAll(STDOUT)].map((m) => m[1]!).reverse()) {
+    const said = /effort level to (\w+)|with (\w+) effort/i.exec(output);
+    const level = (said?.[1] ?? said?.[2])?.toLowerCase();
+    if (isEffort(level)) return level;
+  }
+  try {
+    const level = (JSON.parse(input.settingsJson ?? "null") as { effortLevel?: unknown } | null)
+      ?.effortLevel;
+    if (isEffort(level)) return level;
+  } catch {
+    // An unreadable settings file says nothing.
+  }
+  return isEffort(input.modelDefault) ? input.modelDefault : null;
+};
+
+/** The model a transcript's newest assistant line names, or null. */
+export const transcriptModel = (transcriptTail: string): string | null =>
+  [...transcriptTail.matchAll(/"model":"(claude-[a-z0-9.-]+)"/g)].at(-1)?.[1] ?? null;
+
+/** The live instance's "as it is" effort choice, which a picker never shows (ACCOUNTS-2). */
+export const EFFORT_AS_IS = "session";
+
+/**
+ * A terminal session's traits as a picker shows them: its real effort selected when the thread holds none (or only
+ * "as it is"), and the "as it is" choice gone. Shared by web and mobile.
+ */
+interface EffortDescriptors {
+  readonly capabilities?: {
+    readonly optionDescriptors?: ReadonlyArray<{
+      readonly id: string;
+      readonly options?: ReadonlyArray<{ readonly id: string }>;
+    }>;
+  } | null;
+}
+
+export function withRealEffort<M, O extends { readonly id: string; readonly value: unknown }>(
+  models: ReadonlyArray<M>,
+  options: ReadonlyArray<O> | null | undefined,
+  effort: string | null,
+): { readonly models: ReadonlyArray<M>; readonly options: ReadonlyArray<O> | undefined } {
+  const held = options?.find((option) => option.id === "effort")?.value;
+  const shown =
+    effort !== null && (held === undefined || held === EFFORT_AS_IS)
+      ? [
+          ...(options ?? []).filter((option) => option.id !== "effort"),
+          { id: "effort", value: effort } as unknown as O,
+        ]
+      : (options ?? undefined);
+  const withoutAsIs = (model: EffortDescriptors): EffortDescriptors =>
+    model.capabilities?.optionDescriptors === undefined
+      ? model
+      : {
+          ...model,
+          capabilities: {
+            ...model.capabilities,
+            optionDescriptors: model.capabilities.optionDescriptors.map((descriptor) =>
+              descriptor.id === "effort" && descriptor.options !== undefined
+                ? {
+                    ...descriptor,
+                    options: descriptor.options.filter((choice) => choice.id !== EFFORT_AS_IS),
+                  }
+                : descriptor,
+            ),
+          },
+        };
+  return {
+    // Only the effort choices change; every other field of the model stays as it was.
+    models: models.map((model) => withoutAsIs(model as EffortDescriptors) as M),
+    options: shown,
+  };
+}
+
+const working = (status: string | null) => status === "busy" || status === "waiting";
+
+/** A session that was working and now reads idle: a queued change can be typed in (ACCOUNTS-2). */
+export const wentIdle = (before: string | null | undefined, now: string | null): boolean =>
+  before !== undefined && working(before) && now !== null && !working(now);
+
+/**
+ * Where a model or effort pick on a thread goes, on web and mobile alike. A thread still on its terminal session takes
+ * it inside the session (liveSetModel, which queues while the session works); a Claude login the machine knows moves
+ * the session (liveSetAccount); another provider continues in a new thread. Any other thread keeps the ordinary draft.
+ */
+export type LiveChangeRoute =
+  | {
+      readonly kind: "session";
+      readonly change: { readonly model?: string; readonly effort?: string };
+    }
+  | { readonly kind: "account"; readonly key: string }
+  | { readonly kind: "continue-in" }
+  | { readonly kind: "none" }
+  | { readonly kind: "draft" };
+
+export const liveChangeRoute = (input: {
+  readonly threadId: string;
+  readonly currentInstance: string;
+  readonly picked: {
+    readonly instance: string;
+    readonly driver: string | null;
+    readonly model: string;
+    readonly effort: string | null;
+  };
+  readonly current: { readonly model: string; readonly effort: string | null };
+  /** How the picked instance's login relates to the session's, and its cswap key. */
+  readonly account: {
+    readonly relation: "same" | "other" | "unknown";
+    readonly key: string | null;
+  };
+}): LiveChangeRoute => {
+  if (liveSessionIdOf(input.threadId) === null) return { kind: "draft" };
+  const route = livePick({
+    pickedInstance: input.picked.instance,
+    pickedDriver: input.picked.driver,
+    currentInstance: input.currentInstance,
+    account: input.account.relation,
+  });
+  if (route === "normal" || route === "switch-back") return { kind: "draft" };
+  if (route === "continue-in") return { kind: "continue-in" };
+  if (route === "session-account")
+    return input.account.key === null
+      ? { kind: "continue-in" }
+      : { kind: "account", key: input.account.key };
+  const { model, effort } = input.picked;
+  const change = {
+    ...(model !== input.current.model && modelCommand(model) !== null ? { model } : {}),
+    ...(effort !== null && effort !== input.current.effort && effortCommand(effort) !== null
+      ? { effort }
+      : {}),
+  };
+  return Object.keys(change).length === 0 ? { kind: "none" } : { kind: "session", change };
+};
+
+/** Nothing to type into the session: the pick (another option, or the same model) still belongs in the draft. */
+export const keepsDraft = (route: LiveChangeRoute): boolean =>
+  route.kind === "draft" || route.kind === "none";

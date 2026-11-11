@@ -34,6 +34,20 @@ const ICON = {
   memory: '<path d="M12 4l9 5-9 5-9-5z"/><path d="M3 14l9 5 9-5"/>',
   vault: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
+  cmd: '<path d="m9 18 6-6-6-6"/>',
+  spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  flag: '<path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.33 2q2 0 3.67-.67a1 1 0 0 1 1 .14V15a1 1 0 0 1-.4.8A6 6 0 0 1 16 17c-3 0-5-2-8-2a6 6 0 0 0-4 1.53"/>',
+  more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  paste: '<rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  pencil: '<path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/>',
+  down: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+  trash: '<path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
   checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 4M12 17h.01"/>',
   trust: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="10" r="2.2"/><path d="M12 12.2V16"/>',
@@ -66,7 +80,7 @@ const CATS = ['general','voice','personas','assistant','privacy','appearance','k
 const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
 const INTRO = {};
 for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
-let cur = 'home', collapsed = false, modal = null, S = null, query = '';
+let cur = 'home', collapsed = (() => { try { return localStorage.getItem('tessaya.rail') === '1'; } catch (e) { return false; } })(), modal = null, S = null, query = '';
 let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
@@ -476,26 +490,22 @@ function home(p) {
   if (brainCtl && brainCtl.lead) p.appendChild(banner('', 'what Tessaya works through', 'Choose', 'Claude Code or Codex. You can change it later.', 'Choose', () => go('assistant')));
   else if (up && up.lead) p.appendChild(banner('', 'a quiet moment', 'Tessaya will restart in', up.hint, null));
   const need = (x.stats && x.stats.needYou) || 0;
-  if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Open Sessions to answer.', 'Open Sessions', () => go('sessions')));
+  if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Answer them in T3.', 'Show in T3', showLive));
   const sp = $('div', 'split'); const left = $('div'); const right = $('div', 'rail');
-  const allItems = x.activity || [], items = allItems.slice(0, 5);
+  const items = (x.activity || []).slice(0, 5);
   left.appendChild($('div', 'day first', 'Today'));
   if (!items.length) left.appendChild($('div', 'empty', 'Nothing yet. Say a wake word, or hold your dictation key and speak.'));
-  let day = null, log = null; if (items.length) { log = $('div', 'log'); left.appendChild(log); day = 'Today'; }
-  for (const a of items) {
-    const d = dayLabel(a.at); if (d !== day) { day = d; left.appendChild($('div', 'day', d)); log = $('div', 'log'); left.appendChild(log); }
-    const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.setAttribute('data-k', a.kind); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
-  }
-  if (allItems.length > items.length) { const all = $('button', 'btn quiet', SEE_ALL); all.style.marginTop = '8px'; all.onclick = () => go('history'); left.appendChild(all); }
-  const st = $('div', 'stats tiles'); const s2 = x.stats || {};
-  for (const [n, l] of [[s2.turns || 0, 'turns today'], [s2.dictations || 0, 'dictations today'], [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
+  else { const card = $('div', 'group entries'); for (const a of items) card.appendChild(entry(a, true)); left.appendChild(card); }
+  const all = $('button', 'btn quiet', SEE_ALL); all.style.marginTop = '10px'; all.onclick = () => go('history'); left.appendChild(all);
+  const st = $('div', 'stats tiles'); const s2 = x.stats || {}, gl = x.insights || {};
+  const tiles = gl.minutesSaved === undefined ? [[s2.turns || 0, 'turns today'], [s2.dictations || 0, 'dictations today']] : [[gl.wordsToday.toLocaleString(), 'words dictated today'], [gl.minutesSaved + ' min', 'saved, roughly, vs typing at 40 wpm']];
+  for (const [n, l] of [...tiles, [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
   right.appendChild($('div', 'day first', 'At a glance')); right.appendChild(st);
   const ins = (S.extra && S.extra.insights) || null;
   if (ins) {
     right.appendChild($('div', 'day', 'Your dictation'));
     const ig = $('div', 'stats');
     const irow = (l, v) => { const r = $('div', 'stat kvr'); r.append($('span', null, l), $('b', 'sm', v)); return r; };
-    ig.appendChild(irow('Words today', String(ins.wordsToday)));
     ig.appendChild(irow('Speed', ins.wpm === null ? 'Not enough yet' : ins.wpm + ' words a minute'));
     ig.appendChild(irow('Day streak', ins.streak + (ins.streak === 1 ? ' day' : ' days')));
     for (const a of ins.topApps) ig.appendChild(irow(a.app, a.count + (a.count === 1 ? ' dictation' : ' dictations')));
@@ -540,10 +550,15 @@ function vocabulary(p) {
       const no = $('button', 'x'); no.appendChild(icon('x', 14)); no.setAttribute('aria-label', 'Cancel'); no.onclick = () => { editing = null; render(); };
       const w2 = $('div', 'pair'); w2.append(ok, no); r.append(e1, $('div', 'arrow', '\u2192'), e2, w2); g.appendChild(r); continue;
     }
-    const meta = $('div', 'hint'); meta.append($('span', 'badge ' + w.source, w.source === 'learned' ? 'Learned' : 'Added'));
+    const meta = $('div', 'hint'); meta.append($('span', 'badge ' + w.source, w.source === 'learned' ? 'Learned' : w.source === 'wispr' ? 'From Wispr' : 'Added'));
     if (w.count) meta.append(document.createTextNode(' used ' + w.count + (w.count === 1 ? ' time' : ' times')));
     if (w.lastSeen) meta.append(document.createTextNode(' \u00b7 last ' + when(w.lastSeen)));
     const l = $('div'); l.appendChild($('div', 'label', w.phrase)); l.appendChild(meta);
+    if (w.heard && w.heard.length) {
+      const hv = $('div', 'hint', 'Heard as ');
+      w.heard.forEach(h => { hv.append(document.createTextNode(h)); const hx = $('button', 'x'); hx.appendChild(icon('x', 12)); hx.setAttribute('aria-label', 'Stop treating ' + h + ' as ' + w.phrase); hx.onclick = () => set('d.unhear', JSON.stringify({ phrase: w.phrase, form: h })); hv.append(hx); });
+      l.appendChild(hv);
+    }
     const rr = $('div', 'hint', w.replacement === null ? 'same, with its capitals fixed' : w.replacement);
     const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { editing = w.phrase; render(); };
     const x = $('button', 'x'); x.appendChild(icon('x', 14)); x.setAttribute('aria-label', 'Delete ' + w.phrase); x.onclick = () => set('d.remove', w.phrase);
@@ -580,131 +595,196 @@ function usage(p) {
   }
   p.appendChild(g);
 }
-let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hday = null, hrange = 'all', hdaylim = {}, hexp = (() => { try { return JSON.parse(localStorage.getItem('tessaya.hdays') || '{}'); } catch (e) { return {}; } })();
+let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hedit = null, hnote = '', htimer = null, hbusy = new Set(), hday = null, hrange = 'all', hkind = 'all', hdaylim = {}, hexp = (() => { try { return JSON.parse(localStorage.getItem('tessaya.hdays') || '{}'); } catch (e) { return {}; } })();
 function loadHistory() {
-  const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
+  const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || ((t.raw || '') + ' ' + (t.cleaned || '') + ' ' + (t.text || '') + ' ' + (t.app || '')).toLowerCase().includes(hq.toLowerCase())));
   run.then(r => { hrows = r; render(); });
 }
 function hact(t, action) {
   if (action === 'delete') { hask = null; }
-  if (!real) { if (action === 'delete') { hrows = hrows.filter(x => x.id !== t.id); render(); } else { hnote = 'Copied.'; render(); } return; }
+  if (!real) { if (action === 'delete') hrows = hrows.filter(x => x.id !== t.id); else if (action === 'flag' || action === 'unflag') hrows = hrows.map(x => x.id === t.id ? Object.assign({}, x, { flagged: action === 'flag' }) : x); else hnote = 'Copied.'; render(); return; }
   const retry = action === 'retry' || action === 'retry_transcript';
   if (retry) { hbusy.add(t.id); hnote = action === 'retry_transcript' ? 'Listening to the recording again. A long one takes a while.' : ''; render(); }
   ipc.invoke('baton-history:act', t.id, action).then(r => {
     hbusy.delete(t.id);
     if (action === 'delete') hrows = hrows.filter(x => x.id !== t.id);
     else if (r && r.playback) { hplay(r.playback); }
-    else if (r && r.reported) { hnote = 'Saved a report you can read and attach to an issue. Nothing was sent. It is in the folder that just opened.'; }
-    else if (r && r.failed) { hnote = r.failed; }
-    else if (retry && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hopen.add(t.id); hnote = action === 'retry_transcript' ? 'Done. The new words sit beside the old ones under Compare.' : (r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'); }
-    else if (action.indexOf('use_version') === 0 && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hnote = 'Now using that version.'; }
-    else if (action.indexOf('copy') === 0) { hnote = 'Copied.'; }
+    else if (r && r.failed) { hnote = r.failed + '.'; }
+    else if (r && r.saved) { hnote = 'Saved the recording as ' + r.saved + '.'; }
+    else if (r && r.pasted) { hnote = 'Pasted.'; }
+    else if (r && r.id) {
+      hrows = hrows.map(x => x.id === t.id ? r : x);
+      if (retry) { hopen.add(t.id); hnote = action === 'retry_transcript' ? 'Done. The new words sit beside the old ones under Compare.' : (r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'); }
+      else if (action.indexOf('teach:') === 0) { hedit = null; hnote = r.taught && r.taught.length ? 'Learned ' + r.taught.join(', ') + '. Copy and Paste again use your fixed words.' : 'Saved your fixed words. Copy and Paste again use them.'; }
+      else if (action === 'undo_ai') { hopen.add(t.id); hnote = 'Back to the words as heard, and on your clipboard. The written words are under Compare.'; }
+      else if (action.indexOf('use_version') === 0) { hnote = 'Now using that version.'; }
+      else if (action === 'flag') { hnote = 'Flagged. It is kept on this computer for checking the clean-up; nothing was sent.'; }
+      else if (action === 'unflag') { hnote = ''; }
+      else if (action.indexOf('copy') === 0) { hnote = 'Copied.'; }
+    }
     render();
   });
 }
-let haudio = null;
-function hplay(url) { if (haudio) { haudio.pause(); haudio = null; } haudio = new Audio(url); haudio.onended = () => { haudio = null; hnote = ''; render(); }; hnote = 'Playing the recording.'; haudio.play().catch(() => { hnote = 'The recording could not be played.'; render(); }); render(); }
-const STATUS = { ok: 'Tidied', raw: 'Inserted as heard', failed: 'Clean-up failed', none: 'Heard' };
+let haudio = null, hplaying = null;
+function hplay(url) { if (haudio) { haudio.pause(); haudio = null; } haudio = new Audio(url); haudio.onended = () => { haudio = null; hplaying = null; hnote = ''; render(); }; hnote = 'Playing the recording.'; haudio.play().catch(() => { hnote = 'The recording could not be played.'; render(); }); render(); }
+const STATUS = { ok: 'Tidied', raw: 'Inserted as heard', failed: 'Clean-up failed' };
+const HKIND = { dictation: 'dictation', spoken: 'assistant', assistant: 'assistant', command: 'command' };
+const KICON = { dictation: 'mic', assistant: 'spark', command: 'cmd', hid: 'lock' };
+const MICON = { undo_ai: 'undo', retry_transcript: 'refresh', retry: 'refresh', paste: 'paste', teach: 'pencil', extract: 'down', delete: 'trash' };
+const appName = exe => { const n = String(exe || '').replace(/[.](exe|app)$/i, ''); return n ? n.charAt(0).toUpperCase() + n.slice(1) : ''; };
+const wordsIn = s => (String(s || '').match(/\\S+/g) || []).length;
+const clipText = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+const partOfDay = iso => { const h = new Date(iso).getHours(); return h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening'; };
+/** The words a row stands for: what he said to Tessaya, or his dictation as last fixed, written or heard. */
+const rowSays = t => t.kind === 'spoken' ? t.raw : (t.fixed || t.cleaned || t.raw || '');
+function ib(name, label, fn, cls) { const b = $('button', 'ib' + (cls ? ' ' + cls : '')); b.setAttribute('aria-label', label); b.title = label; b.appendChild(icon(name, 16)); b.onclick = fn; return b; }
+function homeCopy(t) { if (real) ipc.invoke('baton-history:act', t.id, 'copy'); }
+/** One row, for Home's Today card (home) or History: the words or a sentence, never a tool's name. */
+function entry(t, home) {
+  const k = t.hidden ? 'hid' : HKIND[t.kind] || 'assistant';
+  const row = $('div', 'ent hrow'); row.setAttribute('data-k', k);
+  const when = dayLabel(t.at) === 'Today' || !home ? clock(t.at) : dayLabel(t.at);
+  const kd = $('span', 'kind k-' + k); kd.setAttribute('aria-hidden', 'true'); kd.appendChild(icon(KICON[k], 13));
+  const tx = $('div', 'txt'), meta = $('div', 'meta'), acts = $('div', 'acts');
+  const app = appName(t.app), words = t.kind === 'dictation' || t.kind === 'spoken';
+  if (t.hidden) {
+    tx.appendChild($('div', 'plain faint', 'Hidden (' + t.hidden + ')'));
+    if (app) meta.appendChild($('span', null, app));
+    meta.appendChild($('span', null, L('history.nothingKept')));
+  } else if (!words) {
+    tx.appendChild($('div', 'plain', t.text));
+    if (t.detail) meta.appendChild($('span', null, t.detail));
+    if (t.detail === 'A session needs an answer') { const o = $('button', 'reveal', L('history.open')); o.onclick = showLive; meta.appendChild(o); }
+  } else {
+    const said = home ? t.text : rowSays(t);
+    tx.appendChild($('div', 'said' + (home ? ' clip' : ''), said));
+    const reply = home ? t.detail : t.cleaned;
+    if (t.kind === 'spoken') meta.appendChild($('span', null, reply ? 'Tessaya: ' + clipText(reply, 90) : 'Said to Tessaya'));
+    else if (app) meta.appendChild($('span', null, app));
+  }
+  if (home) { if (words && !t.hidden) acts.appendChild(ib('copy', 'Copy', () => homeCopy(t))); }
+  else if (words && !t.hidden) {
+    if (t.kind === 'dictation') meta.appendChild($('span', null, wordsIn(rowSays(t)) + (wordsIn(rowSays(t)) === 1 ? ' word' : ' words')));
+    if (t.kind === 'dictation' && STATUS[t.status]) meta.appendChild($('span', 'badge ' + (t.status === 'ok' ? 'learned' : 'warnb'), STATUS[t.status]));
+    if (t.corrected) meta.appendChild($('span', 'badge learned', L('history.fixed')));
+    if (t.flagged) meta.appendChild($('span', 'badge warnb', L('history.flagged')));
+    if (t.kind === 'spoken' ? t.cleaned : t.raw) { const sh = $('button', 'reveal', (hopen.has(t.id) ? 'Hide ' : 'Show ') + (t.kind === 'spoken' ? 'the reply' : 'as heard')); sh.setAttribute('aria-expanded', String(hopen.has(t.id))); sh.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); }; meta.appendChild(sh); }
+    const pl = (t.menu || []).find(i => i.id === 'play');
+    if (pl) acts.appendChild(ib('play', hplaying === t.id ? 'Stop playing' : pl.enabled ? 'Play the recording' : pl.note, () => { if (hplaying === t.id && haudio) { haudio.pause(); haudio = null; hplaying = null; hnote = ''; render(); } else if (!pl.enabled) { hnote = pl.note + '.'; render(); } else { hplaying = t.id; hact(t, 'play'); } }, pl.enabled ? '' : 'off'));
+    acts.appendChild(ib('copy', 'Copy', () => hact(t, 'copy')));
+    acts.appendChild(ib('flag', t.flagged ? 'Remove the flag' : 'Flag: this went wrong', () => hact(t, t.flagged ? 'unflag' : 'flag'), t.flagged ? 'flagged' : ''));
+  }
+  const items = home ? [] : (t.menu || []).filter(i => i.id !== 'play' && i.id !== 'copy');
+  if (items.length) {
+    const mw = $('span', 'hmenuwrap'); const more = ib('more', 'More actions', (e) => { e.stopPropagation(); hmenu = hmenu === t.id ? null : t.id; render(); }); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', String(hmenu === t.id));
+    mw.appendChild(more);
+    if (hmenu === t.id) {
+      const m = $('div', 'hmenu'); m.setAttribute('role', 'menu');
+      for (const it of items) {
+        if (it.id === 'delete' && items.length > 1) m.appendChild($('div', 'hsep'));
+        const b = $('button', 'hitem' + (it.enabled ? '' : ' off') + (it.id === 'delete' ? ' bad' : '')); b.setAttribute('role', 'menuitem');
+        b.append(icon(MICON[it.id] || 'more', 15), document.createTextNode(hbusy.has(t.id) && it.id === 'retry_transcript' ? 'Retrying' : it.label));
+        if (it.note) b.title = it.note;
+        b.onclick = (e) => { e.stopPropagation(); hmenu = null;
+          if (it.id === 'delete') { hask = t.id; render(); }
+          else if (it.id === 'teach') { hedit = t.id; render(); }
+          else if (!it.enabled) { hnote = (it.note || 'Not available right now') + '.'; render(); }
+          else hact(t, it.id); };
+        m.appendChild(b);
+      }
+      mw.appendChild(m);
+    }
+    acts.appendChild(mw);
+  }
+  if (meta.childNodes.length) tx.appendChild(meta);
+  if (!home && hedit === t.id) {
+    const ed = $('textarea', 'edit'); ed.value = rowSays(t); ed.setAttribute('aria-label', 'Fix the words');
+    const tl = $('div', 'teach'); tl.appendChild($('span', null, L('history.teachHint')));
+    const bl = $('div', 'teach'); const sv = $('button', 'btn primary', L('history.teach')); sv.onclick = () => hact(t, 'teach:' + ed.value); const cn = $('button', 'btn quiet', L('history.cancel')); cn.onclick = () => { hedit = null; render(); }; bl.append(sv, cn);
+    tx.append(ed, tl, bl);
+  }
+  if (!home && hask === t.id) {
+    const c = $('div', 'confirm'); const d = $('button', 'btn primary', L('history.delete')); d.onclick = () => hact(t, 'delete'); const kp = $('button', 'btn quiet', L('history.keep')); kp.onclick = () => { hask = null; render(); };
+    c.append($('span', null, t.hidden ? 'Delete this entry for good?' : 'Delete this entry and its recording for good?'), d, kp); tx.appendChild(c);
+  }
+  if (!home && words && !t.hidden && hopen.has(t.id)) {
+    const blk = (l, x) => { const b = $('div', 'raw'); b.append($('div', 'h', l), $('div', 'hpre', x)); return b; };
+    if (t.kind === 'spoken') { if (t.cleaned) tx.appendChild(blk('Tessaya replied', t.cleaned)); }
+    else tx.appendChild(blk('As heard', t.raw));
+    if (t.versions && t.versions.length > 1) {
+      const cmp = $('div', 'raw'); cmp.appendChild($('div', 'h', L('history.compare')));
+      t.versions.forEach((v, i) => {
+        const inUse = v.raw === t.raw && (v.cleaned || null) === (t.cleaned || null);
+        const vr = $('div', 'hver'); const lab = $('div', 'hint', 'Version ' + (i + 1) + (i === 0 ? ' (first heard)' : '') + (inUse ? ' - in use' : ''));
+        const ra = $('div', 'hacts');
+        const vb = (l, a) => { const b = $('button', 'btn quiet', l); b.onclick = () => hact(t, a + ':' + i); return b; };
+        ra.appendChild(vb('Copy', 'copy_version')); if (!inUse) ra.appendChild(vb('Use this one', 'use_version'));
+        vr.append(lab, $('div', 'hpre', t.kind === 'spoken' ? v.raw : (v.cleaned || v.raw)), ra); cmp.appendChild(vr);
+      });
+      tx.appendChild(cmp);
+    }
+    const info = [t.delivery && ('delivered: ' + t.delivery), t.model && ('tidied by ' + t.model), t.error].filter(Boolean).join(' · ');
+    if (info) tx.appendChild($('div', 'hint', info));
+    if ((t.menu || []).some(i => i.id === 'retry')) { const rc = $('button', 'btn quiet', hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up'); rc.onclick = () => hact(t, 'retry'); const ra = $('div', 'hacts'); ra.appendChild(rc); tx.appendChild(ra); }
+  }
+  row.append($('time', null, when), kd, tx, acts);
+  return row;
+}
 function recordings(p) {
   const keep = find('v.keepVoice'); if (!keep) return;
   const n = $('p', 'hint'); n.style.marginTop = '16px'; n.append(document.createTextNode((keep.on ? 'Your voice recordings are kept. ' : 'Your voice is not recorded. ') + 'Change it in '), (() => { const a = $('button', 'reveal', 'Settings, Memory and privacy'); a.onclick = () => go('privacy'); return a; })(), document.createTextNode('.')); p.appendChild(n);
 }
 const NONE = 'Nothing in this range.', SEE_ALL = 'See all in History';
+/** Words dictated today and the time they saved, with the typing speed it is measured against said on the page. */
+function daySummary(p) {
+  const ins = (S.extra && S.extra.insights) || null; if (!ins || ins.dictationsToday === undefined) return;
+  const sm = $('div', 'summary');
+  for (const [n, l] of [[ins.wordsToday.toLocaleString(), 'words dictated'], [String(ins.dictationsToday), ins.dictationsToday === 1 ? 'dictation' : 'dictations'], ['≈ ' + ins.minutesSaved + ' min', 'saved']]) { const s = $('span'); s.append($('b', null, n), document.createTextNode(l)); sm.appendChild(s); }
+  sm.appendChild($('span', 'how', L('history.savedHow'))); p.appendChild(sm);
+}
+function seg(label, opts, cur, pick) {
+  const g = $('div', 'seg'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', label);
+  for (const [id, l] of opts) { const b = $('button', null, l); b.setAttribute('aria-pressed', String(cur === id)); b.onclick = () => pick(id); g.appendChild(b); }
+  return g;
+}
 function historyPage(p) {
   if (hrows === null) loadHistory();
   if (!window.__hm) { window.__hm = 1; document.addEventListener('click', e => { if (hmenu && !e.target.closest('.hmenuwrap')) { hmenu = null; render(); } }); }
+  daySummary(p);
+  const bar = $('div', 'htoolbar');
   const f = $('div', 'hsearch'); const q = $('input'); q.type = 'search'; q.id = 'in-hq'; q.placeholder = 'Search what you said'; q.setAttribute('aria-label', 'Search history'); q.value = hq;
   q.oninput = () => { hq = q.value; hdaylim = {}; clearTimeout(htimer); htimer = setTimeout(loadHistory, 180); };
-  f.appendChild(q); p.appendChild(f);
-  if (hnote) { const n = $('p', 'hint', hnote); n.style.margin = '0 0 10px'; p.appendChild(n); }
+  f.appendChild(q);
+  bar.append(f, seg('Show', [['all', 'All'], ['dictation', 'Dictation'], ['command', 'Commands'], ['assistant', 'Assistant']], hkind, id => { hkind = id; render(); }),
+    seg('When', [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', '7 days'], ['all', 'All']], hrange, id => { hrange = id; render(); }));
+  p.appendChild(bar);
+  if (hnote) { const n = $('p', 'hint', hnote); n.setAttribute('role', 'status'); n.style.margin = '10px 0 0'; p.appendChild(n); }
   if (hrows === null) { p.appendChild($('div', 'empty', 'Loading.')); recordings(p); return; }
   if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Things you say to Tessaya and dictate show up here.')); recordings(p); return; }
   const rangeOk = t => hrange === 'all' || (hrange === 'today' && dayLabel(t.at) === 'Today') || (hrange === 'yesterday' && dayLabel(t.at) === 'Yesterday') || (hrange === 'week' && Date.now() - Date.parse(t.at) < 7 * 864e5);
-  const rf = $('div', 'hacts'); rf.style.margin = '0 0 4px'; rf.setAttribute('role', 'group'); rf.setAttribute('aria-label', 'Show');
-  for (const [id, l] of [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'Last 7 days'], ['all', 'All']]) { const b = $('button', 'btn ' + (hrange === id ? 'primary' : 'quiet'), l); b.setAttribute('aria-pressed', String(hrange === id)); b.onclick = () => { hrange = id; render(); }; rf.appendChild(b); }
-  p.appendChild(rf);
-  const rows = hrows.filter(rangeOk);
+  const rows = hrows.filter(t => rangeOk(t) && (hkind === 'all' || (t.hidden ? 'dictation' : HKIND[t.kind]) === hkind));
   if (!rows.length) { p.appendChild($('div', 'empty', NONE)); recordings(p); return; }
   const days = [];
   for (const t of rows) { const d = dayLabel(t.at); const last = days[days.length - 1]; if (!last || last.d !== d) days.push({ d, rows: [t] }); else last.rows.push(t); }
   for (const { d, rows: dayRows } of days) {
     const isOpen = d in hexp ? hexp[d] : (d === 'Today' || hq !== '');
     const dh = $('button', 'day dayhead'); dh.setAttribute('aria-expanded', String(isOpen));
-    const first = dayRows[0]; const gist = (first.kind === 'spoken' ? first.raw : (first.cleaned || first.raw)).replace(/\\s+/g, ' ');
-    dh.append($('span', null, (isOpen ? '\u25BE ' : '\u25B8 ') + d), $('span', 'daycount', ' \u00b7 ' + dayRows.length), ...(isOpen ? [] : [$('span', 'daycount', ' \u00b7 ' + (gist.length > 60 ? gist.slice(0, 60) + '\u2026' : gist))]));
+    dh.append($('span', null, (isOpen ? '▾ ' : '▸ ') + d), $('span', 'daycount', ' · ' + dayRows.length + (dayRows.length === 1 ? ' entry' : ' entries')));
+    if (!isOpen) { const n = dayRows.filter(x => x.kind === 'dictation').reduce((a, x) => a + wordsIn(rowSays(x)), 0); if (n) dh.appendChild($('span', 'daycount', ' · ' + n.toLocaleString() + ' words dictated')); }
     dh.onclick = () => { hexp[d] = !isOpen; try { localStorage.setItem('tessaya.hdays', JSON.stringify(hexp)); } catch (e) {} render(); };
     p.appendChild(dh);
     if (!isOpen) continue;
-    const ids = dayRows.map(x => x.id), dayName = d;
+    const ids = dayRows.map(x => x.id).filter(id => id.indexOf('log:') !== 0), dayName = d;
     const da = $('div', 'hacts'); da.style.margin = '-4px 0 8px';
     const db = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
     if (hday === dayName) da.append($('span', 'hint', 'Delete ' + ids.length + ' ' + (ids.length === 1 ? 'entry' : 'entries') + ' and their recordings for good?'), db('Delete', () => { hday = null; const done = () => { hrows = hrows.filter(x => !ids.includes(x.id)); hnote = 'Deleted.'; render(); }; if (real) ipc.invoke('baton-history:delete-many', ids).then(done); else done(); }, 'primary'), db('Keep', () => { hday = null; render(); }));
-    else da.appendChild(db('Delete all from ' + dayName.toLowerCase(), () => { hday = dayName; render(); }));
+    else if (ids.length) da.appendChild(db('Delete all from ' + dayName.toLowerCase(), () => { hday = dayName; render(); }));
     p.appendChild(da);
-    const g = $('div', 'group'); p.appendChild(g);
-    const lim = hdaylim[d] || 20;
+    const g = $('div', 'group entries'); p.appendChild(g);
+    const lim = hdaylim[d] || 20; let part = null;
     for (const t of dayRows.slice(0, lim)) {
-      const wrap = $('div', 'hrow'); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
-    const text = t.kind === 'spoken' ? t.raw : (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
-    head.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); };
-    const cp = $('button', 'hcopy', 'Copy'); cp.setAttribute('aria-label', t.kind === 'spoken' && t.cleaned ? 'Copy the reply' : 'Copy this transcript'); cp.onclick = () => hact(t, 'copy');
-    line.append(head, cp);
-    if (t.menu && t.menu.length) {
-      const mw = $('span', 'hmenuwrap'); const more = $('button', 'hmore', '\u22EF'); more.setAttribute('aria-label', 'More actions'); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', String(hmenu === t.id));
-      more.onclick = (e) => { e.stopPropagation(); hmenu = hmenu === t.id ? null : t.id; render(); };
-      mw.appendChild(more);
-      if (hmenu === t.id) {
-        const m = $('div', 'hmenu'); m.setAttribute('role', 'menu');
-        for (const it of t.menu) {
-          const b = $('button', 'hitem' + (it.enabled ? '' : ' off'), hbusy.has(t.id) && it.id === 'retry_transcript' ? 'Retrying' : it.label); b.setAttribute('role', 'menuitem');
-          if (it.note) b.title = it.note;
-          b.onclick = (e) => { e.stopPropagation(); hmenu = null;
-            if (it.id === 'delete') { hask = t.id; hopen.add(t.id); render(); }
-            else if (!it.enabled) { hnote = it.note || 'Not available right now.'; render(); }
-            else hact(t, it.id); };
-          m.appendChild(b);
-        }
-        mw.appendChild(m);
-      }
-      line.appendChild(mw);
-    }
-    wrap.appendChild(line);
-    if (hopen.has(t.id)) {
-      const body = $('div', 'hbody');
-      const blk = (l, x) => { const b = $('div', 'hblock'); b.append($('div', 'hint', l), $('div', 'hpre', x)); return b; };
-      if (t.kind === 'spoken') { body.appendChild(blk('You said', t.raw)); if (t.cleaned) body.appendChild(blk('Tessaya replied', t.cleaned)); }
-      else { body.appendChild(blk('As heard', t.raw)); if (t.cleaned) body.appendChild(blk('Written', t.cleaned)); }
-      const rt = (t.menu || []).find(i => i.id === 'retry_transcript');
-      if (rt && rt.note) body.appendChild($('div', 'hint', rt.note + '.'));
-      if (t.versions && t.versions.length > 1) {
-        const cmp = $('div', 'hblock'); cmp.appendChild($('div', 'hint', 'Compare'));
-        t.versions.forEach((v, i) => {
-          const inUse = v.raw === t.raw && (v.cleaned || null) === (t.cleaned || null);
-          const row = $('div', 'hver'); const lab = $('div', 'hint', 'Version ' + (i + 1) + (i === 0 ? ' (first heard)' : '') + (inUse ? ' - in use' : ''));
-          const txt = $('div', 'hpre', t.kind === 'spoken' ? v.raw : (v.cleaned || v.raw));
-          const ra = $('div', 'hacts');
-          const vb = (l, a) => { const b = $('button', 'btn quiet', l); b.onclick = () => hact(t, a + ':' + i); return b; };
-          ra.appendChild(vb('Copy', 'copy_version')); if (!inUse) ra.appendChild(vb('Use this one', 'use_version'));
-          row.append(lab, txt, ra); cmp.appendChild(row);
-        });
-        body.appendChild(cmp);
-      }
-      const meta = [t.app && ('in ' + t.app), t.delivery && ('delivered: ' + t.delivery), t.model && ('tidied by ' + t.model), t.audio ? 'recording kept' : null, t.corrected ? 'you corrected it' : null, t.error].filter(Boolean).join(' · ');
-      if (meta) body.appendChild($('div', 'hint', meta));
-      const acts = $('div', 'hacts');
-      const mk = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
-      const pl = (t.menu || []).find(i => i.id === 'play');
-      if (pl && pl.enabled) acts.appendChild(mk(haudio ? 'Stop playing' : 'Play recording', () => { if (haudio) { haudio.pause(); haudio = null; hnote = ''; render(); } else hact(t, 'play'); }));
-      acts.appendChild(mk('Copy as heard', () => hact(t, 'copy_raw')));
-      if (t.cleaned) acts.appendChild(mk(t.kind === 'spoken' ? 'Copy reply' : 'Copy written', () => hact(t, 'copy_cleaned')));
-      if (rt && rt.enabled) acts.appendChild(mk(hbusy.has(t.id) ? 'Retrying' : 'Retry transcript', () => hact(t, 'retry_transcript')));
-      if ((t.menu || []).some(i => i.id === 'retry')) acts.appendChild(mk(hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up', () => hact(t, 'retry'), 'primary'));
-      acts.appendChild(mk('Report this transcript', () => hact(t, 'report')));
-      if (hask === t.id) { acts.append($('span', 'hint', 'Delete this for good?'), mk('Delete', () => hact(t, 'delete'), 'primary'), mk('Keep', () => { hask = null; render(); })); }
-      else acts.appendChild(mk('Delete', () => { hask = t.id; render(); }));
-      body.appendChild(acts); wrap.appendChild(body);
-    }
-      g.appendChild(wrap);
+      const pd = partOfDay(t.at); if (pd !== part) { part = pd; g.appendChild($('div', 'subday', pd)); }
+      g.appendChild(entry(t, false));
     }
     if (dayRows.length > lim) { const more = $('button', 'btn quiet', 'Show more (' + (dayRows.length - lim) + ')'); more.style.marginTop = '8px'; more.onclick = () => { hdaylim[d] = lim + 20; render(); }; p.appendChild(more); }
   }
@@ -719,6 +799,13 @@ function searchPage(p) {
   const by = new Map(); for (const c of hits) { const t = c.tab || 'advanced'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
   for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + (CATS.some(c => c[0] === t) ? 'Settings, ' : '') + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
 }
+// Sessions are T3's thread list (P5): counts here, the list filtered to live sessions there.
+const showLive = () => real && ipc.send('baton-home:sessions', 'live');
+function liveSessionsPage(p) {
+  const st = (S.extra && S.extra.stats) || {}; const g = $('div', 'stats tiles');
+  for (const [n, l] of [[st.needYou || 0, 'need you'], [st.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); g.appendChild(r); }
+  const b = $('button', 'btn primary gap-top', 'Show live sessions'); b.onclick = showLive; p.append(g, b);
+}
 function tabPage(p) {
   if (query.trim() && !modal) return searchPage(p);
   if (cur === 'home') return home(p);
@@ -726,8 +813,9 @@ function tabPage(p) {
   if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; p.appendChild(tb); }
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
+  if (cur === 'sessions') return liveSessionsPage(p);
   const items = tabControls(cur);
-  const EMPTY = { sessions: 'No sessions yet. Start one in Claude Code or T3 and it appears here.', approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
+  const EMPTY = { approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
@@ -750,7 +838,9 @@ function bindingsPage(b) {
   for (const r of rows) {
     const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); row.style.alignItems = 'flex-start';
     const t = $('div', 'text'); t.style.cssText = 'flex:1;min-width:0'; t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
-    if (r.inputs.some(i => i.type === 'mouse') && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya’s input helper.'));
+    if (x.mouseButtons && r.inputs.some(i => i.type === 'mouse') && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya’s input helper.'));
+    // A Windows key chord (a mouse's "Show Desktop" button sends Win+D) works here, but Windows loses it while bound.
+    for (const i of r.inputs) if (x.mouseButtons && i.type === 'key' && /^Meta\+/.test(i.accelerator)) { const f = $('div', 'fix', inputLabel(i) + ' is a Windows shortcut: while it is bound here, it stops doing its Windows job everywhere (Win+D no longer shows the desktop).'); f.style.color = 'var(--warn)'; t.appendChild(f); }
     for (const c of (r.conflicts || [])) { const i = r.inputs[c.index]; if (!i) continue; const f = $('div', 'fix', inputLabel(i) + ' is also used by ' + c.with.join(' and ') + '. Only one of them will work.'); f.style.color = 'var(--warn)'; t.appendChild(f); }
     const side = $('div'); side.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;max-width:60%';
     const on = capturing === r.action;
@@ -763,7 +853,7 @@ function bindingsPage(b) {
     else side.appendChild($('span', 'hint', 'Four is the most'));
     if (!r.isDefault && !on) { const rs = $('button', 'btn quiet', 'Reset'); rs.onclick = () => set('b.reset:' + r.action, null); side.appendChild(rs); }
     row.append(t, side); wrap.appendChild(row);
-    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', 'Press a key or a chord of up to three keys, or click a mouse button. Escape cancels.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
+    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', x.mouseButtons ? 'Press a key or a chord of up to three keys, or click a mouse button. Escape cancels.' : 'Press a key or a chord of up to three keys. Escape cancels. Mouse buttons can be bound on Windows only.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
     g.appendChild(wrap);
   }
   const f = $('div', 'row'); const ft = $('div', 'text'); ft.append($('div', 'label', 'Cancel a recording, a card or a drive'), $('div', 'hint', 'Always Escape.')); f.append(ft, chips({ type: 'key', accelerator: 'Escape' })); g.appendChild(f);
@@ -789,7 +879,7 @@ addEventListener('keydown', e => {
   const id = capturing; capturing = null; capNote = ''; set('b.add:' + id, JSON.stringify({ type: 'key', accelerator: a }));
 }, true);
 addEventListener('mousedown', e => {
-  if (!capturing) return;
+  if (!capturing || !(S.extra || {}).mouseButtons) return;
   let button = null;
   if (e.buttons === 3) button = 'left+right'; else if (e.button === 1) button = 'middle'; else if (e.button === 3) button = 'back'; else if (e.button === 4) button = 'forward';
   if (!button) return;
@@ -985,7 +1075,7 @@ function syncInd(still) {
   let ind = document.getElementById('navind');
   if (!ind) { ind = $('div'); ind.id = 'navind'; ind.setAttribute('aria-hidden', 'true'); app.appendChild(ind); }
   const a = document.querySelector('#navlist .nav[aria-current]');
-  if (!a || collapsed) { ind.style.opacity = '0'; return; }
+  if (!a) { ind.style.opacity = '0'; return; }
   const ar = app.getBoundingClientRect(), r = a.getBoundingClientRect(); const nr = document.getElementById('navlist').getBoundingClientRect();
   const y = r.top - ar.top + (r.height - 18) / 2;
   ind.setAttribute('data-g', GROUP_OF[cur] || 'now');
@@ -997,6 +1087,15 @@ function syncChrome() {
   if (!booted) { booted = true; const h = document.documentElement; h.classList.add('boot'); setTimeout(() => h.classList.remove('boot'), 1400); }
 }
 let booted = false;
+// Collapsed, the sidebar is a rail of icons, remembered; its labels float outside #navlist, whose scroll would clip them.
+function toggleRail() { collapsed = !collapsed; try { localStorage.setItem('tessaya.rail', collapsed ? '1' : '0'); } catch (e) {} railTip({}); render(); }
+function railTip(e) {
+  const t = e.target && e.target.closest && e.target.closest('#side [data-tip]'); let tip = document.getElementById('railtip');
+  if (!tip) { tip = $('div'); tip.id = 'railtip'; tip.setAttribute('aria-hidden', 'true'); document.body.appendChild(tip); }
+  tip.hidden = !collapsed || !t || /out/.test(e.type); if (tip.hidden) return;
+  const r = t.getBoundingClientRect(); tip.textContent = t.getAttribute('data-tip'); tip.style.top = (r.top + r.height / 2) + 'px'; tip.style.left = (r.right + 10) + 'px';
+}
+for (const ev of ['pointerover', 'pointerout', 'focusin', 'focusout']) document.addEventListener(ev, railTip);
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
   if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.mode === 'open') { setupAuto = true; setupStep = S.extra.setup.step || 0; modal = 'setup'; }
@@ -1010,23 +1109,23 @@ function render(state) {
   for (const [gname, ids] of GROUPS) {
     const folded = foldedGroups.has(gname); const gl = $('button', 'glabel'); gl.setAttribute('data-g', gname.toLowerCase()); gl.setAttribute('aria-expanded', String(!folded)); gl.append($('span', null, gname), icon('fold', 14));
     gl.onclick = () => { if (foldedGroups.has(gname)) foldedGroups.delete(gname); else foldedGroups.add(gname); saveFolded(); render(); }; nav.appendChild(gl);
-    for (const id of ids) { if (folded && cur !== id) continue; const b = $('button', 'nav'); b.setAttribute('data-g', GROUP_OF[id]); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
+    for (const id of ids) { if (folded && cur !== id && !collapsed) continue; const b = $('button', 'nav'); b.setAttribute('data-g', GROUP_OF[id]); b.setAttribute('data-tip', names[id]); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   }
   side.appendChild(nav);
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
-  const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => go('general');
-  const hp = $('button', 'nav'); hp.append(icon('help'), $('span', null, 'Help')); if (cur === 'help') hp.setAttribute('aria-current', 'page'); hp.onclick = () => go('help');
-  const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
+  const foot = $('div', 'foot'); const st = $('button', 'nav'); st.setAttribute('data-tip', 'Settings'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => go('general');
+  const hp = $('button', 'nav'); hp.setAttribute('data-tip', 'Help'); hp.append(icon('help'), $('span', null, 'Help')); if (cur === 'help') hp.setAttribute('aria-current', 'page'); hp.onclick = () => go('help');
+  const t3 = $('button', 'nav'); t3.setAttribute('data-tip', 'Open T3 sessions'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
   foot.append(t3, hp, st); side.appendChild(foot);
   }, 'brand');
   setRegion(document.getElementById('top'), top => {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
-  const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
+  const tg = $('button', 'ibtn'); tg.id = 'railtoggle'; tg.setAttribute('aria-label', collapsed ? 'Expand the sidebar' : 'Collapse the sidebar'); tg.setAttribute('aria-expanded', String(!collapsed)); tg.appendChild(icon('side')); tg.onclick = toggleRail; top.appendChild(tg);
   const stt = $('div', 'state'); stt.setAttribute('role', 'status'); stt.setAttribute('data-tone', S.status.tone); if (lastState !== null && lastState !== S.status.label) stt.className += ' morph'; lastState = S.status.label; const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', L('alerts.title')); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);
   if (bellOpen) { const pop = $('div', 'pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', L('alerts.title')); pop.appendChild($('b', null, L('alerts.title')));
-    if (need) { const b = $('button', 'btn', L(need === 1 ? 'alerts.one' : 'alerts.many', { n: need })); b.onclick = () => { bellOpen = false; go('sessions'); }; pop.appendChild(b); }
+    if (need) { const b = $('button', 'btn', L(need === 1 ? 'alerts.one' : 'alerts.many', { n: need })); b.onclick = () => { bellOpen = false; showLive(); }; pop.appendChild(b); }
     if (up && up.lead) { const b = $('button', 'btn', L('alerts.update', { name: up.button })); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
     if (!need && !(up && up.lead)) pop.appendChild($('p', null, L('alerts.none')));
     top.appendChild(pop); }

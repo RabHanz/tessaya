@@ -5,6 +5,7 @@
  * desktop reads and writes the files, asks the model and runs the replays.
  */
 import { splitFront, type Brain } from "./osPack.ts";
+import { batonToolName } from "./operator.ts";
 import { parseSkill, reviewSkill, slugOf } from "./skillReview.ts";
 
 export const SKILLS_FOLDER = "skills";
@@ -300,8 +301,7 @@ export interface RecordedCase {
 export const pathPasses = (
   c: Pick<RecordedCase, "goal" | "maxCalls">,
   calls: ReadonlyArray<string>,
-): boolean =>
-  calls.length <= c.maxCalls && calls.some((t) => t.replace(/^mcp__baton__/, "") === c.goal);
+): boolean => calls.length <= c.maxCalls && calls.some((t) => batonToolName(t) === c.goal);
 
 /** A turn kept on this machine for the nightly pass: its trace, what a replay needs, and its id (when it began). */
 export interface KeptTurn {

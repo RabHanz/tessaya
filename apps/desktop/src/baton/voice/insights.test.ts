@@ -32,6 +32,8 @@ describe("insights", () => {
     ];
     expect(computeInsights(turns, now)).toEqual({
       wordsToday: 8,
+      dictationsToday: 2,
+      minutesSaved: 0,
       wpm: 60,
       streak: 3,
       topApps: [
@@ -39,6 +41,17 @@ describe("insights", () => {
         { app: "notepad.exe", count: 1 },
       ],
     });
-    expect(computeInsights([], now)).toEqual({ wordsToday: 0, wpm: null, streak: 0, topApps: [] });
+    expect(computeInsights([], now)).toMatchObject({ wordsToday: 0, wpm: null, streak: 0 });
+  });
+
+  it("saves the typing time at 40 wpm less the time spent speaking", () => {
+    const now = new Date(2026, 10, 1, 15, 0, 0);
+    const words = (n: number) => Array.from({ length: n }, () => "word").join(" ");
+    const at = new Date(2026, 10, 1, 10).toISOString();
+    // 400 words typed is 10 minutes; spoken in 2.
+    expect(computeInsights([turn(at, "slack.exe", words(400), 120)], now).minutesSaved).toBe(8);
+    // No measured length: his own pace from the timed ones (400 words in 2 minutes) prices it.
+    const both = [turn(at, "slack.exe", words(400), 120), turn(at, "slack.exe", words(400), null)];
+    expect(computeInsights(both, now).minutesSaved).toBe(16);
   });
 });

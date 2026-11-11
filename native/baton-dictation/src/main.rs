@@ -3,6 +3,14 @@
 //! See docs/baton/VOICE.md. Run with no arguments it serves; the subcommands are for voice-lab.
 #[cfg(unix)]
 mod desktop_unix;
+#[cfg(windows)]
+mod escape_windows;
+mod chord;
+#[cfg(windows)]
+mod chord_windows;
+mod keygate;
+#[cfg(windows)]
+mod keygate_windows;
 mod keys;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod mouse;
@@ -16,15 +24,20 @@ mod capture;
 mod changes;
 #[cfg(windows)]
 mod input_windows;
+mod gpu;
 mod live;
+mod micprobe;
 #[cfg(windows)]
 mod paste_windows;
+mod remote;
+#[cfg(any(windows, test))]
+mod paste_tx;
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -32,18 +45,26 @@ use enigo::Enigo;
 #[cfg(not(target_os = "linux"))]
 use enigo::Settings;
 use handy_keys::{Hotkey, HotkeyManager, HotkeyState};
+#[cfg(not(windows))]
+use handy_keys::{Key, KeyboardListener};
 use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
+#[cfg(not(windows))]
+use chord::{Chord, ChordOut, Ev as ChordEv};
 use keys::PasteMethod;
-use live::{lift_gain, words_after, ChunkParams, Chunker, Piece};
+use live::{
+    join_pieces, lift_gain, meter_b64, preview_due, words_after, ChunkParams, Chunker, Piece, METER_SAMPLES, REUSE_FLAT,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
-    init_backends_with, BackendMask, Feature, Model, RunOptions, Session, SessionOptions, TimestampKind,
+    init_backends_with, Feature, RunOptions, Session, SessionOptions, TimestampKind,
 };
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
+/// The caret's place is read as a dictation starts; past this the words go in the pill instead.
+const CARET_AT_DEADLINE: Duration = Duration::from_millis(300);
 /// How often an idle engine looks for a model slot it can let go.
 const IDLE_TICK: Duration = Duration::from_secs(60);
 const MIN_SAMPLES: usize = 16_000 / 4;
@@ -51,6 +72,14 @@ const MIN_SAMPLES: usize = 16_000 / 4;
 const MAX_RECORDING: Duration = Duration::from_secs(3600);
 /// Parakeet clips the last word without a little trailing silence.
 const TAIL_SAMPLES: usize = 16_000 / 5;
+
+/// An end line (`idle`, `error`) names the dictation it ends, so the desktop never pins it on the next one.
+fn of_dictation(mut event: Value, id: Option<u64>) -> Value {
+    if let Some(id) = id {
+        event["dictation"] = json!(id);
+    }
+    event
+}
 
 fn emit(event: Value) {
     let mut out = std::io::stdout().lock();
@@ -100,15 +129,52 @@ struct Config {
     /// handed back, not run through the local model.
     #[serde(default)]
     external: Option<PathBuf>,
+    /// He keeps the audio of dictations: each recording is also written as a WAV into this private folder for History.
+    #[serde(default, rename = "keepAudio")]
+    keep_audio: Option<PathBuf>,
+    /// The desktop says this machine has the memory to keep the dictation model loaded between dictations.
+    #[serde(default, rename = "keepLoaded")]
+    keep_loaded: bool,
+    /// His words in the pill as he speaks: previews of the words not yet cut, and the local model's words for the cloud.
+    #[serde(default, rename = "liveWords")]
+    live_words: bool,
+    /// His recognisers on his own servers, in his order: while the key is held the audio goes to the first healthy one
+    /// and the laptop only decodes if none answers or one stalls (remote.rs).
+    #[serde(default)]
+    recognizers: Vec<remote::Server>,
+    /// "Use graphics card for recognition": auto, on or off (gpu.rs).
+    #[serde(default)]
+    gpu: gpu::Mode,
+    /// Wake words are off, so no other mic reader feeds the pill's waveform: the recording sends `pcm` lines.
+    #[serde(default)]
+    meter: bool,
+    /// His other microphones, in his order, by name: tried when `device` will not open, and listened to beside it at
+    /// each press in case it hears nothing (micprobe.rs).
+    #[serde(default)]
+    fallbacks: Vec<String>,
 }
 
 enum Msg {
     Line(String),
-    Key { hold: bool, pressed: bool },
+    /// `at`: ms on the serve loop's clock when the hook saw it, so a press handled late (the microphone opening holds
+    /// the loop for 100 to 250 ms) still times the hold he made, not when the loop got to it.
+    Key { hold: bool, pressed: bool, at: f64 },
     MicFailed(String),
+    /// Another key joined the hold chord (Win+Ctrl+Shift+B): the dictation it started is dropped, never pasted.
+    ChordJoined,
+    /// Esc while the hold key is down (`escape_windows`): the recording is dropped and its release pastes nothing.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    HeldEscape,
+    /// A block of the recording's audio for the pill's waveform, written out by the serve thread, never the audio's.
+    Meter(Vec<f32>),
     /// A fake microphone ran out of file, which stands in for releasing the key.
     FakeEnded,
-    Finished { id: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
+    /// Another of his mics opened beside a dictation's (`micprobe.rs`); `rank` is its place in his order.
+    Probe(u64, Probe),
+    /// `dictation`: the key dictation it answers (`Work::Begin`'s id); None for a clip.
+    Finished { id: Option<u64>, dictation: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
+    /// A dictation paste's checks are back from their worker (`paste_checked`).
+    PasteChecked { id: Option<u64>, text: String, why: &'static str, started: Instant },
 }
 
 struct Done {
@@ -123,6 +189,16 @@ struct Done {
     wav: Option<String>,
     /// The model file a clip sent to `transcribe` was recognised with, for the turn log; None for a live recording.
     model: Option<String>,
+    /// A dictation's stage times from its key press, for the desktop's `dictation_timing`; None for a clip.
+    timing: Option<Value>,
+    /// The recording as a WAV for History, when he keeps the audio of dictations.
+    audio: Option<String>,
+    /// The release took the last preview's words: nothing was decoded after the key came up.
+    reused: bool,
+    /// Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote).
+    via: &'static str,
+    /// What recognised them here: "cpu", "gpu", or "gpu-fallback" (the card failed, the CPU decoded the whole recording).
+    backend: &'static str,
 }
 
 struct Job {
@@ -237,10 +313,61 @@ enum Work {
     Clip(Job),
     /// Load the model now, so the first real phrase does not wait behind it.
     Load { id: Option<u64>, model: PathBuf },
-    Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf> },
-    Audio(Vec<f32>),
-    End { target: Option<isize>, released: Instant },
+    /// Each dictation's messages carry its id: audio or an end meant for another one never reaches this one.
+    Begin {
+        id: u64,
+        model: PathBuf,
+        language: Option<String>,
+        external: Option<PathBuf>,
+        keep: Option<PathBuf>,
+        live: bool,
+        /// His recognisers to try first (`Config::recognizers`); empty: the laptop decodes.
+        remote: Vec<remote::Server>,
+    },
+    Audio(u64, Vec<f32>),
+    End { id: u64, target: Option<isize>, released: Instant, timing: Value },
     Abort,
+    /// Dictation is bound to a key and heard here: the dictation model stays loaded, so a press never waits on a reload.
+    Keep(bool),
+    /// Cloud live words want this model read in the background (`warm_needed`); a cloud Begin asks again.
+    Warm(PathBuf),
+    /// The model `warm_in_background` loaded for cloud dictation's live words (None: it would not load); taken only
+    /// into an empty slot.
+    Warmed(PathBuf, Option<Session>),
+    /// His dictation model and graphics-card setting: the card's session is read and warmed in the background (gpu.rs).
+    GpuWarm(Option<PathBuf>, gpu::Mode),
+    GpuWarmed(PathBuf, Option<Session>),
+    /// The computer woke from sleep: the card's session is read again, as the device may have been reset.
+    GpuReset,
+}
+
+/// A background read of `wanted` is due: it is on disk, no slot holds it and none is running. After an idle unload
+/// the slot is empty again, so the next ask reads it again; a model already in either slot is never read twice.
+fn warm_needed(wanted: &Path, main: Option<&Path>, other: Option<&Path>, warming: bool, on_disk: bool) -> bool {
+    on_disk && !warming && main != Some(wanted) && other != Some(wanted)
+}
+
+/// Cloud dictation's live words need the local model, but a recording must never wait for it: it is read here, on a
+/// low-priority thread of its own, and handed to the engine when ready. Until then the pill shows only its bars.
+fn warm_in_background(
+    model: PathBuf,
+    job_tx: Sender<Work>,
+    loader: impl FnOnce(&Path) -> Result<(Session, u64), String> + Send + 'static,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        lower_priority();
+        let session = loader(&model).ok().map(|(session, _)| session);
+        let _ = job_tx.send(Work::Warmed(model, session));
+    })
+}
+
+/// A background read runs below everything he is doing.
+fn lower_priority() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_LOWEST};
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
+    }
 }
 
 /// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
@@ -272,7 +399,7 @@ fn load(model: &Path) -> Result<(Session, u64), String> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or_else(|| default_threads(usable_cores()));
-    let session = Model::load(model)
+    let session = gpu::cpu_model(model)
         .and_then(|m| m.session_with(&SessionOptions { n_threads, ..Default::default() }))
         .map_err(|e| format!("could not load {}: {e}", model.display()))?;
     Ok((session, started.elapsed().as_millis() as u64))
@@ -290,19 +417,40 @@ fn infer(session: &mut Session, pcm: &mut Vec<f32>, language: Option<String>) ->
 
 /// The new words of one piece; the context before them only helps the model hear them.
 fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -> Result<String, String> {
-    let Piece { mut pcm, context } = piece;
+    decode_words(session, piece, language).map(|(text, _)| text)
+}
+
+/// A preview's words with where each ends, in samples of the uncut audio (`Live::preview_words`).
+type EndedWords = Vec<(usize, String)>;
+
+/// `decode_piece`, and each kept word with where it ends in the piece's new audio.
+fn decode_words(session: &mut Session, piece: Piece, language: Option<String>) -> Result<(String, EndedWords), String> {
+    let Piece { mut pcm, context, .. } = piece;
     lift_gain(&mut pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
     let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
     let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+    let context_ms = context as i64 / 16;
+    let ended = result
+        .words
+        .iter()
+        .filter(|w| context == 0 || w.t0_ms >= context_ms - 80)
+        .filter(|w| !w.text.trim().is_empty())
+        .map(|w| (((w.t1_ms - context_ms).max(0) * 16) as usize, w.text.trim().to_string()))
+        .collect();
     if context == 0 || result.words.is_empty() {
-        return Ok(result.text.trim().to_string());
+        return Ok((result.text.trim().to_string(), ended));
     }
-    Ok(words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context as i64 / 16))
+    Ok((words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context_ms), ended))
 }
+
+/// A word ending this close to where a preview stopped may be cut off there: release decodes from before it.
+const PREVIEW_SAFE: usize = 16_000 * 2 / 5;
 
 /// One recording on its way through the model.
 struct Live {
+    /// The dictation this is (`Work::Begin`'s id).
+    id: u64,
     chunker: Chunker,
     /// Everything heard: a piece that fails falls back to the whole recording.
     heard: Vec<f32>,
@@ -314,12 +462,122 @@ struct Live {
     failed: Option<String>,
     /// Kept whole for the desktop's recogniser in this folder; nothing is decoded here.
     external: Option<PathBuf>,
+    /// He keeps the audio of dictations: the recording is also written here for History, beside its text.
+    keep: Option<PathBuf>,
+    /// Previews of the words not yet cut go to the pill (`preview_due`): where the last one reached, and its time.
+    live_words: bool,
+    previewed: usize,
+    preview_ms: u64,
+    /// The last preview's words for the uncut audio up to `previewed`: with only quiet after it, the release takes
+    /// them instead of decoding again (`reused`).
+    preview: Option<String>,
+    /// That preview's words with where each ends: at release only what follows the last one ending well before the
+    /// preview did is decoded, so a long uncut stretch costs its last second or so, not all of it.
+    preview_words: EndedWords,
+    /// Where the uncut audio was last checked for a pause (`Chunker::paused_since`), so the check runs every 100 ms.
+    pause_checked: usize,
+    reused: bool,
+    /// His server is recognising this dictation; the laptop keeps every sample and decodes only if it fails.
+    remote: Option<Remote>,
+    /// Who wrote the words, for the timing line: "local", "remote", or "fallback" (the server failed, the laptop wrote).
+    via: &'static str,
+    /// His graphics card is recognising it (gpu.rs); on any error there the CPU decodes the whole recording at release.
+    on_gpu: bool,
+    /// The release's last decode or reuse has run (`settle`).
+    settled: bool,
+}
+
+/// How long a connection to his server may take before the laptop decodes instead.
+const REMOTE_CONNECT: Duration = Duration::from_millis(400);
+/// How long release waits for his server's text before the laptop decodes everything it kept.
+const REMOTE_TEXT: Duration = Duration::from_millis(2_000);
+
+/// One dictation on his server: connecting in the background while the key is held, then streaming.
+struct Remote {
+    /// The dictation this is: on each `partial`, so the desktop never shows one dictation's words on the next.
+    id: u64,
+    connecting: Option<Receiver<Option<remote::Dictation>>>,
+    dictation: Option<remote::Dictation>,
+    /// Samples of `heard` already sent.
+    sent: usize,
+}
+
+impl Remote {
+    /// Picks the server and opens the dictation off the engine's thread; audio waits in `heard` meanwhile.
+    fn connect(id: u64, servers: Vec<remote::Server>, language: Option<String>) -> Remote {
+        let (tx, rx) = channel();
+        thread::spawn(move || {
+            // The health check's own socket begins the dictation, so the whole choice stays inside REMOTE_CONNECT.
+            let chosen = remote::pick(&servers, REMOTE_CONNECT)
+                .and_then(|(_, socket)| remote::Dictation::begin(socket, language).ok());
+            let _ = tx.send(chosen);
+        });
+        Remote { id, connecting: Some(rx), dictation: None, sent: 0 }
+    }
+
+    /// Sends what is new and passes its live words on. False: the server failed or never answered.
+    fn step(&mut self, heard: &[f32]) -> bool {
+        if let Some(rx) = &self.connecting {
+            match rx.try_recv() {
+                Ok(Some(dictation)) => {
+                    self.dictation = Some(dictation);
+                    self.connecting = None;
+                }
+                Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => return false,
+                Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            }
+        }
+        let Some(dictation) = &self.dictation else { return true };
+        if heard.len() > self.sent {
+            dictation.audio(&heard[self.sent..]);
+            self.sent = heard.len();
+        }
+        while let Ok(event) = dictation.events.try_recv() {
+            match event {
+                remote::Event::Partial { text, pause } => {
+                    emit(json!({"ev": "partial", "text": text, "pause": pause, "dictation": self.id}))
+                }
+                remote::Event::Failed(_) => return false,
+                remote::Event::Text { .. } => {}
+            }
+        }
+        true
+    }
+
+    /// The release: the rest of the audio, then its text within `REMOTE_TEXT`. None: the laptop decodes.
+    fn finish(mut self, heard: &[f32]) -> Option<(String, u64, bool)> {
+        if let Some(rx) = self.connecting.take() {
+            self.dictation = rx.recv_timeout(REMOTE_CONNECT).ok().flatten();
+        }
+        let dictation = self.dictation?;
+        if heard.len() > self.sent {
+            dictation.audio(&heard[self.sent..]);
+        }
+        dictation.end();
+        let id = self.id;
+        dictation
+            .text(REMOTE_TEXT, |text, pause| emit(json!({"ev": "partial", "text": text, "pause": pause, "dictation": id})))
+            .ok()
+    }
 }
 
 impl Live {
     fn new(language: Option<String>, load_ms: u64, failed: Option<String>) -> Self {
         Self {
+            id: 0,
             external: None,
+            keep: None,
+            live_words: false,
+            previewed: 0,
+            preview_ms: 0,
+            preview: None,
+            preview_words: Vec::new(),
+            pause_checked: 0,
+            reused: false,
+            remote: None,
+            via: "local",
+            on_gpu: false,
+            settled: false,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -332,17 +590,130 @@ impl Live {
     }
 
     fn decode(&mut self, session: &mut Session, piece: Piece) {
+        // Dev only: the card fails after its first piece, to prove the CPU then writes every word.
+        if self.on_gpu && self.pieces > 0 && std::env::var("TESSAYA_DEV_GPU_FAIL").as_deref() == Ok("1") {
+            self.failed = Some("simulated graphics card failure".to_string());
+            return;
+        }
         let started = Instant::now();
+        let at_pause = piece.at_pause;
         match decode_piece(session, piece, self.language.clone()) {
             Ok(text) if text.is_empty() => {}
-            Ok(text) => self.text.push(text),
+            Ok(text) => {
+                self.text.push(text);
+                // The words so far, for the pill to show as he speaks. At a pause they may be all of it: the desktop
+                // starts their cleanup then, so a release right after finds it done (never for the cloud's words).
+                emit(json!({
+                    "ev": "partial", "text": join_pieces(&self.text), "pause": at_pause && self.external.is_none(),
+                    "dictation": self.id,
+                }));
+            }
             Err(e) => self.failed = Some(e),
         }
+        self.previewed = 0;
+        self.preview = None;
+        self.preview_words.clear();
+        self.pause_checked = 0;
         self.infer_ms += started.elapsed().as_millis() as u64;
         self.pieces += 1;
     }
 
-    fn finish(mut self, session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
+    /// Audio in: a piece when the chunker cuts one, else a preview of the uncut words when one is due. Local
+    /// recognition always decodes; the cloud's recording only for his live words.
+    fn hear(&mut self, session: Option<&mut Session>, pcm: &[f32], behind: bool) {
+        self.heard.extend_from_slice(pcm);
+        if self.failed.is_some() || (self.external.is_some() && !self.live_words) {
+            return;
+        }
+        // On his server the laptop only keeps the audio. If the server fails mid-dictation the laptop takes over at
+        // once with everything heard so far, and the live words come from here.
+        let heard = &self.heard;
+        let fresh = match self.remote.as_mut().map(|remote| remote.step(heard)) {
+            Some(true) => return,
+            Some(false) => {
+                self.remote = None;
+                self.via = "fallback";
+                self.heard.clone()
+            }
+            None => pcm.to_vec(),
+        };
+        let piece = self.chunker.push(&fresh);
+        let Some(session) = session else { return };
+        if let Some(piece) = piece {
+            return self.decode(session, piece);
+        }
+        if behind {
+            return;
+        }
+        let pending = self.chunker.pending_len();
+        // His live words on their cadence; and, for every local dictation, a look as soon as he pauses, which is
+        // usually just before he lets go: the release then has nothing left to decode.
+        let paused = pending >= self.pause_checked + 1_600 && {
+            self.pause_checked = pending;
+            self.chunker.paused_since(self.previewed, &self.heard)
+        };
+        let due = self.live_words && preview_due(pending, self.previewed, self.preview_ms);
+        if !due && !paused {
+            return;
+        }
+        let from = self.previewed;
+        self.previewed = pending;
+        // Nothing said since the last look: no decode, and the last preview still holds all of it.
+        if self.chunker.quiet_since(from, &self.heard) {
+            return;
+        }
+        let Some(piece) = self.chunker.preview() else {
+            return;
+        };
+        let started = Instant::now();
+        // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
+        let decoded = decode_words(session, piece, self.language.clone()).ok();
+        self.preview_words = decoded.as_ref().map(|(_, words)| words.clone()).unwrap_or_default();
+        self.preview = decoded.map(|(text, _)| text);
+        // At his pause the words may be all of it: the desktop starts their cleanup now, so a release finds it done.
+        if let (true, Some(text)) = (self.live_words || paused, &self.preview) {
+            let words: Vec<&str> = self.text.iter().map(String::as_str).chain([text.as_str()]).collect();
+            emit(json!({
+                "ev": "partial", "text": join_pieces(&words), "pause": paused && self.external.is_none(),
+                "dictation": self.id,
+            }));
+        }
+        self.preview_ms = started.elapsed().as_millis() as u64;
+    }
+
+    /// The release's work on what was not yet decoded: the last piece, or nothing when the last preview already holds it.
+    /// Run once; the card's dictations run it on the card first, so a failure there is known before the text is made.
+    fn settle(&mut self, session: &mut Session) {
+        if std::mem::replace(&mut self.settled, true) {
+            return;
+        }
+        if self.failed.is_none() && !self.chunker.pending_is_quiet(&self.heard, REUSE_FLAT) {
+            // No speech since the last preview: its words are the rest, and nothing is decoded at release.
+            let reuse = self.preview.is_some() && !self.chunker.speech_after(self.previewed, &self.heard);
+            if let (true, Some(text)) = (reuse, self.preview.take()) {
+                self.chunker.finish();
+                if !text.is_empty() {
+                    self.text.push(text);
+                }
+                self.reused = true;
+                self.pieces += 1;
+            } else {
+                // The preview's words that ended well before it stopped are kept; only what follows is decoded.
+                let safe = self.previewed.saturating_sub(PREVIEW_SAFE);
+                let kept: Vec<&(usize, String)> = self.preview_words.iter().take_while(|(end, _)| *end <= safe).collect();
+                if let Some(&&(end, _)) = kept.last() {
+                    let words = kept.iter().map(|(_, w)| w.as_str()).collect::<Vec<_>>().join(" ");
+                    self.chunker.skip(end);
+                    self.text.push(words);
+                }
+                if let Some(piece) = self.chunker.finish() {
+                    self.decode(session, piece);
+                }
+            }
+        }
+    }
+
+    fn finish(mut self, mut session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
         let audio_ms = self.heard.len() as u64 / 16;
         if let Some(dir) = &self.external {
             let wav = write_wav(dir, &self.heard)?;
@@ -355,19 +726,47 @@ impl Live {
                 pieces: 0,
                 wav: Some(wav),
                 model: None,
+                timing: None,
+                audio: None,
+                reused: false,
+                via: "local",
+                backend: "cloud",
             });
         }
-        let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
-        if self.failed.is_none() {
-            if let Some(piece) = self.chunker.finish() {
+        if let Some(remote) = self.remote.take() {
+            if let Some((text, infer_ms, reused)) = remote.finish(&self.heard) {
+                let audio = self.keep.as_deref().and_then(|dir| write_wav(dir, &self.heard).ok());
+                return Ok(Done {
+                    text,
+                    audio_ms,
+                    infer_ms,
+                    load_ms: self.load_ms,
+                    release_ms: Some(released.elapsed().as_millis() as u64),
+                    pieces: 0,
+                    wav: None,
+                    model: None,
+                    timing: None,
+                    audio,
+                    reused,
+                    via: "remote",
+                    backend: "server",
+                });
+            }
+            // His server did not answer in time: the laptop decodes all it kept.
+            self.via = "fallback";
+            let heard = self.heard.clone();
+            if let (Some(piece), Some(session)) = (self.chunker.push(&heard), session.as_deref_mut()) {
                 self.decode(session, piece);
             }
         }
+        let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
+        self.settle(session);
         let text = if self.failed.is_some() {
             infer(session, &mut self.heard, self.language.clone())?.0
         } else {
-            self.text.join(" ")
+            join_pieces(&self.text)
         };
+        let audio = self.keep.as_deref().and_then(|dir| write_wav(dir, &self.heard).ok());
         Ok(Done {
             text,
             audio_ms,
@@ -377,6 +776,11 @@ impl Live {
             pieces: self.pieces,
             wav: None,
             model: None,
+            timing: None,
+            audio,
+            reused: self.reused,
+            via: self.via,
+            backend: if self.on_gpu { "gpu" } else { "cpu" },
         })
     }
 }
@@ -469,17 +873,50 @@ fn path_of(slot: &Loaded) -> Option<&Path> {
     slot.as_ref().map(|(path, _)| path.as_path())
 }
 
+/// Takes every audio chunk already waiting into `pcm`. True when there was any: the engine is behind his voice, so
+/// no preview runs until it has caught up (a preview then only delays the real decode). Stops at the first other
+/// message, returned to be handled next, so the order holds.
+fn gather_audio(work: &Receiver<Work>, id: u64, pcm: &mut Vec<f32>) -> (bool, Option<Work>) {
+    let mut behind = false;
+    loop {
+        match work.try_recv() {
+            Ok(Work::Audio(of, more)) if of == id => {
+                pcm.extend_from_slice(&more);
+                behind = true;
+            }
+            Ok(other) => return (behind, Some(other)),
+            Err(_) => return (behind, None),
+        }
+    }
+}
+
 /// One thread owns the models. Each slot loads on first use and leaves after ten idle minutes of its own, because
-/// 16 GB is shared with everything else on the laptop.
-fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
+/// 16 GB is shared with everything else on the laptop; the dictation slot stays while dictation is bound (`Keep`).
+/// v3 held is about 1.2 GB.
+fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
+    // Cloud live words: the model to read in the background, and whether a read is running.
+    let mut wanted: Option<PathBuf> = None;
+    let mut warming = false;
     let mut loaded: Loaded = None;
     let mut other: Loaded = None;
+    // His graphics card's session (gpu.rs), the model and setting it is for, and whether it is being read.
+    let mut gpu: Loaded = None;
+    let mut gpu_want: Option<(PathBuf, gpu::Mode)> = None;
+    let mut gpu_warming = false;
     let mut loaded_at = Instant::now();
     let mut other_at = Instant::now();
+    // When a dictation last ran on the card (`gpu::IDLE`).
+    let mut gpu_at = Instant::now();
     let mut live: Option<Live> = None;
+    let mut keep = false;
+    // A message taken off the queue while gathering audio that was waiting, handled next.
+    let mut carried: Option<Work> = None;
     loop {
-        let message = work.recv_timeout(IDLE_TICK);
-        if live.is_none() && loaded_at.elapsed() >= IDLE_UNLOAD {
+        let message = match carried.take() {
+            Some(next) => Ok(next),
+            None => work.recv_timeout(IDLE_TICK),
+        };
+        if live.is_none() && !keep && loaded_at.elapsed() >= IDLE_UNLOAD {
             loaded = None;
         }
         if other_at.elapsed() >= IDLE_UNLOAD {
@@ -512,9 +949,14 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                         pieces: 1,
                         wav: None,
                         model,
+                        timing: None,
+                        audio: None,
+                        reused: false,
+                        via: "local",
+                        backend: "cpu",
                     })
                 });
-                let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
+                let _ = out.send(Msg::Finished { id: job.id, dictation: None, dictated: job.dictated, target: job.target, result });
             }
             Ok(Work::Load { id, model }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
@@ -527,38 +969,158 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 };
                 emit(line);
             }
-            Ok(Work::Begin { external: Some(dir), language, .. }) => {
-                live = Some(Live { external: Some(dir), ..Live::new(language, 0, None) });
+            Ok(Work::Begin { id, model, language, external: Some(dir), live: words, .. }) => {
+                // Unloaded after idle: read again in the background for the next one; this one never waits for it.
+                if words && wanted.as_ref() == Some(&model) {
+                    let _ = me.send(Work::Warm(model.clone()));
+                }
+                // The cloud hears the recording. The local model shows his words as he speaks only when it is already
+                // loaded: never loaded for them, so the key's release never waits on a load.
+                let words = words && path_of(&loaded) == Some(model.as_path());
+                live = Some(Live { id, external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { model, language, external: None }) => {
+            Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers })
+                if path_of(&gpu) == Some(model.as_path()) =>
+            {
+                // On the card: the CPU's model is not read for it, and is read only if the card fails.
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, language.clone()));
+                // Woken while he speaks, so release does not pay for it; a failure here shows at his own decode.
+                if gpu_at.elapsed() >= gpu::IDLE {
+                    if let Some((_, session)) = gpu.as_mut() {
+                        let _ = gpu::nudge(session, 1);
+                    }
+                }
+                gpu_at = Instant::now();
+                live = Some(Live { id, keep, live_words: words, remote, on_gpu: true, ..Live::new(language, 0, None) });
+            }
+            Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
                 }
                 loaded_at = Instant::now();
-                live = Some(match ensure_loaded(&mut loaded, &model) {
+                let fresh = match ensure_loaded(&mut loaded, &model) {
                     Ok(load_ms) => Live::new(language, load_ms, None),
                     Err(e) => {
                         loaded = None;
                         Live::new(language, 0, Some(e))
                     }
-                });
+                };
+                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, fresh.language.clone()));
+                live = Some(Live { id, keep, live_words: words, remote, ..fresh });
             }
-            Ok(Work::Audio(pcm)) => {
+            Ok(Work::Audio(id, mut pcm)) => {
                 loaded_at = Instant::now();
-                let Some(current) = live.as_mut() else { continue };
-                current.heard.extend_from_slice(&pcm);
-                if current.failed.is_none() && current.external.is_none() {
-                    if let (Some(piece), Some((_, session))) = (current.chunker.push(&pcm), loaded.as_mut()) {
-                        current.decode(session, piece);
+                let (behind, next) = gather_audio(&work, id, &mut pcm);
+                carried = next;
+                let Some(current) = live.as_mut().filter(|l| l.id == id) else {
+                    continue;
+                };
+                let session = if current.on_gpu { &mut gpu } else { &mut loaded };
+                current.hear(session.as_mut().map(|(_, session)| session), &pcm, behind);
+                if current.on_gpu && current.failed.is_some() && gpu.take().is_some() {
+                    emit(json!({"ev": "gpu", "ready": false, "error": current.failed}));
+                }
+            }
+            Ok(Work::End { id, target, released, timing }) => {
+                // Only its own recording answers a dictation; any other is never handed over as its words.
+                let result = match live.take_if(|l| l.id == id) {
+                    Some(mut current) => {
+                        let mut fell_back = false;
+                        if current.on_gpu {
+                            if let Some((_, session)) = gpu.as_mut() {
+                                current.settle(session);
+                            }
+                            if current.failed.is_some() || gpu.is_none() {
+                                // The card failed (or was lost): the CPU decodes everything heard, so no word is lost.
+                                let model = path_of(&gpu).map(Path::to_path_buf).or(gpu_want.as_ref().map(|(m, _)| m.clone()));
+                                if gpu.take().is_some() {
+                                    emit(json!({"ev": "gpu", "ready": false, "error": current.failed}));
+                                }
+                                fell_back = true;
+                                current.on_gpu = false;
+                                current.failed.get_or_insert_with(|| "graphics card lost".to_string());
+                                if let Some(Err(e)) = model.map(|model| ensure_loaded(&mut loaded, &model)) {
+                                    current.failed = Some(e);
+                                }
+                            }
+                        }
+                        let session = if current.on_gpu { &mut gpu } else { &mut loaded };
+                        current.finish(session.as_mut().map(|(_, session)| session), released).map(|done| {
+                            let backend = if fell_back { "gpu-fallback" } else { done.backend };
+                            let mut timing = timing;
+                            timing["reused"] = json!(done.reused);
+                            timing["recognizer"] = json!(done.via);
+                            timing["backend"] = json!(backend);
+                            Done { timing: Some(timing), backend, ..done }
+                        })
+                    }
+                    None => Err("That dictation's recording was lost, so nothing was written.".to_string()),
+                };
+                let _ = out.send(Msg::Finished { id: None, dictation: Some(id), dictated: true, target, result });
+            }
+            Ok(Work::Abort) => live = None,
+            Ok(Work::Warm(model)) => {
+                if warm_needed(&model, path_of(&loaded), path_of(&other), warming, model.is_file()) {
+                    warming = true;
+                    warm_in_background(model.clone(), me.clone(), |m| load(m));
+                }
+                wanted = Some(model);
+            }
+            Ok(Work::Warmed(path, session)) => {
+                warming = false;
+                if let Some(session) = session.filter(|_| loaded.is_none()) {
+                    loaded = Some((path, session));
+                    loaded_at = Instant::now();
+                }
+            }
+            Ok(Work::GpuWarm(model, mode)) => {
+                gpu_want = model.filter(|_| mode != gpu::Mode::Off).map(|m| (m, mode));
+                if path_of(&gpu) != gpu_want.as_ref().map(|(m, _)| m.as_path()) {
+                    gpu = None;
+                }
+                if let (Some((model, mode)), true, false) = (&gpu_want, cfg!(feature = "gpu"), gpu_warming) {
+                    if gpu.is_none() && model.is_file() {
+                        gpu_warming = true;
+                        let (model, mode, me) = (model.clone(), *mode, me.clone());
+                        // Normal priority: at the lowest, his busy CPU starved it (156 s, and never under load).
+                        thread::spawn(move || {
+                            let session = match gpu::load(&model, mode) {
+                                Ok((session, device)) => {
+                                    emit(json!({"ev": "gpu", "ready": true, "device": device}));
+                                    Some(session)
+                                }
+                                Err(error) => {
+                                    emit(json!({"ev": "gpu", "ready": false, "error": error}));
+                                    None
+                                }
+                            };
+                            let _ = me.send(Work::GpuWarmed(model, session));
+                        });
                     }
                 }
             }
-            Ok(Work::End { target, released }) => {
-                let Some(current) = live.take() else { continue };
-                let result = current.finish(loaded.as_mut().map(|(_, session)| session), released);
-                let _ = out.send(Msg::Finished { id: None, dictated: true, target, result });
+            Ok(Work::GpuWarmed(model, session)) => {
+                gpu_warming = false;
+                if gpu_want.as_ref().is_some_and(|(m, _)| *m == model) {
+                    gpu = session.map(|s| (model, s));
+                } else if let Some((model, mode)) = gpu_want.clone() {
+                    // The setting or model changed while it was read: read the one wanted now.
+                    let _ = me.send(Work::GpuWarm(Some(model), mode));
+                }
             }
-            Ok(Work::Abort) => live = None,
+            Ok(Work::GpuReset) => {
+                // A dictation already on the card keeps its session; a lost device fails it over to the CPU.
+                if live.as_ref().is_none_or(|l| !l.on_gpu) {
+                    gpu = None;
+                    if let Some((model, mode)) = gpu_want.clone() {
+                        let _ = me.send(Work::GpuWarm(Some(model), mode));
+                    }
+                }
+            }
+            Ok(Work::Keep(on)) => {
+                keep = on;
+                loaded_at = Instant::now();
+            }
         }
     }
 }
@@ -576,6 +1138,7 @@ fn read_wav(path: &Path) -> Result<Vec<f32>, String> {
 }
 
 fn devices_json() -> Value {
+    *DEVICE_ID.lock().unwrap_or_else(|e| e.into_inner()) = None;
     match list_input_devices() {
         Ok(devices) => devices
             .iter()
@@ -585,15 +1148,27 @@ fn devices_json() -> Value {
     }
 }
 
-fn recorder_config(device: Option<&str>, channel: Option<u16>) -> Result<RecorderConfig, String> {
+/// The chosen microphone's id by its name. Listing every input on each press costs time on Windows, so the id is
+/// kept; a press whose open fails with it, and a device change (`devices`), look it up again.
+static DEVICE_ID: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+fn recorder_config(device: Option<&str>, channel: Option<u16>, fresh: bool) -> Result<RecorderConfig, String> {
     let mut config = RecorderConfig::speech();
     if let Some(wanted) = device {
-        let devices = list_input_devices().map_err(|e| e.to_string())?;
-        let found = devices
-            .iter()
-            .find(|d| d.name == wanted)
-            .ok_or_else(|| format!("{wanted} is not connected"))?;
-        config.device = Some(found.id.clone());
+        let mut kept = DEVICE_ID.lock().unwrap_or_else(|e| e.into_inner());
+        let id = match kept.as_ref() {
+            Some((name, id)) if !fresh && name == wanted => id.clone(),
+            _ => {
+                let devices = list_input_devices().map_err(|e| e.to_string())?;
+                let found = devices
+                    .iter()
+                    .find(|d| d.name == wanted)
+                    .ok_or_else(|| format!("{wanted} is not connected"))?;
+                *kept = Some((wanted.to_string(), found.id.clone()));
+                found.id.clone()
+            }
+        };
+        config.device = Some(id);
     }
     if let Some(index) = channel {
         config.channels = Channels::Only(index);
@@ -621,60 +1196,195 @@ fn paste_text(enigo: &mut Option<Enigo>, text: &str, method: PasteMethod) -> Res
     }
 }
 
-/// Dropping it stops the hook thread, which owns the manager.
-struct Keys(Arc<AtomicBool>);
+/// Dropping it stops the hook threads: the manager's by its flag, the chord hook's (Windows) by its thread id.
+struct Keys(Arc<AtomicBool>, #[cfg_attr(not(windows), allow(dead_code))] Option<u32>);
 
 impl Drop for Keys {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Relaxed);
+        #[cfg(windows)]
+        if let Some(thread) = self.1 {
+            chord_windows::stop(thread);
+        }
     }
 }
 
-fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String> {
+fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Option<Keys>, String> {
     if config.hold.is_empty() && config.toggle.is_empty() {
         return Ok(None);
     }
-    // `new_with_blocking`: the chord must not also reach the focused app.
-    let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
-    let register = |texts: &Vec<String>| -> Result<Vec<_>, String> {
-        texts
-            .iter()
-            .map(|text| {
-                let hotkey: Hotkey = text.parse().map_err(|e| format!("{text}: {e}"))?;
-                manager.register(hotkey).map_err(|e| format!("{text}: {e}"))
-            })
-            .collect()
-    };
-    let hold = register(&config.hold)?;
-    register(&config.toggle)?;
-    let stop = Arc::new(AtomicBool::new(false));
-    let stopped = stop.clone();
-    let tx = tx.clone();
-    thread::spawn(move || {
-        while !stopped.load(Ordering::Relaxed) {
-            match manager.try_recv() {
-                Some(event) => {
-                    let pressed = event.state == HotkeyState::Pressed;
-                    let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed });
-                }
-                None => thread::sleep(Duration::from_millis(5)),
-            }
+    let parse = |text: &String| -> Result<Hotkey, String> { text.parse().map_err(|e| format!("{text}: {e}")) };
+    let mut chords = Vec::new();
+    let mut keyed = Vec::new();
+    for text in &config.hold {
+        let hotkey = parse(text)?;
+        if hotkey.key.is_none() {
+            chords.push(hotkey.modifiers);
+        } else {
+            keyed.push(hotkey);
         }
-    });
-    Ok(Some(Keys(stop)))
+    }
+    let toggles = config.toggle.iter().map(parse).collect::<Result<Vec<_>, _>>()?;
+    let stop = Arc::new(AtomicBool::new(false));
+    if !keyed.is_empty() || !toggles.is_empty() {
+        // `new_with_blocking`: a chord with a key must not also reach the focused app.
+        let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
+        let register = |hotkeys: Vec<Hotkey>| -> Result<Vec<_>, String> {
+            hotkeys.into_iter().map(|h| manager.register(h).map_err(|e| e.to_string())).collect()
+        };
+        let hold = register(keyed)?;
+        register(toggles)?;
+        let stopped = stop.clone();
+        let tx = tx.clone();
+        thread::spawn(move || {
+            while !stopped.load(Ordering::Relaxed) {
+                match manager.try_recv() {
+                    Some(event) => {
+                        let pressed = event.state == HotkeyState::Pressed;
+                        let at = clock.elapsed().as_secs_f64() * 1000.0;
+                        let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed, at });
+                    }
+                    None => thread::sleep(Duration::from_millis(5)),
+                }
+            }
+        });
+    }
+    #[cfg(not(windows))]
+    fn key_code(key: Key) -> u32 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        key.hash(&mut h);
+        h.finish() as u32
+    }
+    #[cfg(windows)]
+    let hook = if chords.is_empty() {
+        None
+    } else {
+        Some(chord_windows::start(chords, tx.clone(), clock).ok_or("Windows refused the keyboard hook for the hold key")?)
+    };
+    #[cfg(not(windows))]
+    let hook = None;
+    #[cfg(not(windows))]
+    if !chords.is_empty() {
+        let listener = KeyboardListener::new().map_err(|e| e.to_string())?;
+        let stopped = stop.clone();
+        let tx = tx.clone();
+        thread::spawn(move || {
+            let mut machines: Vec<Chord> = chords.into_iter().map(Chord::new).collect();
+            while !stopped.load(Ordering::Relaxed) {
+                let Some(event) = listener.try_recv() else {
+                    thread::sleep(Duration::from_millis(5));
+                    continue;
+                };
+                let ev = match (event.changed_modifier, event.key) {
+                    (Some(side), _) => ChordEv::Mod(side, event.is_key_down),
+                    (None, Some(key)) => ChordEv::Key(key_code(key), event.is_key_down),
+                    (None, None) => continue,
+                };
+                let at = clock.elapsed().as_secs_f64() * 1000.0;
+                for machine in &mut machines {
+                    let msg = match machine.step(ev) {
+                        Some(ChordOut::Down) => Msg::Key { hold: true, pressed: true, at },
+                        Some(ChordOut::Up) => Msg::Key { hold: true, pressed: false, at },
+                        Some(ChordOut::Cancel) => Msg::ChordJoined,
+                        None => continue,
+                    };
+                    let _ = tx.send(msg);
+                }
+            }
+        });
+    }
+    Ok(Some(Keys(stop, hook)))
 }
 
 /// Hands the microphone to the engine as it arrives.
 struct LiveSink {
+    dictation: u64,
     work: Sender<Work>,
     samples: Arc<AtomicUsize>,
+    first_audio: Arc<OnceLock<Instant>>,
+    /// The serve thread, which writes the waveform's `pcm` lines: stdout is never touched from the audio callback.
+    out: Sender<Msg>,
+    /// Config's `meter`, read live so turning wake words on or off mid-recording takes effect.
+    meter_on: Arc<AtomicBool>,
+    meter: Meter,
+    tap: Arc<Mutex<Tap>>,
+}
+
+/// What a mic heard in a dictation's first seconds, for `micprobe::judge`, and whether its audio is the dictation's.
+/// Both under one lock, so a mic taking over sends what it heard before any newer audio.
+struct Tap {
+    heard: Vec<f32>,
+    forward: bool,
+}
+
+impl Tap {
+    fn new(forward: bool) -> Arc<Mutex<Tap>> {
+        Arc::new(Mutex::new(Tap { heard: Vec::new(), forward }))
+    }
+}
+
+/// Another of his mics recording beside a dictation's until `micprobe::judge` decides.
+struct Probe {
+    rank: usize,
+    name: String,
+    source: Source,
+    tap: Arc<Mutex<Tap>>,
+}
+
+/// Shortest gap between two waveform blocks: about 30 a second.
+const METER_GAP: Duration = Duration::from_millis(33);
+
+/// Audio not yet sent for the pill's waveform, and when the last block went.
+#[derive(Default)]
+struct Meter {
+    pending: Vec<f32>,
+    sent: Option<Instant>,
+}
+
+impl Meter {
+    /// The newest whole block once one is due; a burst of audio sends its last block, never a backlog.
+    fn feed(&mut self, more: &[f32], now: Instant) -> Option<Vec<f32>> {
+        self.pending.extend_from_slice(more);
+        let whole = self.pending.len() / METER_SAMPLES * METER_SAMPLES;
+        if whole == 0 || self.sent.is_some_and(|at| now.saturating_duration_since(at) < METER_GAP) {
+            // Only the newest block is ever drawn: older audio is let go.
+            let keep = self.pending.len().saturating_sub(METER_SAMPLES);
+            self.pending.drain(..keep);
+            return None;
+        }
+        let block = self.pending[whole - METER_SAMPLES..whole].to_vec();
+        self.pending.drain(..whole);
+        self.sent = Some(now);
+        Some(block)
+    }
 }
 
 impl Sink for LiveSink {
     fn process_chunk(&mut self, chunk: AudioChunk<'_>) {
-        let samples = chunk.samples[..chunk.valid_frames].to_vec();
+        self.deliver(chunk.samples[..chunk.valid_frames].to_vec());
+    }
+}
+
+impl LiveSink {
+    fn deliver(&mut self, samples: Vec<f32>) {
+        let mut tap = self.tap.lock().unwrap_or_else(|e| e.into_inner());
+        if tap.heard.len() < micprobe::PROBE_SAMPLES {
+            tap.heard.extend_from_slice(&samples);
+        }
+        if !tap.forward {
+            return;
+        }
+        if !samples.is_empty() {
+            let _ = self.first_audio.set(Instant::now());
+        }
+        if self.meter_on.load(Ordering::Relaxed) {
+            if let Some(block) = self.meter.feed(&samples, Instant::now()) {
+                let _ = self.out.send(Msg::Meter(block));
+            }
+        }
         self.samples.fetch_add(samples.len(), Ordering::Relaxed);
-        let _ = self.work.send(Work::Audio(samples));
+        let _ = self.work.send(Work::Audio(self.dictation, samples));
     }
 }
 
@@ -684,15 +1394,28 @@ enum Source {
 }
 
 struct Recording {
+    /// This dictation's id, on every message it sends the engine.
+    id: u64,
     source: Source,
     samples: Arc<AtomicUsize>,
     started: Instant,
     target: isize,
+    /// When the key (or start) asked for it, the microphone took, and the first audio arrived.
+    pressed: Instant,
+    mic_ms: u64,
+    first_audio: Arc<OnceLock<Instant>>,
+    via: &'static str,
+    /// The mic it records from, by name (None: the system's), and what that mic has heard.
+    mic: Option<String>,
+    tap: Arc<Mutex<Tap>>,
+    /// His other mics listening beside it, in his order, until the judge decides (`decided`).
+    probes: Vec<Probe>,
+    decided: bool,
 }
 
-impl Drop for Recording {
+impl Drop for Source {
     fn drop(&mut self) {
-        if let Source::Fake(stop) = &self.source {
+        if let Source::Fake(stop) = self {
             stop.store(true, Ordering::Relaxed);
         }
     }
@@ -704,7 +1427,14 @@ fn fake_mic() -> Option<PathBuf> {
     std::env::var_os("BATON_FAKE_MIC").map(PathBuf::from)
 }
 
-fn play_fake(path: &Path, work: Sender<Work>, samples: Arc<AtomicUsize>, stop: Arc<AtomicBool>, tx: Sender<Msg>) -> Result<(), String> {
+/// BATON_FAKE_PROBE=<wav>: with a fake mic, a second fake one listening beside it (micprobe.rs), so moving to a mic that
+/// hears him is measured with nobody speaking.
+fn fake_probe() -> Option<PathBuf> {
+    std::env::var_os("BATON_FAKE_PROBE").map(PathBuf::from)
+}
+
+/// `ended`: told when the file runs out, which stands in for releasing the key (the recording's own mic only).
+fn play_fake(path: &Path, mut sink: LiveSink, stop: Arc<AtomicBool>, ended: Option<Sender<Msg>>) -> Result<(), String> {
     let pcm = read_wav(path)?;
     thread::spawn(move || {
         let started = Instant::now();
@@ -714,10 +1444,11 @@ fn play_fake(path: &Path, work: Sender<Work>, samples: Arc<AtomicUsize>, stop: A
             if stop.load(Ordering::Relaxed) {
                 return;
             }
-            samples.fetch_add(chunk.len(), Ordering::Relaxed);
-            let _ = work.send(Work::Audio(chunk.to_vec()));
+            sink.deliver(chunk.to_vec());
         }
-        let _ = tx.send(Msg::FakeEnded);
+        if let Some(tx) = ended {
+            let _ = tx.send(Msg::FakeEnded);
+        }
     });
     Ok(())
 }
@@ -774,7 +1505,9 @@ fn window_rect(window: isize) -> Value {
     use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
     let mut r = RECT::default();
     match unsafe { GetWindowRect(HWND(window as *mut _), &mut r) } {
-        Ok(()) => json!({"x": r.left, "y": r.top, "width": r.right - r.left, "height": r.bottom - r.top}),
+        Ok(()) => {
+            json!({"x": r.left, "y": r.top, "width": r.right - r.left, "height": r.bottom - r.top})
+        }
         Err(_) => Value::Null,
     }
 }
@@ -845,6 +1578,82 @@ fn focus_window_event(id: Option<u64>, window: isize, title: Option<&str>) -> Va
     v["ev"] = json!("focused");
     v["id"] = json!(id);
     v
+}
+
+/// The desktop waits this long for a checked paste (`pasteChecked`); a verdict after it is never pasted.
+const PASTE_DEADLINE: Duration = Duration::from_millis(1_500);
+
+/// Which step stops a dictation paste, in the order they are checked. `no_field`: the keyboard is on icons, a list or a
+/// button (`focused_takes_no_text`), where a paste lands nowhere.
+fn paste_verdict(focused: bool, same_window: bool, same_title: bool, secret: bool, no_field: bool) -> &'static str {
+    if !focused {
+        "gone"
+    } else if !same_window || !same_title {
+        "changed"
+    } else if secret {
+        "secret"
+    } else if no_field {
+        "nofield"
+    } else {
+        "ok"
+    }
+}
+
+/// Hebrew, Arabic, Syriac, Thaana, N'Ko and their presentation forms: the ghost draws left to right only.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn has_rtl(text: &str) -> bool {
+    text.chars().any(|c| matches!(c, '\u{0590}'..='\u{07FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFC}'))
+}
+
+/// The desktop and taskbar: shell panes with nothing to type into. Windows reports them as a plain pane, which
+/// `focused_takes_no_text` otherwise keeps as a box because editors that draw their own text look the same.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn shell_surface(class: &str) -> bool {
+    ["Progman", "WorkerW", "SHELLDLL_DefView", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"].contains(&class)
+}
+
+#[cfg(windows)]
+fn focus_for_paste(window: isize) -> Result<(), String> {
+    capture::focus_window(window).map(drop)
+}
+
+/// Bringing a window forward is the Windows helper's; elsewhere the words go to the clipboard, as before.
+#[cfg(not(windows))]
+fn focus_for_paste(_window: isize) -> Result<(), String> {
+    Err("not on this platform yet".to_string())
+}
+
+/// Esc is the helper's while a hold records, since the desktop's Esc shortcut never fires under the hold's modifiers.
+#[cfg(windows)]
+fn take_escape(tx: &Sender<Msg>, on: bool) {
+    if on {
+        escape_windows::arm(tx)
+    } else {
+        escape_windows::disarm()
+    }
+}
+
+#[cfg(not(windows))]
+fn take_escape(_tx: &Sender<Msg>, _on: bool) {}
+
+#[cfg(windows)]
+fn focused_is_secret() -> bool {
+    uia::focused_is_secret()
+}
+
+#[cfg(not(windows))]
+fn focused_is_secret() -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn focused_takes_no_text() -> bool {
+    uia::focused_takes_no_text()
+}
+
+#[cfg(not(windows))]
+fn focused_takes_no_text() -> bool {
+    false
 }
 
 #[cfg(not(windows))]
@@ -929,9 +1738,71 @@ fn focus_state_event(id: Option<u64>, window: Option<&str>) -> Value {
     out
 }
 
+#[cfg(windows)]
+fn caret_event(id: Option<u64>) -> Value {
+    let mut out = uia::caret_context(120).unwrap_or_else(|e| json!({"error": e}));
+    out["ev"] = json!("caret");
+    out["id"] = json!(id);
+    out
+}
+
+#[cfg(not(windows))]
+fn caret_event(id: Option<u64>) -> Value {
+    json!({"ev": "caret", "id": id, "before": null, "after": null})
+}
+
+/// Where the caret is drawn, for the words to appear there as he speaks. Its own worker with a deadline: a field
+/// that hangs UI Automation answers "no caret" in time and the pill shows the words instead.
+fn caret_at_event(id: Option<u64>) -> Value {
+    let (tx, rx) = channel();
+    thread::spawn(move || {
+        #[cfg(windows)]
+        let out = uia::caret_geometry().unwrap_or_else(|_| json!({"caret": null}));
+        #[cfg(not(windows))]
+        let out = json!({"caret": null});
+        let _ = tx.send(out);
+    });
+    let mut out = rx.recv_timeout(CARET_AT_DEADLINE).unwrap_or_else(|_| json!({"caret": null, "late": true}));
+    out["ev"] = json!("caret_at");
+    out["id"] = json!(id);
+    out
+}
+
+/// When he last pressed a key, clicked or moved the mouse, in the system's ms tick (0 off Windows).
+fn last_input_tick() -> u32 {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+        let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+        if GetLastInputInfo(&mut info).as_bool() {
+            return info.dwTime;
+        }
+    }
+    0
+}
+
 #[cfg(not(windows))]
 fn focus_state_event(id: Option<u64>, _window: Option<&str>) -> Value {
     json!({"ev": "focus_state", "id": id, "error": "not on this platform yet"})
+}
+
+/// What a press of the dictation key does. While the desktop's voice dictation runs, the press is its ✓, so it is
+/// handed to the desktop: starting a second, separate recording here is what left the two unable to stop each other.
+#[derive(Debug, PartialEq, Eq)]
+enum Press {
+    Begin,
+    Finish,
+    ToDesktop,
+}
+
+fn dictation_press(recording: bool, voice_on: bool) -> Press {
+    if recording {
+        Press::Finish
+    } else if voice_on {
+        Press::ToDesktop
+    } else {
+        Press::Begin
+    }
 }
 
 /// Text goes only into the window it was spoken for. Windows reports 0 mid-switch, which is not it.
@@ -943,12 +1814,101 @@ fn over_limit(held: Duration) -> bool {
     held >= MAX_RECORDING
 }
 
+fn begin_work(config: &Config, id: u64, model: PathBuf) -> Work {
+    Work::Begin {
+        id,
+        model,
+        language: config.language.clone(),
+        external: config.external.clone(),
+        keep: config.keep_audio.clone(),
+        live: config.live_words,
+        remote: config.recognizers.clone(),
+    }
+}
+
+/// The mics a press tries, by name, in order: the one that heard him when his choice last stayed silent, then his
+/// choice, then the rest of his order. Empty: the system's mic, with nothing beside it.
+fn mic_order(device: Option<&str>, fallbacks: &[String], lead: Option<&str>) -> Vec<String> {
+    let Some(device) = device else { return Vec::new() };
+    let mut order: Vec<String> = Vec::new();
+    for name in lead.into_iter().chain([device]).chain(fallbacks.iter().map(String::as_str)) {
+        if !order.iter().any(|n| n == name) {
+            order.push(name.to_string());
+        }
+    }
+    order
+}
+
+/// Opens each of `others` (rank in his order, name) to record beside dictation `id`; one that will not open is skipped.
+fn open_probes(id: u64, others: Vec<(usize, String)>, sinks: Vec<LiveSink>, tx: Sender<Msg>) {
+    let Ok(devices) = list_input_devices() else { return };
+    for ((rank, name), sink) in others.into_iter().zip(sinks) {
+        let Some(device) = devices.iter().find(|d| d.name == name) else { continue };
+        let mut config = RecorderConfig::speech();
+        config.device = Some(device.id.clone());
+        let tap = sink.tap.clone();
+        let Ok(recorder) = Recorder::open(config) else { continue };
+        if recorder.start(sink).is_ok() {
+            let _ = tx.send(Msg::Probe(id, Probe { rank, name, source: Source::Mic(recorder), tap }));
+        }
+    }
+}
+
+/// Dictation `r`'s mics weighed (`micprobe::judge`): it keeps its mic and closes the others, moves to the one that hears
+/// him, or waits for him to speak.
+fn judge_mics(r: &mut Recording, config: &Config, job_tx: &Sender<Work>, lead: &std::cell::RefCell<Option<String>>) {
+    if r.decided || r.probes.is_empty() {
+        return;
+    }
+    let first = r.tap.lock().unwrap_or_else(|e| e.into_inner());
+    let others: Vec<_> = r.probes.iter().map(|p| p.tap.lock().unwrap_or_else(|e| e.into_inner())).collect();
+    let verdict = micprobe::judge(&first.heard, &others.iter().map(|t| t.heard.as_slice()).collect::<Vec<_>>());
+    let full = first.heard.len() >= micprobe::PROBE_SAMPLES;
+    drop(others);
+    drop(first);
+    match verdict {
+        micprobe::Verdict::Wait if !full => {}
+        micprobe::Verdict::Wait => r.decided = true,
+        micprobe::Verdict::Keep { preferred_heard } => {
+            // On the mic it moved to: his own choice hearing him again means the next press is back on it.
+            if preferred_heard && r.mic != config.device && r.probes.first().map(|p| &p.name) == config.device.as_ref() {
+                *lead.borrow_mut() = None;
+            }
+            r.decided = true;
+        }
+        micprobe::Verdict::Switch(i) => {
+            let Some(model) = config.model.clone() else { return };
+            let probe = r.probes.remove(i);
+            r.tap.lock().unwrap_or_else(|e| e.into_inner()).forward = false;
+            {
+                let mut tap = probe.tap.lock().unwrap_or_else(|e| e.into_inner());
+                // What it heard so far becomes the dictation's whole recording; its next audio follows in order.
+                let _ = job_tx.send(Work::Abort);
+                let _ = job_tx.send(begin_work(config, r.id, model));
+                let _ = job_tx.send(Work::Audio(r.id, tap.heard.clone()));
+                r.samples.store(tap.heard.len(), Ordering::Relaxed);
+                tap.forward = true;
+            }
+            emit(json!({"ev": "mic_switched", "dictation": r.id, "from": r.mic, "to": probe.name, "why": "silent"}));
+            *lead.borrow_mut() = Some(probe.name.clone());
+            r.mic = Some(probe.name);
+            r.tap = probe.tap;
+            r.source = probe.source;
+            r.decided = true;
+        }
+    }
+    if r.decided {
+        r.probes.clear();
+    }
+}
+
 fn serve() {
     let (tx, rx) = channel::<Msg>();
     let (job_tx, job_rx) = channel::<Work>();
     {
         let tx = tx.clone();
-        thread::spawn(move || engine_thread(job_rx, tx));
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, tx, me));
     }
     {
         let tx = tx.clone();
@@ -969,51 +1929,129 @@ fn serve() {
     let mut taps = PushToTalk::default();
     let clock = Instant::now();
     let mut toggle_down = false;
+    // The desktop's voice dictation is running (it says so with `voice`): a key press is its ✓.
+    let mut voice_on = false;
+    let meter_on = Arc::new(AtomicBool::new(false));
+    // The mic that heard him when his first choice stayed silent: first at the next press, until his choice hears him.
+    let lead: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+    let mut judged = Instant::now();
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
-    let begin = |config: &Config, recording: &mut Option<Recording>, tx: &Sender<Msg>, job_tx: &Sender<Work>| {
+    // `via`: the hold key, the toggle key, or `start` (a held mouse button or the desktop), for the timing line.
+    let begin = |config: &Config, recording: &mut Option<Recording>, tx: &Sender<Msg>, job_tx: &Sender<Work>, via: &'static str| {
         if recording.is_some() {
             return;
         }
+        let pressed = Instant::now();
         let Some(model) = config.model.clone() else {
             emit(json!({"ev": "error", "message": "no model configured"}));
             return;
         };
-        let _ = job_tx.send(Work::Begin { model, language: config.language.clone(), external: config.external.clone() });
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let _ = job_tx.send(begin_work(config, id, model));
+        let mut mic = config.device.clone();
+        let tap = Tap::new(true);
         let samples = Arc::new(AtomicUsize::new(0));
+        let first_audio = Arc::new(OnceLock::new());
+        let sink = |tap: Arc<Mutex<Tap>>| LiveSink {
+            dictation: id,
+            work: job_tx.clone(),
+            samples: samples.clone(),
+            first_audio: first_audio.clone(),
+            out: tx.clone(),
+            meter_on: meter_on.clone(),
+            meter: Meter::default(),
+            tap,
+        };
         let opened = match fake_mic() {
             Some(path) => {
                 let stop = Arc::new(AtomicBool::new(false));
-                play_fake(&path, job_tx.clone(), samples.clone(), stop.clone(), tx.clone()).map(|()| Source::Fake(stop))
+                let opened = play_fake(&path, sink(tap.clone()), stop.clone(), Some(tx.clone())).map(|()| Source::Fake(stop));
+                if let (Ok(_), Some(probe)) = (&opened, fake_probe()) {
+                    let (stop, tap) = (Arc::new(AtomicBool::new(false)), Tap::new(false));
+                    if play_fake(&probe, sink(tap.clone()), stop.clone(), None).is_ok() {
+                        let name = "fake probe".to_string();
+                        let _ = tx.send(Msg::Probe(id, Probe { rank: 1, name, source: Source::Fake(stop), tap }));
+                    }
+                }
+                opened
             }
             None => {
-                let tx = tx.clone();
-                let sink = LiveSink { work: job_tx.clone(), samples: samples.clone() };
-                recorder_config(config.device.as_deref(), config.channel).and_then(|cfg| {
-                    let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
-                        let _ = tx.send(Msg::MicFailed(e.to_string()));
+                let open = |name: Option<&str>, fresh: bool| {
+                    let tx = tx.clone();
+                    // The channel is the chosen device's (one input of his interface), never another mic's.
+                    let channel = if name == config.device.as_deref() { config.channel } else { None };
+                    recorder_config(name, channel, fresh).and_then(|cfg| {
+                        let recorder = Recorder::open_with_failure_handler(cfg, move |e| {
+                            let _ = tx.send(Msg::MicFailed(e.to_string()));
+                        })
+                        .map_err(|e| e.to_string())?;
+                        recorder.start(sink(tap.clone())).map_err(|e| e.to_string())?;
+                        Ok(Source::Mic(recorder))
                     })
-                    .map_err(|e| e.to_string())?;
-                    recorder.start(sink).map_err(|e| e.to_string())?;
-                    Ok(Source::Mic(recorder))
-                })
+                };
+                let order = mic_order(config.device.as_deref(), &config.fallbacks, lead.borrow().as_deref());
+                // A kept id can be stale after a replug: one fresh look before trying the next of his mics.
+                let mut opened = open(order.first().map(String::as_str), false)
+                    .or_else(|_| open(order.first().map(String::as_str), true));
+                mic = order.first().cloned().or(mic);
+                for name in order.iter().skip(1) {
+                    if opened.is_ok() {
+                        break;
+                    }
+                    if let Ok(source) = open(Some(name), true) {
+                        emit(json!({"ev": "mic_switched", "dictation": id, "from": order[0], "to": name, "why": "missing"}));
+                        *lead.borrow_mut() = Some(name.clone());
+                        mic = Some(name.clone());
+                        opened = Ok(source);
+                    }
+                }
+                if opened.is_ok() {
+                    let others: Vec<(usize, String)> =
+                        order.iter().cloned().enumerate().filter(|(_, n)| Some(n) != mic.as_ref()).collect();
+                    if !others.is_empty() {
+                        let sinks: Vec<LiveSink> = others.iter().map(|_| sink(Tap::new(false))).collect();
+                        let tx = tx.clone();
+                        // Beside the dictation's own mic, never before it: opening each takes 100 to 300 ms.
+                        thread::spawn(move || open_probes(id, others, sinks, tx));
+                    }
+                }
+                opened
             }
         };
         match opened {
             Ok(source) => {
                 let target = foreground_window();
                 let (app, title) = window_app(target);
-                *recording = Some(Recording { source, samples, started: Instant::now(), target });
-                emit(json!({"ev": "recording", "app": app, "title": title}));
+                let mic_ms = pressed.elapsed().as_millis() as u64;
+                *recording = Some(Recording {
+                    id,
+                    source,
+                    samples,
+                    started: Instant::now(),
+                    target,
+                    pressed,
+                    mic_ms,
+                    first_audio,
+                    via,
+                    mic,
+                    tap,
+                    probes: Vec::new(),
+                    decided: false,
+                });
+                emit(json!({"ev": "recording", "app": app, "title": title, "micMs": mic_ms, "dictation": id, "via": via}));
             }
             Err(message) => {
                 let _ = job_tx.send(Work::Abort);
-                emit(json!({"ev": "error", "message": message}));
+                emit(of_dictation(json!({"ev": "error", "message": message}), Some(id)));
             }
         }
     };
     let finish = |recording: &mut Option<Recording>, job_tx: &Sender<Work>, paste: bool| {
-        let Some(current) = recording.take() else { return };
+        let Some(current) = recording.take() else {
+            return;
+        };
         let released = Instant::now();
         let held_for = current.started.elapsed();
         // A fake microphone must never reach his keyboard.
@@ -1026,21 +2064,37 @@ fn serve() {
         match stopped {
             Ok(()) if samples.load(Ordering::Relaxed) >= MIN_SAMPLES => {
                 emit(json!({"ev": "transcribing", "heldMs": held_for.as_millis() as u64}));
-                let _ = job_tx.send(Work::End { target, released });
+                let since = |at: Instant| at.saturating_duration_since(current.pressed).as_millis() as u64;
+                let timing = json!({
+                    "via": current.via,
+                    "micMs": current.mic_ms,
+                    "firstAudioMs": current.first_audio.get().map(|at| since(*at)),
+                    "releasedMs": since(released),
+                });
+                let _ = job_tx.send(Work::End { id: current.id, target, released, timing });
             }
             Ok(()) => {
                 let _ = job_tx.send(Work::Abort);
-                emit(json!({"ev": "idle"}));
+                emit(of_dictation(json!({"ev": "idle"}), Some(current.id)));
             }
             Err(message) => {
                 let _ = job_tx.send(Work::Abort);
-                emit(json!({"ev": "error", "message": message}));
+                emit(of_dictation(json!({"ev": "error", "message": message}), Some(current.id)));
             }
         }
     };
 
     loop {
-        let message = match rx.recv_timeout(Duration::from_secs(1)) {
+        // Every 50 ms while a dictation's mics are weighed, whatever else arrives (the waveform's blocks come 30 a second).
+        let weighing = recording.as_ref().is_some_and(|r| !r.decided && !r.probes.is_empty());
+        if weighing && judged.elapsed() >= Duration::from_millis(50) {
+            judged = Instant::now();
+            if let Some(r) = recording.as_mut() {
+                judge_mics(r, &config, &job_tx, &lead);
+            }
+        }
+        let wait = if weighing { Duration::from_millis(50) } else { Duration::from_secs(1) };
+        let message = match rx.recv_timeout(wait) {
             Ok(message) => message,
             Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {
@@ -1059,20 +2113,40 @@ fn serve() {
                         match serde_json::from_value::<Config>(value.clone()) {
                             Ok(next) => {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
+                                // He chose another mic, or his order changed: his choice is first again.
+                                if next.device != config.device || next.fallbacks != config.fallbacks {
+                                    *lead.borrow_mut() = None;
+                                }
                                 config = next;
+                                meter_on.store(config.meter, Ordering::Relaxed);
+                                let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
+                                let local = config.model.is_some() && (config.external.is_none() || config.live_words);
+                                let keep = config.keep_loaded && bound && local;
+                                let _ = job_tx.send(Work::Keep(keep));
+                                // Live words with the cloud, or a model kept loaded: read in the background now, only if
+                                // it is on disk (never downloaded for this), so the first dictation never waits for it
+                                // (his first after a start waited 1.6 to 2.4 s).
+                                if let (true, Some(model)) =
+                                    (keep || (config.live_words && config.external.is_some()), config.model.as_ref())
+                                {
+                                    let _ = job_tx.send(Work::Warm(model.clone()));
+                                }
+                                // His graphics card, read and warmed now for local recognition so no press waits for it.
+                                let on_card = config.model.clone().filter(|_| config.external.is_none());
+                                let _ = job_tx.send(Work::GpuWarm(on_card, config.gpu));
                                 #[cfg(windows)]
                                 mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
                                     // Nothing can stop a recording once its keys are gone.
-                                    if recording.take().is_some() {
+                                    if let Some(stopped) = recording.take() {
                                         let _ = job_tx.send(Work::Abort);
                                         held = false;
                                         taps = PushToTalk::default();
-                                        emit(json!({"ev": "idle"}));
+                                        emit(of_dictation(json!({"ev": "idle"}), Some(stopped.id)));
                                     }
                                     keys = None;
                                     thread::sleep(Duration::from_millis(30));
-                                    match start_keys(&config, &tx) {
+                                    match start_keys(&config, &tx, clock) {
                                         Ok(started) => keys = started,
                                         Err(message) => emit(json!({"ev": "error", "message": message})),
                                     }
@@ -1083,6 +2157,10 @@ fn serve() {
                         }
                     }
                     "devices" => emit(json!({"ev": "devices", "devices": devices_json()})),
+                    // The computer woke from sleep: the graphics card is read and warmed again.
+                    "resume" => {
+                        let _ = job_tx.send(Work::GpuReset);
+                    }
                     "load" => {
                         let id = value["id"].as_u64();
                         match &config.model {
@@ -1132,6 +2210,17 @@ fn serve() {
                         let numbered = value["number"].as_bool().unwrap_or(false);
                         thread::spawn(move || emit(ui_tree(id, window.as_deref(), find.as_deref(), numbered)));
                     }
+                    "caret" => {
+                        let id = value["id"].as_u64();
+                        thread::spawn(move || emit(caret_event(id)));
+                    }
+                    "caret_at" => {
+                        let id = value["id"].as_u64();
+                        thread::spawn(move || emit(caret_at_event(id)));
+                    }
+                    "last_input" => {
+                        emit(json!({"ev": "last_input", "id": value["id"].as_u64(), "tick": last_input_tick()}));
+                    }
                     "focus_state" => {
                         let id = value["id"].as_u64();
                         let window = value["window"].as_str().map(str::to_string);
@@ -1166,15 +2255,44 @@ fn serve() {
                         if recording.is_some() {
                             finish(&mut recording, &job_tx, true);
                         } else {
-                            begin(&config, &mut recording, &tx, &job_tx);
+                            begin(&config, &mut recording, &tx, &job_tx, "toggle");
+                        }
+                    }
+                    // A mouse button held to dictate, and the desktop ending a recording from any of its entry points.
+                    "start" => {
+                        if recording.is_none() {
+                            begin(&config, &mut recording, &tx, &job_tx, "start");
+                        }
+                    }
+                    "finish" => {
+                        if recording.is_some() {
+                            finish(&mut recording, &job_tx, true);
+                        }
+                        // A ✓ on a latched hold also ends the latch, so the next press starts afresh.
+                        held = false;
+                        take_escape(&tx, false);
+                        taps = PushToTalk::default();
+                    }
+                    "voice" => voice_on = value["on"].as_bool().unwrap_or(false),
+                    // Typing keys he presses while the ghost plays wait for that dictation's paste (Windows only).
+                    "hold_keys" => {
+                        #[cfg(windows)]
+                        if let (Some(id), Some(window)) = (value["id"].as_u64(), value["window"].as_i64()) {
+                            keygate_windows::hold(id, window as isize);
+                        }
+                    }
+                    "release_keys" => {
+                        #[cfg(windows)]
+                        if let Some(id) = value["id"].as_u64() {
+                            keygate_windows::release(id);
                         }
                     }
                     "cancel" => {
-                        recording = None;
+                        let stopped = recording.take().map(|r| r.id);
                         let _ = job_tx.send(Work::Abort);
                         held = false;
                         taps = PushToTalk::default();
-                        emit(json!({"ev": "idle"}));
+                        emit(of_dictation(json!({"ev": "idle"}), stopped));
                     }
                     "transcribe" => {
                         let id = value["id"].as_u64();
@@ -1206,71 +2324,164 @@ fn serve() {
                         if target.is_some() && !should_paste(target, foreground_window()) {
                             emit(json!({"ev": "pasted", "id": id, "moved": true}));
                         } else {
+                            let started = Instant::now();
                             let result = paste_text(&mut enigo, text, config.paste);
-                            emit(json!({"ev": "pasted", "id": id, "error": result.err()}));
+                            let paste_ms = started.elapsed().as_millis() as u64;
+                            emit(json!({"ev": "pasted", "id": id, "error": result.err(), "pasteMs": paste_ms}));
                         }
+                    }
+                    // The dictation paste in one call: bring its window forward, check it is the same window and page and
+                    // not a password box, then paste. The checks run on a worker (focusing can stall for seconds); only the
+                    // paste, which needs enigo, comes back to this loop, and only inside the deadline the desktop waits.
+                    "paste_checked" => {
+                        let id = value["id"].as_u64();
+                        let text = value["text"].as_str().unwrap_or("").to_string();
+                        let target = value["target"].as_i64().unwrap_or(0) as isize;
+                        let title = value["title"].as_str().unwrap_or("").to_string();
+                        let started = Instant::now();
+                        let tx = tx.clone();
+                        thread::spawn(move || {
+                            let focused = focus_for_paste(target).is_ok();
+                            let now = foreground_window();
+                            let title_now = window_app(target).1;
+                            let why = paste_verdict(
+                                focused,
+                                now == target,
+                                title_now == title,
+                                focused_is_secret(),
+                                focused_takes_no_text(),
+                            );
+                            let _ = tx.send(Msg::PasteChecked { id, text, why, started });
+                        });
                     }
                     "quit" => return,
                     _ => {}
                 }
             }
-            Msg::Key { hold: true, pressed } => {
-                let at = clock.elapsed().as_secs_f64() * 1000.0;
+            Msg::Key { hold: true, pressed, at } => {
+                // Raw edges, so a press that "did not fire" can be told from one let go within SHORT_TAP_MS.
+                emit(json!({"ev": "key_edge", "down": pressed, "at": at.round()}));
                 for out in taps.step(pressed, at, config.latch) {
                     match out {
-                        Out::Start => {
-                            held = true;
-                            begin(&config, &mut recording, &tx, &job_tx);
-                        }
+                        Out::Start => match dictation_press(recording.is_some(), voice_on) {
+                            // Handed to the desktop as ✓: nothing is held here, so this hold's release starts nothing.
+                            Press::ToDesktop => {
+                                held = false;
+                                taps = PushToTalk::default();
+                                emit(json!({"ev": "binding", "id": "toggle"}));
+                            }
+                            _ => {
+                                held = true;
+                                // Before the microphone opens (80 to 140 ms), so the pill shows on the press itself.
+                                emit(json!({"ev": "pressed"}));
+                                begin(&config, &mut recording, &tx, &job_tx, "hold");
+                                take_escape(&tx, recording.is_some());
+                            }
+                        },
                         Out::Stop => {
                             held = false;
+                            take_escape(&tx, false);
                             finish(&mut recording, &job_tx, true);
                         }
-                        // An accidental tap: what little was heard is dropped, not transcribed.
+                        // An accidental tap: what little was heard is dropped, not transcribed. Said, so a key that
+                        // seems not to fire can be told from one let go too soon.
                         Out::Cancel => {
                             held = false;
-                            recording = None;
+                            take_escape(&tx, false);
+                            let stopped = recording.take().map(|r| r.id);
                             let _ = job_tx.send(Work::Abort);
-                            emit(json!({"ev": "idle"}));
+                            emit(of_dictation(json!({"ev": "idle", "tap": true}), stopped));
                         }
-                        Out::Latch | Out::Unlatch => {}
+                        // Hands-free from here: the desktop shows the pill's ✓ and ✕.
+                        Out::Latch => {
+                            take_escape(&tx, false);
+                            emit(json!({"ev": "latched"}));
+                        }
+                        Out::Unlatch => {}
                     }
                 }
             }
-            Msg::Key { hold: false, pressed: true } => {
+            Msg::Key { hold: false, pressed: true, .. } => {
                 if !toggle_down {
                     toggle_down = true;
-                    if recording.is_some() {
-                        finish(&mut recording, &job_tx, true);
-                    } else {
-                        begin(&config, &mut recording, &tx, &job_tx);
+                    match dictation_press(recording.is_some(), voice_on) {
+                        Press::Finish => finish(&mut recording, &job_tx, true),
+                        Press::Begin => begin(&config, &mut recording, &tx, &job_tx, "toggle"),
+                        Press::ToDesktop => emit(json!({"ev": "binding", "id": "toggle"})),
                     }
                 }
             }
-            Msg::Key { hold: false, pressed: false } => toggle_down = false,
+            Msg::Key { hold: false, pressed: false, .. } => toggle_down = false,
             Msg::FakeEnded => finish(&mut recording, &job_tx, true),
+            Msg::ChordJoined => {
+                held = false;
+                take_escape(&tx, false);
+                taps = PushToTalk::default();
+                if let Some(stopped) = recording.take() {
+                    let _ = job_tx.send(Work::Abort);
+                    emit(of_dictation(json!({"ev": "idle", "joined": true}), Some(stopped.id)));
+                }
+            }
+            Msg::Meter(block) => emit(json!({"ev": "pcm", "b64": meter_b64(&block)})),
+            Msg::Probe(id, probe) => {
+                // Kept in his order, so the judge moves to the first that hears him; a late one for an ended or decided
+                // dictation closes as it drops.
+                if let Some(r) = recording.as_mut().filter(|r| r.id == id && !r.decided) {
+                    let at = r.probes.iter().position(|p| p.rank > probe.rank).unwrap_or(r.probes.len());
+                    r.probes.insert(at, probe);
+                }
+            }
+            Msg::PasteChecked { id, text, why, started } => {
+                // Past the deadline the desktop has kept the words already; pasting them now would type them twice.
+                let why = if why == "ok" && started.elapsed() >= PASTE_DEADLINE { "late" } else { why };
+                let mut line = json!({"ev": "paste_checked", "id": id, "why": why});
+                if why == "ok" {
+                    if let Err(e) = paste_text(&mut enigo, &text, config.paste) {
+                        line = json!({"ev": "paste_checked", "id": id, "why": "refused", "error": e});
+                    }
+                }
+                line["pasteMs"] = json!(started.elapsed().as_millis() as u64);
+                if why == "secret" {
+                    line["secret"] = json!(true);
+                }
+                emit(line);
+            }
+            // The key is still down: its release finds no recording, so nothing is pasted.
+            Msg::HeldEscape => {
+                if held {
+                    if let Some(stopped) = recording.take() {
+                        let _ = job_tx.send(Work::Abort);
+                        emit(of_dictation(json!({"ev": "idle", "discarded": true}), Some(stopped.id)));
+                    }
+                }
+            }
             Msg::MicFailed(message) => {
-                recording = None;
+                take_escape(&tx, false);
+                let stopped = recording.take().map(|r| r.id);
                 let _ = job_tx.send(Work::Abort);
                 held = false;
                 taps = PushToTalk::default();
-                emit(json!({"ev": "error", "message": message}));
+                emit(of_dictation(json!({"ev": "error", "message": message}), stopped));
             }
-            Msg::Finished { id, dictated, target, result } => match result {
+            Msg::Finished { id, dictation, dictated, target, result } => match result {
                 Ok(done) => {
                     let mut pasted_error = None;
+                    let mut paste_ms = None;
                     let paste = dictated && !config.cleanup && should_paste(target, foreground_window());
                     if paste && !done.text.is_empty() {
+                        let started = Instant::now();
                         pasted_error = paste_text(&mut enigo, &done.text, config.paste).err();
+                        paste_ms = Some(started.elapsed().as_millis() as u64);
                     }
                     emit(json!({
-                        "ev": "text", "id": id, "text": done.text, "audioMs": done.audio_ms,
+                        "ev": "text", "id": id, "dictation": dictation, "text": done.text, "audioMs": done.audio_ms,
                         "inferMs": done.infer_ms, "loadMs": done.load_ms, "pasteError": pasted_error,
                         "dictated": dictated, "pasted": paste, "target": target,
                         "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav, "model": done.model,
+                        "timing": done.timing, "pasteMs": paste_ms, "audio": done.audio,
                     }));
                 }
-                Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": dictated})),
+                Err(message) => emit(json!({"ev": "text", "id": id, "dictation": dictation, "error": message, "dictated": dictated})),
             },
         }
     }
@@ -1329,7 +2540,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
     let model = flag(args, "--model").ok_or("--model is required")?;
     let language = flag(args, "--language");
     let (mut session, load_ms) = load(Path::new(&model))?;
-    let loaded = Model::load(Path::new(&model)).map_err(|e| e.to_string())?;
+    let loaded = gpu::cpu_model(Path::new(&model)).map_err(|e| e.to_string())?;
     let caps = loaded.capabilities().map_err(|e| e.to_string())?;
     emit(json!({"ev": "loaded", "loadMs": load_ms, "streaming": caps.supports_streaming,
         "vocabulary": loaded.supports(Feature::Vocabulary), "arch": loaded.arch(), "variant": loaded.variant()}));
@@ -1357,7 +2568,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
         if let Some(piece) = last {
             text.push(decode_piece(&mut session, piece, language.clone())?);
         }
-        emit(json!({"file": file, "text": text.join(" "), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
+        emit(json!({"file": file, "text": join_pieces(&text), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
             "finalMs": released.elapsed().as_millis() as u64, "lastSeconds": last_seconds, "pieces": text.len()}));
     }
     Ok(())
@@ -1365,7 +2576,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
 
 fn cli_record(args: &[String]) -> Result<(), String> {
     let channel = flag(args, "--channel").and_then(|c| c.parse().ok());
-    let config = recorder_config(flag(args, "--device").as_deref(), channel)?;
+    let config = recorder_config(flag(args, "--device").as_deref(), channel, true)?;
     let seconds: u64 = flag(args, "--seconds").and_then(|s| s.parse().ok()).unwrap_or(0);
     // Exit on a dead stream: the desktop only learns of it from this process ending.
     let recorder = Recorder::open_with_failure_handler(config, |e| {
@@ -1394,11 +2605,12 @@ fn main() {
         };
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
-    if let Err(e) = init_backends_with(None::<&Path>, BackendMask::CPU) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let gpu_mode: gpu::Mode = flag(&args, "--gpu").and_then(|m| m.parse().ok()).unwrap_or(gpu::Mode::Off);
+    if let Err(e) = init_backends_with(None::<&Path>, gpu::mask(gpu_mode)) {
         emit(json!({"ev": "error", "message": format!("backend: {e}")}));
         std::process::exit(2);
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         None | Some("serve") => {
             serve();
@@ -1408,6 +2620,8 @@ fn main() {
             println!("{}", devices_json());
             Ok(())
         }
+        // Dev only: his recordings through the real client to his server, timed (remote.rs `replay`).
+        Some("replay-remote") if args.len() >= 4 => remote::replay(&args[1], &args[2], &args[3..]),
         Some("foreground") => {
             let window = foreground_window();
             let (app, title) = window_app(window);
@@ -1438,6 +2652,59 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_paste_stops_at_the_first_failed_check() {
+        let rows = [
+            ((false, true, true, false, false), "gone"),
+            ((false, false, false, true, true), "gone"),
+            ((true, false, true, false, false), "changed"),
+            ((true, true, false, false, false), "changed"),
+            ((true, false, false, true, true), "changed"),
+            ((true, true, true, true, true), "secret"),
+            // Explorer's icons or the desktop in front: nothing takes the paste.
+            ((true, true, true, false, true), "nofield"),
+            ((true, true, true, false, false), "ok"),
+        ];
+        for ((focused, same_window, same_title, secret, no_field), want) in rows {
+            assert_eq!(paste_verdict(focused, same_window, same_title, secret, no_field), want);
+        }
+    }
+
+    #[test]
+    fn right_to_left_script_before_the_caret_is_seen() {
+        assert!(has_rtl("hello שלום"));
+        assert!(has_rtl("مرحبا"));
+        assert!(!has_rtl("hello, naïve café — 日本語"));
+        assert!(!has_rtl(""));
+    }
+
+    #[test]
+    fn the_desktop_and_taskbar_are_no_text_box() {
+        for class in ["Progman", "WorkerW", "SHELLDLL_DefView", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"] {
+            assert!(shell_surface(class), "{class}");
+        }
+        // Panes editors draw their own text in stay boxes.
+        for class in ["", "Chrome_RenderWidgetHostHWND", "_WwG", "Scintilla", "CabinetWClass"] {
+            assert!(!shell_surface(class), "{class}");
+        }
+    }
+
+    #[test]
+    fn the_waveform_sends_at_most_one_newest_block_per_gap() {
+        let (mut meter, t0) = (Meter::default(), Instant::now());
+        // Not a whole block yet.
+        assert!(meter.feed(&vec![0.1; METER_SAMPLES / 2], t0).is_none());
+        // A burst of three blocks sends only the newest one.
+        let mut burst = vec![0.1; METER_SAMPLES / 2];
+        burst.extend(vec![0.2; METER_SAMPLES * 2]);
+        burst.extend(vec![0.3; METER_SAMPLES]);
+        assert_eq!(meter.feed(&burst, t0), Some(vec![0.3; METER_SAMPLES]));
+        // Within the gap nothing goes, and the backlog never grows past a block.
+        assert!(meter.feed(&vec![0.4; METER_SAMPLES * 3], t0 + Duration::from_millis(10)).is_none());
+        assert!(meter.pending.len() <= METER_SAMPLES);
+        assert_eq!(meter.feed(&[], t0 + METER_GAP), Some(vec![0.4; METER_SAMPLES]));
+    }
 
     #[test]
     fn the_wake_path_and_dictation_keep_their_own_models_and_never_load_one_twice() {
@@ -1475,8 +2742,133 @@ mod tests {
     }
 
     #[test]
+    fn the_cloud_recording_reaches_the_local_model_only_for_live_words() {
+        let speech: Vec<f32> = (0..16_000).map(|i| (i as f32 * 0.3).sin() * 0.2).collect();
+        let mut quiet = Live { external: Some(std::env::temp_dir()), ..Live::new(None, 0, None) };
+        quiet.hear(None, &speech, false);
+        assert_eq!((quiet.heard.len(), quiet.chunker.pending_len()), (16_000, 0));
+        let mut shown = Live { external: Some(std::env::temp_dir()), live_words: true, ..Live::new(None, 0, None) };
+        shown.hear(None, &speech, false);
+        assert_eq!((shown.heard.len(), shown.chunker.pending_len()), (16_000, 16_000));
+        let mut local = Live::new(None, 0, None);
+        local.hear(None, &speech, false);
+        assert_eq!(local.chunker.pending_len(), 16_000);
+    }
+
+    #[test]
+    fn audio_waiting_behind_a_chunk_is_taken_with_it_and_the_next_message_kept() {
+        let (tx, rx) = channel::<Work>();
+        let mut pcm = vec![0.1; 4];
+        assert!(matches!(gather_audio(&rx, 1, &mut pcm), (false, None)));
+        tx.send(Work::Audio(1, vec![0.2; 3])).unwrap();
+        tx.send(Work::Audio(1, vec![0.3; 2])).unwrap();
+        tx.send(Work::Abort).unwrap();
+        tx.send(Work::Audio(1, vec![0.4; 1])).unwrap();
+        let (behind, next) = gather_audio(&rx, 1, &mut pcm);
+        assert!(behind && matches!(next, Some(Work::Abort)));
+        assert_eq!(pcm.len(), 9);
+        // What follows the other message stays queued, in order.
+        assert!(matches!(rx.try_recv(), Ok(Work::Audio(1, rest)) if rest.len() == 1));
+        // Another dictation's audio is never gathered into this one's.
+        tx.send(Work::Audio(2, vec![0.5; 1])).unwrap();
+        assert!(matches!(gather_audio(&rx, 1, &mut pcm), (false, Some(Work::Audio(2, _)))));
+    }
+
+    #[test]
+    fn a_dictation_never_answers_with_another_ones_recording() {
+        let (job_tx, job_rx) = channel::<Work>();
+        let (out_tx, out_rx) = channel::<Msg>();
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, out_tx, me));
+        let dir = std::env::temp_dir().join(format!("tessaya-ids-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let begin = |id| Work::Begin {
+            id,
+            model: PathBuf::from("parakeet-test.gguf"),
+            language: None,
+            external: Some(dir.clone()),
+            keep: None,
+            live: false,
+            remote: vec![],
+        };
+        let end = |id| Work::End { id, target: None, released: Instant::now(), timing: json!({}) };
+        job_tx.send(begin(1)).unwrap();
+        job_tx.send(Work::Audio(1, vec![0.1; 32_000])).unwrap();
+        // The second starts before the first's end arrives; the first's late audio and end must not reach it.
+        job_tx.send(begin(2)).unwrap();
+        job_tx.send(Work::Audio(2, vec![0.1; 16_000])).unwrap();
+        job_tx.send(Work::Audio(1, vec![0.1; 8_000])).unwrap();
+        job_tx.send(end(1)).unwrap();
+        job_tx.send(end(2)).unwrap();
+        let first = out_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(first, Msg::Finished { dictation: Some(1), result: Err(_), .. }));
+        let second = out_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(second, Msg::Finished { dictation: Some(2), result: Ok(Done { audio_ms: 1_000, .. }), .. }));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_background_read_never_loads_a_model_twice_and_runs_again_after_an_unload() {
+        let m = Path::new("parakeet.gguf");
+        assert!(warm_needed(m, None, None, false, true));
+        assert!(!warm_needed(m, Some(m), None, false, true));
+        assert!(!warm_needed(m, Some(Path::new("wake.gguf")), Some(m), false, true));
+        assert!(!warm_needed(m, None, None, true, true));
+        // Not on disk: never downloaded for this.
+        assert!(!warm_needed(m, None, None, false, false));
+        // Unloaded after idle, the slot is empty again: the next ask reads it again.
+        assert!(warm_needed(m, None, Some(Path::new("wake.gguf")), false, true));
+    }
+
+    #[test]
+    fn a_cloud_dictation_never_waits_on_the_live_words_load() {
+        let (job_tx, job_rx) = channel::<Work>();
+        let (out_tx, out_rx) = channel::<Msg>();
+        let me = job_tx.clone();
+        thread::spawn(move || engine_thread(job_rx, out_tx, me));
+        // A load that takes as long as the test does: the recording must finish without it.
+        let (unblock, blocked) = channel::<()>();
+        let model = PathBuf::from("parakeet-test.gguf");
+        let warm = warm_in_background(model.clone(), job_tx.clone(), move |_| {
+            let _ = blocked.recv();
+            Err("stopped".to_string())
+        });
+        let dir = std::env::temp_dir().join(format!("tessaya-warm-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        job_tx
+            .send(Work::Begin {
+                id: 1,
+                model,
+                language: None,
+                external: Some(dir.clone()),
+                keep: None,
+                live: true,
+                remote: vec![],
+            })
+            .unwrap();
+        job_tx.send(Work::Audio(1, vec![0.1; 16_000])).unwrap();
+        job_tx.send(Work::End { id: 1, target: None, released: Instant::now(), timing: json!({}) }).unwrap();
+        let finished = out_rx.recv_timeout(Duration::from_secs(5)).expect("the release waited on the load");
+        assert!(matches!(finished, Msg::Finished { result: Ok(Done { wav: Some(_), .. }), .. }));
+        unblock.send(()).unwrap();
+        warm.join().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn threads_are_half_the_cores_but_never_more_than_the_cores() {
         assert_eq!([1, 2, 3, 4, 8, 16].map(default_threads), [1, 2, 2, 2, 4, 8]);
+    }
+
+    #[test]
+    fn a_press_tries_the_mic_that_heard_him_last_then_his_choice_then_his_order() {
+        let order = |d: Option<&str>, f: &[&str], l: Option<&str>| {
+            mic_order(d, &f.iter().map(|s| s.to_string()).collect::<Vec<_>>(), l)
+        };
+        assert_eq!(order(Some("DJI"), &["Scarlett", "DJI", "Webcam"], None), ["DJI", "Scarlett", "Webcam"]);
+        assert_eq!(order(Some("DJI"), &["Scarlett", "Webcam"], Some("Scarlett")), ["Scarlett", "DJI", "Webcam"]);
+        // The system's mic: nothing to choose between.
+        assert!(order(None, &["Scarlett"], Some("Scarlett")).is_empty());
     }
 
     /// The timing table in docs/baton/fixtures/double-tap.json.
@@ -1521,6 +2913,16 @@ mod tests {
         assert_eq!(old.hold, vec!["Ctrl+Alt+Space".to_string()]);
         let many: Config = serde_json::from_value(json!({"toggle": ["F9", "Ctrl+Alt+D"]})).unwrap();
         assert_eq!(many.toggle, vec!["F9".to_string(), "Ctrl+Alt+D".to_string()]);
+    }
+
+    #[test]
+    fn the_hands_free_key_starts_ends_and_during_voice_dictation_is_its_check_mark() {
+        // First press starts, second ends: his own recording.
+        assert_eq!(dictation_press(false, false), Press::Begin);
+        assert_eq!(dictation_press(true, false), Press::Finish);
+        // While "Tessaya, dictate" runs, the press goes to the desktop as ✓, never a second recording.
+        assert_eq!(dictation_press(false, true), Press::ToDesktop);
+        assert_eq!(dictation_press(true, true), Press::Finish);
     }
 
     #[test]

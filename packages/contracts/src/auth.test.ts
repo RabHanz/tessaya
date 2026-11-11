@@ -14,6 +14,11 @@ import {
   sessionGrantsScope,
 } from "./auth.ts";
 
+const StoredScopes = Schema.fromJsonString(AuthEnvironmentScopes);
+const decodeStoredScopes = Schema.decodeUnknownSync(StoredScopes);
+const encodeStoredScopes = Schema.encodeSync(StoredScopes);
+const decodeGrantScopes = Schema.decodeUnknownSync(AuthGrantScopes);
+
 describe("authorization grants", () => {
   it("decodes legacy review credentials without offering them in new grants", () => {
     const decodeAuthEnvironmentScopes = Schema.decodeSync(AuthEnvironmentScopes);
@@ -29,7 +34,35 @@ describe("authorization grants", () => {
     const decodeAuthGrantScopes = Schema.decodeUnknownSync(AuthGrantScopes);
 
     expect(() => decodeAuthGrantScopes(["baton:hands-host"])).toThrow();
+    expect(() => decodeAuthGrantScopes(["tessaya:hands-host"])).toThrow();
     expect(decodeAuthGrantScopes(["baton:hands"])).toEqual(["baton:hands"]);
+  });
+
+  it("reads a session the next build wrote under the Tessaya scope names, and still writes the old ones", () => {
+    const written = JSON.stringify([
+      "orchestration:read",
+      "tessaya:hands",
+      "tessaya:hands-host",
+      "tessaya:cloud-approve",
+    ]);
+    const scopes = decodeStoredScopes(written);
+
+    expect(scopes).toEqual([
+      "orchestration:read",
+      "baton:hands",
+      "baton:hands-host",
+      "baton:cloud-approve",
+    ]);
+    expect(encodeStoredScopes(scopes)).toBe(
+      JSON.stringify([
+        "orchestration:read",
+        "baton:hands",
+        "baton:hands-host",
+        "baton:cloud-approve",
+      ]),
+    );
+    expect(decodeGrantScopes(["tessaya:memory-sync"])).toEqual(["baton:memory-sync"]);
+    expect(() => decodeGrantScopes(["tessaya:memory-sync", "orchestration:read"])).toThrow();
   });
 
   // Keep the pre-granular vocabulary frozen to expose compatibility regressions.
@@ -48,7 +81,7 @@ describe("authorization grants", () => {
 
   const decodeOldScopes = Schema.decodeUnknownSync(oldScopes);
 
-  it.each(AuthEnvironmentScope.literals)(
+  it.each(AuthEnvironmentScope.to.literals)(
     "keeps %s permission errors decodable by old clients",
     (scope) => {
       const response = authScopeRequiredResponse(scope);

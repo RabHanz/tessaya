@@ -83,12 +83,10 @@ import {
 } from "@t3tools/baton-shared/screenCompanion";
 import {
   describeToolCall,
-  gatePrompt,
   spokenOutcome,
   announceTool,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
-import { decideTrust } from "@t3tools/baton-shared/trust";
 import * as Electron from "electron";
 
 import {
@@ -109,14 +107,16 @@ import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts
 import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
 import { detectBrains } from "./brainDetect.ts";
 import { textIsFromConversation, type ConversationRoute } from "@t3tools/baton-shared/conversation";
-import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
+import { BATON_TOOL_PREFIX, isOwnTool } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import {
   createAgentGate,
   createCutInMark,
   createTaint,
+  forOperator,
   stopsOnCutIn,
   type Gate,
+  type TurnTaint,
 } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
 import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
@@ -141,6 +141,7 @@ import {
 } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, startPersonas, type AssistantAgent } from "../agent/agentSession.ts";
+import { createEpisodeWatch } from "../conversation/conversationEpisodes.ts";
 import {
   answerConversationSearch,
   conversationsIn,
@@ -169,6 +170,7 @@ import {
   leadsProject,
   modelOf,
   personaFor,
+  rosterLine,
   type Brain,
   type Persona,
   type ProjectRef,
@@ -301,6 +303,8 @@ export interface StandingRunJob {
   readonly from: "him" | "device";
   readonly tools: ReadonlyArray<string>;
   readonly judge: (tool: string) => { readonly verdict: string; readonly why?: string };
+  /** The persona that owns it (the one he set it up with): who it answers as and what it may recall. */
+  readonly persona: Persona;
 }
 
 /** What Baton can do beyond talking, supplied by the voice side. */
@@ -427,6 +431,7 @@ export interface AssistantActions {
       | "trust_show"
       | "activity_today"
       | "record"
+      | "team"
       | "permission_off"
       | "weave_send"
       | "weave_list"
@@ -544,9 +549,8 @@ export interface ScreenCompanion {
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
   readonly volume: () => number;
-  readonly stop: () => void;
-  /** Dismissed by Esc, a click or "never mind": everything comes down and goes quiet, with nothing said and no turn logged. */
-  readonly dismissQuietly: () => void;
+  /** The one Stop: everything running for him comes down; `quiet` (Esc, a click, "never mind") says nothing. */
+  readonly stop: (quiet?: boolean) => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   /** The same question, also put to a paired phone: the first answer counts. */
@@ -556,7 +560,6 @@ export interface ScreenCompanion {
   ) => Promise<number>;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
-  readonly needsBrainChoice: () => boolean;
   /** Move the Ask Baton key, or switch it off with null. */
   readonly setAskHotkey: (accelerator: string | null) => void;
   /** Asks again whether Claude Code and Codex are installed and signed in. */
@@ -599,6 +602,18 @@ const DEVICE_INTERRUPTED =
   "Interrupted: the Director started talking to Tessaya, and he comes first. Ask again.";
 const DEVICE_BUSY =
   "Tessaya is in the middle of something with the Director (a lesson, a drive or a look). Ask again later.";
+
+/** Reached only after his yes (the gate asks every time), which is the approval a provider change needs. */
+const threadSessionVia =
+  (direct: (method: string, body: unknown) => Promise<unknown>) =>
+  async (op: "move" | "open", threadId: string): Promise<string> => {
+    const answer = (await (
+      op === "move"
+        ? direct("baton.sessions.moveintotessaya", { threadId, providerChangeApproved: true })
+        : direct("baton.sessions.openinterminal", { threadId })
+    ).catch(() => null)) as { readonly detail?: unknown } | null;
+    return typeof answer?.detail === "string" ? answer.detail : "That could not be done.";
+  };
 
 const lateCatalog = (get: () => ToolHost["catalog"]): NonNullable<ToolHost["catalog"]> => {
   const NOT_READY = "The session list is not ready yet.";
@@ -774,6 +789,28 @@ export const startScreenCompanion = (input: {
     // His slot only: a device's turn has its own memory client with no persona (outsideSlot.ts).
     agent: () => face.id,
   });
+  const episodes = createEpisodeWatch({
+    conversations,
+    file: NodePath.join(input.stateDir, "conversation", "episodes.json"),
+    nameOf,
+    send: async (e) => {
+      if (actions?.memory === undefined) return "retry";
+      const out = (await actions.memory("learn", {
+        said: e.transcript,
+        reply: "",
+        tainted: e.tainted,
+        agent: e.persona,
+        origin: "conversation",
+        turnRef: e.sourceRef,
+        at: e.at,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(e.project === null ? {} : { project: e.project }),
+      })) as { readonly episode?: string } | null;
+      return out?.episode === "retry" ? "retry" : "done";
+    },
+  });
+  const episodeTimer = setInterval(() => void episodes.tick(), 5 * 60_000);
+  episodeTimer.unref?.();
   let stopMemorySync: (() => void) | null = null;
   const memorySync = createMemorySync({
     file: NodePath.join(input.stateDir, "baton-memory.json"),
@@ -806,6 +843,8 @@ export const startScreenCompanion = (input: {
       route,
       said,
       reply,
+      ...(turnProject === null ? {} : { project: turnProject.title }),
+      ...(agentTaint.on() ? { tainted: true as const } : {}),
       ...(extra.note === undefined ? {} : { note: extra.note }),
       ...(label === undefined ? {} : { target: { label } }),
     });
@@ -849,18 +888,25 @@ export const startScreenCompanion = (input: {
     spokenFrom = null;
     await overlay.clear();
   };
-  /** Takes down whatever is up, and the voice with it. Esc stays his: this is the tray's. */
-  const dismiss = () => {
+  /**
+   * Every Stop (Esc, the pill's ✕, the tray, the Stop key or button, a spoken or typed "stop"): the talking, his drive
+   * or lesson, the assistant's turn, and a paired device's or standing job's turn. `quiet` (Esc, a click, "never
+   * mind") says nothing and leaves a device's or standing job's turn running.
+   */
+  const stopAll = (quiet = false) => {
+    const busy = runningMode() !== null || answering > 0 || (!quiet && turnLock.deviceRunning());
     hush();
+    // The answering turn does nothing more (stopsOnCutIn), as when he talks over her.
+    if (answering > 0) cutIns.cut();
     input.onDismissed?.();
-    // Stop means the work too, not only the talking about it.
+    // Closing the pill is not a Stop: a device's or standing job's turn goes on unless he really stops.
+    if (!quiet) turnLock.stopDevice();
     dropOperator();
-    if (run !== null && run.mode !== "look") {
-      say("Stopped.");
-      end();
-    }
+    if (busy && !quiet) say("Stopped.");
+    if (runningMode() !== null) end();
     void wipe();
   };
+  const dismiss = () => stopAll();
 
   const FINISHED_CARD_MS = 12_000;
   /** The end of a lesson or a drive: a green-edged card, and a bubble at the pointer saying what changed. */
@@ -1013,6 +1059,21 @@ export const startScreenCompanion = (input: {
   /** The tiers of the persona he is talking to (the one his wake word names), and only that persona's (P1). */
   /** The persona whose tiers were warmed last, so a sentence that names another ("ask Alfred…") warms that one. */
   let warmedFor: string | null = null;
+  /** Pins (and starts, where missing) the fast tier of the lead and the two personas he spoke to last. */
+  const pinFastTiers = (speaking?: string) => {
+    const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
+    const ids = pack.personas.map((p) => p.id);
+    agentOf().warmEach(
+      startPersonas(
+        pack.personas.find((p) => p.lead)?.id ?? ids[0] ?? "executive",
+        [...(speaking === undefined ? [] : [speaking]), ...conversations.byRecent()],
+        ids,
+      ).map((persona) => ({
+        persona,
+        brain: tierBrains(modelOf(pack, persona), manual(), "fast")[0]!,
+      })),
+    );
+  };
   const warmTiers = (persona: Persona = face, wake = false) => {
     warmedFor = persona.id;
     agentOf().warm(
@@ -1296,8 +1357,10 @@ export const startScreenCompanion = (input: {
 
   let agent: AssistantAgent | null = null;
   let operator: { session: VisionSession; lastAt: number; home: string } | null = null;
-  /** The turn has run a tool, so what comes next may be following its output. */
-  let tainted = false;
+  /** The drive's or lesson's own taint: once it has run a tool, what comes next may be following its output. */
+  const operatorTaint = createTaint();
+  /** What he asked this drive or lesson for: typing it is typing his own words, until the drive has read something. */
+  let operatorGoal = "";
   /** A call is announced before its own request reaches the gate: only the next one is tainted. */
   let toolsThisTurn = 0;
   const dropOperator = () => {
@@ -1310,52 +1373,11 @@ export const startScreenCompanion = (input: {
     windows.closePrompt(true);
   };
 
-  const toolGate = async (call: ToolCall) => {
-    const judged = decideTrust({
-      call,
-      context: { actWithoutAsking: settings.actWithoutAsking, tainted },
-      agent: face,
-    });
-    const action = describeToolCall(call);
-    const record = (outcome: string) =>
-      input.onAction?.({
-        by: settings.operator,
-        persona: face.name,
-        tool: call.tool,
-        action,
-        outcome,
-        ...(judged.verdict === "allow" ? {} : { why: judged.why }),
-      });
-    if (judged.verdict === "deny") {
-      record("refused");
-      return { allow: false as const, reason: `${judged.why} Tell him why and stop.` };
-    }
-    if (judged.verdict === "allow") {
-      record("allowed");
-      return { allow: true as const };
-    }
-    const prompt = gatePrompt(judged, action, { agent: face.name });
-    const response = await askHandsFree(
-      {
-        title: prompt.title,
-        detail: prompt.detail,
-        buttons: ["Go ahead", "Not now"],
-        cancel: 1,
-        scoped: true,
-      },
-      prompt.spoken,
-      0,
-      prompt.noOnExpiry,
-    );
-    record(response === 0 ? "he said yes" : "he said no");
-    return response === 0
-      ? { allow: true as const }
-      : { allow: false as const, reason: "He said no. Stop and tell him." };
-  };
-
   const operatorSession = (home: string): VisionSession => {
     const onTool = (call: ToolCall) => {
-      ({ tainted, ran: toolsThisTurn } = announceTool(toolsThisTurn, call.tool));
+      const announced = announceTool(toolsThisTurn, call.tool);
+      toolsThisTurn = announced.ran;
+      if (announced.tainted) operatorTaint.mark();
       input.onAction?.({ by: settings.operator, tool: call.tool, action: describeToolCall(call) });
     };
     return settings.operator === "codex"
@@ -1365,7 +1387,7 @@ export const startScreenCompanion = (input: {
           systemPrompt: OPERATOR_PROMPT,
           env: input.env,
           platform: input.platform,
-          gate: toolGate,
+          gate: operatorGate,
           onTool,
         })
       : startVisionSession({
@@ -1377,7 +1399,7 @@ export const startScreenCompanion = (input: {
           env: claudeEnv(),
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
-          gate: toolGate,
+          gate: operatorGate,
           onTool,
         });
   };
@@ -1398,7 +1420,9 @@ export const startScreenCompanion = (input: {
       operator = { session: operatorSession(home), lastAt: Date.now(), home };
     }
     const current = operator;
-    tainted = false;
+    // His goal counts as his words through forOperator, which stops counting it once the drive is tainted.
+    operatorTaint.reset();
+    operatorGoal = goal;
     toolsThisTurn = 0;
     answering += 1;
     try {
@@ -1728,11 +1752,7 @@ export const startScreenCompanion = (input: {
             return Promise.resolve();
           }
           // Nothing running: a silent no-op, so a stray "stop" costs nothing.
-          const wasBusy = runningMode() !== null || answering > 0;
-          hush();
-          void wipe();
-          if (wasBusy) say("Stopped.");
-          end();
+          stopAll();
           return Promise.resolve();
         case "refused":
         case "act":
@@ -1837,59 +1857,83 @@ export const startScreenCompanion = (input: {
   let chromeRelaunched = false;
   /** The last ui_tree's lines: a click on a text box there only moves the cursor. */
   let lastControls: ReadonlyArray<string> = [];
-  const agentGate = createAgentGate({
-    actWithoutAsking: () => settings.actWithoutAsking,
-    chrome: {
-      socialOn: () => settings.socialOn,
-      now: () => Date.now(),
-      log: (line) =>
-        NodeFS.appendFileSync(NodePath.join(input.stateDir, "social-actions.ndjson"), `${line}\n`),
-    },
-    taint: agentTaint,
-    textIsHis: (text) =>
-      textIsFromConversation(
-        text,
-        // "Alfred, type what Freya just said": her words are his too, unless she is private.
-        conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
-      ),
-    focusedWindow: gateWindow,
-    pointerField: (tool, call) => tool === "click_element" && clickTargetsField(lastControls, call),
-    confirm: async (p) =>
-      (await askHandsFree(
-        {
-          title: p.title,
-          detail: p.detail,
-          buttons: ["Go ahead", "Not now"],
-          cancel: 1,
-          scoped: true,
-        },
-        p.spoken,
-        0,
-        p.noOnExpiry,
-      )) === 0,
-    inPlan: () => planGrant?.steps ?? null,
-    agent: () => ({
-      ...face,
-      leadsProject: (p: ProjectRef) => leadsProject(face, p, actions?.projects?.() ?? []),
-    }),
-    jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
-    keysAllowed: (at) => {
-      const plan = planGrant;
-      // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
-      keysAllowed = { ...at, ...(plan === null ? {} : { clipboard: plan.clipboard }) };
-    },
-    record: (entry) => {
-      if (typeof entry["tool"] === "string") {
-        // The tool itself is listed once, by onTool.
-        turns
-          .current()
-          .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
-        // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
-        input.onActivity?.("Working");
-      }
-      input.onAction?.({ by: "assistant", persona: face.name, ...entry });
-    },
+  /** His gate (One Trust with everything it judges by), for the assistant's turns and for a drive's or lesson's. */
+  const gateFor = (
+    taint: TurnTaint,
+    record: (entry: Readonly<Record<string, unknown>>) => void,
+    own: Partial<Parameters<typeof createAgentGate>[0]> = {},
+  ): Gate =>
+    createAgentGate({
+      actWithoutAsking: () => settings.actWithoutAsking,
+      chrome: {
+        socialOn: () => settings.socialOn,
+        now: () => Date.now(),
+        log: (line) =>
+          NodeFS.appendFileSync(
+            NodePath.join(input.stateDir, "social-actions.ndjson"),
+            `${line}\n`,
+          ),
+      },
+      taint,
+      textIsHis: (text) =>
+        textIsFromConversation(
+          text,
+          // "Alfred, type what Freya just said": her words are his too, unless she is private.
+          conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
+        ),
+      focusedWindow: gateWindow,
+      pointerField: (tool, call) =>
+        tool === "click_element" && clickTargetsField(lastControls, call),
+      confirm: async (p) =>
+        (await askHandsFree(
+          {
+            title: p.title,
+            detail: p.detail,
+            buttons: ["Go ahead", "Not now"],
+            cancel: 1,
+            scoped: true,
+          },
+          p.spoken,
+          0,
+          p.noOnExpiry,
+        )) === 0,
+      inPlan: () => planGrant?.steps ?? null,
+      agent: () => ({
+        ...face,
+        leadsProject: (p: ProjectRef) => leadsProject(face, p, actions?.projects?.() ?? []),
+      }),
+      jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
+      keysAllowed: (at) => {
+        const plan = planGrant;
+        // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
+        keysAllowed = { ...at, ...(plan === null ? {} : { clipboard: plan.clipboard }) };
+      },
+      record,
+      ...own,
+    });
+  const agentGate = gateFor(agentTaint, (entry) => {
+    if (typeof entry["tool"] === "string") {
+      // The tool itself is listed once, by onTool.
+      turns
+        .current()
+        .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
+      // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
+      input.onActivity?.("Working");
+    }
+    input.onAction?.({ by: "assistant", persona: face.name, ...entry });
   });
+  const operatorGate = gateFor(
+    operatorTaint,
+    (entry) => input.onAction?.({ by: settings.operator, persona: face.name, ...entry }),
+    forOperator({
+      taint: operatorTaint,
+      textIsHis: (text) =>
+        textIsFromConversation(text, [
+          { said: operatorGoal, reply: "" },
+          ...conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
+        ]),
+    }),
+  );
 
   // Remote hands: its own gate and taint. The caller is a session the Director gave baton:hands, so what it read is not
   // carried from one call to the next; every rule One Trust has still applies to each call. Away, a question is a no.
@@ -2486,6 +2530,7 @@ export const startScreenCompanion = (input: {
       await driverFor().press(keys);
       return "Pressed.";
     },
+    ...(input.direct === undefined ? {} : { threadSession: threadSessionVia(input.direct) }),
     sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
     ...(input.catalog === undefined ? {} : { catalog: lateCatalog(input.catalog) }),
     session: async (id) =>
@@ -2587,11 +2632,16 @@ export const startScreenCompanion = (input: {
     if (response !== 0) return "He said no. Nothing was saved; say so in a few words.";
     return save(false);
   };
+  /** His own session's tools: the team board is read as the persona answering him; the outside slot keeps `toolHost`. */
+  const hisHost: ToolHost = {
+    ...toolHost,
+    jobs: (op, args) => toolHost.jobs(op, op === "team" ? { ...args, agent: face.id } : args),
+  };
   const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
     sessionWithOwnMcp(
       () =>
         startBatonMcp({
-          tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
+          tools: withFailureGuard(buildBatonTools(hisHost), toolFailures),
           gate: stopsOnCutIn(agentGate, cutIns.since),
           scrub: (text) => vaultHost?.scrub(text) ?? text,
           onResult: ({ text, ...r }) => {
@@ -2613,8 +2663,7 @@ export const startScreenCompanion = (input: {
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
           gate: stopsOnCutIn(
-            async (call) =>
-              call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call),
+            async (call) => (isOwnTool(call.tool) ? { allow: true as const } : agentGate(call)),
             cutIns.since,
           ),
           mcp: { url: mcp.url, token: mcp.token },
@@ -2655,8 +2704,7 @@ export const startScreenCompanion = (input: {
       env: claudeEnv(),
       platform: input.platform,
       timeoutMs: OPERATOR_TURN_MS,
-      gate: async (call) =>
-        call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : slot.gate(call),
+      gate: async (call) => (isOwnTool(call.tool) ? { allow: true as const } : slot.gate(call)),
       mcp: { url: mcp.url, token: mcp.token },
       chrome: settings.browserChrome,
       onTool: (call) => turns.current().tools.push(call.tool),
@@ -2688,11 +2736,13 @@ export const startScreenCompanion = (input: {
       isPrivate,
       latest: conversations.latest,
       nameOf,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ownTurn: (t) => !outsideSaid.has(t.said),
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
       images: () => imagesSent,
-      notes: async () => {
-        const standing = await memory.standing();
+      notes: async (persona) => {
+        const standing = await memory.standing(persona);
         // His operating-system pack frames the jobs this assistant starts and splits (D148), read fresh.
         const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
         return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
@@ -2707,6 +2757,7 @@ export const startScreenCompanion = (input: {
         const remembered = await memory.forSentence(text, project);
         return [remembered, learned.block].filter((b) => b !== "").join("\n\n");
       },
+      tainted: () => agentTaint.on(),
       learn: (said, reply, project) => {
         // Called before this turn is written, so the newest turn in the file is the one before.
         const before = conversation.recent(1)[0];
@@ -2761,10 +2812,11 @@ export const startScreenCompanion = (input: {
           persona:
             standing === undefined
               ? "Tessaya, for a paired device"
-              : `Tessaya, for your standing job "${standing.title}"`,
+              : `${standing.persona.name}, for your standing job "${standing.title}"`,
           ...entry,
         }),
       jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
+      ...(standing === undefined ? {} : { agent: standing.persona.id }),
     });
     const gate: Gate = standing === undefined ? slot.gate : standingGate(slot.gate, standing);
     let mine: BatonMcp | null = null;
@@ -2791,7 +2843,12 @@ export const startScreenCompanion = (input: {
         }),
       conversation: createConversationLog({ file }),
       clockLine: () => clockLine(new Date()),
-      notes: () => assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))),
+      notes: async () => {
+        const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
+        // A standing job gets its persona's standing memory, as his own session does; a device gets none.
+        const kept = standing === undefined ? "" : await slot.memory.standing(standing.persona.id);
+        return kept === "" ? frame : `${frame}\n\n${kept}`;
+      },
       recall: (text, project) => slot.memory.forSentence(text, project),
       beginTurn: slot.beginTurn,
     });
@@ -2843,7 +2900,11 @@ export const startScreenCompanion = (input: {
         timeout.addEventListener("abort", stop, { once: true });
         signal.addEventListener("abort", stop, { once: true });
         try {
-          const reply = await once.say(standingTurnText(job), { window: null, session: null });
+          const reply = await once.say(standingTurnText(job), {
+            window: null,
+            session: null,
+            persona: { id: job.persona.id, name: job.persona.name, role: job.persona.role },
+          });
           // One model turn, and one more for each tool call it made (the turn record counts them).
           return {
             status: "ok" as const,
@@ -2973,6 +3034,10 @@ export const startScreenCompanion = (input: {
             (turnProject !== null && leadsProject(face, turnProject, actions?.projects?.() ?? []))
               ? {}
               : { lead: leadName }),
+            roster: rosterLine(
+              readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
+              face.id,
+            ),
           },
           brain: brain.brain,
         },
@@ -3061,7 +3126,11 @@ export const startScreenCompanion = (input: {
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
     // A device's turn never changes whose conversation he is in.
-    if (!outside) conversations.setCurrent(face.id);
+    if (!outside) {
+      conversations.setCurrent(face.id);
+      // The pins follow him: the lead, this persona and the one before keep their fast tiers (0.1.79).
+      pinFastTiers(face.id);
+    }
     leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
     // The wake named one persona and the words another ("Tessaya, ask Alfred…"): his tiers, before the turn runs.
@@ -3225,7 +3294,6 @@ export const startScreenCompanion = (input: {
   let askKey: string | null = ASK_HOTKEY;
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
-  const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
   /** "Learn from that": a skill from the last turn, tested by replaying it, shown for his yes. */
   const learnFromLast = async () => {
     const turn = lastTurn;
@@ -3318,12 +3386,6 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
     return out.text;
   };
-  const dismissQuietly = () => {
-    hush();
-    dropOperator();
-    if (run !== null && run.mode !== "look") end();
-    void wipe();
-  };
 
   return {
     said,
@@ -3362,20 +3424,7 @@ export const startScreenCompanion = (input: {
         });
       }
       // At launch: the fast tier of each persona he is likely to wake first, since a wake is too late to start one.
-      if (wake == null) {
-        const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
-        const ids = pack.personas.map((p) => p.id);
-        agentOf().warmEach(
-          startPersonas(
-            pack.personas.find((p) => p.lead)?.id ?? ids[0] ?? "executive",
-            conversations.byRecent(),
-            ids,
-          ).map((persona) => ({
-            persona,
-            brain: tierBrains(modelOf(pack, persona), manual(), "fast")[0]!,
-          })),
-        );
-      }
+      if (wake == null) pinFastTiers();
       warmTiers(
         wake == null
           ? face
@@ -3462,8 +3511,7 @@ export const startScreenCompanion = (input: {
     ask: windows.ask,
     askMirrored: (box, needs) =>
       askHandsFree({ inactive: false, ...box }, box.title, 0, false, needs),
-    stop,
-    dismissQuietly,
+    stop: stopAll,
     learnNightly,
     menuItems: () => [
       { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
@@ -3494,7 +3542,7 @@ export const startScreenCompanion = (input: {
         ? [
             {
               label: run.mode === "teach" ? "Stop the lesson" : "Stop driving",
-              click: stop,
+              click: () => stopAll(),
             },
           ]
         : []),
@@ -3695,7 +3743,6 @@ export const startScreenCompanion = (input: {
         on: settings.captureApproval === "always",
       },
     ],
-    needsBrainChoice: () => !settings.brainChosen,
     setAskHotkey: (accelerator) => {
       if (accelerator === askKey) return;
       if (askKey !== null) Electron.globalShortcut.unregister(askKey);
@@ -3776,6 +3823,7 @@ export const startScreenCompanion = (input: {
     },
     dispose: () => {
       disposed = true;
+      clearInterval(episodeTimer);
       stopMemorySync?.();
       agent?.dispose();
       for (const mcp of agentMcps) void mcp.close();

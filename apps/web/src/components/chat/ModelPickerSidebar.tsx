@@ -1,9 +1,12 @@
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
-import { memo, useLayoutEffect, useRef, useState } from "react";
+import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { Fragment, memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { instanceRoom, RailLimitMark } from "./BatonPickerAccount";
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import {
@@ -40,11 +43,18 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
 }) {
-  const badgeLetters = distinctInstanceInitials(props.instanceEntries.map((e) => e.displayName));
+  // The Terminal session instance is its own group above the providers: it drives a terminal, not a model.
+  const liveEntries = props.instanceEntries.filter((e) => e.instanceId === LIVE_INSTANCE);
+  const instanceEntries = [
+    ...liveEntries,
+    ...props.instanceEntries.filter((e) => e.instanceId !== LIVE_INSTANCE),
+  ];
+  const badgeLetters = distinctInstanceInitials(instanceEntries.map((e) => e.displayName));
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
     props.onSelectInstance(instanceId);
   };
   const showFavorites = props.showFavorites ?? true;
+  const now = Date.parse(`${useNowMinute()}:00Z`);
   const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
@@ -125,7 +135,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             </>
           ) : null}
 
-          {props.instanceEntries.map((entry, entryIndex) => {
+          {instanceEntries.map((entry, entryIndex) => {
             const isUnavailable = !isProviderInstancePickerReady(entry);
             const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
             const unavailableSelectionIsReachable =
@@ -141,6 +151,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
                 : entry.displayName;
+            const room = isUnavailable || isContextDisabled ? null : instanceRoom(entry, now);
 
             const button = (
               <Toolbar.Button
@@ -183,6 +194,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   }
                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                 />
+                {room?.onLimit ? <RailLimitMark /> : null}
               </Toolbar.Button>
             );
 
@@ -193,22 +205,24 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             );
 
             return (
-              <div
-                key={entry.instanceId}
-                className="relative w-full"
-                data-model-picker-provider={entry.instanceId}
-              >
-                <Tooltip>
-                  <TooltipTrigger render={trigger} />
-                  <TooltipPopup
-                    side={PICKER_TOOLTIP_SIDE}
-                    sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
-                    align="center"
-                  >
-                    {tooltip}
-                  </TooltipPopup>
-                </Tooltip>
-              </div>
+              <Fragment key={entry.instanceId}>
+                {entryIndex === liveEntries.length && entryIndex > 0 ? (
+                  <div className="border-b border-border/70" aria-hidden="true" />
+                ) : null}
+                <div className="relative w-full" data-model-picker-provider={entry.instanceId}>
+                  <Tooltip>
+                    <TooltipTrigger render={trigger} />
+                    <TooltipPopup
+                      side={PICKER_TOOLTIP_SIDE}
+                      sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
+                      align="center"
+                    >
+                      {tooltip}
+                      {room ? <div className="text-muted-foreground">{room.text}</div> : null}
+                    </TooltipPopup>
+                  </Tooltip>
+                </div>
+              </Fragment>
             );
           })}
         </div>

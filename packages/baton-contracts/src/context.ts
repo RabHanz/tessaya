@@ -28,22 +28,25 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
 import type { BATON_PHONE_OPS } from "./phone.ts";
+import { alsoReads } from "./renamed.ts";
 
 /**
  * Who reported a snapshot. §15's producer list, and the reason the bus keeps
  * one slot per producer rather than one global snapshot: VS Code going quiet
  * must not erase what the browser just said.
  */
-export const BatonContextProducer = Schema.Literals([
+export const BatonContextProducer = Schema.Union([
   /** The Baton client itself: which work session the user is looking at. */
   // Legacy name (D71): producers already publish as "fabric".
-  "fabric",
-  /** The desktop shell: foreground application and window title, where the OS allows. */
-  "desktop",
-  "vscode",
-  "browser",
-  /** The voice conversation manager: the target inherited between utterances. */
-  "voice",
+  alsoReads("fabric", "tessaya"),
+  Schema.Literals([
+    /** The desktop shell: foreground application and window title, where the OS allows. */
+    "desktop",
+    "vscode",
+    "browser",
+    /** The voice conversation manager: the target inherited between utterances. */
+    "voice",
+  ]),
 ]);
 export type BatonContextProducer = typeof BatonContextProducer.Type;
 
@@ -220,6 +223,8 @@ export interface BatonUsageSummary {
 
 export type BatonSessionRequest =
   | { readonly kind: "open"; readonly environmentId: string; readonly threadId: string }
+  /** The thread list with only live sessions shown (its Live only filter on), from the Sessions tab. */
+  | { readonly kind: "showLive" }
   /** The session catalog across every connected environment; the answer's detail is JSON (see baton/sessions/catalogBridge). */
   | { readonly kind: "catalogList"; readonly query: string; readonly background?: boolean }
   | { readonly kind: "catalogCleanup"; readonly apply: boolean }
@@ -308,6 +313,11 @@ export interface BatonDesktopBridge {
   ) => () => void;
   /** §14 rung 3 for the voice core: the work session on screen, or null. */
   readonly setBatonVoiceFocus?: (workSessionId: string | null) => void;
+  /**
+   * T3's composer microphone, offered to Tessaya's dictation first. `handled` false: T3's own voice input runs. The
+   * press that ends a recording answers with its cleaned words, for the composer to insert at the caret.
+   */
+  readonly composerMic?: () => Promise<{ readonly handled: boolean; readonly text?: string }>;
 }
 
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
@@ -319,6 +329,7 @@ export interface BatonJobBridgeRequest {
   readonly kind: "job";
   readonly op:
     | "list"
+    | "team"
     | "start"
     | "agree"
     | "refine"

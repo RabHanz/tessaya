@@ -37,10 +37,10 @@ index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..49490d5542856898889747cebc6a3b34
  export type WsRpcProtocolClient =
    RpcClientFactory extends Effect.Effect<infer Client, any, any> ? Client : never;
 diff --git a/packages/client-runtime/src/state/threadRequests.test.ts b/packages/client-runtime/src/state/threadRequests.test.ts
-index c2e1024e232ae00acacc1f63e48684a253c1d2b0..820d8c0e9945cc00159d529bfce4b879fb353e07 100644
+index c8c43f23340873f8850e027dd8dd5a40f171c4dd..c07b7a6efc86706190ea6769010d58a7b11cd81f 100644
 --- a/packages/client-runtime/src/state/threadRequests.test.ts
 +++ b/packages/client-runtime/src/state/threadRequests.test.ts
-@@ -309,6 +309,13 @@ describe("pending v2 questions", () => {
+@@ -323,6 +323,13 @@ describe("pending v2 questions", () => {
      ]);
    });
  
@@ -55,10 +55,10 @@ index c2e1024e232ae00acacc1f63e48684a253c1d2b0..820d8c0e9945cc00159d529bfce4b879
      const live = {
        ...projection,
 diff --git a/packages/client-runtime/src/state/threadRequests.ts b/packages/client-runtime/src/state/threadRequests.ts
-index 6cbad534cba1df13bc77b3db668cf9e7083d6146..d01bdd5a8333aed23483756aad92a1caa9678559 100644
+index 7c3c44c4caa592103a6deb69983866f4dba2f62b..c5d695a4ce7994cdaadb228ca1fe132cb7e7b951 100644
 --- a/packages/client-runtime/src/state/threadRequests.ts
 +++ b/packages/client-runtime/src/state/threadRequests.ts
-@@ -226,6 +226,19 @@ export function pendingRuntimeRequestIds(
+@@ -223,6 +223,19 @@ export function pendingRuntimeRequestIds(
    );
  }
  
@@ -78,7 +78,7 @@ index 6cbad534cba1df13bc77b3db668cf9e7083d6146..d01bdd5a8333aed23483756aad92a1ca
  export function derivePendingThreadRequests(
    projection: Pick<ThreadStructure, "runtimeRequests" | "turnItems">,
  ): PendingThreadRequests {
-@@ -240,7 +253,19 @@ export function derivePendingThreadRequests(
+@@ -237,7 +250,19 @@ export function derivePendingThreadRequests(
          (candidate) =>
            candidate.type === "user_input_request" && candidate.requestId === request.id,
        );

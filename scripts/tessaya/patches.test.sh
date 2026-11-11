@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-check for patches.sh on a throwaway repository: verify, refresh, a clean rebase, drift,
-# a collision, and a conflicting rebase. Run: bash scripts/tessaya/patches.test.sh
+# a collision, a conflicting rebase, and one an OURS file settles. Run: bash scripts/tessaya/patches.test.sh
 set -euo pipefail
 
 script="$(cd "$(dirname "$0")" && pwd)/patches.sh"
@@ -68,3 +68,12 @@ set +e; bash patches.sh rebase "$D" > /dev/null 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ] || fail "conflicting rebase exit $rc, want 2"
 grep -q '^<<<<<<<' up.txt || fail "no conflict markers left"
 ok "conflicting rebase exits 2 with markers"
+
+# OURS: the same conflict in a file Tessaya replaces whole keeps Tessaya's file, and the sync goes on
+git checkout -q -f main && git clean -qfd
+echo up.txt > vendor-patches/t3code/OURS && git add vendor-patches/t3code/OURS && git commit -qm ours
+bash patches.sh rebase "$D" > /dev/null || fail "OURS conflict still needs a human"
+grep -q two-baton up.txt && ! grep -q '^<<<<<<<' up.txt || fail "OURS file not kept"
+[ "$(cat vendor-patches/t3code/PIN)" = "$D" ] || fail "PIN not moved past an OURS conflict"
+git commit -qam "sync D" && bash patches.sh verify > /dev/null || fail "verify after an OURS rebase"
+ok "an OURS conflict keeps Tessaya's file"

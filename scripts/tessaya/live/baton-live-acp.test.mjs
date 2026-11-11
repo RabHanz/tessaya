@@ -8,7 +8,13 @@ import * as NodeReadline from "node:readline";
 import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
+import { herdrBin } from "./pane-prompt.mjs";
+
+import { LIVE_EFFORT_CHOICES } from "../../../packages/baton-shared/src/liveModel.ts";
 import {
+  effortConfigOption,
+  LIVE_MODELS,
+  LIVE_EFFORTS,
   isAdoptRequest,
   isAnswerInTerminal,
   notSentNote,
@@ -23,6 +29,8 @@ import {
   readableInboxName,
   answerKeys,
   answerFrom,
+  isCardAnswer,
+  isRefAnswer,
   enqueue,
   readQueue,
   drainSession,
@@ -46,12 +54,20 @@ import {
   run,
   sendFailure,
 } from "./baton-live-acp.mjs";
-import { parsePanePrompt, parseReviewScreen, screenTail } from "./pane-prompt.mjs";
+import {
+  parsePanePrompt,
+  parseReviewScreen,
+  parseWaitingScreen,
+  screenTail,
+} from "./pane-prompt.mjs";
 
 const AGENT = NodePath.join(
   NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
   "baton-live-acp.mjs",
 );
+
+/** A permission card's question without the ref that ties it to its prompt. */
+const plain = (question) => question.replace(/ \(ref [0-9a-f]{6}\)$/, "");
 
 const fixture = (name) =>
   NodeFS.readFileSync(
@@ -59,17 +75,45 @@ const fixture = (name) =>
     "utf8",
   );
 
+NodeTest.test("herdrBin is BATON_HERDR_BIN or ~/.local/bin/herdr, never PATH", () => {
+  NodeAssert.equal(herdrBin({ BATON_HERDR_BIN: "/opt/herdr" }), "/opt/herdr");
+  NodeAssert.equal(
+    herdrBin({ PATH: "/usr/bin" }),
+    NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr"),
+  );
+});
+
 NodeTest.test("a permission dialog on the screen is read with its options (D88)", () => {
   const prompt = parsePanePrompt(fixture("pane-permission.txt"));
-  NodeAssert.equal(prompt.question, "Do you want to proceed?");
-  NodeAssert.match(prompt.context, /echo PERM-TEST/);
+  NodeAssert.equal(
+    plain(prompt.question),
+    "Claude wants to run `echo PERM-TEST` (Print a test string). Allow?",
+  );
+  NodeAssert.match(prompt.details, /echo PERM-TEST\n[^]*Do you want to proceed\?$/);
   NodeAssert.deepEqual(
     prompt.options.map((o) => o.label),
-    ["Yes", "No"],
+    ["Allow", "Deny"],
   );
-  NodeAssert.deepEqual(answerKeys(prompt, "No"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["down", "enter"], text: null });
   NodeAssert.deepEqual(answerKeys(prompt, "1"), { keys: ["enter"], text: null });
   NodeAssert.equal(answerKeys(prompt, "maybe"), null, "no free text where none is offered");
+});
+
+NodeTest.test("a ticking line in a permission dialog does not change its card", () => {
+  for (const [name, from, to] of [
+    ["pane-permission-countdown.txt", "in 1:58,", "in 1:48,"],
+    ["pane-permission-tokens.txt", "(12s · ↓ 3.4k tokens) · 40%", "(13s · ↓ 3.5k tokens) · 41%"],
+  ]) {
+    const first = fixture(name);
+    const redraw = first.replace(from, to);
+    NodeAssert.notEqual(redraw, first, name);
+    for (const parse of [parsePanePrompt, parseWaitingScreen]) {
+      const [a, b] = [parse(first), parse(redraw)];
+      NodeAssert.equal(a.key, b.key, name);
+      NodeAssert.equal(a.question, b.question, "the same ref, so an answer still fits");
+      NodeAssert.ok(isCardAnswer(`${a.question}\nAllow`, b));
+    }
+  }
 });
 
 NodeTest.test("an AskUserQuestion is read with its header, descriptions and free-text slot", () => {
@@ -142,6 +186,74 @@ NodeTest.test("unnumbered options are read too, and a plain screen has no prompt
   });
   NodeAssert.equal(parsePanePrompt("❯ hello\n───────\n  ⏵⏵ bypass permissions on"), null);
 });
+
+NodeTest.test(
+  "a screen with no reader offers its own key hints, and Enter and Esc without them",
+  () => {
+    const draft = parsePanePrompt(fixture("pane-feedback-draft.txt"));
+    NodeAssert.equal(plain(draft.question), "You have 1 unsent feedback draft");
+    NodeAssert.deepEqual(
+      draft.options.map((o) => [o.label, o.description]),
+      [
+        ["Review & send (Enter)", "This may approve or confirm."],
+        ["Discard and exit (Esc)", "Warning: this may end the session."],
+      ],
+    );
+    NodeAssert.deepEqual(answerKeys(draft, "Discard and exit (Esc)"), {
+      keys: ["esc"],
+      text: null,
+    });
+    NodeAssert.ok(isCardAnswer(`${draft.question}\nReview & send (Enter)`, draft));
+
+    const unknown = parseWaitingScreen("Something new happened\n\nPress on");
+    NodeAssert.equal(parsePanePrompt("Something new happened\n\nPress on"), null);
+    NodeAssert.match(unknown.question, /didn't recognise/);
+    NodeAssert.deepEqual(
+      unknown.options.map((o) => [o.label, o.keys]),
+      [
+        ["Enter", ["enter"]],
+        ["Esc", ["esc"]],
+      ],
+    );
+    NodeAssert.equal(
+      parseWaitingScreen("● Done.\n\n──────────\n❯ \n──────────\n  ? for shortcuts"),
+      null,
+    );
+  },
+);
+
+NodeTest.test(
+  "a dialog the readers miss never gets Enter, which would take its highlighted Yes",
+  () => {
+    const rule = "─".repeat(60);
+    const screens = {
+      wrapped: [
+        rule,
+        " Do you want to proceed with",
+        " this command?",
+        "   1. Yes",
+        "   2. No",
+        "",
+      ],
+      scrolled: [
+        "   2. Yes, and don't ask again",
+        " ❯ 3. No",
+        "",
+        " Enter to confirm · Esc to cancel",
+      ],
+    };
+    for (const [name, lines] of Object.entries(screens))
+      NodeAssert.deepEqual(
+        parseWaitingScreen(lines.join("\n")).options.map((o) => o.keys),
+        [["esc"]],
+        name,
+      );
+    // A timer ticking on screen does not make a new card.
+    const at = (s) =>
+      parseWaitingScreen(`Working on it\n✻ Baking… (${s}s · 1.2k tokens)\nPress on`).key;
+    NodeAssert.equal(at(3), at(4));
+  },
+);
 
 NodeTest.test("only the user's words reach Claude, never T3's instruction wrappers", () => {
   const first =
@@ -248,13 +360,18 @@ NodeTest.test(
       const init = await call(1, "initialize", { protocolVersion: 2 });
       NodeAssert.equal(init.result.protocolVersion, 1);
       NodeAssert.deepEqual(init.result.agentCapabilities.sessionCapabilities, { resume: {} });
-      NodeAssert.match(
-        (await call(2, "session/new", { cwd, mcpServers: [] })).result.sessionId,
-        /^baton-unbound/,
+      const opened = (await call(2, "session/new", { cwd, mcpServers: [] })).result;
+      NodeAssert.match(opened.sessionId, /^baton-unbound/);
+      // T3's composer shows these words as they are: what is in the terminal, never the slug "live" or a sentence.
+      NodeAssert.deepEqual(
+        opened.models.availableModels.map((m) => [m.modelId, m.name]),
+        [["live", "Claude Code"]],
       );
+      for (const option of opened.configOptions[0].options)
+        NodeAssert.ok(option.name.length <= 8, option.name);
       NodeAssert.deepEqual(
         (await call(3, "session/resume", { sessionId: sid, cwd, mcpServers: [] })).result,
-        {},
+        { models: LIVE_MODELS, configOptions: [effortConfigOption()] },
       );
 
       // Busy the whole time: the send must not wait for idle, or T3 queues the next message.
@@ -319,6 +436,38 @@ NodeTest.test(
         NodeFS.readFileSync(NodePath.join(dir, "queue", "inbound.ndjson"), "utf8"),
         new RegExp(`"sessionId":"${near}".*"text":"say BETA"`),
       );
+
+      // An effort picked on another client: typed into an idle session with nothing waiting, once per value.
+      const effort = async (id, value, sessionId = sid) =>
+        (await call(id, "session/set_config_option", { sessionId, configId: "effort", value }))
+          .result;
+      const typedEffort = () => NodeFS.readFileSync(log, "utf8").match(/\/effort \w+/g) ?? [];
+      const queuedEffort = () =>
+        NodeFS.readFileSync(NodePath.join(dir, "queue", "inbound.ndjson"), "utf8").match(
+          /\/effort \w+/g,
+        ) ?? [];
+      descriptor("idle");
+      NodeAssert.deepEqual(await effort(20, "high"), {
+        configOptions: [effortConfigOption("high")],
+      });
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      // T3 re-applies a saved option on every activation: the same value is not typed again.
+      await effort(21, "high");
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      // A question on screen would take it as its answer, and a working session as a message: it queues in order.
+      descriptor("waiting");
+      NodeAssert.deepEqual(await effort(22, "max"), { configOptions: [effortConfigOption("max")] });
+      descriptor("busy");
+      await effort(23, "low");
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      NodeAssert.deepEqual(queuedEffort(), ["/effort max", "/effort low"]);
+      // Not running in Herdr here, or anything but a known level: nothing is typed or queued.
+      NodeAssert.deepEqual(await effort(24, "high", "no-such-session"), {
+        configOptions: [effortConfigOption()],
+      });
+      await effort(25, "; rm");
+      NodeAssert.deepEqual(typedEffort(), ["/effort high"]);
+      NodeAssert.deepEqual(queuedEffort(), ["/effort max", "/effort low"]);
     } finally {
       child.kill();
       NodeFS.rmSync(dir, { recursive: true, force: true });
@@ -550,11 +699,7 @@ NodeTest.test("a free-text option called Other is the custom slot too", () => {
   NodeAssert.equal(parsePanePrompt(screen).customIndex, 2);
 });
 
-NodeTest.test("the permission dialog and the single question still read as before", () => {
-  NodeAssert.equal(
-    parsePanePrompt(fixture("pane-permission.txt")).question,
-    "Do you want to proceed?",
-  );
+NodeTest.test("the single question still reads as before", () => {
   NodeAssert.equal(
     parsePanePrompt(fixture("pane-question.txt")).question,
     "Which colour do you prefer?",
@@ -952,3 +1097,286 @@ NodeTest.test(
     }
   },
 );
+
+NodeTest.test("the live effort list is the one the server types", () => {
+  NodeAssert.deepEqual(LIVE_EFFORTS, [...LIVE_EFFORT_CHOICES]);
+});
+
+const SUBAGENT_QUESTION =
+  "Claude Code flags this as dangerous: A background agent (Record all variants in both themes plus…) wants to run " +
+  "`cd /srv/work/projects-00001/tessaya-ops/drafts/pill/v2/proto && rm -rf stills/* src/raw; timeout 900 node…`, " +
+  "which deletes files in /srv/work/projects-00001/t3code/stills/*. Allow?";
+
+NodeTest.test("a background agent's permission prompt is a card a person can read", () => {
+  const screen = fixture("pane-subagent-permission.txt");
+  const prompt = parsePanePrompt(screen);
+  NodeAssert.equal(plain(prompt.question), SUBAGENT_QUESTION);
+  NodeAssert.match(prompt.question, / \(ref [0-9a-f]{6}\)$/);
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Allow", "Deny"],
+  );
+  NodeAssert.equal(prompt.context, "");
+  NodeAssert.match(prompt.details, /^Bash command · from the general-purpose agent\n/);
+  NodeAssert.match(prompt.details, /rm -rf stills\/\* src\/raw/);
+  NodeAssert.match(prompt.details, /statically-unresolvable target/);
+  // Herdr's colour codes and the box's border characters do not change what is read.
+  const coloured = screen
+    .replace(" Bash command", " \u001b[1;36mBash command\u001b[0m")
+    .replace("❯ 1. Yes", "\u001b[38;5;153m❯ 1. Yes\u001b[39m");
+  NodeAssert.deepEqual(parsePanePrompt(coloured), prompt);
+  // The card's answer presses the key, even with a pasted picture's note under it.
+  const answer = `${prompt.question}\nAllow\n\nAttached image "image.png": "/tmp/image.png"`;
+  NodeAssert.equal(isCardAnswer(answer, prompt), true);
+  NodeAssert.deepEqual(answerKeys(prompt, answerFrom(answer, prompt)), {
+    keys: ["enter"],
+    text: null,
+  });
+  NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["down", "enter"], text: null });
+});
+
+/** A Claude Code permission dialog as a pane shows it. */
+const dialog = (head, boxed, question, options, warning = []) =>
+  [
+    "─".repeat(60),
+    ...head.map((l) => ` ${l}`),
+    "╌".repeat(60),
+    ...boxed.map((l) => ` ${l}`),
+    "╌".repeat(60),
+    ...warning.map((l) => ` ${l}`),
+    "",
+    ` ${question}`,
+    ...options.map((o, i) => `${i === 0 ? " ❯" : "  "} ${i + 1}. ${o}`),
+    "",
+    " Esc to cancel · Tab to amend",
+  ].join("\n");
+const bash = (command, description = "Run it", warning = []) =>
+  dialog(
+    ["Bash command", description],
+    [command],
+    "Do you want to proceed?",
+    ["Yes", "No"],
+    warning,
+  );
+
+NodeTest.test("an answer to one permission card never answers another that reads the same", () => {
+  const unread = (n) =>
+    [
+      "─".repeat(40),
+      ` Something new ${n}`,
+      " Do you want to proceed?",
+      "   1. Yes",
+      "   2. No",
+      "",
+      " Esc to cancel",
+    ].join("\n");
+  const edit = (change) =>
+    dialog(
+      ["Edit file"],
+      ["/repo/src/main.ts", change],
+      "Do you want to make this edit to main.ts?",
+      ["Yes", "No"],
+    );
+  const longBash = (tail) => bash(`echo ${"x".repeat(130)} ${tail}`);
+  for (const [first, second] of [
+    [unread(1), unread(2)],
+    [edit("+ one"), edit("+ two")],
+    [longBash("one"), longBash("two")],
+  ]) {
+    const a = parsePanePrompt(first);
+    const b = parsePanePrompt(second);
+    NodeAssert.equal(plain(a.question), plain(b.question), "the words alone read the same");
+    NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, b), false);
+    NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, a), true);
+    NodeAssert.equal(
+      isRefAnswer(`${a.question}\nAllow`),
+      true,
+      "it is still known as a card's answer",
+    );
+  }
+  NodeAssert.equal(isRefAnswer("Please run the tests\nthen push"), false);
+});
+
+NodeTest.test("an answer to one permission card never answers the next one on the screen", () => {
+  const a = parsePanePrompt(bash("ls"));
+  const b = parsePanePrompt(bash("rm -rf build"));
+  NodeAssert.notEqual(a.question, b.question);
+  NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, b), false);
+  NodeAssert.equal(isCardAnswer(`${a.question}\nAllow`, a), true);
+});
+
+NodeTest.test("a plain permission question never hides what the command does", () => {
+  const rows = [
+    [
+      bash("git clean -fdx && git reset --hard", "List files"),
+      "Claude wants to run `git clean -fdx && git reset --hard`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("cd /repo && rm -rf ~/", "Tidy up"),
+      "Claude wants to run `cd /repo && rm -rf ~/`, which deletes files in ~. Allow?",
+    ],
+    [
+      bash("rm -rf /etc", "Clean"),
+      "Claude wants to run `rm -rf /etc`, which deletes files in /etc. Allow?",
+    ],
+    [bash("rm -rf /"), "Claude wants to run `rm -rf /`, which deletes files in /. Allow?"],
+    [
+      bash("find . -name '*.log' -delete"),
+      "Claude wants to run `find . -name '*.log' -delete`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("shred -u secrets.txt"),
+      "Claude wants to run `shred -u secrets.txt`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("dd if=/dev/zero of=/dev/sda"),
+      "Claude wants to run `dd if=/dev/zero of=/dev/sda`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("echo '' > notes.md"),
+      "Claude wants to run `echo '' > notes.md`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("mv data.db /dev/null"),
+      "Claude wants to run `mv data.db /dev/null`, which deletes or overwrites files. Allow?",
+    ],
+    [
+      bash("npm test 2>&1 > /dev/null", "Test"),
+      "Claude wants to run `npm test 2>&1 > /dev/null` (Test). Allow?",
+    ],
+    [
+      bash("cd /repo && rm -rf out/*", "Clean", [
+        "Dangerous rm operation on statically-unresolvable target: /repo/out/*",
+      ]),
+      "Claude Code flags this as dangerous: Claude wants to run `cd /repo && rm -rf out/*`, which deletes files in /repo/out/*. Allow?",
+    ],
+  ];
+  for (const [screen, question] of rows)
+    NodeAssert.equal(plain(parsePanePrompt(screen).question), question);
+});
+
+NodeTest.test("every tool's permission prompt reads plainly, with two or three choices", () => {
+  const cases = [
+    [
+      dialog(
+        ["Edit file"],
+        ["apps/web/src/main.ts", "- old", "+ new"],
+        "Do you want to make this edit to main.ts?",
+        ["Yes", "Yes, allow all edits during this session (shift+tab)", "No"],
+      ),
+      "Claude wants to edit apps/web/src/main.ts. Allow?",
+      ["Allow", "Allow always for this", "Deny"],
+    ],
+    [
+      dialog(
+        ["Fetch · from the Explore agent"],
+        ["https://docs.example.com/guide"],
+        "Do you want to allow Claude to fetch this content?",
+        [
+          "Yes",
+          "Yes, and don't ask again for docs.example.com",
+          "No, and tell Claude what to do differently (esc)",
+        ],
+      ),
+      "A background agent wants to fetch https://docs.example.com/guide. Allow?",
+      ["Allow", "Allow always for this", "Deny"],
+    ],
+    [
+      dialog(
+        ["Tool use"],
+        ['slack - send_message(channel: "#ops", text: "hi") (MCP)'],
+        "Do you want to proceed?",
+        ["Yes", "No"],
+      ),
+      'Claude wants to use the send_message tool from slack (slack - send_message(channel: "#ops", text: "hi") (MCP)). Allow?',
+      ["Allow", "Deny"],
+    ],
+    [
+      dialog(
+        ["Tool use"],
+        ['fetcher - fetch(url: "https://x.dev") (MCP)'],
+        "Do you want to proceed?",
+        ["Yes", "No"],
+      ),
+      'Claude wants to use the fetch tool from fetcher (fetcher - fetch(url: "https://x.dev") (MCP)). Allow?',
+      ["Allow", "Deny"],
+    ],
+    [
+      dialog(["Bash command"], ["git status"], "Do you want to proceed?", [
+        "Yes",
+        "Yes, and don't ask again for git status commands in /repo",
+        "No",
+      ]),
+      "Claude wants to run `git status`. Allow?",
+      ["Allow", "Allow always for this", "Deny"],
+    ],
+    [
+      dialog(["Bash command"], ["git push"], "Do you want to proceed?", [
+        "Yes",
+        "Yes, and don't ask again for git push commands",
+        "Yes, and always allow git commands",
+        "No",
+      ]),
+      "Claude wants to run `git push`. Allow?",
+      ["Allow", "Allow always for this", "Yes, and always allow git commands", "Deny"],
+    ],
+  ];
+  for (const [screen, question, labels] of cases) {
+    const prompt = parsePanePrompt(screen);
+    NodeAssert.equal(plain(prompt.question), question);
+    NodeAssert.deepEqual(
+      prompt.options.map((o) => o.label),
+      labels,
+    );
+    NodeAssert.deepEqual(answerKeys(prompt, labels.at(-1)), {
+      keys: [...labels.slice(1).map(() => "down"), "enter"],
+      text: null,
+    });
+  }
+  // "Always" says what it covers.
+  NodeAssert.match(parsePanePrompt(cases[4][0]).options[1].description, /git status commands/);
+});
+
+NodeTest.test(
+  "a permission prompt that cannot be read still offers Allow and Deny, with only the dialog's text",
+  () => {
+    const screen = [
+      "✻ Thinking… (12s)",
+      "─".repeat(40),
+      " Something new · from a future agent",
+      " Do you want to proceed?",
+      // No highlighted choice: the reader cannot tell which one Enter takes.
+      "   1. Yes",
+      "   2. No",
+      "",
+      " Esc to cancel",
+    ].join("\n");
+    const prompt = parsePanePrompt(screen);
+    NodeAssert.deepEqual(
+      prompt.options.map((o) => [o.label, o.keys]),
+      [
+        ["Allow", ["enter"]],
+        ["Deny", ["esc"]],
+      ],
+    );
+    NodeAssert.match(prompt.details, /Something new[^]*Do you want to proceed\?/);
+    NodeAssert.doesNotMatch(prompt.details, /Thinking/, "a spinner never enters the key");
+    NodeAssert.deepEqual(answerKeys(prompt, "Deny"), { keys: ["esc"], text: null });
+  },
+);
+
+NodeTest.test("a dialog that is not a permission prompt never gets Allow pressed for it", () => {
+  const screen = [
+    "● Do you want to proceed? I asked this earlier in the conversation.",
+    "─".repeat(40),
+    " Select model",
+    "   Default (recommended)",
+    "   Opus",
+    "",
+    " Esc to cancel",
+  ].join("\n");
+  NodeAssert.deepEqual(
+    parsePanePrompt(screen).options.map((o) => o.label),
+    ["Cancel (Esc)"],
+  );
+});

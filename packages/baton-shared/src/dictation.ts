@@ -153,8 +153,47 @@ export const classifyDictation = (
  * the user actually said.
  */
 const restoreCase = (source: string, fragment: string): string => {
-  const index = source.toLowerCase().indexOf(fragment.toLowerCase());
-  return index === -1 ? fragment : source.slice(index, index + fragment.length).trim();
+  // The fragment is in `normalise`'s form: walk the source the same way, keeping where each character came from, so
+  // curly apostrophes, line breaks and double spaces still find their place and his case comes back.
+  let norm = "";
+  const from: number[] = [];
+  let space = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i]!;
+    if (/\s/.test(c)) {
+      if (norm !== "" && !space) {
+        norm += " ";
+        from.push(i);
+      }
+      space = true;
+      continue;
+    }
+    space = false;
+    norm += (c === "‘" || c === "’" ? "'" : c).toLowerCase();
+    from.push(i);
+  }
+  const index = norm.indexOf(fragment.toLowerCase());
+  if (index === -1 || fragment.length === 0) return fragment;
+  return source.slice(from[index]!, from[index + fragment.length - 1]! + 1).trim();
+};
+
+/**
+ * The one spoken command while a key or button dictation records: a whole "stop dictation", said on its own. Nothing
+ * spoken discards (only ✕ or Esc twice): "cancel", "scratch that" and "no wait" are his words or a self-correction,
+ * which the clean-up resolves.
+ */
+export const keyDictationCommand = (utterance: string): "stop" | null => {
+  if (normalise(utterance) === "") return null;
+  const d = classifyDictation(utterance, { dictating: true });
+  return d.kind === "stop" && d.text === undefined ? "stop" : null;
+};
+
+/** The words before the last "stop dictation": the helper wrote it down too, and what came after it. */
+export const beforeSpokenStop = (text: string): string => {
+  const said = /[\s,;:-]*\b(?:stop|end|finish)\s+dictat(?:e|ing|ion)\b/gi;
+  let last = -1;
+  for (const m of text.matchAll(said)) last = m.index;
+  return last === -1 ? text : text.slice(0, last).trim();
 };
 
 /**

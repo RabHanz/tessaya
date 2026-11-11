@@ -91,8 +91,11 @@ export interface JudgeContext {
 
 /** Baton's own tools, served to the one assistant (D143). Claude names them `mcp__baton__<name>`. */
 export const BATON_TOOL_PREFIX = "mcp__baton__";
-export const batonToolName = (tool: string): string =>
-  tool.startsWith(BATON_TOOL_PREFIX) ? tool.slice(BATON_TOOL_PREFIX.length) : tool;
+// Rename R1: the server is still registered as baton, and the next build's tessaya name is read as the same tools.
+const OWN_TOOL_PREFIXES = [BATON_TOOL_PREFIX, "mcp__tessaya__"];
+const ownPrefix = (tool: string) => OWN_TOOL_PREFIXES.find((prefix) => tool.startsWith(prefix));
+export const isOwnTool = (tool: string): boolean => ownPrefix(tool) !== undefined;
+export const batonToolName = (tool: string): string => tool.slice(ownPrefix(tool)?.length ?? 0);
 
 /** Look at state, or reversible and local: nothing leaves, nothing is changed. */
 const BATON_QUIET = new Set([
@@ -101,6 +104,7 @@ const BATON_QUIET = new Set([
   "session_resume",
   "session_show",
   "fleet_status",
+  "team_board",
   "memory_search",
   "conversation_search",
   "memory_used",
@@ -191,6 +195,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "weave_send",
   "job_retry",
   "job_handoff",
+  "thread_move_into_tessaya",
+  "thread_open_in_terminal",
   "job_update",
   "job_delete",
   "skill_draft",
@@ -383,6 +389,16 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "job_handoff":
       // The same work on another provider or account spends another subscription: it asks every time.
       return { verdict: "ask", why: "It would move a job to another worker or account." };
+    case "thread_move_into_tessaya":
+      // It ends a terminal session and changes which provider answers the thread: his yes, every time.
+      return {
+        verdict: "ask",
+        why: "It would end a terminal session and continue it in Tessaya.",
+        risky: true,
+      };
+    case "thread_open_in_terminal":
+      // An agent asked on its behalf: it moves a thread's session out of Tessaya, so it asks every time.
+      return { verdict: "ask", why: "It would open a thread's session in a terminal." };
     case "job_update":
     case "job_delete":
       // Changing or removing one of his own jobs is his to say, every time: read text could otherwise rewrite one.
@@ -473,8 +489,7 @@ export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdic
       verdict: "ask",
       why: "It would drive an app through a command; the hands tools (ui_tree, click_element, type_text, press_keys) do that without one.",
     };
-  if (baton === "act_batch" && call.tool.startsWith(BATON_TOOL_PREFIX))
-    return judgeBatch(call, context);
+  if (baton === "act_batch" && isOwnTool(call.tool)) return judgeBatch(call, context);
   if (isChromeTool(call.tool)) {
     return judgeChrome(call.tool, call.input, {
       tainted: context.tainted,

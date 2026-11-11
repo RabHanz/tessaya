@@ -1,4 +1,6 @@
 import {
+  CLOUD_SPEECH_LABELS,
+  CloudSpeechProvider,
   EasDeviceHostConfig,
   isSecretReference,
   secretReferencesInSettings,
@@ -12,7 +14,12 @@ import { deriveProviderSettingsFields, type SettingsFormDefinition } from "./Pro
 
 type SecretUseSettings = Pick<
   ServerSettings,
-  "providerInstances" | "sourceControlHosts" | "usageLimitSources" | "easDeviceHosts"
+  | "providerInstances"
+  | "sourceControlHosts"
+  | "usageLimitSources"
+  | "easDeviceHosts"
+  | "cloudSpeechCredentials"
+  | "dictationCleanupCredentials"
 >;
 
 interface SecretProviderUse {
@@ -86,5 +93,15 @@ export function secretProviderUses(
     ...settings.easDeviceHosts.flatMap((host) =>
       uses({ settingsSchema: EasDeviceHostConfig }, `eas:${host.id}`, host.label, host),
     ),
+    ...CloudSpeechProvider.literals.flatMap((provider) => {
+      const credential = settings.cloudSpeechCredentials[provider];
+      return isSecretReference(credential) && credential.provider === providerId
+        ? [{ id: `voice:${provider}`, label: `Voice · ${CLOUD_SPEECH_LABELS[provider]}` }]
+        : [];
+    }),
+    ...(isSecretReference(settings.dictationCleanupCredentials.anthropic) &&
+    settings.dictationCleanupCredentials.anthropic.provider === providerId
+      ? [{ id: "apis:anthropic", label: "APIs · Anthropic" }]
+      : []),
   ];
 }

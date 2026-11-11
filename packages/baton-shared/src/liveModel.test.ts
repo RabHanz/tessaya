@@ -2,8 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   effortCommand,
+  keepsDraft,
+  liveChangeRoute,
   modelCommand,
   readBack,
+  sessionEffort,
+  wentIdle,
+  withRealEffort,
   setLiveModel,
   setModelResumingStopped,
   type LiveModelDeps,
@@ -20,6 +25,7 @@ const deps = (over: Partial<LiveModelDeps> & { transcript?: () => string }): Liv
     mark: () => 0,
     since: () => over.transcript?.() ?? written,
     wait: async () => undefined,
+    claudeModels: ["claude-opus-5-5"],
     ...over,
   };
 };
@@ -43,6 +49,55 @@ describe("reading the session's answer back", () => {
     expect(readBack(text, "model")).toMatch(/^Set model to `Opus 5\.5/);
     expect(readBack(text, "effort")).toBe("Set effort level to medium");
     expect(readBack("{}\n", "model")).toBeNull();
+  });
+
+  it("reads a session's real effort: its last change, then its settings, then its model's default", () => {
+    const settings = JSON.stringify({ effortLevel: "xhigh" });
+    const changed = said("Set effort level to medium") + said("Set model to `Opus 5.5`");
+    expect(
+      sessionEffort({ transcriptTail: changed, settingsJson: settings, modelDefault: "high" }),
+    ).toBe("medium");
+    expect(
+      sessionEffort({ transcriptTail: "{}\n", settingsJson: settings, modelDefault: "high" }),
+    ).toBe("xhigh");
+    expect(
+      sessionEffort({ transcriptTail: "", settingsJson: "{not json", modelDefault: "high" }),
+    ).toBe("high");
+    expect(
+      sessionEffort({ transcriptTail: "", settingsJson: null, modelDefault: null }),
+    ).toBeNull();
+  });
+
+  it('shows the real effort in place of the live instance\'s "as it is" choice, and keeps a held pick', () => {
+    const models = [
+      {
+        capabilities: {
+          optionDescriptors: [
+            { id: "effort", options: [{ id: "session" }, { id: "high" }, { id: "max" }] },
+          ],
+        },
+      },
+    ];
+    const shown = withRealEffort(models, [{ id: "effort", value: "session" }], "high");
+    expect(shown.options).toEqual([{ id: "effort", value: "high" }]);
+    expect(shown.models[0]?.capabilities.optionDescriptors[0]?.options).toEqual([
+      { id: "high" },
+      { id: "max" },
+    ]);
+    expect(withRealEffort(models, [{ id: "effort", value: "max" }], "high").options).toEqual([
+      { id: "effort", value: "max" },
+    ]);
+  });
+});
+
+describe("wentIdle", () => {
+  it("fires once when a working session reads idle, typed in the terminal or not", () => {
+    expect(wentIdle("busy", "idle")).toBe(true);
+    expect(wentIdle("waiting", "idle")).toBe(true);
+    expect(wentIdle("idle", "idle")).toBe(false);
+    expect(wentIdle("busy", "busy")).toBe(false);
+    expect(wentIdle(undefined, "idle")).toBe(false);
+    expect(wentIdle("busy", null)).toBe(false);
   });
 });
 
@@ -70,6 +125,16 @@ describe("setLiveModel", () => {
     });
   });
 
+  it("refuses another provider's model without typing anything", async () => {
+    const sent: string[] = [];
+    const result = await setLiveModel(
+      deps({ send: async (_pane, text) => (sent.push(text), true) }),
+      { model: "gpt-5.5" },
+    );
+    expect(result.state).toBe("refused");
+    expect(sent).toEqual([]);
+  });
+
   it("says it was not confirmed when the session stays silent, never that it was applied", async () => {
     const result = await setLiveModel(deps({}), { model: "opus" });
     expect(result.state).toBe("not_confirmed");
@@ -85,10 +150,17 @@ describe("setLiveModel", () => {
     expect(sent).toEqual([]);
   });
 
-  it("waits for a busy session, and refuses a bad model or effort before typing anything", async () => {
+  it("waits for a busy session or an open question, and refuses a bad model or effort before typing anything", async () => {
     expect(
       (await setLiveModel(deps({ session: { herdrPane: "p", status: "busy" } }), { effort: "low" }))
         .state,
+    ).toBe("busy");
+    expect(
+      (
+        await setLiveModel(deps({ session: { herdrPane: "p", status: "waiting" } }), {
+          effort: "low",
+        })
+      ).state,
     ).toBe("busy");
     expect((await setLiveModel(deps({}), { model: "x; y" })).state).toBe("refused");
     expect((await setLiveModel(deps({}), { effort: "ultra" })).state).toBe("refused");
@@ -134,5 +206,57 @@ describe("a model change on a stopped live session", () => {
       wait: async () => undefined,
     });
     expect(never.detail).toContain("not live yet");
+  });
+});
+
+describe("where a pick on a terminal thread goes", () => {
+  const route = (over: {
+    threadId?: string;
+    currentInstance?: string;
+    instance?: string;
+    driver?: string;
+    model?: string;
+    effort?: string | null;
+    relation?: "same" | "other" | "unknown";
+  }) =>
+    liveChangeRoute({
+      threadId: over.threadId ?? "baton-live4:abc",
+      currentInstance: over.currentInstance ?? "baton-live",
+      picked: {
+        instance: over.instance ?? "baton-live",
+        driver: over.driver ?? "claudeAgent",
+        model: over.model ?? "claude-opus-5-5",
+        effort: over.effort === undefined ? "high" : over.effort,
+      },
+      current: { model: "claude-opus-5-5", effort: "high" },
+      account: { relation: over.relation ?? "same", key: over.relation === "other" ? "2" : null },
+    });
+
+  it("types only what changed into the session, a model or an effort", () => {
+    expect(route({ effort: "max" })).toEqual({ kind: "session", change: { effort: "max" } });
+    expect(route({ model: "claude-sonnet-4-6", instance: "claudeAgent" })).toEqual({
+      kind: "session",
+      change: { model: "claude-sonnet-4-6" },
+    });
+    expect(route({})).toEqual({ kind: "none" });
+    // Another option, same model and effort: kept in the draft, never dropped.
+    expect(keepsDraft(route({}))).toBe(true);
+    expect(keepsDraft(route({ effort: "max" }))).toBe(false);
+    expect(route({ effort: "session" })).toEqual({ kind: "none" });
+  });
+
+  it("moves the session for another login, and never sends another provider into it", () => {
+    expect(route({ instance: "claude_home", relation: "other" })).toEqual({
+      kind: "account",
+      key: "2",
+    });
+    expect(route({ instance: "codex", driver: "codex" })).toEqual({ kind: "continue-in" });
+  });
+
+  it("leaves ordinary and handed-off threads to the draft", () => {
+    expect(route({ threadId: "thread-1" })).toEqual({ kind: "draft" });
+    expect(route({ currentInstance: "claudeAgent", instance: "claudeAgent" })).toEqual({
+      kind: "draft",
+    });
   });
 });

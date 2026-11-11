@@ -136,6 +136,30 @@ describe("reopening a window", () => {
     expect(resolvePaneRestore(empty, allGone)).toEqual({ kind: "stay" });
   });
 
+  it("resumes the focused pane at boot, but skips one whose environment was removed", () => {
+    type Phase = Parameters<typeof paneEnvironmentState>[0]["phase"];
+    const restoreWith = (focusedPhase: Phase, otherPhase: Phase = "connected") =>
+      resolvePaneRestore(layout, (target) =>
+        paneRestoreState({
+          heldElsewhere: false,
+          environment: paneEnvironmentState({
+            catalogReady: true,
+            localListed: true,
+            phase: target === t2 ? focusedPhase : otherPhase,
+            shellLive: otherPhase === "connected",
+          }),
+          exists: target !== t2,
+        }),
+      );
+    expect(restoreWith("available")).toEqual({ kind: "go", target: t2 });
+    expect(restoreWith(null)).toEqual({ kind: "go", target: t1 });
+    // A remote still coming up at boot keeps its pane; staying home would start a draft over it.
+    expect(restoreWith("reconnecting")).toEqual({ kind: "go", target: t2 });
+    expect(restoreWith("reconnecting", "reconnecting")).toEqual({ kind: "go", target: t2 });
+    expect(restoreWith("offline", "offline")).toEqual({ kind: "go", target: t2 });
+    expect(restoreWith("error")).toEqual({ kind: "go", target: t2 });
+  });
+
   it("waits only for an environment that is on its way", () => {
     const state = (phase: Parameters<typeof paneEnvironmentState>[0]["phase"], shellLive = false) =>
       paneEnvironmentState({ catalogReady: true, localListed: true, phase, shellLive });
@@ -148,14 +172,17 @@ describe("reopening a window", () => {
       "connecting",
     );
     expect(state("connecting")).toBe("connecting");
-    // A remote that keeps retrying must not hold the restore forever.
-    expect(state("reconnecting")).toBe("unreachable");
+    // A remote that keeps retrying must not hold the restore forever, nor lose its pane.
+    expect(state("reconnecting")).toBe("retrying");
+    expect(state("offline")).toBe("retrying");
     expect(state("connected")).toBe("connecting");
     expect(state("connected", true)).toBe("ready");
-    // Removed, offline or failed: nothing is coming.
+    // Removed or unsupported: nothing is coming.
     expect(state(null)).toBe("unreachable");
-    expect(state("offline")).toBe("unreachable");
-    expect(state("error")).toBe("unreachable");
+    expect(state("unsupported")).toBe("unreachable");
+    // Saved but not trying: its pane resumes and says so.
+    expect(state("error")).toBe("idle");
+    expect(state("available")).toBe("idle");
   });
 
   it("resumes a pane only when no other window holds it and its environment has it", () => {
@@ -164,6 +191,8 @@ describe("reopening a window", () => {
     expect(paneRestoreState({ ...ready, heldElsewhere: true })).toBe("gone");
     expect(paneRestoreState({ ...ready, environment: "connecting" })).toBe("waiting");
     expect(paneRestoreState({ ...ready, environment: "unreachable" })).toBe("gone");
+    // At boot a saved environment is idle until it connects; its pane must still resume.
+    expect(paneRestoreState({ ...ready, environment: "idle", exists: false })).toBe("ready");
     // A draft whose session is gone has no environment to wait for.
     expect(paneRestoreState({ ...ready, environment: null })).toBe("gone");
     expect(paneRestoreState({ ...ready, exists: false })).toBe("gone");
@@ -171,6 +200,8 @@ describe("reopening a window", () => {
 
   it("shows a pane as loading only while something is on its way", () => {
     expect(paneFallback({ environment: "connecting", threadPending: false })).toBe("loading");
+    // A retry loop can last forever, so it says so instead of spinning.
+    expect(paneFallback({ environment: "retrying", threadPending: true })).toBe("retrying");
     expect(paneFallback({ environment: "ready", threadPending: true })).toBe("loading");
     expect(paneFallback({ environment: "ready", threadPending: false })).toBe("unavailable");
     expect(paneFallback({ environment: "unreachable", threadPending: true })).toBe("unavailable");

@@ -3,16 +3,23 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  awaitPasteVerdict,
+  PASTE_CHECK_MS,
+  type PasteVerdict,
+  pasteVerdictOf,
   focusedFrom,
   busyAfter,
   recordingAfter,
   resolveDictationBinary,
   restartDelayMs,
   startDictationSidecar,
+  takeRecording,
+  stalePartial,
   type DictationEvent,
+  type RecordingEntry,
   type DictationSidecar,
   makeSidecarStt,
 } from "./dictationSidecar.ts";
@@ -36,6 +43,42 @@ describe("recordingAfter", () => {
     expect(busyAfter("text", true)).toBe(true);
     expect(busyAfter("idle", true)).toBe(false);
     expect(busyAfter("error", true)).toBe(false);
+  });
+});
+
+describe("stalePartial", () => {
+  it("drops live words that came for an earlier dictation, and keeps unmarked ones from an older sidecar", () => {
+    expect(stalePartial(7, 8)).toBe(true);
+    expect(stalePartial(8, 8)).toBe(false);
+    expect(stalePartial(undefined, 8)).toBe(false);
+    expect(stalePartial(7, null)).toBe(false);
+  });
+});
+
+describe("takeRecording", () => {
+  const entry = (id: number, dictation: number | null): RecordingEntry => ({
+    id,
+    dictation,
+    app: { exe: `app${id}.exe`, title: "" },
+    heard: null,
+    discarded: false,
+  });
+  it("gives each end its own dictation's window and discard, never the next one's", () => {
+    const recordings = [entry(1, 7), entry(2, 8)];
+    // ✕ while 7 was written out, then 8 started: the discard stays 7's.
+    recordings[0]!.discarded = true;
+    // An end for a dictation no longer held takes nothing.
+    expect(takeRecording(recordings, 6)).toBeUndefined();
+    expect(recordings).toHaveLength(2);
+    expect(takeRecording(recordings, 7)).toMatchObject({ dictation: 7, discarded: true });
+    expect(takeRecording(recordings, 8)).toMatchObject({ dictation: 8, discarded: false });
+  });
+  it("lets an answered dictation take older ones that never ended, and an older sidecar's end the oldest", () => {
+    const recordings = [entry(1, 7), entry(2, 8), entry(3, 9)];
+    expect(takeRecording(recordings, 8)?.id).toBe(2);
+    expect(recordings.map((r) => r.id)).toEqual([3]);
+    const old = [entry(1, null), entry(2, null)];
+    expect(takeRecording(old, undefined)?.id).toBe(1);
   });
 });
 
@@ -108,6 +151,9 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       out({ ev: "loading", elapsedMs: ++n * 100 });
       if (n === 4) { clearInterval(t); loaded = true; out({ ev: "model_ready", id: m.id, loadMs: 400 }); for (const q of queue) out({ ev: "text", id: q, text: "heard it" }); queue = []; }
     }, 100);
+  } else if (m.cmd === "paste_checked") {
+    // The clipboard's restore ran long: a paste that landed, answered after the old 1.5 s wait.
+    setTimeout(() => out({ ev: "paste_checked", id: m.id, why: "ok", pasteMs: 1800 }), 1800);
   } else if (m.cmd === "transcribe") { if (loaded) out({ ev: "text", id: m.id, text: "heard it", model: m.model ?? "dictation.gguf" }); else queue.push(m.id); }
 });
 `,
@@ -134,6 +180,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       // The wake path asks for its own model, and the log names the one that recognised each clip.
       expect(await sidecar.transcribe("z.wav", "/m/fast.gguf")).toBe("heard it");
       expect(models.slice(-2)).toEqual(["dictation.gguf", "/m/fast.gguf"]);
+      // A late "ok" is a paste that landed: never "refused", so no copy card and no "Not pasted".
+      expect(await sidecar.pasteChecked("words", 1, "T3")).toBe("ok");
     } finally {
       sidecar.dispose();
     }
@@ -179,5 +227,28 @@ describe("the wake path's own model", () => {
     );
     expect(r.asked).toEqual(["/m/fast.gguf"]);
     expect(r.failed).toEqual([]);
+  });
+});
+
+describe("a paste answer after the wait", () => {
+  it("is kept as refused at once, and its real answer still reaches onLate", async () => {
+    vi.useFakeTimers();
+    let answer: (why: PasteVerdict) => void = () => undefined;
+    const late = vi.fn();
+    const verdict = awaitPasteVerdict(new Promise((resolve) => (answer = resolve)), late);
+    vi.advanceTimersByTime(PASTE_CHECK_MS);
+    expect(await verdict).toBe("refused");
+    answer("ok");
+    await Promise.resolve();
+    expect(late).toHaveBeenCalledWith("ok");
+    vi.useRealTimers();
+  });
+});
+
+describe("pasteVerdictOf", () => {
+  it("keeps the helper's reasons and calls anything else refused", () => {
+    for (const why of ["ok", "gone", "changed", "secret", "nofield"] as const)
+      expect(pasteVerdictOf(why)).toBe(why);
+    for (const why of ["late", "weird", undefined, 3]) expect(pasteVerdictOf(why)).toBe("refused");
   });
 });

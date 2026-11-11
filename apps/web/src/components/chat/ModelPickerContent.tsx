@@ -368,6 +368,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onFocusEffort?: () => void;
   /** Closes the list column, inside the popup's fixed height. */
   listFooter?: ReactNode;
+  /** Above the models: the browsed instance's accounts (the thread's own under Favorites). */
+  renderInstanceDetail?: (entry: ProviderInstanceEntry) => ReactNode;
 }) {
   const {
     searchInputRef,
@@ -710,6 +712,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   const selectedEntry =
     selectedInstanceId === "favorites" ? undefined : entryByInstanceId.get(selectedInstanceId);
+  const detailEntry = selectedEntry ?? entryByInstanceId.get(props.activeInstanceId);
   const providerSetupEntries =
     !isSearching && canOpenProviderSetup
       ? instanceEntries.filter(
@@ -1008,6 +1011,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               onTouchStart={(e) => e.stopPropagation()}
             />
 
+            {detailEntry ? (
+              // Scrolls on its own past half the column, so neither its last rows nor the models fall under the footer.
+              <div className="max-h-1/2 min-h-0 shrink-0 overflow-y-auto overscroll-y-contain">
+                {props.renderInstanceDetail?.(detailEntry)}
+              </div>
+            ) : null}
             <ModelPickerList
               listRef={modelListRef}
               itemKeys={filteredItemKeys}

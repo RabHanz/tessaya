@@ -1,4 +1,9 @@
 import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
+import {
+  instanceName,
+  providerChangeRefusal,
+  providerIdentity,
+} from "@t3tools/baton-shared/providerChange";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -1129,10 +1134,74 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const providerAdapters = yield* ProviderAdapterRegistryV2;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
+  // The driver, or an ACP agent's continuation key; from the thread's provider threads once the instance is gone.
+  const providerIdentityOf = (
+    instanceId: ProviderInstanceId,
+    providerThreads: ReadonlyArray<OrchestrationV2ProviderThread>,
+  ) =>
+    providerAdapters.get(instanceId).pipe(
+      Effect.flatMap((adapter) =>
+        (providerAdapters.getMetadata === undefined
+          ? Effect.succeed(`${adapter.driver}:instance:${instanceId}`)
+          : providerAdapters
+              .getMetadata(instanceId)
+              .pipe(Effect.map((metadata) => metadata.continuationKey))
+        ).pipe(Effect.map((key): string | null => providerIdentity(adapter.driver, key))),
+      ),
+      Effect.orElseSucceed(() => {
+        const driver = providerThreads.find(
+          (thread) => thread.providerInstanceId === instanceId,
+        )?.driver;
+        return driver === undefined
+          ? null
+          : providerIdentity(driver, `${driver}:instance:${instanceId}`);
+      }),
+    );
+  const refuseProviderChange = Effect.fn("Orchestrator.refuseProviderChange")(function* (input: {
+    readonly command: { readonly commandId: CommandId; readonly type: string };
+    readonly currentInstanceId: ProviderInstanceId;
+    readonly targetInstanceId: ProviderInstanceId;
+    readonly providerThreads: ReadonlyArray<OrchestrationV2ProviderThread>;
+    readonly approved: boolean;
+  }) {
+    if (input.targetInstanceId === input.currentInstanceId) return;
+    // Where its last turn ran: Open in terminal points a Claude thread at the live instance between turns.
+    const lastTurnInstanceId = input.providerThreads
+      .filter((thread) => thread.lastRunOrdinal !== null)
+      .toSorted((a, b) => (b.lastRunOrdinal ?? 0) - (a.lastRunOrdinal ?? 0))[0]?.providerInstanceId;
+    const { providerInstances } = yield* serverSettings.getSettings.pipe(Effect.orDie);
+    const refusal = providerChangeRefusal({
+      started: input.providerThreads.length > 0,
+      approved: input.approved,
+      current: {
+        name: instanceName(input.currentInstanceId, providerInstances[input.currentInstanceId]),
+        provider: yield* providerIdentityOf(input.currentInstanceId, input.providerThreads),
+      },
+      target: {
+        name: instanceName(input.targetInstanceId, providerInstances[input.targetInstanceId]),
+        provider: yield* providerIdentityOf(input.targetInstanceId, input.providerThreads),
+      },
+      lastTurnProvider:
+        lastTurnInstanceId === undefined
+          ? null
+          : yield* providerIdentityOf(lastTurnInstanceId, input.providerThreads),
+    });
+    if (refusal === null) return;
+    yield* Effect.logWarning("provider-change-blocked", {
+      command: input.command.type,
+      from: input.currentInstanceId,
+      to: input.targetInstanceId,
+    });
+    return yield* new OrchestratorDispatchError({
+      commandId: input.command.commandId,
+      commandType: input.command.type,
+      cause: refusal,
+    });
+  });
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const providerSessions = yield* ProviderSessionManagerV2;
   const providerSwitchService = yield* ProviderSwitchServiceV2;
-  const serverSettings = yield* ServerSettings.ServerSettingsService;
   const runtimePolicy = yield* RuntimePolicyV2;
   const threadForkService = yield* ThreadForkServiceV2;
   const threadDispatch = yield* ThreadCommandExecutor.ThreadCommandExecutor;
@@ -3544,25 +3613,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
     }
 
-    if (command.type === "thread.model-selection.set" || command.type === "provider.switch") {
-      const liveRefusal = liveThreadSwitchRefusal({
-        threadId: command.threadId,
-        currentInstance: thread.providerInstanceId,
-        targetInstance: command.modelSelection.instanceId,
-      });
-      if (liveRefusal !== null) {
-        yield* Effect.logWarning("live-thread-new-session-blocked", {
-          threadId: command.threadId,
-          command: command.type,
-          to: command.modelSelection.instanceId,
-        });
-        return yield* new OrchestratorDispatchError({
-          commandId: command.commandId,
-          commandType: command.type,
-          cause: liveRefusal,
-        });
-      }
-    }
     const needsProviderState =
       command.type === "thread.runtime-mode.set" ||
       command.type === "thread.model-selection.set" ||
@@ -3582,9 +3632,38 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           )
           .pipe(mapDispatchError(command))
       : null;
+    if (command.type === "thread.model-selection.set" || command.type === "provider.switch") {
+      const liveRefusal = liveThreadSwitchRefusal({
+        threadId: command.threadId,
+        currentInstance: thread.providerInstanceId,
+        targetInstance: command.modelSelection.instanceId,
+        activeNativeId:
+          providerContext!.providerThreads.find((p) => p.id === thread.activeProviderThreadId)
+            ?.nativeThreadRef?.nativeId ?? null,
+      });
+      if (liveRefusal !== null) {
+        yield* Effect.logWarning("live-thread-new-session-blocked", {
+          threadId: command.threadId,
+          command: command.type,
+          to: command.modelSelection.instanceId,
+        });
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: liveRefusal,
+        });
+      }
+    }
     const providerSwitchPlan =
       command.type === "thread.model-selection.set" || command.type === "provider.switch"
         ? yield* Effect.gen(function* () {
+            yield* refuseProviderChange({
+              command,
+              currentInstanceId: thread.providerInstanceId,
+              targetInstanceId: command.modelSelection.instanceId,
+              providerThreads: providerContext!.providerThreads,
+              approved: command.providerChangeApproved === true,
+            });
             yield* providerAdapters.get(command.modelSelection.instanceId).pipe(
               Effect.mapError(
                 (cause) =>
@@ -5859,6 +5938,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       threadId: command.threadId,
       currentInstance: projection.thread.providerInstanceId,
       targetInstance: modelSelection.instanceId,
+      activeNativeId:
+        projection.providerThreads.find((p) => p.id === projection.thread.activeProviderThreadId)
+          ?.nativeThreadRef?.nativeId ?? null,
     });
     if (liveRefusal !== null) {
       yield* Effect.logWarning("live-thread-new-session-blocked", {
@@ -5872,6 +5954,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: liveRefusal,
       });
     }
+    yield* refuseProviderChange({
+      command,
+      currentInstanceId: projection.thread.providerInstanceId,
+      targetInstanceId: modelSelection.instanceId,
+      providerThreads: projection.providerThreads,
+      approved: command.providerChangeApproved === true,
+    });
     let dispatchMode = resolveMessageDispatchIntent(
       projection,
       command.dispatchMode,
@@ -6325,6 +6414,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(command.restartContinuationOfRunId === undefined
           ? {}
           : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
+        ...(command.usageLimitContinuationOfRunId === undefined
+          ? {}
+          : { usageLimitContinuationOfRunId: command.usageLimitContinuationOfRunId }),
         ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
         ...(freshContext ? { freshContext: true } : {}),
       };
@@ -6706,6 +6798,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(command.restartContinuationOfRunId === undefined
           ? {}
           : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
+        ...(command.usageLimitContinuationOfRunId === undefined
+          ? {}
+          : { usageLimitContinuationOfRunId: command.usageLimitContinuationOfRunId }),
         ...(dispatchMode.type === "defer_start" && dispatchMode.workspaceStrategy !== undefined
           ? { workspacePreparation: dispatchMode.workspaceStrategy }
           : {}),
@@ -7492,6 +7587,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ...(command.restartContinuationOfRunId === undefined
         ? {}
         : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
+      ...(command.usageLimitContinuationOfRunId === undefined
+        ? {}
+        : { usageLimitContinuationOfRunId: command.usageLimitContinuationOfRunId }),
       ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
       ...wakeWorkStartedAt(projection.runs, command),
     };

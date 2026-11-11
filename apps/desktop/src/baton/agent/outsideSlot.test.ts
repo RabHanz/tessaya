@@ -128,4 +128,38 @@ describe("a paired device's turn, overlapping one of his", () => {
     expect(ops).toEqual(["user_job_propose"]);
     expect(refused).toContain("Only he can");
   });
+  it("reads the team board as no persona, so walled work stays hidden from a device (P4)", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const host = {
+      jobs: async (_op: string, args: Record<string, unknown>) => (seen.push(args), "ok"),
+    } as unknown as ToolHost;
+    const slot = createOutsideSlot({
+      host,
+      memoryCall: async () => ({ items: [], hits: [] }),
+      notes: { list: () => [] } as never,
+      focusedWindow: async () => ({ label: "notepad.exe: notes", shell: false }),
+      confirm: async () => false,
+      record: () => undefined,
+    });
+    await slot.host.jobs("team", { agent: "executive", admin: true });
+    expect(seen).toEqual([{}]);
+  });
+
+  it("a standing job's run recalls as the persona that owns it", async () => {
+    const memoryCalls: Array<Record<string, unknown>> = [];
+    const slot = createOutsideSlot({
+      host: {} as ToolHost,
+      memoryCall: async (_op, args) => {
+        memoryCalls.push(args);
+        return { block: "", items: [], hits: [] };
+      },
+      notes: { list: () => [] } as never,
+      focusedWindow: async () => ({ label: "notepad.exe: notes", shell: false }),
+      confirm: async () => false,
+      record: () => undefined,
+      agent: "operations",
+    });
+    await slot.memory.forSentence("check the invoices");
+    expect(memoryCalls[0]?.["agent"]).toBe("operations");
+  });
 });

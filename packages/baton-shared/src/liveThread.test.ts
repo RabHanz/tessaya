@@ -5,8 +5,12 @@ import {
   bindingOf,
   pinnedLiveSelection,
   classifierStopReason,
-  describeAnswerer,
+  displayThreadTitle,
+  knownTitleSuffixes,
+  livePick,
+  liveSessionKey,
   liveThreadSwitchRefusal,
+  runningLiveSessionKeys,
 } from "./liveThread.ts";
 
 describe("a mirrored live thread", () => {
@@ -29,26 +33,52 @@ describe("a mirrored live thread", () => {
     expect(ok(live, "claudeAgent", "claudeAgent")).toContain("handoff session");
     expect(ok("import:claudeAgent:x", "claudeAgent", "codex")).toBeNull();
   });
+  it("treats a thread moved into Tessaya on its own session id as ordinary, and a twin as a twin", () => {
+    const pick = (activeNativeId: string, targetInstance: string) =>
+      liveThreadSwitchRefusal({
+        threadId: live,
+        currentInstance: "claude-work",
+        targetInstance,
+        activeNativeId,
+      });
+    expect(pick("cc828d1b", "claude-work")).toBeNull();
+    expect(pick("cc828d1b", "claude-home")).toBeNull();
+    expect(pick("a-new-session", "claude-work")).toContain("handoff session");
+  });
+  it("shows its title without the account and machine the mirror appends, and never cuts real text", () => {
+    const known = knownTitleSuffixes({
+      accounts: [{ label: "Work", email: "someone@example.com" }],
+      environmentLabels: ["box-prod.local"],
+    });
+    expect(displayThreadTitle(live, "Pricing · someone · box-prod", known)).toBe("Pricing");
+    expect(displayThreadTitle(live, "Pricing · box-prod", known)).toBe("Pricing");
+    expect(displayThreadTitle(live, "Fix A · B bug", known)).toBe("Fix A · B bug");
+    expect(displayThreadTitle(live, "Plan · step 2 · Work · box-prod", known)).toBe(
+      "Plan · step 2",
+    );
+    expect(displayThreadTitle("thread-1", "Pricing · box-prod", known)).toBe("Pricing · box-prod");
+  });
 });
 
-describe("who answers a thread", () => {
-  it("names the harness, session, model, effort and account, and flags a summary handoff on a live thread", () => {
-    const live = describeAnswerer({
-      threadId: "baton-live4:cc828d1b-1111",
-      instanceId: "baton-live",
-      model: "claude-opus-5-5",
-      effort: "medium",
-      account: "Main",
-    });
-    expect(live).toMatchObject({ harness: "herdr-session", handedOff: false });
-    expect(live.line).toBe("Terminal session · cc828d1b · claude-opus-5-5 · medium · Main");
-    const twin = describeAnswerer({
-      threadId: "baton-live4:cc828d1b-1111",
-      instanceId: "claudeAgent",
-      model: "claude-opus-5-5",
-    });
-    expect(twin).toMatchObject({ harness: "t3-hosted", handedOff: true });
-  });
+describe("a model picked on a live thread", () => {
+  it.each([
+    // picked instance, driver, thread's instance, login, route
+    ["claudeAgent", "claudeAgent", "baton-live", "same", "session-model"],
+    ["claude-work", "claudeAgent", "baton-live", "other", "session-account"],
+    ["claude-token", "claudeAgent", "baton-live", "unknown", "continue-in"],
+    ["codex", "codex", "baton-live", "same", "continue-in"],
+    ["gone", null, "baton-live", "unknown", "continue-in"],
+    ["baton-live", "acpRegistry", "baton-live", "same", "unchanged"],
+    // Handed off: ordinary, and the Terminal session entry takes it back.
+    ["baton-live", "acpRegistry", "codex", "unknown", "switch-back"],
+    ["claudeAgent", "claudeAgent", "codex", "same", "normal"],
+    ["codex", "codex", "claudeAgent", "unknown", "normal"],
+  ] as const)(
+    "%s (%s) on %s, login %s: %s",
+    (pickedInstance, pickedDriver, currentInstance, account, route) => {
+      expect(livePick({ pickedInstance, pickedDriver, currentInstance, account })).toBe(route);
+    },
+  );
 });
 
 describe("a reply stopped by the safety classifier", () => {
@@ -70,10 +100,23 @@ describe("a live thread's own selection", () => {
     const stale = sel("baton-live", "claude-opus-5-5");
     expect(pinnedLiveSelection("baton-live4:abc", stale, current)).toBe(current);
   });
-  it("leaves other threads, other instances and an unchanged selection alone", () => {
+  it("sends to the live instance when a stale picker names another instance", () => {
     const current = sel("baton-live", "live");
+    expect(pinnedLiveSelection("baton-live4:abc", sel("claudeAgent", "x"), current)).toBe(current);
+  });
+  it("keeps a thread that is not on its terminal session off the Terminal session entry", () => {
+    const current = sel("claudeAgent_work", "opus");
+    expect(pinnedLiveSelection("import:claudeAgent:abc", sel("baton-live", "live"), current)).toBe(
+      current,
+    );
+    // A live thread moved into Tessaya may still be switched back to its session.
+    const back = sel("baton-live", "live");
+    expect(pinnedLiveSelection("baton-live4:abc", back, current)).toBe(back);
+  });
+  it("leaves other threads, a handed-off thread and an unchanged selection alone", () => {
     const other = sel("claudeAgent", "x");
-    expect(pinnedLiveSelection("baton-live4:abc", other, current)).toBe(other);
+    expect(pinnedLiveSelection("baton-live4:abc", other, sel("codex", "y"))).toBe(other);
+    const current = sel("baton-live", "live");
     expect(
       pinnedLiveSelection("import:claudeAgent:abc", sel("baton-live", "m"), current).model,
     ).toBe("m");
@@ -114,5 +157,22 @@ describe("what the thread is bound to", () => {
     expect(bindingOf({ state: "stopped", source: "transcript" })?.kind).toBe("stopped");
     expect(bindingOf("missing")?.kind).toBe("stopped");
     expect(bindingOf(null)).toBeNull();
+  });
+});
+
+describe("which live threads are Live", () => {
+  it("is what each computer reports running: a live thread whose session ended, or another computer's, is not", () => {
+    const running = runningLiveSessionKeys([
+      { environmentId: "office", sessions: [{ sessionId: "s1" }] },
+      { environmentId: "laptop", sessions: [] },
+    ]);
+    const live = (environmentId: string, threadId: string) => {
+      const key = liveSessionKey(environmentId, threadId);
+      return key !== null && running.has(key);
+    };
+    expect(live("office", "baton-live4:s1")).toBe(true);
+    expect(live("office", "baton-live4:s2")).toBe(false);
+    expect(live("laptop", "baton-live4:s1")).toBe(false);
+    expect(live("office", "thread-s1")).toBe(false);
   });
 });

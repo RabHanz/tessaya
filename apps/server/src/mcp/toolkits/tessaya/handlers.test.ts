@@ -380,3 +380,95 @@ it.effect(
       });
     }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );
+
+it.effect(
+  "an agent's move only files a request he answers: it cannot approve itself, and nothing moves",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      yield* inbox.take;
+      const moved: Array<unknown> = [];
+      const catalog = BatonSessionCatalogService.of({
+        moveIntoTessaya: (input: unknown) => Effect.sync(() => (moved.push(input), {})),
+      } as never);
+      const runtime = Context.mergeAll(
+        Context.make(BatonPhoneInbox, inbox),
+        Context.make(BatonSessionCatalogService, catalog),
+      ) as never;
+      const asked = yield* callTool("thread", runtime, "tessaya_move_into_tessaya", {
+        threadId: thread,
+        providerChangeApproved: true,
+      });
+      expect(asked.result).toMatchObject({ status: "queued" });
+      expect(moved).toEqual([]);
+      const waiting = yield* inbox.recent(10);
+      expect(waiting.map((ask) => ask.text)).toEqual([
+        expect.stringContaining(`Move the Terminal thread ${thread} into Tessaya`),
+      ]);
+      const tool = TessayaToolkit.tools.tessaya_move_into_tessaya;
+      expect(Object.keys(tool.parametersSchema.fields)).toEqual(["threadId"]);
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);
+
+it.effect(
+  "an agent opens its own thread in a terminal at once; anyone else's thread is a request he answers",
+  () =>
+    Effect.gen(function* () {
+      const catalog = BatonSessionCatalogService.of({
+        openInTerminal: () =>
+          Effect.succeed({ state: "busy", pane: null, detail: "A turn is running." }),
+      } as never);
+      const result = yield* callTool(
+        "thread",
+        Context.make(BatonSessionCatalogService, catalog) as never,
+        "tessaya_open_in_terminal",
+        { threadId: thread },
+      );
+      expect(result.result).toMatchObject({ state: "busy" });
+    }),
+);
+
+it.effect(
+  "an agent marks the main session through the service and reads the defaults, but cannot set them",
+  () =>
+    Effect.gen(function* () {
+      let mainThreadId: string | null = null;
+      const catalog = BatonSessionCatalogService.of({
+        mainSession: (input: { threadId: string; main: boolean }) =>
+          Effect.sync(() => {
+            mainThreadId = input.main ? input.threadId : null;
+            return { newSessionsRun: "tessaya", mainThreadId };
+          }),
+        sessionDefaults: Effect.sync(() => ({ newSessionsRun: "tessaya", mainThreadId })),
+      } as never);
+      const runtime = Context.make(BatonSessionCatalogService, catalog) as never;
+      const marked = yield* callTool("thread", runtime, "tessaya_main_session", {
+        threadId: thread,
+        main: true,
+      });
+      expect(marked.result).toMatchObject({ mainThreadId: thread });
+      const read = yield* callTool("read-only", runtime, "tessaya_session_defaults", {});
+      expect(read.result).toEqual({ newSessionsRun: "tessaya", mainThreadId: thread });
+      expect(Object.keys(TessayaToolkit.tools)).not.toContain("tessaya_session_defaults_update");
+    }),
+);
+
+it.effect("an outside agent's open in terminal on a thread files a request and opens nothing", () =>
+  Effect.gen(function* () {
+    const inbox = yield* BatonPhoneInbox;
+    yield* inbox.take;
+    const opened: Array<unknown> = [];
+    const catalog = BatonSessionCatalogService.of({
+      openInTerminal: (input: unknown) => Effect.sync(() => (opened.push(input), {})),
+    } as never);
+    const runtime = Context.mergeAll(
+      Context.make(BatonPhoneInbox, inbox),
+      Context.make(BatonSessionCatalogService, catalog),
+    ) as never;
+    const asked = yield* callTool("full-access", runtime, "tessaya_open_in_terminal", {
+      threadId: thread,
+    });
+    expect(asked.result).toMatchObject({ status: "queued" });
+    expect(opened).toEqual([]);
+  }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);

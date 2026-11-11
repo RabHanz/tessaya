@@ -692,6 +692,7 @@ export const OrchestrationV2Run = Schema.Struct({
   checkpointId: Schema.NullOr(CheckpointId),
   contextHandoffId: Schema.NullOr(ContextHandoffId),
   restartContinuationOfRunId: Schema.optional(RunId),
+  usageLimitContinuationOfRunId: Schema.optional(RunId),
   delegatedTaskId: Schema.optional(NodeId),
   workStartedAt: Schema.optional(Schema.DateTimeUtc),
   restartCancelledBackgroundWork: Schema.optional(
@@ -1352,6 +1353,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
   allowCustomAnswer: Schema.optional(Schema.Boolean),
   initialAnswer: Schema.optional(Schema.String),
   required: Schema.optional(Schema.Boolean),
+  /** The raw text behind a plainly worded question, shown on request. */
+  details: Schema.optional(Schema.String),
 });
 export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
 
@@ -3147,7 +3150,9 @@ export const OrchestrationV2Command = Schema.Union([
     type: Schema.Literal("thread.model-selection.set"),
     commandId: CommandId,
     threadId: ThreadId,
-    modelSelection: ModelSelection,
+    modelSelection:
+      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
+    providerChangeApproved: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-session.detach"),
@@ -3175,6 +3180,8 @@ export const OrchestrationV2Command = Schema.Union([
     attachments: Schema.Array(ChatAttachment),
     titleSeed: Schema.optional(TrimmedNonEmptyString),
     modelSelection: Schema.optional(ModelSelection),
+    /** The user picked `modelSelection`'s provider for this thread; without it a started thread keeps its driver. */
+    providerChangeApproved: Schema.optional(Schema.Boolean),
     sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
     restartContinuationOfRunId: Schema.optional(RunId),
     usageLimitContinuationOfRunId: Schema.optional(RunId),
@@ -3382,7 +3389,9 @@ export const OrchestrationV2Command = Schema.Union([
     type: Schema.Literal("provider.switch"),
     commandId: CommandId,
     threadId: ThreadId,
-    modelSelection: ModelSelection,
+    modelSelection:
+      ModelSelection /** As on `message.dispatch`: the user picked this provider for the thread. */,
+    providerChangeApproved: Schema.optional(Schema.Boolean),
   }),
 ]);
 export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;

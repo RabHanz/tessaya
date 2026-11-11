@@ -18,6 +18,10 @@ export const BINDABLE_ACTIONS = [
   "dictate",
   "ask",
   "clear_screen",
+  "direct_session",
+  "dictate_hold",
+  "dictate_toggle",
+  "paste_last",
 ] as const;
 export type BindableAction = (typeof BINDABLE_ACTIONS)[number];
 
@@ -122,6 +126,8 @@ export type MouseAction =
   | { readonly kind: "consume" }
   /** A binding fired. */
   | { readonly kind: "fire"; readonly id: string }
+  /** A single-button binding's button came back up: "hold to dictate" ends when he lets go. */
+  | { readonly kind: "release"; readonly id: string }
   /** Send a press the hook had held back, now, because it turned out not to be a chord. */
   | { readonly kind: "replay_down"; readonly button: MouseButton };
 
@@ -201,6 +207,10 @@ export const reduceMouse = (
   // up
   if (swallowUp.includes(button)) {
     swallowUp = swallowUp.filter((b, i) => !(b === button && i === swallowUp.indexOf(button)));
+    const single = cfg.bindings.find(
+      (b) => b.trigger.kind === "button" && b.trigger.button === button,
+    );
+    if (single !== undefined) actions.push({ kind: "release", id: single.id });
     actions.push({ kind: "consume" });
     return next();
   }

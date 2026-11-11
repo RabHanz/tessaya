@@ -125,6 +125,7 @@ import {
   prepareTurnAttachments,
   restoreComposerDraft,
 } from "./chatViewSend";
+import { forgetStaleLiveSelection } from "./batonLiveSend";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -594,6 +595,7 @@ export function useComposerSend(input: ComposerSendInput) {
       selectedProviderModels: ctxSelectedProviderModels,
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
+      providerChangeApproved: ctxProviderChangeApproved,
       interactionMode: sendInteractionMode,
       interactionModeEnabled: sendInteractionModeEnabled,
     } = sendCtx;
@@ -653,9 +655,11 @@ export function useComposerSend(input: ComposerSendInput) {
       sendableTerminalContexts: sendableComposerTerminalContexts,
       expiredTerminalContextCount,
       hasSendableContent,
+      unattachedLabels,
     } = deriveComposerSendState({
       prompt: promptForSend,
       imageCount: composerImages.length + composerFiles.length,
+      attachments: [...composerImages, ...composerFiles],
       terminalContexts: composerTerminalContexts,
       elementContextCount:
         composerPreviewAnnotations.length +
@@ -663,6 +667,16 @@ export function useComposerSend(input: ComposerSendInput) {
         composerThreadContexts.length +
         composerEnvironmentContexts.length,
     });
+    if (unattachedLabels.length > 0) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: `${unattachedLabels.map((label) => `"${label}"`).join(", ")} ${unattachedLabels.length === 1 ? "is" : "are"} no longer attached`,
+          description: "Attach it again or remove its chip, then send.",
+        }),
+      );
+      return;
+    }
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&
@@ -1314,6 +1328,7 @@ export function useComposerSend(input: ComposerSendInput) {
             idleCompaction: "onReturn",
           },
           modelSelection: ctxSelectedModelSelection,
+          providerChangeApproved: ctxProviderChangeApproved,
           runtimeMode,
           interactionMode: sendInteractionMode,
         },
@@ -1376,6 +1391,7 @@ export function useComposerSend(input: ComposerSendInput) {
             }),
           },
           modelSelection: ctxSelectedModelSelection,
+          providerChangeApproved: ctxProviderChangeApproved,
           titleSeed: title,
           runtimeMode,
           interactionMode: sendInteractionMode,
@@ -1413,6 +1429,11 @@ export function useComposerSend(input: ComposerSendInput) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        forgetStaleLiveSelection(
+          scopeThreadRef(activeThread.environmentId, threadIdForSend),
+          ctxSelectedModelSelection,
+          activeThread,
+        );
         setKeepFullHistory(routeThreadKey, false);
         if (freshArm !== undefined) disarmFreshSession(routeThreadKey, freshArm);
         clearUsageLimitsFor(routeThreadKey);

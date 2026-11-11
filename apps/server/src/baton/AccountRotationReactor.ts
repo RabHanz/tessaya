@@ -41,7 +41,14 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { BatonEngine } from "./BatonEngine.ts";
-import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
+import { isLiveThreadId } from "@t3tools/baton-shared/liveThread";
+import {
+  isThreadConfigDir,
+  readAllProfileLiveSessions,
+  readClaudeLiveSessions,
+  threadDirSlot,
+} from "./ClaudeLiveSessions.ts";
+import { liveSetAccount } from "./LiveActions.ts";
 import { respawnClaudeInPane } from "./HerdrRespawn.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 
@@ -182,6 +189,38 @@ export const planThreadMoves = (input: {
   });
 };
 
+/**
+ * Pure: which live sessions in their own config dirs move where (LIVE-ACCOUNT). Each is weighed on its own login, so
+ * one thread near its limit moves alone and nothing else does; a kept thread stays.
+ */
+export const planLiveSessionMoves = (input: {
+  readonly pool: BatonAccountPool;
+  readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly slot: string }>;
+  readonly kept: (sessionId: string) => boolean;
+  readonly lastAutoRotationAt: ReadonlyMap<string, string>;
+  readonly now: string;
+}): ReadonlyArray<{ readonly sessionId: string; readonly target: BatonAccount }> =>
+  input.sessions.flatMap((session) => {
+    if (input.kept(session.sessionId)) return [];
+    const own = {
+      ...input.pool,
+      accounts: input.pool.accounts.map((account) => ({
+        ...account,
+        active: account.key === session.slot,
+      })),
+    };
+    if (!own.accounts.some((account) => account.active)) return [];
+    const decision = rotationTick({
+      pool: own,
+      policy: "auto",
+      lastAutoRotationAt: input.lastAutoRotationAt.get(session.sessionId) ?? null,
+      now: input.now,
+    });
+    return decision.outcome === "rotate"
+      ? [{ sessionId: session.sessionId, target: decision.target }]
+      : [];
+  });
+
 export const make = Effect.gen(function* () {
   const policy = yield* AccountRotationPolicy;
   const pool = yield* AccountPoolService;
@@ -189,6 +228,50 @@ export const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
   const moves = yield* ThreadAccountMoves;
   const threadRotatedAt = new Map<string, string>();
+  const sessionRotatedAt = new Map<string, string>();
+
+  // Live sessions in their own config dirs move one by one, while they run (LIVE-ACCOUNT).
+  const moveLiveSessions = Effect.fn("AccountRotationReactor.moveLiveSessions")(function* (
+    now: string,
+    current: BatonAccountPool,
+  ) {
+    const held = yield* moves.held;
+    const sessions = (yield* readAllProfileLiveSessions()).flatMap((session) => {
+      const slot = isThreadConfigDir(session.configDir) ? threadDirSlot(session.configDir) : null;
+      return slot === null ? [] : [{ sessionId: session.sessionId, slot }];
+    });
+    const planned = planLiveSessionMoves({
+      pool: current,
+      sessions,
+      kept: (sessionId) =>
+        [...held].some(
+          (threadId) => isLiveThreadId(threadId) && threadId.endsWith(`:${sessionId}`),
+        ),
+      lastAutoRotationAt: sessionRotatedAt,
+      now,
+    });
+    for (const move of planned) {
+      const result = yield* liveSetAccount(
+        { sessionId: move.sessionId, accountKey: move.target.key },
+        current.accounts,
+      );
+      // A refused move waits out the same cooldown as a done one, so it is tried (and logged) once per 15 minutes,
+      // and the policy's floor, hysteresis and once-per-window rule keep two tight accounts from trading it back.
+      sessionRotatedAt.set(move.sessionId, now);
+      if (result.state === "switched")
+        yield* Effect.logInfo("Tessaya moved a live session to another account near its limit", {
+          sessionId: move.sessionId,
+          to: move.target.label,
+        });
+      else
+        yield* Effect.logWarning("Tessaya could not move a live session near its limit", {
+          sessionId: move.sessionId,
+          to: move.target.label,
+          state: result.state,
+          detail: result.detail,
+        });
+    }
+  });
   let lastAutoRotationAt: string | null = null;
 
   const moveThreads = Effect.fn("AccountRotationReactor.moveThreads")(function* (
@@ -265,8 +348,10 @@ export const make = Effect.gen(function* () {
     // While cswap rotates the default instance's login, native moves leave that instance out.
     const exclude = new Set(terminal._tag === "Some" ? [BATON_DEFAULT_CLAUDE_INSTANCE] : []);
     yield* moveThreads(now, exclude).pipe(Effect.ignoreCause({ log: true }));
-    if (terminal._tag === "Some")
+    if (terminal._tag === "Some") {
+      yield* moveLiveSessions(now, terminal.value).pipe(Effect.ignoreCause({ log: true }));
       yield* rotateTerminalLogin(now, terminal.value).pipe(Effect.ignoreCause({ log: true }));
+    }
   });
 
   yield* tick.pipe(Effect.repeat(Schedule.spaced(TICK)), Effect.forkScoped);

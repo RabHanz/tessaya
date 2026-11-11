@@ -19,6 +19,13 @@ enigo = "0.6.1"
 hound = "3.5.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Dictation recognised on his own server (remote.rs); plain WebSocket inside the tailnet.
+tungstenite = "0.27"
+
+[features]
+# His graphics card through Vulkan (gpu.rs): the release and CI turn it on for Windows. The Vulkan backend is then a
+# module beside the exe, loaded at run time, so a PC without a Vulkan driver still starts and uses the CPU.
+gpu = ["transcribe-cpp/vulkan", "transcribe-cpp/dynamic-backends"]
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = [
@@ -32,6 +39,7 @@ windows = { version = "0.61.3", features = [
   "Win32_System_Ole",
   "Win32_System_Threading",
   "Win32_System_Variant",
+  "Win32_Security",
   "Win32_UI_Accessibility",
   "Win32_UI_HiDpi",
   "Win32_UI_Input_KeyboardAndMouse",

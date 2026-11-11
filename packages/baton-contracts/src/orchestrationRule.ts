@@ -27,6 +27,7 @@ import { IsoDateTime, ThreadId, TrimmedNonEmptyString, TrimmedString } from "@t3
 import { ProviderInstanceId } from "@t3tools/contracts";
 import { RuntimeMode } from "@t3tools/contracts";
 import { WorkSessionId, WorkSessionProviderRole } from "./workSession.ts";
+import { renamedKind } from "./renamed.ts";
 
 export const OrchestrationRuleId = TrimmedNonEmptyString.pipe(Schema.brand("OrchestrationRuleId"));
 export type OrchestrationRuleId = typeof OrchestrationRuleId.Type;
@@ -294,16 +295,16 @@ export type OrchestrationRuleError = typeof OrchestrationRuleError.Type;
 
 export const OrchestrationRuleStreamItem = Schema.Union([
   Schema.Struct({
-    kind: Schema.Literal("fabric.orchestration.ruleCreated"),
+    kind: renamedKind("fabric.orchestration.ruleCreated"),
     rule: OrchestrationRule,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.orchestration.ruleTriggered"),
+    kind: renamedKind("fabric.orchestration.ruleTriggered"),
     rule: OrchestrationRule,
     firing: OrchestrationFiring,
   }),
   Schema.Struct({
-    kind: Schema.Literal("fabric.orchestration.ruleCompleted"),
+    kind: renamedKind("fabric.orchestration.ruleCompleted"),
     rule: OrchestrationRule,
     firing: OrchestrationFiring,
   }),

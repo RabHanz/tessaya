@@ -582,6 +582,7 @@ describe("orchestration v2 provider switching", () => {
           const dispatch = (ordinal: number, text: string, selection: ModelSelection) =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               commandId: CommandId.make(`regression:${ordinal}`),
               threadId,
               messageId: MessageId.make(`regression:${ordinal}`),
@@ -1087,6 +1088,7 @@ describe("orchestration v2 provider switching", () => {
             const dispatch = (ordinal: number, text: string, selection: ModelSelection) =>
               orchestrator.dispatch({
                 type: "message.dispatch",
+                providerChangeApproved: true,
                 commandId: CommandId.make(`retry:${ordinal}`),
                 threadId,
                 messageId: MessageId.make(`retry:${ordinal}`),
@@ -1253,6 +1255,7 @@ describe("orchestration v2 provider switching", () => {
             const runToCompletion = Effect.fn("runToCompletion")(function* (ordinal: number) {
               yield* orchestrator.dispatch({
                 type: "message.dispatch",
+                providerChangeApproved: true,
                 commandId: CommandId.make(`resume-fallback:${ordinal}`),
                 threadId,
                 messageId: MessageId.make(`resume-fallback:${ordinal}`),
@@ -1399,6 +1402,7 @@ describe("orchestration v2 provider switching", () => {
               }
               yield* orchestrator.dispatch({
                 type: "message.dispatch",
+                providerChangeApproved: true,
                 commandId: CommandId.make(`handoff-order:${ordinal}`),
                 threadId,
                 messageId: MessageId.make(`handoff-order:${ordinal}`),
@@ -1513,6 +1517,7 @@ describe("orchestration v2 provider switching", () => {
           const run = Effect.fn("run")(function* (ordinal: number) {
             yield* orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               commandId: CommandId.make(`refused-start:${ordinal}`),
               threadId,
               messageId: MessageId.make(`refused-start:${ordinal}`),
@@ -1665,6 +1670,7 @@ describe("orchestration v2 provider switching", () => {
           ) =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               commandId: CommandId.make(`command:handoff:${key}`),
               threadId,
               messageId: MessageId.make(`message:handoff:${key}`),
@@ -1829,6 +1835,7 @@ describe("orchestration v2 provider switching", () => {
             });
             yield* orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:queued-capability:first:${key}`),
@@ -1843,6 +1850,7 @@ describe("orchestration v2 provider switching", () => {
             yield* worker.drain();
             const queue = orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:queued-capability:claude:${key}`),
@@ -1939,6 +1947,7 @@ describe("orchestration v2 provider switching", () => {
           ) =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:queued-steer-provider-switch:${key}`),
@@ -2135,6 +2144,14 @@ describe("orchestration v2 provider switching", () => {
             responseByRunOrdinal: { 2: "Alternate account complete" },
             capturedTurns,
           }),
+          makeTestAdapter({
+            instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+            driver: CLAUDE_DRIVER,
+            capabilities: ClaudeProviderCapabilitiesV2,
+            modelSelection: CLAUDE_MODEL_SELECTION,
+            responseByRunOrdinal: {},
+            capturedTurns,
+          }),
         ];
         const layerRegistry = Layer.succeed(
           ProviderAdapterRegistry.ProviderAdapterRegistryV2,
@@ -2143,7 +2160,9 @@ describe("orchestration v2 provider switching", () => {
               const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
               return adapter === undefined
                 ? Effect.fail(
-                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({ instanceId }),
+                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({
+                      instanceId,
+                    }),
                   )
                 : Effect.succeed(adapter);
             },
@@ -2152,7 +2171,9 @@ describe("orchestration v2 provider switching", () => {
               const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
               return adapter === undefined
                 ? Effect.fail(
-                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({ instanceId }),
+                    new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({
+                      instanceId,
+                    }),
                   )
                 : Effect.succeed({
                     driver: CODEX_DRIVER,
@@ -2198,6 +2219,50 @@ describe("orchestration v2 provider switching", () => {
             dispatchMode: { type: "start_immediately" },
           });
           yield* Deferred.await(started);
+          const refused = yield* orchestrator
+            .dispatch({
+              type: "message.dispatch",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:queued-account-switch:other-driver"),
+              threadId: queuedThreadId,
+              messageId: MessageId.make("message:queued-account-switch:other-driver"),
+              text: "Another provider's turn",
+              attachments: [],
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              dispatchMode: { type: "queue_after_active" },
+            })
+            .pipe(Effect.flip);
+          assert.include(String("cause" in refused ? refused.cause : refused), "will not move it");
+          for (const command of [
+            {
+              type: "thread.model-selection.set" as const,
+              commandId: CommandId.make("command:queued-account-switch:select-other-driver"),
+              threadId: queuedThreadId,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+            },
+            {
+              type: "message.dispatch" as const,
+              createdBy: "user" as const,
+              creationSource: "web" as const,
+              commandId: CommandId.make("command:queued-account-switch:unknown-provider"),
+              threadId: queuedThreadId,
+              messageId: MessageId.make("message:queued-account-switch:unknown-provider"),
+              text: "A provider this server does not have",
+              attachments: [],
+              modelSelection: {
+                ...CLAUDE_MODEL_SELECTION,
+                instanceId: ProviderInstanceId.make("gone"),
+              },
+              dispatchMode: { type: "queue_after_active" as const },
+            },
+          ]) {
+            const refusedCommand = yield* orchestrator.dispatch(command).pipe(Effect.flip);
+            assert.include(
+              String("cause" in refusedCommand ? refusedCommand.cause : refusedCommand),
+              "will not move it",
+            );
+          }
           yield* orchestrator.dispatch({
             type: "message.dispatch",
             createdBy: "user",
@@ -2326,6 +2391,7 @@ describe("orchestration v2 provider switching", () => {
           const dispatch = (ordinal: number, modelSelection: ModelSelection) =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:queued-provider-switch:${ordinal}`),
@@ -2612,6 +2678,7 @@ describe("orchestration v2 provider switching", () => {
           const send = (ordinal: number, modelSelection: ModelSelection, attempt = "") =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:handoff-releases-session:${ordinal}${attempt}`),
@@ -2816,6 +2883,7 @@ describe("orchestration v2 provider switching", () => {
             ) =>
               orchestrator.dispatch({
                 type: "message.dispatch",
+                providerChangeApproved: true,
                 createdBy: "user",
                 creationSource: "web",
                 commandId: CommandId.make(`command:fresh-context:${key}:${name}`),
@@ -2986,6 +3054,7 @@ describe("orchestration v2 provider switching", () => {
           ) =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:fresh-context-reserved:${name}`),
@@ -3148,6 +3217,7 @@ describe("orchestration v2 provider switching", () => {
             const dispatch = (text: string, modelSelection: ModelSelection) =>
               orchestrator.dispatch({
                 type: "message.dispatch",
+                providerChangeApproved: true,
                 commandId: CommandId.make(text),
                 messageId: MessageId.make(text),
                 threadId,
@@ -3340,6 +3410,7 @@ describe("orchestration v2 provider switching", () => {
           });
           yield* orchestrator.dispatch({
             type: "message.dispatch",
+            providerChangeApproved: true,
             createdBy: "user",
             creationSource: "web",
             commandId: CommandId.make("command:queued-handoff-rejection:first"),
@@ -3391,6 +3462,7 @@ describe("orchestration v2 provider switching", () => {
           });
           yield* orchestrator.dispatch({
             type: "message.dispatch",
+            providerChangeApproved: true,
             createdBy: "user",
             creationSource: "web",
             commandId: CommandId.make("command:queued-handoff-rejection:claude"),
@@ -3403,6 +3475,7 @@ describe("orchestration v2 provider switching", () => {
           });
           yield* orchestrator.dispatch({
             type: "message.dispatch",
+            providerChangeApproved: true,
             createdBy: "user",
             creationSource: "web",
             commandId: CommandId.make("command:queued-handoff-rejection:later"),
@@ -3674,6 +3747,7 @@ describe("orchestration v2 provider switching", () => {
 
           yield* orchestrator.dispatch({
             type: "message.dispatch",
+            providerChangeApproved: true,
             createdBy: "user",
             creationSource: "web",
             commandId: CommandId.make("command:provider-switch:legacy-import:failed"),
@@ -3691,6 +3765,7 @@ describe("orchestration v2 provider switching", () => {
           }
           yield* orchestrator.dispatch({
             type: "message.dispatch",
+            providerChangeApproved: true,
             createdBy: "user",
             creationSource: "web",
             commandId: CommandId.make("command:provider-switch:legacy-import:recovery"),

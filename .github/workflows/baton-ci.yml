@@ -28,7 +28,7 @@ jobs:
           node scripts/tessaya/check-notices.mjs
           node --test scripts/tessaya/check-notices.test.mjs
       - name: Status-file writer
-        run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs
+        run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs scripts/tessaya/live/baton-live-acp.test.mjs
       - name: Upstream paths equal PIN + series
         run: bash scripts/tessaya/patches.sh verify
       # After verify, which fetches the pin: the guard needs its tree to know which files are ours.
@@ -68,11 +68,22 @@ jobs:
           changed=$(git diff --name-only --diff-filter=d "$base"...HEAD 2>/dev/null || git diff --name-only --diff-filter=d "$base" HEAD)
           # An upstream sync changes hundreds of upstream test files; those are upstream's to run (they need browsers and
           # tools this runner does not have), so past this many only Baton's own tests are run.
+          # A sync is known by its moved pin; a small one changes too few test files to be told apart by count.
           upstream_wave=0
-          if [ "$(echo "$changed" | grep -cE '\.test\.tsx?$' || true)" -gt 150 ]; then upstream_wave=1; echo "upstream sync: running Baton's own tests only"; fi
-          for ws in apps/server apps/desktop packages/baton-shared packages/baton-voice packages/baton-contracts; do
+          if echo "$changed" | grep -qx 'vendor-patches/t3code/PIN' || [ "$(echo "$changed" | grep -cE '\.test\.tsx?$' || true)" -gt 150 ]; then upstream_wave=1; echo "upstream sync: running Baton's own tests only"; fi
+          # On main every test Tessaya added since the pin runs (web's too, not its browser ones), so a test no PR
+          # touched cannot go stale until the nightly sync finds it. The pin's tree is fetched blobless to know which.
+          all=0 workspaces="apps/server apps/desktop packages/baton-shared packages/baton-voice packages/baton-contracts"
+          if [ "${{ github.event_name }}" = push ]; then
+            pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
+            git fetch -q --no-tags --filter=blob:none https://github.com/pingdotgg/t3code.git "$pin"
+            changed="$(git diff --no-renames --name-only --diff-filter=A "$pin" HEAD)" all=1 workspaces="$workspaces apps/web"
+            echo "main: running every test Tessaya added since $pin"
+          fi
+          for ws in $workspaces; do
             pattern="^$ws/.*(baton|Baton).*\.test\.tsx?$|^$ws/.*\.test\.ts$"
             [ "$upstream_wave" -eq 1 ] && pattern="^$ws/.*(baton|Baton|Tessaya|Phone|Intent|WorkSession|Fleet).*\.test\.tsx?$"
+            [ "$all" -eq 1 ] && pattern="^$ws/.*\.test\.tsx?$"
             files=$(echo "$changed" | grep -E "$pattern" | grep -vE '\.browser\.test\.' | sed "s|^$ws/||" || true)
             if [[ "$ws" == packages/baton-* ]]; then files=$(echo "$changed" | grep -E "^$ws/.*\.test\.ts$" | sed "s|^$ws/||" || true); fi
             [[ -z "$files" ]] && continue
@@ -98,7 +109,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/resource-monitor/linux-x64"
           cp native/resource-monitor/target/release/t3-resource-monitor "$RUNNER_TEMP/resource-monitor/linux-x64/"
           export BATON_RESOURCE_MONITOR_DIR="$RUNNER_TEMP/resource-monitor"
-          NODE_ENV=production bash scripts/tessaya/release-build.sh 0.0.0-baton.0
+          NODE_ENV=production bash scripts/tessaya/release-build.sh 0.0.0-tessaya.0
 
       # Not a gate: the barge-in detector's measured numbers, printed whenever the voice package changes (docs/baton/BARGE_IN.md).
       - name: Barge-in detector, measured (report only)

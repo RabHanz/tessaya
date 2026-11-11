@@ -264,12 +264,15 @@ export const workerFirstMessage = (input: {
   readonly permissionsSummary: string;
   /** How to frame the job (the operating-system pack, D148), after his words and before the rest. */
   readonly frame?: string;
+  /** What memory recalls for his words, as the assistant's turns get it. */
+  readonly memory?: string;
   /** A part of a larger plan that he has already agreed: no planning pause. */
   readonly agreed?: boolean;
 }): string =>
   [
     `He asked: ${input.verbatim}`,
     ...(input.frame === undefined || input.frame === "" ? [] : [input.frame]),
+    ...(input.memory === undefined || input.memory === "" ? [] : [input.memory]),
     `What you may do: ${input.permissionsSummary}`,
     input.agreed === true
       ? "This is one part of a larger plan he has already agreed. Do it now, inside what you were allowed, and report what changed, the evidence, and what blocks you."

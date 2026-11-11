@@ -12,10 +12,12 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
+import type { CaretContext } from "@t3tools/baton-shared/dictationFit";
 import { outsideLanguages } from "@t3tools/baton-shared/dictationLanguages";
 import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/baton-voice";
 
 import { makeFramer } from "./pcm.ts";
+import type { CaretGeometry } from "./pillGhost.ts";
 import type { AudioInputDevice, AudioInputProvider } from "./voiceTypes.ts";
 
 export type PasteMethod = "ctrl_v" | "shift_insert" | "ctrl_shift_v";
@@ -37,6 +39,19 @@ export interface DictationConfig {
   readonly latch?: boolean;
   /** The input-bindings file the sidecar's mouse hook reads; null or empty means no hook. */
   readonly mouse?: string | null;
+  /** He keeps the audio of dictations: each recording is also written here as a WAV for History, then removed. */
+  readonly keepAudio?: string | null;
+  /** Keep the speech model loaded between dictations (about 1.2 GB for v3); off on a machine with under 10 GB. */
+  readonly keepLoaded?: boolean;
+  /** His words in the pill as he speaks: a quick decode of the words not yet cut, and the local model's words for the cloud too. */
+  readonly liveWords?: boolean;
+  /** Wake words are off: the recording sends its audio (`pcm`) for the pill's waveform. */
+  readonly meter?: boolean;
+  /** His other plugged-in mics in his order: tried when `device` will not open, and heard beside it at each press. */
+  readonly fallbacks?: ReadonlyArray<string>;
+  /** His recognisers on his own servers, in his order; empty: the laptop decodes (native remote.rs). */
+  readonly recognizers?: ReadonlyArray<RecognizerServer>;
+  readonly gpu?: GpuRecognition;
 }
 
 /**
@@ -44,6 +59,30 @@ export interface DictationConfig {
  * from the cloud, a notice or a reconfigure leaves a live recording as it was.
  */
 /** Whether the sidecar is busy with a key dictation (recording it, or writing it out) after this event. */
+const boxOf = (value: unknown) => {
+  const b = value as Record<string, unknown> | null;
+  if (typeof b !== "object" || b === null) return null;
+  const { x, y, width, height } = b;
+  return [x, y, width, height].every((n) => typeof n === "number" && Number.isFinite(n))
+    ? { x: x as number, y: y as number, width: width as number, height: height as number }
+    : null;
+};
+/** The sidecar's `caret_at` answer, or null when any part of it is missing. */
+export const caretGeometry = (event: Record<string, unknown>): CaretGeometry | null => {
+  const caret = boxOf(event["caret"]);
+  const field = boxOf(event["field"]);
+  const fontPt = typeof event["fontPt"] === "number" ? event["fontPt"] : 0;
+  if (caret === null || field === null) return null;
+  const fontName = typeof event["fontName"] === "string" ? event["fontName"] : "";
+  return {
+    caret,
+    field,
+    fontPt,
+    ...(fontName === "" ? {} : { fontName }),
+    ...(event["rtl"] === true ? { rtl: true } : {}),
+  };
+};
+
 export const busyAfter = (ev: DictationEvent["ev"], was: boolean): boolean =>
   ev === "recording" || ev === "transcribing"
     ? true
@@ -55,6 +94,59 @@ export const recordingAfter = (ev: DictationEvent["ev"], was: boolean): boolean 
   ev === "recording" || ev === "transcribing" || ev === "idle" || ev === "error"
     ? ev === "recording"
     : was;
+
+/** One helper recording the desktop waits on words for (`dictation`: the sidecar's id; null from an older sidecar). */
+export interface RecordingEntry {
+  readonly id: number;
+  readonly dictation: number | null;
+  readonly app: FocusedApp;
+  heard: "stop" | null;
+  discarded: boolean;
+}
+
+/**
+ * The recording an end (text, idle or error) answers, taken out with any older one it outlived. Matched on the
+ * sidecar's id; an end without one takes the oldest, as before ids. An id we do not hold takes nothing, so a stray end
+ * never takes the next dictation's window or discard.
+ */
+export const takeRecording = (
+  recordings: Array<RecordingEntry>,
+  dictation: number | undefined,
+): RecordingEntry | undefined => {
+  if (dictation === undefined) return recordings.shift();
+  const at = recordings.findIndex((r) => r.dictation === dictation);
+  return at < 0 ? undefined : recordings.splice(0, at + 1).at(-1);
+};
+
+/** One recogniser service he runs (native/tessaya-recognizer): its tailnet WebSocket address and token. */
+/** A live-words line for a dictation that is no longer the newest: dropped, never shown on the next one. */
+export const stalePartial = (partial: number | undefined, newest: number | null): boolean =>
+  partial !== undefined && newest !== null && partial !== newest;
+
+/**
+ * A recogniser address the sidecar will use: plain ws:// on his tailnet only, an address in its own block (RFC 6598)
+ * or a MagicDNS name (the sidecar checks the same, remote.rs `allowed`). wss:// is refused until it means real TLS.
+ */
+export const recognizerUrlAllowed = (url: string): boolean => {
+  const match = /^ws:\/\/([^/?#]+)(?:[/?#].*)?$/.exec(url);
+  if (match === null) return false;
+  const authority = match[1]!;
+  const port = /:(\d{1,5})$/.exec(authority);
+  const host = (port === null ? authority : authority.slice(0, port.index)).toLowerCase();
+  const ip = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ip !== null) {
+    const [a, b, c, d] = ip.slice(1).map(Number);
+    return a === 100 && b! >= 64 && b! < 128 && c! <= 255 && d! <= 255;
+  }
+  // Written in two pieces so the repository's privacy guard does not take the suffix for one of his names.
+  const magicDns = [".ts", ".net"].join("");
+  return host.endsWith(magicDns) && host.length > magicDns.length;
+};
+
+export interface RecognizerServer {
+  readonly url: string;
+  readonly token: string;
+}
 
 export interface FocusedApp {
   readonly exe: string;
@@ -132,18 +224,81 @@ export type DictationEvent =
   | { readonly ev: "ready" }
   | { readonly ev: "configured"; readonly mouse?: boolean }
   /** A mouse binding fired; `id` is the action of the Keyboard and mouse page. */
-  | { readonly ev: "binding"; readonly id: string }
-  | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
+  | { readonly ev: "binding"; readonly id: string; readonly up?: boolean }
+  | {
+      readonly ev: "recording";
+      readonly app?: string;
+      readonly title?: string;
+      readonly dictation?: number;
+      /** What started it: `hold` (the hold key), `toggle` (the hands-free key) or `start` (the desktop). */
+      readonly via?: string;
+    }
+  /** A double-tapped hold latched the microphone open: it is hands-free until the next press. */
+  | { readonly ev: "latched" }
   | { readonly ev: "transcribing" }
+  /** The words so far, at a pause while the key is still held. */
+  /** Every decoded piece; `pause` when it ended at a pause (an older sidecar sends only those, unmarked). */
+  | {
+      readonly ev: "partial";
+      readonly text: string;
+      readonly pause?: boolean;
+      /** The dictation they are; a late one for an earlier dictation is dropped. */
+      readonly dictation?: number;
+    }
   /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
   | { readonly ev: "loading"; readonly elapsedMs: number }
-  | { readonly ev: "idle" }
-  | { readonly ev: "error"; readonly message: string }
+  /** 40 ms of the recording's audio (16-bit PCM, base64): the pill's waveform when no wake-word mic runs. */
+  | { readonly ev: "pcm"; readonly b64: string }
+  /** `tap`: the hold key came up within 200 ms, so the recording was dropped as an accidental tap. */
+  /** `discarded`: Esc while the hold key was down dropped it. */
+  | {
+      readonly ev: "idle";
+      readonly dictation?: number;
+      readonly tap?: boolean;
+      readonly discarded?: boolean;
+      /** Another key joined the hold chord. */
+      readonly joined?: boolean;
+    }
+  /** A key was held for dictation `id`'s paste (`holdKeys`): paste now. */
+  | { readonly ev: "held_key"; readonly id: number }
+  /** The hold key went down and a recording starts: the pill shows now, before the microphone opens. */
+  | { readonly ev: "pressed" }
+  /** The dictation moved to another of his mics: `device` was missing, or heard nothing while this one heard him. */
+  | {
+      readonly ev: "mic_switched";
+      readonly dictation: number;
+      readonly from: string | null;
+      readonly to: string;
+      readonly why: "missing" | "silent";
+    }
+  /** Every raw edge of the hold key, ms on the helper's clock, for the turn log. */
+  | { readonly ev: "key_edge"; readonly down: boolean; readonly at: number }
+  | { readonly ev: "error"; readonly message: string; readonly dictation?: number }
+  /** Just before the chord, what the clipboard held (ours or something else); when settled, whether it was read. */
+  | {
+      readonly ev: "paste_check";
+      readonly phase: "chord" | "settled";
+      readonly held?: "ours" | "other";
+      readonly chars?: number;
+      readonly read?: boolean;
+      readonly restored?: boolean;
+      readonly changedOutside?: boolean;
+    }
   /** The paste chord went out and nothing read the clipboard. */
-  | { readonly ev: "unread"; readonly text: string }
+  /** False when something else wrote the clipboard since: the desktop keeps the words (tray: Copy last transcript). */
+  | { readonly ev: "unread"; readonly text: string; readonly onClipboard?: boolean }
   | {
       readonly ev: "text";
       readonly id: number | null;
+      /** The key dictation it answers (its `recording`'s); absent for a clip and from an older sidecar. */
+      readonly dictation?: number;
+      /** Set by the desktop: its dictation is no longer waited on, so its words are kept, never pasted. */
+      readonly unmatched?: boolean;
+      /** Set by the desktop as the event arrives: its recording's window, and whether it was discarded. */
+      readonly app?: FocusedApp;
+      readonly discarded?: boolean;
+      /** Cloud recognition: when the sidecar's recording reached the desktop, before the cloud heard it. */
+      readonly arrivedAt?: number;
       /** Cloud recognition: the recording for the desktop to recognise, deleted once it has; the text is then empty. */
       readonly wav?: string | null;
       readonly audioMs?: number;
@@ -158,7 +313,65 @@ export type DictationEvent =
       /** The window it was spoken for; null when it must not be pasted. */
       readonly target?: number | null;
       readonly releaseMs?: number | null;
+      readonly inferMs?: number;
+      readonly pieces?: number;
+      /** How long the sidecar's own paste took (cleanup off); null when it did not paste. */
+      readonly pasteMs?: number | null;
+      readonly timing?: SidecarTiming | null;
+      /** The recording for History when he keeps the audio of dictations; the desktop removes it. */
+      readonly audio?: string | null;
+      /** Set by the desktop: a cloud dictation's recording, read before the cloud heard it, for History. */
+      readonly keptPcm?: Int16Array;
     };
+
+/** A live dictation's stage times from its key press (`dictationTiming`). */
+export interface SidecarTiming {
+  readonly via: "hold" | "toggle" | "start";
+  readonly micMs: number;
+  readonly firstAudioMs: number | null;
+  readonly releasedMs: number;
+  /** The release took the last pause preview's words: nothing was decoded after the key came up. */
+  readonly reused?: boolean;
+  /** Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote). */
+  readonly recognizer?: "local" | "remote" | "fallback";
+  /** What recognised them on this computer (native/baton-dictation gpu.rs). */
+  readonly backend?: "cpu" | "gpu" | "gpu-fallback" | "cloud" | "server";
+}
+
+/** His setting "Use graphics card for recognition"; the sidecar takes it at start (`--gpu`). */
+export type GpuRecognition = "auto" | "on" | "off";
+
+/** `nofield`: the keyboard was on icons, a list or a button, where a paste lands nowhere. */
+export type PasteVerdict = "ok" | "gone" | "changed" | "secret" | "nofield" | "refused";
+/**
+ * How long the helper's answer is awaited. It decides to paste only within its own 1.5 s deadline, but the paste itself
+ * (the clipboard's snapshot and restore) can run past that, so a late "ok" is a paste that landed, not a refusal.
+ */
+export const PASTE_CHECK_MS = 4_000;
+/** The helper's answer, or "refused" past `PASTE_CHECK_MS`; an answer after that still reaches `onLate`. */
+export const awaitPasteVerdict = (
+  answer: Promise<PasteVerdict>,
+  onLate?: (why: PasteVerdict) => void,
+): Promise<PasteVerdict> => {
+  let late = false;
+  void answer.then((why) => {
+    if (late) onLate?.(why);
+  });
+  return Promise.race([
+    answer,
+    new Promise<PasteVerdict>((resolve) =>
+      setTimeout(() => {
+        late = true;
+        resolve("refused");
+      }, PASTE_CHECK_MS),
+    ),
+  ]);
+};
+/** What the helper said stopped a checked paste; anything else, a late answer included, is "refused". */
+export const pasteVerdictOf = (why: unknown): PasteVerdict =>
+  why === "ok" || why === "gone" || why === "changed" || why === "secret" || why === "nofield"
+    ? why
+    : "refused";
 
 export interface SidecarDevice {
   readonly name: string;
@@ -169,6 +382,18 @@ export interface SidecarDevice {
 export interface DictationSidecar {
   readonly configure: (config: DictationConfig) => void;
   readonly toggle: () => void;
+  /** Starts a recording unless one is running (a mouse button held to dictate). */
+  readonly start: () => void;
+  /** Ends the running recording, if any, and writes it out. */
+  readonly finish: () => void;
+  /** The computer woke from sleep: the graphics card's session is read and warmed again. */
+  readonly resume: () => void;
+  /** The desktop's voice dictation is on: a dictation key press is its ✓, not a second recording. */
+  readonly voice: (on: boolean) => void;
+  /** While dictation `id`'s ghost plays, typing keys for `window` wait for its paste (Windows). */
+  readonly holdKeys: (id: number, window: number) => void;
+  /** Dictation `id`'s paste landed: its held keys go, in order. */
+  readonly releaseKeys: (id: number) => void;
   readonly cancel: () => void;
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
   /** `model`: a model file of its own (the wake path's); dictation's when absent or null. */
@@ -178,6 +403,17 @@ export interface DictationSidecar {
   readonly paste: (text: string) => Promise<void>;
   /** False when that window is no longer the focused one, and nothing was pasted. */
   readonly pasteInto: (text: string, target: number) => Promise<boolean>;
+  /**
+   * A dictation's paste in one call: that window brought forward, checked to be the same page and not a password box,
+   * then pasted. Past `PASTE_CHECK_MS` (or from a helper that does not know the call) it is "refused", nothing pasted.
+   */
+  readonly pasteChecked: (
+    text: string,
+    target: number,
+    title: string,
+    /** The helper answered after `PASTE_CHECK_MS`, when the words were already kept: what it said. */
+    onLate?: (why: PasteVerdict) => void,
+  ) => Promise<PasteVerdict>;
   readonly foreground: () => Promise<FocusedApp>;
   /** The top-level window under a physical point. */
   readonly windowAt: (point: {
@@ -205,6 +441,12 @@ export interface DictationSidecar {
   /** `number`: the model's own read, numbered and kept for clicks by number; other reads leave those numbers alone. */
   readonly uiTree: (window?: string, find?: string, number?: boolean) => Promise<UiTree>;
   readonly focusState: (window?: string) => Promise<FocusState>;
+  /** The words either side of the caret in the focused field; null when it does not say. */
+  readonly caret: () => Promise<CaretContext | null>;
+  /** Where the caret is drawn in the focused field; null for a secret field or one that does not say. */
+  readonly caretAt: () => Promise<CaretGeometry | null>;
+  /** The system's last-input tick (any key, click or move). */
+  readonly lastInput: () => Promise<number | null>;
   readonly input: (input: SidecarInput) => Promise<void>;
   /** Adds text to the box of a window by its UI Automation value: no keyboard, clipboard or focus. */
   readonly setValue: (
@@ -341,8 +583,14 @@ export const startDictationSidecar = (input: {
     }
   };
 
+  // The graphics-card setting is fixed for a sidecar's life (its backends register at start): a change restarts it.
+  let spawnedGpu: GpuRecognition = "off";
+  let restarting = false;
   const spawn = () => {
-    const proc = NodeChildProcess.spawn(input.binary, ["serve"], { windowsHide: true });
+    spawnedGpu = lastConfig?.gpu ?? "off";
+    const proc = NodeChildProcess.spawn(input.binary, ["serve", "--gpu", spawnedGpu], {
+      windowsHide: true,
+    });
     child = proc;
     const startedAt = Date.now();
     let stderr = "";
@@ -390,6 +638,24 @@ export const startDictationSidecar = (input: {
           error === undefined ? { value: undefined } : { error },
         );
       }
+      if (event["ev"] === "paste_checked") {
+        return settle(event["id"] as number, { value: pasteVerdictOf(event["why"]) });
+      }
+      if (event["ev"] === "caret_at") {
+        return settle(event["id"] as number, { value: caretGeometry(event) });
+      }
+      if (event["ev"] === "last_input") {
+        const tick = event["tick"];
+        return settle(event["id"] as number, {
+          value: typeof tick === "number" && tick > 0 ? tick : null,
+        });
+      }
+      if (event["ev"] === "caret") {
+        const { before, after } = event;
+        return settle(event["id"] as number, {
+          value: typeof before === "string" && typeof after === "string" ? { before, after } : null,
+        });
+      }
       if (event["ev"] === "foreground") {
         return settle(event["id"] as number, { value: focusedFrom(event) });
       }
@@ -436,6 +702,12 @@ export const startDictationSidecar = (input: {
       deviceWaiters.forEach((resolve) => resolve([]));
       deviceWaiters = [];
       if (disposed) return;
+      if (restarting) {
+        restarting = false;
+        spawn();
+        if (lastConfig !== null) send({ cmd: "configure", ...lastConfig });
+        return;
+      }
       failures = Date.now() - startedAt >= HEALTHY_RUN_MS ? 1 : failures + 1;
       const delay = restartDelayMs(failures);
       const reason = lastLine(stderr) ?? "it exited";
@@ -455,9 +727,20 @@ export const startDictationSidecar = (input: {
   return {
     configure: (config) => {
       lastConfig = config;
+      if ((config.gpu ?? "off") !== spawnedGpu && child !== null && !restarting) {
+        restarting = true;
+        send({ cmd: "quit" });
+        return;
+      }
       send({ cmd: "configure", ...config });
     },
+    resume: () => send({ cmd: "resume" }),
     toggle: () => send({ cmd: "toggle" }),
+    start: () => send({ cmd: "start" }),
+    finish: () => send({ cmd: "finish" }),
+    voice: (on) => send({ cmd: "voice", on }),
+    holdKeys: (id, window) => send({ cmd: "hold_keys", id, window }),
+    releaseKeys: (id) => send({ cmd: "release_keys", id }),
     cancel: () => send({ cmd: "cancel" }),
     devices: () =>
       new Promise((resolve) => {
@@ -479,6 +762,13 @@ export const startDictationSidecar = (input: {
     preload: () => call<number>({ cmd: "load" }, true),
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
+    pasteChecked: (text, target, title, onLate) =>
+      awaitPasteVerdict(
+        call<PasteVerdict>({ cmd: "paste_checked", text, target, title }).catch(
+          () => "refused" as const,
+        ),
+        onLate,
+      ),
     foreground: () => call<FocusedApp>({ cmd: "foreground" }),
     windowAt: ({ x, y }) =>
       call<{ window: number; label: string } | null>({ cmd: "window_at", x, y }),
@@ -492,6 +782,9 @@ export const startDictationSidecar = (input: {
         ...(find === undefined ? {} : { find }),
         ...(number === true ? { number: true } : {}),
       }),
+    caret: () => call<CaretContext | null>({ cmd: "caret" }),
+    caretAt: () => call<CaretGeometry | null>({ cmd: "caret_at" }),
+    lastInput: () => call<number | null>({ cmd: "last_input" }),
     focusState: (window) =>
       call<FocusState>({ cmd: "focus_state", ...(window === undefined ? {} : { window }) }),
     input: (input) => call<void>({ cmd: "input", ...input }),

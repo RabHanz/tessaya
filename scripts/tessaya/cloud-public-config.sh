@@ -29,7 +29,7 @@
 # Usage:
 #   scripts/tessaya/cloud-public-config.sh [/path/to/official/t3] [--systemd]
 #
-# With no path, the newest non-baton version under $T3CODE_HOME/runtime/versions
+# With no path, the newest non-Tessaya version under $T3CODE_HOME/runtime/versions
 # is used. `--systemd` prints `Environment=` lines for a unit drop-in instead of
 # bare KEY=value pairs.
 
@@ -48,7 +48,7 @@ if [ -z "$binary" ]; then
   home="${T3CODE_HOME:-$HOME/.t3}"
   # Newest by version sort, skipping anything this fork installed: a fork build
   # is exactly the thing that lacks these values.
-  for candidate in $(ls -1 "$home/runtime/versions" 2>/dev/null | grep -vE 'fabric|baton' | sort -Vr); do
+  for candidate in $(ls -1 "$home/runtime/versions" 2>/dev/null | grep -vE 'tessaya|fabric|baton' | sort -Vr); do
     if [ -x "$home/runtime/versions/$candidate/t3" ]; then
       binary="$home/runtime/versions/$candidate/t3"
       break

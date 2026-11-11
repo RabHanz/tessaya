@@ -240,11 +240,16 @@ export type HomeControl =
       readonly revealed: string;
     });
 
+/** One thing on Home's Today card: a History row or a command or action from the turn log. */
 export interface HomeActivity {
+  readonly id: string;
   readonly at: string;
+  readonly kind: "dictation" | "spoken" | "command" | "assistant";
+  /** The words, or what was done as a sentence. Empty for a hidden row. */
   readonly text: string;
-  readonly kind: string;
-  readonly dim?: boolean;
+  readonly detail: string | null;
+  readonly app?: string;
+  readonly hidden?: string | null;
 }
 
 /** What the tabs show beyond the controls: all data, nothing the page decides. */
@@ -274,6 +279,8 @@ export interface HomeExtra {
   };
   readonly insights: {
     readonly wordsToday: number;
+    readonly dictationsToday: number;
+    readonly minutesSaved: number;
     readonly wpm: number | null;
     readonly streak: number;
     readonly topApps: ReadonlyArray<{ readonly app: string; readonly count: number }>;
@@ -281,6 +288,7 @@ export interface HomeExtra {
   readonly vocabulary: ReadonlyArray<{
     readonly phrase: string;
     readonly replacement: string | null;
+    readonly heard?: ReadonlyArray<string>;
   }>;
   readonly hotkeys: ReadonlyArray<{
     readonly label: string;
@@ -318,6 +326,8 @@ export interface HomeExtra {
   readonly bindingsNote: string | null;
   /** Whether Baton can act on a mouse button yet; until then they are saved and say so. */
   readonly mouseReady: boolean;
+  /** Mouse buttons can be bound here: the hook is the Windows helper's, so on Windows only. */
+  readonly mouseButtons: boolean;
   readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;
   readonly paths: ReadonlyArray<{
     readonly id: string;
@@ -351,7 +361,7 @@ export interface BatonHomeInput {
   readonly stateDir: string;
   readonly state: () => HomeState;
   readonly apply: (id: string, value: string | boolean | null) => void;
-  readonly openSessions: () => void;
+  readonly openSessions: (liveOnly?: boolean) => void;
   /** The window moved to this tab. */
   readonly onTab?: (tab: string) => void;
   /** System, Light or Dark, as he chose it in Settings. */
@@ -433,7 +443,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   });
   Electron.ipcMain.handle(LEVEL, () => input.level?.() ?? 0);
   Electron.ipcMain.handle(STING, () => readArt(art, stingFile(look().palette, theme())));
-  Electron.ipcMain.on(SESSIONS, () => input.openSessions());
+  Electron.ipcMain.on(SESSIONS, (_event, filter: unknown) => input.openSessions(filter === "live"));
   // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
   let tabShots = 0;
   Electron.ipcMain.on("baton-home:tab", (_event, tab: unknown) => {

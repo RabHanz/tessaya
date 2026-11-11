@@ -3,7 +3,7 @@
 # Download a server archive built by the "Tessaya server archive" workflow and check its sha256, so a
 # deploy needs no local build.
 #
-#   scripts/tessaya/fetch-server-archive.sh <version> [dir]     e.g. 0.1.5-baton.49   (dir defaults to .)
+#   scripts/tessaya/fetch-server-archive.sh <version> [dir]     e.g. 0.1.5-tessaya.1  (dir defaults to .)
 #
 # Prints the archive path.
 set -euo pipefail

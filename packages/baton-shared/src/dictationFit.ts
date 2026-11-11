@@ -45,11 +45,16 @@ type Edge =
   | "sentence" // after . ! ? (and any closing quote or bracket)
   | "clause" // after , ; :
   | "open" // after ( [ { " or a dash: the words hug it
-  | "word"; // after a letter, digit, or other closing mark
+  | "word" // after a letter or digit: mid-sentence
+  | "after"; // after any other mark: a space, and his capitals kept
 
-const edgeBefore = (before: string): { readonly edge: Edge; readonly spaced: boolean } => {
+/** What editors put in a field that is not text: zero-width marks, a placeholder's object character, a BOM. */
+const INVISIBLE = /[\u200b-\u200d\u2060\ufeff\ufffc]/g;
+
+const edgeBefore = (raw: string): { readonly edge: Edge; readonly spaced: boolean } => {
+  const before = raw.replace(INVISIBLE, "").replace(/\u00a0/g, " ");
   if (before.trim().length === 0) return { edge: "start", spaced: true };
-  if (/\n\s*$/.test(before)) return { edge: "start", spaced: true };
+  if (/[\r\n]\s*$/.test(before)) return { edge: "start", spaced: true };
   const spaced = /[ \t]$/.test(before);
   const trimmed = before.replace(/[ \t]+$/, "");
   const stripped = trimmed.replace(/["'”’)\]}]+$/, "");
@@ -57,7 +62,8 @@ const edgeBefore = (before: string): { readonly edge: Edge; readonly spaced: boo
   if (/[.!?…]/.test(last) && !ABBREVIATIONS.test(stripped)) return { edge: "sentence", spaced };
   if (/[,;:]/.test(trimmed.at(-1) ?? "")) return { edge: "clause", spaced };
   if (/[([{"“‘\-–—/]/.test(trimmed.at(-1) ?? "")) return { edge: "open", spaced };
-  return { edge: "word", spaced };
+  // Mid-sentence only after a letter or digit; any other mark leaves his capitals as they are.
+  return { edge: /[\p{L}\p{N}]$/u.test(trimmed) ? "word" : "after", spaced };
 };
 
 export const fitInsertion = (context: CaretContext, inserted: string): string => {
@@ -80,6 +86,9 @@ export const fitInsertion = (context: CaretContext, inserted: string): string =>
       lead = spaced ? "" : " ";
       break;
     case "open":
+      break;
+    case "after":
+      lead = spaced ? "" : " ";
       break;
     case "word":
       if (hugsPunctuation) {

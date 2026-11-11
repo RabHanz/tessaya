@@ -8,6 +8,7 @@
 import * as Electron from "electron";
 
 import { isCompanionWindow } from "./lastAppWindow.ts";
+import { captureDraftImageDrops } from "./health/draftImageDropLog.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -40,6 +41,7 @@ import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { markPhase, startStallWatch } from "./lifecycle/mainStall.ts";
+import { liftInheritedPriority } from "./lifecycle/processPriority.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -108,6 +110,11 @@ export const startBatonDesktop = Effect.gen(function* () {
       file: NodePath.join(environment.logDir, "baton-lifecycle.ndjson"),
       version: environment.appVersion,
     });
+    captureDraftImageDrops(
+      Electron.app,
+      Electron.webContents.getAllWebContents(),
+      environment.logDir,
+    );
     markPhase("start-guard:begin");
     // A version that fails to start twice is remembered, never installed again by itself, and he is told what worked.
     const guardPath = NodePath.join(environment.stateDir, "baton-start-guard.json");
@@ -146,6 +153,10 @@ export const startBatonDesktop = Effect.gen(function* () {
       });
     }
     markPhase("start-guard:end");
+    if (environment.platform === "win32") {
+      const inherited = liftInheritedPriority();
+      if (inherited !== null) lifecycle.note("priority-lifted", { from: inherited });
+    }
     Electron.app.on("render-process-gone", (_event, contents, details) =>
       lifecycle.note("render-process-gone", {
         reason: details.reason,
@@ -409,7 +420,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
     };
     // This machine's own server, with the desktop's local token, as the remote-hands loop calls it.
-    const direct = async (method: string, body: unknown): Promise<unknown> => {
+    const direct = async (method: string, body: unknown, timeoutMs = 20_000): Promise<unknown> => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
@@ -417,7 +428,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const json = (await response.json().catch(() => ({}))) as {
         value?: unknown;
@@ -525,7 +536,9 @@ export const startBatonDesktop = Effect.gen(function* () {
         onOpenTab: () => voice?.openHome(),
       });
     } catch (cause) {
-      Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
+      Effect.runForkWith(context)(
+        Effect.logWarning("Tessaya screen companion did not start", cause),
+      );
     }
     markPhase("screen-companion:end");
     if (screen !== null) {
@@ -596,6 +609,16 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       mainWindowUp: t3Up,
       direct,
+      // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
+      // subscription session. The wait matches the server's 1.2 s limit, with a little for the hop.
+      cleanupApi: async (system, message, maxTokens) => {
+        const answer = (await direct(
+          "baton.dictation.cleanupApi",
+          { system, message, maxTokens },
+          1_500,
+        )) as { readonly configured?: boolean; readonly text?: unknown };
+        return answer?.configured === true && typeof answer.text === "string" ? answer.text : null;
+      },
       ...(screen === null ? {} : { extras: screen }),
       sessions,
       catalog,
@@ -611,9 +634,9 @@ export const startBatonDesktop = Effect.gen(function* () {
         screen?.cutIn();
       },
       onDuck: (on) => voicePlayer.duck?.(on),
-      onDismiss: () => {
+      onStop: (quiet) => {
         speaker.cancel();
-        screen?.dismissQuietly();
+        screen?.stop(quiet);
       },
       audition: (name) => {
         const picked = (name ?? screen?.voice() ?? "anna") as PocketVoice | "system";
@@ -624,10 +647,6 @@ export const startBatonDesktop = Effect.gen(function* () {
         void speaker.sample(chooseVoice(picked), AUDITION_LINE);
       },
       warmAssistant: () => screen?.warmAssistant(),
-      onSpokenStop: () => {
-        speaker.cancel();
-        screen?.dismiss();
-      },
       openMainWindow,
       dictationBinary: resolveDictationBinary({
         resourcesPath,
@@ -703,5 +722,5 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
     });
     markPhase("voice-start:end");
-  }).pipe(Effect.catchDefect((cause) => Effect.logWarning("baton voice did not start", cause)));
+  }).pipe(Effect.catchDefect((cause) => Effect.logWarning("Tessaya voice did not start", cause)));
 });

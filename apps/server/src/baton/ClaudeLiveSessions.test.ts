@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   herdrPaneRef,
+  isDescriptorProcess,
   isTessayaOwnFolder,
   parseClaudeSessionDescriptor,
 } from "./ClaudeLiveSessions.ts";
@@ -38,6 +39,8 @@ describe("live Claude Code sessions from their own descriptors (D68)", () => {
     expect(parseClaudeSessionDescriptor(descriptor(), { ...live, alive: () => false })).toBeNull();
     expect(parseClaudeSessionDescriptor("{nope", live)).toBeNull();
     expect(parseClaudeSessionDescriptor(descriptor({ entrypoint: "sdk-cli" }), live)).toBeNull();
+    // T3's own claudeAgent turns report kind "interactive" with this entrypoint.
+    expect(parseClaudeSessionDescriptor(descriptor({ entrypoint: "t3-code" }), live)).toBeNull();
   });
 
   it("knows which Herdr pane a session lives in", () => {
@@ -68,5 +71,31 @@ describe("Tessaya's own helper sessions", () => {
     expect(isTessayaOwnFolder("D:\\Downloads\\Development\\3D-Printer")).toBe(false);
     expect(isTessayaOwnFolder("/home/dev/.t3x/work")).toBe(false);
     expect(isTessayaOwnFolder(null)).toBe(false);
+  });
+});
+
+describe("a pid is signalled only while it is still the session's own process", () => {
+  // /proc/<pid>/stat: field 22 (the start time) is the 20th after the command's closing parenthesis.
+  const stat = (start: number) =>
+    `42 (claude (x)) S ${Array.from({ length: 18 }, () => "0").join(" ")} ${start} 0`;
+  const proc = (cmdline: string | null, start = 500) => ({
+    cmdline,
+    stat: stat(start),
+    bootMs: 1_000_000,
+  });
+  it("matches the recorded start time, and a command line that runs claude", () => {
+    expect(isDescriptorProcess({ pid: 42, procStart: "500" }, proc("claude --resume s"))).toBe(
+      true,
+    );
+    expect(isDescriptorProcess({ pid: 42, procStart: "500" }, proc("node vite", 500))).toBe(false);
+    // The number was reused by a later process.
+    expect(isDescriptorProcess({ pid: 42, procStart: "500" }, proc("claude", 900))).toBe(false);
+    expect(isDescriptorProcess({ pid: 42, procStart: "500" }, proc(null))).toBe(false);
+  });
+  it("without a recorded start time, refuses a process that started after the session did", () => {
+    // boot 1 000 000 ms + 500 ticks × 10 ms = 1 005 000 ms.
+    expect(isDescriptorProcess({ pid: 42, startedAt: 1_005_500 }, proc("claude"))).toBe(true);
+    expect(isDescriptorProcess({ pid: 42, startedAt: 1_000_000 }, proc("claude"))).toBe(false);
+    expect(isDescriptorProcess({ pid: 42 }, proc("claude"))).toBe(false);
   });
 });

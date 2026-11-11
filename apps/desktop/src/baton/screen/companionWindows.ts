@@ -9,6 +9,17 @@ import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
 
+import { PILL_FACES } from "../home/fonts.ts";
+import {
+  CARD_CSS,
+  DEFAULT_LOOK,
+  STICKERS,
+  applyLookScript,
+  lookAttributes,
+  type PillLook,
+} from "../voice/pillLook.ts";
+import { onPillLook, pillLook, refreshPillTheme } from "../voice/pillTheme.ts";
+import { MARK_REVERSED_PATH } from "../voice/trayArt.ts";
 import { CARD_ABOVE_WORK_AREA, COMPANION_CSS } from "./companionStyle.ts";
 
 export type AnswerOutput = "spoken" | "written";
@@ -41,29 +52,34 @@ document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{marks(b.datas
 document.getElementById('f').onsubmit=e=>{e.preventDefault();ipcRenderer.send('baton-screen:ask',q.value);};
 addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:ask','');});</script></body></html>`;
 
-export const PROMPT_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
+const MARK = `<svg viewBox="0 0 256 256" aria-hidden="true"><path fill="currentColor" d="${MARK_REVERSED_PATH}"/></svg>`;
+
+/** The prompt that replaced the system dialogs, in the pill's design and the app's theme (pillLook.ts). */
+export const promptDocument = (
+  look: PillLook = DEFAULT_LOOK,
+) => `<!doctype html><html ${lookAttributes(look)}><head><meta charset="utf-8"><style>${PILL_FACES[look.design]}${CARD_CSS}
 html,body{overflow:hidden}
-body{padding:12px;box-sizing:border-box}
-#b{padding:15px 18px 14px;border-radius:16px}
-h1{margin:0;font-size:15.5px;font-weight:600;line-height:1.35}
-p{margin:6px 0 0;color:var(--soft);font-size:13.5px;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere;max-height:320px;overflow:auto}
-nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
-button{all:unset;padding:6px 14px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--text);background:rgba(255,255,255,.1);cursor:default}
-button.main{background:#fff;color:#111}
-button:hover{background:rgba(255,255,255,.18)}
-button.main:hover{background:#e8e8ec}
-button:disabled{opacity:.45}
-button:focus-visible{outline:2px solid var(--blue-soft);outline-offset:2px}
-</style></head><body><div id="b" class="glass" role="alertdialog" aria-labelledby="h" aria-describedby="d"><h1 id="h"></h1><p id="d"></p><nav id="n"></nav></div>
+/* As wide as its words up to the design's card width; a short shadow, so the window's margin around it stays small. */
+#b{width:fit-content;min-width:260px;max-width:350px;padding:16px}
+:root[data-design=quiet] #b{max-width:340px}
+h1{margin:0;font-size:20px;font-weight:var(--w-ttl);letter-spacing:-.015em;line-height:25px}
+:root[data-design=lively] h1{font-variation-settings:"opsz" 28;letter-spacing:-.01em}
+p{margin:4px 0 0;font-size:16px;line-height:21px;color:var(--fg2);white-space:pre-line;overflow-wrap:anywhere;max-height:320px;overflow:auto}
+:root[data-design=lively] p{margin:6px 0 0;line-height:22px}
+.hd{align-items:flex-start}.hd .gl{margin-top:4px}.hd .gl svg{width:16px;height:16px}
+nav{display:flex;flex-direction:row-reverse;flex-wrap:wrap;justify-content:flex-start;gap:6px;margin-top:14px}
+:root[data-design=quiet] nav{gap:4px}:root[data-design=lively] nav{margin-top:16px}
+</style></head><body><div id="wrap"><div id="b" class="card stk" role="alertdialog" aria-labelledby="h" aria-describedby="d"><span class="sticker" style="clip-path:${STICKERS.bloom}" aria-hidden="true">${MARK}</span><div class="hd"><span class="gl">${MARK}</span><div class="grow"><h1 id="h"></h1><p id="d"></p></div></div><nav id="n"></nav></div></div>
 <script>const {ipcRenderer}=require('electron');
-window.fill=(o)=>{document.getElementById('h').textContent=o.title;document.getElementById('d').textContent=o.detail;const n=document.getElementById('n');
- o.buttons.forEach((text,i)=>{const b=document.createElement('button');b.textContent=text;if(i===0)b.className='main';b.onclick=()=>ipcRenderer.send('baton-screen:prompt',i);n.appendChild(b);});
+window.fill=(o)=>{document.getElementById('h').textContent=o.title;document.getElementById('d').textContent=o.detail;const n=document.getElementById('n'),lively=document.documentElement.dataset.design==='lively';
+ // The first is the default and sits rightmost; the cancel is plain words; any other is a quiet button.
+ o.buttons.forEach((text,i)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.className=i===0?'b pri':i===o.cancel?'b txt':lively?'b ton':'b';b.onclick=()=>ipcRenderer.send('baton-screen:prompt',i);n.appendChild(b);});
  addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:prompt',o.cancel);});
  const d=document.getElementById('d'),m=n.firstChild,more=()=>d.scrollHeight-d.scrollTop-d.clientHeight>2;
  let armed=!o.armMs;const ready=()=>{if(armed&&!more())m.disabled=false;};
  if(o.armMs)setTimeout(()=>{armed=true;ready();},o.armMs);
  if(more()||o.armMs){m.disabled=true;d.tabIndex=0;d.focus();d.addEventListener('scroll',ready);}else m.focus();
- return document.body.scrollHeight;};</script></body></html>`;
+ const r=document.getElementById('wrap').getBoundingClientRect();return [Math.ceil(r.width),Math.ceil(r.height)];};</script></body></html>`;
 
 export interface PromptInput {
   readonly title: string;
@@ -174,6 +190,7 @@ export const createCompanionWindows = (input: {
       () =>
         new Promise<number>((resolve) => {
           const area = cursorArea();
+          void refreshPillTheme();
           const win = companionWindow(
             {
               x: Math.round(area.x + (area.width - PROMPT_WIDTH) / 2),
@@ -197,18 +214,19 @@ export const createCompanionWindows = (input: {
           promptBox = { win, done, cancel: options.cancel, scoped: options.scoped === true };
           win.on("closed", () => done(options.cancel));
           void win
-            .loadURL(`data:text/html,${encodeURIComponent(PROMPT_DOCUMENT)}`)
+            .loadURL(`data:text/html,${encodeURIComponent(promptDocument(pillLook()))}`)
             .then(() =>
               win.webContents.executeJavaScript(`window.fill(${JSON.stringify(options)})`),
             )
-            .then((height: number) => {
+            .then(([wide, height]: [number, number]) => {
               if (win.isDestroyed()) return;
               // A long plan scrolls inside the box; the buttons stay on the screen.
               const tall = Math.min(Math.ceil(height), area.height - 120);
+              const width = Math.min(PROMPT_WIDTH, Math.ceil(wide));
               win.setBounds({
-                x: Math.round(area.x + (area.width - PROMPT_WIDTH) / 2),
+                x: Math.round(area.x + (area.width - width) / 2),
                 y: Math.round(area.y + area.height - tall - CARD_ABOVE_WORK_AREA),
-                width: PROMPT_WIDTH,
+                width,
                 height: tall,
               });
               if (options.inactive === true) return win.showInactive();
@@ -223,6 +241,12 @@ export const createCompanionWindows = (input: {
     return turn;
   };
 
+  const stopLook = onPillLook((look) => {
+    const win = promptBox?.win;
+    if (win !== undefined && !win.isDestroyed())
+      void win.webContents.executeJavaScript(applyLookScript(look)).catch(() => undefined);
+  });
+
   return {
     openAsk,
     ask,
@@ -231,6 +255,7 @@ export const createCompanionWindows = (input: {
       if (promptBox !== null && (force || promptBox.scoped)) promptBox.done(promptBox.cancel);
     },
     dispose: () => {
+      stopLook();
       closeAsk();
       promptBox?.done(promptBox.cancel);
       Electron.ipcMain.removeListener("baton-screen:ask", onAskIpc);

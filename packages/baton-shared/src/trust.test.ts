@@ -52,6 +52,24 @@ describe("One Trust", () => {
         expect(decideTrust({ call, context })).toEqual(judgeToolCall(call, context));
   });
 
+  it("a tool under the renamed mcp__tessaya__ server gets the verdict it gets under mcp__baton__", () => {
+    const agent = { name: "Freya", tools: ["type_text", "act_batch", "press_keys"], lead: false };
+    const plan = ['type "hello world" into the note'];
+    const batch = {
+      tool: "mcp__baton__act_batch",
+      input: { steps: [{ tool: "type_text", args: { text: "hello world" } }] },
+    };
+    for (const context of CONTEXTS)
+      for (const call of [...CALLS.filter((c) => c.tool.startsWith("mcp__baton__")), batch]) {
+        const renamed = { ...call, tool: call.tool.replace("mcp__baton__", "mcp__tessaya__") };
+        // The reason may quote the tool's full name; the verdict and its risk must match.
+        expect(rank(judgeToolCall(renamed, context))).toBe(rank(judgeToolCall(call, context)));
+        expect(rank(decideTrust({ call: renamed, context, agent, plan }))).toBe(
+          rank(decideTrust({ call, context, agent, plan })),
+        );
+      }
+  });
+
   it("the default roster's personas have no tool list of their own, so they change nothing", () => {
     for (const p of DEFAULT_OS_PACK.personas) expect(p.tools).toBeNull();
   });

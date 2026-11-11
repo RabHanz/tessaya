@@ -27,6 +27,10 @@ export const herdrPaneRef = (env: ReadonlyMap<string, string>): string | null =>
     : `${session}~${pane}`;
 };
 
+/** A session a program drives (SDK, or T3's own Claude turns, which set "t3-code"), not a terminal. */
+const programDriven = (entrypoint: unknown): boolean =>
+  typeof entrypoint === "string" && (entrypoint.startsWith("sdk") || entrypoint === "t3-code");
+
 /** One descriptor, or null when it is not a live interactive session. */
 export const parseClaudeSessionDescriptor = (
   json: string,
@@ -52,7 +56,7 @@ export const parseClaudeSessionDescriptor = (
   if (str(d["kind"]) !== "interactive") return null;
   // SDK-driven sessions belong to the program that runs them (T3 threads, automation);
   // nobody types into them and adopting one would kill its owner's work.
-  if ((str(d["entrypoint"]) ?? "").startsWith("sdk")) return null;
+  if (programDriven(d["entrypoint"])) return null;
   if (!input.alive(pid)) return null;
   const updated = d["updatedAt"];
   return {
@@ -141,6 +145,69 @@ export const accountOfConfigDir = (dir: string): string | null => {
   }
 };
 
+/** Where tessaya-claude keeps each conversation's own config dir (LIVE-ACCOUNT). */
+export const THREAD_DIRS_ROOT =
+  process.env.TESSAYA_CLAUDE_THREADS ??
+  NodePath.join(NodeOS.homedir(), ".local", "share", "tessaya", "claude-threads");
+
+/** A conversation's own config dir: one tessaya-claude made, so its login can be switched while it runs. */
+export const isThreadConfigDir = (dir: string | null | undefined): dir is string =>
+  dir !== null && dir !== undefined && dir.startsWith(`${THREAD_DIRS_ROOT}${NodePath.sep}`);
+
+/** The thread dirs, each once (the `s-<id>` names that link to a dir are skipped). */
+const threadConfigDirs = (): ReadonlyArray<string> => {
+  try {
+    return NodeFS.readdirSync(THREAD_DIRS_ROOT, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => NodePath.join(THREAD_DIRS_ROOT, entry.name));
+  } catch {
+    return [];
+  }
+};
+
+const CSWAP_SEQUENCE = NodePath.join(
+  NodeOS.homedir(),
+  ".local",
+  "share",
+  "claude-swap",
+  "sequence.json",
+);
+
+/** The cswap slot a thread dir holds (written by tessaya-claude), or null when it is not known. */
+export const threadDirSlot = (dir: string): string | null => {
+  try {
+    const slot = NodeFS.readFileSync(NodePath.join(dir, ".tessaya-account"), "utf8").trim();
+    return /^\d{1,4}$/.test(slot) ? slot : null;
+  } catch {
+    return null;
+  }
+};
+
+/** A thread dir's account: its slot's address before the `@`, from cswap's registry. */
+const threadDirAccount = (dir: string): string | null => {
+  const slot = threadDirSlot(dir);
+  if (slot === null) return accountOfConfigDir(dir);
+  try {
+    const parsed = JSON.parse(NodeFS.readFileSync(CSWAP_SEQUENCE, "utf8")) as {
+      accounts?: Record<string, { email?: unknown }>;
+    };
+    const email = parsed.accounts?.[slot]?.email;
+    return typeof email === "string" && email.includes("@") ? email.split("@")[0]! : null;
+  } catch {
+    return null;
+  }
+};
+
+/** A resume of `sessionId` finds the dir that hosted it (tessaya-claude looks for `s-<id>`). */
+const linkSessionDir = (dir: string, sessionId: string): void => {
+  if (!/^[A-Za-z0-9-]{1,80}$/.test(sessionId)) return;
+  const link = NodePath.join(THREAD_DIRS_ROOT, `s-${sessionId}`);
+  if (NodePath.resolve(dir) === link) return;
+  try {
+    NodeFS.symlinkSync(dir, link);
+  } catch {}
+};
+
 /**
  * Tessaya's own helper sessions (the assistant, rewrites, an account's login) run Claude in a folder under the app's
  * data directory (.t3). They are not the user's work: they must not become threads or catalog rows.
@@ -153,13 +220,15 @@ export const readAllProfileLiveSessions = (): Effect.Effect<ReadonlyArray<Claude
   Effect.gen(function* () {
     const home = NodePath.join(NodeOS.homedir(), ".claude");
     const all: Array<ClaudeLiveSession> = [];
-    for (const dir of claudeConfigDirs()) {
+    for (const dir of [...claudeConfigDirs(), ...threadConfigDirs()]) {
+      const thread = isThreadConfigDir(dir);
       const found = yield* readClaudeLiveSessions({
-        account: accountOfConfigDir(dir),
+        account: thread ? threadDirAccount(dir) : accountOfConfigDir(dir),
         dir: NodePath.join(dir, "sessions"),
       });
       for (const session of found) {
         if (isTessayaOwnFolder(session.cwd)) continue;
+        if (thread) linkSessionDir(dir, session.sessionId);
         all.push(dir === home ? session : { ...session, configDir: dir });
       }
     }
@@ -195,3 +264,93 @@ export const readClaudeLiveSessions = (input: {
     }
     return sessions.toSorted((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
   });
+
+/** What a session descriptor says about its process, for checking a pid before any signal. */
+export interface DescriptorProcess {
+  readonly pid: number;
+  /** /proc/<pid>/stat start time as Claude recorded it, when it did. */
+  readonly procStart?: string | undefined;
+  /** When the session started, ms. */
+  readonly startedAt?: number | undefined;
+}
+
+/**
+ * The pid still belongs to the Claude process the descriptor names, not a later process that reused the number:
+ * its command line runs claude, and its start time is the recorded one (or, without it, not after the session began).
+ */
+export const isDescriptorProcess = (
+  d: DescriptorProcess,
+  proc: { readonly cmdline: string | null; readonly stat: string | null; readonly bootMs: number },
+): boolean => {
+  if (proc.cmdline === null || proc.stat === null || !/claude/i.test(proc.cmdline)) return false;
+  const fields = proc.stat.slice(proc.stat.lastIndexOf(")") + 2).split(" ");
+  const start = fields[19];
+  if (start === undefined) return false;
+  if (d.procStart !== undefined) return start === d.procStart;
+  if (d.startedAt === undefined) return false;
+  // Clock ticks are 100 a second on Linux; a process starts just before it writes its descriptor.
+  return proc.bootMs + Number(start) * 10 <= d.startedAt + 2_000;
+};
+
+const readProc = (pid: number) => {
+  const read = (file: string) => {
+    try {
+      return NodeFS.readFileSync(`/proc/${pid}/${file}`, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  let bootMs = 0;
+  try {
+    const btime = /^btime (\d+)$/m.exec(NodeFS.readFileSync("/proc/stat", "utf8"));
+    bootMs = btime === null ? 0 : Number(btime[1]) * 1000;
+  } catch {}
+  return { cmdline: read("cmdline")?.replace(/\0/g, " ") ?? null, stat: read("stat"), bootMs };
+};
+
+/** Every live process whose descriptor holds this session, Tessaya's own SDK ones included, and whether it checks out. */
+export const sessionHolders = (
+  sessionId: string,
+): ReadonlyArray<{ readonly pid: number; readonly verified: boolean; readonly sdk: boolean }> => {
+  const found: Array<{ pid: number; verified: boolean; sdk: boolean }> = [];
+  for (const dir of [...claudeConfigDirs(), ...threadConfigDirs()]) {
+    let names: Array<string>;
+    try {
+      names = NodeFS.readdirSync(NodePath.join(dir, "sessions")).filter((n) =>
+        /^\d+\.json$/.test(n),
+      );
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      try {
+        const d = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "sessions", name), "utf8")) as {
+          sessionId?: unknown;
+          pid?: unknown;
+          procStart?: unknown;
+          startedAt?: unknown;
+          entrypoint?: unknown;
+        };
+        if (d.sessionId !== sessionId || typeof d.pid !== "number" || !alive(d.pid)) continue;
+        if (found.some((f) => f.pid === d.pid)) continue;
+        found.push({
+          pid: d.pid,
+          verified: isDescriptorProcess(
+            {
+              pid: d.pid,
+              procStart: typeof d.procStart === "string" ? d.procStart : undefined,
+              startedAt: typeof d.startedAt === "number" ? d.startedAt : undefined,
+            },
+            readProc(d.pid),
+          ),
+          sdk: programDriven(d.entrypoint),
+        });
+      } catch {}
+    }
+  }
+  return found;
+};
+
+/** The pid of a verified live process holding this session, or null when none does. */
+export const sessionHolderPid = (sessionId: string): number | null =>
+  sessionHolders(sessionId).find((h) => h.verified)?.pid ?? null;

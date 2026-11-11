@@ -4,6 +4,7 @@
  * it was left. A fresh install opens it; an existing one is offered it once on Home. Help and Settings
  * run it again.
  */
+import { DESKTOP_HOLD_KEYS } from "@t3tools/baton-contracts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { text } from "../home/strings.ts";
 
@@ -64,14 +65,7 @@ export const SETUP_STEPS: ReadonlyArray<SetupStep> = STEPS.map(({ facts, ...s })
       }),
 }));
 
-/** F-keys are safe alone; the first is the default chord. */
-export const HOLD_KEY_CHOICES: ReadonlyArray<string> = [
-  "Ctrl+Alt+Space",
-  "F9",
-  "F8",
-  "Ctrl+Shift+Space",
-  "Pause",
-];
+export const HOLD_KEY_CHOICES: ReadonlyArray<string> = DESKTOP_HOLD_KEYS;
 
 export const setupHoldControl = (current: string): HomeControl => ({
   id: "setup.hold",

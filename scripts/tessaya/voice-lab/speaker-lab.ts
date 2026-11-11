@@ -53,7 +53,7 @@ const plan = JSON.parse(NodeFS.readFileSync(planPath!, "utf8")) as {
 };
 const embedder = await createSpeakerEmbedder(modelPath!, "lab");
 
-const started = Date.now();
+const started = performance.now();
 const enrolVectors: Float32Array[] = [];
 let enrolSeconds = 0;
 for (const file of plan.enrol) {
@@ -112,5 +112,5 @@ for (const [group, files] of Object.entries(plan.groups)) {
     },
   };
 }
-report["seconds"] = Math.round((Date.now() - started) / 1000);
+report["seconds"] = Math.round((performance.now() - started) / 1000);
 console.log(JSON.stringify(report, null, 2));

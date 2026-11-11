@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Server version, e.g. 0.1.5-baton.49 (tag server-<version> is created at the dispatched commit)"
+        description: "Server version, e.g. 0.1.5-tessaya.1 (tag server-<version> is created at the dispatched commit)"
         required: true
         type: string
 
@@ -28,7 +28,8 @@ jobs:
     steps:
       - name: Check version
         run: |
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-baton\.[0-9]+$ ]] || { echo "Version must look like 0.1.5-baton.49, got: $VERSION" >&2; exit 1; }
+          # -baton.N is the old suffix, still accepted so an older build can be rebuilt.
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(tessaya|baton)\.[0-9]+$ ]] || { echo "Version must look like 0.1.5-tessaya.1, got: $VERSION" >&2; exit 1; }
 
       - uses: actions/checkout@v6
 

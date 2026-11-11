@@ -29,6 +29,8 @@ export const createOutsideSlot = (input: {
   readonly record: GateInput["record"];
   readonly jobProjects?: GateInput["jobProjects"];
   readonly chrome?: GateInput["chrome"];
+  /** A standing job's owning persona: its memory view. A device's turn has none. */
+  readonly agent?: string;
 }) => {
   const taint = createTaint();
   // Once he speaks the turn is over: nothing it started may go on acting.
@@ -42,11 +44,11 @@ export const createOutsideSlot = (input: {
     );
     return work;
   };
-  // No persona: the walled view, whoever is speaking to him at the time.
+  // A device's turn has no persona: the walled view, whoever is speaking to him at the time.
   const memory = createDesktopMemory({
     call: input.memoryCall,
     notes: input.notes,
-    agent: () => undefined,
+    agent: () => input.agent,
   });
   // No plan grant, no typing grant and no "act without asking": every allow but Tessaya's own reads becomes an ask.
   const judge = createAgentGate({
@@ -97,11 +99,14 @@ export const createOutsideSlot = (input: {
     jobs: async (op, args) =>
       op === "weave_send" && detectSecret(String(args["text"] ?? "")) !== null
         ? "That looks like a secret, and a weave never carries one. Nothing was sent."
-        : op === "user_job_create"
-          ? input.host.jobs("user_job_propose", args)
-          : op === "user_job_update" || op === "user_job_delete"
-            ? "Only he can change or remove his standing jobs; they are on his Trust page."
-            : input.host.jobs(op, args),
+        : op === "team"
+          ? // A device's view names no persona and never asks for his own: walled work stays hidden.
+            input.host.jobs("team", {})
+          : op === "user_job_create"
+            ? input.host.jobs("user_job_propose", args)
+            : op === "user_job_update" || op === "user_job_delete"
+              ? "Only he can change or remove his standing jobs; they are on his Trust page."
+              : input.host.jobs(op, args),
   };
   return {
     gate,

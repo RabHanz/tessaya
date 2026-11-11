@@ -547,6 +547,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
               threadId,
               message: { messageId, role: "user", text, attachments: [] },
               modelSelection: context.selectedModelSelection,
+              providerChangeApproved: context.providerChangeApproved,
               runtimeMode,
               interactionMode: context.interactionMode,
               createdAt,

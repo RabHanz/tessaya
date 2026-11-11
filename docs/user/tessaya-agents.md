@@ -6,11 +6,13 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 
 - `tessaya_jobs` and `tessaya_watch`: jobs, their parts, and work that looks stuck or waits for you.
 - `tessaya_record`: what happened, who did it and for which project.
+- `tessaya_team_board`: who on the team is doing what: each persona's current jobs, its latest conversation and its newest Record lines. A private persona shows only whether it is busy.
 - `tessaya_rules`: standing rules and when they last fired.
 - `tessaya_sessions`: the Claude Code sessions on this computer, by title and folder.
 - `tessaya_fleet`: what is live right now: each piece of work and its state, the Herdr panes and the running Claude Code processes.
 - `tessaya_memory_search`: what Tessaya remembers.
-- `tessaya_state`: how Tessaya is set up on your computer, one part at a time: settings, voice (including whether speech recognition is local or cloud), personas, skills, or diagnostics (versions, connections, recent error codes). Never a key, the vault or anything you said. It needs Tessaya's desktop app to be connected; to change a setting, an agent asks with `tessaya_ask`.
+- `tessaya_state`: how Tessaya is set up on your computer, one part at a time: settings, voice (including whether speech recognition is local or cloud), personas, skills, or diagnostics (versions, connections, recent error codes). Never a key, the vault or anything you said. It needs Tessaya's desktop app to be connected; to change any other setting, an agent asks with `tessaya_ask`.
+- `tessaya_desktop_settings`: reads or changes your dictation settings in the desktop app (Clean up with AI, pill style, show words, the hold key from the safe list, cues, frosted glass, double tap, learning words, quieting other sounds). The app applies a change within a few seconds, without a restart (one not taken within 15 seconds is dropped, so it never lands late), and the agent sees what it then runs with. Only an agent with full access can use it; nothing else in your settings, and no key, is reachable this way.
 
 ## Asking her to do something
 
@@ -21,6 +23,12 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 - `weave_send` messages a coding session in a terminal pane, by its name. It types only into an empty input; if the session is busy or has a draft, the message waits its turn. It needs **Full access**, and it does not wait for your yes.
 - `weave_list` shows those messages, newest first: whether each arrived, and what the session wrote back.
 - Add `environmentId` to reach a session on a linked environment. A link paired below **Full access** cannot send.
+
+## Move sessions between Tessaya and a terminal
+
+- `tessaya_move_into_tessaya` asks you to move a Terminal thread's session into Tessaya. It only files the request: Tessaya asks you on your screen, and nothing moves until you say yes. T3's own thread agents can use it too.
+- `tessaya_open_in_terminal` opens a Tessaya Claude thread's session in a Herdr pane; the thread comes back when the pane closes. On the agent's own thread it opens at once; on any other thread it asks you first. It is refused while a turn runs.
+- `tessaya_main_session` makes a thread the main session (pinned once, kept on that thread when it restarts in the same Herdr pane) or stops it being one. `tessaya_session_defaults` reads where new sessions start and which thread is the main one; only you change these, in Settings.
 
 ## Agents messaging each other
 

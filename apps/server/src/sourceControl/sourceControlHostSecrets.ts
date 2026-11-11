@@ -118,7 +118,12 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
   settings: Effect.Effect<
     Pick<
       ServerSettings,
-      "sourceControlHosts" | "usageLimitSources" | "easDeviceHosts" | "simlockDeviceHosts"
+      | "sourceControlHosts"
+      | "usageLimitSources"
+      | "easDeviceHosts"
+      | "simlockDeviceHosts"
+      | "cloudSpeechCredentials"
+      | "dictationCleanupCredentials"
     >,
     E
   >,
@@ -128,6 +133,8 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
       ...collectSourceControlHostSecretReferences(current.sourceControlHosts),
       ...collectUsageLimitSecretReferences(current.usageLimitSources),
       ...collectDeviceHostSecretReferences(current),
+      ...Object.values(current.cloudSpeechCredentials).filter(isSecretReference),
+      ...Object.values(current.dictationCleanupCredentials).filter(isSecretReference),
     ]),
     Effect.orElseSucceed(() => undefined),
   );

@@ -25,6 +25,12 @@ export default defineConfig({
         dependsOn: ["t3#build"],
         cache: false,
       },
+      // CI bundle jobs skip the Linux browser secret helper; packaging stages one per arch.
+      "build:bundle": {
+        command: "node scripts/build-preview-annotation-css.mjs && vp pack",
+        dependsOn: ["t3#build"],
+        cache: false,
+      },
       dev: {
         command:
           "node scripts/build-browser-secret.mjs && node scripts/build-preview-annotation-css.mjs && cross-env T3CODE_DESKTOP_DEV=1 vp pack --watch",
@@ -78,7 +84,6 @@ export default defineConfig({
         "src/snapShot/GlobalShiftShortcutWorker.ts",
         "src/snapShot/RegionSnapShotWorker.ts",
         "src/snapShot/SnapShotAccessibilityWorker.ts",
-        "src/baton/voice/onnxWorker.ts",
       ],
       clean: false,
       deps: {
@@ -152,6 +157,22 @@ export default defineConfig({
       sourcemap: true,
       outExtensions: () => ({ js: ".cjs" }),
       entry: ["src/baton/voice/pillPreload.ts"],
+    },
+    {
+      // Baton's voice worker; its own block so upstream's worker list and its bundle test stay upstream's.
+      format: "cjs",
+      outDir: "dist-electron",
+      dts: false,
+      sourcemap: true,
+      outExtensions: () => ({ js: ".cjs" }),
+      define: publicConfigDefine,
+      entry: { "baton/voice/onnxWorker": "src/baton/voice/onnxWorker.ts" },
+      clean: false,
+      deps: {
+        alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),
+        neverBundle: isMainProcessExternal,
+        onlyBundle: false,
+      },
     },
   ],
   test: {

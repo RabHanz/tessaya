@@ -5,7 +5,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import type { ThreadId } from "@t3tools/baton-contracts";
+import type { ThreadId, WorkSession } from "@t3tools/baton-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -29,6 +29,12 @@ export class BatonMemoryReactor extends Context.Service<
   { readonly start: () => Effect.Effect<void, never, Scope.Scope> }
 >()("t3/baton/BatonMemoryReactor") {}
 
+/** The project's title, which memory scopes by (as a turn's project is), or null when it is not known. */
+const projectTitle = Effect.fn("BatonMemoryReactor.projectTitle")(function* (projectId: string) {
+  const projects = yield* (yield* BatonEngine).projects;
+  return projects.find((p) => p.id === projectId)?.title ?? null;
+});
+
 /**
  * A job worker's thread finished a turn after the go-ahead: its last message is the report. The
  * planning turn is not a report, so a thread with a single user message is skipped.
@@ -49,13 +55,57 @@ export const learnFromJobThread = Effect.fn("BatonMemoryReactor.learnFromJobThre
   const memory = yield* BatonMemoryService;
   const digest = NodeCrypto.createHash("sha1").update(last.text).digest("hex");
   if (!(yield* memory.noteOnce(`job:${threadId}`, digest))) return;
-  yield* (yield* BatonMemoryLearning).learn({
+  const learning = yield* BatonMemoryLearning;
+  yield* learning.learn({
     origin: "job",
     said: terms.goal,
     reply: last.text,
     sourceRef: id,
     tainted: false,
     project: null,
+  });
+  const session = yield* (yield* WorkSessionService).get(id).pipe(Effect.orElseSucceed(() => null));
+  yield* learning.episode({
+    origin: "job",
+    title: `the job "${terms.goal.slice(0, 60)}"`,
+    transcript: `Goal: ${terms.goal}\n\nReport: ${last.text}`,
+    sourceRef: `job:${id}:${digest.slice(0, 12)}`,
+    project: session === null ? null : yield* projectTitle(session.projectId),
+    tainted: false,
+  });
+});
+
+/**
+ * A work session left "active" (settled or archived): one episode from its goal, where it got to and its last
+ * exchange. A job's session is left to the job's own episode.
+ */
+export const episodeFromSession = Effect.fn("BatonMemoryReactor.episodeFromSession")(function* (
+  session: WorkSession,
+) {
+  if (session.status === "active") return null;
+  if ((yield* (yield* BatonJobService).terms(session.id)) !== null) return null;
+  const messages =
+    session.activeThreadId === null
+      ? []
+      : yield* (yield* BatonEngine).recentMessages(session.activeThreadId, 2);
+  const transcript = [
+    `Session: ${session.title}`,
+    session.objective === "" ? null : `Goal: ${session.objective}`,
+    session.synopsis?.currentAction == null
+      ? null
+      : `Where it got to: ${session.synopsis.currentAction}`,
+    ...messages.map((m) => `${m.role === "user" ? "He" : "The agent"}: ${m.text.slice(0, 1_500)}`),
+    `It ended ${session.status}.`,
+  ]
+    .filter((x): x is string => x !== null)
+    .join("\n\n");
+  return yield* (yield* BatonMemoryLearning).episode({
+    origin: "session",
+    title: `the session "${session.title.slice(0, 60)}"`,
+    transcript,
+    sourceRef: `session:${session.id}:${session.updatedAt}`,
+    project: yield* projectTitle(session.projectId),
+    tainted: false,
   });
 });
 
@@ -74,6 +124,7 @@ export const layer = Layer.effect(
   BatonMemoryReactor,
   Effect.gen(function* () {
     const engine = yield* BatonEngine;
+    const workSessions = yield* WorkSessionService;
     const context = yield* Effect.context<
       | BatonJobService
       | WorkSessionService
@@ -90,6 +141,20 @@ export const layer = Layer.effect(
               Effect.provideContext(context),
               Effect.ignoreCause({ log: true }),
             ),
+          ),
+        );
+        yield* forkParked(
+          Stream.runForEach(
+            Stream.unwrap(Effect.map(workSessions.subscribe, Stream.fromSubscription)).pipe(
+              Stream.scoped,
+            ),
+            (item) =>
+              item.kind === "fabric.workSession.statusChanged" && item.previousStatus === "active"
+                ? episodeFromSession(item.workSession).pipe(
+                    Effect.provideContext(context),
+                    Effect.ignoreCause({ log: true }),
+                  )
+                : Effect.void,
           ),
         );
         yield* forkParked(

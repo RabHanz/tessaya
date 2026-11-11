@@ -3,21 +3,26 @@
 use serde_json::{json, Value};
 use windows::Win32::Foundation::{POINT, RECT};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
-use windows::Win32::System::Variant::VARIANT;
+use windows::Win32::System::Variant::{VARIANT, VT_BSTR};
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationCacheRequest, IUIAutomationCondition, IUIAutomationElement, IUIAutomationElementArray,
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
     IUIAutomationTogglePattern, IUIAutomationValuePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
     ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded, ToggleState_Off, ToggleState_On,
-    UIA_PaneControlTypeId, UIA_WindowControlTypeId,
+    UIA_PaneControlTypeId, UIA_WindowControlTypeId, UIA_ButtonControlTypeId, UIA_CheckBoxControlTypeId,
+    UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId, UIA_ListControlTypeId, UIA_MenuItemControlTypeId,
+    UIA_RadioButtonControlTypeId, UIA_TreeControlTypeId,
     UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_DocumentControlTypeId,
     UIA_EditControlTypeId, UIA_ExpandCollapseExpandCollapseStatePropertyId, UIA_ExpandCollapsePatternId,
     UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId, UIA_IsEnabledPropertyId, UIA_IsOffscreenPropertyId,
     UIA_IsPasswordPropertyId, UIA_ListItemControlTypeId, UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId,
     UIA_SelectionItemIsSelectedPropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId,
     UIA_ToggleToggleStatePropertyId, UIA_TogglePatternId, UIA_TreeItemControlTypeId, UIA_ValuePatternId,
-    UIA_ValueValuePropertyId,
+    UIA_ValueValuePropertyId, IUIAutomationTextPattern, TextPatternRangeEndpoint_End, TextPatternRangeEndpoint_Start,
+    TextUnit_Character, UIA_TextPatternId, UIA_FontSizeAttributeId, UIA_FontNameAttributeId,
 };
+use windows::Win32::System::Com::SAFEARRAY;
+use windows::Win32::System::Ole::SafeArrayDestroy;
 use windows::core::{BOOL, BSTR};
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -663,6 +668,195 @@ pub fn focus_state(window: Option<&str>) -> Result<Value, String> {
             format!("{}: {}{}", s.kind, s.name.trim().chars().take(80).collect::<String>(), detail(&element, true, &s.name))
         });
         Ok(json!({"window": title, "handle": top.0 as isize, "focus": focus}))
+    }
+}
+
+/// The focused field is a password box or named like a secret: the rule `detail` keeps. A field that will not say
+/// whether it is a password box counts as one. Runs on its own thread, with its own STA, never on the helper's loop.
+pub fn focused_is_secret() -> bool {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+            Ok(automation) => automation,
+            Err(_) => return false,
+        };
+        let Ok(element) = automation.GetFocusedElement() else { return false };
+        let password = element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true);
+        let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        password || secret_name(&name)
+    }
+}
+
+/// The keyboard is on something that takes no typing: Explorer's or the desktop's icons, a list, a tree, a button. A
+/// paste there does nothing (or pastes files), so the words go on the clipboard with a card instead. Anything that might
+/// take text stays a box: an edit, a document, a text pattern, a writable value, a data item (a cell in Excel or
+/// Sheets), and any pane, window or custom control, which is how editors that draw their own text show up, except the
+/// shell's own desktop and taskbar panes (`shell_surface`).
+pub fn focused_takes_no_text() -> bool {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+            Ok(automation) => automation,
+            Err(_) => return false,
+        };
+        let Ok(element) = automation.GetFocusedElement() else { return false };
+        let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+        let class = element.CurrentClassName().map(|c| c.to_string()).unwrap_or_default();
+        if crate::shell_surface(&class) {
+            return true;
+        }
+        if element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).is_ok() {
+            return false;
+        }
+        let writable = element
+            .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
+            .and_then(|v| v.CurrentIsReadOnly())
+            .is_ok_and(|read_only| !read_only.as_bool());
+        !writable
+            && [
+                UIA_ListControlTypeId,
+                UIA_ListItemControlTypeId,
+                UIA_TreeControlTypeId,
+                UIA_TreeItemControlTypeId,
+                UIA_ButtonControlTypeId,
+                UIA_MenuItemControlTypeId,
+                UIA_TabItemControlTypeId,
+                UIA_HyperlinkControlTypeId,
+                UIA_ImageControlTypeId,
+                UIA_CheckBoxControlTypeId,
+                UIA_RadioButtonControlTypeId,
+            ]
+            .iter()
+            .any(|t| t.0 == kind)
+    }
+}
+
+/// The words either side of the caret in the focused field, as the desktop's PowerShell read did, without starting
+/// PowerShell (300 ms or more) for each dictation. Null when the field does not say.
+pub fn caret_context(chars: i32) -> Result<Value, String> {
+    let err = |e: windows::core::Error| e.to_string();
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+        let element = automation.GetFocusedElement().map_err(err)?;
+        // A password box, or one named like a secret, is never read: the rule `detail` keeps.
+        let password = element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true);
+        let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        if password || secret_name(&name) {
+            return Ok(json!({"before": null, "after": null}));
+        }
+        let around = (|| -> windows::core::Result<Option<(String, String)>> {
+            let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
+            let selection = pattern.GetSelection()?;
+            if selection.Length()? == 0 {
+                return Ok(None);
+            }
+            let range = selection.GetElement(0)?;
+            let before = range.Clone()?;
+            before.MoveEndpointByRange(TextPatternRangeEndpoint_End, &range, TextPatternRangeEndpoint_Start)?;
+            before.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -chars)?;
+            let after = range.Clone()?;
+            after.MoveEndpointByRange(TextPatternRangeEndpoint_Start, &range, TextPatternRangeEndpoint_End)?;
+            after.MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Character, chars)?;
+            Ok(Some((before.GetText(chars)?.to_string(), after.GetText(chars)?.to_string())))
+        })()
+        .ok()
+        .flatten();
+        if let Some((before, after)) = around {
+            return Ok(json!({"before": before, "after": after}));
+        }
+        // An empty field with no text pattern still says so through its value.
+        let empty = element
+            .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
+            .and_then(|v| v.CurrentValue())
+            .is_ok_and(|v| v.is_empty());
+        Ok(if empty { json!({"before": "", "after": ""}) } else { json!({"before": null, "after": null}) })
+    }
+}
+
+/// The first box of a text range, in physical screen pixels; the array is freed here.
+unsafe fn first_box(array: *mut SAFEARRAY) -> Option<(f64, f64, f64, f64)> {
+    if array.is_null() {
+        return None;
+    }
+    let a = &*array;
+    let found = if a.rgsabound[0].cElements >= 4 && !a.pvData.is_null() {
+        let d = std::slice::from_raw_parts(a.pvData as *const f64, 4);
+        Some((d[0], d[1], d[2], d[3]))
+    } else {
+        None
+    };
+    let _ = SafeArrayDestroy(array);
+    found.filter(|b| b.3 > 0.0)
+}
+
+/// The caret's box, the field's box (physical px) and the font size (points, 0 when the field does not say), for
+/// the words to be drawn where they will land. A password box, or one named like a secret, gives nothing.
+/// A VARIANT's text when it holds a BSTR, else empty (a mixed-font range answers with the "mixed" object). Read by hand:
+/// windows 0.61's `TryFrom<&VARIANT> for BSTR` needs the Com_StructuredStorage feature, which this crate leaves off.
+fn variant_text(v: &VARIANT) -> String {
+    unsafe {
+        if v.Anonymous.Anonymous.vt == VT_BSTR {
+            v.Anonymous.Anonymous.Anonymous.bstrVal.to_string()
+        } else {
+            String::new()
+        }
+    }
+}
+
+/// How many characters before the caret are looked at for right-to-left script.
+const RTL_LOOK: i32 = 40;
+
+pub fn caret_geometry() -> Result<Value, String> {
+    let err = |e: windows::core::Error| e.to_string();
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+        let element = automation.GetFocusedElement().map_err(err)?;
+        let password = element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true);
+        let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        if password || secret_name(&name) {
+            return Ok(json!({"caret": null}));
+        }
+        let field = element.CurrentBoundingRectangle().map_err(err)?;
+        let found = (|| -> windows::core::Result<Option<((f64, f64, f64, f64), f64, String, bool)>> {
+            let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)?;
+            let selection = pattern.GetSelection()?;
+            if selection.Length()? == 0 {
+                return Ok(None);
+            }
+            let range = selection.GetElement(0)?;
+            let mut caret = first_box(range.GetBoundingRectangles()?);
+            if caret.is_none() {
+                // A collapsed caret has no box in most fields; the character before it does, and the caret is its right edge.
+                let before = range.Clone()?;
+                before.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -1)?;
+                caret = first_box(before.GetBoundingRectangles()?).map(|(x, y, w, h)| (x + w, y, 0.0, h));
+            }
+            let Some(caret) = caret else { return Ok(None) };
+            let size = range.GetAttributeValue(UIA_FontSizeAttributeId).ok().and_then(|v| f64::try_from(&v).ok()).unwrap_or(0.0);
+            // Only whether the words before the caret run right to left leaves here, never the words.
+            let rtl = (|| -> windows::core::Result<bool> {
+                let before = range.Clone()?;
+                before.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -RTL_LOOK)?;
+                Ok(crate::has_rtl(&before.GetText(RTL_LOOK)?.to_string()))
+            })()
+            .unwrap_or(false);
+            let font = range.GetAttributeValue(UIA_FontNameAttributeId).map(|v| variant_text(&v)).unwrap_or_default();
+            Ok(Some((caret, size, font, rtl)))
+        })()
+        .ok()
+        .flatten();
+        let Some(((x, y, w, h), size, font, rtl)) = found else { return Ok(json!({"caret": null})) };
+        Ok(json!({
+            "caret": {"x": x, "y": y, "width": w, "height": h},
+            "field": {"x": field.left, "y": field.top, "width": field.right - field.left, "height": field.bottom - field.top},
+            "fontPt": size,
+            "fontName": font,
+            "rtl": rtl,
+        }))
     }
 }
 

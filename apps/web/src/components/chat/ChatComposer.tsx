@@ -337,6 +337,8 @@ export interface ChatComposerHandle {
     environmentContexts: EnvironmentContextRecord[];
     selectedPromptEffort: string | null;
     selectedModelSelection: ModelSelection;
+    /** The user picked `selectedModelSelection`'s provider, so the server lets it leave the thread's driver. */
+    providerChangeApproved: boolean;
     multipleModelSelections: ReadonlyArray<ModelSelection> | null;
     providerAvailable: boolean;
     selectedProvider: ProviderDriverKind;
@@ -426,7 +428,10 @@ export interface ChatComposerProps {
   defaultRuntimeMode?: RuntimeMode;
   interactionMode: ProviderInteractionMode;
 
+  /** Limits the picker; null while the thread can hand off to another provider. */
   lockedProvider: ProviderDriverKind | null;
+  /** The started thread's driver. The composer never resolves to another one unless the user picked it. */
+  threadProvider: ProviderDriverKind | null;
   providerStatuses: ServerProvider[];
   providerCatalogKnown: boolean;
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
@@ -555,6 +560,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     runtimeMode,
     interactionMode: requestedInteractionMode,
     lockedProvider,
+    threadProvider,
     providerStatuses,
     providerCatalogKnown,
     activeProjectDefaultModelSelection,
@@ -906,14 +912,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activeThreadModelSelection?.instanceId,
       activeProjectDefaultModelSelection?.instanceId,
     ],
-    lockedProvider,
+    lockedProvider: threadProvider,
     lockedInstanceId:
       activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId,
+    handoffInstanceId:
+      lockedProvider === null && composerDraft.modelSelectionExplicit === true
+        ? composerDraft.activeProvider
+        : null,
   });
   const noProviderAvailable =
     selectedProviderEntry === undefined && multipleModelSelections === null;
   const providerCatalogPending = noProviderAvailable && !providerCatalogKnown;
-  const showProviderUnavailable = noProviderAvailable && !providerCatalogPending;
+  const unavailableThreadProviderName =
+    noProviderAvailable && !providerCatalogPending && threadProvider !== null
+      ? unavailableProviderInstanceId &&
+        (providerStatuses.find((status) => status.instanceId === unavailableProviderInstanceId)
+          ?.displayName ??
+          unavailableProviderInstanceId)
+      : undefined;
+  const threadProviderBlockReason = unavailableThreadProviderName
+    ? `${unavailableThreadProviderName} is not available on this server; ${
+        lockedProvider === null
+          ? "pick another provider to continue."
+          : "fix it in provider settings to continue."
+      }`
+    : null;
+  // A thread that can hand off keeps its picker, so the user can choose where it continues.
+  const showProviderUnavailable =
+    noProviderAvailable &&
+    !providerCatalogPending &&
+    !(lockedProvider === null && threadProviderBlockReason !== null);
   const providerSetupInstanceId = noProviderAvailable
     ? (unavailableProviderInstanceId ??
       (lockedProvider === null
@@ -951,7 +979,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? attachmentBlockReason
       : (attachmentBlockReason ??
         runtimeModeCeilingDenial ??
-        (multipleModelSelections === null ? providerSendBlockReason : null)));
+        (multipleModelSelections === null
+          ? (threadProviderBlockReason ?? providerSendBlockReason)
+          : null)));
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
@@ -2471,6 +2501,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onModelPickerOpenChange={setIsComposerModelPickerOpen}
       modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
       getModelDisabledReason={getModelDisabledReason}
+      onUsageLimitsCommand={props.onUsageLimitsCommand}
     />
   );
   // An open question owns the space above the composer. Only a machine problem,
@@ -3109,6 +3140,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         environmentContexts: composerEnvironmentContexts,
         selectedPromptEffort,
         selectedModelSelection,
+        providerChangeApproved:
+          composerDraft.modelSelectionExplicit === true &&
+          composerDraft.activeProvider === selectedModelSelection.instanceId,
         multipleModelSelections:
           routeKind === "draft" && multipleModelSelections !== null
             ? multipleModelSelections.map((selection) =>
@@ -3181,6 +3215,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       reportedModelSelection,
       settings.planModeEnabled,
       selectedModelSelection,
+      composerDraft.modelSelectionExplicit,
+      composerDraft.activeProvider,
       multipleModelSelections,
       setMultipleModelSelections,
       routeKind,
@@ -3369,7 +3405,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   aria-label="Expand composer"
                 >
                   {prompt.trim() ||
-                    (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything...")}
+                    (threadProviderBlockReason ??
+                      (showProviderUnavailable
+                        ? "Enable a provider in Settings"
+                        : "Ask anything..."))}
                 </button>
                 {collapsedComposerImagePreviews}
                 <button
@@ -3534,9 +3573,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             ? "Add feedback to refine the plan, or leave this blank to implement it"
                             : projectSelectionRequired
                               ? "Choose a project above to start a thread"
-                              : showProviderUnavailable
-                                ? "Enable a provider in Settings to send a message"
-                                : DEFAULT_COMPOSER_PLACEHOLDER
+                              : (threadProviderBlockReason ??
+                                (showProviderUnavailable
+                                  ? "Enable a provider in Settings to send a message"
+                                  : DEFAULT_COMPOSER_PLACEHOLDER))
                     }
                     disabled={
                       projectSelectionRequired ||
@@ -3709,9 +3749,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       step={speechInput.setup.step}
                       status={speechInput.status}
                       model={speechInput.setup.model}
+                      language={speechInput.setup.language}
                       downloading={speechInput.setup.downloading}
                       error={speechInput.setup.error}
                       onOpenChange={speechInput.setup.setOpen}
+                      onRetryCatalog={speechInput.setup.retryCatalog}
                       onDownload={() => void speechInput.setup.download()}
                       onCancelDownload={() => void speechInput.setup.cancelDownload()}
                       onStartRecording={() => void speechInput.setup.startRecording()}

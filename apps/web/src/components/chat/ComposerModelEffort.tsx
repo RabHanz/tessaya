@@ -130,7 +130,11 @@ export function describeComposerEffort(
         ? `${reasoning.label} ${reasoning.currentValue === true ? "On" : "Off"}`
         : ultrathink
           ? "Ultrathink"
-          : getProviderOptionCurrentLabel(reasoning, modelSelection, traits.reportedModelSelection);
+          : (getProviderOptionCurrentLabel(
+              reasoning,
+              modelSelection,
+              traits.reportedModelSelection,
+            ) ?? (reasoning.id === "thinking" ? reasoning.label : null));
   const fast = display.speedLabel === "Fast" || display.speedLabel === "Ultrafast";
   // Agent options such as modes live in the picker; the trigger adds only the context window.
   const contextWindow =
@@ -614,7 +618,8 @@ function UltracodeControl(props: { traits: TraitsSelectionInput }) {
   if (traits.modelIsUnavailable || !ultracodeToggle) return null;
   const on = ultracodeToggle.currentValue === true;
   return (
-    <div className="flex rounded-lg bg-input/40 p-0.5">
+    // No filled track: a lone button on one reads as switched on even when it is off.
+    <div className="flex p-0.5">
       <button
         type="button"
         aria-pressed={on}
@@ -677,6 +682,7 @@ export function ComposerPickerFooter(props: {
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
+  children?: ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2">
@@ -687,6 +693,7 @@ export function ComposerPickerFooter(props: {
         options={props.runtimeModeOptions}
         onChange={props.onRuntimeModeChange}
       />
+      {props.children}
     </div>
   );
 }

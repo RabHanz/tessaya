@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect, it, vi } from "@effect/vitest";
 import {
   EnvironmentId,
   ORCHESTRATION_V2_WS_METHODS,
@@ -97,6 +97,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
   execute: Effect.Effect<A, E>,
   {
     refreshTrigger,
+    refreshIntervalMs,
     idleTtlMs,
     persistence,
     initialState,
@@ -105,6 +106,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
     onAnswer,
   }: {
     readonly refreshTrigger?: Atom.Atom<unknown>;
+    readonly refreshIntervalMs?: number;
     readonly onAnswer?: QueryAnswerHandler<undefined, A>;
     readonly isFinal?: (value: A) => boolean;
     readonly idleTtlMs?: number;
@@ -152,6 +154,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
     ...(persistence === undefined ? {} : { persistence }),
     execute: () => execute,
     ...(refreshTrigger === undefined ? {} : { refreshTrigger: () => refreshTrigger }),
+    ...(refreshIntervalMs === undefined ? {} : { refreshIntervalMs }),
     ...(idleTtlMs === undefined ? {} : { idleTtlMs }),
     ...(isFinal === undefined ? {} : { isFinal }),
     ...(onAnswer === undefined ? {} : { onAnswer }),
@@ -1021,6 +1024,39 @@ describe("environment query lifecycle", () => {
         expect(yield* read).toBe(3);
       }),
     ),
+  );
+
+  it.effect("waits for a slow read to answer before its interval asks again", () =>
+    Effect.gen(function* () {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const release = yield* Deferred.make<void>();
+            let executions = 0;
+            const harness = yield* makeEnvironmentQueryHarness(
+              Effect.sync(() => (executions += 1)).pipe(
+                Effect.tap((execution) =>
+                  execution === 1 ? Deferred.await(release) : Effect.void,
+                ),
+              ),
+              { refreshIntervalMs: 15_000 },
+            );
+            const registry = yield* mountEnvironmentQuery(harness.atom);
+
+            yield* Effect.promise(() => vi.advanceTimersByTimeAsync(45_000));
+            expect(executions).toBe(1);
+            yield* Deferred.succeed(release, undefined);
+            expect(yield* readEnvironmentQuery(registry, harness.atom)).toBe(1);
+
+            yield* Effect.promise(() => vi.advanceTimersByTimeAsync(15_000));
+            expect(executions).toBe(2);
+          }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    }),
   );
 
   it.effect("re-checks thread titles when one of their threads leaves the shell", () =>

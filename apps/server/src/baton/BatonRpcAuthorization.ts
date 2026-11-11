@@ -16,7 +16,10 @@ import {
   AuthAccessReadScope,
   AuthOrchestrationReadScope,
   BATON_ACCOUNT_WS_METHODS,
+  BATON_ACCOUNTS_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
+  BATON_DICTATION_WS_METHODS,
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
@@ -34,6 +37,7 @@ import {
   BatonRpcScopeAuthorization,
   type AuthEnvironmentScope,
   type BatonRpcGroup,
+  BATON_METHOD_OF,
 } from "@t3tools/baton-contracts";
 import { authScopeRequiredResponse, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -45,7 +49,7 @@ import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 
-type BatonRpcMethod = RpcGroup.Rpcs<typeof BatonRpcGroup>["_tag"];
+type BatonRpcMethod = Exclude<RpcGroup.Rpcs<typeof BatonRpcGroup>["_tag"], `tessaya.${string}`>;
 
 /** Every Baton method, or this does not compile. */
 export const BATON_RPC_REQUIRED_SCOPES = {
@@ -61,6 +65,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_ACCOUNT_WS_METHODS.threadKept]: AuthOrchestrationReadScope,
   [BATON_ACCOUNT_WS_METHODS.threadKeep]: AuthOrchestrationOperateScope,
   [BATON_ACCOUNT_WS_METHODS.weekly]: AuthOrchestrationReadScope,
+  [BATON_ACCOUNTS_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
   [BATON_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
@@ -72,6 +77,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_LIVE_WS_METHODS.liveAttach]: AuthOrchestrationOperateScope,
   [BATON_LIVE_WS_METHODS.liveAdopt]: AuthOrchestrationOperateScope,
   [BATON_LIVE_WS_METHODS.liveSetModel]: AuthOrchestrationOperateScope,
+  [BATON_LIVE_WS_METHODS.liveSetAccount]: AuthOrchestrationOperateScope,
+  [BATON_LIVE_WS_METHODS.liveState]: AuthOrchestrationReadScope,
+  [BATON_LIVE_WS_METHODS.liveCancelQueued]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionSettle]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
@@ -81,7 +89,18 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.
   [BATON_RECORD_WS_METHODS.append]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  // It spends his saved Anthropic key: the desktop app's own session only.
+  [BATON_DICTATION_WS_METHODS.cleanupApi]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: AuthOrchestrationReadScope,
+  // The desktop app's own session reads, changes and syncs its settings; an agent reaches them through /mcp's gate.
+  [BATON_DESKTOP_SETTINGS_WS_METHODS.get]: [AuthOrchestrationReadScope, AuthBatonHandsHostScope],
+  [BATON_DESKTOP_SETTINGS_WS_METHODS.set]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  [BATON_DESKTOP_SETTINGS_WS_METHODS.sync]: [
+    AuthOrchestrationOperateScope,
+    AuthBatonHandsHostScope,
+  ],
   [BATON_JOB_WS_METHODS.jobList]: AuthOrchestrationReadScope,
+  [BATON_JOB_WS_METHODS.jobTeam]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobStart]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobPlace]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobHandoff]: AuthOrchestrationOperateScope,
@@ -107,6 +126,10 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_SESSIONS_WS_METHODS.autoResume]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.retireHandoff]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.reattach]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.moveIntoTessaya]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.openInTerminal]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.mainSession]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.sessionDefaults]: AuthOrchestrationReadScope,
   [BATON_SESSIONS_WS_METHODS.kept]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.waiting]: AuthOrchestrationOperateScope,
   // Whether anything is mid-turn: titles only, a read.
@@ -211,6 +234,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_ORCHESTRATION_WS_METHODS.ruleEnable,
   BATON_ORCHESTRATION_WS_METHODS.ruleDisable,
   BATON_JOB_WS_METHODS.jobList,
+  BATON_JOB_WS_METHODS.jobTeam,
   BATON_JOB_WS_METHODS.jobAgree,
   BATON_JOB_WS_METHODS.jobRefine,
   BATON_JOB_WS_METHODS.jobStop,
@@ -223,6 +247,9 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_WATCH_WS_METHODS.watchGet,
   BATON_RECORD_WS_METHODS.list,
   BATON_RECORD_WS_METHODS.append,
+  BATON_DICTATION_WS_METHODS.cleanupApi,
+  BATON_DICTATION_WS_METHODS.cleanupApiStatus,
+  BATON_DESKTOP_SETTINGS_WS_METHODS.sync,
   BATON_COMMITMENT_WS_METHODS.list,
   BATON_COMMITMENT_WS_METHODS.upsert,
   BATON_WEAVE_WS_METHODS.send,
@@ -283,10 +310,12 @@ const PHONE_CLIENT_OPS: ReadonlySet<string> = new Set(["ask", "askGet"]);
 
 /** The scope a caller lacks for this method and payload, or null when it may call it. */
 export const missingBatonScope = (
-  tag: string,
+  calledAs: string,
   scopes: ReadonlyArray<AuthEnvironmentScope>,
   payload?: unknown,
 ): AuthEnvironmentScope | null => {
+  // A tessaya.* alias is judged exactly as the method it stands for.
+  const tag = BATON_METHOD_OF.get(calledAs) ?? calledAs;
   const required = (
     BATON_RPC_REQUIRED_SCOPES as Record<
       string,
@@ -346,13 +375,16 @@ export const HIS_OWN_METHODS: ReadonlySet<string> = new Set([
 export const refusedAsDevice = (
   tag: string,
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
-): boolean => HIS_OWN_METHODS.has(tag) && askSourceOf(session) !== "phone";
+): boolean =>
+  HIS_OWN_METHODS.has(BATON_METHOD_OF.get(tag) ?? tag) && askSourceOf(session) !== "phone";
 
 export const layer = (
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject" | "sessionId">,
 ) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
-    if (refusedAsDevice(rpc._tag, session)) {
+    // A tessaya.* alias passes every check as the method it stands for.
+    const tag = BATON_METHOD_OF.get(rpc._tag) ?? rpc._tag;
+    if (refusedAsDevice(tag, session)) {
       return Effect.fail(
         new EnvironmentAuthorizationError({
           message:
@@ -361,7 +393,7 @@ export const layer = (
         }),
       );
     }
-    const missing = missingBatonScope(rpc._tag, session.scopes, payload);
+    const missing = missingBatonScope(tag, session.scopes, payload);
     return missing === null
       ? effect.pipe(
           Effect.provideService(AskSource, askSourceOf(session)),

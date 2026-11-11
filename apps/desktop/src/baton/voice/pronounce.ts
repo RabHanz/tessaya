@@ -5,10 +5,10 @@
  */
 
 /**
- * How her name is said: tess-AY-uh (tɛsˈeɪə), the middle syllable stressed and rhyming with "say". Change this one
- * spelling to the one he picks by ear from voice-audition's pronounce/ folder; his own pronounce list still wins.
+ * How her name is said: tess-AY-uh (tɛsˈeɪə), the middle syllable stressed and rhyming with "say". "Tessayya" is his
+ * pick by ear (pronounce-4, candidate 4); his own pronounce list still wins over it.
  */
-const TESSAYA_SAID = "Tessaya";
+const TESSAYA_SAID = "Tessayya";
 
 /** Built in. Acronyms match only in capitals ("PR", never "pr" in "print"); names match in any case. */
 const RESPELLINGS: Readonly<Record<string, string>> = {
