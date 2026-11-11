@@ -250,12 +250,13 @@ function publishedThemeColors(
   appearance: ThemeAppearance,
   colors: Readonly<Record<string, string>> | undefined,
 ): ThemeColors {
-  // A variant builds on that appearance's stock defaults: the generator follows
-  // the seed canvas's luminance, so dark seeds would give a light variant
-  // unreadable colors.
+  // A variant is generated from its own canvas and accent, never the theme's: the
+  // generator follows the seed canvas's luminance, so dark seeds would give a light
+  // variant unreadable colors. Without both it builds on the stock defaults.
+  const seeds = appearance === theme.appearance ? theme : colors;
   const base =
-    appearance === theme.appearance && theme.canvas !== undefined && theme.accent !== undefined
-      ? createVividThemeColors(appearance, theme.canvas, theme.accent)
+    seeds?.canvas !== undefined && seeds.accent !== undefined
+      ? createVividThemeColors(appearance, seeds.canvas, seeds.accent)
       : getDefaultThemeColors(appearance);
   return { ...base, ...lenientThemeColorOverrides(colors ?? {}) };
 }
