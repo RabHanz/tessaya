@@ -122,7 +122,7 @@ body{font:var(--w-cap) 12px/1 var(--font);color:var(--fg)}
 #p.on{opacity:1;transform:none}
 #p.snap{transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1)}
 /* The tall window grew downward (no room above it): the capsule hangs from the same line. */
-body.down #p{bottom:auto;top:${PILL_LINE}px;translate:-50% -100%}
+body.down #p:not(.isl){bottom:auto;top:${PILL_LINE}px;translate:-50% -100%}
 #rim{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}
 #rim rect{fill:url(#sheen);stroke:var(--rim);stroke-width:.5}
 #rim stop{stop-color:var(--sheen)}#rim stop+stop{stop-opacity:0}

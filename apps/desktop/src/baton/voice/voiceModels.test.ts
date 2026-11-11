@@ -12,6 +12,7 @@ import {
   modelPresent,
   PARAKEET_FAST_MODEL,
   slowStartsAfter,
+  verifyPersonalModel,
   wakeModelFor,
   weakMachine,
 } from "./voiceModels.ts";
@@ -190,5 +191,38 @@ describe("a weak machine", () => {
   ] as const)("%j: %s", (settings, picks) => {
     expect(machinePicksFast(settings, "4 logical cores")).toBe(picks);
     expect(machinePicksFast(settings, null)).toBe(false);
+  });
+});
+
+describe("his personal model", () => {
+  const put = (manifest: unknown, file = "mine.gguf", data = bytes) => {
+    const dir = tempDir();
+    NodeFS.writeFileSync(NodePath.join(dir, file), data);
+    NodeFS.writeFileSync(NodePath.join(dir, "manifest.json"), JSON.stringify(manifest));
+    return dir;
+  };
+
+  it("is offered only when the file matches its manifest, and never deleted when it does not", async () => {
+    const ok = put({ name: "mine.gguf", size: bytes.length, sha256: good });
+    expect(await verifyPersonalModel(ok)).toEqual({
+      ok: true,
+      path: NodePath.join(ok, "mine.gguf"),
+    });
+    const bad = put({ name: "mine.gguf", size: bytes.length, sha256: "0".repeat(64) });
+    expect(await verifyPersonalModel(bad)).toEqual({ ok: false, why: "checksum" });
+    expect(NodeFS.existsSync(NodePath.join(bad, "mine.gguf"))).toBe(true);
+    expect(await verifyPersonalModel(put({ name: "mine.gguf", size: 1, sha256: good }))).toEqual({
+      ok: false,
+      why: "size",
+    });
+    expect(await verifyPersonalModel(tempDir())).toEqual({ ok: false, why: "none" });
+  });
+
+  it("refuses a manifest that points outside its folder or is not a model", async () => {
+    for (const name of ["../mine.gguf", "mine.bin", 7])
+      expect(await verifyPersonalModel(put({ name, size: bytes.length, sha256: good }))).toEqual({
+        ok: false,
+        why: "manifest",
+      });
   });
 });

@@ -133,6 +133,47 @@ export type HomeControl =
       readonly held: boolean;
       /** The plain answer to "why do you remember this". */
       readonly why: string;
+      /** A private store's id: its buttons act on that store, and it has no Pin or History. */
+      readonly store?: string;
+    })
+  /** The People area of the Memory tab: everyday memory, his private store and each person's, each under a PIN. */
+  | (HomeControlBase & {
+      readonly kind: "privatePeople";
+      readonly people: ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        /** "everyday" is the plain list; "wait" and "recovery" take no PIN. */
+        readonly state: "everyday" | "open" | "locked" | "wait" | "recovery";
+        /** Its count and lock in words: "12 memories · locks in 4 min". */
+        readonly note: string;
+        readonly selected: boolean;
+        /** His store is open here, so this person's store opens with no PIN, as admin. */
+        readonly admin: boolean;
+      }>;
+      /** He has no private store yet. */
+      readonly canSetup: boolean;
+      /** His store is open: he may add a person. */
+      readonly ownerOpen: boolean;
+      /** Saved Voice ID people with no store yet: the only ones a store can be made for. */
+      readonly voices: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+      /** Shown once, after a store is made, until he says it is saved. */
+      readonly recovery: { readonly name: string; readonly code: string } | null;
+      readonly status: string;
+    })
+  /** An open private store's tools: search, lock, export, PIN, recall and its audit. */
+  | (HomeControlBase & {
+      readonly kind: "privateBar";
+      readonly store: string;
+      readonly query: string;
+      readonly recallOff: boolean;
+      /** Opened as admin: its PIN is theirs to change. */
+      readonly canChangePin: boolean;
+      readonly canDelete: boolean;
+      readonly confirmDelete: boolean;
+      readonly audit: {
+        readonly intact: boolean;
+        readonly rows: ReadonlyArray<{ readonly line: string; readonly at: string }>;
+      } | null;
     })
   /** The Sessions browser's bar: search, machine and state filters, New session. */
   | (HomeControlBase & {
@@ -683,6 +724,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       created.on("restore", showing);
       created.on("closed", () => {
         if (win === created) win = null;
+        // No page is on show: what a page holds while it is open (private memories) can go.
+        input.onTab?.("");
       });
       // A file, not a 600 KB data: URL that is percent-encoded and parsed on every open; the URL is the fallback.
       const file = documentFile(theme());

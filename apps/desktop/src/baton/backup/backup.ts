@@ -1,9 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Back up and restore Tessaya's own data for moving machines. What goes in: settings, vocabulary,
- * snippets, notes, transforms, style, commitments, the pack and the memory notes. What never does:
- * the vault (it has its own encrypted export), sign-ins, recordings, logs, and any file in which a
- * secret is found. A restore is previewed first and replaces a file only after keeping it as .bak.
+ * Back up and restore Tessaya's own data for moving machines: settings, vocabulary, snippets, notes, transforms,
+ * style, commitments, the pack, the memory notes and the private stores (ciphertext only). Never the vault (it has
+ * its own encrypted export), sign-ins, recordings, logs, or a file holding a secret. A restore is previewed first
+ * and replaces a file only after keeping it as .bak.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -39,6 +39,8 @@ const DIRS: ReadonlyArray<{ readonly dir: string; readonly ext: RegExp }> = [
 ];
 /** The server's memory items as JSON, written into the zip alongside the files; restore hands them back to the server. */
 export const SERVER_MEMORY_NAME = "memory-server.json";
+/** The private memory stores as the server's own dump: ciphertext and wrapped keys, opened by each store's recovery code. */
+export const PRIVATE_MEMORY_NAME = "private-memory.json";
 /** Older backups carried a lossy markdown export; it still restores as a plain file. */
 const LEGACY_SERVER_MEMORY_NAME = "memory-server.md";
 const NEVER = /^(vault|\.|.*token|.*secret|.*auth)/i;
@@ -59,6 +61,7 @@ const read = (file: string): Buffer | null => {
 export const planBackup = (
   stateDir: string,
   serverMemory: ReadonlyArray<MemoryItem> | null,
+  privateDump: string | null = null,
 ): BackupPlan => {
   const names = [
     ...FILES,
@@ -88,6 +91,9 @@ export const planBackup = (
       entries.push({ name: SERVER_MEMORY_NAME, data: Buffer.from(text, "utf8") });
     } else skipped.push({ name: SERVER_MEMORY_NAME, why: `it looks like it holds ${secret}` });
   }
+  // Ciphertext only, so it is not searched for secrets: random bytes would look like one.
+  if (privateDump !== null)
+    entries.push({ name: PRIVATE_MEMORY_NAME, data: Buffer.from(privateDump, "utf8") });
   return { entries, skipped };
 };
 
@@ -104,6 +110,7 @@ export const allowedName = (name: string): boolean =>
   !/[\\:\0]/.test(name) &&
   !name.split("/").includes("..") &&
   (name === SERVER_MEMORY_NAME ||
+    name === PRIVATE_MEMORY_NAME ||
     name === LEGACY_SERVER_MEMORY_NAME ||
     FILES.includes(name) ||
     DIRS.some(

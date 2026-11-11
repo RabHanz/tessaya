@@ -6,7 +6,12 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { BATON_METHOD_OF, BatonRpcGroup } from "@t3tools/baton-contracts";
+import {
+  BATON_METHOD_OF,
+  BatonPrivateCallInput,
+  BatonPrivateCallResult,
+  BatonRpcGroup,
+} from "@t3tools/baton-contracts";
 import { buildPhoneState } from "@t3tools/baton-shared/phone";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import * as Clock from "effect/Clock";
@@ -26,9 +31,12 @@ import {
   askSourceOf,
   memoryViewerOf,
   missingBatonScope,
+  privateCallerOf,
+  privateRefusal,
   syncCredentialOf,
 } from "./BatonRpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
+import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
@@ -330,6 +338,61 @@ export const routes = HttpRouter.use((router) =>
         ),
       ),
     );
+    // Private memory stores (tessaya-ops research/PRIVATE-MEMORIES.md), for the desktop, the phone page and the web app.
+    const decodePrivate = Schema.decodeUnknownEffect(BatonPrivateCallInput);
+    const encodePrivate = Schema.encodeUnknownEffect(BatonPrivateCallResult);
+    const privateCall = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
+      if (session._tag === "None")
+        return HttpServerResponse.jsonUnsafe(
+          { message: "Not paired." },
+          { status: 401, headers: PAGE_HEADERS },
+        );
+      const input = yield* decodePrivate(
+        yield* request.json.pipe(Effect.orElseSucceed(() => ({}))),
+      ).pipe(Effect.option);
+      if (input._tag === "None")
+        return HttpServerResponse.jsonUnsafe(
+          { message: "That request is not valid." },
+          { status: 400, headers: PAGE_HEADERS },
+        );
+      const refused = privateRefusal(session.value, input.value.op);
+      if (refused !== null)
+        return HttpServerResponse.jsonUnsafe(
+          { message: refused },
+          { status: 403, headers: PAGE_HEADERS },
+        );
+      const result = yield* Effect.promise(() =>
+        run(
+          callPrivate(input.value).pipe(
+            Effect.provideService(PrivateCaller, privateCallerOf(session.value)),
+            Effect.flatMap(encodePrivate),
+            Effect.result,
+          ),
+        ),
+      );
+      // A refusal is said in plain words; never a memory's text, a PIN or a key.
+      return result._tag === "Failure"
+        ? HttpServerResponse.jsonUnsafe(
+            {
+              message:
+                "reason" in result.failure ? result.failure.reason : "That could not be done.",
+            },
+            { status: 422, headers: PAGE_HEADERS },
+          )
+        : HttpServerResponse.jsonUnsafe({ value: result.success }, { headers: PAGE_HEADERS });
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe(
+            { message: "That did not work." },
+            { status: 500, headers: PAGE_HEADERS },
+          ),
+        ),
+      ),
+    );
+    yield* router.add("POST", "/tessaya/private", privateCall);
     yield* router.add("POST", "/tessaya/desk/*", desk);
     yield* router.add("GET", "/tessaya/hands/*", handsApi);
     yield* router.add("POST", "/tessaya/hands/*", handsApi);
