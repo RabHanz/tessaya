@@ -346,7 +346,21 @@ function pvPeople(c) {
   }
   const multi = (keys, button, primary, to, fields) => { const ins = keys.map(([k, ph, type]) => vtInput(k, ph, type)); return vtForm(ins, { label: button, primary }, () => { const v = {}; keys.forEach(([k], n) => { v[fields[n]] = ins[n].value; drafts.delete(k); }); set(to, JSON.stringify(v)); }); };
   if (c.canSetup) { w.appendChild($('div', 'hint memstatus', L('pv.setup.hint'))); w.appendChild(multi([['pv-new', L('pv.setup.pin'), 'password'], ['pv-new2', L('pv.again'), 'password']], L('pv.setup.button'), true, 'm.pv.setup', ['pin', 'again'])); }
-  if (c.ownerOpen) { w.appendChild($('h3', 'vaulthead', L('pv.add.title'))); w.appendChild(multi([['pv-an', L('pv.add.name')], ['pv-aid', L('pv.add.profile')], ['pv-ap', L('pv.add.pin'), 'password'], ['pv-ap2', L('pv.again'), 'password']], L('pv.add.button'), false, 'm.pv.addPerson', ['name', 'personId', 'pin', 'again'])); }
+  if (c.ownerOpen) {
+    w.appendChild($('h3', 'vaulthead', L('pv.add.title')));
+    if (c.voices.length === 0) w.appendChild($('div', 'hint memstatus', L('pv.add.noVoices')));
+    else {
+      const pick = $('select'); pick.id = 'in-pv-aid'; pick.setAttribute('aria-label', L('pv.add.profile'));
+      for (const v of c.voices) { const o = $('option', '', v.name); o.value = v.id; pick.appendChild(o); }
+      if (drafts.has('pv-aid')) pick.value = drafts.get('pv-aid'); pick.onchange = () => drafts.set('pv-aid', pick.value);
+      const ins = [vtInput('pv-an', L('pv.add.name')), vtInput('pv-ap', L('pv.add.pin'), 'password'), vtInput('pv-ap2', L('pv.again'), 'password')];
+      w.appendChild(vtForm([pick, ...ins], { label: L('pv.add.button'), primary: false }, () => {
+        const v = { personId: pick.value, name: ins[0].value, pin: ins[1].value, again: ins[2].value };
+        for (const k of ['pv-aid', 'pv-an', 'pv-ap', 'pv-ap2']) drafts.delete(k);
+        set('m.pv.addPerson', JSON.stringify(v));
+      }));
+    }
+  }
   if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
   return w;
 }

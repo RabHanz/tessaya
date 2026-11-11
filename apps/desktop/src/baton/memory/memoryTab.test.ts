@@ -235,6 +235,10 @@ const makePrivate = (over: { hello?: HelloResult; noOwner?: boolean } = {}) => {
     },
     saveFile: async () => "/picked/file.md",
     everydayCount: () => 3,
+    voices: () => [
+      { id: "sara", name: "Sara" },
+      { id: "kim", name: "Kim" },
+    ],
     refresh: () => undefined,
     now: () => Date.parse("2026-01-01T00:01:30.000Z"),
   });
@@ -321,6 +325,24 @@ describe("the People area", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("makes a person's store only for a voice Voice ID saved, named as Voice ID named them", async () => {
+    const { tab, calls } = makePrivate();
+    await tab.load();
+    tab.act(`m.pv.unlock:${OWNER}`, "24681357");
+    await settle();
+    const people = tab.controls().find((c) => c.kind === "privatePeople") as {
+      voices: ReadonlyArray<{ id: string }>;
+    };
+    // Sara already has a store; only Kim is offered.
+    expect(people.voices.map((v) => v.id)).toEqual(["kim"]);
+    tab.act(
+      "m.pv.addPerson",
+      JSON.stringify({ personId: "kim", name: "", pin: "135792", again: "135792" }),
+    );
+    await settle();
+    expect(calls).toContainEqual(["setup", { personId: "kim", name: "Kim", pin: "135792" }]);
   });
 
   it("opens a person's store as admin with no PIN, only once his own is open", async () => {

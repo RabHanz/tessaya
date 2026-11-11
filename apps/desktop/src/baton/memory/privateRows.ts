@@ -38,6 +38,8 @@ export interface PrivateTabState {
   } | null;
   readonly confirmDelete: boolean;
   readonly everydayCount: number | null;
+  /** People Voice ID knows: a person's store follows their voice profile. */
+  readonly voices: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly now: number;
 }
 
@@ -110,6 +112,7 @@ export const privateControls = (s: PrivateTabState): ReadonlyArray<HomeControl> 
     ],
     canSetup: !s.stores.some((x) => x.kind === "owner"),
     ownerOpen,
+    voices: s.voices.filter((v) => !s.stores.some((x) => x.personId === v.id)),
     recovery: s.recovery,
     status: s.status,
   };

@@ -5110,6 +5110,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ? null
       : createPrivateTab({
           memory: input.privateMemory,
+          voices: () =>
+            voiceId
+              .profiles()
+              .filter((p) => p.kind === "saved")
+              .map((p) => ({ id: p.id, name: p.name })),
           hello: (message) => windowsHello(message, input.platform),
           clipboard: {
             read: () => Electron.clipboard.readText(),

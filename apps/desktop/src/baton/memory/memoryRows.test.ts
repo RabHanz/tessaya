@@ -165,6 +165,7 @@ describe("the People area's rows", () => {
       audit: null,
       confirmDelete: false,
       everydayCount: 12,
+      voices: [],
       now: NOW,
     })[0] as Extract<HomeControl, { kind: "privatePeople" }>;
 
