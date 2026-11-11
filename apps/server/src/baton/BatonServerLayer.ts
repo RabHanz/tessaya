@@ -37,6 +37,8 @@ import * as BatonCloudService from "./BatonCloudService.ts";
 import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
 import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as R1Device from "../home/R1Device.ts";
+import * as HomeDevices from "../home/HomeDevices.ts";
+import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
 import * as BatonSessionsAcross from "./BatonSessionsAcross.ts";
 import * as BatonWeaveService from "./BatonWeaveService.ts";
@@ -101,6 +103,12 @@ const weaveLayer = BatonWeaveService.layer.pipe(
   Layer.provide(BatonWeaveService.storesLayer),
 );
 
+// Home Assistant: one connection per server, its cards on the phone inbox. One value, so the devices share it.
+const homeLayer = HomeAssistantService.layer.pipe(
+  Layer.provide(HomeAssistantConnection.layer),
+  Layer.provide(BatonPhoneInbox.layer),
+);
+
 const servicesInner = IntentService.layer.pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
@@ -121,9 +129,11 @@ const servicesInner = IntentService.layer.pipe(
       BatonPhoneInbox.layer,
       BatonDesktopSettings.layer,
       BatonCloudService.layer,
-      // Home Assistant: one connection per server, its cards on the phone inbox (a sibling, so provided here).
-      HomeAssistantService.layer.pipe(
-        Layer.provide(HomeAssistantConnection.layer),
+      homeLayer,
+      // The R1 and later devices: the broker comes from the R1's record in Home; camera and reboot asks go to the phone.
+      HomeDevices.layer.pipe(
+        Layer.provide(HomeDevices.brokerLayer),
+        Layer.provide(homeLayer),
         Layer.provide(BatonPhoneInbox.layer),
       ),
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
@@ -195,5 +205,9 @@ export const workers = Layer.effectDiscard(
   Layer.provideMerge(BatonWeaveService.drainer),
 );
 
-/** The phone page at /tessaya and its API, and the R1 desk device's chat endpoint. */
-export const routes = Layer.merge(BatonTessayaRoutes.routes, R1Device.routes);
+/** The phone page at /tessaya and its API, and the R1 desk device's chat endpoint and camera upload. */
+export const routes = Layer.mergeAll(
+  BatonTessayaRoutes.routes,
+  R1Device.routes,
+  HomeDeviceRoutes.routes,
+);
