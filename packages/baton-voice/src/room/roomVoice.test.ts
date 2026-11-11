@@ -119,6 +119,90 @@ describe("the room voice loop", () => {
   });
 });
 
+describe("how her reply sounds and looks on the R1", () => {
+  const downSamples = (published: Array<{ topic: string; payload: Uint8Array | string }>) =>
+    published
+      .filter((p) => p.topic === `freya/r1/${DEV}/voice/down`)
+      .map((p) => new Int16Array(Uint8Array.from(p.payload as Uint8Array).buffer)[0]!);
+
+  it("plays one reply at a time when a second turn ends while the first is still being heard", async () => {
+    // He says two things quickly; the first one's text comes back only after the second has ended.
+    let releaseFirst: () => void = () => undefined;
+    const firstHeld = new Promise<void>((r) => (releaseFirst = r));
+    let turns = 0;
+    const t = setup({
+      recognise: () => {
+        const n = (turns += 1);
+        return {
+          feed: () => undefined,
+          finish: async () => {
+            if (n === 1) await firstHeld;
+            return n === 1 ? "first" : "second";
+          },
+          cancel: () => undefined,
+        };
+      },
+      brain: async function* (input) {
+        yield `${input.messages.at(-1)!.content}.`;
+      },
+      speak: async function* (text) {
+        for (let i = 0; i < 30; i += 1)
+          yield new Int16Array(3_200).fill(text.startsWith("first") ? 1 : 2);
+      },
+    });
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.feed(true, 20);
+    await t.feed(false, 12);
+    releaseFirst();
+    await t.feed(false, 200);
+    const order = downSamples(t.published).filter((v) => v !== 0);
+    const switches = order.filter((v, i) => i > 0 && v !== order[i - 1]).length;
+    expect(order.length).toBeGreaterThan(0);
+    expect(switches).toBeLessThanOrEqual(1);
+  });
+
+  it("starts the next sentence's voice before the one before it has finished playing", async () => {
+    let sentAtTwo = -1;
+    const box: { published: Array<{ topic: string; payload: Uint8Array | string }> } = {
+      published: [],
+    };
+    const t = setup({
+      brain: async function* () {
+        yield "One. Two.";
+      },
+      speak: async function* (text) {
+        if (text === "Two.") sentAtTwo = downSamples(box.published).filter((v) => v === 1).length;
+        for (let i = 0; i < 5; i += 1) yield new Int16Array(3_200).fill(text === "One." ? 1 : 2);
+      },
+    });
+    box.published = t.published;
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.metrics;
+    const oneFrames = downSamples(t.published).filter((v) => v === 1).length;
+    expect(oneFrames).toBeGreaterThan(0);
+    expect(sentAtTwo).toBeGreaterThanOrEqual(0);
+    expect(sentAtTwo).toBeLessThan(oneFrames);
+  });
+
+  it("looks attentive while he talks, nods when he is done, and rests once she has finished", async () => {
+    const t = setup();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.metrics;
+    await t.feed(false, 30);
+    const face = t.published
+      .filter((p) => p.topic.includes("/cmd/eye/"))
+      .map((p) => `${p.topic.split("/cmd/eye/")[1]} ${String(p.payload)}`);
+    expect(face).toEqual([
+      'set {"mood":"attentive"}',
+      'gesture {"name":"nodSmall"}',
+      'set {"mood":"neutral"}',
+    ]);
+  });
+});
+
 describe("splitting her reply into sentences as it streams", () => {
   it("releases a sentence only once what follows it has started", () => {
     expect(splitSentences("Done. The study")).toEqual({ done: ["Done."], rest: "The study" });

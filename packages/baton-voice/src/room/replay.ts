@@ -2,11 +2,13 @@
 /**
  * The room loop's gate: `node replay.mjs <16 kHz wavs>` plays his recordings to the running loop in real time as a
  * pretend R1 (`replay-1`) and prints end-of-voice to first-sound per clip, then p50 and p90. No real R1 is reached.
+ * It shares the live loop, so it never runs beside him: it refuses while any real R1 is online, and stops the moment one
+ * sends audio or an event (12 Nov: a replay slowed and chopped his first live conversation).
  */
 import * as NodeFS from "node:fs";
 
 import { DOWN_FRAME_BYTES, fromBytes, toBytes } from "./audio.ts";
-import { connectMqtt } from "./mqtt.ts";
+import { connectMqtt, realDeviceActivity } from "./mqtt.ts";
 
 const env = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;
@@ -44,6 +46,7 @@ const pct = (xs: number[], p: number) => {
 
 const main = async () => {
   const id = env("R1_REPLAY_DEVICE", "replay-1");
+  let busy: string | null = null;
   let firstDown: number | null = null;
   let lastDown = 0;
   let metrics: Record<string, unknown> | null = null;
@@ -55,8 +58,16 @@ const main = async () => {
     clientId: `tessaya-replay-${process.pid}`,
     user: env("R1_MQTT_USER"),
     pass: NodeFS.readFileSync(env("R1_MQTT_PASS_FILE"), "utf8").trim(),
-    subscribe: [`freya/r1/${id}/voice/down`, `freya/r1/${id}/event/voice/metrics`],
+    subscribe: [
+      `freya/r1/${id}/voice/down`,
+      `freya/r1/${id}/event/voice/metrics`,
+      "freya/r1/+/state/online",
+      "freya/r1/+/voice/up",
+      "freya/r1/+/event/#",
+    ],
     onMessage: (t, p) => {
+      busy ??= realDeviceActivity(t, String(p), id);
+      if (!t.startsWith(`freya/r1/${id}/`)) return;
       if (now() < voiceEndAt) return;
       if (t.endsWith("/voice/down")) {
         firstDown ??= now();
@@ -66,6 +77,13 @@ const main = async () => {
     log: () => undefined,
   });
   while (!mqtt.connected()) await sleep(50);
+  // Retained online states arrive just after subscribing.
+  await sleep(1_500);
+  if (busy !== null) {
+    console.log(JSON.stringify({ refused: `${busy}; a replay would share the loop with him` }));
+    mqtt.close();
+    process.exit(2);
+  }
   const silence = new Int16Array(DOWN_FRAME_BYTES / 2);
   const results: number[] = [];
   for (const path of process.argv.slice(2)) {
@@ -95,6 +113,13 @@ const main = async () => {
       const quietSince = firstDown === null ? 0 : now() - lastDown;
       if (metrics !== null && firstDown !== null && quietSince > 1_500) break;
       if (now() - t0 > frames.length * FRAME_MS + 30_000) break;
+      if (busy !== null) break;
+    }
+    if (busy !== null) {
+      mqtt.publish(`freya/r1/${id}/cmd/voice/stop`, "{}");
+      console.log(JSON.stringify({ stopped: `${busy}; the replay gave the loop back to him` }));
+      mqtt.close();
+      process.exit(2);
     }
     const firstSoundMs = firstDown === null ? null : Math.round(firstDown - voiceEndAt);
     if (firstSoundMs !== null) results.push(firstSoundMs);

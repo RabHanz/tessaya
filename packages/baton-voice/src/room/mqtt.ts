@@ -201,3 +201,17 @@ export const connectMqtt = (input: {
     },
   };
 };
+
+/** A real R1's traffic that means he may be using it (online, his voice, anything it reports); null for anything else. */
+export const realDeviceActivity = (
+  topic: string,
+  payload: string,
+  replayId: string,
+): string | null => {
+  const m = /^freya\/r1\/([^/]+)\/(.+)$/.exec(topic);
+  if (m === null || m[1] === replayId) return null;
+  const [, device, rest] = m;
+  if (rest === "state/online") return payload.trim() === "1" ? `${device} is online` : null;
+  if (rest === "voice/up" || rest!.startsWith("event/")) return `${device} sent ${rest}`;
+  return null;
+};
