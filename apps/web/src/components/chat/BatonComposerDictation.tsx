@@ -57,11 +57,7 @@ export function BatonDictationWords(props: { readonly state: ComposerDictation }
       {before}
       {words.length > 0 ? lead : null}
       {words.map((w) => (
-        <span
-          key={w.at}
-          data-tdc-w={w.look}
-          data-live={live ? "" : undefined}
-        >
+        <span key={w.at} data-tdc-w={w.look} data-live={live ? "" : undefined}>
           {w.at === words.length - 1 ? w.text : `${w.text} `}
         </span>
       ))}
