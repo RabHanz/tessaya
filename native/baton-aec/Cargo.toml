@@ -1,0 +1,17 @@
+[package]
+name = "baton-aec"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# WebRTC's echo canceller 3, as a pure-Rust port (BSD-3-Clause). The eval binary runs it over recorded or simulated streams.
+[dependencies]
+sonora = "=0.2.0"
+
+[[bin]]
+name = "aec-eval"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3

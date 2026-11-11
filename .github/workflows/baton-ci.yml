@@ -113,12 +113,21 @@ jobs:
 
       # Not a gate: the barge-in detector's measured numbers, printed whenever the voice package changes (docs/baton/BARGE_IN.md).
       - name: Barge-in detector, measured (report only)
+        continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           base="${BASE_SHA:-}"
           if [[ -z "$base" || "$base" == 0000000* ]] || ! git cat-file -e "$base" 2>/dev/null; then base=HEAD~1; fi
-          if git diff --name-only "$base"...HEAD | grep -qE '^packages/baton-voice/src/(echo|core)'; then
+          if git diff --name-only "$base"...HEAD | grep -qE '^(packages/baton-voice/src/(echo|core)|native/baton-aec/|scripts/tessaya/aec-eval)'; then
             node scripts/tessaya/bargein-eval.ts 60 | tee "$RUNNER_TEMP/bargein.txt"
             cat "$RUNNER_TEMP/bargein.txt" >> "$GITHUB_STEP_SUMMARY"
+            echo "--- WebRTC AEC3 ---" | tee -a "$GITHUB_STEP_SUMMARY"
+            rustup update stable --no-self-update > /dev/null 2>&1 || true
+            cargo build --release --manifest-path native/baton-aec/Cargo.toml
+            for cfg in "0.5 0 0.42" "0.5 1 0.42" "0.5 0 1.5" "0.5 1 1.5" "0.3 0 1.5" "0.5 0.5 1.5"; do
+              set -- $cfg
+              AEC_VAD=$1 AEC_FLOOR_K=$2 AEC_WINDOW_S=$3 node scripts/tessaya/aec-eval.ts native/baton-aec/target/release/aec-eval 60 | head -1 | tee -a "$RUNNER_TEMP/aec.txt"
+            done
+            cat "$RUNNER_TEMP/aec.txt" >> "$GITHUB_STEP_SUMMARY"
           else echo "voice core and echo guard unchanged; skipping"; fi
