@@ -2554,14 +2554,19 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
     // The graphics-card build's modules: the exe does not start without transcribe.dll and its ggml DLLs.
     if (builds[0]!.features === "gpu") {
       const dir = path.dirname(built[0]!);
-      // transcribe-cpp-sys stages its DLLs beside the exe only on a best-effort copy, which skipped them on the 13 Nov
-      // runners (0.1.118); its install prefix under the build dir always has them.
+      // transcribe-cpp-sys copies its DLLs four levels above its OUT_DIR, meant to be beside the exe; with cargo's newer
+      // build-dir layout (13 Nov runners, 0.1.118) that is target/release/build instead.
       const buildDir = path.join(dir, "build");
       const installs = (yield* fs.readDirectory(buildDir).pipe(Effect.orElseSucceed(() => [])))
         .filter((name) => name.startsWith("transcribe-cpp-sys-"))
         .map((name) => path.join(buildDir, name, "out", "bin"));
       for (const file of BATON_VOICE_GPU_FILES) {
-        const candidates = [path.join(dir, file), ...installs.map((bin) => path.join(bin, file))];
+        const candidates = [
+          path.join(dir, file),
+          // Cargo's newer build-dir layout nests OUT_DIR one level deeper, so the -sys crate's copy lands in build/.
+          path.join(buildDir, file),
+          ...installs.map((bin) => path.join(bin, file)),
+        ];
         let from: string | undefined;
         for (const candidate of candidates)
           if (from === undefined && (yield* fs.exists(candidate))) from = candidate;
