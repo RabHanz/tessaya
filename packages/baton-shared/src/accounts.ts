@@ -75,7 +75,7 @@ export function unifyAccounts(input: {
   readonly providers: ReadonlyArray<ServerProvider>;
   /** cswap's Claude logins, or null where there is no switcher. */
   readonly pool: ReadonlyArray<BatonAccount> | null;
-  /** Token instances' cswap slots, by instance id (BATON_CLAUDE_ACCOUNT_INSTANCES). */
+  /** Token instances' cswap slots, by instance id (TESSAYA_CLAUDE_ACCOUNT_INSTANCES). */
   readonly slots: Readonly<Record<string, string>>;
   /** Each instance's own stored credential, as credentialKind reads it; null when it holds none. */
   readonly credentialKinds?: Readonly<Record<string, CredentialKind | null>>;

@@ -1,4 +1,4 @@
-/** Instance id to cswap slot, from `BATON_CLAUDE_ACCOUNT_INSTANCES` (JSON). Unset or unreadable means none. */
+/** Instance id to cswap slot, from `TESSAYA_CLAUDE_ACCOUNT_INSTANCES` (JSON; `BATON_` still works). Unset or unreadable means none. */
 import * as Schema from "effect/Schema";
 
 const decodeEnv = Schema.decodeUnknownOption(

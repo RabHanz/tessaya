@@ -38,7 +38,8 @@ export const BATON_DEFAULT_CLAUDE_INSTANCE = "claudeAgent";
 
 /**
  * cswap slots of the token instances, by provider instance id. Empty until a machine says which it
- * has: the server reads `BATON_CLAUDE_ACCOUNT_INSTANCES` (JSON, `{"claudeAgent_work":"4"}`) at start.
+ * has: the server reads `TESSAYA_CLAUDE_ACCOUNT_INSTANCES` (JSON, `{"claudeAgent_work":"4"}`) at start;
+ * the old `BATON_` name still works.
  */
 export const BATON_CLAUDE_ACCOUNT_INSTANCES: Record<string, string> = {};
 
