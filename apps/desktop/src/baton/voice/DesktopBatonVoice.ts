@@ -330,7 +330,13 @@ import {
   type Palette,
 } from "../home/palette.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
-import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
+import {
+  ART_DIR,
+  COMPANION_DIR,
+  createBatonHome,
+  type HomeControl,
+  type HomeState,
+} from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
@@ -445,6 +451,22 @@ import type {
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, wantsMoving, type VoicePill } from "./voicePill.ts";
 import { parsePillDesign, parsePillWave, type PillDesign, type PillWave } from "./pillLook.ts";
+import {
+  createDesktopMascot,
+  MASCOT_PERSONA_LABEL,
+  MASCOT_PERSONAS,
+  parseMascotPersona,
+  parseMascotSize,
+  type MascotPersona,
+  type MascotSize,
+} from "../companion/desktopMascot.ts";
+import {
+  islandFaceShows,
+  jobMoments,
+  parseCompanionMotion,
+  type CompanionMotion,
+  type JobSnapshot,
+} from "@t3tools/baton-shared/companion";
 import { setPillSettings } from "./pillTheme.ts";
 import {
   dictationCaption,
@@ -621,6 +643,13 @@ interface VoiceSettings {
   /** How the pill looks (Settings → Appearance), and its waveform: "match" is the design's own. */
   readonly pillDesign: PillDesign;
   readonly pillWaveform: PillWave;
+  /** Her character on the desktop (Settings → Appearance → Desktop companion), its motion, look and size. */
+  readonly mascot: boolean;
+  readonly mascotMotion: CompanionMotion;
+  readonly mascotPersona: MascotPersona;
+  readonly mascotSize: MascotSize;
+  /** Her face in the pill while he talks to her, when the desktop companion is off. */
+  readonly pillFace: boolean;
   /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
   readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
@@ -789,6 +818,12 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   pillStyle: "pill",
   pillDesign: "tessaya",
   pillWaveform: "match",
+  // Off until the characters' art is approved; he turns them on in Settings → Appearance.
+  mascot: false,
+  mascotMotion: "calm",
+  mascotPersona: "tessaya",
+  mascotSize: "medium",
+  pillFace: false,
   frosted: false,
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
@@ -924,6 +959,11 @@ export const readSettings = (path: string): VoiceSettings => {
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       pillDesign: parsePillDesign(saved["pillDesign"]),
       pillWaveform: parsePillWave(saved["pillWaveform"]),
+      mascot: saved["mascot"] === true,
+      mascotMotion: parseCompanionMotion(saved["mascotMotion"]),
+      mascotPersona: parseMascotPersona(saved["mascotPersona"]),
+      mascotSize: parseMascotSize(saved["mascotSize"]),
+      pillFace: saved["pillFace"] === true,
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
@@ -1285,10 +1325,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       palette: settings.palette,
     });
   syncPillLook();
+  /** Set once the mascot exists; settings changes reach it from here. */
+  let syncMascot: (() => void) | null = null;
   const save = (next: Partial<VoiceSettings>) => {
     settings = { ...settings, ...next };
     writeJsonFile(settingsPath, settings);
     syncPillLook();
+    syncMascot?.();
     pushHome();
   };
   const freshInstall =
@@ -4326,6 +4369,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (typeof reply === "object" && reply !== null && "id" in reply && "type" in reply)
       composer.reply(reply as Parameters<typeof composer.reply>[0]);
   });
+  const mascot = createDesktopMascot({
+    companionDir: COMPANION_DIR,
+    stateDir: input.stateDir,
+    openSettings: () => home.open(),
+    onNote: (kind, detail) => input.onNote?.(kind, detail),
+  });
+  /** The jobs as last read, so the mascot reacts to what changed (null until the first read). */
+  let jobsSeen: ReadonlyArray<JobSnapshot> | null = null;
   const pillOptions: Parameters<typeof createVoicePill>[0] = {
     look: () => ({ motion: settings.motion, glass: settings.glass }),
     menuItems: () => [
@@ -4368,7 +4419,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       stopAll(true);
     },
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
-    onChange: (turn) => input.onPillState?.(turn.phase),
+    onChange: (turn) => {
+      mascot.turn(turn.phase);
+      input.onPillState?.(turn.phase);
+    },
+    face: (phase) =>
+      islandFaceShows({ phase, faceOn: settings.pillFace, mascotOn: settings.mascot })
+        ? settings.mascotPersona
+        : null,
+    companionDir: COMPANION_DIR,
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
     onMoving: () => render(),
     foreground: async () => {
@@ -4415,6 +4474,34 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         barShown = want;
         pill.setRest(want);
       }
+    })().catch(() => undefined);
+  }, 3_000).unref();
+  syncMascot = () => {
+    mascot.setOptions({
+      on: settings.mascot,
+      motion: settings.mascotMotion,
+      persona: settings.mascotPersona,
+      size: settings.mascotSize,
+      reduced: settings.motion !== "full",
+    });
+    // Jobs are read on a timer only once something wants them; she does.
+    if (settings.mascot) wantJobs();
+  };
+  // Where he works and whether it fills its screen, every 3 s while she is on: her edge, and stepping away.
+  setInterval(() => {
+    if (!settings.mascot || sidecar === null) return;
+    void (async () => {
+      const app = await sidecar.foreground().catch(() => null);
+      const rect = app?.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
+      const full =
+        settings.hideInFullscreen &&
+        app !== null &&
+        isFullscreenWindow(
+          { exe: app.exe, rect },
+          Electron.screen.getAllDisplays().map((d) => d.bounds),
+        );
+      mascot.foreground(rect, full);
+      mascot.asleep(silenced(new Date()));
     })().catch(() => undefined);
   }, 3_000).unref();
   let dictatingByVoice = false;
@@ -5242,6 +5329,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobs?: ReadonlyArray<BatonJob>;
       } | null;
       const next = value?.jobs ?? [];
+      const snapshots = next.map((j) => ({ id: j.workSessionId, title: j.title, state: j.state }));
+      for (const { moment } of jobMoments(jobsSeen, snapshots)) mascot.react(moment);
+      jobsSeen = snapshots;
       jobsError = null;
       if (JSON.stringify(next) !== JSON.stringify(jobsCache)) jobsCache = next;
     } catch (error) {
@@ -5262,6 +5352,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setInterval(() => {
     if (jobsWanted && serverReachable()) void refreshJobs();
   }, JOBS_REFRESH_MS).unref();
+  syncMascot?.();
 
   // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
   let announced: ReadonlySet<string> = new Set();
@@ -6663,6 +6754,59 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
       {
+        id: "v.mascot",
+        section: "Desktop companion",
+        label: "Show her on the desktop",
+        hint: "Her character in a small window of her own, on the top of the window you're in or on the taskbar. Drag her anywhere; right-click her to snooze or hide her. She steps away for full-screen apps.",
+        kind: "toggle",
+        on: settings.mascot,
+      },
+      {
+        id: "v.mascotMotion",
+        section: "Desktop companion",
+        label: "How much she moves",
+        hint: "Calm reacts without extra acts. Lively adds little acts and a short walk now and then. Important only stays still except for her replies, finished or failed jobs and what needs you.",
+        kind: "choice",
+        value: settings.mascotMotion,
+        options: [
+          { value: "lively", label: "Lively" },
+          { value: "calm", label: "Calm" },
+          { value: "important", label: "Important only" },
+        ],
+        disabled: !settings.mascot,
+      },
+      {
+        id: "v.mascotPersona",
+        section: "Desktop companion",
+        label: "Character",
+        hint: "Each persona's own character.",
+        kind: "choice",
+        value: settings.mascotPersona,
+        options: MASCOT_PERSONAS.map((value) => ({ value, label: MASCOT_PERSONA_LABEL[value] })),
+        disabled: !settings.mascot,
+      },
+      {
+        id: "v.mascotSize",
+        section: "Desktop companion",
+        label: "Size",
+        kind: "choice",
+        value: settings.mascotSize,
+        options: [
+          { value: "small", label: "Small" },
+          { value: "medium", label: "Medium" },
+          { value: "large", label: "Large" },
+        ],
+        disabled: !settings.mascot,
+      },
+      {
+        id: "v.pillFace",
+        section: "Desktop companion",
+        label: "Her face in the pill",
+        hint: "While you talk to her, her face replaces the mark in the pill. Never during dictation, and not while she is on the desktop.",
+        kind: "toggle",
+        on: settings.pillFace,
+      },
+      {
         id: "v.motion",
         section: "Appearance",
         label: "Motion",
@@ -7792,6 +7936,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       void linkT3Theme(settings.palette);
     } else if (id === "v.pillDesign") save({ pillDesign: parsePillDesign(value) });
     else if (id === "v.pillWaveform") save({ pillWaveform: parsePillWave(value) });
+    else if (id === "v.mascot") save({ mascot: on });
+    else if (id === "v.mascotMotion") save({ mascotMotion: parseCompanionMotion(value) });
+    else if (id === "v.mascotPersona") save({ mascotPersona: parseMascotPersona(value) });
+    else if (id === "v.mascotSize") save({ mascotSize: parseMascotSize(value) });
+    else if (id === "v.pillFace") save({ pillFace: on });
     else if (id === "v.motion") save({ motion: parseMotion(value) });
     else if (id === "v.glass") save({ glass: parseGlass(value) });
     else if (id === "v.hideFromCapture") {
@@ -8179,6 +8328,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
     void audio?.stop();
     rewriter.dispose();
+    mascot.dispose();
     encoder.dispose();
     toast.dispose();
     history?.close();
@@ -8192,6 +8342,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const after = JSON.stringify(settings);
     pushHome();
     if (before === after) return;
+    syncMascot?.();
     configureDictation();
     applyBindings();
     void relisten();
@@ -8271,7 +8422,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
-    onSpeechLevel: pill.speechLevel,
+    onSpeechLevel: (value) => {
+      pill.speechLevel(value);
+      mascot.level(value);
+    },
     onReference: (pcm, rate, soundsAtMs) => core?.reference(resampleTo16k(pcm, rate), soundsAtMs),
     onDismissed: () => pill.on({ type: "dismissed" }),
     onNote: (message) => {

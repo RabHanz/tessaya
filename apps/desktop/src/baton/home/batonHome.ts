@@ -29,7 +29,7 @@ import {
   type Motion,
 } from "./look.ts";
 import type { Palette } from "./palette.ts";
-import { artDir, readArt, stingFile } from "./artFiles.ts";
+import { artDir, companionDir, readArt, stingFile } from "./artFiles.ts";
 import { shouldSplash, splashCentre } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
 
@@ -466,6 +466,7 @@ const GO = "baton-home:go";
 const T3_PATH = /^\/(settings|tessaya)\/[a-z-]+$/;
 /** Tessaya's palette art: the app's resources when packaged, the source tree when run from it. */
 export const ART_DIR = artDir(__dirname, process.resourcesPath);
+export const COMPANION_DIR = companionDir(__dirname, process.resourcesPath);
 const art = ART_DIR;
 
 const withTabs = (state: HomeState): HomeState => ({

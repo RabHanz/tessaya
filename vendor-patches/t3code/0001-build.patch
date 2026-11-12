@@ -59,7 +59,7 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index ba375768150971d21761ca38f5afd3715a4f1c03..f139eebdaa4a60911dfb06e9fa6a9732d0d69237 100644
+index ba375768150971d21761ca38f5afd3715a4f1c03..aeb12f41c652e3c34be79eee40a49b0b9e992c71 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
 @@ -149,6 +149,31 @@ export default defineConfig({
@@ -67,13 +67,13 @@ index ba375768150971d21761ca38f5afd3715a4f1c03..f139eebdaa4a60911dfb06e9fa6a9732
        entry: ["src/mac-permission-preload.ts"],
      },
 +    {
-+      // The Tessaya pill's isolated page: a sandboxed preload, so self-contained too.
++      // The Tessaya pill's and the desktop mascot's isolated pages: sandboxed preloads, so self-contained too.
 +      format: "cjs",
 +      outDir: "dist-electron",
 +      dts: false,
 +      sourcemap: true,
 +      outExtensions: () => ({ js: ".cjs" }),
-+      entry: ["src/baton/voice/pillPreload.ts"],
++      entry: ["src/baton/voice/pillPreload.ts", "src/baton/companion/mascotPreload.ts"],
 +    },
 +    {
 +      // Baton's voice worker; its own block so upstream's worker list and its bundle test stay upstream's.
@@ -187,7 +187,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..ee494f15b7914758ee7c4a94a292c89d
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc4549539667 100644
+index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc0a8b1abc 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -36,6 +36,9 @@
@@ -233,7 +233,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc45
          "@t3tools/web",
          "@napi-rs/keyring",
          "ffi-rs",
-@@ -72,13 +86,20 @@
+@@ -72,13 +86,21 @@
        ],
      },
      "apps/desktop": {
@@ -251,10 +251,11 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc45
          "src/snapShot/SnapShotAccessibilityWorker.ts!",
 +        "src/baton/voice/onnxWorker.ts!",
 +        "src/baton/voice/pillPreload.ts!",
++        "src/baton/companion/mascotPreload.ts!",
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
-@@ -91,7 +112,8 @@
+@@ -91,7 +113,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -264,7 +265,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc45
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -100,13 +122,20 @@
+@@ -100,13 +123,21 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -274,7 +275,8 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc45
 +        "src/components/**/{Baton,baton}*": ["exports"],
 +      },
 +      // Baton's model-picker line is mounted by a vendor patch the file audit cannot see.
-+      "ignore": ["src/components/chat/ModelPickerAccountLine.tsx"],
++      // The Character Studio's scripts: loaded by public/companion/stage.html, not imported.
++      "ignore": ["src/components/chat/ModelPickerAccountLine.tsx", "public/companion/**"],
      },
      "apps/marketing": {
        // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
@@ -286,7 +288,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc45
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -152,6 +181,13 @@
+@@ -152,6 +183,13 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -499,7 +501,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..d6f7edc532437b9ad0cfa2d9f2679854
 +  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedecb158b392 100644
+index 599c6b809a18ff4ce320c9780c87bd244d94dad3..8e3bfdbf60d4fd5deb866dbf8344e70edb99b206 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -587,7 +589,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
  export const DESKTOP_EXTRA_RESOURCES = [
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
-@@ -1099,6 +1133,25 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1099,6 +1133,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -599,6 +601,11 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
 +  {
 +    from: "apps/desktop/resources/tessaya",
 +    to: "tessaya",
++  },
++  // Her characters (Character Studio) for the desktop mascot and the pill's face; the web build serves the same folder.
++  {
++    from: "apps/web/public/companion",
++    to: "companion",
 +  },
 +  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs, staged below.
 +  {
@@ -613,7 +620,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2400,163 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2405,163 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -777,7 +784,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +3002,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +3007,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -785,7 +792,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3148,6 +3359,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3148,6 +3364,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -805,7 +812,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3411,6 +3635,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3411,6 +3640,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -852,7 +859,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3772,6 +4036,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3772,6 +4041,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -866,7 +873,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..0b1ba770d92d3a3b1544e0b6d60bedec
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3804,6 +4075,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3804,6 +4080,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);

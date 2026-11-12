@@ -1142,6 +1142,11 @@ export const DESKTOP_EXTRA_RESOURCES = [
     from: "apps/desktop/resources/tessaya",
     to: "tessaya",
   },
+  // Her characters (Character Studio) for the desktop mascot and the pill's face; the web build serves the same folder.
+  {
+    from: "apps/web/public/companion",
+    to: "companion",
+  },
   // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs, staged below.
   {
     from: "apps/desktop/prod-resources/memory-model",
