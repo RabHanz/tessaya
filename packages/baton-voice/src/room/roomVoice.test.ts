@@ -476,7 +476,7 @@ describe("her listening and closing sounds", () => {
 });
 
 describe("her brain starting on the recogniser's partial words", () => {
-  const guessing = (partial: string, final: string) => {
+  const guessing = (partial: string, final: string, over: Partial<RoomDeps> = {}) => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((r) => (release = r));
     const asked: string[] = [];
@@ -504,6 +504,7 @@ describe("her brain starting on the recogniser's partial words", () => {
         signal.addEventListener("abort", () => aborted.push(words));
         yield "Done.";
       },
+      ...over,
     });
     const run = async () => {
       await t.feed(true, 20);
@@ -523,6 +524,22 @@ describe("her brain starting on the recogniser's partial words", () => {
     expect(g.asked).toEqual(["turn on the study light"]);
     expect(m.speculative).toBe(true);
     expect(g.t.published.some((p) => p.topic.endsWith("voice/down"))).toBe(true);
+  });
+
+  it("starts the guess without waiting for the mood reader, which is slower on the voice host", async () => {
+    let moodDone: () => void = () => undefined;
+    const mood = new Promise<void>((r) => (moodDone = r));
+    const g = guessing("turn on the study light", "turn on the study light", {
+      affect: async () => {
+        await mood;
+        return { emotion: "neutral", events: [] };
+      },
+    });
+    const m = await g.run();
+    // The brain had the guess before the final text came back, while the mood reader was still running.
+    expect(g.atRelease()).toBe(1);
+    expect(m.speculative).toBe(true);
+    moodDone();
   });
 
   it("drops a guess that heard different words and answers the final text instead", async () => {
