@@ -50,7 +50,8 @@ const shot = async (name, page, expect) => {
   row(name, ok, ok ? body.slice(0, 120) : `expected ${expect} in: ${body.slice(0, 120)}`);
 };
 const click = async (page, label) => {
-  const target = page.getByText(label, { exact: true }).first();
+  // The last visible match: a settings dialog's own list sits after (above) the sidebar's.
+  const target = page.getByText(label, { exact: true }).filter({ visible: true }).last();
   try {
     await target.click({ timeout: 8_000 });
     return true;
@@ -60,7 +61,8 @@ const click = async (page, label) => {
   }
 };
 
-console.log("windows at start:", await describe());
+const atStart = await describe();
+console.log("windows at start:", atStart);
 // T3's window is the t3code://app hash router (or the server origin in a browser); Tessaya's is baton-window*.html.
 const isT3 = (p) => /^(t3code:\/\/app|https?:\/\/(127\.0\.0\.1|localhost))/.test(p.url()) && !p.url().includes("/tessaya/");
 const isTessaya = (p) => /baton-window[^/]*\.html/.test(p.url());
@@ -72,10 +74,21 @@ row("Tessaya's window opens from tessaya://settings/hardware", tessaya !== null,
 if (tessaya) {
   await tessaya.bringToFront().catch(() => undefined);
   // A fresh install opens on the setup tour; he can skip it the same way.
-  await tessaya.getByText("Skip the rest", { exact: true }).first().click({ timeout: 5_000 }).catch(() => undefined);
+  for (const skip of ["Skip the rest", "Skip", "Not now", "Later"]) {
+    await tessaya.getByText(skip, { exact: true }).filter({ visible: true }).first().click({ timeout: 2_000 }).catch(() => undefined);
+  }
+  // A fresh install also starts T3's own first run ("Connect your computers"), which an inline T3 page shows too.
   await sleep(1500);
   spawn(exe, ["tessaya://settings/hardware"], { detached: true, stdio: "ignore" }).unref();
   await shot("tessaya-devices-hardware", tessaya, /Hardware/);
+  // The inline page is T3's /tessaya/hardware in a webview: the page alone, never T3's first-run wizard or shell.
+  const inline = await waitFor((p) => /tessaya\/hardware/.test(p.url()), 15_000);
+  const inlineText = inline ? await text(inline) : "";
+  row(
+    "inline Hardware page is the page alone (no T3 wizard or sidebar)",
+    inline !== null && /Hardware/.test(inlineText) && !/Connect your computers|Add project/.test(inlineText),
+    inline ? `${inline.url()} :: ${inlineText.slice(0, 100)}` : "no inline page found",
+  );
   if ((await click(tessaya, "Devices")) && (await click(tessaya, "Hardware"))) {
     await shot("tessaya-devices-hardware-clicked", tessaya, /Hardware/);
   }
@@ -85,7 +98,9 @@ if (tessaya) {
   }
 }
 
-// T3's window: the moved settings pages answer with a card that opens Tessaya.
+// T3's window: the moved settings pages answer with a card that opens Tessaya. Since #803 it opens only when asked.
+row("windows at start (#803: Tessaya's alone)", true, atStart.join(" | "));
+if (!pages().some(isT3) && tessaya) await click(tessaya, "Open T3 sessions");
 const t3 = await waitFor(isT3);
 row("T3's window is open", t3 !== null, (await describe()).join(" | "));
 if (t3) {
@@ -93,7 +108,7 @@ if (t3) {
   await t3.bringToFront().catch(() => undefined);
   for (const route of ["hardware", "home", "apis"]) {
     await t3.goto(at(route)).catch((e) => row(`T3 /settings/${route}`, false, e.message));
-    await shot(`t3-settings-${route}-moved`, t3, /moved to Tessaya/i);
+    await shot(`t3-settings-${route}-moved`, t3, /moved[\s\S]*Open in Tessaya/i);
   }
   await t3.goto(at("tessaya")).catch(() => undefined);
   await shot("t3-settings-tessaya", t3, /Tessaya/);
