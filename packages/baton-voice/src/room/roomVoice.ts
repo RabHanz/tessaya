@@ -166,6 +166,8 @@ export interface RoomConfig {
   readonly followMs: number;
   /** The window after a reply that asks him something or tells him what to do next: his answer takes longer. */
   readonly replyHoldMs: number;
+  /** After S2, a wake or her name, his first turn is hers if he starts within this, however slow he is to begin. */
+  readonly firstTurnMs: number;
   /** A turn begun this soon after the window closed gets a glance, so a dropped turn is never met with nothing. */
   readonly lateCueMs: number;
   /** After this long with nothing said to her, the session ends (the R1 plays its exit chime); S2 starts it again. */
@@ -192,6 +194,7 @@ export const ROOM_CONFIG: RoomConfig = {
   upDelayMs: 150,
   followMs: 8_000,
   replyHoldMs: 15_000,
+  firstTurnMs: 30_000,
   lateCueMs: 4_000,
   // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
   idleStopMs: 15 * 60_000,
@@ -301,6 +304,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let openUntil = 0;
     /** Her last reply asked him something: a bare "yes" or "okay" is his answer, not the room's chatter. */
     let invited = false;
+    /** S2, a wake or her name: his first turn after it is for her, however long he takes to start (00:20, 13 Nov). */
+    let firstUntil = 0;
     let asleep = false;
     const lead = config.personas[0];
     /** Who answers: the one he last called, until the window lapses. */
@@ -422,13 +427,24 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       void say(text, control.signal)
         .catch(() => undefined)
         .finally(() => {
-          if (reply === control) reply = null;
+          if (reply !== control) return;
+          reply = null;
+          // Whatever she said, he may answer it: the window follows her voice, not only her replies to him.
+          if (control.signal.aborted) return;
+          invited = invitesReply(text);
+          openUntil = Math.max(
+            openUntil,
+            Math.max(deps.now(), playUntil + config.downDelayMs) +
+              (invited ? config.replyHoldMs : config.followMs),
+          );
         });
     };
 
     /** Said to her: she was named, or it began inside the window and is more than a stray "yeah" she did not ask for. */
     const addressed = (words: string, called: string | null, startedAt: number) =>
-      called !== null || (startedAt <= openUntil && (invited || !isBackchannel(words)));
+      called !== null ||
+      startedAt <= firstUntil ||
+      (startedAt <= openUntil && (invited || !isBackchannel(words)));
 
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
@@ -524,7 +540,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const late =
           openUntil > 0 && startedAt > openUntil && startedAt - openUntil <= config.lateCueMs;
         if (late) gesture("glance");
-        deps.log(`[${id}] turn ${turn}: not said to her; not answered${late ? " (a glance)" : ""}`);
+        deps.log(
+          `[${id}] turn ${turn}: not said to her; not answered${late ? " (a glance)" : ""}: ${JSON.stringify(text.slice(0, 40))}`,
+        );
         return;
       }
       const named = config.personas.find((p) => p.name === called);
@@ -536,16 +554,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       asleep = false;
       lastActivity = deps.now();
       const dismissed = isDismissal(text);
-      openUntil = Number.POSITIVE_INFINITY;
       const [speaker, affect] = await Promise.race([
         sides,
         deps.sleep(config.sideMs).then(() => [undefined, undefined] as const),
       ]);
       const identity = speaker ?? UNVERIFIED(deps.now());
       if (!admits(identity, config.gate, "turn")) {
-        deps.log(`[${id}] turn ${turn}: a ${identity.kind} voice; not answered`);
+        deps.log(
+          `[${id}] turn ${turn}: a ${identity.kind} voice; not answered: ${JSON.stringify(text.slice(0, 40))}`,
+        );
         return;
       }
+      firstUntil = 0;
+      openUntil = Number.POSITIVE_INFINITY;
       history.push({ role: "user", content: text });
       // One reply at a time: two playing at once interleave their frames on the downlink, which sounds chopped.
       if (reply !== null) interrupt();
@@ -855,11 +876,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** S2 or the R1's own wake: he is talking to her now. */
       wake: () => {
         openUntil = Math.max(openUntil, deps.now() + config.followMs);
+        firstUntil = deps.now() + config.firstTurnMs;
       },
       /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
       tick: (): "stop" | null => {
         const quiet = !turns.inTurn() && !speaking() && reply === null;
-        if (quiet && !asleep && deps.now() > openUntil) {
+        if (quiet && !asleep && deps.now() > Math.max(openUntil, firstUntil)) {
           asleep = true;
           face("sleepy");
           if (persona !== lead) {
