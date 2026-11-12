@@ -84,6 +84,16 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   earcons: op(Schema.Struct({ id: Id, on: Schema.Boolean }), (a, devices, by) =>
     devices.command(a.id, { op: "earcons", on: a.on }, by),
   ),
+  volume: op(
+    Schema.Struct({
+      id: Id,
+      to: Schema.Union([
+        Schema.Literals(["up", "down", "max", "default"]),
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
+      ]),
+    }),
+    (a, devices, by) => devices.command(a.id, { op: "volume", to: a.to }, by),
+  ),
   keyBind: op(
     Schema.Struct({
       id: Id,
