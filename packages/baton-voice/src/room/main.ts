@@ -59,6 +59,15 @@ const recogniserTurn = (url: string, token: string): LiveTurn => {
   let ended = false;
   let failed = false;
   let answered = false;
+  let lastSent = Date.now();
+  // The R1 sends no mic audio while she speaks (SMP 0.3.34+), and the recogniser drops a stream silent for 2 s: a little
+  // silence each second keeps his turn open across her reply.
+  const keepAlive = setInterval(() => {
+    if (open && !ended && Date.now() - lastSent > 1_000) {
+      ws.send(new Uint8Array(640));
+      lastSent = Date.now();
+    }
+  }, 500);
   let settle: ((text: string) => void) | null = null;
   const result = new Promise<string>((resolve) => {
     settle = resolve;
@@ -67,6 +76,7 @@ const recogniserTurn = (url: string, token: string): LiveTurn => {
       resolve("");
     });
     ws.addEventListener("close", () => {
+      clearInterval(keepAlive);
       if (!answered) failed = true;
       resolve("");
     });
@@ -98,6 +108,7 @@ const recogniserTurn = (url: string, token: string): LiveTurn => {
       bytes.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
       if (open) ws.send(bytes);
       else queued.push(bytes);
+      lastSent = Date.now();
     },
     finish: () => {
       ended = true;

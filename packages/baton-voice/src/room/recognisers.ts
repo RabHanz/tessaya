@@ -76,6 +76,8 @@ export const turnAcross = (
     return on;
   };
   let active = open();
+  /** Every recogniser has been tried: each gets one more go with the whole turn, so his words are not lost. */
+  let retried = false;
   return {
     feed: (pcm) => {
       fed.push(pcm);
@@ -96,7 +98,14 @@ export const turnAcross = (
           done(active.url, ms, false, null);
           return text;
         }
-        const next = open();
+        let next = open();
+        // A failure is often the connection, not the recogniser (13 Nov 01:39: the R1's mic went quiet for 2.4 s while she
+        // spoke and the recogniser dropped the stream): with nothing else to try, the same one hears it all again.
+        if (next === null && !retried) {
+          retried = true;
+          tried.clear();
+          next = open();
+        }
         done(active.url, ms, true, next?.url ?? null);
         if (next === null) return text;
         active = next;

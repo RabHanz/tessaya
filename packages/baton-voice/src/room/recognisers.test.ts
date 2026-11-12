@@ -64,3 +64,34 @@ it("hears a turn on the next recogniser, all of it, when the first turns it away
   expect(await turn.finish()).toBe("heard 160 samples");
   expect(log).toEqual(["busy failed, next spare", "spare ok"]);
 });
+
+it("gives his only recogniser one more go with the whole turn when it drops the stream (01:39, 13 Nov)", async () => {
+  let tries = 0;
+  const log: string[] = [];
+  const turn = turnAcross(
+    (tried) => {
+      if (tried.has("voice-host")) return null;
+      const attempt = (tries += 1);
+      let samples = 0;
+      let failed = false;
+      return {
+        url: "voice-host",
+        turn: {
+          feed: (pcm) => void (samples += pcm.length),
+          finish: async () => {
+            failed = attempt === 1;
+            return failed ? "" : `heard ${samples} samples`;
+          },
+          cancel: () => undefined,
+          failed: () => failed,
+        },
+      };
+    },
+    (url, _ms, failed, next) => log.push(`${url} ${failed ? `failed, next ${next}` : "ok"}`),
+    () => 0,
+  );
+  turn.feed(new Int16Array(100));
+  turn.feed(new Int16Array(60));
+  expect(await turn.finish()).toBe("heard 160 samples");
+  expect(log).toEqual(["voice-host failed, next voice-host", "voice-host ok"]);
+});
