@@ -225,6 +225,8 @@ export type BatonSessionRequest =
   | { readonly kind: "open"; readonly environmentId: string; readonly threadId: string }
   /** The thread list with only live sessions shown (its Live only filter on), from the Sessions tab. */
   | { readonly kind: "showLive" }
+  /** Show one of T3's own pages, such as `/settings/worktrees`, from Tessaya's search. */
+  | { readonly kind: "navigate"; readonly path: string }
   /** The session catalog across every connected environment; the answer's detail is JSON (see baton/sessions/catalogBridge). */
   | { readonly kind: "catalogList"; readonly query: string; readonly background?: boolean }
   | { readonly kind: "catalogCleanup"; readonly apply: boolean }
@@ -326,6 +328,8 @@ export interface BatonDesktopBridge {
   readonly setComposerFocus?: (focused: boolean) => void;
   /** ✓ or ✕ pressed on the chat box's dictation control. */
   readonly replyComposerDictation?: (reply: ComposerDictationReply) => void;
+  /** Bring up Tessaya's window, at a place such as `tessaya://settings/hardware` when given. */
+  readonly openTessaya?: (link?: string) => void;
 }
 
 /**

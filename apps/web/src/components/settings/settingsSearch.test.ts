@@ -1,3 +1,4 @@
+import { T3_SETTINGS_PLACES } from "@t3tools/baton-contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   EnvironmentId,
@@ -15,6 +16,7 @@ import {
   movedSettingsPath,
   searchSettings,
   SETTINGS_NAV_GROUPS,
+  SETTINGS_SECTION_LABELS,
   SETTINGS_SEARCH_ITEMS,
   sourceControlHostSearchItems,
   sourceControlHostSettingsSearchId,
@@ -199,6 +201,23 @@ describe("searchSettings", () => {
     ] as const) {
       expect(searchSettings(title)[0]?.id, title).toBe(id);
     }
+  });
+
+  it("finds Tessaya's settings in her window, and keeps her pages out of T3's list", () => {
+    expect(searchSettings("wake word")[0]).toMatchObject({
+      id: "tessaya-voice",
+      to: "/settings/tessaya",
+    });
+    expect(searchSettings("r1").map((item) => item.to)).toContain("/settings/tessaya");
+    const nav = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
+    for (const moved of ["/settings/home", "/settings/hardware", "/settings/apis"] as const)
+      expect(nav).not.toContain(moved);
+    expect(nav).toContain("/settings/tessaya");
+  });
+
+  it("names only T3 pages that exist in Tessaya's search of T3", () => {
+    for (const place of T3_SETTINGS_PLACES)
+      expect(Object.keys(SETTINGS_SECTION_LABELS), place.path).toContain(place.path);
   });
 
   it("keeps catalog result ids unique", () => {

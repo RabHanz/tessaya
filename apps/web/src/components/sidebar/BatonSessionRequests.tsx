@@ -13,6 +13,7 @@ import {
 import { buildBatonProjects, paneWaiting } from "@t3tools/baton-shared/batonProjects";
 import { answerCatalogRequest } from "@t3tools/baton-shared/catalogRequests";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 
 import { batonWorkSessions, useBatonFleets } from "../../state/batonWorkSessions";
@@ -87,7 +88,9 @@ export function BatonSessionRequests(props: {
     environmentIds: props.environmentIds as ReadonlyArray<string>,
     label: (id: string) => props.resolveEnvironmentLabel(id as EnvironmentId) ?? id,
   });
+  const navigate = useNavigate();
   const answerWindow = useRef({
+    navigate,
     open: props.onOpenThreadById,
     send: sendToPane,
     showLive: props.onShowLive,
@@ -97,6 +100,7 @@ export function BatonSessionRequests(props: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the shell's handler on the latest callbacks
   useEffect(() => {
     answerWindow.current = {
+      navigate,
       open: props.onOpenThreadById,
       send: sendToPane,
       showLive: props.onShowLive,
@@ -127,6 +131,13 @@ export function BatonSessionRequests(props: {
     const unsubscribe = subscribe(async (request) => {
       const catalog = await answerCatalogRequest(request, catalogDeps.current as never);
       if (catalog !== null) return catalog;
+      if (request.kind === "navigate") {
+        // Tessaya's search opens one of T3's own pages; only those, never an outside address.
+        if (!/^\/(settings|tessaya)\/[a-z-]+$/.test(request.path))
+          return { ok: false, detail: "Not a T3 page." };
+        void answerWindow.current.navigate({ to: request.path as never });
+        return { ok: true, detail: "Opened." };
+      }
       if (request.kind !== "open" && request.kind !== "send" && request.kind !== "showLive")
         return { ok: false, detail: "Not understood." };
       if (request.kind === "open") {

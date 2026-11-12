@@ -68,7 +68,7 @@ index ccb7a8b82000e20282ec12231d566e1ce15e85a8..a71c1b73089378be2aebdc1a633d4c0d
    if (isElectron) startElectronBrowserHost();
    startPreviewTitleRecording();
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..2f545e8b569c9cacfaee57e197765485b895fe28 100644
+index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..3eddfecbac277a1fc21e0c279ea07be404191e66 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 @@ -53,6 +53,7 @@ import {
@@ -83,7 +83,7 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..2f545e8b569c9cacfaee57e197765485
  import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
  import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
  import { AdvancedSettings } from "./AdvancedSettings";
-+import { VoiceLibrarySections } from "./VoiceLibrarySettings";
++import { TessayaMovedSection } from "./TessayaPlaces";
  import {
    SETTINGS_PICKER_TRIGGER_CLASSNAME,
    SettingResetButton,
@@ -165,7 +165,7 @@ index 4a3df08f40f14fd76ccd84b10f0076d876f8d4d9..2f545e8b569c9cacfaee57e197765485
            />
          ) : null}
        </SettingsSection>
-+      <VoiceLibrarySections />
++      <TessayaMovedSection place="personas" />
      </SettingsPageContainer>
    );
  }

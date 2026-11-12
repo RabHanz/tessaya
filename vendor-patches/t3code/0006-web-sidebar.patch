@@ -8298,7 +8298,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f
        <SidebarProviderStack
          thread={thread}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536a26b441b 100644
+index 1207b5017100d7300d7a161e676531d145f45a75..cf21c658da01125a5dc56283ae1519ff32e3e2bd 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
 @@ -26,6 +26,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
@@ -8319,7 +8319,16 @@ index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536
    const hostedPromptLinkLanding = useHostedPromptLinkLanding(
      authGateState.status === "hosted-static",
    );
-@@ -205,7 +209,7 @@ function RootRouteBranch() {
+@@ -181,6 +185,8 @@ function RootRouteBranch() {
+   if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
+     return <Outlet />;
+   }
++  // Baton (0008-web-panes.patch): Tessaya's window shows these pages alone, without T3's sidebar.
++  if (pathname.startsWith("/tessaya/")) return <Outlet />;
+ 
+   const appShell = (
+     <CommandPalette>
+@@ -205,7 +211,7 @@ function RootRouteBranch() {
          <RelayClientInstallDialog />
          <ConnectOnboardingDialog />
          <SshPasswordPromptDialog />

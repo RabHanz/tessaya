@@ -53,6 +53,8 @@ export interface BatonIntentBarProps {
   readonly focusedWorkSessionId: string | null;
   /** Called after a sentence runs, so the log and the fleet re-read. */
   readonly onRan: () => void;
+  /** Answer the desktop assistant's calls without drawing the bar: typing to Tessaya lives in her window. */
+  readonly headless?: boolean;
   /** The desktop assistant's job tools (D145), answered with the job RPCs. */
   readonly onJob?: (request: BatonJobBridgeRequest) => Promise<unknown>;
   /** The desktop assistant's memory calls (D150), answered with the memory RPCs. */
@@ -308,6 +310,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     resolution !== null && resolution.text === trimmedText ? resolution.resolution : null;
   const preview = shown === null ? null : previewResolution(shown);
 
+  if (props.headless === true) return null;
   return (
     <div className="px-2 pb-1 pt-1">
       {dictating ? (

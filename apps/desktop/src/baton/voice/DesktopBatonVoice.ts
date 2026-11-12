@@ -24,7 +24,7 @@ import type {
   BatonRecordEntry,
   WatchFinding,
 } from "@t3tools/baton-contracts";
-import { BATON_DESKTOP_SETTINGS_WS_METHODS } from "@t3tools/baton-contracts";
+import { BATON_DESKTOP_SETTINGS_WS_METHODS, tessayaPlaceOf } from "@t3tools/baton-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
@@ -344,6 +344,7 @@ import {
   BATON_COMPOSER_FOCUS_CHANNEL,
   BATON_COMPOSER_MIC_CHANNEL,
   BATON_VOICE_FOCUS_CHANNEL,
+  BATON_OPEN_TESSAYA_CHANNEL,
   BATON_VOICE_REQUEST_CHANNEL,
   BATON_VOICE_RESPONSE_CHANNEL,
 } from "../channels.ts";
@@ -1189,6 +1190,8 @@ export interface DesktopBatonVoiceInput {
   readonly audition?: (voice: string | null) => void;
   /** Bring the main window up, however it was left. */
   readonly openMainWindow: () => void;
+  /** T3's app address and preload, for the T3 pages Tessaya's window shows inline. */
+  readonly embed?: { readonly url: string; readonly preload: string };
   /** Wake-to-pill, for the record. */
   readonly onWakeShown?: (ms: number) => void;
   /** Start the assistant's sessions, so the first turn after launch does not wait for them. */
@@ -1213,8 +1216,8 @@ export interface DesktopBatonVoice {
   readonly refresh: () => void;
   /** In the middle of a turn: speaking, or listening past the wake word. */
   readonly busy: () => boolean;
-  /** Bring Baton's own window up. */
-  readonly openHome: () => void;
+  /** Bring Baton's own window up, at a place (`hardware`) when given. */
+  readonly openHome: (place?: string) => void;
   /** Baton's voice started or stopped. */
   readonly onSpeaking: (active: boolean) => void;
   /** A sentence going to the speakers. */
@@ -3281,6 +3284,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const pushContext = () =>
     core?.setContext(desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }));
+  // T3's window asks for Tessaya's, at a place: "Open Tessaya", or a moved setting's Open button.
+  Electron.ipcMain.on(BATON_OPEN_TESSAYA_CHANNEL, (event, link: unknown) => {
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
+    home.open((typeof link === "string" ? tessayaPlaceOf(link) : null) ?? undefined);
+  });
   Electron.ipcMain.on(BATON_VOICE_FOCUS_CHANNEL, (event, id: unknown) => {
     // Our own windows only; preview panes load other people's pages.
     if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
@@ -7898,10 +7906,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     state: homeState,
     apply: applyHome,
     // The Sessions tab is T3's own thread list, filtered to live sessions (P5).
-    openSessions: (liveOnly) => {
+    openSessions: (liveOnly, path) => {
       input.openMainWindow();
       if (liveOnly) void showLiveWhenReady(input.sessions);
+      else if (path !== undefined)
+        void showLiveWhenReady(input.sessions, 10, { kind: "navigate", path });
     },
+    ...(input.embed === undefined ? {} : { embed: input.embed }),
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
       if (tab === "memory") {
@@ -8227,7 +8238,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   void start().catch(failed);
   return {
     refresh: render,
-    openHome: () => home.open(),
+    openHome: (place) => home.open(place),
     busy: () => speakingNow || !["sleeping", "listening", "muted"].includes(state),
     onSpeaking: (active) => {
       // Her reply starts: whether he can talk over it depends on what she is playing through now.
