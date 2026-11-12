@@ -61,7 +61,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          # #801 binds 8797 to the laptop's Tailscale address only; this runner has none, so nothing may listen at all.
+          # The R1 recogniser binds 8797 to the laptop's Tailscale address only; this runner has none, so nothing may listen.
           New-Item -ItemType Directory -Force $env:PROOF_OUT | Out-Null
           netstat -ano | Select-String ':8797' | Out-File "$env:PROOF_OUT\port-8797-netstat.txt"
           "netstat :8797 -> $((Get-Content "$env:PROOF_OUT\port-8797-netstat.txt" | Measure-Object -Line).Lines) line(s)"
