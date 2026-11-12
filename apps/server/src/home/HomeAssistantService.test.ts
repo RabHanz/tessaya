@@ -219,11 +219,28 @@ it.effect("finds by words and room, toggles a light, and undoes it from the snap
     );
     assert.strictEqual(done.status, "done");
     assert.strictEqual(house.states.get("light.study")?.s, "off");
+    // What a follow-up ("turn it back on") needs to reach the same light.
+    assert.deepStrictEqual((yield* home.actions(1))[0]?.entities, ["light.study"]);
     assert.deepStrictEqual(house.calls.slice(0, 2), ["scene.create", "light.turn_off"]);
     assert.isTrue(house.logbook.some((line) => line.includes("light.turn_off")));
     const undone = yield* home.undo(done.undoId!, assistant);
     assert.strictEqual(undone.status, "undone");
     assert.strictEqual(house.states.get("light.study")?.s, "on");
+    // 12 Nov: the R1 turned off "light.lamp" (no such entity), HA said ok, and she said it was off.
+    const calls = house.calls.length;
+    const ghost = yield* home
+      .call(
+        {
+          domain: "light",
+          service: "turn_off",
+          target: { entity_id: "light.lamp" },
+          why: "x",
+        },
+        assistant,
+      )
+      .pipe(Effect.flip);
+    assert.include(ghost.why, "no light.lamp");
+    assert.strictEqual(house.calls.length, calls);
     const record = yield* (yield* BatonRecordService).query({ kind: "home" });
     assert.deepStrictEqual(
       record.map((r) => r.outcome),
