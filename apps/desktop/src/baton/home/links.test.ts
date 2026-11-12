@@ -1,7 +1,8 @@
 import { tessayaPlaceOf } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { placeInArgs } from "./links.ts";
+import { isEmbedSrc, placeInArgs } from "./links.ts";
+import { openState } from "./pageStates.ts";
 
 describe("tessaya:// links", () => {
   it("names a place from a link, a path or a bare id, and nothing else", () => {
@@ -15,5 +16,21 @@ describe("tessaya:// links", () => {
   it("finds the link among a second launch's arguments", () => {
     expect(placeInArgs(["Tessaya.exe", "--flag", "tessaya://settings/apis"])).toBe("apis");
     expect(placeInArgs(["Tessaya.exe"])).toBeNull();
+  });
+
+  it("shows T3's pages inline by their hash route, never T3's home and its first-run wizard", async () => {
+    const page = await openState("empty");
+    page.exec("embedUrl = 't3code://app/'; render(S);");
+    page.show("hardware");
+    const view = page
+      .elements()
+      .find((e) => (e as unknown as { tagName: string }).tagName === "webview");
+    const src = view?.attrs.get("src") ?? null;
+    expect(src).toBe("t3code://app/#/tessaya/hardware");
+    expect(isEmbedSrc("t3code://app/", src ?? "")).toBe(true);
+    expect(isEmbedSrc("t3code://app/", "t3code://app/tessaya/hardware")).toBe(false);
+    expect(isEmbedSrc("t3code://app/", "t3code://app/#/welcome")).toBe(false);
+    expect(isEmbedSrc("t3code://app/", "https://evil.example/#/tessaya/hardware")).toBe(false);
+    expect(page.errors).toEqual([]);
   });
 });

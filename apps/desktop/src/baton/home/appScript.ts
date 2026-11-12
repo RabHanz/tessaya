@@ -884,10 +884,11 @@ function placeHits(words) {
 }
 let embedUrl = null;
 if (real) ipc.invoke('baton-home:embed').then(u => { embedUrl = u || null; if (S) { lastSig = ''; render(S); } }).catch(() => {});
-// Pages built in T3's web app (Hardware, Home Assistant, APIs, accounts, voices), shown inside this window.
+// Pages built in T3's web app (Hardware, Home Assistant, APIs, accounts, voices), shown inside this window. The
+// desktop app routes by hash: a plain path would land on T3's home route and its first-run wizard.
 function embed(p, page) {
   if (!embedUrl) { p.appendChild($('div', 'empty', L('embed.missing'))); const b = $('button', 'btn gap-top', L('embed.open')); b.onclick = () => real && ipc.send('baton-home:sessions', '/tessaya/' + page); p.appendChild(b); return; }
-  const w = document.createElement('webview'); w.className = 'embed'; w.setAttribute('src', embedUrl + 'tessaya/' + page); p.appendChild(w);
+  const w = document.createElement('webview'); w.className = 'embed'; w.setAttribute('src', embedUrl + '#/tessaya/' + page); p.appendChild(w);
 }
 function phonePage(p) { p.appendChild(plainGroup([[L('phone.pair'), L('phone.pair.text'), L('phone.pair'), () => real && ipc.send('baton-home:sessions', '/settings/access')]])); }
 // Sessions are T3's thread list (P5): counts here, the list filtered to live sessions there.
