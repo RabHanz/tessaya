@@ -213,6 +213,9 @@ export class HomeAssistantService extends Context.Service<
   }
 >()("t3/home/HomeAssistantService") {}
 
+/** What a toggle script may flip, each with its own idempotent turn_on and turn_off. */
+const SWITCHED: ReadonlySet<string> = new Set(["fan", "light", "switch", "input_boolean"]);
+
 interface Cached {
   s: string;
   a: Record<string, unknown>;
@@ -628,6 +631,10 @@ const make = Effect.gen(function* () {
         scriptActions.set(id, asRecord(asRecord(config.value)["config"])["sequence"] ?? []);
     }
   });
+  const isToggleScript = (id: string) =>
+    id.startsWith("script.") &&
+    (/toggle/i.test(`${id} ${nameOf(id)}`) ||
+      actionCalls(scriptActions.get(id) ?? []).some((c) => c.service === "toggle"));
   const callTarget = (request: HomeCallRequest): Record<string, unknown> => {
     const target = { ...asRecord(request.target) };
     const data = asRecord(request.data);
@@ -855,6 +862,22 @@ const make = Effect.gen(function* () {
         why: `There is no ${missing.join(", ")} in the house; use an id from home_find.`,
       });
     const { verdict, ids } = yield* judge(request);
+    // A toggle script flips what it runs on, so "turn on" ran on an on fan turns it off (00:42, 13 Nov). The real
+    // entity's own turn_on and turn_off do nothing when it is already so, and its state is what to read.
+    if (request.domain === "script") {
+      const toggles = asList(callTarget(request)["entity_id"]).filter((e) => isToggleScript(e));
+      const flipped = [...ids].filter(
+        (e) => SWITCHED.has(e.split(".")[0] ?? "") && states.has(e) && !e.startsWith("script."),
+      );
+      if (toggles.length > 0 && flipped.length > 0)
+        return yield* new HomeRefusedError({
+          why: `${toggles.map(nameOf).join(", ")} only flips ${flipped
+            .map((e) => `${e} (now ${states.get(e)!.s})`)
+            .join(
+              ", ",
+            )}. Call turn_on or turn_off on that entity itself instead; it does nothing when it is already so.`,
+        });
+    }
     const line = lineOf(request, ids);
     return yield* gate({
       by,

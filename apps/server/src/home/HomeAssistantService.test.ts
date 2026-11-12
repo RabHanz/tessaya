@@ -27,6 +27,8 @@ const makeHouse = () => {
     ["light.study", { s: "on", a: { friendly_name: "Study light" } }],
     ["lock.front", { s: "locked", a: { friendly_name: "Front door" } }],
     ["switch.sonoff_1", { s: "off", a: { friendly_name: "Water Pump" } }],
+    ["fan.fan", { s: "on", a: { friendly_name: "Fan" } }],
+    ["script.office_fan_toggle", { s: "off", a: { friendly_name: "Office Fan Toggle" } }],
     ["automation.kitten", { s: "on", a: { friendly_name: "Kitten litter", id: "kitten_1" } }],
   ]);
   const configs = new Map<string, Record<string, unknown>>([
@@ -48,6 +50,16 @@ const makeHouse = () => {
   const command = (m: Readonly<Record<string, unknown>>): Effect.Effect<unknown, HomeCallError> =>
     Effect.suspend((): Effect.Effect<unknown, HomeCallError> => {
       switch (m["type"]) {
+        case "script/config":
+          return Effect.succeed(
+            m["entity_id"] === "script.office_fan_toggle"
+              ? {
+                  config: {
+                    sequence: [{ action: "fan.toggle", target: { entity_id: "fan.fan" } }],
+                  },
+                }
+              : null,
+          );
         case "get_config":
           return Effect.succeed({ version: "2026.8.0", time_zone: "Asia/Karachi" });
         case "auth/current_user":
@@ -85,6 +97,8 @@ const makeHouse = () => {
           }
           if (name === "scene.turn_on")
             for (const [e, v] of scenes.get(ids(m["target"])[0]!) ?? []) put(e, structuredClone(v));
+          if (name === "fan.turn_on")
+            for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "on" });
           if (name === "light.turn_off" || name === "automation.turn_off")
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "off" });
           if (name === "automation.turn_on")
@@ -144,6 +158,7 @@ const makeHouse = () => {
     calls,
     logbook,
     connection,
+    put,
     fireDone: (id: string) => onDone?.({ data: { id } }),
   };
 };
@@ -403,6 +418,40 @@ it.effect(
         assistant,
       );
       assert.strictEqual(risky.status, "asked");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "never runs a toggle script for on or off: it points at the fan itself, whose state is read (00:42, 13 Nov)",
+  () => {
+    const { house, layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const viaScript = {
+        domain: "script",
+        service: "turn_on",
+        target: { entity_id: "script.office_fan_toggle" },
+        why: "Turn on the office fan.",
+      };
+      // The fan is on: the script would have turned it off.
+      const refusedOn = yield* home.call(viaScript, assistant).pipe(Effect.flip);
+      assert.include(refusedOn.why, "fan.fan (now on)");
+      house.put("fan.fan", { s: "off", a: { friendly_name: "Fan" } });
+      const refusedOff = yield* home.call(viaScript, assistant).pipe(Effect.flip);
+      assert.include(refusedOff.why, "fan.fan (now off)");
+      assert.notInclude(house.calls, "script.turn_on");
+      const done = yield* home.call(
+        {
+          domain: "fan",
+          service: "turn_on",
+          target: { entity_id: "fan.fan" },
+          why: "Turn on the office fan.",
+        },
+        assistant,
+      );
+      assert.strictEqual(done.status, "done");
+      assert.strictEqual(house.states.get("fan.fan")?.s, "on");
     }).pipe(Effect.provide(layer));
   },
 );
