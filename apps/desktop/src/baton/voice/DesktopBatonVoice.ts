@@ -2223,7 +2223,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                   // Tessaya's own window answers for itself: Windows sees its page as one document that takes text.
                   if ((await ownFieldFocused(target)) === false) {
                     keptWhy = "nofield";
-                    input.onNote?.("paste_refused", { why: "nofield", own: true, chars: text.length });
+                    input.onNote?.("paste_refused", {
+                      why: "nofield",
+                      own: true,
+                      chars: text.length,
+                    });
                     return false;
                   }
                   // One helper call: its window forward, the same window and page checked (his words were not for

@@ -18,7 +18,8 @@ export const takesText = (e: Focused): boolean =>
     e.tagName === "IFRAME" ||
     e.tagName === "WEBVIEW" ||
     ((e.tagName === "TEXTAREA" ||
-      (e.tagName === "INPUT" && /^(text|search|email|url|tel|password|number|)$/i.test(e.type ?? ""))) &&
+      (e.tagName === "INPUT" &&
+        /^(text|search|email|url|tel|password|number|)$/i.test(e.type ?? ""))) &&
       e.readOnly !== true &&
       e.disabled !== true));
 
