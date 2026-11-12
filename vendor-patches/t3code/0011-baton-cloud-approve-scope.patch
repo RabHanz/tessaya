@@ -140,6 +140,53 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..0356d7a985d24e5f4732167c3e8089b5
 +      () => `${AuthBatonMemorySyncScope} is a sync-only credential: give it alone.`,
 +    ),
    );
+diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
+index 79276f3851504c8fbb8eed480f6e181de68c3f32..4755579ccc5553ace46f286a75ec1849fcbf0e43 100644
+--- a/packages/client-runtime/src/state/commandPermissions.test.ts
++++ b/packages/client-runtime/src/state/commandPermissions.test.ts
+@@ -131,6 +131,42 @@ describe("command permissions", () => {
+     ),
+   );
+ 
++  it.effect("lets a read-only grant list an R1 but not rebind its buttons", () =>
++    Effect.scoped(
++      Effect.gen(function* () {
++        const registry = yield* setup;
++        const devices = createCommandPermissions(runtime, "baton.devices.call");
++        const list = { kind: "read", op: "list", args: {} };
++        const keyBind = { kind: "act", op: "keyBind", args: {} };
++        registry.set(
++          sessions(env),
++          AsyncResult.success({
++            ...grant(false),
++            scopes: [AuthOrchestrationReadScope],
++            permissions: [AuthOrchestrationReadScope],
++          }),
++        );
++        expect(registry.get(devices.permissionAtom(env, list))).toBe(true);
++        yield* devices.authorize(registry, env, list);
++        expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(false);
++        expect((yield* devices.authorize(registry, env, keyBind).pipe(Effect.flip))._tag).toBe(
++          "EnvironmentAuthorizationError",
++        );
++        registry.set(
++          sessions(env),
++          AsyncResult.success({
++            ...grant(true),
++            scopes: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
++            permissions: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
++          }),
++        );
++        expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(true);
++        yield* devices.authorize(registry, env, keyBind);
++        expect(registry.get(devices.permissionAtom(other, keyBind))).toBe(false);
++      }),
++    ),
++  );
++
+   it.effect("requires the destination provider grant to remove an incomplete connection", () =>
+     Effect.scoped(
+       Effect.gen(function* () {
 diff --git a/packages/contracts/src/auth.test.ts b/packages/contracts/src/auth.test.ts
 index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15a3aedb1d 100644
 --- a/packages/contracts/src/auth.test.ts
@@ -390,3 +437,41 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bf96f15249e405cb4d9754265640f5fe
      requiredPermission,
    };
  }
+diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
+index caeee25295c6f1a3dc860e4736687c51cb55441f..89894710bd777ef8cd265320dd28ff008db8d28f 100644
+--- a/packages/contracts/src/clientRpcPermissions.ts
++++ b/packages/contracts/src/clientRpcPermissions.ts
+@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
+ import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
+ import {
+   AuthAccessWriteScope,
++  AuthBatonCloudApproveScope,
+   AuthOrchestrationOperateScope,
+   AuthOrchestrationReadScope,
+   AuthPreviewOperateScope,
+@@ -78,6 +79,9 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
+ const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
+ const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
+ 
++/** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import baton-contracts. */
++const DEVICES_CALL = "baton.devices.call";
++
+ export function clientRpcRequiredScopes(
+   method: string,
+   input: unknown,
+@@ -95,6 +99,15 @@ export function clientRpcRequiredScopes(
+     )
+       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
+   }
++  // Its kind sets the scope, as the server's missingBatonScope does: owner is the camera, reboot and pictures.
++  if (method === DEVICES_CALL) {
++    const kind = (input as { kind?: unknown } | undefined)?.kind;
++    return kind === "read"
++      ? [AuthOrchestrationReadScope]
++      : kind === "owner"
++        ? [AuthOrchestrationReadScope, AuthBatonCloudApproveScope]
++        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
++  }
+   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
+     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
+     : [];
