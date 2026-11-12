@@ -1035,12 +1035,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       } else if (tail === "voice/enrol") {
         if (json()["cancel"] === true) sessions.get(id)?.cancelEnrol();
         else (sessions.get(id) ?? start(id)).enrol();
-      } else if (
-        tail === "state/online" &&
-        String(payload).trim() === "1" &&
-        config.inhouse.has(id)
-      )
-        void rearm(id);
+      } else if (tail === "state/online" && String(payload).trim() === "1") {
+        // Back on the link mid-session: he was talking to her, so the window opens again rather than lapsing (00:43, 13 Nov).
+        sessions.get(id)?.wake();
+        if (config.inhouse.has(id)) void rearm(id);
+      }
     },
     /** Ends sessions nobody has spoken in; the R1 hears its own stop and plays the exit chime. */
     sweep: () => {
