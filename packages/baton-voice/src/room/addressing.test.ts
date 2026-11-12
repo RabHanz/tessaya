@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { calledName, invitesReply, isBackchannel, isDismissal } from "./addressing.ts";
+import { calledName, invitesReply, isBackchannel, isDismissal, isOwnVoice } from "./addressing.ts";
 
 const NAMES = ["Tessaya", "Freya", "Alfred", "Sebastian"];
 
@@ -41,5 +41,34 @@ describe("whether he was talking to her", () => {
     expect(invitesReply("Sorry, I missed that one. Could you say it again?")).toBe(true);
     expect(invitesReply("It's twenty-three minutes past seven.")).toBe(false);
     expect(invitesReply("Good evening.")).toBe(false);
+  });
+
+  it("knows her own words coming back through the R1's mic (00:38 to 00:42, 13 Nov), and his", () => {
+    // What she said, then what the R1 heard while it played.
+    const echoes: Array<[string, string]> = [
+      ["Twenty to one.", "twenty to one."],
+      [
+        "Twenty to one, in the morning. I said that because it's late.",
+        "Twenty to one in the morning.",
+      ],
+      ['I couldn\'t find anything called "scrap" in the house.', "I couldn't find anything."],
+      ['Sorry, I searched again and there\'s still nothing called "scrap".', "I searched again."],
+      ["I didn't catch that clearly. Could you say the room?", "I didn't catch that clearly."],
+      ["No need to apologise. Just tell me the room.", "No need to apologize."],
+      ["There's no office stand in the house.", "office stand in the house."],
+      ["No, there's nothing called an office stand.", "No, there's nothing called an o"],
+      ["Got it, I won't touch anything for that.", "Got it. I won't"],
+      ["Okay, I'm listening.", "Okay, I'm listening."],
+      ["Hello to you. It's just gone twenty to one.", "Hello to you."],
+    ];
+    for (const [her, heard] of echoes) expect(isOwnVoice(heard, [her])).toBe(true);
+    // His own words while she spoke or just after.
+    for (const [her, heard] of [
+      ["Yes, I can hear you.", "What time is it?"],
+      ["Twenty to one.", "What did you say?"],
+      ["Okay, I'm listening.", "Turn on the office fan."],
+      ["I couldn't find anything called scrap.", "Uh can you turn on the lamp?"],
+    ] as const)
+      expect(isOwnVoice(heard, [her])).toBe(false);
   });
 });
