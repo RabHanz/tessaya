@@ -154,7 +154,8 @@ describe("makeRewriter", () => {
 
   it("waits for his key's usual 1.3 s answer at release, and says why when it gives up", async () => {
     vi.useFakeTimers();
-    let apiMs = 1_300;
+    let answer: ((text: string) => void) | null = null;
+    let refuse = false;
     const rewriter = makeRewriter({
       claudeBinary: "claude",
       model: "haiku",
@@ -169,20 +170,25 @@ describe("makeRewriter", () => {
         dispose: () => {},
       }),
       api: (): Promise<string> =>
-        apiMs < 0
+        refuse
           ? Promise.reject(new Error("timeout"))
-          : new Promise((resolve) => setTimeout(() => resolve("from the api"), apiMs)),
+          : new Promise((resolve) => {
+              answer = resolve;
+            }),
     });
     const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
+    // His key answers 1.3 s after release, as it did on 0.1.107.
     const clean = async () => {
       const cleaned = rewriter.clean(said);
+      await vi.advanceTimersByTimeAsync(1_300);
+      answer?.("from the api");
       await vi.advanceTimersByTimeAsync(5_000);
       return cleaned;
     };
     expect((await clean()).text).toBe("from the api");
     // 0.1.107 cut this one at 0.9 s and pasted the local text (2026-11-12).
     expect(await clean()).toMatchObject({ stage: "model", text: "from the api" });
-    apiMs = -1;
+    refuse = true;
     expect(await clean()).toMatchObject({ stage: "fallback", why: "timed out after key timeout" });
     rewriter.dispose();
     vi.useRealTimers();
