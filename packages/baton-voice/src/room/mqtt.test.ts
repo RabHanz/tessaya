@@ -54,9 +54,8 @@ describe("the room's MQTT client", () => {
 });
 
 it("tells a replay when a real R1 may be in use, and ignores the replay's own traffic", () => {
-  expect(realDeviceActivity("freya/r1/r1-3d57b3/state/online", "1", "replay-1")).toBe(
-    "r1-3d57b3 is online",
-  );
+  // Plugged in but silent is not in use: only what he does on it counts.
+  expect(realDeviceActivity("freya/r1/r1-3d57b3/state/online", "1", "replay-1")).toBeNull();
   expect(realDeviceActivity("freya/r1/r1-3d57b3/state/online", "0", "replay-1")).toBeNull();
   expect(realDeviceActivity("freya/r1/r1-3d57b3/voice/up", "", "replay-1")).toBe(
     "r1-3d57b3 sent voice/up",
