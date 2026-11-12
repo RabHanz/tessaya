@@ -43,6 +43,10 @@ const makeHouse = () => {
     states.set(id, entity);
     onDiff?.({ a: { [id]: { s: entity.s, a: entity.a } } });
   };
+  const remove = (id: string) => {
+    states.delete(id);
+    onDiff?.({ r: [id] });
+  };
   const ids = (target: unknown): ReadonlyArray<string> => {
     const raw = (target as { entity_id?: unknown } | undefined)?.entity_id;
     return raw === undefined ? [] : Array.isArray(raw) ? (raw as Array<string>) : [String(raw)];
@@ -159,6 +163,7 @@ const makeHouse = () => {
     logbook,
     connection,
     put,
+    remove,
     fireDone: (id: string) => onDone?.({ data: { id } }),
   };
 };
@@ -452,6 +457,17 @@ it.effect(
       );
       assert.strictEqual(done.status, "done");
       assert.strictEqual(house.states.get("fan.fan")?.s, "on");
+      // His real office fan has no state in the house (01:29, 13 Nov): only a flip he agreed to.
+      house.remove("fan.fan");
+      const blind = yield* home.call(viaScript, assistant).pipe(Effect.flip);
+      assert.include(blind.why, "cannot tell whether it is on");
+      assert.notInclude(house.calls, "script.turn_on");
+      const flipped = yield* home.call(
+        { ...viaScript, service: "toggle", why: "He said yes, flip it." },
+        assistant,
+      );
+      assert.strictEqual(flipped.status, "done");
+      assert.include(house.calls, "script.toggle");
     }).pipe(Effect.provide(layer));
   },
 );
