@@ -70,7 +70,7 @@ const callTool = (
                     : caller === "linked"
                       ? {
                           sessionId,
-                          label: "T3 Code · hetzner",
+                          label: "T3 Code · home server",
                           access: "approval-required",
                           linked: true,
                         }
