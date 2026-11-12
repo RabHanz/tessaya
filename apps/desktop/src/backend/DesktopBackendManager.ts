@@ -31,6 +31,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
 import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
 import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
+import { awaitBackendUnresponsive } from "../baton/lifecycle/backendLiveness.ts";
 
 const INITIAL_RESTART_DELAY = Duration.millis(500);
 const MAX_RESTART_DELAY = Duration.seconds(10);
@@ -573,7 +574,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
     ),
   );
 
-  yield* probeReadiness().pipe(Effect.repeat({ while: (ready) => !ready }), Effect.forkScoped);
+  yield* probeReadiness().pipe(
+    Effect.repeat({ while: (ready) => !ready }),
+    // A hung backend never exits, so the restart below this only happens if we end it.
+    Effect.andThen(awaitBackendUnresponsive(new URL(BACKEND_READINESS_PATH, options.httpBaseUrl))),
+    Effect.andThen(
+      logBackendProcessWarning("backend stopped answering; ending it so it restarts", {
+        pid: handle.pid,
+      }),
+    ),
+    Effect.andThen(handle.kill()),
+    Effect.ignore,
+    Effect.forkScoped,
+  );
 
   const exit = yield* handle.exitCode.pipe(
     Effect.withSpan("desktop.backendProcess.awaitExit"),
