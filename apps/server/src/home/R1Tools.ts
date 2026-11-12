@@ -5,6 +5,8 @@
  * laptop_ask, which asks his laptop's Tessaya. No file, shell or screen tools: the room only reads and asks.
  */
 import { BatonHomeCallResult } from "@t3tools/baton-contracts";
+import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
+import type { VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -26,6 +28,8 @@ import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type ToolOutcome } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
+import { HomeAssistantService } from "./HomeAssistantService.ts";
+import { HomeDevices } from "./HomeDevices.ts";
 
 /** What the room may call from Tessaya's /mcp toolkit. */
 const ROOM_TOOLS = [
@@ -60,6 +64,55 @@ const LAPTOP: RoomTool = {
   },
 };
 
+const VOLUME: RoomTool = {
+  name: "set_device_volume",
+  description: DEVICE_TOOL_TEXT.set_device_volume,
+  input_schema: {
+    type: "object",
+    properties: {
+      to: {
+        description: "up, down, max, default, or a level from 10 to 100.",
+        anyOf: [
+          { type: "string", enum: ["up", "down", "max", "default"] },
+          { type: "number", minimum: 10, maximum: 100 },
+        ],
+      },
+    },
+    required: ["to"],
+  },
+};
+
+const volumeTo = (input: unknown): VolumeTo | null => {
+  const to = typeof input === "object" && input !== null && "to" in input ? input.to : null;
+  if (typeof to === "number" && Number.isFinite(to)) return to;
+  return to === "up" || to === "down" || to === "max" || to === "default" ? to : null;
+};
+
+/** On this room's R1, through the devices' own command path. */
+const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown) {
+  const to = volumeTo(input);
+  if (to === null)
+    return { text: "Say up, down, max, default or a level.", isError: true } as ToolOutcome;
+  const device = yield* Effect.serviceOption(HomeAssistantService).pipe(
+    Effect.flatMap((h) => (h._tag === "None" ? Effect.succeed(null) : h.value.device)),
+  );
+  const devices = yield* Effect.serviceOption(HomeDevices);
+  if (device?.deviceId == null || Option.isNone(devices))
+    return { text: "There is no speaker set up here.", isError: true } as ToolOutcome;
+  return yield* devices.value
+    .command(
+      device.deviceId,
+      { op: "volume", to },
+      { who: "Tessaya in the room", surface: "assistant" },
+    )
+    .pipe(
+      Effect.map((o): ToolOutcome => ({ text: o.line, isError: false })),
+      Effect.catchTags({
+        DeviceRefusedError: (e) => Effect.succeed<ToolOutcome>({ text: e.why, isError: true }),
+      }),
+    );
+});
+
 /** @public The room eval serves these too. */
 export const ROOM_TOOL_SPECS: ReadonlyArray<RoomTool> = [
   ...ROOM_TOOLS.map((name) => {
@@ -71,6 +124,7 @@ export const ROOM_TOOL_SPECS: ReadonlyArray<RoomTool> = [
     };
   }),
   LAPTOP,
+  VOLUME,
 ];
 
 const decodeHome = Schema.decodeUnknownOption(BatonHomeCallResult);
@@ -107,6 +161,7 @@ const makeRoomTools = Effect.gen(function* () {
       const told = yield* askLaptop(question);
       return { text: told.line, isError: !told.ok, status: told.status } as ToolOutcome;
     }
+    if (name === VOLUME.name) return yield* setRoomVolume(input);
     if (!allowed.has(name))
       return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
     const scope: McpInvocationScope = {

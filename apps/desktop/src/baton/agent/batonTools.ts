@@ -5,6 +5,7 @@
  * and no I/O of its own, so each tool's arguments are checked here, before anything is touched.
  */
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
+import type { VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import { HOME_TOOL_TEXT } from "@t3tools/baton-shared/homeTools";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-shared/operator";
 
@@ -121,6 +122,8 @@ export interface ToolHost {
   /** A thread's session between a terminal and Tessaya (the server's own guards apply; he is asked first). */
   readonly threadSession?: (op: "move" | "open", threadId: string) => Promise<string>;
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
+  /** How loud her voice plays on this computer, changed by his words; the next sentence plays at it. */
+  readonly speakingVolume?: (to: VolumeTo) => string;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
 
@@ -1234,6 +1237,38 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       inputSchema,
       run: async (a: Args) => ({ text: await host.jobs("home", { method, op, args: a }) }),
     })),
+    ...(host.speakingVolume === undefined
+      ? []
+      : [
+          {
+            name: "set_device_volume",
+            description: DEVICE_TOOL_TEXT.set_device_volume,
+            inputSchema: object(
+              {
+                to: {
+                  description: "up, down, max, default, or a level from 10 to 100.",
+                  anyOf: [
+                    { type: "string", enum: ["up", "down", "max", "default"] },
+                    { type: "number", minimum: 10, maximum: 100 },
+                  ],
+                },
+              },
+              ["to"],
+            ),
+            run: async ({ to }: Args) => {
+              const level =
+                typeof to === "number"
+                  ? to
+                  : (["up", "down", "max", "default"] as const).find((t) => t === to);
+              return {
+                text:
+                  level === undefined
+                    ? "Say up, down, max, default or a level."
+                    : host.speakingVolume!(level),
+              };
+            },
+          },
+        ]),
     // His devices (the R1): the same tools and words as /mcp. The camera and a restart ask his phone on the server.
     {
       name: "device_list",

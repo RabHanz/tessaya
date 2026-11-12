@@ -25,6 +25,7 @@ import {
   type ActOutcome,
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
+import { volumeAfter, volumeLine } from "../../packages/baton-shared/src/speakingVolume.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/baton-shared/src/osPack.ts";
 import { roomCases, type RoomCase } from "./cases.ts";
@@ -117,6 +118,9 @@ const WORK = {
 
 type House = ReturnType<typeof makeHouse>;
 
+/** Each case's R1 starts at the firmware's 0 dB. */
+const volumes = new WeakMap<House, number>();
+
 const runTool = (house: House, name: string, args: Record<string, unknown>) => {
   switch (name) {
     case "home_find":
@@ -129,6 +133,19 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return house.act(args);
     case "home_undo":
       return house.undo();
+    case "set_device_volume": {
+      const before = volumes.get(house) ?? 71;
+      const to = args["to"];
+      const after = volumeAfter(
+        before,
+        typeof to === "number" || to === "up" || to === "down" || to === "max" || to === "default"
+          ? to
+          : before,
+        71,
+      );
+      volumes.set(house, after);
+      return { ok: true, value: volumeLine(before, after) };
+    }
     case "laptop_ask":
       return { ok: false, error: "your laptop isn't linked to this server, so I can't see it." };
     default:
