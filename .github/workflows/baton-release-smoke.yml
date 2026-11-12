@@ -19,7 +19,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     env:
-      VERSION: ${{ inputs.version || '0.1.112' }}
+      VERSION: ${{ inputs.version || '0.1.113' }}
       PROOF_OUT: ${{ github.workspace }}/release-smoke-out
     steps:
       - uses: actions/checkout@v6
