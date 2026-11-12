@@ -313,6 +313,183 @@ index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca
      },
    };
  }
+diff --git a/apps/desktop/src/ipc/DesktopIpc.test.ts b/apps/desktop/src/ipc/DesktopIpc.test.ts
+index 45f63b951f366dc1bd210d6c6c411068712e0ab0..c69048cc872d4231a50f110ccc6210b5b0b90e36 100644
+--- a/apps/desktop/src/ipc/DesktopIpc.test.ts
++++ b/apps/desktop/src/ipc/DesktopIpc.test.ts
+@@ -8,60 +8,93 @@ vi.mock("electron", () => ({}));
+ 
+ import * as ElectronWindow from "../electron/ElectronWindow.ts";
+ import * as DesktopIpc from "./DesktopIpc.ts";
++import { trustRenderer } from "../baton/trustedRenderers.ts";
+ 
+-it.effect("answers only the main window's top frame", () =>
+-  Effect.gen(function* () {
+-    const mainFrame = {};
+-    const invoke = new Map<string, DesktopIpc.DesktopIpcHandleListener>();
+-    const sync = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
+-    const ipc = yield* DesktopIpc.DesktopIpc.pipe(
+-      Effect.provide(
+-        DesktopIpc.layer({
+-          removeHandler: (channel) => void invoke.delete(channel),
+-          handle: (channel, listener) => void invoke.set(channel, listener),
+-          removeAllListeners: (channel) => void sync.delete(channel),
+-          on: (channel, listener) => void sync.set(channel, listener),
+-        }).pipe(
+-          Layer.provide(
+-            Layer.mock(ElectronWindow.ElectronWindow, {
+-              main: Effect.succeedSome({
+-                webContents: { id: 1, mainFrame },
+-              } as unknown as Electron.BrowserWindow),
+-            }),
++it.effect(
++  "answers only the main window's top frame, and Tessaya's own windows' and inline pages'",
++  () =>
++    Effect.gen(function* () {
++      const mainFrame = {};
++      const invoke = new Map<string, DesktopIpc.DesktopIpcHandleListener>();
++      const sync = new Map<string, DesktopIpc.DesktopIpcSyncListener>();
++      const ipc = yield* DesktopIpc.DesktopIpc.pipe(
++        Effect.provide(
++          DesktopIpc.layer({
++            removeHandler: (channel) => void invoke.delete(channel),
++            handle: (channel, listener) => void invoke.set(channel, listener),
++            removeAllListeners: (channel) => void sync.delete(channel),
++            on: (channel, listener) => void sync.set(channel, listener),
++          }).pipe(
++            Layer.provide(
++              Layer.mock(ElectronWindow.ElectronWindow, {
++                main: Effect.succeedSome({
++                  webContents: { id: 1, mainFrame },
++                } as unknown as Electron.BrowserWindow),
++              }),
++            ),
+           ),
+         ),
+-      ),
+-    );
+-    yield* ipc.handle(
+-      DesktopIpc.makeIpcMethod({
+-        channel: "token",
+-        payload: Schema.Void,
+-        result: Schema.String,
+-        handler: () => Effect.succeed("secret"),
+-      }),
+-    );
+-    yield* ipc.handleSync({ channel: "token-sync", handler: () => Effect.succeed("secret") });
++      );
++      yield* ipc.handle(
++        DesktopIpc.makeIpcMethod({
++          channel: "token",
++          payload: Schema.Void,
++          result: Schema.String,
++          handler: () => Effect.succeed("secret"),
++        }),
++      );
++      yield* ipc.handleSync({ channel: "token-sync", handler: () => Effect.succeed("secret") });
+ 
+-    const senders = {
+-      app: { sender: { id: 1 }, senderFrame: mainFrame },
+-      appSubframe: { sender: { id: 1 }, senderFrame: {} },
+-      previewGuest: { sender: { id: 2 }, senderFrame: {} },
+-    };
+-    const results: Record<string, unknown> = {};
+-    for (const [name, sender] of Object.entries(senders)) {
+-      const event = { ...sender, returnValue: "unset" as unknown };
+-      sync.get("token-sync")!(event);
+-      results[name] = [
+-        yield* Effect.promise(() =>
+-          Promise.resolve(invoke.get("token")!(sender, undefined)).catch(() => "rejected"),
+-        ),
+-        event.returnValue,
+-      ];
+-    }
+-    assert.deepEqual(results, {
+-      app: ["secret", "secret"],
+-      appSubframe: ["rejected", undefined],
+-      previewGuest: ["rejected", undefined],
+-    });
+-  }).pipe(Effect.scoped),
++      // A detached thread window, and the T3 page Tessaya's window shows inline: both run T3's app.
++      const renderer = (id: number) => {
++        const frame = {};
++        const destroyed: Array<() => void> = [];
++        let gone = false;
++        const contents = {
++          id,
++          mainFrame: frame,
++          isDestroyed: () => gone,
++          once: (_event: "destroyed", listener: () => void) => destroyed.push(listener),
++          destroy: () => {
++            gone = true;
++            for (const listener of destroyed) listener();
++          },
++        };
++        trustRenderer(contents);
++        return contents;
++      };
++      const detached = renderer(3);
++      const inline = renderer(4);
++      const closed = renderer(5);
++      closed.destroy();
++      const senders = {
++        app: { sender: { id: 1 }, senderFrame: mainFrame },
++        detachedWindow: { sender: { id: 3 }, senderFrame: detached.mainFrame },
++        tessayaInlinePage: { sender: { id: 4 }, senderFrame: inline.mainFrame },
++        tessayaInlineSubframe: { sender: { id: 4 }, senderFrame: {} },
++        closedWindow: { sender: { id: 5 }, senderFrame: closed.mainFrame },
++        appSubframe: { sender: { id: 1 }, senderFrame: {} },
++        previewGuest: { sender: { id: 2 }, senderFrame: {} },
++      };
++      const results: Record<string, unknown> = {};
++      for (const [name, sender] of Object.entries(senders)) {
++        const event = { ...sender, returnValue: "unset" as unknown };
++        sync.get("token-sync")!(event);
++        results[name] = [
++          yield* Effect.promise(() =>
++            Promise.resolve(invoke.get("token")!(sender, undefined)).catch(() => "rejected"),
++          ),
++          event.returnValue,
++        ];
++      }
++      assert.deepEqual(results, {
++        app: ["secret", "secret"],
++        detachedWindow: ["secret", "secret"],
++        tessayaInlinePage: ["secret", "secret"],
++        tessayaInlineSubframe: ["rejected", undefined],
++        closedWindow: ["rejected", undefined],
++        appSubframe: ["rejected", undefined],
++        previewGuest: ["rejected", undefined],
++      });
++    }).pipe(Effect.scoped),
+ );
+diff --git a/apps/desktop/src/ipc/DesktopIpc.ts b/apps/desktop/src/ipc/DesktopIpc.ts
+index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..924e00834a45c587bc88aaf122553bb230682a82 100644
+--- a/apps/desktop/src/ipc/DesktopIpc.ts
++++ b/apps/desktop/src/ipc/DesktopIpc.ts
+@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
+ import * as Scope from "effect/Scope";
+ 
+ import * as ElectronWindow from "../electron/ElectronWindow.ts";
++import { isTrustedBatonRenderer } from "../baton/trustedRenderers.ts";
+ 
+ export interface DesktopIpcInvokeEvent {
+   readonly sender: { readonly id: number };
+@@ -188,9 +189,11 @@ export const layer = (ipcMain: DesktopIpcMain) =>
+         Effect.map(
+           electronWindow.main,
+           (main) =>
+-            Option.isSome(main) &&
+-            main.value.webContents.id === event.sender.id &&
+-            main.value.webContents.mainFrame === event.senderFrame,
++            (Option.isSome(main) &&
++              main.value.webContents.id === event.sender.id &&
++              main.value.webContents.mainFrame === event.senderFrame) ||
++            // Baton (0007-desktop.patch): detached windows and Tessaya's inline T3 pages.
++            isTrustedBatonRenderer(event),
+         ),
+       );
+     }),
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
 index a538b821ff77c2502c22439b40bfa7b67d94743b..c048952b538439a2ec3e10ce0a5a1effb8517411 100644
 --- a/apps/desktop/src/preload.ts

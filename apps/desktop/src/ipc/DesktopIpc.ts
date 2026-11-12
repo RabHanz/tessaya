@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import { isTrustedBatonRenderer } from "../baton/trustedRenderers.ts";
 
 export interface DesktopIpcInvokeEvent {
   readonly sender: { readonly id: number };
@@ -188,9 +189,11 @@ export const layer = (ipcMain: DesktopIpcMain) =>
         Effect.map(
           electronWindow.main,
           (main) =>
-            Option.isSome(main) &&
-            main.value.webContents.id === event.sender.id &&
-            main.value.webContents.mainFrame === event.senderFrame,
+            (Option.isSome(main) &&
+              main.value.webContents.id === event.sender.id &&
+              main.value.webContents.mainFrame === event.senderFrame) ||
+            // Baton (0007-desktop.patch): detached windows and Tessaya's inline T3 pages.
+            isTrustedBatonRenderer(event),
         ),
       );
     }),

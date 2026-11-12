@@ -70,7 +70,9 @@ describe("window capture IPC", () => {
 
   it.effect("still refuses a pending-snapshot read from a detached window", () => {
     return Effect.gen(function* () {
-      const detached = yield* Effect.exit(listPendingSnapShots.handler(undefined, { sender: { id: 8 } }));
+      const detached = yield* Effect.exit(
+        listPendingSnapShots.handler(undefined, { sender: { id: 8 } }),
+      );
       assert(Exit.isFailure(detached));
       assert.deepEqual(yield* listPendingSnapShots.handler(undefined, { sender: { id: 7 } }), []);
     }).pipe(

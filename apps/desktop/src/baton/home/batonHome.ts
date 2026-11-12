@@ -17,6 +17,7 @@ import { BatonLearnCallInput } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 
 import { isEmbedSrc } from "./links.ts";
+import { trustRenderer } from "../trustedRenderers.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
@@ -719,6 +720,12 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       });
       created.webContents.on("did-attach-webview", (_event, guest) => {
         guest.setWindowOpenHandler(() => ({ action: "deny" }));
+        // It talks to T3's desktop IPC as T3's window does, so it never leaves T3's own pages.
+        const appUrl = input.embed?.url;
+        guest.on("will-navigate", (event, url) => {
+          if (appUrl === undefined || !url.startsWith(appUrl)) event.preventDefault();
+        });
+        trustRenderer(guest);
       });
       // Baton's own window is not T3's: without this "Open sessions" reveals this window and T3 never opens.
       markCompanionWindow(created);
