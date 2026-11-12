@@ -55,6 +55,10 @@ const PRIVATE = [
 // file is still checked. Each is an operator step for the maintainer's own machines, not a
 // default for anyone else; the list only shrinks.
 const ALLOWED = {
+  "apps/desktop/src/baton/voice/roomRecognizer.test.ts": [
+    /100\.101\.2\.3/g,
+    "a made-up address in Tailscale's range, to test that the room recogniser finds one",
+  ],
   "scripts/tessaya/apply-release-branding.sh": [
     /dev\\?\.rabee\\?\.baton/g,
     "the installed app's id; it stays until the public release (D8), or existing installs stop upgrading",
