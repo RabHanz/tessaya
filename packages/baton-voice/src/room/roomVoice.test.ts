@@ -400,6 +400,23 @@ describe("answering only when he is talking to her", () => {
     ).toEqual([]);
   });
 
+  it("opens the window again when the R1 comes back on the link mid-session (00:43, 13 Nov)", async () => {
+    const t = setup({
+      recognise: said(["Turn on the office fan.", "Is it on now?", "And the lamp?"]),
+    });
+    t.s2();
+    await turn(t);
+    await t.deps.sleep(20_000);
+    await turn(t);
+    expect(t.brainCalls).toHaveLength(1);
+    t.room.message(`freya/r1/${DEV}/state/online`, Buffer.from("1"));
+    await turn(t);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Turn on the office fan.",
+      "And the lamp?",
+    ]);
+  });
+
   it("acknowledges being sent away even when her brain says nothing, then rests", async () => {
     const spoken: string[] = [];
     const t = setup({
