@@ -66,10 +66,10 @@ describe("alignHeard", () => {
   });
 
   it("puts a real first name in the script and nothing else", () => {
-    expect(scriptName("rabee")).toBe("Rabee");
+    expect(scriptName("maya")).toBe("Maya");
     expect(scriptName("dev")).toBeNull();
     expect(scriptName("admin1")).toBeNull();
-    expect(enrolScript("Rabee")[0]).toContain("it's Rabee");
+    expect(enrolScript("Maya")[0]).toContain("it's Maya");
     expect(enrolScript(null)[0]).toContain("it's me");
   });
 });

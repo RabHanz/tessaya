@@ -53,7 +53,7 @@ export const enrolScript = (name: string | null): ReadonlyArray<string> => [
   "Thanks, Tessaya. That's everything for now, so let's get back to work.",
 ];
 
-/** A login name that reads as a first name ("rabee" -> "Rabee"); null for "dev", "admin1" and the like. */
+/** A login name that reads as a first name ("maya" -> "Maya"); null for "dev", "admin1" and the like. */
 export const scriptName = (login: string): string | null => {
   const first = login.trim().split(/[\s._-]/)[0] ?? "";
   if (!/^[a-z]{3,20}$/i.test(first) || /^(admin|user|dev|root|owner|guest|test)$/i.test(first))
