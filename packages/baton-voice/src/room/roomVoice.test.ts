@@ -246,3 +246,52 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     expect(t.brainCalls).toEqual([]);
   });
 });
+
+const abortedBy = (signal: AbortSignal) =>
+  new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+
+describe("cutting in on her", () => {
+  it("survives him cutting in while her voice and brain are mid-request", async () => {
+    let clock = 1000;
+    const deps: RoomDeps = {
+      publish: () => undefined,
+      vad: () => ({ score: async (w) => (w.some((v) => v !== 0) ? 0.9 : 0.05) }),
+      smartTurn: async () => 0.9,
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "hello",
+        cancel: () => undefined,
+      }),
+      speaker: async () => UNVERIFIED(clock),
+      brain: async function* (_i, signal) {
+        yield "One. Two. Three.";
+        await abortedBy(signal);
+      },
+      speak: async function* (_t, signal) {
+        yield new Int16Array(3_200);
+        await abortedBy(signal);
+      },
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      log: () => undefined,
+    };
+    const room = createRoomVoice(deps);
+    const feed = async (loud: boolean, n: number) => {
+      for (let i = 0; i < n; i += 1) {
+        room.message(`freya/r1/${DEV}/voice/up`, frame(loud));
+        clock += 60;
+        await room.session(DEV)!.drained();
+      }
+    };
+    await feed(true, 20);
+    await feed(false, 8);
+    await feed(true, 20);
+    await feed(false, 8);
+    await feed(true, 20);
+    await feed(false, 30);
+    // An abort nobody handles fails the run (vitest reports unhandled rejections); the room also stays open.
+    expect(room.session(DEV)).toBeDefined();
+  });
+});
