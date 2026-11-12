@@ -17,6 +17,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "mute",
   "earcons",
   "keyBind",
+  "display",
   "transport",
   "transportConfirm",
   "transportRevert",
@@ -127,6 +128,10 @@ export const R1KeyBinding = Schema.Union([
 ]);
 export type R1KeyBinding = typeof R1KeyBinding.Type;
 
+/** The screen's rotation: the accelerometer's (auto), pinned upright or upside down, or "the way it stands now is upright". */
+export const DEVICE_DISPLAY_SETS = ["auto", "normal", "flipped", "calibrate"] as const;
+export type DeviceDisplaySet = (typeof DEVICE_DISPLAY_SETS)[number];
+
 export const DeviceTag = Schema.Struct({
   uid: Schema.String,
   label: Schema.String,
@@ -209,6 +214,12 @@ export const DeviceView = Schema.Struct({
   earcons: Schema.Boolean,
   /** What each press that is not fixed does now (see R1_KEY_SLOTS). */
   keys: Schema.Record(Schema.String, R1KeyBinding),
+  /** From the R1's `state/display` (firmware 3.32): how the screen is turned now, and why the last change was refused. */
+  display: Schema.Struct({
+    rotate: Schema.NullOr(Schema.Number),
+    mode: Schema.NullOr(Schema.Literals(["auto", "0", "180"])),
+    note: Schema.NullOr(Schema.String),
+  }),
   /** Set when the R1 refused the last button change. */
   keyNote: Schema.NullOr(Schema.String),
   transport: Schema.Literals(DEVICE_TRANSPORTS),

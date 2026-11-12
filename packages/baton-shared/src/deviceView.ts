@@ -80,6 +80,20 @@ export const tagActionLine = (action: DeviceTagAction): string =>
         ? "Mute"
         : "Unmute";
 
+/** The screen choices, without calibrate (its own "Set upright" button), and which one the R1 reports. */
+export const DISPLAY_CHOICES = [
+  ["auto", "Auto"],
+  ["normal", "Normal"],
+  ["flipped", "Upside down"],
+] as const;
+export const displayChoiceOf = (d: DeviceView): "auto" | "normal" | "flipped" =>
+  d.display.mode === "0" ? "normal" : d.display.mode === "180" ? "flipped" : "auto";
+export const displayLine = (d: DeviceView): string =>
+  d.display.note ??
+  (d.display.mode === null
+    ? "Auto turns it with the R1. Set upright stores how it stands now as upright (firmware 3.32)."
+    : `${d.display.mode === "auto" ? "Turns with the R1" : "Pinned"}; upright now is ${d.display.rotate === 180 ? "upside down" : "normal"}.`);
+
 const DEVICE_DO_LINE: Readonly<Record<R1DeviceDo, string>> = {
   none: "Nothing",
   talk: "Talk: start or stop",

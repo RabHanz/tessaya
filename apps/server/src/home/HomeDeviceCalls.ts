@@ -4,6 +4,7 @@
  */
 import {
   BATON_DEVICES_ACT_OPS,
+  DEVICE_DISPLAY_SETS,
   DEVICE_SPEAKER_ACTIONS,
   DEVICE_SPEAKER_OUTPUTS,
   BATON_DEVICES_OWNER_OPS,
@@ -90,6 +91,10 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
       bind: R1KeyBinding,
     }),
     (a, devices, by) => devices.command(a.id, { op: "keyBind", slot: a.slot, bind: a.bind }, by),
+  ),
+  display: op(
+    Schema.Struct({ id: Id, set: Schema.Literals(DEVICE_DISPLAY_SETS) }),
+    (a, devices, by) => devices.command(a.id, { op: "display", set: a.set }, by),
   ),
   transport: op(
     Schema.Struct({ id: Id, transport: Schema.Literals(DEVICE_TRANSPORTS) }),
