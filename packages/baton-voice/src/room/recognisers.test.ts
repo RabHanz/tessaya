@@ -70,12 +70,12 @@ it("gives his only recogniser one more go with the whole turn when it drops the 
   const log: string[] = [];
   const turn = turnAcross(
     (tried) => {
-      if (tried.has("onnyx")) return null;
+      if (tried.has("voice-host")) return null;
       const attempt = (tries += 1);
       let samples = 0;
       let failed = false;
       return {
-        url: "onnyx",
+        url: "voice-host",
         turn: {
           feed: (pcm) => void (samples += pcm.length),
           finish: async () => {
@@ -93,5 +93,5 @@ it("gives his only recogniser one more go with the whole turn when it drops the 
   turn.feed(new Int16Array(100));
   turn.feed(new Int16Array(60));
   expect(await turn.finish()).toBe("heard 160 samples");
-  expect(log).toEqual(["onnyx failed, next onnyx", "onnyx ok"]);
+  expect(log).toEqual(["voice-host failed, next voice-host", "voice-host ok"]);
 });
