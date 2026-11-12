@@ -120,5 +120,7 @@ export const HomeActionRow = Schema.Struct({
   status: Schema.String,
   tier: Schema.Literals(HOME_TIERS),
   canUndo: Schema.Boolean,
+  /** The entities the call named, so a follow-up ("turn it back off") reaches the same device. */
+  entities: Schema.optional(Schema.Array(Schema.String)),
 });
 export type HomeActionRow = typeof HomeActionRow.Type;

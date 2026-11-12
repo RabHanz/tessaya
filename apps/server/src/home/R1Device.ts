@@ -258,13 +258,19 @@ const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard) {
   const device = yield* home.device;
   yield* eyes(device, "thinking", 15_000).pipe(Effect.forkDetach);
   const status = yield* home.status;
-  const devices = yield* home
+  const lastAction = (yield* home.actions(1))[0] ?? null;
+  const found = yield* home
     .find({ text: input.heard, limit: 8 })
     .pipe(Effect.orElseSucceed(() => []));
+  // "Turn it back off" names no device: the one she last acted on stays in view, with its live state.
+  const followed = yield* Effect.forEach(
+    (lastAction?.entities ?? []).filter((e) => !found.some((f) => f.entityId === e)).slice(0, 4),
+    (e) => home.state(e).pipe(Effect.orElseSucceed(() => null)),
+  );
+  const devices = [...found, ...followed.filter((d) => d !== null)];
   const automations = /automation|remind|timer|schedule/i.test(input.heard)
     ? yield* home.automations({}).pipe(Effect.orElseSucceed(() => null))
     : null;
-  const lastAction = (yield* home.actions(1))[0] ?? null;
   const memory = yield* Effect.serviceOption(BatonMemoryService);
   const memories =
     memory._tag === "None"

@@ -846,6 +846,14 @@ const make = Effect.gen(function* () {
     const forwarded = yield* viaPeer("home_do", { ...request });
     if (forwarded !== null) return forwarded as HomeOutcome;
     yield* live;
+    // HA answers a call on an entity it does not have with success and does nothing, so "done" would be a lie.
+    const missing = asList(callTarget(request)["entity_id"]).filter(
+      (e) => e !== "all" && !e.includes("{{") && !states.has(e),
+    );
+    if (missing.length > 0)
+      return yield* new HomeRefusedError({
+        why: `There is no ${missing.join(", ")} in the house; use an id from home_find.`,
+      });
     const { verdict, ids } = yield* judge(request);
     const line = lineOf(request, ids);
     return yield* gate({
@@ -1395,6 +1403,17 @@ const make = Effect.gen(function* () {
     );
   });
 
+  const entitiesOf = (request: string): ReadonlyArray<string> => {
+    try {
+      const stored = asRecord(JSON.parse(request));
+      const call = asRecord(stored["request"]);
+      return stored["type"] === "call"
+        ? asList(asRecord(call["target"])["entity_id"] ?? asRecord(call["data"])["entity_id"])
+        : [];
+    } catch {
+      return [];
+    }
+  };
   const toRow = (r: ActionRow): HomeActionRow => ({
     id: r.id,
     at: iso(r.at),
@@ -1405,6 +1424,7 @@ const make = Effect.gen(function* () {
     status: r.status,
     tier: (r.tier as HomeTier) ?? "ask",
     canUndo: r.undo_scene !== null && r.status === "done",
+    entities: entitiesOf(r.request),
   });
 
   const find = Effect.fn("HomeAssistant.find")(function* (input: {
