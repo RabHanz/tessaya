@@ -31,3 +31,4 @@ export * from "./watch.ts";
 export * from "./workSession.ts";
 export * from "@t3tools/contracts";
 export * from "./places.ts";
+export * from "./learn.ts";

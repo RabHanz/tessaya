@@ -24,6 +24,7 @@ export const TABS = [
   { id: "hardware", label: "Hardware" },
   { id: "homeassistant", label: "Home Assistant" },
   { id: "phone", label: "Phone" },
+  { id: "learn", label: "Learn Tessaya" },
   { id: "help", label: "Help" },
 ] as const;
 
