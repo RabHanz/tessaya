@@ -150,13 +150,13 @@ export default defineConfig({
       entry: ["src/mac-permission-preload.ts"],
     },
     {
-      // The Tessaya pill's isolated page: a sandboxed preload, so self-contained too.
+      // The Tessaya pill's and the desktop mascot's isolated pages: sandboxed preloads, so self-contained too.
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
       sourcemap: true,
       outExtensions: () => ({ js: ".cjs" }),
-      entry: ["src/baton/voice/pillPreload.ts"],
+      entry: ["src/baton/voice/pillPreload.ts", "src/baton/companion/mascotPreload.ts"],
     },
     {
       // Baton's voice worker; its own block so upstream's worker list and its bundle test stay upstream's.

@@ -100,6 +100,7 @@
         "src/snapShot/SnapShotAccessibilityWorker.ts!",
         "src/baton/voice/onnxWorker.ts!",
         "src/baton/voice/pillPreload.ts!",
+        "src/baton/companion/mascotPreload.ts!",
         "src/boot.ts!",
         "src/compileCache.ts!",
         "src/serverCompileCache.ts!",
@@ -127,7 +128,8 @@
         "src/components/**/{Baton,baton}*": ["exports"],
       },
       // Baton's model-picker line is mounted by a vendor patch the file audit cannot see.
-      "ignore": ["src/components/chat/ModelPickerAccountLine.tsx"],
+      // The Character Studio's scripts: loaded by public/companion/stage.html, not imported.
+      "ignore": ["src/components/chat/ModelPickerAccountLine.tsx", "public/companion/**"],
     },
     "apps/marketing": {
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.

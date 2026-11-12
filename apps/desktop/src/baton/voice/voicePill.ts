@@ -69,9 +69,12 @@ import {
   turnLimitMs,
   turnView,
   type TurnEvent,
+  type TurnPhase,
   type TurnState,
   type WaveMode,
 } from "@t3tools/baton-shared/voiceTurn";
+import { cueFor, momentOf } from "@t3tools/baton-shared/companion";
+import { PILL_FACE_SCRIPT, studioScripts } from "../companion/pillFace.ts";
 
 // As wide as the island's words; outside the capsule the window is click-through (hitTest).
 const WIDTH = 420;
@@ -446,6 +449,10 @@ export const createVoicePill = (input: {
   readonly stateDir: string;
   readonly holdEscape: (onPress: () => void) => () => void;
   readonly onChange?: (state: TurnState) => void;
+  /** The persona whose face goes in place of the mark for this phase, or null for the mark (baton-shared/companion). */
+  readonly face?: (phase: TurnPhase) => string | null;
+  /** Her characters' folder (COMPANION_DIR): the face needs the studio's scripts. */
+  readonly companionDir?: string;
   /** Move pill went on or off, from wherever, so the tray's tick follows. */
   readonly onMoving?: (on: boolean) => void;
   /** The window he was in (null when unknown), so locking the pill hands focus back to it. */
@@ -956,6 +963,33 @@ export const createVoicePill = (input: {
     }, after);
   };
 
+  /** The persona whose face is in the pill now, or null for the mark. */
+  let faceOf: string | null = null;
+  /** Pill pages that have the studio's scripts: a rebuilt window loads them again. */
+  const faceLoaded = new WeakSet<object>();
+  const showFace = (was: TurnPhase) => {
+    const persona = input.face?.(state.phase) ?? null;
+    const target = window;
+    if (persona === null || target === null || input.companionDir === undefined) return hideFace();
+    if (!faceLoaded.has(target)) {
+      const scripts = studioScripts(input.companionDir);
+      if (scripts === null) return hideFace();
+      faceLoaded.add(target);
+      call(`${scripts};\n${PILL_FACE_SCRIPT}`);
+    }
+    faceOf = persona;
+    call(`window.pillFace.show(${JSON.stringify(persona)})`);
+    const moment = momentOf(state.phase);
+    const cue = moment === null ? null : cueFor(moment, "calm");
+    if (cue !== null) call(`window.pillFace.cue(${JSON.stringify(cue)})`);
+    if ((state.phase === "speaking") !== (was === "speaking"))
+      call(`window.pillFace.speak(${state.phase === "speaking"})`);
+  };
+  const hideFace = () => {
+    if (faceOf !== null) call("window.pillFace&&window.pillFace.hide()");
+    faceOf = null;
+  };
+
   const on = (event: TurnEvent, options?: { readonly silent?: boolean }) => {
     const previous = state;
     state = reduceTurn(state, event);
@@ -975,6 +1009,7 @@ export const createVoicePill = (input: {
     wave = view?.wave ?? "flat";
     if (view === null) {
       setEscape(false);
+      hideFace();
       if (previous.phase !== "idle") {
         if (endCueOn(previous.phase, null)) sound_("end");
         lower();
@@ -997,6 +1032,7 @@ export const createVoicePill = (input: {
       call(
         `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true, island, fresh })})`,
       );
+      showFace(previous.phase);
       if (event.type === "wake") {
         call("window.pill.sting()");
         loudest = 0;
