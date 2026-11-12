@@ -54,7 +54,7 @@ export type TurnAction =
   | {
       readonly kind: "end";
       readonly pcm: Int16Array;
-      readonly reason: "complete" | "silence" | "long";
+      readonly reason: "complete" | "silence" | "long" | "released";
     }
   | { readonly kind: "barge" };
 
@@ -78,7 +78,7 @@ export const createTurnTaking = (config: TurnConfig = ROOM_TURN) => {
   let silence = 0;
   let nextCheck = 0;
   let checkId = 0;
-  const end = (reason: "complete" | "silence" | "long"): TurnAction => {
+  const end = (reason: "complete" | "silence" | "long" | "released"): TurnAction => {
     const pcm = join(turn);
     inTurn = false;
     turn = [];
@@ -126,6 +126,8 @@ export const createTurnTaking = (config: TurnConfig = ROOM_TURN) => {
       inTurn && id === checkId && silence > 0 && completeProb >= config.completeProb
         ? [end("complete")]
         : [],
+    /** He let go of push-to-talk: what he said so far is the turn. */
+    release: (): TurnAction[] => (inTurn ? [end("released")] : []),
     inTurn: () => inTurn,
   };
 };
