@@ -8,12 +8,10 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
 
-import { scriptName } from "../enrolGuide.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "../speaker.ts";
@@ -457,7 +455,6 @@ const main = async () => {
         return { saved: true, said: "Thanks. I know your voice now." };
       },
       embed: (pcm) => embedder.embed(pcm),
-      ownerName: scriptName(NodeOS.userInfo().username),
       now: () => performance.timeOrigin + performance.now(),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       log,

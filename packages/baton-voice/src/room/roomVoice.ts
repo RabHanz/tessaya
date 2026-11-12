@@ -142,8 +142,6 @@ export interface RoomDeps {
   ) => Promise<{ readonly saved: boolean; readonly said: string }>;
   /** His voice as a vector, so the enrolment card can tell another voice from his; without it that check is skipped. */
   readonly embed?: (pcm: Int16Array) => Promise<Float32Array | null>;
-  /** His first name for the enrolment script, or null. */
-  readonly ownerName?: string | null;
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   readonly log: (line: string) => void;
@@ -799,7 +797,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         })),
       enrol: () => {
         guide = createEnrolGuide({
-          sentences: enrolScript(deps.ownerName ?? null),
+          // No name: the voice host's login is a machine account, and Tessaya keeps no display name for him.
+          sentences: enrolScript(null),
           title: "Read these aloud",
           lead: "Stand where you usually talk to the R1, and use your normal voice. One sentence at a time, with a short pause between them.",
           mic: "Agora R1 (room mic)",

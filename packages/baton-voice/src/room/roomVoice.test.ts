@@ -114,6 +114,7 @@ describe("the room voice loop", () => {
       t.published
         .filter((p) => p.topic === `freya/r1/${DEV}/event/enrol`)
         .map((p) => JSON.parse(String(p.payload)) as EnrolCard);
+    expect(cards()[0]!.lines[0]!.text).toContain("it's me,");
     expect(cards()[0]!.lines.map((l) => l.state)).toEqual([
       "now",
       "todo",
