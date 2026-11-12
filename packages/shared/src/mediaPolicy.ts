@@ -79,6 +79,13 @@ export const judgeMedia = (input: {
     : { verdict: "attach", kind };
 };
 
+const MEDIA_PATH =
+  /(?:~\/|\/|\.{1,2}\/|[\w@-][\w.@-]*\/)[^\s"'`<>|;&()]*\.[A-Za-z0-9]{2,5}\b|[\w@-][\w.@-]*\.[A-Za-z0-9]{2,5}\b/g;
+// Matches never span these, so splitting on them first changes no result.
+const TOKEN_BREAK = /[\s"'`<>|;&()]+/;
+const MAX_TOKEN = 512;
+const SCAN_CHARS = 256 * 1024;
+
 /** Media paths found anywhere in a tool call's input (any nested string) or its output text. */
 export const pathsInto = (
   value: unknown,
@@ -87,11 +94,14 @@ export const pathsInto = (
 ): Set<string> => {
   if (depth > 6) return found;
   if (typeof value === "string") {
-    for (const match of value.matchAll(
-      /(?:~\/|\/|\.{1,2}\/|[\w@-][\w.@-]*\/)[^\s"'`<>|;&()]*\.[A-Za-z0-9]{2,5}\b|[\w@-][\w.@-]*\.[A-Za-z0-9]{2,5}\b/g,
-    )) {
-      const kind = mediaKindFromPath(match[0]);
-      if (kind === "image" || kind === "video") found.add(match[0]);
+    // The pattern backtracks quadratically on a long run, so it only ever sees short tokens.
+    // shortcut: paths after the first SCAN_CHARS of one string are not found.
+    for (const token of value.slice(0, SCAN_CHARS).split(TOKEN_BREAK)) {
+      if (token.length > MAX_TOKEN || !token.includes(".")) continue;
+      for (const match of token.matchAll(MEDIA_PATH)) {
+        const kind = mediaKindFromPath(match[0]);
+        if (kind === "image" || kind === "video") found.add(match[0]);
+      }
     }
   } else if (Array.isArray(value)) value.forEach((v) => pathsInto(v, found, depth + 1));
   else if (typeof value === "object" && value !== null) {

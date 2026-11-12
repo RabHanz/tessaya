@@ -5,6 +5,7 @@ import {
   OrchestrationV2StoredEvent,
   type OrchestrationV2PlanArtifact,
   type OrchestrationV2Run,
+  type OrchestrationV2TurnItemStatus,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   type ModelSelection,
@@ -151,6 +152,13 @@ function withPlanStepDurations(
     }),
   };
 }
+
+const OPEN_ITEM_STATUSES = new Set<OrchestrationV2TurnItemStatus>([
+  "idle",
+  "pending",
+  "running",
+  "waiting",
+]);
 
 const CONVERSATION_RUN_STATUSES = new Set<OrchestrationV2Run["status"]>([
   "completed",
@@ -642,9 +650,11 @@ export const layer: Layer.Layer<
             case "turn_item.updated": {
               const item = input.event.turnItem;
               if (
-                item.type === "dynamic_tool" ||
-                item.type === "command_execution" ||
-                item.type === "file_change"
+                (item.type === "dynamic_tool" ||
+                  item.type === "command_execution" ||
+                  item.type === "file_change") &&
+                // Once per item: rescanning growing output on every streamed update is quadratic.
+                !OPEN_ITEM_STATUSES.has(item.status)
               ) {
                 noteTouched(item.runId, item);
               }
