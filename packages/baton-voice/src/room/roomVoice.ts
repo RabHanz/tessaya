@@ -4,6 +4,7 @@
  * @module baton-voice/room/roomVoice
  */
 import { createEchoGuard } from "../echoGuard.ts";
+import { calledName, isDismissal } from "./addressing.ts";
 import { admits, UNVERIFIED, type SpeakerGate, type SpeakerIdentity } from "../speaker.ts";
 import { DOWN_FRAME_BYTES, fromBytes, toBytes } from "./audio.ts";
 import type { Affect } from "./senseVoice.ts";
@@ -68,8 +69,12 @@ export interface RoomConfig {
   readonly downDelayMs: number;
   /** When a mic frame we receive was spoken. */
   readonly upDelayMs: number;
-  /** After this long with nothing said, the session ends (the R1 plays its exit chime). */
+  /** After her reply (or S2), he may go on without her name for this long; after that only her name wakes her. */
+  readonly followMs: number;
+  /** After this long with nothing said to her, the session ends (the R1 plays its exit chime); S2 starts it again. */
   readonly idleStopMs: number;
+  /** The names that wake her, the lead first. */
+  readonly names: ReadonlyArray<string>;
   /** The speaker and mood readers may hold the reply this long at most. */
   readonly sideMs: number;
   readonly gate: SpeakerGate;
@@ -88,7 +93,10 @@ export const ROOM_CONFIG: RoomConfig = {
   prerollMs: 240,
   downDelayMs: 300,
   upDelayMs: 150,
-  idleStopMs: 25_000,
+  followMs: 8_000,
+  // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
+  idleStopMs: 15 * 60_000,
+  names: ["Tessaya", "Freya", "Alfred", "Sebastian"],
   sideMs: 250,
   // His room: guests are heard only when he lets them; until he enrols through the R1 every voice is unverified.
   gate: {
@@ -173,6 +181,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let bargedIn = false;
     let closed = false;
     let enrolling: Int16Array[] | null = null;
+    /** Turns until then need no name: a session opens on S2, and each reply leaves a short window. */
+    let openUntil = deps.now() + config.followMs;
+    let asleep = false;
     const history: Array<{ role: "user" | "assistant"; content: string }> = [];
 
     const speaking = () => reply !== null || deps.now() < playUntil + config.downDelayMs;
@@ -313,6 +324,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       if (text === "") return;
+      const called = calledName(text, config.names);
+      if (called === null && deps.now() > openUntil) {
+        deps.log(`[${id}] turn ${turn}: not said to her; not answered`);
+        return;
+      }
+      if (asleep) face("attentive");
+      asleep = false;
+      lastActivity = deps.now();
+      const dismissed = isDismissal(text);
+      openUntil = Number.POSITIVE_INFINITY;
       const [speaker, affect] = await Promise.race([
         sides,
         deps.sleep(config.sideMs).then(() => [undefined, undefined] as const),
@@ -384,7 +405,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             if (reply === null || reply === control) face("neutral");
           });
       } catch (error) {
-        if (!control.signal.aborted) {
+        if (control.signal.aborted) deps.log(`[${id}] turn ${turn}: cut off`);
+        else {
           deps.log(
             `[${id}] turn ${turn} failed: ${error instanceof Error ? error.message : String(error)}`,
           );
@@ -393,6 +415,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           );
         }
       } finally {
+        if (reply === control || reply === null)
+          openUntil = dismissed
+            ? 0
+            : Math.max(deps.now(), playUntil + config.downDelayMs) + config.followMs;
         if (reply === control) reply = null;
         if (said.trim() !== "") history.push({ role: "assistant", content: said.trim() });
         lastActivity = deps.now();
@@ -427,7 +453,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             rec?.cancel();
             rec = deps.recognise();
             rec.feed(a.pcm);
-            face("attentive");
+            if (!asleep) face("attentive");
             break;
           case "audio":
             rec?.feed(a.pcm);
@@ -441,8 +467,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             break;
           }
           case "end": {
-            lastActivity = deps.now();
-            gesture("nodSmall");
+            if (!asleep) gesture("nodSmall");
             void answer(a.pcm, a.reason, lastVoiceAt);
             break;
           }
@@ -489,7 +514,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (reply !== null) interrupt();
         speakNow(text);
       },
-      idle: () => !turns.inTurn() && !speaking() && deps.now() - lastActivity > config.idleStopMs,
+      /** S2 or the R1's own wake: he is talking to her now. */
+      wake: () => {
+        openUntil = Math.max(openUntil, deps.now() + config.followMs);
+      },
+      /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
+      tick: (): "stop" | null => {
+        const quiet = !turns.inTurn() && !speaking() && reply === null;
+        if (quiet && !asleep && deps.now() > openUntil) {
+          asleep = true;
+          face("sleepy");
+        }
+        return quiet && deps.now() - lastActivity > config.idleStopMs ? "stop" : null;
+      },
       /** For the replay harness: everything heard so far has been scored. */
       drained: () => chain,
       close: () => {
@@ -552,6 +589,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           (sessions.get(id) ?? start(id)).say(text.trim().slice(0, 500));
       } else if (tail === "cmd/voice/start") start(id);
       else if (tail === "cmd/voice/stop") stop(id);
+      else if (tail === "event/session/start" || tail === "event/wake") sessions.get(id)?.wake();
       else if (tail === "voice/enrol") {
         if (json()["cancel"] === true) sessions.get(id)?.cancelEnrol();
         else (sessions.get(id) ?? start(id)).enrol();
@@ -565,7 +603,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Ends sessions nobody has spoken in; the R1 hears its own stop and plays the exit chime. */
     sweep: () => {
       for (const [id, s] of sessions)
-        if (s.idle()) {
+        if (s.tick() === "stop") {
           deps.publish(topic(id, "cmd/voice/stop"), "{}");
           stop(id);
         }
