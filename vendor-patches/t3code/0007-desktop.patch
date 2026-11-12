@@ -97,6 +97,101 @@ index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..4f4c652794e5c14b9a2d40914e6a8a51
          T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),
        },
        extendEnv: true,
+diff --git a/apps/desktop/src/backend/DesktopBackendManager.test.ts b/apps/desktop/src/backend/DesktopBackendManager.test.ts
+index 2741daa1ddd074c8b4693ae9dae143bb04b85c05..eb123ca0187d8b6409da4ce91dde9971a81d05bb 100644
+--- a/apps/desktop/src/backend/DesktopBackendManager.test.ts
++++ b/apps/desktop/src/backend/DesktopBackendManager.test.ts
+@@ -721,6 +721,57 @@ describe("DesktopBackendManager", () => {
+     ),
+   );
+ 
++  it.effect("ends and restarts a ready backend that stops answering", () =>
++    Effect.scoped(
++      Effect.gen(function* () {
++        const spawns = yield* Queue.unbounded<void>();
++        const kills = yield* Ref.make(0);
++        const answering = yield* Ref.make(true);
++        const instance = yield* makeTestInstance({
++          spawnerLayer: Layer.succeed(
++            ChildProcessSpawner.ChildProcessSpawner,
++            ChildProcessSpawner.make(() =>
++              Effect.gen(function* () {
++                const exit = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
++                yield* Queue.offer(spawns, undefined);
++                return makeProcess({
++                  exitCode: Deferred.await(exit),
++                  kill: () =>
++                    Ref.update(kills, (n) => n + 1).pipe(
++                      Effect.andThen(Deferred.succeed(exit, ChildProcessSpawner.ExitCode(1))),
++                      Effect.asVoid,
++                    ),
++                });
++              }),
++            ),
++          ),
++          // A wedged server accepts nothing and answers nothing; its process stays alive.
++          httpClientLayer: layerHttpClient((request) =>
++            Ref.get(answering).pipe(
++              Effect.flatMap((ok) =>
++                ok ? Effect.succeed(responseForRequest(request, 200)) : Effect.never,
++              ),
++            ),
++          ),
++        });
++        yield* instance.start;
++        yield* Queue.take(spawns);
++        assert.isTrue(yield* instance.waitForReady(Duration.seconds(1)));
++
++        yield* Ref.set(answering, false);
++        yield* TestClock.adjust(Duration.seconds(79));
++        assert.equal(yield* Ref.get(kills), 0);
++        yield* TestClock.adjust(Duration.seconds(1));
++        assert.equal(yield* Ref.get(kills), 1);
++
++        yield* Ref.set(answering, true);
++        yield* TestClock.adjust(Duration.seconds(1));
++        yield* Queue.take(spawns);
++        assert.isTrue(yield* instance.waitForReady(Duration.seconds(1)));
++      }).pipe(Effect.provide(TestClock.layer())),
++    ),
++  );
++
+   it.effect("the quit stop deadline waits for a backend that only exits at the force kill", () =>
+     Effect.scoped(
+       Effect.gen(function* () {
+diff --git a/apps/desktop/src/backend/DesktopBackendManager.ts b/apps/desktop/src/backend/DesktopBackendManager.ts
+index 98de41e2471551e19e909cc8f5048cbc39ad8116..da00f2c4704578452f32fd50120d385753aed9af 100644
+--- a/apps/desktop/src/backend/DesktopBackendManager.ts
++++ b/apps/desktop/src/backend/DesktopBackendManager.ts
+@@ -31,6 +31,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
+ import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
+ import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
+ import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
++import { awaitBackendUnresponsive } from "../baton/lifecycle/backendLiveness.ts";
+ 
+ const INITIAL_RESTART_DELAY = Duration.millis(500);
+ const MAX_RESTART_DELAY = Duration.seconds(10);
+@@ -573,7 +574,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
+     ),
+   );
+ 
+-  yield* probeReadiness().pipe(Effect.repeat({ while: (ready) => !ready }), Effect.forkScoped);
++  yield* probeReadiness().pipe(
++    Effect.repeat({ while: (ready) => !ready }),
++    // A hung backend never exits, so the restart below this only happens if we end it.
++    Effect.andThen(awaitBackendUnresponsive(new URL(BACKEND_READINESS_PATH, options.httpBaseUrl))),
++    Effect.andThen(
++      logBackendProcessWarning("backend stopped answering; ending it so it restarts", {
++        pid: handle.pid,
++      }),
++    ),
++    Effect.andThen(handle.kill()),
++    Effect.ignore,
++    Effect.forkScoped,
++  );
+ 
+   const exit = yield* handle.exitCode.pipe(
+     Effect.withSpan("desktop.backendProcess.awaitExit"),
 diff --git a/apps/desktop/src/electron/ElectronWindow.test.ts b/apps/desktop/src/electron/ElectronWindow.test.ts
 index 478d49012901454076dd97348e159f76c7ee1113..ee705da8a37c612b89ba56c7c05f10c695e7ddd4 100644
 --- a/apps/desktop/src/electron/ElectronWindow.test.ts

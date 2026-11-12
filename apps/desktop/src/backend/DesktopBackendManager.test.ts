@@ -721,6 +721,57 @@ describe("DesktopBackendManager", () => {
     ),
   );
 
+  it.effect("ends and restarts a ready backend that stops answering", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const spawns = yield* Queue.unbounded<void>();
+        const kills = yield* Ref.make(0);
+        const answering = yield* Ref.make(true);
+        const instance = yield* makeTestInstance({
+          spawnerLayer: Layer.succeed(
+            ChildProcessSpawner.ChildProcessSpawner,
+            ChildProcessSpawner.make(() =>
+              Effect.gen(function* () {
+                const exit = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
+                yield* Queue.offer(spawns, undefined);
+                return makeProcess({
+                  exitCode: Deferred.await(exit),
+                  kill: () =>
+                    Ref.update(kills, (n) => n + 1).pipe(
+                      Effect.andThen(Deferred.succeed(exit, ChildProcessSpawner.ExitCode(1))),
+                      Effect.asVoid,
+                    ),
+                });
+              }),
+            ),
+          ),
+          // A wedged server accepts nothing and answers nothing; its process stays alive.
+          httpClientLayer: layerHttpClient((request) =>
+            Ref.get(answering).pipe(
+              Effect.flatMap((ok) =>
+                ok ? Effect.succeed(responseForRequest(request, 200)) : Effect.never,
+              ),
+            ),
+          ),
+        });
+        yield* instance.start;
+        yield* Queue.take(spawns);
+        assert.isTrue(yield* instance.waitForReady(Duration.seconds(1)));
+
+        yield* Ref.set(answering, false);
+        yield* TestClock.adjust(Duration.seconds(79));
+        assert.equal(yield* Ref.get(kills), 0);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.equal(yield* Ref.get(kills), 1);
+
+        yield* Ref.set(answering, true);
+        yield* TestClock.adjust(Duration.seconds(1));
+        yield* Queue.take(spawns);
+        assert.isTrue(yield* instance.waitForReady(Duration.seconds(1)));
+      }).pipe(Effect.provide(TestClock.layer())),
+    ),
+  );
+
   it.effect("the quit stop deadline waits for a backend that only exits at the force kill", () =>
     Effect.scoped(
       Effect.gen(function* () {
