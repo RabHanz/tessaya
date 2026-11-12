@@ -25,6 +25,8 @@ import { onPillLook, pillLook, refreshPillTheme } from "./pillTheme.ts";
 const WIDTH = 352;
 const GAP = 8;
 const LEAVE_MS = 8_000;
+/** A copy card holds words he has nowhere else: it stays until he copies, closes it or this long passes. */
+const COPY_LEAVE_MS = 20_000;
 const BATCH_MS = 1_200;
 /** "Copied" stays this long once Copy is pressed. */
 const COPIED_MS = 1_300;
@@ -108,6 +110,8 @@ export interface VocabToast {
   readonly retract: (text: string) => void;
   readonly dispose: () => void;
 }
+
+export const stayMs = (card: Card): number => (card.kind === "copy" ? COPY_LEAVE_MS : LEAVE_MS);
 
 export const createVocabToast = (input: {
   /** Where the pill is (or would be): the card sits just above it. */
@@ -197,7 +201,7 @@ export const createVocabToast = (input: {
       })
       .catch(() => undefined);
     releaseEscape = input.holdEscape?.(close) ?? null;
-    leaveIn(LEAVE_MS);
+    leaveIn(stayMs(card));
   };
 
   Electron.ipcMain.on("baton-toast:act", (event, act: unknown, width: unknown, height: unknown) => {
@@ -206,7 +210,7 @@ export const createVocabToast = (input: {
     // Copied leaves on its own clock, pointer or not.
     if (act === "hover" || act === "leave") {
       if (copied) return;
-      return act === "hover" ? stopLeave() : leaveIn(LEAVE_MS);
+      return act === "hover" ? stopLeave() : leaveIn(card === null ? LEAVE_MS : stayMs(card));
     }
     if (act === "copy") {
       if (card !== null && card.kind !== "learned" && card.text !== undefined)

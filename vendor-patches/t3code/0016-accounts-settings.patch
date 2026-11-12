@@ -2,12 +2,12 @@ Accounts settings (ACCOUNTS-4): Tessaya's one-card-per-account section above T3'
 settings page named "Accounts & providers".
 
 diff --git a/apps/web/src/components/settings/ProviderSettingsPanel.tsx b/apps/web/src/components/settings/ProviderSettingsPanel.tsx
-index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b411613c7 100644
+index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..2ed39df6556ad71320f6bae37d027793bf840232 100644
 --- a/apps/web/src/components/settings/ProviderSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/ProviderSettingsPanel.tsx
 @@ -1,4 +1,5 @@
  import { SettingsGroup } from "./SettingsGroup";
-+import { BatonAccountsSettings } from "./BatonAccountsSettings";
++import { TessayaMovedSection } from "./TessayaPlaces";
  import { RefreshIcon } from "~/components/ui/refresh-icon";
  import {
    AuthSettingsWriteScope,
@@ -15,25 +15,72 @@ index 6012b31d4dc337f17e5eb8c8a708f57614e678f9..48a4aab04488b6612702d6ed89a01d4b
  
    return (
      <>
-+      <BatonAccountsSettings environmentId={environmentId} />
++      <TessayaMovedSection place="accounts" />
        <SettingsSection
          {...searchableSetting("providers")}
          variant="plain"
+diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
+index 77857947790da622c68b62c80a5ebad5fa40fcef..b0e1b6795db752656d2b45038822068c0a2df726 100644
+--- a/apps/web/src/components/settings/settingsSearch.test.ts
++++ b/apps/web/src/components/settings/settingsSearch.test.ts
+@@ -1,3 +1,4 @@
++import { T3_SETTINGS_PLACES } from "@t3tools/baton-contracts";
+ import { describe, expect, it, vi } from "vite-plus/test";
+ import {
+   EnvironmentId,
+@@ -15,6 +16,7 @@ import {
+   movedSettingsPath,
+   searchSettings,
+   SETTINGS_NAV_GROUPS,
++  SETTINGS_SECTION_LABELS,
+   SETTINGS_SEARCH_ITEMS,
+   sourceControlHostSearchItems,
+   sourceControlHostSettingsSearchId,
+@@ -201,6 +203,23 @@ describe("searchSettings", () => {
+     }
+   });
+ 
++  it("finds Tessaya's settings in her window, and keeps her pages out of T3's list", () => {
++    expect(searchSettings("wake word")[0]).toMatchObject({
++      id: "tessaya-voice",
++      to: "/settings/tessaya",
++    });
++    expect(searchSettings("r1").map((item) => item.to)).toContain("/settings/tessaya");
++    const nav = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
++    for (const moved of ["/settings/home", "/settings/hardware", "/settings/apis"] as const)
++      expect(nav).not.toContain(moved);
++    expect(nav).toContain("/settings/tessaya");
++  });
++
++  it("names only T3 pages that exist in Tessaya's search of T3", () => {
++    for (const place of T3_SETTINGS_PLACES)
++      expect(Object.keys(SETTINGS_SECTION_LABELS), place.path).toContain(place.path);
++  });
++
+   it("keeps catalog result ids unique", () => {
+     const ids = SETTINGS_SEARCH_ITEMS.map((item) => item.id);
+     expect(new Set(ids).size).toBe(ids.length);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 60c89ffc6b732db13fd880bedac4af057157415d..403302ec7bfbefb331cabde9ac735ca5f175afe3 100644
+index 60c89ffc6b732db13fd880bedac4af057157415d..aea47fc54e28005997052472d03da1150974f3ff 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
-@@ -35,6 +35,9 @@ export type SettingsPath =
+@@ -1,3 +1,4 @@
++import { TESSAYA_PLACES } from "@t3tools/baton-contracts";
+ import { HOSTED_APP_CHANNEL } from "~/branding";
+ import { isElectron, isSecretsFeatureEnabled } from "~/env";
+ import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
+@@ -35,6 +36,10 @@ export type SettingsPath =
    | "/settings/connections"
    | "/settings/access"
    | "/settings/secrets"
 +  | "/settings/apis"
 +  | "/settings/home"
 +  | "/settings/hardware"
++  | "/settings/tessaya"
    | "/settings/maintenance"
    | "/settings/labs"
    | "/settings/about"
-@@ -93,7 +96,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+@@ -93,7 +98,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
    "/settings/diffs": "Diffs & pull requests",
    "/settings/keybindings": "Keybindings",
    "/settings/snap-shot": "SnapShots",
@@ -42,27 +89,33 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..403302ec7bfbefb331cabde9ac735ca5
    "/settings/threads": "Threads",
    "/settings/browser": "Browser",
    "/settings/devices": "Devices",
-@@ -103,6 +106,9 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
+@@ -103,6 +108,10 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
    "/settings/connections": "Environments",
    "/settings/access": "Sharing & access",
    "/settings/secrets": "Secrets",
 +  "/settings/apis": "APIs",
 +  "/settings/home": "Home",
 +  "/settings/hardware": "Hardware",
++  "/settings/tessaya": "Tessaya",
    "/settings/maintenance": "Maintenance",
    "/settings/labs": "Labs",
    "/settings/about": "About",
-@@ -147,6 +153,9 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
-       "/settings/connections",
-       "/settings/access",
-       ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
-+      "/settings/apis",
-+      "/settings/home",
-+      "/settings/hardware",
-     ],
+@@ -151,7 +160,13 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
    },
    {
-@@ -1285,6 +1294,38 @@ export const SETTINGS_SEARCH_ITEMS = [
+     heading: null,
+-    paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
++    paths: [
++      "/settings/maintenance",
++      "/settings/labs",
++      "/settings/about",
++      "/settings/archived",
++      "/settings/tessaya",
++    ],
+   },
+ ];
+ 
+@@ -1285,6 +1300,45 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["new 1password vault op cli account"],
      secretsFeatureOnly: true,
    },
@@ -98,16 +151,24 @@ index 60c89ffc6b732db13fd880bedac4af057157415d..403302ec7bfbefb331cabde9ac735ca5
 +    to: "/settings/hardware",
 +    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
 +  },
++  // Tessaya's own settings live in her window; T3's search finds them and says where.
++  ...TESSAYA_PLACES.map((place) => ({
++    id: `tessaya-${place.id}`,
++    title: place.label,
++    to: "/settings/tessaya" as const,
++    searchTerms: [`tessaya ${place.group} ${place.terms.join(" ")}`],
++  })),
    {
      id: "archive",
      title: "Archived threads",
-@@ -1316,6 +1357,9 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+@@ -1316,6 +1370,10 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
    "/settings/connections": "connections",
    "/settings/access": "connections",
    "/settings/secrets": null,
 +  "/settings/apis": null,
 +  "/settings/home": null,
 +  "/settings/hardware": null,
++  "/settings/tessaya": null,
    "/settings/scheduled-tasks": null,
    "/settings/maintenance": null,
    "/settings/labs": null,

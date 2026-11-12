@@ -167,6 +167,26 @@ describe("answering only when he is talking to her", () => {
     expect(t.published.some((p) => String(p.payload).includes('"sleepy"'))).toBe(true);
   });
 
+  it("answers a request he began inside the window, however long it runs or recognition takes", async () => {
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        // The recogniser can take seconds after he stops.
+        finish: async () => {
+          await t.deps.sleep(3_000);
+          return "turn on the study lamp and tell me what is next on my list";
+        },
+        cancel: () => undefined,
+      }),
+    });
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.deps.sleep(6_000);
+    // He starts at 6 s (inside the 8 s window) and talks for 6 s.
+    await t.feed(true, 100);
+    await t.feed(false, 60);
+    expect(t.brainCalls.length).toBe(1);
+  });
+
   it("hands a turn to the persona he calls, in its voice and eyes, until the window lapses", async () => {
     const voices: Array<string | undefined> = [];
     const t = setup({
@@ -494,5 +514,81 @@ describe("her listening and closing sounds", () => {
     t.room.message(`freya/r1/${DEV}/cmd/voice/earcons`, Buffer.from(JSON.stringify({ on: true })));
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     expect(t.published.at(-1)!.topic).toBe(`freya/r1/${DEV}/voice/down`);
+  });
+});
+
+describe("her brain starting on the recogniser's partial words", () => {
+  const guessing = (partial: string, final: string, over: Partial<RoomDeps> = {}) => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => (release = r));
+    const asked: string[] = [];
+    const aborted: string[] = [];
+    let atRelease = -1;
+    const t = setup({
+      recognise: () => {
+        let listener: ((text: string) => void) | null = null;
+        return {
+          feed: () => undefined,
+          onPartial: (l) => {
+            listener = l;
+          },
+          finish: async () => {
+            listener?.(partial);
+            await held;
+            return final;
+          },
+          cancel: () => undefined,
+        };
+      },
+      brain: async function* (input, signal) {
+        const words = input.messages.at(-1)!.content;
+        asked.push(words);
+        signal.addEventListener("abort", () => aborted.push(words));
+        yield "Done.";
+      },
+      ...over,
+    });
+    const run = async () => {
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      await t.deps.sleep(300);
+      atRelease = asked.length;
+      release();
+      return t.metrics;
+    };
+    return { t, asked, aborted, run, atRelease: () => atRelease };
+  };
+
+  it("keeps the guess when the final text says the same words, so the brain started early", async () => {
+    const g = guessing("turn on the study light", "Turn on the study light.");
+    const m = await g.run();
+    expect(g.atRelease()).toBe(1);
+    expect(g.asked).toEqual(["turn on the study light"]);
+    expect(m.speculative).toBe(true);
+    expect(g.t.published.some((p) => p.topic.endsWith("voice/down"))).toBe(true);
+  });
+
+  it("starts the guess without waiting for the mood reader, which is slower on the voice host", async () => {
+    let moodDone: () => void = () => undefined;
+    const mood = new Promise<void>((r) => (moodDone = r));
+    const g = guessing("turn on the study light", "turn on the study light", {
+      affect: async () => {
+        await mood;
+        return { emotion: "neutral" as const, events: [], language: "en", text: "" };
+      },
+    });
+    const m = await g.run();
+    // The brain had the guess before the final text came back, while the mood reader was still running.
+    expect(g.atRelease()).toBe(1);
+    expect(m.speculative).toBe(true);
+    moodDone();
+  });
+
+  it("drops a guess that heard different words and answers the final text instead", async () => {
+    const g = guessing("turn on the study", "turn on the study light");
+    const m = await g.run();
+    expect(g.asked).toEqual(["turn on the study", "turn on the study light"]);
+    expect(g.aborted).toContain("turn on the study");
+    expect(m.speculative).toBe(false);
   });
 });

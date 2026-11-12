@@ -95,6 +95,46 @@ describe("createSpeaker on the OS voice", () => {
     expect(order).toEqual(["start one.", "end one.", "start two.", "end two."]);
   });
 
+  it("starts a longer sentence that follows another with a soft breath, and leaves the first alone", async () => {
+    const wav = () => {
+      const out = Buffer.alloc(44 + 200);
+      out.write("RIFF", 0, "latin1");
+      out.write("WAVEfmt ", 8, "latin1");
+      out.writeUInt32LE(24_000, 24);
+      out.write("data", 36, "latin1");
+      for (let i = 44; i < out.length; i += 2) out.writeInt16LE(1000, i);
+      return out;
+    };
+    const played: number[] = [];
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async () => {} },
+      voice: () => ({
+        kind: "synth",
+        voice: "eve",
+        synth: () => ({
+          stream: (async function* () {
+            yield wav();
+          })(),
+          cancel: () => {},
+        }),
+      }),
+      player: {
+        ...player,
+        play: async (stream) => {
+          played.push(await drain(stream));
+          return true;
+        },
+      },
+    });
+    await Promise.all([
+      speaker.speak("The build passed."),
+      speaker.speak("And the deploy finishes at half past two this afternoon."),
+    ]);
+    // The first plays as synthesised; the second gets a 170 ms breath and a 70 ms gap before its words.
+    expect(played[0]).toBe(44 + 200);
+    expect(played[1]).toBe(44 + (4_080 + 1_680) * 2 + 200);
+  });
+
   it("gives the voice the respelled line, and keeps the written one for the screen and her echo", async () => {
     const synthesised: string[] = [];
     const noted: string[] = [];

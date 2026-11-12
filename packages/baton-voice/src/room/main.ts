@@ -18,7 +18,7 @@ import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "..
 import { createSpeakerStore } from "../speakerStore.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "./mqtt.ts";
-import { noteTime, pickRecogniser, type RecogniserState } from "./recognisers.ts";
+import { noteTime, pickRecogniser, turnAcross, type RecogniserState } from "./recognisers.ts";
 import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
@@ -40,19 +40,31 @@ const state = env("R1_STATE");
 const model = (file: string) => NodePath.join(models, file);
 
 /** Tessaya's recogniser (native/tessaya-recognizer) over its WebSocket protocol: words stream in, the text at the end. */
-const recogniserTurn = (url: string, token: string): RecogniserTurn => {
+/** A turn on one recogniser, and whether it failed (refused, unreachable, or gone before the text). */
+type LiveTurn = RecogniserTurn & { readonly failed: () => boolean };
+
+const recogniserTurn = (url: string, token: string): LiveTurn => {
   const ws = new WebSocket(url, {
     headers: { authorization: `Bearer ${token}` },
   } as unknown as string[]);
   ws.binaryType = "arraybuffer";
   const queued: Uint8Array<ArrayBuffer>[] = [];
+  const partialListeners: Array<(text: string) => void> = [];
   let open = false;
   let ended = false;
+  let failed = false;
+  let answered = false;
   let settle: ((text: string) => void) | null = null;
-  const result = new Promise<string>((resolve, reject) => {
+  const result = new Promise<string>((resolve) => {
     settle = resolve;
-    ws.addEventListener("error", () => reject(new Error("recogniser unreachable")));
-    ws.addEventListener("close", () => resolve(""));
+    ws.addEventListener("error", () => {
+      failed = true;
+      resolve("");
+    });
+    ws.addEventListener("close", () => {
+      if (!answered) failed = true;
+      resolve("");
+    });
   });
   ws.addEventListener("open", () => {
     open = true;
@@ -63,8 +75,16 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
   ws.addEventListener("message", (e) => {
     if (typeof e.data !== "string") return;
     const m = JSON.parse(e.data) as { ev?: string; text?: string; message?: string };
-    if (m.ev === "text") settle?.(m.text ?? "");
-    if (m.ev === "error") settle?.("");
+    if (m.ev === "partial" && typeof m.text === "string")
+      for (const l of partialListeners) l(m.text);
+    if (m.ev === "text") {
+      answered = true;
+      settle?.(m.text ?? "");
+    }
+    if (m.ev === "error") {
+      failed = true;
+      settle?.("");
+    }
     if (m.ev === "text" || m.ev === "error") ws.close();
   });
   return {
@@ -80,6 +100,8 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
       return result;
     },
     cancel: () => ws.close(),
+    onPartial: (listener) => void partialListeners.push(listener),
+    failed: () => failed,
   };
 };
 
@@ -122,24 +144,31 @@ const recognisers = () => {
   };
   void refresh();
   setInterval(() => void refresh(), 2_000);
-  return (): RecogniserTurn => {
-    const chosen = pickRecogniser(states, Date.now()) ?? states[0]!;
-    const token = list.find((r) => r.url === chosen.url)!.token;
-    const turn = recogniserTurn(chosen.url, token);
-    return {
-      ...turn,
-      finish: async () => {
-        const started = performance.now();
-        const text = await turn.finish();
-        const ms = performance.now() - started;
-        states = states.map((s) =>
-          s.url === chosen.url ? { ...s, recent: noteTime(s.recent, ms, Date.now()) } : s,
-        );
-        log(`recogniser ${chosen.url.replace(/^ws:\/\//, "")} ${Math.round(ms)} ms`);
-        return text;
+  return (): RecogniserTurn =>
+    turnAcross(
+      (tried) => {
+        const pool = states.filter((s) => !tried.has(s.url));
+        const chosen = pickRecogniser(pool, Date.now()) ?? pool[0];
+        if (chosen === undefined) return null;
+        const token = list.find((r) => r.url === chosen.url)!.token;
+        return { url: chosen.url, turn: recogniserTurn(chosen.url, token) };
       },
-    };
-  };
+      (url, ms, failed, next) => {
+        // A failed one counts as very slow, so the next turns leave it alone for a while (STALE_MS).
+        states = states.map((s) =>
+          s.url === url
+            ? { ...s, recent: noteTime(s.recent, failed ? 30_000 : ms, Date.now()) }
+            : s,
+        );
+        const host = url.replace(/^ws:\/\//, "");
+        log(
+          failed
+            ? `recogniser ${host} failed after ${Math.round(ms)} ms; ${next === null ? "no other to try" : `trying ${next.replace(/^ws:\/\//, "")}`}`
+            : `recogniser ${host} ${Math.round(ms)} ms`,
+        );
+      },
+      () => performance.now(),
+    );
 };
 
 /** Pocket TTS's own server, kept running beside the loop (her voice, as on the desktop). */

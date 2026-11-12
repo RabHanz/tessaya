@@ -118,6 +118,23 @@ describe("splicing sounds between words", () => {
     expect(pcm[1000 + gap + breathLength + gap]).toBe(8000);
   });
 
+  it("streams a line's samples however its chunks split the header and the bytes", async () => {
+    const pcm = new Int16Array([1, -2, 300, -400, 5000]);
+    const bytes = new Uint8Array([...streamingWavHeader(), ...new Uint8Array(pcm.buffer)]);
+    const odd = (async function* () {
+      for (const [a, b] of [
+        [0, 20],
+        [20, 45],
+        [45, 48],
+        [48, 53],
+        [53, bytes.length],
+      ])
+        yield bytes.slice(a, b);
+    })();
+    const out = await collect(spliceSpeech(speechPieces("Fine.", "anna"), () => odd));
+    expect([...out]).toEqual([...pcm]);
+  });
+
   it("says a laugh in the same voice at its own gain", async () => {
     const pieces = speechPieces("*laughs*", "anna");
     const pcm = await collect(spliceSpeech(pieces, () => wav(100, 10000)));

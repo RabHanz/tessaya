@@ -12,6 +12,7 @@ import type { TtsProvider } from "@t3tools/baton-voice";
 
 import { hasDirection, speechPieces, withoutDirections } from "@t3tools/baton-shared/interjections";
 import { pronounce } from "@t3tools/baton-shared/pronounce";
+import { withProsody } from "@t3tools/baton-shared/prosody";
 import { spliceSpeech } from "@t3tools/baton-shared/speechSplice";
 
 /** Plays a WAV as its bytes arrive; resolves false if there was nothing to play. */
@@ -148,6 +149,7 @@ export const createSpeaker = (input: {
     choice: Extract<VoiceChoice, { kind: "synth" }>,
     mine: number,
     raw: string,
+    continuing: boolean,
   ) => {
     const previous = generating;
     const his = input.respellings?.() ?? {};
@@ -158,10 +160,13 @@ export const createSpeaker = (input: {
         .map((part, i) => (i % 2 === 1 ? part : speakableText(pronounce(part, his))))
         .join(" ")
         .trim();
-    const pieces = speechPieces(raw, choice.voice ?? "", {
-      his,
-      ...(choice.engine === undefined ? {} : { engine: choice.engine }),
-    }).map((p) => (p.kind === "text" ? { ...p, text: sayable(p.text) } : p));
+    const engine = choice.engine === undefined ? {} : { engine: choice.engine };
+    const pieces = withProsody(
+      speechPieces(raw, choice.voice ?? "", { his, ...engine }).map((p) =>
+        p.kind === "text" ? { ...p, text: sayable(p.text) } : p,
+      ),
+      { continuing, ...engine },
+    );
     const say = (text: string) => {
       const job = choice.synth(text);
       running.add(job.cancel);
@@ -203,10 +208,12 @@ export const createSpeaker = (input: {
     // Nothing left to say (only emoji): shown, and not a line the voice failed on.
     if (spoken.length === 0 && !sound) return Promise.resolve();
     const mine = generation;
+    // A sentence queued behind another of the same reply is "continuing": it may start with a breath.
+    const continuing = queued > 0;
     const first = pick();
     let source: ReturnType<typeof readAhead> | null = null;
     if (first.kind === "synth") {
-      source = startSource(first, mine, raw);
+      source = startSource(first, mine, raw, continuing);
     }
     if (queued === 0) input.onActive?.(true);
     queued += 1;
@@ -220,7 +227,7 @@ export const createSpeaker = (input: {
         if (mine !== generation) return;
         choice = ok ? pick() : first;
         if (choice.kind === "synth") {
-          source = startSource(choice, mine, raw);
+          source = startSource(choice, mine, raw, continuing);
         }
       }
       if (choice.kind === "system") {

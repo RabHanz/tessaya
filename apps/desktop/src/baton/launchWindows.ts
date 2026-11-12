@@ -1,6 +1,7 @@
 /**
  * Which windows open when the app starts, from Settings → General → Start. A login start reads the same two
- * switches. The first run always opens both: setup happens in them. Pure, so the decision is tested alone.
+ * switches. The first run opens Tessaya alone, so her setup and T3's own first run never stack; T3 opens when he
+ * asks for sessions. Pure, so the decision is tested alone.
  */
 export const launchWindows = (input: {
   readonly openTessaya: boolean;
@@ -8,7 +9,7 @@ export const launchWindows = (input: {
   readonly firstRun: boolean;
 }) => ({
   tessaya: input.firstRun || input.openTessaya,
-  sessions: input.firstRun || input.openSessions,
+  sessions: !input.firstRun && input.openSessions,
 });
 
 /** Set while the sessions window is switched off for this start; any request to show it releases the hold. */

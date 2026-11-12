@@ -33,7 +33,7 @@ import {
   isBad,
   markHealthy,
 } from "@t3tools/baton-shared/startGuard";
-import { BATON_SESSIONS_WS_METHODS } from "@t3tools/baton-contracts";
+import { BATON_SESSIONS_WS_METHODS, tessayaPlaceOf } from "@t3tools/baton-contracts";
 import { approvalRecord } from "@t3tools/baton-shared/approvals";
 import { DEFAULT_POCKET_VOICE } from "@t3tools/baton-shared/voiceLibrary";
 import { inFlightLine } from "@t3tools/baton-shared/turnsInFlight";
@@ -63,6 +63,8 @@ import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
 import { runFreyaImport } from "./memory/freyaImport.ts";
+import { isTessayaLink, placeInArgs, TESSAYA_SCHEME } from "./home/links.ts";
+import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 
 /** The one line a voice speaks when he plays or picks it. */
 const AUDITION_LINE = "Hello, this is how I sound.";
@@ -657,9 +659,20 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     // A second launch means "show me Tessaya". T3's own handler raises its main window first and slowly, so
     // Tessaya's window is raised after it, or the T3 window ends up on top.
-    Electron.app.on("second-instance", () => {
-      setTimeout(() => voice?.openHome(), SECOND_LAUNCH_RAISE_MS).unref();
+    Electron.app.on("second-instance", (_event, argv) => {
+      const place = placeInArgs(argv) ?? undefined;
+      setTimeout(() => voice?.openHome(place), SECOND_LAUNCH_RAISE_MS).unref();
     });
+    // tessaya://settings/hardware opens that place: Windows hands it to a second launch, macOS to open-url.
+    Electron.app.on("open-url", (event, url) => {
+      if (!isTessayaLink(url)) return;
+      event.preventDefault();
+      voice?.openHome(tessayaPlaceOf(url) ?? undefined);
+    });
+    if (Electron.app.isPackaged) Electron.app.setAsDefaultProtocolClient(TESSAYA_SCHEME);
+    const launchPlace = placeInArgs(process.argv);
+    if (launchPlace !== null)
+      setTimeout(() => voice?.openHome(launchPlace), SECOND_LAUNCH_RAISE_MS * 3).unref();
     // Every session on every connected environment, through the T3 sidebar.
     const catalog = (catalogStore = createCatalog({
       service: createBridgeCatalogService({
@@ -693,12 +706,12 @@ export const startBatonDesktop = Effect.gen(function* () {
       direct,
       privateMemory,
       // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
-      // subscription session. The wait matches the server's 1.2 s limit, with a little for the hop.
+      // subscription session. The wait matches the server's 2.5 s limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {
         const answer = (await direct(
           "baton.dictation.cleanupApi",
           { system, message, maxTokens },
-          1_500,
+          2_800,
         )) as { readonly configured?: boolean; readonly text?: unknown };
         return answer?.configured === true && typeof answer.text === "string" ? answer.text : null;
       },
@@ -731,6 +744,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
       warmAssistant: () => screen?.warmAssistant(),
       openMainWindow,
+      embed: { url: getDesktopUrl(environment.isDevelopment), preload: environment.preloadPath },
       dictationBinary: resolveDictationBinary({
         resourcesPath,
         platform: environment.platform,

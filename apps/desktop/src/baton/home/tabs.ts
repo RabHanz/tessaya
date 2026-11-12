@@ -21,11 +21,54 @@ export const TABS = [
   { id: "tools", label: "Skills" },
   { id: "usage", label: "Usage" },
   { id: "trust", label: "Trust" },
+  { id: "hardware", label: "Hardware" },
+  { id: "homeassistant", label: "Home Assistant" },
+  { id: "phone", label: "Phone" },
+  { id: "learn", label: "Learn Tessaya" },
   { id: "help", label: "Help" },
 ] as const;
 
+/**
+ * The sidebar's five areas. Only the area being used stays open. `settings` is the one Settings page the area's
+ * gear row opens; Devices has none because its pages are its settings.
+ */
+export const AREAS = [
+  {
+    id: "today",
+    label: "Today",
+    pages: ["home", "now", "approvals", "jobs", "cloud"],
+    settings: "general",
+  },
+  {
+    id: "talk",
+    label: "Talk",
+    pages: ["dictation", "history", "snippets", "transforms", "style", "scratchpad", "insights"],
+    settings: "voice",
+  },
+  { id: "know", label: "Know", pages: ["memory", "vault"], settings: "privacy" },
+  {
+    id: "devices",
+    label: "Devices",
+    pages: ["hardware", "homeassistant", "phone"],
+    settings: null,
+  },
+  {
+    id: "agents",
+    label: "Agents",
+    pages: ["sessions", "tools", "trust", "usage"],
+    settings: "assistant",
+  },
+] as const satisfies ReadonlyArray<{
+  readonly id: string;
+  readonly label: string;
+  readonly pages: ReadonlyArray<(typeof TABS)[number]["id"]>;
+  readonly settings: (typeof SETTINGS)[number]["id"] | null;
+}>;
+
 /** Settings has one home: the Settings window, in these categories. Every setting lives in exactly one of them. */
 export const SETTINGS = [
+  { id: "accounts", label: "Accounts" },
+  { id: "apis", label: "APIs and keys" },
   { id: "general", label: "General" },
   { id: "voice", label: "Voice and wake words" },
   { id: "personas", label: "Personas and voices" },
@@ -124,6 +167,11 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.palette": "appearance",
   "v.pillDesign": "appearance",
   "v.pillWaveform": "appearance",
+  "v.mascot": "appearance",
+  "v.mascotMotion": "appearance",
+  "v.mascotPersona": "appearance",
+  "v.mascotSize": "appearance",
+  "v.pillFace": "appearance",
   "v.motion": "appearance",
   "v.glass": "appearance",
   "v.check": "advanced",

@@ -114,9 +114,62 @@ const samplesOf = async (stream: AsyncIterable<Uint8Array>): Promise<Int16Array>
   return resample(pcm, rate, SPLICE_RATE);
 };
 
+/** A WAV stream's samples as they arrive, so a spliced line starts playing as soon as its first words exist. */
+async function* streamSamples(stream: AsyncIterable<Uint8Array>): AsyncGenerator<Int16Array> {
+  let head = new Uint8Array(0);
+  let rate = 0;
+  let carry: number | null = null;
+  const pending: Int16Array[] = [];
+  for await (const chunk of stream) {
+    let bytes = chunk;
+    if (rate === 0) {
+      const joined = new Uint8Array(head.length + chunk.length);
+      joined.set(head);
+      joined.set(chunk, head.length);
+      head = joined;
+      let data = -1;
+      for (let i = 12; i + 8 <= head.length; i += 1) {
+        if (
+          head[i] === 0x64 &&
+          head[i + 1] === 0x61 &&
+          head[i + 2] === 0x74 &&
+          head[i + 3] === 0x61
+        ) {
+          data = i;
+          break;
+        }
+      }
+      if (data < 0 || head.length < 28) continue;
+      rate = new DataView(head.buffer).getUint32(24, true);
+      bytes = head.subarray(data + 8);
+    }
+    const odd: number = carry === null ? 0 : 1;
+    const count = Math.floor((bytes.length + odd) / 2);
+    const pcm = new Int16Array(count);
+    for (let i = 0; i < count; i += 1) {
+      const lo = i === 0 && carry !== null ? carry : bytes[i * 2 - odd]!;
+      const hi = bytes[i * 2 + 1 - odd]!;
+      pcm[i] = (((hi << 8) | lo) << 16) >> 16;
+    }
+    carry = (bytes.length + odd) % 2 === 1 ? bytes[bytes.length - 1]! : null;
+    // Another rate is resampled whole; Pocket and Gemini both stream at the splice rate.
+    if (rate === SPLICE_RATE) yield pcm;
+    else pending.push(pcm);
+  }
+  if (pending.length > 0) {
+    const all = new Int16Array(pending.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of pending) {
+      all.set(p, at);
+      at += p.length;
+    }
+    yield resample(all, rate, SPLICE_RATE);
+  }
+}
+
 /**
- * The pieces as one stream. `say` synthesises one text in this voice (a WAV stream). A text piece starts playing as
- * soon as it is synthesised; a sound waits for the words before it, so its level can match them.
+ * The pieces as one stream. `say` synthesises one text in this voice (a WAV stream). A text piece streams as it is
+ * synthesised; a sound follows the words before it, so its level can match them.
  */
 export async function* spliceSpeech(
   pieces: ReadonlyArray<SpeechPiece>,
@@ -126,9 +179,14 @@ export async function* spliceSpeech(
   let level = DEFAULT_RMS;
   for (const [i, piece] of pieces.entries()) {
     if (piece.kind === "text") {
-      const pcm = await samplesOf(say(piece.text));
-      if (pcm.length > 0) level = rmsOf(pcm) || level;
-      yield bytesOf(pcm);
+      let sum = 0;
+      let count = 0;
+      for await (const pcm of streamSamples(say(piece.text))) {
+        for (const v of pcm) sum += (v / 32768) ** 2;
+        count += pcm.length;
+        yield bytesOf(pcm);
+      }
+      if (count > 0) level = Math.sqrt(sum / count) || level;
       continue;
     }
     const gap = silence(i === 0 ? 0 : SPLICE_GAP_MS);

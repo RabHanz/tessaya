@@ -185,6 +185,8 @@ function RootRouteBranch() {
   if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
     return <Outlet />;
   }
+  // Baton (0008-web-panes.patch): Tessaya's window shows these pages alone, without T3's sidebar.
+  if (pathname.startsWith("/tessaya/")) return <Outlet />;
 
   const appShell = (
     <CommandPalette>

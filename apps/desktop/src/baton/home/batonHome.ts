@@ -13,6 +13,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { isEmbedSrc } from "./links.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
@@ -29,7 +30,7 @@ import {
   type Motion,
 } from "./look.ts";
 import type { Palette } from "./palette.ts";
-import { artDir, readArt, stingFile } from "./artFiles.ts";
+import { artDir, companionDir, readArt, stingFile } from "./artFiles.ts";
 import { shouldSplash, splashCentre } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
 
@@ -402,7 +403,10 @@ export interface BatonHomeInput {
   readonly stateDir: string;
   readonly state: () => HomeState;
   readonly apply: (id: string, value: string | boolean | null) => void;
-  readonly openSessions: (liveOnly?: boolean) => void;
+  /** T3's window, filtered to live sessions or at one of its own pages (`/settings/worktrees`). */
+  readonly openSessions: (liveOnly?: boolean, path?: string) => void;
+  /** T3's app address, whose `/tessaya/<page>` routes this window shows inline; absent, those pages offer T3 instead. */
+  readonly embed?: { readonly url: string; readonly preload: string };
   /** The window moved to this tab. */
   readonly onTab?: (tab: string) => void;
   /** System, Light or Dark, as he chose it in Settings. */
@@ -420,7 +424,8 @@ export interface BatonHomeInput {
 }
 
 export interface BatonHome {
-  readonly open: () => void;
+  /** Up front, at a place (`hardware`, `voice`) when given. */
+  readonly open: (place?: string) => void;
   /** Re-reads Motion and Glass and applies them to the open window now. */
   readonly applyLook: () => void;
   /** Push fresh state if the window is up. */
@@ -457,8 +462,12 @@ const PUSH_MS = 250;
 const THEME = "baton-home:theme";
 const LEVEL = "baton-home:level";
 const STING = "baton-home:sting";
+const EMBED = "baton-home:embed";
+const GO = "baton-home:go";
+const T3_PATH = /^\/(settings|tessaya)\/[a-z-]+$/;
 /** Tessaya's palette art: the app's resources when packaged, the source tree when run from it. */
 export const ART_DIR = artDir(__dirname, process.resourcesPath);
+export const COMPANION_DIR = companionDir(__dirname, process.resourcesPath);
 const art = ART_DIR;
 
 const withTabs = (state: HomeState): HomeState => ({
@@ -484,7 +493,13 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   });
   Electron.ipcMain.handle(LEVEL, () => input.level?.() ?? 0);
   Electron.ipcMain.handle(STING, () => readArt(art, stingFile(look().palette, theme())));
-  Electron.ipcMain.on(SESSIONS, (_event, filter: unknown) => input.openSessions(filter === "live"));
+  Electron.ipcMain.on(SESSIONS, (_event, filter: unknown) =>
+    input.openSessions(
+      filter === "live",
+      typeof filter === "string" && T3_PATH.test(filter) ? filter : undefined,
+    ),
+  );
+  Electron.ipcMain.handle(EMBED, () => input.embed?.url ?? null);
   // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
   let tabShots = 0;
   Electron.ipcMain.on("baton-home:tab", (_event, tab: unknown) => {
@@ -647,12 +662,13 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       if (wait > 0) pushTimer = setTimeout(push, wait);
       else push();
     },
-    open: () => {
+    open: (place) => {
       const existing = live();
       if (existing !== null) {
         if (existing.isMinimized()) existing.restore();
         existing.show();
         existing.focus();
+        if (place !== undefined) existing.webContents.send(GO, place);
         return;
       }
       const remembered = readBounds(boundsFile);
@@ -673,7 +689,23 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
           ? {}
           : { titleBarStyle: "hidden" as const, titleBarOverlay: overlayFor(theme()) }),
         show: false,
-        webPreferences: { nodeIntegration: true, contextIsolation: false },
+        webPreferences: { nodeIntegration: true, contextIsolation: false, webviewTag: true },
+      });
+      // T3 pages shown inline run as T3's own window does: its preload, sandboxed, and nothing but T3's app address.
+      created.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+        const embed = input.embed;
+        if (embed === undefined || !isEmbedSrc(embed.url, params.src ?? "")) {
+          event.preventDefault();
+          return;
+        }
+        webPreferences.preload = embed.preload;
+        webPreferences.sandbox = true;
+        webPreferences.contextIsolation = true;
+        webPreferences.nodeIntegration = false;
+        webPreferences.nodeIntegrationInSubFrames = false;
+      });
+      created.webContents.on("did-attach-webview", (_event, guest) => {
+        guest.setWindowOpenHandler(() => ({ action: "deny" }));
       });
       // Baton's own window is not T3's: without this "Open sessions" reveals this window and T3 never opens.
       markCompanionWindow(created);
@@ -712,6 +744,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         : null;
       splashed = splash !== null;
       created.webContents.on("did-finish-load", () => applyLook());
+      if (place !== undefined)
+        created.webContents.once("did-finish-load", () => created.webContents.send(GO, place));
       created.once("ready-to-show", () => {
         if (splash === null) return created.show();
         splash.whenToShow(() => {

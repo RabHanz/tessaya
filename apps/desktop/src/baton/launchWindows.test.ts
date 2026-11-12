@@ -15,7 +15,8 @@ describe("launchWindows", () => {
     { openTessaya: true, openSessions: false, firstRun: false, tessaya: true, sessions: false },
     { openTessaya: false, openSessions: false, firstRun: false, tessaya: false, sessions: false },
     // The first run opens both whatever the switches say.
-    { openTessaya: false, openSessions: false, firstRun: true, tessaya: true, sessions: true },
+    { openTessaya: false, openSessions: false, firstRun: true, tessaya: true, sessions: false },
+    { openTessaya: true, openSessions: true, firstRun: true, tessaya: true, sessions: false },
   ])("$openTessaya/$openSessions, first run $firstRun", ({ tessaya, sessions, ...input }) => {
     expect(launchWindows(input)).toEqual({ tessaya, sessions });
   });

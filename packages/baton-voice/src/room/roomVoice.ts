@@ -43,7 +43,60 @@ export interface RecogniserTurn {
   /** The final text once the audio has ended. */
   readonly finish: () => Promise<string>;
   readonly cancel: () => void;
+  /** Each partial the recogniser sends while it still works (its words so far); the room guesses ahead with them. */
+  readonly onPartial?: (listener: (text: string) => void) => void;
 }
+
+/** Two transcripts that say the same words, whatever their case and punctuation. */
+const sameWords = (a: string, b: string) => {
+  const words = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}' ]+/gu, " ")
+      .trim()
+      .split(/\s+/)
+      .join(" ");
+  return words(a) === words(b);
+};
+
+/** How many times one turn may start her brain on a guess before the final text: each costs a brain call. */
+const MAX_GUESSES = 3;
+
+/** Reads `source` into a buffer at once and replays it, so a stream started early loses nothing while it waits. */
+const buffered = <T>(source: AsyncIterable<T>): AsyncIterable<T> => {
+  const items: T[] = [];
+  let done = false;
+  let failed: unknown = null;
+  let wake: (() => void) | null = null;
+  const nudge = () => {
+    wake?.();
+    wake = null;
+  };
+  void (async () => {
+    try {
+      for await (const item of source) {
+        items.push(item);
+        nudge();
+      }
+    } catch (error) {
+      failed = error;
+    } finally {
+      done = true;
+      nudge();
+    }
+  })();
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (let i = 0; ;) {
+        if (i < items.length) yield items[i++]!;
+        else if (done) {
+          if (failed !== null) throw failed;
+          return;
+        } else await new Promise<void>((r) => (wake = r));
+      }
+    },
+  };
+};
 
 export interface Tessaya {
   /** Who he called: the persona that answers this turn, in its own voice and with its own memory. */
@@ -163,6 +216,8 @@ export interface TurnMetrics {
   readonly speakerScore: number | null;
   readonly emotion: string;
   readonly bargedIn: boolean;
+  /** Her brain started on the recogniser's partial words, and the final text matched them. */
+  readonly speculative?: boolean;
 }
 
 /** Whole sentences out of a growing reply, keeping the unfinished tail. */
@@ -345,18 +400,88 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         });
     };
 
+    /** When the turn being heard began: the window is about when he started, not when recognition finished. */
+    let turnStartedAt = 0;
     /** `given` is a turn already in words (an R1 button's prompt): addressed to her, with no voice to read. */
-    const answer = async (pcm: Int16Array, reason: string, lastVoice: number, given?: string) => {
+    const answer = async (
+      pcm: Int16Array,
+      reason: string,
+      lastVoice: number,
+      startedAt: number,
+      given?: string,
+    ) => {
       const turn = (turnNo += 1);
       const decidedAt = deps.now();
       const current = given === undefined ? rec : null;
       if (given === undefined) rec = null;
-      const sides = Promise.all([
-        given === undefined ? deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now())) : undefined,
-        given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined,
-      ]);
+      const speakerP =
+        given === undefined ? deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now())) : undefined;
+      const affectP = given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined;
+      let affectNow: Awaited<typeof affectP>;
+      void affectP?.then((a) => (affectNow = a));
+      const sides = Promise.all([speakerP, affectP]);
+      // What she would send her brain for these words, or null when this turn would not be answered.
+      const ask = async (words: string) => {
+        const called = calledName(
+          words,
+          config.personas.map((p) => p.name),
+        );
+        if (called === null && startedAt > openUntil) return null;
+        // A guess waits for who is speaking (it may only answer whom the final turn would answer), not for the mood.
+        const speaker = await speakerP;
+        const affect = affectNow;
+        const identity = speaker ?? UNVERIFIED(deps.now());
+        if (!admits(identity, config.gate, "turn")) return null;
+        const who = config.personas.find((p) => p.name === called) ?? persona;
+        const tessaya: Tessaya = {
+          ...(who === undefined || who === lead ? {} : { persona: who.id }),
+          speaker: identity,
+          ...(affect === undefined
+            ? {}
+            : { emotion: { label: affect.emotion, events: affect.events } }),
+        };
+        const messages = [...history, { role: "user" as const, content: words }].slice(
+          -config.historyTurns * 2,
+        );
+        return { deviceId: id, messages, tessaya };
+      };
+      // A guess: her brain starts on the recogniser's latest words while it finishes; the final text decides.
+      type Guess = {
+        words: string;
+        control: AbortController;
+        stream: AsyncIterable<string> | null;
+      };
+      let guess: Guess | null = null;
+      let guesses = 0;
+      let settled = false;
+      const tryGuess = (words: string) => {
+        if (settled || enrolling !== null || words.trim() === "") return;
+        if (guess !== null && sameWords(guess.words, words)) return;
+        if (guesses >= MAX_GUESSES) return;
+        guesses += 1;
+        guess?.control.abort();
+        const control = new AbortController();
+        const mine: Guess = { words, control, stream: null };
+        guess = mine;
+        void ask(words).then((request) => {
+          // Too late once the final text is in: that path calls the brain itself.
+          if (request === null || settled || control.signal.aborted || guess !== mine) return;
+          mine.stream = buffered(deps.brain(request, control.signal));
+        });
+      };
+      let latest = "";
+      current?.onPartial?.((words) => {
+        latest = words;
+        tryGuess(words);
+      });
+      if (latest !== "") tryGuess(latest);
       const text = (given ?? (await current?.finish().catch(() => "")) ?? "").trim();
+      settled = true;
       const textAt = deps.now();
+      // The guess is kept only when it heard the same words; otherwise it never speaks.
+      const last = guess as Guess | null;
+      const kept = last !== null && sameWords(last.words, text) ? last : null;
+      if (last !== null && kept === null) last.control.abort();
       if (enrolling !== null && given === undefined) {
         enrolling.push(...speechWindows(pcm));
         if (enrolling.length * 4 < ENROL_SECONDS) return;
@@ -376,7 +501,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         text,
         config.personas.map((p) => p.name),
       );
-      if (called === null && given === undefined && deps.now() > openUntil) {
+      if (called === null && given === undefined && startedAt > openUntil) {
         deps.log(`[${id}] turn ${turn}: not said to her; not answered`);
         return;
       }
@@ -402,7 +527,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       history.push({ role: "user", content: text });
       // One reply at a time: two playing at once interleave their frames on the downlink, which sounds chopped.
       if (reply !== null) interrupt();
-      const control = new AbortController();
+      const control = kept?.control ?? new AbortController();
       reply = control;
       let brainFirst: number | null = null;
       let ttsFirst: number | null = null;
@@ -443,10 +568,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             ? {}
             : { emotion: { label: affect.emotion, events: affect.events } }),
         };
-        for await (const delta of deps.brain(
-          { deviceId: id, messages: history.slice(-config.historyTurns * 2), tessaya },
-          control.signal,
-        )) {
+        const source =
+          kept?.stream ??
+          deps.brain(
+            { deviceId: id, messages: history.slice(-config.historyTurns * 2), tessaya },
+            control.signal,
+          );
+        for await (const delta of source) {
           brainFirst ??= deps.now() - textAt;
           said += delta;
           buffer += delta;
@@ -495,6 +623,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           identity.confidence === null ? null : Math.round(identity.confidence * 1000) / 1000,
         emotion: affect?.emotion ?? "unknown",
         bargedIn,
+        speculative: kept !== null,
       };
       bargedIn = false;
       deps.publish(topic(id, "event/voice/metrics"), JSON.stringify(metrics));
@@ -512,6 +641,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             rec?.cancel();
             rec = deps.recognise();
             rec.feed(a.pcm);
+            // The preroll is already in `a.pcm`, so his first word came that long before now.
+            turnStartedAt = deps.now() - (a.pcm.length / RATE) * 1000;
             if (!asleep) face("attentive");
             break;
           case "audio":
@@ -527,7 +658,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           }
           case "end": {
             if (!asleep) gesture("nodSmall");
-            answering = answer(a.pcm, a.reason, lastVoiceAt);
+            answering = answer(a.pcm, a.reason, lastVoiceAt, turnStartedAt);
             break;
           }
         }
@@ -606,7 +737,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speakNow(`${next.name} here.`);
       },
       /** An R1 button's prompt: answered as if he had said it to her. */
-      ask: (text: string) => void answer(new Int16Array(0), "button", deps.now(), text),
+      ask: (text: string) => void answer(new Int16Array(0), "button", deps.now(), deps.now(), text),
       /** He called this persona by name to wake her. */
       call: (name: string) => {
         const named = config.personas.find((p) => p.name === name);

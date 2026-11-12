@@ -236,8 +236,19 @@ function useSettingsIndexSections(): SettingsListSection[] {
   ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
   const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
     page(target, icon, label, { disabled: noServerTargets });
-  // The same pages and groups as Settings on web, minus what mobile has no setting for.
+  // Tessaya's own settings first, grouped as in her desktop window; then T3's, as on web.
   return [
+    {
+      title: "Talking to Tessaya",
+      rows: [page("SettingsVoice", "mic", "Voice and dictation")],
+    },
+    {
+      title: "Home and devices",
+      rows: [
+        serverPage("SettingsHome", "house", "Home Assistant"),
+        serverPage("SettingsHardware", "face.smiling", "Hardware"),
+      ],
+    },
     {
       rows: [
         page("SettingsOrganization", "gearshape", "General"),
@@ -247,7 +258,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
           ? [page("SettingsNavigation", "line.3.horizontal", "Navigation tabs")]
           : []),
         ...(Platform.OS === "ios" ? [page("SettingsKeyboard", "keyboard", "Keyboard")] : []),
-        page("SettingsVoice", "mic", "Voice"),
       ],
     },
     {
@@ -256,8 +266,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage("SettingsProviderAccounts", "person.crop.circle", "Providers"),
         serverPage("SettingsThreads", "text.bubble", "Threads"),
         page("SettingsScheduledTasks", "clock", "Scheduled tasks"),
-        serverPage("SettingsHome", "house", "Home"),
-        serverPage("SettingsHardware", "face.smiling", "Hardware"),
       ],
     },
     {

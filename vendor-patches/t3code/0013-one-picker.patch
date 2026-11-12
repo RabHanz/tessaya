@@ -333,10 +333,10 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
        runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
        onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb8225310f6ba718 100644
+index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3364c20e4 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
-@@ -140,7 +140,14 @@ import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
+@@ -140,7 +140,15 @@ import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
  import { useDictationShortcut } from "../../speech/useDictationShortcut";
  import { useDictationSubmissionShortcut } from "../../speech/useDictationSubmissionShortcut";
  import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
@@ -349,10 +349,11 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
 +  BatonDictationWords,
 +  dictatingAttribute,
 +} from "./BatonComposerDictation";
++import { placeholderWhile } from "@t3tools/baton-shared/composerDictation";
  import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
  import { shortcutLabelForCommand } from "../../keybindings";
  import {
-@@ -337,6 +344,8 @@ export interface ChatComposerHandle {
+@@ -337,6 +345,8 @@ export interface ChatComposerHandle {
      environmentContexts: EnvironmentContextRecord[];
      selectedPromptEffort: string | null;
      selectedModelSelection: ModelSelection;
@@ -361,7 +362,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
      multipleModelSelections: ReadonlyArray<ModelSelection> | null;
      providerAvailable: boolean;
      selectedProvider: ProviderDriverKind;
-@@ -426,7 +435,10 @@ export interface ChatComposerProps {
+@@ -426,7 +436,10 @@ export interface ChatComposerProps {
    defaultRuntimeMode?: RuntimeMode;
    interactionMode: ProviderInteractionMode;
  
@@ -372,7 +373,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
    providerStatuses: ServerProvider[];
    providerCatalogKnown: boolean;
    activeProjectDefaultModelSelection: ModelSelection | null | undefined;
-@@ -555,6 +567,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -555,6 +568,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      runtimeMode,
      interactionMode: requestedInteractionMode,
      lockedProvider,
@@ -380,7 +381,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
      providerStatuses,
      providerCatalogKnown,
      activeProjectDefaultModelSelection,
-@@ -906,14 +919,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -906,14 +920,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        activeThreadModelSelection?.instanceId,
        activeProjectDefaultModelSelection?.instanceId,
      ],
@@ -419,7 +420,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
    const providerSetupInstanceId = noProviderAvailable
      ? (unavailableProviderInstanceId ??
        (lockedProvider === null
-@@ -951,7 +986,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -951,7 +987,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        ? attachmentBlockReason
        : (attachmentBlockReason ??
          runtimeModeCeilingDenial ??
@@ -430,7 +431,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
    const isSendDisabled = sendDisabledReason !== null;
    const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
    const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
-@@ -1849,6 +1886,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1849,6 +1887,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      isComposerApprovalState ||
      activePendingIsResponding ||
      activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
@@ -458,7 +459,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
    const speechInput = useEnvironmentSpeechInput({
      environmentId,
      projectId: activeProjectId,
-@@ -1856,28 +1914,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1856,28 +1915,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      ownerKey: questionAttachmentTarget ?? composerDraftTargetKey,
      draftText: prompt,
      disabled: dictationDisabled,
@@ -485,19 +486,19 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
 -    },
 +    readDraft: readSpeechDraft,
 +    commitDraft: commitSpeechDraft,
-+  });
+   });
 +  const tessayaDictation = useTessayaComposerDictation({
 +    speech: speechInput,
 +    readDraft: readSpeechDraft,
 +    commitDraft: commitSpeechDraft,
 +    rootRef: composerFormRef,
 +    disabled: dictationDisabled,
-   });
++  });
 +  const pillLook = useComposerPillLook(environmentId);
    const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
    const voiceSendDisabledReason =
      sendDisabledReason ?? (speechInput.preparing ? "Preparing voice input" : null);
-@@ -2471,6 +2518,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2471,6 +2519,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        onModelPickerOpenChange={setIsComposerModelPickerOpen}
        modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
        getModelDisabledReason={getModelDisabledReason}
@@ -505,7 +506,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
      />
    );
    // An open question owns the space above the composer. Only a machine problem,
-@@ -3109,6 +3157,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3109,6 +3158,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
          environmentContexts: composerEnvironmentContexts,
          selectedPromptEffort,
          selectedModelSelection,
@@ -515,7 +516,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
          multipleModelSelections:
            routeKind === "draft" && multipleModelSelections !== null
              ? multipleModelSelections.map((selection) =>
-@@ -3181,6 +3232,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3181,6 +3233,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        reportedModelSelection,
        settings.planModeEnabled,
        selectedModelSelection,
@@ -524,7 +525,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
        multipleModelSelections,
        setMultipleModelSelections,
        routeKind,
-@@ -3369,7 +3422,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3369,7 +3423,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                    aria-label="Expand composer"
                  >
                    {prompt.trim() ||
@@ -536,7 +537,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
                  </button>
                  {collapsedComposerImagePreviews}
                  <button
-@@ -3480,7 +3536,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3480,7 +3537,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
  
                {composerAttachmentFileList}
  
@@ -545,18 +546,29 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
                  {previewFile ? (
                    <ComposerFilePreviewDialog
                      file={previewFile}
-@@ -3534,18 +3590,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3521,7 +3578,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+                     onCitationSubmitAndSend={submitCitationAndSendStable}
+                     onCitationDraftSave={saveCitationDraftToPromptStable}
+                     onPaste={onComposerPasteStable}
+-                    placeholder={
++                    placeholder={placeholderWhile(
++                      tessayaDictation.state,
+                       isComposerApprovalState
+                         ? activePendingApproval?.supportsFeedback
+                           ? "Send feedback to decline this request"
+@@ -3534,18 +3592,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                              ? "Add feedback to refine the plan, or leave this blank to implement it"
                              : projectSelectionRequired
                                ? "Choose a project above to start a thread"
 -                              : showProviderUnavailable
 -                                ? "Enable a provider in Settings to send a message"
 -                                : DEFAULT_COMPOSER_PLACEHOLDER
+-                    }
 +                              : (threadProviderBlockReason ??
 +                                (showProviderUnavailable
 +                                  ? "Enable a provider in Settings to send a message"
-+                                  : DEFAULT_COMPOSER_PLACEHOLDER))
-                     }
++                                  : DEFAULT_COMPOSER_PLACEHOLDER)),
++                    )}
                      disabled={
                        projectSelectionRequired ||
                        isChoiceOnlyPendingQuestion ||
@@ -571,7 +583,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
                  {showMobilePendingAnswerActions ? (
                    <div
                      data-chat-composer-mobile-pending-actions="true"
-@@ -3582,21 +3641,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3582,21 +3643,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                message={providerInputSubmissionError ?? composerSubmissionError}
              />
  
@@ -595,7 +607,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
                    pendingUserInputs.length > 0 && "pt-2",
                    showMobilePendingAnswerActions &&
                      speechInput.state.phase === "idle" &&
-@@ -3604,6 +3654,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3604,6 +3656,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                  )}
                >
                  {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
@@ -610,7 +622,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..cc09e5f99a5cac74fd74b3fcbb822531
                  <div
                    data-chat-composer-actions="right"
                    data-chat-composer-transition-actions="true"
-@@ -3680,28 +3738,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3680,28 +3740,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                        : {})}
                    >
                      {speechInput.available ? (
@@ -754,10 +766,28 @@ index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..d45cfcd096769e2b2194efd928c1639e
          padding="none"
          touchBackdrop
 diff --git a/vite.config.ts b/vite.config.ts
-index fb6255cf9636350f177eb574adb6d23c7fd77ba0..b53fa73a881833bf9951bb0b86b7c7bd3dc554a7 100644
+index fb6255cf9636350f177eb574adb6d23c7fd77ba0..f1ab73b91a85ed3b72f1976abd08bd8c5a39d42b 100644
 --- a/vite.config.ts
 +++ b/vite.config.ts
-@@ -649,6 +649,7 @@ export default defineConfig({
+@@ -166,6 +166,8 @@ export default defineConfig({
+   },
+   fmt: {
+     ignorePatterns: [
++      // The Character Studio's scripts, synced as they are (scripts/tessaya/sync-companion-art.sh).
++      "apps/web/public/companion/**",
+       ".repos/**",
+       "infra/task-cache/vendor/**",
+       // Macroscope requires one glob per line; Markdown formatting corrupts it.
+@@ -201,6 +203,8 @@ export default defineConfig({
+   },
+   lint: {
+     ignorePatterns: [
++      // The Character Studio's scripts, synced as they are (scripts/tessaya/sync-companion-art.sh).
++      "apps/web/public/companion/**",
+       ".repos",
+       ".repos/**",
+       "infra/task-cache/vendor/**",
+@@ -649,6 +653,7 @@ export default defineConfig({
            "apps/mobile/src/features/review/ReviewSheet.tsx",
            "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
            "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",
