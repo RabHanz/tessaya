@@ -10,3 +10,4 @@ export const BATON_COMPOSER_FOCUS_CHANNEL = "desktop:baton-composer-focus";
 export const BATON_SESSION_REQUEST_CHANNEL = "desktop:baton-session-request";
 export const BATON_SESSION_RESPONSE_CHANNEL = "desktop:baton-session-response";
 export const BATON_USAGE_CHANNEL = "desktop:baton-usage";
+export const BATON_OPEN_TESSAYA_CHANNEL = "desktop:baton-open-tessaya";

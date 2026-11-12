@@ -70,6 +70,7 @@ export function exposeBatonDesktopBridge(): void {
     setComposerFocus: (focused) => ipcRenderer.send(Channels.BATON_COMPOSER_FOCUS_CHANNEL, focused),
     replyComposerDictation: (reply) =>
       ipcRenderer.send(Channels.BATON_COMPOSER_DICTATION_REPLY_CHANNEL, reply),
+    openTessaya: (link) => ipcRenderer.send(Channels.BATON_OPEN_TESSAYA_CHANNEL, link ?? ""),
   };
   contextBridge.exposeInMainWorld("batonDesktopBridge", bridge);
 }

@@ -322,10 +322,10 @@ index a85bc9e3301435290e114da4ae570b28dcee2b50..a458076c1a854130dce051879172731f
    ];
  }
 diff --git a/apps/web/src/components/settings/SettingsSidebarNav.tsx b/apps/web/src/components/settings/SettingsSidebarNav.tsx
-index e175fbc439f2281811e3630cec4ec3710b66ab33..0a88c6478ff1e61f651baa68464392a0cc3c4f91 100644
+index e175fbc439f2281811e3630cec4ec3710b66ab33..fbf491cd189610add6419927af9d6f845e037666 100644
 --- a/apps/web/src/components/settings/SettingsSidebarNav.tsx
 +++ b/apps/web/src/components/settings/SettingsSidebarNav.tsx
-@@ -24,6 +24,9 @@ import {
+@@ -24,12 +24,16 @@ import {
    KeyboardIcon,
    KeyRoundIcon,
    MicIcon,
@@ -335,21 +335,55 @@ index e175fbc439f2281811e3630cec4ec3710b66ab33..0a88c6478ff1e61f651baa68464392a0
    PaletteIcon,
    SearchIcon,
    ServerIcon,
-@@ -105,6 +108,9 @@ const SETTINGS_SECTION_ICONS: Readonly<
+   Settings2Icon,
+   ShieldCheckIcon,
+   SmartphoneIcon,
++  SparklesIcon,
+   WrenchIcon,
+   XIcon,
+ } from "lucide-react";
+@@ -105,6 +109,10 @@ const SETTINGS_SECTION_ICONS: Readonly<
    "/settings/connections": ServerIcon,
    "/settings/access": ShieldCheckIcon,
    "/settings/secrets": KeyRoundIcon,
 +  "/settings/apis": PlugIcon,
 +  "/settings/home": HouseIcon,
 +  "/settings/hardware": RadioReceiverIcon,
++  "/settings/tessaya": SparklesIcon,
    "/settings/maintenance": WrenchIcon,
    "/settings/labs": FlaskConicalIcon,
    "/settings/about": InfoIcon,
+@@ -115,6 +123,9 @@ const SETTINGS_SECTION_ICONS: Readonly<
+ const SETTINGS_DETAIL_PAGE_PARENTS: Readonly<Record<string, SettingsPath>> = {
+   "/settings/diagnostics": "/settings/maintenance",
+   "/settings/open-source-licenses": "/settings/about",
++  "/settings/home": "/settings/tessaya",
++  "/settings/hardware": "/settings/tessaya",
++  "/settings/apis": "/settings/tessaya",
+ };
+ 
+ // Attached only to the highlighted result, so it runs whenever the highlight lands on a row.
 diff --git a/apps/web/src/routeTree.gen.ts b/apps/web/src/routeTree.gen.ts
-index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db3934f9efbd 100644
+index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71d8ad45c4 100644
 --- a/apps/web/src/routeTree.gen.ts
 +++ b/apps/web/src/routeTree.gen.ts
-@@ -37,6 +37,8 @@ import { Route as ChatSettingsMaintenanceRouteImport } from './routes/_chat.sett
+@@ -16,6 +16,7 @@ import { Route as ConnectAgentRouteImport } from './routes/connect-agent'
+ import { Route as ConnectRouteImport } from './routes/connect'
+ import { Route as ChatRouteImport } from './routes/_chat'
+ import { Route as ChatIndexRouteImport } from './routes/_chat.index'
++import { Route as TessayaPageRouteImport } from './routes/tessaya.$page'
+ import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
+ import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
+ import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
+@@ -25,6 +26,7 @@ import { Route as ThreadsEnvironmentIdThreadIdRouteImport } from './routes/threa
+ import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
+ import { Route as ChatSettingsVoiceRouteImport } from './routes/_chat.settings.voice'
+ import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
++import { Route as ChatSettingsTessayaRouteImport } from './routes/_chat.settings.tessaya'
+ import { Route as ChatSettingsStorageRouteImport } from './routes/_chat.settings.storage'
+ import { Route as ChatSettingsSourceControlRouteImport } from './routes/_chat.settings.source-control'
+ import { Route as ChatSettingsSnapShotRouteImport } from './routes/_chat.settings.snap-shot'
+@@ -37,6 +39,8 @@ import { Route as ChatSettingsMaintenanceRouteImport } from './routes/_chat.sett
  import { Route as ChatSettingsLabsRouteImport } from './routes/_chat.settings.labs'
  import { Route as ChatSettingsKeybindingsRouteImport } from './routes/_chat.settings.keybindings'
  import { Route as ChatSettingsIntegrationsRouteImport } from './routes/_chat.settings.integrations'
@@ -358,7 +392,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
  import { Route as ChatSettingsGeneralRouteImport } from './routes/_chat.settings.general'
  import { Route as ChatSettingsDiffsRouteImport } from './routes/_chat.settings.diffs'
  import { Route as ChatSettingsDiagnosticsRouteImport } from './routes/_chat.settings.diagnostics'
-@@ -47,6 +49,7 @@ import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings
+@@ -47,6 +51,7 @@ import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings
  import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
  import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
  import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
@@ -366,7 +400,31 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
  import { Route as ChatSettingsAccessRouteImport } from './routes/_chat.settings.access'
  import { Route as ChatSettingsAboutRouteImport } from './routes/_chat.settings.about'
  import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
-@@ -196,6 +199,16 @@ const ChatSettingsIntegrationsRoute =
+@@ -86,6 +91,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
+   path: '/',
+   getParentRoute: () => ChatRoute,
+ } as any)
++const TessayaPageRoute = TessayaPageRouteImport.update({
++  id: '/tessaya/$page',
++  path: '/tessaya/$page',
++  getParentRoute: () => rootRouteImport,
++} as any)
+ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
+   id: '/projects/$projectKey',
+   path: '/projects/$projectKey',
+@@ -132,6 +142,11 @@ const ChatSettingsThreadsRoute = ChatSettingsThreadsRouteImport.update({
+   path: '/threads',
+   getParentRoute: () => ChatSettingsRoute,
+ } as any)
++const ChatSettingsTessayaRoute = ChatSettingsTessayaRouteImport.update({
++  id: '/tessaya',
++  path: '/tessaya',
++  getParentRoute: () => ChatSettingsRoute,
++} as any)
+ const ChatSettingsStorageRoute = ChatSettingsStorageRouteImport.update({
+   id: '/storage',
+   path: '/storage',
+@@ -196,6 +211,16 @@ const ChatSettingsIntegrationsRoute =
      path: '/integrations',
      getParentRoute: () => ChatSettingsRoute,
    } as any)
@@ -383,7 +441,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
  const ChatSettingsGeneralRoute = ChatSettingsGeneralRouteImport.update({
    id: '/general',
    path: '/general',
-@@ -246,6 +259,11 @@ const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
+@@ -246,6 +271,11 @@ const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
    path: '/appearance',
    getParentRoute: () => ChatSettingsRoute,
  } as any)
@@ -395,7 +453,12 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
  const ChatSettingsAccessRoute = ChatSettingsAccessRouteImport.update({
    id: '/access',
    path: '/access',
-@@ -284,6 +302,7 @@ export interface FileRoutesByFullPath {
+@@ -280,10 +310,12 @@ export interface FileRoutesByFullPath {
+   '/settings': typeof ChatSettingsRouteWithChildren
+   '/usage': typeof ChatUsageRoute
+   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
++  '/tessaya/$page': typeof TessayaPageRoute
+   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
    '/draft/$draftId': typeof ChatDraftDraftIdRoute
    '/settings/about': typeof ChatSettingsAboutRoute
    '/settings/access': typeof ChatSettingsAccessRoute
@@ -403,7 +466,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    '/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/settings/archived': typeof ChatSettingsArchivedRoute
    '/settings/beta': typeof ChatSettingsBetaRoute
-@@ -294,6 +313,8 @@ export interface FileRoutesByFullPath {
+@@ -294,6 +326,8 @@ export interface FileRoutesByFullPath {
    '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
    '/settings/diffs': typeof ChatSettingsDiffsRoute
    '/settings/general': typeof ChatSettingsGeneralRoute
@@ -412,7 +475,21 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    '/settings/integrations': typeof ChatSettingsIntegrationsRoute
    '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
    '/settings/labs': typeof ChatSettingsLabsRoute
-@@ -327,6 +348,7 @@ export interface FileRoutesByTo {
+@@ -306,6 +340,7 @@ export interface FileRoutesByFullPath {
+   '/settings/snap-shot': typeof ChatSettingsSnapShotRoute
+   '/settings/source-control': typeof ChatSettingsSourceControlRoute
+   '/settings/storage': typeof ChatSettingsStorageRoute
++  '/settings/tessaya': typeof ChatSettingsTessayaRoute
+   '/settings/threads': typeof ChatSettingsThreadsRoute
+   '/settings/voice': typeof ChatSettingsVoiceRoute
+   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
+@@ -322,11 +357,13 @@ export interface FileRoutesByTo {
+   '/settings': typeof ChatSettingsRouteWithChildren
+   '/usage': typeof ChatUsageRoute
+   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
++  '/tessaya/$page': typeof TessayaPageRoute
+   '/': typeof ChatIndexRoute
+   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
    '/draft/$draftId': typeof ChatDraftDraftIdRoute
    '/settings/about': typeof ChatSettingsAboutRoute
    '/settings/access': typeof ChatSettingsAccessRoute
@@ -420,7 +497,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    '/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/settings/archived': typeof ChatSettingsArchivedRoute
    '/settings/beta': typeof ChatSettingsBetaRoute
-@@ -337,6 +359,8 @@ export interface FileRoutesByTo {
+@@ -337,6 +374,8 @@ export interface FileRoutesByTo {
    '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
    '/settings/diffs': typeof ChatSettingsDiffsRoute
    '/settings/general': typeof ChatSettingsGeneralRoute
@@ -429,7 +506,21 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    '/settings/integrations': typeof ChatSettingsIntegrationsRoute
    '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
    '/settings/labs': typeof ChatSettingsLabsRoute
-@@ -372,6 +396,7 @@ export interface FileRoutesById {
+@@ -349,6 +388,7 @@ export interface FileRoutesByTo {
+   '/settings/snap-shot': typeof ChatSettingsSnapShotRoute
+   '/settings/source-control': typeof ChatSettingsSourceControlRoute
+   '/settings/storage': typeof ChatSettingsStorageRoute
++  '/settings/tessaya': typeof ChatSettingsTessayaRoute
+   '/settings/threads': typeof ChatSettingsThreadsRoute
+   '/settings/voice': typeof ChatSettingsVoiceRoute
+   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
+@@ -367,11 +407,13 @@ export interface FileRoutesById {
+   '/_chat/settings': typeof ChatSettingsRouteWithChildren
+   '/_chat/usage': typeof ChatUsageRoute
+   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
++  '/tessaya/$page': typeof TessayaPageRoute
+   '/_chat/': typeof ChatIndexRoute
+   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
    '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
    '/_chat/settings/about': typeof ChatSettingsAboutRoute
    '/_chat/settings/access': typeof ChatSettingsAccessRoute
@@ -437,7 +528,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
    '/_chat/settings/beta': typeof ChatSettingsBetaRoute
-@@ -382,6 +407,8 @@ export interface FileRoutesById {
+@@ -382,6 +424,8 @@ export interface FileRoutesById {
    '/_chat/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
    '/_chat/settings/diffs': typeof ChatSettingsDiffsRoute
    '/_chat/settings/general': typeof ChatSettingsGeneralRoute
@@ -446,7 +537,20 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    '/_chat/settings/integrations': typeof ChatSettingsIntegrationsRoute
    '/_chat/settings/keybindings': typeof ChatSettingsKeybindingsRoute
    '/_chat/settings/labs': typeof ChatSettingsLabsRoute
-@@ -417,6 +444,7 @@ export interface FileRouteTypes {
+@@ -394,6 +438,7 @@ export interface FileRoutesById {
+   '/_chat/settings/snap-shot': typeof ChatSettingsSnapShotRoute
+   '/_chat/settings/source-control': typeof ChatSettingsSourceControlRoute
+   '/_chat/settings/storage': typeof ChatSettingsStorageRoute
++  '/_chat/settings/tessaya': typeof ChatSettingsTessayaRoute
+   '/_chat/settings/threads': typeof ChatSettingsThreadsRoute
+   '/_chat/settings/voice': typeof ChatSettingsVoiceRoute
+   '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
+@@ -413,10 +458,12 @@ export interface FileRouteTypes {
+     | '/settings'
+     | '/usage'
+     | '/projects/$projectKey'
++    | '/tessaya/$page'
+     | '/$environmentId/$threadId'
      | '/draft/$draftId'
      | '/settings/about'
      | '/settings/access'
@@ -454,7 +558,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      | '/settings/appearance'
      | '/settings/archived'
      | '/settings/beta'
-@@ -427,6 +455,8 @@ export interface FileRouteTypes {
+@@ -427,6 +474,8 @@ export interface FileRouteTypes {
      | '/settings/diagnostics'
      | '/settings/diffs'
      | '/settings/general'
@@ -463,7 +567,21 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      | '/settings/integrations'
      | '/settings/keybindings'
      | '/settings/labs'
-@@ -460,6 +490,7 @@ export interface FileRouteTypes {
+@@ -439,6 +488,7 @@ export interface FileRouteTypes {
+     | '/settings/snap-shot'
+     | '/settings/source-control'
+     | '/settings/storage'
++    | '/settings/tessaya'
+     | '/settings/threads'
+     | '/settings/voice'
+     | '/settings/worktrees'
+@@ -455,11 +505,13 @@ export interface FileRouteTypes {
+     | '/settings'
+     | '/usage'
+     | '/projects/$projectKey'
++    | '/tessaya/$page'
+     | '/'
+     | '/$environmentId/$threadId'
      | '/draft/$draftId'
      | '/settings/about'
      | '/settings/access'
@@ -471,7 +589,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      | '/settings/appearance'
      | '/settings/archived'
      | '/settings/beta'
-@@ -470,6 +501,8 @@ export interface FileRouteTypes {
+@@ -470,6 +522,8 @@ export interface FileRouteTypes {
      | '/settings/diagnostics'
      | '/settings/diffs'
      | '/settings/general'
@@ -480,7 +598,21 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      | '/settings/integrations'
      | '/settings/keybindings'
      | '/settings/labs'
-@@ -504,6 +537,7 @@ export interface FileRouteTypes {
+@@ -482,6 +536,7 @@ export interface FileRouteTypes {
+     | '/settings/snap-shot'
+     | '/settings/source-control'
+     | '/settings/storage'
++    | '/settings/tessaya'
+     | '/settings/threads'
+     | '/settings/voice'
+     | '/settings/worktrees'
+@@ -499,11 +554,13 @@ export interface FileRouteTypes {
+     | '/_chat/settings'
+     | '/_chat/usage'
+     | '/projects/$projectKey'
++    | '/tessaya/$page'
+     | '/_chat/'
+     | '/_chat/$environmentId/$threadId'
      | '/_chat/draft/$draftId'
      | '/_chat/settings/about'
      | '/_chat/settings/access'
@@ -488,7 +620,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      | '/_chat/settings/appearance'
      | '/_chat/settings/archived'
      | '/_chat/settings/beta'
-@@ -514,6 +548,8 @@ export interface FileRouteTypes {
+@@ -514,6 +571,8 @@ export interface FileRouteTypes {
      | '/_chat/settings/diagnostics'
      | '/_chat/settings/diffs'
      | '/_chat/settings/general'
@@ -497,7 +629,51 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      | '/_chat/settings/integrations'
      | '/_chat/settings/keybindings'
      | '/_chat/settings/labs'
-@@ -741,6 +777,20 @@ declare module '@tanstack/react-router' {
+@@ -526,6 +585,7 @@ export interface FileRouteTypes {
+     | '/_chat/settings/snap-shot'
+     | '/_chat/settings/source-control'
+     | '/_chat/settings/storage'
++    | '/_chat/settings/tessaya'
+     | '/_chat/settings/threads'
+     | '/_chat/settings/voice'
+     | '/_chat/settings/worktrees'
+@@ -540,6 +600,7 @@ export interface RootRouteChildren {
+   PairRoute: typeof PairRoute
+   WelcomeRoute: typeof WelcomeRoute
+   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
++  TessayaPageRoute: typeof TessayaPageRoute
+   ThreadsEnvironmentIdThreadIdRoute: typeof ThreadsEnvironmentIdThreadIdRoute
+ }
+ 
+@@ -594,6 +655,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof ChatIndexRouteImport
+       parentRoute: typeof ChatRoute
+     }
++    '/tessaya/$page': {
++      id: '/tessaya/$page'
++      path: '/tessaya/$page'
++      fullPath: '/tessaya/$page'
++      preLoaderRoute: typeof TessayaPageRouteImport
++      parentRoute: typeof rootRouteImport
++    }
+     '/projects/$projectKey': {
+       id: '/projects/$projectKey'
+       path: '/projects/$projectKey'
+@@ -657,6 +725,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof ChatSettingsThreadsRouteImport
+       parentRoute: typeof ChatSettingsRoute
+     }
++    '/_chat/settings/tessaya': {
++      id: '/_chat/settings/tessaya'
++      path: '/tessaya'
++      fullPath: '/settings/tessaya'
++      preLoaderRoute: typeof ChatSettingsTessayaRouteImport
++      parentRoute: typeof ChatSettingsRoute
++    }
+     '/_chat/settings/storage': {
+       id: '/_chat/settings/storage'
+       path: '/storage'
+@@ -741,6 +816,20 @@ declare module '@tanstack/react-router' {
        preLoaderRoute: typeof ChatSettingsIntegrationsRouteImport
        parentRoute: typeof ChatSettingsRoute
      }
@@ -518,7 +694,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      '/_chat/settings/general': {
        id: '/_chat/settings/general'
        path: '/general'
-@@ -811,6 +861,13 @@ declare module '@tanstack/react-router' {
+@@ -811,6 +900,13 @@ declare module '@tanstack/react-router' {
        preLoaderRoute: typeof ChatSettingsAppearanceRouteImport
        parentRoute: typeof ChatSettingsRoute
      }
@@ -532,7 +708,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
      '/_chat/settings/access': {
        id: '/_chat/settings/access'
        path: '/access'
-@@ -845,6 +902,7 @@ declare module '@tanstack/react-router' {
+@@ -845,6 +941,7 @@ declare module '@tanstack/react-router' {
  interface ChatSettingsRouteChildren {
    ChatSettingsAboutRoute: typeof ChatSettingsAboutRoute
    ChatSettingsAccessRoute: typeof ChatSettingsAccessRoute
@@ -540,7 +716,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
    ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
    ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
-@@ -855,6 +913,8 @@ interface ChatSettingsRouteChildren {
+@@ -855,6 +952,8 @@ interface ChatSettingsRouteChildren {
    ChatSettingsDiagnosticsRoute: typeof ChatSettingsDiagnosticsRoute
    ChatSettingsDiffsRoute: typeof ChatSettingsDiffsRoute
    ChatSettingsGeneralRoute: typeof ChatSettingsGeneralRoute
@@ -549,7 +725,15 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    ChatSettingsIntegrationsRoute: typeof ChatSettingsIntegrationsRoute
    ChatSettingsKeybindingsRoute: typeof ChatSettingsKeybindingsRoute
    ChatSettingsLabsRoute: typeof ChatSettingsLabsRoute
-@@ -875,6 +935,7 @@ interface ChatSettingsRouteChildren {
+@@ -867,6 +966,7 @@ interface ChatSettingsRouteChildren {
+   ChatSettingsSnapShotRoute: typeof ChatSettingsSnapShotRoute
+   ChatSettingsSourceControlRoute: typeof ChatSettingsSourceControlRoute
+   ChatSettingsStorageRoute: typeof ChatSettingsStorageRoute
++  ChatSettingsTessayaRoute: typeof ChatSettingsTessayaRoute
+   ChatSettingsThreadsRoute: typeof ChatSettingsThreadsRoute
+   ChatSettingsVoiceRoute: typeof ChatSettingsVoiceRoute
+   ChatSettingsWorktreesRoute: typeof ChatSettingsWorktreesRoute
+@@ -875,6 +975,7 @@ interface ChatSettingsRouteChildren {
  const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
    ChatSettingsAboutRoute: ChatSettingsAboutRoute,
    ChatSettingsAccessRoute: ChatSettingsAccessRoute,
@@ -557,7 +741,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
    ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
    ChatSettingsBetaRoute: ChatSettingsBetaRoute,
-@@ -885,6 +946,8 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
+@@ -885,6 +986,8 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
    ChatSettingsDiagnosticsRoute: ChatSettingsDiagnosticsRoute,
    ChatSettingsDiffsRoute: ChatSettingsDiffsRoute,
    ChatSettingsGeneralRoute: ChatSettingsGeneralRoute,
@@ -566,6 +750,22 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..05e390a9767d240b74030cb1e1c5db39
    ChatSettingsIntegrationsRoute: ChatSettingsIntegrationsRoute,
    ChatSettingsKeybindingsRoute: ChatSettingsKeybindingsRoute,
    ChatSettingsLabsRoute: ChatSettingsLabsRoute,
+@@ -897,6 +1000,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
+   ChatSettingsSnapShotRoute: ChatSettingsSnapShotRoute,
+   ChatSettingsSourceControlRoute: ChatSettingsSourceControlRoute,
+   ChatSettingsStorageRoute: ChatSettingsStorageRoute,
++  ChatSettingsTessayaRoute: ChatSettingsTessayaRoute,
+   ChatSettingsThreadsRoute: ChatSettingsThreadsRoute,
+   ChatSettingsVoiceRoute: ChatSettingsVoiceRoute,
+   ChatSettingsWorktreesRoute: ChatSettingsWorktreesRoute,
+@@ -936,6 +1040,7 @@ const rootRouteChildren: RootRouteChildren = {
+   PairRoute: PairRoute,
+   WelcomeRoute: WelcomeRoute,
+   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
++  TessayaPageRoute: TessayaPageRoute,
+   ThreadsEnvironmentIdThreadIdRoute: ThreadsEnvironmentIdThreadIdRoute,
+ }
+ export const routeTree = rootRouteImport
 diff --git a/apps/web/src/routes/_chat.settings.tsx b/apps/web/src/routes/_chat.settings.tsx
 index 7758c9ca559191b0a2ba6f0b14349f34af9803b2..d78d7f25fa874ca8a54443d10fab7c40430da7cb 100644
 --- a/apps/web/src/routes/_chat.settings.tsx

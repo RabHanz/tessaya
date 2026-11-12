@@ -1,5 +1,5 @@
 import { SettingsGroup } from "./SettingsGroup";
-import { BatonAccountsSettings } from "./BatonAccountsSettings";
+import { TessayaMovedSection } from "./TessayaPlaces";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import {
   AuthSettingsWriteScope,
@@ -973,7 +973,7 @@ export function EnvironmentProviderSettings({
 
   return (
     <>
-      <BatonAccountsSettings environmentId={environmentId} />
+      <TessayaMovedSection place="accounts" />
       <SettingsSection
         {...searchableSetting("providers")}
         variant="plain"

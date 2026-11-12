@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { openState } from "./pageStates.ts";
-import { SETTINGS, TABS, tabOf } from "./tabs.ts";
+import { TESSAYA_PLACES } from "@t3tools/baton-contracts";
+
+import { STRINGS } from "./strings.ts";
+import { AREAS, SETTINGS, TABS, tabOf } from "./tabs.ts";
 
 const drawn = new Set<string>([...TABS.map((t) => t.id), ...SETTINGS.map((t) => t.id)]);
 
@@ -129,6 +132,46 @@ describe("where each control lives", () => {
       expect(page.textOf("mbody"), old).toContain(now);
       page.closeModal();
     }
+    expect(page.errors).toEqual([]);
+  });
+});
+
+describe("areas and places", () => {
+  it("puts every page but Help in exactly one area, and every area's gear on a Settings page", () => {
+    const placed: ReadonlyArray<string> = AREAS.flatMap((a) => [...a.pages]);
+    expect(new Set(placed).size).toBe(placed.length);
+    expect(TABS.map((t) => t.id).filter((id) => !placed.includes(id))).toEqual(["help"]);
+    for (const a of AREAS)
+      if (a.settings !== null) expect(SETTINGS.map((s) => s.id)).toContain(a.settings);
+  });
+  it("opens every place both windows search, by the name Settings shows", () => {
+    for (const place of TESSAYA_PLACES) {
+      const tab = TABS.some((t) => t.id === place.id);
+      expect(tab || SETTINGS.some((s) => s.id === place.id), place.id).toBe(true);
+      if (!tab) expect(STRINGS.en[`cat.${place.id}`], place.id).toBe(place.label);
+    }
+  });
+  it("shows only the open area, its gear row, and the Settings groups", async () => {
+    const page = await openState("empty");
+    page.show("hardware");
+    const side = page.textOf("side");
+    expect(side).toContain("Home Assistant");
+    expect(side).not.toContain("Snippets");
+    page.show("snippets");
+    expect(page.textOf("side")).toContain("Settings for Talk");
+    const nav = (page.openModal("accounts"), page.textOf("mnav"));
+    for (const group of ["You", "Talking to Tessaya", "Home and devices", "Working for you", "App"])
+      expect(nav).toContain(group);
+    expect(nav).toContain("Hardware");
+    page.closeModal();
+    expect(page.errors).toEqual([]);
+  });
+  it("finds Hardware and T3's pages from the search box", async () => {
+    const page = await openState("empty");
+    page.exec("query = 'nfc'; render();");
+    expect(page.textOf("page")).toContain("Hardware");
+    page.exec("query = 'worktree'; render();");
+    expect(page.textOf("page")).toContain("In T3 sessions");
     expect(page.errors).toEqual([]);
   });
 });

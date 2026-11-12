@@ -33,6 +33,7 @@ import {
   Settings2Icon,
   ShieldCheckIcon,
   SmartphoneIcon,
+  SparklesIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react";
@@ -111,6 +112,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/apis": PlugIcon,
   "/settings/home": HouseIcon,
   "/settings/hardware": RadioReceiverIcon,
+  "/settings/tessaya": SparklesIcon,
   "/settings/maintenance": WrenchIcon,
   "/settings/labs": FlaskConicalIcon,
   "/settings/about": InfoIcon,
@@ -121,6 +123,9 @@ const SETTINGS_SECTION_ICONS: Readonly<
 const SETTINGS_DETAIL_PAGE_PARENTS: Readonly<Record<string, SettingsPath>> = {
   "/settings/diagnostics": "/settings/maintenance",
   "/settings/open-source-licenses": "/settings/about",
+  "/settings/home": "/settings/tessaya",
+  "/settings/hardware": "/settings/tessaya",
+  "/settings/apis": "/settings/tessaya",
 };
 
 // Attached only to the highlighted result, so it runs whenever the highlight lands on a row.

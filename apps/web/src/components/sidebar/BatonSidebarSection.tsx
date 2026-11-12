@@ -53,6 +53,8 @@ import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonSessionRequests } from "./BatonSessionRequests";
 import { useBatonLiveOnly } from "./batonLiveOnly";
 import { Toggle } from "../ui/toggle";
+import { Button } from "../ui/button";
+import { SparklesIcon } from "lucide-react";
 
 const COPIED_KEY = "t3:baton:commitments-copied";
 /** Which linked-to-own commitment copies have finished; a lost marker only repeats a copy that changes nothing. */
@@ -538,10 +540,13 @@ export function BatonSidebarSection(props: {
   // Typed sentences ask this app's own server, or the first connection where there is none (app.t3.codes).
   const barHome = ownServer ?? primary;
   const barEntries = fleets.find((entry) => entry.environmentId === barHome)?.fleet?.entries;
+  // Everything of Tessaya's (asking her, her settings) is in her own window; this is the way there.
+  const openTessaya = batonDesktopBridge()?.openTessaya;
 
   return (
     <div className="flex flex-col gap-1 pt-1">
       <BatonIntentBar
+        headless
         environmentId={barHome}
         deskEnvironmentId={ownServer}
         // §14 rung 3: the work the open thread belongs to.
@@ -558,16 +563,23 @@ export function BatonSidebarSection(props: {
         onPhone={onPhone}
         onCloud={onCloud}
       />
-      <Toggle
-        size="xs"
-        variant="pill"
-        className="self-start"
-        pressed={liveOnly}
-        onPressedChange={(pressed) => setLiveOnly(pressed)}
-        aria-label="Show only live sessions"
-      >
-        Live only
-      </Toggle>
+      <div className="flex items-center gap-1">
+        {openTessaya === undefined ? null : (
+          <Button size="xs" variant="ghost" onClick={() => openTessaya()}>
+            <SparklesIcon />
+            Open Tessaya
+          </Button>
+        )}
+        <Toggle
+          size="xs"
+          variant="pill"
+          pressed={liveOnly}
+          onPressedChange={(pressed) => setLiveOnly(pressed)}
+          aria-label="Show only live sessions"
+        >
+          Live only
+        </Toggle>
+      </div>
       <BatonSessionRequests
         environmentIds={fleet.environmentIds}
         resolveEnvironmentLabel={fleet.resolveEnvironmentLabel}
