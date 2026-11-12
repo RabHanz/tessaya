@@ -206,6 +206,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const echo = createEchoGuard();
     let pending = new Int16Array(0);
     let chain: Promise<void> = Promise.resolve();
+    /** The turn being answered now, so a push-to-talk release can wait for its reply before ending the session. */
+    let answering: Promise<void> = Promise.resolve();
     let rec: RecogniserTurn | null = null;
     let reply: AbortController | null = null;
     let playUntil = 0;
@@ -525,7 +527,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           }
           case "end": {
             if (!asleep) gesture("nodSmall");
-            void answer(a.pcm, a.reason, lastVoiceAt);
+            answering = answer(a.pcm, a.reason, lastVoiceAt);
             break;
           }
         }
@@ -559,6 +561,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         pending = all.slice(at);
       },
+      /** He let go of push-to-talk (firmware 3.32 `ptt_end`): answer what he said, then end the session once it has played. */
+      released: () =>
+        (chain = chain.then(async () => {
+          act(turns.release());
+          await answering.catch(() => undefined);
+          await deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now()));
+          deps.publish(topic(id, "cmd/voice/stop"), "{}");
+        })),
       enrol: () => {
         enrolling = [];
         speakNow(ENROL_INTRO);
@@ -685,6 +695,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           muted.add(id);
           stop(id);
         } else if (ev === "unmute") muted.delete(id);
+      } else if (tail === "state/mic") {
+        // His mute on the R1 (S1 long press or a command, firmware 3.32): it drops every mic frame, so nothing is heard.
+        const { muted: m, src } = json();
+        if (m === true) {
+          muted.add(id);
+          stop(id);
+        } else if (m === false && src !== "boot") muted.delete(id); // a reboot must not undo a mute set from the app
+      } else if (tail === "state/voice" && json()["ev"] === "ptt_end") {
+        void sessions.get(id)?.released();
+      } else if (tail === "event/key") {
+        // Presses the device left to us (did "none"); none has a meaning yet, so they are only logged.
+        const k = json();
+        if (k["did"] === "none") deps.log(`[${id}] key ${String(k["key"])} ${String(k["act"])}`);
       } else if (tail === "voice/say") {
         const text = json()["text"];
         if (typeof text === "string" && text.trim() !== "")

@@ -207,6 +207,17 @@ it.effect(
       yield* TestClock.adjust("11 minutes");
       yield* devices.tick;
       assert.isNull(yield* devices.cameraView(ID));
+
+      // His own spoken request at the R1, his voice verified: his yes, through the same gate.
+      const shots = () => topics().filter((t) => t.endsWith("cmd/camera/capture")).length;
+      const before = shots();
+      const his = yield* devices.command(
+        ID,
+        { op: "camera" },
+        { who: "Tessaya in the room", surface: "assistant", approved: true },
+      );
+      assert.strictEqual(his.status, "done");
+      assert.strictEqual(shots(), before + 1);
     }).pipe(Effect.provide(layer));
   },
 );

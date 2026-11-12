@@ -220,6 +220,33 @@ describe("waking by name with no session open", () => {
   });
 });
 
+describe("the R1's own buttons (firmware 3.32)", () => {
+  it("answers when he lets go of push-to-talk, then ends the session once the reply has played", async () => {
+    const t = setup({ smartTurn: async () => 0 });
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    expect(t.brainCalls).toEqual([]);
+    t.room.message(`freya/r1/${DEV}/state/voice`, Buffer.from(JSON.stringify({ ev: "ptt_end" })));
+    await t.room.session(DEV)!.drained();
+    const m = await t.metrics;
+    expect(m.reason).toBe("released");
+    expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/cmd/voice/stop`)).toBe(true);
+  });
+
+  it("hears nothing while his R1 is muted, and a reboot does not undo the mute", async () => {
+    const t = setup();
+    const mic = (body: object) =>
+      t.room.message(`freya/r1/${DEV}/state/mic`, Buffer.from(JSON.stringify(body)));
+    mic({ muted: true, src: "button" });
+    mic({ muted: false, src: "boot" });
+    await t.feed(true, 20).catch(() => undefined);
+    expect(t.room.session(DEV)).toBeUndefined();
+    mic({ muted: false, src: "button" });
+    await t.feed(true, 20);
+    expect(t.room.session(DEV)).toBeDefined();
+  });
+});
+
 describe("how her reply sounds and looks on the R1", () => {
   const downSamples = (published: Array<{ topic: string; payload: Uint8Array | string }>) =>
     published
