@@ -22,14 +22,16 @@ import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementSer
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
+import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
+import { ROOM_CLIENT } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
 import { TessayaToolkit } from "./tools.ts";
 
 const thread = ThreadId.make("thread:tessaya");
 
-/** One tool call by an outside agent with this access, or by a T3 thread agent when access is "thread". */
+/** One tool call by an outside agent with this access, a T3 thread agent ("thread"), or the R1's room ("room"). */
 const callTool = (
-  caller: AuthMcpClientAccess | "thread",
+  caller: AuthMcpClientAccess | "thread" | "room",
   runtime: Context.Context<never>,
   name: keyof (typeof TessayaToolkit)["tools"],
   input: unknown,
@@ -60,7 +62,9 @@ const callTool = (
               client:
                 caller === "thread"
                   ? undefined
-                  : { sessionId, label: "Claude Code", access: caller },
+                  : caller === "room"
+                    ? ROOM_CLIENT
+                    : { sessionId, label: "Claude Code", access: caller },
               capabilities: new Set(["orchestration" as const]),
               issuedAt: 0,
             }),
@@ -476,4 +480,33 @@ it.effect("an outside agent's open in terminal on a thread files a request and o
     expect(asked.result).toMatchObject({ status: "queued" });
     expect(opened).toEqual([]);
   }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);
+
+it.effect(
+  "the R1's room acts in the house as Tessaya on the r1 surface, where the gate takes no yes; an outside agent as an agent",
+  () =>
+    Effect.gen(function* () {
+      const by: Array<HomeActor> = [];
+      const home = {
+        call: (_request: unknown, actor: HomeActor) =>
+          Effect.sync(() => {
+            by.push(actor);
+            return { status: "asked", id: "a1", line: "Sent to his phone." };
+          }),
+      } as unknown as HomeAssistantService["Service"];
+      const runtime = Context.make(HomeAssistantService, home) as never;
+      const unlock = {
+        domain: "lock",
+        service: "unlock",
+        target: { entity_id: "lock.front" },
+        why: "let me in",
+      };
+      const fromRoom = yield* callTool("room", runtime, "home_do", unlock);
+      yield* callTool("auto", runtime, "home_do", unlock);
+      expect(fromRoom.result).toMatchObject({ ok: true, value: { status: "asked" } });
+      expect(by).toEqual([
+        { who: "Tessaya", surface: "r1" },
+        { who: "an outside agent", surface: "agent" },
+      ]);
+    }),
 );

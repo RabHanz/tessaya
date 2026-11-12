@@ -44,6 +44,8 @@ export class DeviceRefusedError extends Schema.TaggedError<DeviceRefusedError>()
 export interface DeviceActor {
   readonly who: string;
   readonly surface: "settings" | "agent" | "assistant";
+  /** His yes is already given: his own spoken request at the R1, his voice verified this turn (R1Device). */
+  readonly approved?: boolean;
 }
 
 export type DeviceCommand =
@@ -701,7 +703,7 @@ const make = Effect.gen(function* () {
     by: DeviceActor,
   ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
     if (c.op !== "forget") yield* live(id);
-    if (RISKY_OPS.has(c.op) && by.surface !== "settings") {
+    if (RISKY_OPS.has(c.op) && by.surface !== "settings" && by.approved !== true) {
       const now = yield* Clock.currentTimeMillis;
       const askId = `device-${now.toString(36)}${(counter++ % 1296).toString(36)}`;
       const line = `${by.who} wants to ${describe(c)} on ${id}`;
