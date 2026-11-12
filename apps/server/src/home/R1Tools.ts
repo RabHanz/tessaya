@@ -116,6 +116,27 @@ const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, hea
     );
 });
 
+/** What changes his house: never run for the replay harness's pretend R1. */
+const HOME_WRITES: ReadonlySet<string> = new Set([
+  "home_do",
+  "home_undo",
+  "home_automation_save",
+  "home_automation_set",
+]);
+
+/**
+ * A replay turn's house change, answered as done without touching the house (13 Nov 01:29: a replay of "turn on the
+ * office fan" flipped his real fan). Null when the call is not one.
+ */
+export const replayDryRun = (name: string, input: unknown, device?: string): ToolOutcome | null =>
+  device?.startsWith("replay-") === true && HOME_WRITES.has(name)
+    ? {
+        text: `Done (a replay: nothing in the house was changed). Asked: ${JSON.stringify(input).slice(0, 300)}`,
+        isError: false,
+        status: "done",
+      }
+    : null;
+
 /** @public The room eval serves these too. */
 export const ROOM_TOOL_SPECS: ReadonlyArray<RoomTool> = [
   ...ROOM_TOOLS.map((name) => {
@@ -165,6 +186,8 @@ const makeRoomTools = Effect.gen(function* () {
       return { text: told.line, isError: !told.ok, status: told.status } as ToolOutcome;
     }
     if (name === VOLUME.name) return yield* setRoomVolume(input, device);
+    const dry = replayDryRun(name, input, device);
+    if (dry !== null) return dry;
     if (!allowed.has(name))
       return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
     const scope: McpInvocationScope = {
