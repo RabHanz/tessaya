@@ -13,6 +13,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { isEmbedSrc } from "./links.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
@@ -693,7 +694,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       // T3 pages shown inline run as T3's own window does: its preload, sandboxed, and nothing but T3's app address.
       created.webContents.on("will-attach-webview", (event, webPreferences, params) => {
         const embed = input.embed;
-        if (embed === undefined || !(params.src ?? "").startsWith(`${embed.url}tessaya/`)) {
+        if (embed === undefined || !isEmbedSrc(embed.url, params.src ?? "")) {
           event.preventDefault();
           return;
         }
