@@ -191,7 +191,9 @@ void Electron.app.whenReady().then(async () => {
     // A sidebar item must redraw the page, not only change which one is current.
     const redrew = before.split(",")[3] !== after.split(",")[3];
     const needsRedraw =
-      group.startsWith("sidebar") && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
+      group.startsWith("sidebar") &&
+      !["Home", "Open T3 sessions", "Settings"].includes(c.name) &&
+      !c.name.startsWith("Settings for");
     if (needsRedraw && !redrew && before !== after) {
       rows.push({
         group,
@@ -213,7 +215,8 @@ void Electron.app.whenReady().then(async () => {
   const began = Date.now();
   await sleep(1500);
 
-  // The sidebar: each item opens its page.
+  // The sidebar: each item opens its page. Every area open, or a folded area's pages would go unclicked.
+  await js("AREAS.forEach(a=>openAreas.add(a.id));render();0");
   const sideCount = (await find("#side .nav")).length;
   for (let i = 0; i < sideCount; i += 1) {
     const c = await nth("#side .nav", i);

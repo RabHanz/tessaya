@@ -320,8 +320,10 @@ button.sname:hover{color:var(--hue-text)}
 #modal{width:min(980px,calc(100vw - 48px));height:min(760px,calc(100vh - 48px));background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--edge);border-radius:20px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden}
 #mnav{background:color-mix(in srgb,var(--sunk) 60%,transparent);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;overflow:auto}
 #mnav h4{font:600 11px var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:10px 10px 6px}
-#mnav .nav{padding:7px 10px}
-#mnav h4:not(:first-child){margin-top:16px}
+#mnav .nav{padding:5px 10px}
+#mnav h4{margin:6px 10px 3px}
+#modal{grid-template-rows:minmax(0,1fr)}
+#mnav h4:not(:first-child){margin-top:12px}
 .nav.sub{color:var(--faint);font-size:12.5px}
 webview.embed{display:flex;width:100%;height:calc(100vh - 210px);min-height:420px;border:0;border-radius:var(--r);overflow:hidden;margin-top:12px}
 #mnav .ver{margin-top:auto;padding:10px;color:var(--faint);font-size:12px}
