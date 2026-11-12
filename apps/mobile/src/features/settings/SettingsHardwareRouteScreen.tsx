@@ -2,8 +2,11 @@
  * Settings → Hardware, mirroring web's HardwareSettings: Tessaya's physical devices (the Agora R1 first), their status
  * and live controls, all through the server's `baton.devices.call`. Camera and restart are the owner kind.
  */
+import { useAtomValue } from "@effect/atom-react";
 import {
   R1_MOODS,
+  type R1KeyBinding,
+  type R1KeySlot,
   type BatonDevicesCallResult,
   type DeviceTagAction,
   type DeviceView,
@@ -12,9 +15,14 @@ import {
 } from "@t3tools/baton-contracts";
 import {
   EYE_SCREENS,
+  KEY_ROWS,
   MOOD_EYES,
   clock,
   deviceStatusLine,
+  keyBindingFrom,
+  keyBindingLine,
+  keyChoiceOf,
+  keyChoices,
   msText,
   speakerLine,
   tagActionLine,
@@ -33,6 +41,7 @@ import { ControlPill } from "../../components/ui/ControlPill";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useVisibleThreadShells } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
@@ -226,6 +235,7 @@ function HardwareSections({
           busy={busy}
           run={run}
           prefix={prefix}
+          environmentId={environmentId}
         />
       ))}
 
@@ -278,12 +288,14 @@ function DeviceControls({
   busy,
   run,
   prefix,
+  environmentId,
 }: {
   readonly device: DeviceView;
   readonly tags: DevicesOverview["tags"];
   readonly busy: boolean;
   readonly run: Run;
   readonly prefix: string;
+  readonly environmentId: EnvironmentId;
 }) {
   const id = d.id;
   const off = busy || d.online !== true;
@@ -446,6 +458,8 @@ function DeviceControls({
       )}
 
       <TagsSection device={d} tags={tags} busy={busy} run={run} prefix={prefix} />
+
+      <KeysSection device={d} busy={busy} run={run} prefix={prefix} environmentId={environmentId} />
 
       <SettingsSection title={`${prefix}Camera · ${id}`}>
         <Row
@@ -696,6 +710,151 @@ function TagsSection({
           />
         </Row>
       ))}
+    </SettingsSection>
+  );
+}
+
+const detailOf = (b: R1KeyBinding | undefined) =>
+  b?.kind === "prompt" ? b.text : b?.kind === "home" ? b.entityId : "";
+
+/** The R1's buttons, as on web: the firmware's fixed presses read-only, the rest its own action or one of hers. */
+function KeysSection({
+  device: d,
+  busy,
+  run,
+  prefix,
+  environmentId,
+}: {
+  readonly device: DeviceView;
+  readonly busy: boolean;
+  readonly run: Run;
+  readonly prefix: string;
+  readonly environmentId: EnvironmentId;
+}) {
+  const canEdit = useAtomValue(
+    batonWorkSessions.devicesCall.permissionAtom(environmentId, { kind: "act" }),
+  );
+  const [slot, setSlot] = useState<R1KeySlot>("s2.double");
+  const [choice, setChoice] = useState<string | null>(null);
+  const [text, setText] = useState(detailOf(d.keys[slot]));
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const current = d.keys[slot];
+  const picked = choice ?? (current === undefined ? "device:none" : keyChoiceOf(current));
+  const choices = keyChoices(slot);
+  const threads = useVisibleThreadShells()
+    .filter((t) => t.environmentId === environmentId)
+    .slice(0, 40);
+  const pickedThread =
+    threads.find((t) => t.id === threadId) ??
+    (current?.kind === "thread" && threadId === null
+      ? { id: current.threadId, title: current.title }
+      : null);
+  const bind = keyBindingFrom(picked, text, pickedThread);
+  const free = KEY_ROWS.filter((r) => r.fixed === null);
+  return (
+    <SettingsSection title={`${prefix}Buttons · ${d.id}`}>
+      {(["s1", "s2", "s3"] as const).map((key, i) => (
+        <Row
+          key={key}
+          divider={i > 0}
+          title={key.toUpperCase()}
+          description={KEY_ROWS.filter((r) => r.slot.startsWith(`${key}.`))
+            .map((r) => {
+              const b = d.keys[r.slot];
+              const what = r.fixed ?? (b === undefined ? "" : keyBindingLine(b));
+              return `${r.title.split(" ")[1]}: ${what}${r.fixed === null ? "" : " (fixed)"}`;
+            })
+            .join("\n")}
+        />
+      ))}
+      <View className="gap-2 border-t border-border-subtle px-4 py-3">
+        <Text textRole="footnote" className="text-foreground-muted">
+          {d.keyNote ??
+            (canEdit
+              ? "Pick a press and what it does. A Tessaya action runs only where the R1 itself does nothing."
+              : "This connection can look but not change the buttons.")}
+        </Text>
+        <View className="flex-row flex-wrap gap-2">
+          <Menu
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Press"
+            title="Press"
+            actions={free.map((r) => ({
+              id: r.slot,
+              title: r.title,
+              state: r.slot === slot ? ("on" as const) : ("off" as const),
+            }))}
+            onPressAction={({ nativeEvent }) => {
+              const s = nativeEvent.event as R1KeySlot;
+              setSlot(s);
+              setChoice(null);
+              setText(detailOf(d.keys[s]));
+              setThreadId(null);
+            }}
+          >
+            <ControlPill variant="pill" label={free.find((r) => r.slot === slot)?.title ?? slot} />
+          </Menu>
+          <Menu
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="What it does"
+            title="What it does"
+            actions={choices.map(([value, title]) => ({
+              id: value,
+              title,
+              state: value === picked ? ("on" as const) : ("off" as const),
+            }))}
+            onPressAction={({ nativeEvent }) => setChoice(nativeEvent.event)}
+          >
+            <ControlPill
+              variant="pill"
+              label={choices.find(([v]) => v === picked)?.[1] ?? picked}
+            />
+          </Menu>
+          {picked.startsWith("thread:") ? (
+            <Menu
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Thread"
+              title="Thread"
+              actions={threads.map((t) => ({
+                id: t.id,
+                title: t.title,
+                state: t.id === pickedThread?.id ? ("on" as const) : ("off" as const),
+              }))}
+              onPressAction={({ nativeEvent }) => setThreadId(nativeEvent.event)}
+            >
+              <ControlPill variant="pill" label={pickedThread?.title ?? "Pick a thread"} />
+            </Menu>
+          ) : null}
+          <ControlPill
+            variant="primary"
+            label="Save"
+            disabled={!canEdit || busy || d.online !== true || bind === null}
+            onPress={() =>
+              void run("act", "keyBind", { id: d.id, slot, bind }).then((v) => {
+                if (v !== null) setChoice(null);
+              })
+            }
+          />
+        </View>
+        {picked === "home" || picked === "prompt" ? (
+          <TextInput
+            accessibilityLabel={picked === "home" ? "Home Assistant entity" : "What to ask her"}
+            className={INPUT_CLASS}
+            placeholderTextColorClassName="accent-foreground-muted"
+            placeholder={
+              picked === "home" ? "light.desk_lamp or scene.evening" : "What's on today?"
+            }
+            autoCapitalize={picked === "home" ? "none" : "sentences"}
+            autoCorrect={picked !== "home"}
+            maxLength={picked === "home" ? 200 : 400}
+            value={text}
+            onChangeText={setText}
+          />
+        ) : null}
+      </View>
     </SettingsSection>
   );
 }

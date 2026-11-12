@@ -379,6 +379,28 @@ describe("the per-device switch", () => {
 });
 
 describe("what Tessaya's Devices page can ask of the room", () => {
+  it("switches to the next persona on an R1 button, in its voice, then answers a button's prompt as that persona", async () => {
+    const spoken: Array<[string, string | undefined]> = [];
+    const t = setup({
+      speak: async function* (text, _signal, voice) {
+        spoken.push([text, voice]);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from("{}"));
+    expect(spoken).toEqual([["Alfred here.", "peter_yearsley"]]);
+    t.room.message(
+      `freya/r1/${DEV}/voice/ask`,
+      Buffer.from(JSON.stringify({ text: "What's next?" })),
+    );
+    await t.metrics;
+    expect(t.brainCalls.map((c) => [c.messages.at(-1)?.content, c.tessaya.persona])).toEqual([
+      ["What's next?", "engineering"],
+    ]);
+    t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"freya"}'));
+    expect(spoken.at(-1)).toEqual(["Freya here.", "azelma"]);
+  });
+
   it("says a line on the R1 when asked, and hears nothing while muted", async () => {
     const t = setup();
     t.room.message(

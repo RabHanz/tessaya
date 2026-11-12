@@ -16,6 +16,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "say",
   "mute",
   "earcons",
+  "keyBind",
   "transport",
   "transportConfirm",
   "transportRevert",
@@ -59,6 +60,72 @@ export const DeviceTagAction = Schema.Union([
   }),
 ]);
 export type DeviceTagAction = typeof DeviceTagAction.Type;
+
+/** The R1's buttons and the presses each reports on `event/key` (firmware 3.32). */
+export const R1_KEYS = ["s1", "s2", "s3"] as const;
+export const R1_PRESSES = ["tap", "double", "hold", "long"] as const;
+export type R1KeySlot = `${(typeof R1_KEYS)[number]}.${(typeof R1_PRESSES)[number]}`;
+/** What the firmware itself can do on a press it lets be rebound (`cmd/key/bind`). */
+export const R1_DEVICE_DOS = ["none", "talk", "mute", "vol_up", "vol_down", "sleep"] as const;
+export type R1DeviceDo = (typeof R1_DEVICE_DOS)[number];
+
+/**
+ * Every press: fixed by the firmware (shown read-only), rebindable on the device, or Tessaya's alone (the firmware does
+ * nothing with it). A Tessaya action runs only where the device does nothing, so it reports `did:"none"`.
+ */
+export const R1_KEY_SLOTS: Readonly<
+  Record<R1KeySlot, { readonly fixed: string } | "device" | "tessaya">
+> = {
+  "s1.tap": { fixed: "Volume up" },
+  "s1.double": "device",
+  "s1.hold": "tessaya",
+  "s1.long": "device",
+  "s2.tap": { fixed: "Talk: start or stop" },
+  "s2.double": "device",
+  "s2.hold": { fixed: "Push to talk" },
+  "s2.long": { fixed: "Wake" },
+  "s3.tap": { fixed: "Volume down" },
+  "s3.double": "device",
+  "s3.hold": "tessaya",
+  "s3.long": "device",
+};
+/** The firmware's own bindings until it acks a change on `state/key/bind`. */
+export const R1_DEVICE_DEFAULTS: Readonly<Partial<Record<R1KeySlot, R1DeviceDo>>> = {
+  "s1.double": "none",
+  "s1.long": "mute",
+  "s2.double": "none",
+  "s3.double": "none",
+  "s3.long": "sleep",
+};
+
+/** What a free press does: the device's own action, or one of Tessaya's, which the server runs. */
+export const R1KeyBinding = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("device"), do: Schema.Literals(R1_DEVICE_DOS) }),
+  /** No name: the next persona. Announced in the new persona's voice. */
+  Schema.Struct({
+    kind: Schema.Literal("persona"),
+    name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(40))),
+  }),
+  Schema.Struct({ kind: Schema.Literal("whatsNext") }),
+  /** A lamp toggles, a scene or script runs; through the home door's own risk check. */
+  Schema.Struct({
+    kind: Schema.Literal("home"),
+    entityId: Schema.String.check(Schema.isMaxLength(200)),
+  }),
+  Schema.Struct({ kind: Schema.Literal("mute") }),
+  Schema.Struct({
+    kind: Schema.Literal("thread"),
+    threadId: Schema.String.check(Schema.isMaxLength(100)),
+    title: Schema.String.check(Schema.isMaxLength(120)),
+    do: Schema.Literals(["continue", "stop"]),
+  }),
+  /** Said to her as if he had said it. */
+  Schema.Struct({
+    kind: Schema.Literal("prompt"),
+    text: Schema.String.check(Schema.isMaxLength(400)),
+  }),
+]);
+export type R1KeyBinding = typeof R1KeyBinding.Type;
 
 export const DeviceTag = Schema.Struct({
   uid: Schema.String,
@@ -140,6 +207,10 @@ export const DeviceView = Schema.Struct({
   muted: Schema.Boolean,
   /** Her listening and closing sounds on this R1 (the room loop's cues). */
   earcons: Schema.Boolean,
+  /** What each press that is not fixed does now (see R1_KEY_SLOTS). */
+  keys: Schema.Record(Schema.String, R1KeyBinding),
+  /** Set when the R1 refused the last button change. */
+  keyNote: Schema.NullOr(Schema.String),
   transport: Schema.Literals(DEVICE_TRANSPORTS),
   /** While a transport trial runs: when it reverts to in-house, muted, unless confirmed. */
   revertAt: Schema.NullOr(Schema.String),

@@ -402,18 +402,21 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
+    /** `given` is a turn already in words (an R1 button's prompt): addressed to her, with no voice to read. */
     const answer = async (
       pcm: Int16Array,
       reason: string,
       lastVoice: number,
       startedAt: number,
+      given?: string,
     ) => {
       const turn = (turnNo += 1);
       const decidedAt = deps.now();
-      const current = rec;
-      rec = null;
-      const speakerP = deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now()));
-      const affectP = deps.affect?.(pcm).catch(() => undefined);
+      const current = given === undefined ? rec : null;
+      if (given === undefined) rec = null;
+      const speakerP =
+        given === undefined ? deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now())) : undefined;
+      const affectP = given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined;
       let affectNow: Awaited<typeof affectP>;
       void affectP?.then((a) => (affectNow = a));
       const sides = Promise.all([speakerP, affectP]);
@@ -472,14 +475,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         tryGuess(words);
       });
       if (latest !== "") tryGuess(latest);
-      const text = ((await current?.finish().catch(() => "")) ?? "").trim();
+      const text = (given ?? (await current?.finish().catch(() => "")) ?? "").trim();
       settled = true;
       const textAt = deps.now();
       // The guess is kept only when it heard the same words; otherwise it never speaks.
       const last = guess as Guess | null;
       const kept = last !== null && sameWords(last.words, text) ? last : null;
       if (last !== null && kept === null) last.control.abort();
-      if (enrolling !== null) {
+      if (enrolling !== null && given === undefined) {
         enrolling.push(...speechWindows(pcm));
         if (enrolling.length * 4 < ENROL_SECONDS) return;
         const windows = enrolling;
@@ -498,7 +501,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         text,
         config.personas.map((p) => p.name),
       );
-      if (called === null && startedAt > openUntil) {
+      if (called === null && given === undefined && startedAt > openUntil) {
         deps.log(`[${id}] turn ${turn}: not said to her; not answered`);
         return;
       }
@@ -717,6 +720,24 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           () => undefined,
         );
       },
+      /** An R1 button: this persona (by name or id), else the next one, announced in the new voice. */
+      switchTo: (name?: string) => {
+        const wanted = name?.toLowerCase();
+        const next =
+          wanted === undefined
+            ? config.personas[(config.personas.indexOf(persona!) + 1) % config.personas.length]
+            : config.personas.find(
+                (p) => p.name.toLowerCase() === wanted || p.id.toLowerCase() === wanted,
+              );
+        if (next === undefined) return;
+        persona = next;
+        look();
+        openUntil = deps.now() + config.followMs;
+        if (reply !== null) interrupt();
+        speakNow(`${next.name} here.`);
+      },
+      /** An R1 button's prompt: answered as if he had said it to her. */
+      ask: (text: string) => void answer(new Int16Array(0), "button", deps.now(), deps.now(), text),
       /** He called this persona by name to wake her. */
       call: (name: string) => {
         const named = config.personas.find((p) => p.name === name);
@@ -822,6 +843,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const text = json()["text"];
         if (typeof text === "string" && text.trim() !== "")
           (sessions.get(id) ?? start(id)).say(text.trim().slice(0, 500));
+      } else if (tail === "voice/persona") {
+        const name = json()["name"];
+        if (!muted.has(id))
+          (sessions.get(id) ?? start(id)).switchTo(typeof name === "string" ? name : undefined);
+      } else if (tail === "voice/ask") {
+        const text = json()["text"];
+        if (typeof text === "string" && text.trim() !== "" && !muted.has(id))
+          (sessions.get(id) ?? start(id)).ask(text.trim().slice(0, 400));
       } else if (tail === "cmd/voice/start") {
         const s = start(id);
         const word = calledBy.get(id);

@@ -3,7 +3,19 @@
  * Settings → Devices' words and drawings, shared by web and mobile: a device's status line, the stage table, and a
  * still sketch of each of the R1's nine moods (SVG paths, so both clients draw the same eyes). Pure.
  */
-import type { DeviceSpeaker, DeviceTagAction, DeviceView, R1Mood } from "@t3tools/baton-contracts";
+import {
+  R1_DEVICE_DOS,
+  R1_KEY_SLOTS,
+  type DeviceSpeaker,
+  type DeviceTagAction,
+  type DeviceView,
+  type R1DeviceDo,
+  type R1KeyBinding,
+  type R1KeySlot,
+  type R1Mood,
+} from "@t3tools/baton-contracts";
+
+import { DEFAULT_OS_PACK } from "./osPack.ts";
 
 export const when = (iso: string): string =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -67,6 +79,107 @@ export const tagActionLine = (action: DeviceTagAction): string =>
       : action.kind === "mute"
         ? "Mute"
         : "Unmute";
+
+const DEVICE_DO_LINE: Readonly<Record<R1DeviceDo, string>> = {
+  none: "Nothing",
+  talk: "Talk: start or stop",
+  mute: "Mic mute, on the R1",
+  vol_up: "Volume up",
+  vol_down: "Volume down",
+  sleep: "Deep sleep",
+};
+
+export const keyBindingLine = (b: R1KeyBinding): string => {
+  switch (b.kind) {
+    case "device":
+      return DEVICE_DO_LINE[b.do];
+    case "persona":
+      return b.name === undefined ? "Next persona, in her voice" : `Switch to ${b.name}`;
+    case "whatsNext":
+      return "What's next";
+    case "home":
+      return `Home: ${b.entityId}`;
+    case "mute":
+      return "Mute Tessaya";
+    case "thread":
+      return `${b.do === "stop" ? "Stop" : "Continue"}: ${b.title}`;
+    case "prompt":
+      return `Ask: “${b.text}”`;
+  }
+};
+
+/** One press per row, in button order; `fixed` is the firmware's own, shown read-only. */
+export const KEY_ROWS = (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>).map((slot) => {
+  const spec = R1_KEY_SLOTS[slot];
+  const [key, press] = slot.split(".") as [string, string];
+  return {
+    slot,
+    title: `${key.toUpperCase()} ${press}`,
+    fixed: typeof spec === "object" ? spec.fixed : null,
+  };
+});
+
+/** What a free press may be set to. `home`, `thread:*` and `prompt` need a detail before they save. */
+export const keyChoices = (slot: R1KeySlot): ReadonlyArray<readonly [string, string]> => [
+  ["device:none", "Nothing"],
+  ...(R1_KEY_SLOTS[slot] === "device"
+    ? R1_DEVICE_DOS.filter((d) => d !== "none").map(
+        (d) => [`device:${d}`, DEVICE_DO_LINE[d]] as const,
+      )
+    : []),
+  ["persona:", "Next persona, in her voice"],
+  ...DEFAULT_OS_PACK.personas.map((p) => [`persona:${p.name}`, `Switch to ${p.name}`] as const),
+  ["whatsNext", "What's next"],
+  ["mute", "Mute Tessaya"],
+  ["home", "Toggle a lamp or run a scene"],
+  ["thread:continue", "Continue a thread"],
+  ["thread:stop", "Stop a thread"],
+  ["prompt", "Ask her something"],
+];
+
+export const keyChoiceOf = (b: R1KeyBinding): string =>
+  b.kind === "device"
+    ? `device:${b.do}`
+    : b.kind === "persona"
+      ? `persona:${b.name ?? ""}`
+      : b.kind === "thread"
+        ? `thread:${b.do}`
+        : b.kind;
+
+/** The binding a choice makes, or null while its detail (entity, thread or words) is missing. */
+export const keyBindingFrom = (
+  choice: string,
+  text: string,
+  thread: { readonly id: string; readonly title: string } | null,
+): R1KeyBinding | null => {
+  const [kind, rest = ""] = choice.split(":") as [string, string?];
+  const t = text.trim();
+  switch (kind) {
+    case "device":
+      return R1_DEVICE_DOS.includes(rest as R1DeviceDo)
+        ? { kind: "device", do: rest as R1DeviceDo }
+        : null;
+    case "persona":
+      return rest === "" ? { kind: "persona" } : { kind: "persona", name: rest };
+    case "whatsNext":
+    case "mute":
+      return { kind };
+    case "home":
+      return t === "" ? null : { kind: "home", entityId: t };
+    case "thread":
+      return thread === null
+        ? null
+        : {
+            kind: "thread",
+            threadId: thread.id,
+            title: thread.title.slice(0, 120),
+            do: rest === "stop" ? "stop" : "continue",
+          };
+    case "prompt":
+      return t === "" ? null : { kind: "prompt", text: t.slice(0, 400) };
+  }
+  return null;
+};
 
 export const msText = (ms: number | null): string => (ms === null ? "none yet" : `${ms} ms`);
 

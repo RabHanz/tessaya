@@ -2,9 +2,12 @@
  * Settings → Hardware: Tessaya's physical devices (the Agora R1 first). Status and every control go through the
  * server's `baton.devices.call`; no client speaks MQTT. Camera and restart are the owner kind (approval scope).
  */
+import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   R1_MOODS,
+  type R1KeyBinding,
+  type R1KeySlot,
   type BatonDevicesCallResult,
   type DeviceTagAction,
   type DeviceView,
@@ -13,9 +16,14 @@ import {
 } from "@t3tools/baton-contracts";
 import {
   EYE_SCREENS,
+  KEY_ROWS,
   MOOD_EYES,
   clock,
   deviceStatusLine,
+  keyBindingFrom,
+  keyBindingLine,
+  keyChoiceOf,
+  keyChoices,
   msText,
   speakerLine,
   tagActionLine,
@@ -27,6 +35,7 @@ import { useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useVisibleThreadShells } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   AlertDialog,
@@ -233,6 +242,7 @@ function DeviceControls({
   tags,
   busy,
   run,
+  environmentId,
 }: {
   readonly device: DeviceView;
   readonly tags: DevicesOverview["tags"];
@@ -435,6 +445,8 @@ function DeviceControls({
       {d.speaker === null ? null : <SpeakerSection device={d} busy={busy} run={run} />}
 
       <TagsSection device={d} tags={tags} busy={busy} run={run} />
+
+      <KeysSection device={d} busy={busy} run={run} environmentId={environmentId} />
 
       <SettingsSection title={`Camera · ${id}`}>
         <SettingsRow
@@ -835,6 +847,174 @@ function TagsSection({
           }
         />
       ))}
+    </SettingsSection>
+  );
+}
+
+const detailOf = (b: R1KeyBinding | undefined) =>
+  b?.kind === "prompt" ? b.text : b?.kind === "home" ? b.entityId : "";
+const PRESSES = ["tap", "double", "hold", "long"] as const;
+
+/** The R1's buttons: the firmware's fixed presses read-only, the rest set to its own action or one of hers. */
+function KeysSection({
+  device: d,
+  busy,
+  run,
+  environmentId,
+}: {
+  readonly device: DeviceView;
+  readonly busy: boolean;
+  readonly run: Run;
+  readonly environmentId: EnvironmentId;
+}) {
+  const canEdit = useAtomValue(
+    batonWorkSessions.devicesCall.permissionAtom(environmentId, { kind: "act" }),
+  );
+  const [slot, setSlot] = useState<R1KeySlot>("s2.double");
+  const [choice, setChoice] = useState<string | null>(null);
+  const [text, setText] = useState(detailOf(d.keys[slot]));
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const current = d.keys[slot];
+  const picked = choice ?? (current === undefined ? "device:none" : keyChoiceOf(current));
+  const choices = keyChoices(slot);
+  const threads = useVisibleThreadShells(picked.startsWith("thread:"))
+    .filter((t) => t.environmentId === environmentId)
+    .slice(0, 40);
+  const pickedThread =
+    threads.find((t) => t.id === threadId) ??
+    (current?.kind === "thread" && threadId === null
+      ? { id: current.threadId, title: current.title }
+      : null);
+  const bind = keyBindingFrom(picked, text, pickedThread);
+  const free = KEY_ROWS.filter((r) => r.fixed === null);
+  return (
+    <SettingsSection title={`Buttons · ${d.id}`}>
+      <SettingsRow
+        title="Button map"
+        description={
+          d.keyNote ??
+          "Grey presses are the R1's own. A Tessaya action runs only where the R1 itself does nothing."
+        }
+      >
+        <div className="overflow-x-auto pt-2">
+          <table className="w-full text-left text-xs">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="py-1 pr-3 font-medium" />
+                {PRESSES.map((p) => (
+                  <th key={p} className="py-1 pr-3 font-medium capitalize">
+                    {p}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(["s1", "s2", "s3"] as const).map((key) => (
+                <tr key={key} className="border-t">
+                  <th className="py-1.5 pr-3 font-medium">{key.toUpperCase()}</th>
+                  {PRESSES.map((p) => {
+                    const row = KEY_ROWS.find((r) => r.slot === `${key}.${p}`)!;
+                    const b = d.keys[row.slot];
+                    return (
+                      <td
+                        key={p}
+                        className={
+                          row.fixed === null ? "py-1.5 pr-3" : "py-1.5 pr-3 text-muted-foreground"
+                        }
+                      >
+                        {row.fixed ?? (b === undefined ? "" : keyBindingLine(b))}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SettingsRow>
+      <SettingsRow
+        title="Change a button"
+        description={
+          canEdit
+            ? "Pick a press and what it does. Saved on the R1 and on this server."
+            : "This connection can look but not change the buttons."
+        }
+      >
+        <div className="flex flex-wrap gap-2 pt-2">
+          <Select
+            value={slot}
+            onValueChange={(next) => {
+              const s = next as R1KeySlot;
+              setSlot(s);
+              setChoice(null);
+              setText(detailOf(d.keys[s]));
+              setThreadId(null);
+            }}
+          >
+            <SelectTrigger size="sm" aria-label="Press">
+              <SelectValue>{free.find((r) => r.slot === slot)?.title}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              {free.map((r) => (
+                <SelectItem key={r.slot} value={r.slot}>
+                  {r.title}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+          <Select value={picked} onValueChange={(next) => setChoice(String(next))}>
+            <SelectTrigger size="sm" aria-label="What it does">
+              <SelectValue>{choices.find(([v]) => v === picked)?.[1] ?? picked}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              {choices.map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+          {picked === "home" || picked === "prompt" ? (
+            <Input
+              value={text}
+              aria-label={picked === "home" ? "Home Assistant entity" : "What to ask her"}
+              placeholder={
+                picked === "home" ? "light.desk_lamp or scene.evening" : "What's on today?"
+              }
+              maxLength={picked === "home" ? 200 : 400}
+              onChange={(e) => setText(e.target.value)}
+            />
+          ) : null}
+          {picked.startsWith("thread:") ? (
+            <Select
+              value={pickedThread?.id ?? ""}
+              onValueChange={(next) => setThreadId(String(next))}
+            >
+              <SelectTrigger size="sm" aria-label="Thread">
+                <SelectValue>{pickedThread?.title ?? "Pick a thread"}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                {threads.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.title}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          ) : null}
+          <Button
+            size="xs"
+            disabled={!canEdit || busy || d.online !== true || bind === null}
+            onClick={() =>
+              void run("act", "keyBind", { id: d.id, slot, bind }).then((v) => {
+                if (v !== null) setChoice(null);
+              })
+            }
+          >
+            Save
+          </Button>
+        </div>
+      </SettingsRow>
     </SettingsSection>
   );
 }
