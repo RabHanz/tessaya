@@ -322,7 +322,34 @@ function DeviceControls({
         />
         <SettingsRow
           title="Volume"
-          description="Needs new firmware: the R1 has no volume command yet. It comes with the firmware work."
+          description={
+            d.volume == null
+              ? "This firmware has no volume command. Its own buttons still change it."
+              : `${d.volume} of 100. Asking her also works: “speak up”, “too loud”, “normal volume”.`
+          }
+          control={
+            d.volume == null ? undefined : (
+              <span className="flex gap-1.5">
+                {(
+                  [
+                    ["down", "Quieter"],
+                    ["default", "Normal"],
+                    ["up", "Louder"],
+                  ] as const
+                ).map(([to, label]) => (
+                  <Button
+                    key={to}
+                    size="xs"
+                    variant="outline"
+                    disabled={off}
+                    onClick={() => void run("act", "volume", { id, to })}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </span>
+            )
+          }
         />
         <SettingsRow title="Say something" description="Spoken out loud in the room.">
           <div className="flex gap-2 pt-2">

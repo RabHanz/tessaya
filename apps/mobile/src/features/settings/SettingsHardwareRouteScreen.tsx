@@ -353,8 +353,30 @@ function DeviceControls({
         <Row
           divider
           title="Volume"
-          description="Needs new firmware: the R1 has no volume command yet. It comes with the firmware work."
-        />
+          description={
+            d.volume == null
+              ? "This firmware has no volume command. Its own buttons still change it."
+              : `${d.volume} of 100. Asking her also works: “speak up”, “too loud”, “normal volume”.`
+          }
+        >
+          {d.volume == null
+            ? null
+            : (
+                [
+                  ["down", "Quieter"],
+                  ["default", "Normal"],
+                  ["up", "Louder"],
+                ] as const
+              ).map(([to, label]) => (
+                <ControlPill
+                  key={to}
+                  variant="pill"
+                  label={label}
+                  disabled={off}
+                  onPress={() => void run("act", "volume", { id, to })}
+                />
+              ))}
+        </Row>
         <View className="gap-2 border-t border-border-subtle px-4 py-3">
           <Text textRole="body" className="text-foreground">
             Say something

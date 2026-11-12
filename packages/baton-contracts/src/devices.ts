@@ -18,6 +18,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "say",
   "mute",
   "earcons",
+  "volume",
   "keyBind",
   "display",
   "transport",
@@ -214,6 +215,8 @@ export const DeviceView = Schema.Struct({
   muted: Schema.Boolean,
   /** Her listening and closing sounds on this R1 (the room loop's cues). */
   earcons: Schema.Boolean,
+  /** How loud she speaks, 0-100, as the R1 reports it; null on firmware without a volume command. */
+  volume: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   /** What each press that is not fixed does now (see R1_KEY_SLOTS). */
   keys: Schema.Record(Schema.String, R1KeyBinding),
   /** From the R1's `state/display` (firmware 3.32): how the screen is turned now, and why the last change was refused. */

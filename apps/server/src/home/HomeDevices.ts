@@ -984,6 +984,7 @@ const make = Effect.gen(function* () {
       mood: d.mood,
       muted: saved.muted[id] === true,
       earcons: saved.earconsOff[id] !== true,
+      volume: d.volume,
       keys: Object.fromEntries(
         (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>)
           .filter((slot) => typeof R1_KEY_SLOTS[slot] !== "object")
