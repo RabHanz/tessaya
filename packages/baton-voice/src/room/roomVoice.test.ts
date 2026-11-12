@@ -452,11 +452,13 @@ describe("waking by name with no session open", () => {
     expect(start).toBeDefined();
     // The R1's echo of its start opens the session.
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
-    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
-    expect(frames).toEqual([DEV]);
     await t.feed(true, 20);
     await t.feed(false, 60);
     expect(t.brainCalls[0]?.tessaya.persona).toBe("engineering");
+    // The R1 only streams wake audio between sessions: a session still open here is stale and gives way.
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(frames).toEqual([DEV, DEV]);
+    expect(t.room.session(DEV)).toBeUndefined();
   });
 });
 

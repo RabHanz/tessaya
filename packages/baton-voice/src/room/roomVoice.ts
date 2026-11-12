@@ -1010,7 +1010,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (word !== undefined) s.call(word);
         cue(id, "wake");
       } else if (tail === "voice/wake") {
-        if (!sessions.has(id) && !muted.has(id)) deps.wake?.frame(id, payload);
+        // The R1 sends its wake stream only between sessions (SMP 0.3.35): a session still open here is a stale one,
+        // left by a reboot or a stop we missed, and must not keep her name from being heard.
+        if (sessions.has(id)) {
+          deps.log(`[${id}] wake stream while a session was open here; closing it`);
+          stop(id);
+        }
+        if (!muted.has(id)) deps.wake?.frame(id, payload);
       } else if (tail === "voice/wake/end") {
         deps.wake?.end(id);
       } else if (tail === "cmd/voice/stop") stop(id);
