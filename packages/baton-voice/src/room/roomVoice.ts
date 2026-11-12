@@ -220,6 +220,8 @@ export const ROOM_CONFIG: RoomConfig = {
 };
 
 const REARM_AT_MS = [2_000, 8_000, 18_000];
+/** A session that has had no mic audio for this long while wake audio arrives is one the R1 has already left. */
+const STALE_SESSION_MS = 3_000;
 
 export interface TurnMetrics {
   readonly device: string;
@@ -309,6 +311,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let invited = false;
     /** S2, a wake or her name: his first turn after it is for her, however long he takes to start (00:20, 13 Nov). */
     let firstUntil = 0;
+    /** When its mic last sent anything (or it opened): a session with nothing for a while is one the R1 has left. */
+    let lastUpAt = deps.now();
     /** Her last few sentences, to tell her own voice coming back through the mic from his. */
     let herLines: string[] = [];
     const saying = (text: string) => {
@@ -812,6 +816,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       frame: (bytes: Uint8Array) => {
         if (closed) return;
         const arrivedAt = deps.now();
+        lastUpAt = arrivedAt;
         const pcm = fromBytes(bytes);
         // Her own voice (the intro) is not his read.
         if (guide !== null && guide.phase() === "reading" && !speaking()) {
@@ -913,6 +918,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         return quiet && deps.now() - lastActivity > config.idleStopMs ? "stop" : null;
       },
+      quietFor: () => deps.now() - lastUpAt,
       /** For the replay harness: everything heard so far has been scored. */
       drained: () => chain,
       close: () => {
@@ -1012,7 +1018,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       } else if (tail === "voice/wake") {
         // The R1 sends its wake stream only between sessions (SMP 0.3.35): a session still open here is a stale one,
         // left by a reboot or a stop we missed, and must not keep her name from being heard.
-        if (sessions.has(id)) {
+        // Right after a wake the rest of that segment is still on its way, and the R1 has not yet heard the start:
+        // that session is new, not stale (03:30 replay, 13 Nov: every wake closed its own session 60 ms later).
+        const open = sessions.get(id);
+        if (open !== undefined) {
+          if (open.quietFor() < STALE_SESSION_MS) return;
           deps.log(`[${id}] wake stream while a session was open here; closing it`);
           stop(id);
         }
