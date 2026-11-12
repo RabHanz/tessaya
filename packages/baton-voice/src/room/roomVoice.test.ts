@@ -6,6 +6,7 @@ import type { SpeakerIdentity } from "../speaker.ts";
 import { UNVERIFIED } from "../speaker.ts";
 import { PILL_SOUNDS, renderSound } from "../cueSounds.ts";
 import { toBytes } from "./audio.ts";
+import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
   createRoomVoice,
   ROOM_CONFIG,
@@ -455,10 +456,53 @@ describe("waking by name with no session open", () => {
     await t.feed(true, 20);
     await t.feed(false, 60);
     expect(t.brainCalls[0]?.tessaya.persona).toBe("engineering");
-    // The R1 only streams wake audio between sessions: a session still open here is stale and gives way.
+    // The R1 only streams wake audio between sessions: once its mic has been quiet a while, the session here is stale.
+    await t.deps.sleep(3_000);
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
     expect(frames).toEqual([DEV, DEV]);
     expect(t.room.session(DEV)).toBeUndefined();
+  });
+
+  it("keeps the session her name just opened while the rest of that wake segment arrives (03:30 replay, 13 Nov)", async () => {
+    // The loop's own wake path, with a detector that, like openWakeWord, scores nothing before 16 chunks.
+    let room: ReturnType<typeof createRoomVoice> | null = null;
+    let seen = 0;
+    const wake = createWakeStream({
+      words: [{ word: "Tessaya", threshold: 0.99 }],
+      scorer: async (): Promise<WakeScorer> => ({
+        chunkSamples: 1280,
+        reset: () => {
+          seen = 0;
+        },
+        score: async (chunk) => [(seen += 1) >= 16 && chunk.includes(7) ? 1 : 0],
+      }),
+      confirm: async () => "Tessaya.",
+      onWake: (id, word) => room?.woken(id, word),
+      log: () => undefined,
+    });
+    const t = setup({
+      wake,
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "what's on today?",
+        cancel: () => undefined,
+      }),
+    });
+    room = t.room;
+    const segment = (v: number) => toBytes(new Int16Array(960).fill(v));
+    // 300 ms before, his name, then quiet: a 1.0 s segment as SMP 0.3.36 sends it.
+    for (let i = 0; i < 5; i += 1) t.room.message(`freya/r1/${DEV}/voice/wake`, segment(1));
+    for (let i = 0; i < 6; i += 1) t.room.message(`freya/r1/${DEV}/voice/wake`, segment(7));
+    await wake.drained(DEV);
+    expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/cmd/voice/start`)).toBe(true);
+    // Its own start comes back, then the tail of the segment the R1 had already sent.
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    for (let i = 0; i < 6; i += 1) t.room.message(`freya/r1/${DEV}/voice/wake`, segment(1));
+    t.room.message(`freya/r1/${DEV}/voice/wake/end`, new Uint8Array());
+    expect(t.room.session(DEV)).toBeDefined();
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["what's on today?"]);
   });
 });
 
