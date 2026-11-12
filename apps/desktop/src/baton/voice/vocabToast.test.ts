@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_LOOK } from "./pillLook.ts";
-import { acrylicSupported, cardDocument, learnedTitle } from "./vocabToast.ts";
+import { acrylicSupported, cardDocument, learnedTitle, stayMs } from "./vocabToast.ts";
 
 describe("the card beside the pill", () => {
   it("says what was learned in one line, however many words", () => {
@@ -22,6 +22,10 @@ describe("the card beside the pill", () => {
     );
     expect(cardDocument({ kind: "learned", words: ["A"] })).toContain('id="discard"');
     expect(cardDocument({ kind: "copy", why: "w", text: "t" })).not.toContain('id="discard"');
+  });
+  it("keeps a copy card up for 20 s: its words are nowhere else", () => {
+    expect(stayMs({ kind: "copy", why: "No text box was selected", text: "t" })).toBe(20_000);
+    expect(stayMs({ kind: "learned", words: ["A"] })).toBe(8_000);
   });
   it("is frosted only where Windows draws acrylic: Windows 11 22H2 on, Windows 10 and elsewhere the tint", () => {
     expect(acrylicSupported("win32", "10.0.22621")).toBe(true);

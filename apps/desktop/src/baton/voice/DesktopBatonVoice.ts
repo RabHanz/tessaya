@@ -336,6 +336,7 @@ import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
 import { createComposerDictation, routePill } from "./composerDictation.ts";
 import { cleanupLevelNow } from "./cleanupLevel.ts";
+import { ownFieldFocused } from "./ownWindowField.ts";
 import * as Electron from "electron";
 
 import {
@@ -2222,6 +2223,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               Promise.resolve(false)
             : ((side: NonNullable<typeof sidecar>, target: number, title: string) =>
                 pasteInOrder(async () => {
+                  // Tessaya's own window answers for itself: Windows sees its page as one document that takes text.
+                  if ((await ownFieldFocused(target)) === false) {
+                    keptWhy = "nofield";
+                    input.onNote?.("paste_refused", {
+                      why: "nofield",
+                      own: true,
+                      chars: text.length,
+                    });
+                    return false;
+                  }
                   // One helper call: its window forward, the same window and page checked (his words were not for
                   // another), then the paste.
                   const why = await side
@@ -2255,12 +2266,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Why the last flush kept its words rather than pasting them. */
   let keptWhy: Exclude<PasteVerdict, "ok"> = "refused";
   /** The words go on the clipboard, out of the buffer, and a card beside the pill says why, with Copy. */
-  const toClipboard = (text: string, taken: number, why: string) => {
+  const toClipboard = (text: string, taken: number, why: string, code: string) => {
     Electron.clipboard.writeText(text);
     oneShot.release(taken);
     landed(text);
     showDictation(null);
     toast.show({ kind: "copy", why: `${why}, so it is on your clipboard`, text });
+    // The decision, never the words: "no field, showed copy card" and its like, in the turn log.
+    input.onNote?.("copy_card", { why: code, chars: text.length });
   };
   /**
    * `target` is the window that dictation started in, read when it ended: never one a newer dictation started in.
@@ -2334,6 +2347,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 : keptWhy === "nofield"
                   ? "No text box was selected"
                   : `${name} did not take it`,
+        app.window === undefined ? "nowindow" : keptWhy,
       );
     }
     noteTiming();
