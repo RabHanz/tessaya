@@ -1,9 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalConsole:off
 /**
- * The room loop's gate: `node replay.mjs <16 kHz wavs>` plays his recordings to the running loop in real time as a
- * pretend R1 (`replay-1`) and prints end-of-voice to first-sound per clip, then p50 and p90. No real R1 is reached.
- * It shares the live loop, so it never runs beside him: it refuses while any real R1 is online, and stops the moment one
- * sends audio or an event (12 Nov: a replay slowed and chopped his first live conversation).
+ * `node replay.mjs <16 kHz wavs>`: his recordings to the running loop in real time as a pretend R1 (`replay-1`), then
+ * end-of-voice to first-sound per clip and p50/p90. It shares the live loop: run it after 10 quiet minutes in the
+ * loop's log; it refuses, or stops at once, when a real R1 sends audio or an event (online alone is not use).
  */
 import * as NodeFS from "node:fs";
 
