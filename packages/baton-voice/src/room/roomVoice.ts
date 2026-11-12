@@ -412,10 +412,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const decidedAt = deps.now();
       const current = rec;
       rec = null;
-      const sides = Promise.all([
-        deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now())),
-        deps.affect?.(pcm).catch(() => undefined),
-      ]);
+      const speakerP = deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now()));
+      const affectP = deps.affect?.(pcm).catch(() => undefined);
+      let affectNow: Awaited<typeof affectP>;
+      void affectP?.then((a) => (affectNow = a));
+      const sides = Promise.all([speakerP, affectP]);
       // What she would send her brain for these words, or null when this turn would not be answered.
       const ask = async (words: string) => {
         const called = calledName(
@@ -423,8 +424,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           config.personas.map((p) => p.name),
         );
         if (called === null && startedAt > openUntil) return null;
-        // A guess waits for who is speaking: it may only answer whom the final turn would answer.
-        const [speaker, affect] = await sides;
+        // A guess waits for who is speaking (it may only answer whom the final turn would answer), not for the mood.
+        const speaker = await speakerP;
+        const affect = affectNow;
         const identity = speaker ?? UNVERIFIED(deps.now());
         if (!admits(identity, config.gate, "turn")) return null;
         const who = config.personas.find((p) => p.name === called) ?? persona;
