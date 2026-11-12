@@ -9,6 +9,8 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
+
 import { createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "../speaker.ts";
@@ -167,13 +169,24 @@ const startPocket = async () => {
     if (i > 300) throw new Error("pocket did not start");
     await new Promise((r) => setTimeout(r, 200));
   }
-  return async function* (text: string, signal: AbortSignal) {
-    const res = await fetch(`http://127.0.0.1:${port}/tts`, {
+  const tts = (text: string, signal: AbortSignal, voice?: string) =>
+    fetch(`http://127.0.0.1:${port}/tts`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ text }).toString(),
+      body: new URLSearchParams({
+        text,
+        ...(voice === undefined ? {} : { voice_url: pocketVoiceUrl(voice) }),
+      }).toString(),
       signal,
     });
+  // Pocket fetches a voice on its first use (about 8 s on the voice host), so every persona's is fetched now, not mid-reply.
+  for (const p of ROOM_CONFIG.personas)
+    await tts("Ready.", AbortSignal.timeout(60_000), p.voice).then(
+      (r) => r.arrayBuffer(),
+      (e: unknown) => log(`voice ${p.voice} not ready: ${String(e)}`),
+    );
+  return async function* (text: string, signal: AbortSignal, voice?: string) {
+    const res = await tts(text, signal, voice);
     if (!res.ok || res.body === null) throw new Error(`voice answered ${res.status}`);
     const read = createWavReader();
     const down = createResampler24to16();

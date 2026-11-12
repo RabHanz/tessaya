@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  calledPersona,
   dictionaryEntries,
   houseTime,
   mqttPublishBytes,
@@ -81,4 +82,12 @@ it("fixes his names in what the room heard, from the shared dictionary, as dicta
   expect(biasTranscript("Ask Tezaya about Acme Cloud", entries)).toBe(
     "Ask Tessaya about AcmeCloud",
   );
+});
+
+it("answers as the persona he called by name, and as Tessaya for her own name or an unknown one", async () => {
+  const { DEFAULT_OS_PACK } = await import("@t3tools/baton-shared/osPack");
+  expect(calledPersona(DEFAULT_OS_PACK, { persona: "engineering" })?.name).toBe("Alfred");
+  expect(calledPersona(DEFAULT_OS_PACK, { persona: "executive" })).toBeNull();
+  expect(calledPersona(DEFAULT_OS_PACK, { persona: "nobody" })).toBeNull();
+  expect(calledPersona(DEFAULT_OS_PACK, undefined)).toBeNull();
 });

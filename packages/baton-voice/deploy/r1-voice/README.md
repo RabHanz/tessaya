@@ -36,7 +36,7 @@ The loop holds no brain, memory or settings of its own. What it reuses:
 What stays R1-specific, and why:
 
 - **Its own owner profile** (`state/voice/speakers.json`). The R1's mics are not his laptop's. Two profiles of one voice in one list nearly tie and read as a guest, and merging them lowers his scores (the Voice ID lane's measurement).
-- **A Pocket process on the voice host.** Tessaya has no server-side voice yet: the desktop runs Pocket locally. These are the same pinned model files. The voice (`R1_VOICE`, "anna", her default) is set here until her voice setting lives on the server.
+- **A Pocket process on the voice host.** Tessaya has no server-side voice yet: the desktop runs Pocket locally. These are the same pinned model files. Each reply is spoken in the answering persona's voice from the default pack (Tessaya eve, Freya azelma, Alfred peter_yearsley, Sebastian michael), fetched once at start; `R1_VOICE` is only Pocket's fallback. A pack edited on the laptop is not read here yet.
 - **Smart Turn and SenseVoice.** They are new, and they are in the shared package, so the desktop can adopt them.
 - **The MQTT transport and paced downlink.** These are the R1's own wire.
 
