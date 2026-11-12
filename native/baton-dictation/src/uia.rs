@@ -19,7 +19,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_SelectionItemIsSelectedPropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId,
     UIA_ToggleToggleStatePropertyId, UIA_TogglePatternId, UIA_TreeItemControlTypeId, UIA_ValuePatternId,
     UIA_ValueValuePropertyId, IUIAutomationTextPattern, TextPatternRangeEndpoint_End, TextPatternRangeEndpoint_Start,
-    TextUnit_Character, UIA_TextPatternId, UIA_FontSizeAttributeId, UIA_FontNameAttributeId,
+    TextUnit_Character, UIA_TextPatternId, UIA_FontSizeAttributeId, UIA_FontNameAttributeId, UIA_IsReadOnlyAttributeId,
 };
 use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Ole::SafeArrayDestroy;
@@ -705,8 +705,14 @@ pub fn focused_takes_no_text() -> bool {
         if crate::shell_surface(&class) {
             return true;
         }
-        if element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).is_ok() {
-            return false;
+        if let Ok(text) = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) {
+            // A page only to read (a browser page, a PDF) says read-only; one holding a box anywhere answers "mixed".
+            let read_only = text
+                .DocumentRange()
+                .and_then(|range| range.GetAttributeValue(UIA_IsReadOnlyAttributeId))
+                .ok()
+                .and_then(|v| bool::try_from(&v).ok());
+            return read_only == Some(true);
         }
         let writable = element
             .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
