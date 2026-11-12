@@ -99,7 +99,11 @@ export const definition = defineSourceControl({
   // A known project's host can be any GitHub Enterprise Server name.
   parseCommitUrl: (url, known) =>
     known || isGitHubHost(url.hostname) ? parseCommitPath(url, COMMIT_PATH) : null,
-  parseChangeRequestUrl: (url) => parseChangeRequestPath(url, CHANGE_REQUEST_PATH),
+  parseChangeRequestUrl: (url) => {
+    const link = parseChangeRequestPath(url, CHANGE_REQUEST_PATH);
+    // A redacted or mangled URL must not become a repository GitHub cannot address.
+    return link && isRepositoryPath(link.repository) ? link : null;
+  },
   repositoryUrlFromPage: (url) =>
     isGitHubHost(url.hostname) ? repositoryUrlFromPagePath(url, REPOSITORY_PAGE_PATH) : null,
   // GitHub writes every bare reference through `/issues/`, including pull requests.
