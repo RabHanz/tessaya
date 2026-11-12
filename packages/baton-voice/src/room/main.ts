@@ -7,11 +7,12 @@
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
 
 import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
 
-import { createSileroScorer } from "../providers/onnx.ts";
+import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "../speaker.ts";
 import { createSpeakerStore } from "../speakerStore.ts";
@@ -21,6 +22,7 @@ import { noteTime, pickRecogniser, type RecogniserState } from "./recognisers.ts
 import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
+import { createWakeStream } from "./wakeStream.ts";
 
 const env = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;
@@ -197,6 +199,40 @@ const startPocket = async () => {
   };
 };
 
+/**
+ * The R1 posts a camera picture to its LAN host (it is not on the tailnet), so this host takes it and hands it to
+ * Tessaya's server, which keeps it only while a capture it asked for is armed.
+ */
+const startCameraRelay = () => {
+  const port = Number(process.env["R1_CAMERA_PORT"] ?? "0");
+  if (port === 0) return;
+  const upload = new URL("/camera/upload", env("R1_BRAIN_URL")).toString();
+  NodeHttp.createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://r1");
+    if (req.method !== "POST" || url.pathname !== "/camera/upload") {
+      res.writeHead(404).end();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > 4_000_000) req.destroy();
+      else chunks.push(c);
+    });
+    req.on("end", () => {
+      void fetch(`${upload}${url.search}`, {
+        method: "POST",
+        headers: { "content-type": req.headers["content-type"] ?? "image/jpeg" },
+        body: Buffer.concat(chunks),
+      }).then(
+        (r) => res.writeHead(r.status).end(),
+        () => res.writeHead(502).end(),
+      );
+    });
+  }).listen(port, "0.0.0.0", () => log(`camera relay on :${port}`));
+};
+
 /** Tessaya's turn on her server, OpenAI chat-completions shape, streamed. */
 const brain = (url: string, key: string): RoomDeps["brain"] =>
   async function* (input, signal) {
@@ -260,6 +296,8 @@ const main = async () => {
       "freya/r1/+/state/online",
       "freya/r1/+/event/session/start",
       "freya/r1/+/event/wake",
+      "freya/r1/+/voice/wake",
+      "freya/r1/+/voice/wake/end",
       "freya/r1/+/cmd/voice/earcons",
     ],
     onMessage: (t, p) => room?.message(t, p),
@@ -271,8 +309,40 @@ const main = async () => {
       .map((s) => s.trim())
       .filter(Boolean),
   );
+  // His wake words as the desktop ships them (wakeDefaults.ts); a word whose model is not on this host is skipped.
+  const words = [
+    { word: "Tessaya", file: "tessaya.onnx", threshold: 0.99 },
+    { word: "Alfred", file: "alfred.onnx", threshold: 0.95 },
+    { word: "Freya", file: "freya.onnx", threshold: 0.95 },
+  ].filter((w) => NodeFS.existsSync(model(w.file)));
+  const confirmWith = recognisers();
+  const wake =
+    words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
+      ? undefined
+      : createWakeStream({
+          words,
+          scorer: () =>
+            createOpenWakeWordScorer({
+              melspectrogram: model("melspectrogram.onnx"),
+              embedding: model("embedding_model.onnx"),
+              wakes: words.map((w) => ({
+                word: w.word,
+                path: model(w.file),
+                threshold: w.threshold,
+              })),
+            }),
+          confirm: (pcm) => {
+            const turn = confirmWith();
+            turn.feed(pcm);
+            return turn.finish();
+          },
+          onWake: (id, word) => room?.woken(id, word),
+          log,
+        });
+  startCameraRelay();
   room = createRoomVoice(
     {
+      ...(wake === undefined ? {} : { wake }),
       publish: (t, p) => {
         mqtt.publish(t, p);
         if (t.endsWith("/event/voice/metrics"))
