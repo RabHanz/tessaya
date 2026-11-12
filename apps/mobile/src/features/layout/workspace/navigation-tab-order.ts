@@ -1,5 +1,15 @@
+import {
+  primaryTabCapacity,
+  TESSAYA_TAB_LABELS,
+  TESSAYA_TAB_ORDER,
+  tessayaAppOn,
+} from "../../tessaya/tessayaTabs";
+
 export const NAVIGATION_TAB_ORDER = ["threads", "pullRequests", "usage"] as const;
-export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
+// Baton (0025-tessaya-phone.patch): Tessaya's own app adds Today and Devices (features/tessaya).
+export type NavigationTab =
+  | (typeof NAVIGATION_TAB_ORDER)[number]
+  | Exclude<(typeof TESSAYA_TAB_ORDER)[number], (typeof NAVIGATION_TAB_ORDER)[number]>;
 
 export function navigationCustomizationAvailable(
   registeredSections: number = NAVIGATION_TAB_ORDER.length,
@@ -8,7 +18,8 @@ export function navigationCustomizationAvailable(
 }
 
 export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
-  threads: "Threads",
+  ...TESSAYA_TAB_LABELS,
+  threads: tessayaAppOn() ? TESSAYA_TAB_LABELS.threads : "Threads",
   pullRequests: "Pulls",
   usage: "Usage",
 };
@@ -19,6 +30,7 @@ function isNavigationTab(value: unknown): value is NavigationTab {
 
 /** Complete older preferences without losing their order or retaining removed sections. */
 export function resolveNavigationTabOrder(saved?: readonly unknown[]): readonly NavigationTab[] {
+  if (tessayaAppOn()) return TESSAYA_TAB_ORDER;
   if (!saved?.length) return NAVIGATION_TAB_ORDER;
   return [...new Set([...saved.filter(isNavigationTab), ...NAVIGATION_TAB_ORDER])];
 }
@@ -58,11 +70,14 @@ export function visibleNavigationTabs(
   hidden?: readonly unknown[],
   capacity = 4,
 ) {
-  return enabledNavigationTabs(saved, hidden).slice(0, capacity);
+  return enabledNavigationTabs(saved, hidden).slice(
+    0,
+    primaryTabCapacity(tessayaAppOn(), capacity),
+  );
 }
 
 export function overflowNavigationTabs(saved?: readonly unknown[], hidden?: readonly unknown[]) {
-  return enabledNavigationTabs(saved, hidden).slice(4);
+  return enabledNavigationTabs(saved, hidden).slice(primaryTabCapacity(tessayaAppOn(), 4));
 }
 
 export function selectedNavigationTab(

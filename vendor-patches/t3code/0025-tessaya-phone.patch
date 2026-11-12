@@ -1,0 +1,275 @@
+diff --git a/apps/mobile/index.ts b/apps/mobile/index.ts
+index 9367ade408e9599cb56ab71e97fbbb530fd9bb51..edbdce27c70afb6b930e9fa0d038f1095f71dbe2 100644
+--- a/apps/mobile/index.ts
++++ b/apps/mobile/index.ts
+@@ -3,6 +3,8 @@ import "./src/features/development/render-counter-entry";
+ import "./src/features/development/behavior-probe-entry";
+ // Next, so errors thrown while the rest of the app loads are recorded too.
+ import "./src/features/observability/observe";
++// Baton (0025-tessaya-phone.patch): which build this is, before any screen reads it.
++import "./src/features/tessaya/tessayaApp";
+ import { registerRootComponent } from "expo";
+ import "react-native-gesture-handler";
+ import { LogBox } from "react-native";
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
+index 17fc0069eb8e678617f1951410f306bdf6732bce..e3ac5c469b7e2547a29f6b5acbb8fc8989283a61 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
+@@ -1,10 +1,15 @@
+ import { type NavigationTab } from "./navigation-tab-order";
+ import { NativeStackScreenOptions } from "../../../native/StackHeader";
+ import { UsageRouteScreen } from "../../usage/UsageRouteScreen";
++import { TessayaDevicesScreen } from "../../tessaya/TessayaDevicesScreen";
++import { TessayaTodayScreen } from "../../tessaya/TessayaTodayScreen";
+ 
+-export function WorkspaceExtraTab(_props: {
++export function WorkspaceExtraTab(props: {
+   tab: Exclude<NavigationTab, "threads" | "pullRequests">;
+ }) {
++  // Baton (0025-tessaya-phone.patch): Tessaya's app has its own Today and Devices tabs.
++  if (props.tab === "today") return <TessayaTodayScreen />;
++  if (props.tab === "devices") return <TessayaDevicesScreen />;
+   return (
+     <>
+       <NativeStackScreenOptions options={{ headerSearchBarOptions: undefined }} />
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
+index 2ede0bcddee4b53fd668cf1b94a6b987b4908a25..a8eed9ae62ead554a9c959df9f6a0f68bb02bab1 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
+@@ -29,6 +29,9 @@ import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
+ import { useAdaptiveWorkspaceLayout } from "../AdaptiveWorkspaceLayout";
+ import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
+ 
++import { TessayaTalkButton } from "../../tessaya/TessayaTalkButton";
++import { primaryTabCapacity, TESSAYA_YOU, tessayaAppOn } from "../../tessaya/tessayaTabs";
++
+ const PULL_REQUEST_ICON = require("../../../../assets/icons/pull-request.png");
+ 
+ /** Retain each native controller tree; removing its root can leave RNS's stack empty. */
+@@ -78,8 +81,9 @@ export function WorkspaceNativeTabs(props: {
+ }) {
+   const workspace = useWorkspaceTabs()!;
+   const order = useEnabledNavigationTabs();
+-  const primaryTabs = order.slice(0, 4);
+-  const overflow = order[4];
++  const capacity = primaryTabCapacity(tessayaAppOn(), 4);
++  const primaryTabs = order.slice(0, capacity);
++  const overflow = order[capacity];
+   const selectTab = useSelectWorkspaceTab();
+   const [provenance, setProvenance] = useState(0);
+   const systemTabBar = useSystemWorkspaceTabBar();
+@@ -133,10 +137,16 @@ export function WorkspaceNativeTabs(props: {
+               key={slot}
+               screenKey={slot}
+               title=""
+-              tabBarItemAccessibilityLabel={settings ? "Settings" : WORKSPACE_TAB_LABELS[tab]}
++              tabBarItemAccessibilityLabel={
++                settings
++                  ? tessayaAppOn()
++                    ? TESSAYA_YOU.label
++                    : "Settings"
++                  : WORKSPACE_TAB_LABELS[tab]
++              }
+               ios={{
+                 icon: settings
+-                  ? { type: "sfSymbol", name: "gearshape" }
++                  ? { type: "sfSymbol", name: tessayaAppOn() ? TESSAYA_YOU.symbol : "gearshape" }
+                   : tab === "pullRequests"
+                     ? { type: "templateSource", templateSource: PULL_REQUEST_ICON }
+                     : { type: "sfSymbol", name: NAVIGATION_TAB_ICONS[tab] },
+@@ -157,6 +167,7 @@ export function WorkspaceNativeTabs(props: {
+           );
+         })}
+       </Tabs.Host>
++      {tessayaAppOn() && systemTabBar && !props.hidden ? <TessayaTalkButton /> : null}
+       {(deviceType === "pad" ||
+         compactTabs ||
+         (layout.variant === "medium" &&
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
+index 9ecb6fa933fa88f06c899ccbdd92eb65bcc90585..e12ae5fcec02031062ea90b7073b9563a88d99de 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
+@@ -58,6 +58,8 @@ function createWorkspaceTabsModel() {
+     threads: 0,
+     pullRequests: 0,
+     usage: 0,
++    today: 0,
++    devices: 0,
+     settings: 0,
+   };
+   return {
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx
+index 0734c1e877482ff0858d1f22856067b2573520eb..ee2fca4c22c4f747e8418f112e07dcca59308b5d 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx
+@@ -52,7 +52,12 @@ export function WorkspaceToolbar(props: {
+   // The Settings list takes the selected tab's place, so search follows it.
+   const selectedTab = workspace.settingsOpen ? "settings" : workspace.state.selectedTab;
+   const tab = workspace.state.tabs[selectedTab];
+-  const searchLabel = SEARCH_LABELS[selectedTab === "usage" ? "threads" : selectedTab];
++  const searchLabel =
++    SEARCH_LABELS[
++      selectedTab === "usage" || selectedTab === "today" || selectedTab === "devices"
++        ? "threads"
++        : selectedTab
++    ];
+   const { isTabActive: isListTabActive } = workspace;
+   // A retained tab slot stays mounted while another is shown.
+   const isTabActive = (tab: typeof selectedTab) =>
+diff --git a/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts b/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts
+index 71ea901ed3b7bd8544545a75caf4acd36f990456..280b325c6a2985d0b9a6ac0dd4a8745a39e084c8 100644
+--- a/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts
++++ b/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts
+@@ -1,4 +1,6 @@
+ import { describe, expect, it } from "vite-plus/test";
++import { setTessayaApp, TESSAYA_TAB_ORDER } from "../../tessaya/tessayaTabs";
++import { initialWorkspaceTabsState } from "./workspace-tabs-state";
+ import {
+   NAVIGATION_TAB_ORDER,
+   navigationCustomizationAvailable,
+@@ -67,3 +69,19 @@ describe("navigation tab order", () => {
+     ).toBeUndefined();
+   });
+ });
++
++describe("Tessaya's phone app", () => {
++  it("puts Today, Sessions and Devices in the bar, Pulls and Usage under You, whatever was saved", () => {
++    setTessayaApp(true);
++    try {
++      expect(resolveNavigationTabOrder(["usage", "threads"])).toEqual(TESSAYA_TAB_ORDER);
++      expect(visibleNavigationTabs(["usage"], [], 4)).toEqual(["today", "threads", "devices"]);
++      expect(overflowNavigationTabs(undefined, [])).toEqual(["pullRequests", "usage"]);
++      expect(selectedNavigationTab(undefined, "pullRequests", false, [], 4)).toBe("settings");
++      expect(initialWorkspaceTabsState().selectedTab).toBe("today");
++    } finally {
++      setTessayaApp(false);
++    }
++    expect(initialWorkspaceTabsState().selectedTab).toBe("threads");
++  });
++});
+diff --git a/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts b/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
+index 85e3e1c6f29fee0ddd07fa82da902bc033a91ea4..d50db3f59d361997ba7c26588655fd598b977a43 100644
+--- a/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
++++ b/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
+@@ -1,5 +1,15 @@
++import {
++  primaryTabCapacity,
++  TESSAYA_TAB_LABELS,
++  TESSAYA_TAB_ORDER,
++  tessayaAppOn,
++} from "../../tessaya/tessayaTabs";
++
+ export const NAVIGATION_TAB_ORDER = ["threads", "pullRequests", "usage"] as const;
+-export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
++// Baton (0025-tessaya-phone.patch): Tessaya's own app adds Today and Devices (features/tessaya).
++export type NavigationTab =
++  | (typeof NAVIGATION_TAB_ORDER)[number]
++  | Exclude<(typeof TESSAYA_TAB_ORDER)[number], (typeof NAVIGATION_TAB_ORDER)[number]>;
+ 
+ export function navigationCustomizationAvailable(
+   registeredSections: number = NAVIGATION_TAB_ORDER.length,
+@@ -8,7 +18,8 @@ export function navigationCustomizationAvailable(
+ }
+ 
+ export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
+-  threads: "Threads",
++  ...TESSAYA_TAB_LABELS,
++  threads: tessayaAppOn() ? TESSAYA_TAB_LABELS.threads : "Threads",
+   pullRequests: "Pulls",
+   usage: "Usage",
+ };
+@@ -19,6 +30,7 @@ function isNavigationTab(value: unknown): value is NavigationTab {
+ 
+ /** Complete older preferences without losing their order or retaining removed sections. */
+ export function resolveNavigationTabOrder(saved?: readonly unknown[]): readonly NavigationTab[] {
++  if (tessayaAppOn()) return TESSAYA_TAB_ORDER;
+   if (!saved?.length) return NAVIGATION_TAB_ORDER;
+   return [...new Set([...saved.filter(isNavigationTab), ...NAVIGATION_TAB_ORDER])];
+ }
+@@ -58,11 +70,14 @@ export function visibleNavigationTabs(
+   hidden?: readonly unknown[],
+   capacity = 4,
+ ) {
+-  return enabledNavigationTabs(saved, hidden).slice(0, capacity);
++  return enabledNavigationTabs(saved, hidden).slice(
++    0,
++    primaryTabCapacity(tessayaAppOn(), capacity),
++  );
+ }
+ 
+ export function overflowNavigationTabs(saved?: readonly unknown[], hidden?: readonly unknown[]) {
+-  return enabledNavigationTabs(saved, hidden).slice(4);
++  return enabledNavigationTabs(saved, hidden).slice(primaryTabCapacity(tessayaAppOn(), 4));
+ }
+ 
+ export function selectedNavigationTab(
+diff --git a/apps/mobile/src/features/layout/workspace/navigation-tabs.ts b/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
+index 3472242dc4f565b83782fd0f9f602208d4d76eb0..82237bdb2837f5f3f3b8bc98492aada7937238ec 100644
+--- a/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
++++ b/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
+@@ -12,16 +12,19 @@ import type { AppSymbolName } from "../../../components/ui/AppSymbol";
+ import { mobilePreferencesAtom } from "../../../state/preferences";
+ import { PullRequestGlyph } from "../../pull-requests/pullRequestGlyphs";
+ import { resolveWorkspaceTabOrder } from "./workspace-tabs-state";
++import { tessayaAppOn } from "../../tessaya/tessayaTabs";
+ 
+ export const WORKSPACE_TAB_LABELS = {
+   ...NAVIGATION_TAB_LABELS,
+-  ...(Platform.OS === "ios" ? { threads: "Chats", pullRequests: "PRs" } : {}),
++  ...(Platform.OS === "ios" && !tessayaAppOn() ? { threads: "Chats", pullRequests: "PRs" } : {}),
+ };
+ 
+ export const NAVIGATION_TAB_ICONS = {
+   threads: "text.bubble",
+   pullRequests: PullRequestGlyph.pullRequest,
+   usage: "chart.bar.xaxis",
++  today: "sun.max",
++  devices: "face.smiling",
+ } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
+ 
+ export function useNavigationTabOrder() {
+diff --git a/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts b/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
+index 6a44e617e53ede0535bd1555925be6adb3e242ca..80e3958e232279431e7408c55faa3b72f693b3c3 100644
+--- a/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
++++ b/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
+@@ -227,7 +227,7 @@ export function workspaceTabNavigationState<
+   }
+   const home = state.routes.find((route) => route.name === "Home") ?? { name: "Home" };
+   const detail =
+-    options.columns && tab !== "usage"
++    options.columns && (tab === "threads" || tab === "pullRequests")
+       ? detailRoute(state, tab, selections, options.check, options.seedPullRequest)
+       : undefined;
+   const routes = [...[home, ...(detail ? [detail] : [])].map(keyed), ...overlays];
+diff --git a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
+index 3598894115dc3f8f6f8e20cfb4d203ddc0df2063..07c42c7f2aa8d761e18d30aae28ae3fa837bdd90 100644
+--- a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
++++ b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
+@@ -4,9 +4,10 @@ import {
+   resolveNavigationTabOrder,
+   type NavigationTab,
+ } from "./navigation-tab-order";
++import { firstTab, tessayaAppOn } from "../../tessaya/tessayaTabs";
+ 
+ export function resolveWorkspaceTabOrder(saved: readonly unknown[] | undefined) {
+-  return navigationCustomizationAvailable()
++  return navigationCustomizationAvailable() || tessayaAppOn()
+     ? resolveNavigationTabOrder(saved)
+     : NAVIGATION_TAB_ORDER;
+ }
+@@ -40,12 +41,14 @@ function emptyTab(): WorkspaceTabState {
+ 
+ export function initialWorkspaceTabsState(): WorkspaceTabsState {
+   return {
+-    selectedTab: "threads",
++    selectedTab: firstTab(tessayaAppOn()),
+     selectionRevision: 0,
+     tabs: {
+       threads: emptyTab(),
+       pullRequests: emptyTab(),
+       usage: emptyTab(),
++      today: emptyTab(),
++      devices: emptyTab(),
+       settings: emptyTab(),
+     },
+   };

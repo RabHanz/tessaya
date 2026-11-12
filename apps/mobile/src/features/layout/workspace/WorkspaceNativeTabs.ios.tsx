@@ -29,6 +29,9 @@ import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
 import { useAdaptiveWorkspaceLayout, useWorkspacePaneState } from "../AdaptiveWorkspaceLayout";
 import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
 
+import { TessayaTalkButton } from "../../tessaya/TessayaTalkButton";
+import { primaryTabCapacity, TESSAYA_YOU, tessayaAppOn } from "../../tessaya/tessayaTabs";
+
 const PULL_REQUEST_ICON = require("../../../../assets/icons/pull-request.png");
 
 /** Retain each native controller tree; removing its root can leave RNS's stack empty. */
@@ -78,8 +81,9 @@ export function WorkspaceNativeTabs(props: {
 }) {
   const workspace = useWorkspaceTabs()!;
   const order = useEnabledNavigationTabs();
-  const primaryTabs = order.slice(0, 4);
-  const overflow = order[4];
+  const capacity = primaryTabCapacity(tessayaAppOn(), 4);
+  const primaryTabs = order.slice(0, capacity);
+  const overflow = order[capacity];
   const selectTab = useSelectWorkspaceTab();
   const [provenance, setProvenance] = useState(0);
   const systemTabBar = useSystemWorkspaceTabBar();
@@ -134,10 +138,16 @@ export function WorkspaceNativeTabs(props: {
               key={slot}
               screenKey={slot}
               title=""
-              tabBarItemAccessibilityLabel={settings ? "Settings" : WORKSPACE_TAB_LABELS[tab]}
+              tabBarItemAccessibilityLabel={
+                settings
+                  ? tessayaAppOn()
+                    ? TESSAYA_YOU.label
+                    : "Settings"
+                  : WORKSPACE_TAB_LABELS[tab]
+              }
               ios={{
                 icon: settings
-                  ? { type: "sfSymbol", name: "gearshape" }
+                  ? { type: "sfSymbol", name: tessayaAppOn() ? TESSAYA_YOU.symbol : "gearshape" }
                   : tab === "pullRequests"
                     ? { type: "templateSource", templateSource: PULL_REQUEST_ICON }
                     : { type: "sfSymbol", name: NAVIGATION_TAB_ICONS[tab] },
@@ -158,6 +168,7 @@ export function WorkspaceNativeTabs(props: {
           );
         })}
       </Tabs.Host>
+      {tessayaAppOn() && systemTabBar && !props.hidden ? <TessayaTalkButton /> : null}
       {(deviceType === "pad" ||
         compactTabs ||
         (layout.variant === "medium" &&
