@@ -4,7 +4,12 @@ import {
   AuthBatonMemorySyncScope,
   AuthStandardClientScopes,
   type AuthEnvironmentScope,
+  type AuthMcpClientAccess,
   type AuthPairingLink,
+  mcpApprovalCode,
+  PAIRING_CODE_ALPHABET,
+  PAIRING_CODE_LENGTH,
+  parseMcpApprovalCode,
   type ServerAuthBootstrapMethod,
 } from "@t3tools/contracts";
 import {
@@ -218,6 +223,8 @@ export class PairingGrantStore extends Context.Service<
       readonly label?: string;
       readonly proofKeyThumbprint?: string;
       readonly purpose?: "startup";
+      /** Issues a hidden `<LEVEL>-` code that only an agent sign-in at this level can spend. */
+      readonly mcpApproval?: AuthMcpClientAccess;
     }) => Effect.Effect<IssuedBootstrapCredential, BootstrapCredentialInternalError>;
     readonly listActive: () => Effect.Effect<
       ReadonlyArray<AuthPairingLink>,
@@ -232,6 +239,8 @@ export class PairingGrantStore extends Context.Service<
         readonly requestedScopes?: ReadonlyArray<AuthEnvironmentScope>;
         /** All scopes must be granted; requestedScopes only requires an overlap for OAuth. */
         readonly requiredScopes?: ReadonlyArray<AuthEnvironmentScope>;
+        /** Also spends a code issued for an agent sign-in at this level; others refuse them. */
+        readonly mcpApproval?: AuthMcpClientAccess;
       },
     ) => Effect.Effect<BootstrapGrant, BootstrapCredentialError>;
   }
@@ -263,13 +272,11 @@ const DESKTOP_SCOPES = [
 ] as const;
 const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
 const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
-const PAIRING_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-const PAIRING_TOKEN_LENGTH = 12;
 const PAIRING_TOKEN_REJECTION_LIMIT =
-  Math.floor(256 / PAIRING_TOKEN_ALPHABET.length) * PAIRING_TOKEN_ALPHABET.length;
+  Math.floor(256 / PAIRING_CODE_ALPHABET.length) * PAIRING_CODE_ALPHABET.length;
 
 const PAIRING_TOKEN_PATTERN = new RegExp(
-  `^[${PAIRING_TOKEN_ALPHABET}]{${PAIRING_TOKEN_LENGTH}}$`,
+  `^[${PAIRING_CODE_ALPHABET}]{${PAIRING_CODE_LENGTH}}$`,
   "i",
 );
 
@@ -281,9 +288,9 @@ const make = Effect.gen(function* () {
   const changesPubSub = yield* PubSub.unbounded<BootstrapCredentialChange>();
   const generatePairingToken = Effect.gen(function* () {
     let credential = "";
-    while (credential.length < PAIRING_TOKEN_LENGTH) {
+    while (credential.length < PAIRING_CODE_LENGTH) {
       const bytes = yield* random
-        .randomBytes(PAIRING_TOKEN_LENGTH)
+        .randomBytes(PAIRING_CODE_LENGTH)
         .pipe(
           Effect.mapError(
             (cause) =>
@@ -294,8 +301,8 @@ const make = Effect.gen(function* () {
         if (byte >= PAIRING_TOKEN_REJECTION_LIMIT) {
           continue;
         }
-        credential += PAIRING_TOKEN_ALPHABET[byte % PAIRING_TOKEN_ALPHABET.length]!;
-        if (credential.length === PAIRING_TOKEN_LENGTH) {
+        credential += PAIRING_CODE_ALPHABET[byte % PAIRING_CODE_ALPHABET.length]!;
+        if (credential.length === PAIRING_CODE_LENGTH) {
           return credential;
         }
       }
@@ -402,7 +409,9 @@ const make = Effect.gen(function* () {
             new PairingCredentialRandomGenerationError({ operation: "generate-id", cause }),
         ),
       );
-    const credential = yield* generatePairingToken;
+    const token = yield* generatePairingToken;
+    const mcpApproval = input?.mcpApproval;
+    const credential = mcpApproval ? mcpApprovalCode(mcpApproval, token) : token;
     const isDevStartupToken = config.devUrl !== undefined && input?.purpose === "startup";
     const ttl =
       input?.ttl ??
@@ -416,7 +425,9 @@ const make = Effect.gen(function* () {
       ...(input?.proofKeyThumbprint ? { proofKeyThumbprint: input.proofKeyThumbprint } : {}),
       expiresAt,
     };
-    const subject = input?.subject ?? "one-time-token";
+    const subject = mcpApproval
+      ? `${AuthPairingLinks.MCP_APPROVAL_SUBJECT_PREFIX}${mcpApproval}`
+      : (input?.subject ?? "one-time-token");
     yield* pairingLinks
       .create({
         id,
@@ -440,14 +451,17 @@ const make = Effect.gen(function* () {
             }),
         ),
       );
-    yield* emitUpsert({
-      id,
-      scopes: input?.scopes ?? AuthStandardClientScopes,
-      subject: input?.subject ?? "one-time-token",
-      ...(input?.label ? { label: input.label } : {}),
-      createdAt: now,
-      expiresAt,
-    });
+    // Approval codes stay out of the pairing links and QR codes that clients show.
+    if (!mcpApproval) {
+      yield* emitUpsert({
+        id,
+        scopes: input?.scopes ?? AuthStandardClientScopes,
+        subject,
+        ...(input?.label ? { label: input.label } : {}),
+        createdAt: now,
+        expiresAt,
+      });
+    }
     return issued;
   });
 
@@ -557,10 +571,10 @@ const make = Effect.gen(function* () {
         return yield* seededResult.error;
       }
 
-      // Only credentials in the issued pairing-code format are case-insensitive.
+      // Only credentials in the issued pairing-code formats are case-insensitive.
       const pairingCredential = PAIRING_TOKEN_PATTERN.test(credential)
         ? credential.toUpperCase()
-        : credential;
+        : (parseMcpApprovalCode(credential)?.code ?? credential);
 
       // Check scopes in the UPDATE so rejected requests cannot spend one-time links.
       const consumed = yield* pairingLinks
@@ -571,13 +585,20 @@ const make = Effect.gen(function* () {
             ? { requestedScopes: input.requestedScopes }
             : {}),
           ...(input?.requiredScopes !== undefined ? { requiredScopes: input.requiredScopes } : {}),
+          ...(input?.mcpApproval
+            ? {
+                mcpApprovalSubject: `${AuthPairingLinks.MCP_APPROVAL_SUBJECT_PREFIX}${input.mcpApproval}`,
+              }
+            : {}),
           consumedAt: now,
           now,
         })
         .pipe(Effect.mapError((cause) => new BootstrapCredentialConsumeAvailableError({ cause })));
 
       if (Option.isSome(consumed)) {
-        yield* emitRemoved(consumed.value.id);
+        if (!consumed.value.subject.startsWith(AuthPairingLinks.MCP_APPROVAL_SUBJECT_PREFIX)) {
+          yield* emitRemoved(consumed.value.id);
+        }
         return {
           method: consumed.value.method,
           scopes: consumed.value.scopes,

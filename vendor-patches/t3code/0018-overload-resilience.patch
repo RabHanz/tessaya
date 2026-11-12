@@ -89,7 +89,7 @@ index ca109422c95a88ee861bd48da067a0bfc629b935..ad3f430f20b50b1d4e71c5a6e4d92e46
        : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
            launcherPid,
 diff --git a/packages/client-runtime/src/state/runtime.test.ts b/packages/client-runtime/src/state/runtime.test.ts
-index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..4d5e5292a0a9e9a0f49574de042e2f0548a04721 100644
+index 456d13109ed61bfac140dbe469a418e980ab2737..433f8cf0f9f7306c54ae657986cb0baebd7392bc 100644
 --- a/packages/client-runtime/src/state/runtime.test.ts
 +++ b/packages/client-runtime/src/state/runtime.test.ts
 @@ -1,4 +1,4 @@
@@ -97,8 +97,8 @@ index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..4d5e5292a0a9e9a0f49574de042e2f05
 +import { describe, expect, it, vi } from "@effect/vitest";
  import {
    EnvironmentId,
-   ORCHESTRATION_V2_WS_METHODS,
-@@ -97,6 +97,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+   type FilesystemBrowseEntry,
+@@ -100,6 +100,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
    execute: Effect.Effect<A, E>,
    {
      refreshTrigger,
@@ -106,7 +106,7 @@ index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..4d5e5292a0a9e9a0f49574de042e2f05
      idleTtlMs,
      persistence,
      initialState,
-@@ -105,6 +106,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+@@ -108,6 +109,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
      onAnswer,
    }: {
      readonly refreshTrigger?: Atom.Atom<unknown>;
@@ -114,7 +114,7 @@ index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..4d5e5292a0a9e9a0f49574de042e2f05
      readonly onAnswer?: QueryAnswerHandler<undefined, A>;
      readonly isFinal?: (value: A) => boolean;
      readonly idleTtlMs?: number;
-@@ -152,6 +154,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+@@ -155,6 +157,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
      ...(persistence === undefined ? {} : { persistence }),
      execute: () => execute,
      ...(refreshTrigger === undefined ? {} : { refreshTrigger: () => refreshTrigger }),
@@ -122,7 +122,7 @@ index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..4d5e5292a0a9e9a0f49574de042e2f05
      ...(idleTtlMs === undefined ? {} : { idleTtlMs }),
      ...(isFinal === undefined ? {} : { isFinal }),
      ...(onAnswer === undefined ? {} : { onAnswer }),
-@@ -1023,6 +1026,39 @@ describe("environment query lifecycle", () => {
+@@ -1163,6 +1166,39 @@ describe("environment query lifecycle", () => {
      ),
    );
  
@@ -163,10 +163,10 @@ index f79f00cdaa80eb5cb4f042cfc8b91ae21bbfef84..4d5e5292a0a9e9a0f49574de042e2f05
      Effect.scoped(
        Effect.gen(function* () {
 diff --git a/packages/client-runtime/src/state/runtime.ts b/packages/client-runtime/src/state/runtime.ts
-index b0ed950572834a596cb7e830d201a258c8edfb18..bf105bcc697ee63088f019d9cc0a6b26b3d6c6ef 100644
+index 111ae322ffa85996fd1e62eb1f5e313e92060a8b..b10528f7177535a2c84aa796d289c809308f08f4 100644
 --- a/packages/client-runtime/src/state/runtime.ts
 +++ b/packages/client-runtime/src/state/runtime.ts
-@@ -541,13 +541,17 @@ const refreshOnSignalWhileRead =
+@@ -551,13 +551,17 @@ const refreshOnSignalWhileRead =
    };
  
  const refreshEveryUntilFinal =

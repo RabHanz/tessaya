@@ -2,10 +2,10 @@ Dictation cleanup through his own Anthropic key: the secret settings field dicta
 status/save/test endpoints in the voice HTTP group, the client calls, and Settings -> APIs -> Anthropic.
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..3d24b3238ab62c1d73bce0d3c1d74466a70de99d 100644
+index 347b43dd6f44c59336f76f297c884c5fe3432345..80e2e7c2db04d80e0a6a9a911f2b81a9505f90c1 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
-@@ -1074,6 +1074,28 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1075,6 +1075,28 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
      }).pipe(Effect.provide(layerServerSettings())),
    );
  
@@ -34,15 +34,15 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..3d24b3238ab62c1d73bce0d3c1d74466
    it.effect("folds a legacy in-config enabled flag into the envelope on load", () =>
      Effect.gen(function* () {
        const serverConfig = yield* ServerConfig.ServerConfig;
-@@ -1643,6 +1665,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
-         const hub = UsageLimitSourceId.make("hub");
-         const withUsage = yield* serverSettings.updateSettings({
-           cloudSpeechCredentials: { openai: usageReference, xai: "literal-fixture" },
+@@ -1762,6 +1784,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+               enabled: true,
+             },
+           },
 +          dictationCleanupCredentials: { anthropic: "sk-ant-fixture" },
            usageLimitSources: {
              [hub]: {
                kind: "cliproxy",
-@@ -1693,6 +1716,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1812,6 +1835,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            xai: SECRET_REDACTED,
            openrouter: "",
          });
@@ -55,16 +55,16 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..3d24b3238ab62c1d73bce0d3c1d74466
 +        );
          assert.equal(legacy.sourceControlHosts.bitbucket?.accessToken, SECRET_REDACTED);
          assert.equal(legacy.usageLimitSources[hub]?.managementKey, SECRET_REDACTED);
-         assert.equal(legacy.easDeviceHosts[0]?.accessToken, SECRET_REDACTED);
-@@ -1703,6 +1733,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+         assert.equal(legacy.textGenerators[router]?.apiKey, SECRET_REDACTED);
+@@ -1823,6 +1853,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
          assert.equal(configOf(legacy, openCode)?.serverPassword, SECRET_REDACTED);
          const echoed = yield* serverSettings.updateSettings({
            cloudSpeechCredentials: legacy.cloudSpeechCredentials,
 +          dictationCleanupCredentials: legacy.dictationCleanupCredentials,
            sourceControlHosts: legacy.sourceControlHosts,
            usageLimitSources: legacy.usageLimitSources,
-           easDeviceHosts: legacy.easDeviceHosts,
-@@ -1720,6 +1751,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+           textGenerators: legacy.textGenerators,
+@@ -1842,6 +1873,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            xai: "literal-fixture",
            openrouter: "",
          });
@@ -72,7 +72,7 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..3d24b3238ab62c1d73bce0d3c1d74466
          assert.deepEqual(echoed.easDeviceHosts[0]?.accessToken, easReference);
          assert.deepEqual(echoed.simlockDeviceHosts[0]?.agentToken, simlockReference);
          assert.deepEqual(configOf(echoed, antigravity)?.apiKey, antigravityReference);
-@@ -1817,6 +1849,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1939,6 +1971,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
          "cloudSpeechCredentials.openai",
          "cloudSpeechCredentials.xai",
          "cloudSpeechCredentials.openrouter",
@@ -81,7 +81,7 @@ index 6c470d1f83f05f5a211e5c2df0d4f8599f020cb5..3d24b3238ab62c1d73bce0d3c1d74466
          "simlockDeviceHosts.[].agentToken",
          "usageLimitSources.*.managementKey",
 diff --git a/apps/server/src/settingsSecrets.ts b/apps/server/src/settingsSecrets.ts
-index ae69a61f1f5dd97c40b0e07cc2f83410dea0ae57..303da55350cb53516443fbdb0b32048e2a058c1b 100644
+index 22ea8ae882583877bee5349aa18ec42fc23a973f..39e11dda38f17e12577f3b415b783bd28eb9e47f 100644
 --- a/apps/server/src/settingsSecrets.ts
 +++ b/apps/server/src/settingsSecrets.ts
 @@ -3,6 +3,7 @@ import {
@@ -92,15 +92,15 @@ index ae69a61f1f5dd97c40b0e07cc2f83410dea0ae57..303da55350cb53516443fbdb0b32048e
    EasDeviceHostConfig,
    type ProviderInstanceConfig,
    type ServerSettings,
-@@ -47,6 +48,7 @@ const providerSecretFields = new Map([
- ]);
+@@ -49,6 +50,7 @@ const providerSecretFields = new Map([
  const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
+ const textGeneratorSecretFields = secretSettingsFields(TextGeneratorConfig);
  const voiceSecretFields = secretSettingsFields(CloudSpeechCredentials);
 +const dictationCleanupSecretFields = secretSettingsFields(DictationCleanupCredentials);
  const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
  const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
  const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
-@@ -239,6 +241,11 @@ function mapSecretFieldGroups(
+@@ -254,6 +256,11 @@ function mapSecretFieldGroups(
        voiceSecretFields,
        (provider) => `voice-cloud-${provider}`,
      ) as ServerSettings["cloudSpeechCredentials"],
@@ -113,7 +113,7 @@ index ae69a61f1f5dd97c40b0e07cc2f83410dea0ae57..303da55350cb53516443fbdb0b32048e
      sourceControlHosts,
      usageLimitSources,
 diff --git a/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts b/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts
-index 58c84365dfcefbe3f39ea8513731fd9016d07adf..58fbb6ea9c7ca6e9b916740c44596c27e8bf5cac 100644
+index 9f73b2512841ccf578b3b1e126c986bbbbcd96a3..35f5a9f6a989ffd44317c61d18d94d283564a574 100644
 --- a/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts
 +++ b/apps/server/src/sourceControl/sourceControlHostSecrets.test.ts
 @@ -177,6 +177,7 @@ it.effect("reads a collected reference again once it is invalidated", () =>
@@ -122,13 +122,13 @@ index 58c84365dfcefbe3f39ea8513731fd9016d07adf..58fbb6ea9c7ca6e9b916740c44596c27
          cloudSpeechCredentials: { openai: source("voice#key"), xai: "", openrouter: "" },
 +        dictationCleanupCredentials: { anthropic: "" },
          usageLimitSources,
+         textGenerators: {},
          easDeviceHosts,
-         simlockDeviceHosts,
 diff --git a/apps/server/src/sourceControl/sourceControlHostSecrets.ts b/apps/server/src/sourceControl/sourceControlHostSecrets.ts
-index 94eec45d7c9ea8086d72192db14673272f1d2878..90ed5186346245afdc560d56fb25668efa482959 100644
+index aaa6152e219fcaba9a8acff055eb3939408b78b1..f01d99ece1a9ba1e453a800bd06ee4b0f32609e5 100644
 --- a/apps/server/src/sourceControl/sourceControlHostSecrets.ts
 +++ b/apps/server/src/sourceControl/sourceControlHostSecrets.ts
-@@ -123,6 +123,7 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
+@@ -124,6 +124,7 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
        | "easDeviceHosts"
        | "simlockDeviceHosts"
        | "cloudSpeechCredentials"
@@ -136,8 +136,8 @@ index 94eec45d7c9ea8086d72192db14673272f1d2878..90ed5186346245afdc560d56fb25668e
      >,
      E
    >,
-@@ -133,6 +134,7 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
-       ...collectUsageLimitSecretReferences(current.usageLimitSources),
+@@ -137,6 +138,7 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
+       ),
        ...collectDeviceHostSecretReferences(current),
        ...Object.values(current.cloudSpeechCredentials).filter(isSecretReference),
 +      ...Object.values(current.dictationCleanupCredentials).filter(isSecretReference),
@@ -145,7 +145,7 @@ index 94eec45d7c9ea8086d72192db14673272f1d2878..90ed5186346245afdc560d56fb25668e
      Effect.orElseSucceed(() => undefined),
    );
 diff --git a/apps/server/src/speech/http.test.ts b/apps/server/src/speech/http.test.ts
-index f67129be60423ae9ceab2f0143ad4aec0e2fb26a..e2b744681198d4e383a5850b9f808f733937750b 100644
+index d86f77fbdbd83233f1a4c98701bcb8ba3b4f1f69..f841add1f5680ed61a48afa1416331e45165ddcc 100644
 --- a/apps/server/src/speech/http.test.ts
 +++ b/apps/server/src/speech/http.test.ts
 @@ -28,6 +28,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
@@ -164,7 +164,7 @@ index f67129be60423ae9ceab2f0143ad4aec0e2fb26a..e2b744681198d4e383a5850b9f808f73
    Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
    Layer.mock(ServerSettings.ServerSettingsService)({
      getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
-@@ -160,12 +162,21 @@ effectIt.effect(
+@@ -161,6 +163,14 @@ effectIt.effect(
            return Effect.fail(new CloudSpeechError({ provider, reason: "rejected-key" }));
          },
        });
@@ -179,14 +179,15 @@ index f67129be60423ae9ceab2f0143ad4aec0e2fb26a..e2b744681198d4e383a5850b9f808f73
        const { handler, dispose } = HttpRouter.toWebHandler(
          HttpApiBuilder.layer(HttpApi.make("environment").add(EnvironmentVoiceHttpApi)).pipe(
            Layer.provide(speechHttpApiLayer),
-           Layer.provide(principal(AuthOrchestrationOperateScope, AuthSettingsWriteScope)),
-           Layer.provide(Layer.mock(SpeechService.SpeechService)({})),
+@@ -191,6 +201,7 @@ effectIt.effect(
+             }),
+           ),
            Layer.provide(cloud),
 +          Layer.provide(cleanupApi),
            Layer.provide(dependencies),
            Layer.provide(HttpServer.layerServices),
            Layer.provide(NodeServices.layer),
-@@ -196,6 +207,23 @@ effectIt.effect(
+@@ -221,6 +232,23 @@ effectIt.effect(
            headers: { "content-type": "application/json" },
            body: JSON.stringify({ key }),
          });
@@ -211,10 +212,10 @@ index f67129be60423ae9ceab2f0143ad4aec0e2fb26a..e2b744681198d4e383a5850b9f808f73
        expect(save).toHaveBeenLastCalledWith("xai", reference);
        expect((yield* setReference(reference.reference)).status).toBe(400);
 diff --git a/apps/server/src/speech/http.ts b/apps/server/src/speech/http.ts
-index eb4a7a01b88fb27d276f028b844c109cf57a988c..76ce99ea7cfc9b0187696fe8701b225e6d9cabfc 100644
+index bf91b4c1ef3a6e0e1272bc32e2ff01e59ad158b1..6a57beeb57ee89d5e3f8ece83cd17eb15d7fc1d2 100644
 --- a/apps/server/src/speech/http.ts
 +++ b/apps/server/src/speech/http.ts
-@@ -22,6 +22,7 @@ import {
+@@ -25,6 +25,7 @@ import {
  } from "../auth/http.ts";
  import * as SpeechPostProcessing from "./postProcessing.ts";
  import * as CloudSpeech from "./CloudSpeech.ts";
@@ -222,7 +223,7 @@ index eb4a7a01b88fb27d276f028b844c109cf57a988c..76ce99ea7cfc9b0187696fe8701b225e
  import * as SpeechService from "./SpeechService.ts";
  
  const MAX_TRANSCRIBE_BODY_BYTES = SpeechService.MAX_SPEECH_BYTES + SPEECH_MAX_OPTIONS_BYTES + 4;
-@@ -59,6 +60,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+@@ -70,6 +71,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
    Effect.fnUntraced(function* (handlers) {
      const speech = yield* SpeechService.SpeechService;
      const cloud = yield* CloudSpeech.CloudSpeech;
@@ -230,7 +231,7 @@ index eb4a7a01b88fb27d276f028b844c109cf57a988c..76ce99ea7cfc9b0187696fe8701b225e
      const postProcessing = yield* SpeechPostProcessing.SpeechPostProcessing;
      const guard = Effect.fnUntraced(function* (
        endpoint: string,
-@@ -86,6 +88,35 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
+@@ -97,6 +99,35 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
              .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
          }),
        )
@@ -280,38 +281,38 @@ index 95dcee4cffb456f48d81eea52334ba3a56c16842..aa1736965ac54843d59faa8e13d98da4
    read: (prepared: PreparedConnection) => Effect.Effect<A, E, HttpClient.HttpClient>,
  ) {
 diff --git a/apps/web/src/components/settings/SecretsSettings.logic.test.ts b/apps/web/src/components/settings/SecretsSettings.logic.test.ts
-index 1480844f58baf18e27c1af23fe1cc92f1be356a3..a2238bee50ceae04edafb904e39766280c56bbba 100644
+index f4e820481cfad0af5d7de54f57bc72f48e59755e..b60031ae74f91fee0e905f5432af2b9c00188967 100644
 --- a/apps/web/src/components/settings/SecretsSettings.logic.test.ts
 +++ b/apps/web/src/components/settings/SecretsSettings.logic.test.ts
-@@ -32,6 +32,7 @@ const settings = Schema.decodeSync(ServerSettings)({
-     { kind: "eas", id: "eas", label: "EAS Simulator", accessToken: personal("op://expo") },
+@@ -41,6 +41,7 @@ const settings = Schema.decodeSync(ServerSettings)({
+     },
    ],
    cloudSpeechCredentials: { openai: personal("op://voice"), xai: "" },
 +  dictationCleanupCredentials: { anthropic: personal("op://anthropic") },
  });
  
  it.each([
-@@ -44,6 +45,7 @@ it.each([
-       "https://hub.test · Management Key",
+@@ -54,6 +55,7 @@ it.each([
        "EAS Simulator · Access Token",
+       "Simlock Pool · Agent Token",
        "Voice · OpenAI",
 +      "APIs · Anthropic",
      ],
    ],
    ["work", ["Antigravity Work · OTHER_TOKEN", "GitHub · ghe.acme.test"]],
 diff --git a/apps/web/src/components/settings/SecretsSettings.logic.ts b/apps/web/src/components/settings/SecretsSettings.logic.ts
-index a85bc9e3301435290e114da4ae570b28dcee2b50..a458076c1a854130dce051879172731f3306d6d0 100644
+index e1e3b44796d695d5696ab8ab828f6979d66b6e73..1c6bcd1a9bdff830a9b30d6795b45db7482a52e6 100644
 --- a/apps/web/src/components/settings/SecretsSettings.logic.ts
 +++ b/apps/web/src/components/settings/SecretsSettings.logic.ts
-@@ -19,6 +19,7 @@ type SecretUseSettings = Pick<
-   | "usageLimitSources"
+@@ -23,6 +23,7 @@ type SecretUseSettings = Pick<
    | "easDeviceHosts"
+   | "simlockDeviceHosts"
    | "cloudSpeechCredentials"
 +  | "dictationCleanupCredentials"
  >;
  
  interface SecretProviderUse {
-@@ -98,5 +99,9 @@ export function secretProviderUses(
+@@ -113,5 +114,9 @@ export function secretProviderUses(
          ? [{ id: `voice:${provider}`, label: `Voice · ${CLOUD_SPEECH_LABELS[provider]}` }]
          : [];
      }),
@@ -322,10 +323,18 @@ index a85bc9e3301435290e114da4ae570b28dcee2b50..a458076c1a854130dce051879172731f
    ];
  }
 diff --git a/apps/web/src/components/settings/SettingsSidebarNav.tsx b/apps/web/src/components/settings/SettingsSidebarNav.tsx
-index e175fbc439f2281811e3630cec4ec3710b66ab33..fbf491cd189610add6419927af9d6f845e037666 100644
+index c34c48694ae871a61b5b871eb7ecbf01a327ae23..bd612b6c31198c0fb54ab8febe0c11be1a3cd34b 100644
 --- a/apps/web/src/components/settings/SettingsSidebarNav.tsx
 +++ b/apps/web/src/components/settings/SettingsSidebarNav.tsx
-@@ -24,12 +24,16 @@ import {
+@@ -8,6 +8,7 @@ import {
+   type KeyboardEvent,
+ } from "react";
+ import {
++  AppWindowIcon,
+   ArchiveIcon,
+   FlaskConicalIcon,
+   BotIcon,
+@@ -24,6 +25,9 @@ import {
    KeyboardIcon,
    KeyRoundIcon,
    MicIcon,
@@ -335,25 +344,18 @@ index e175fbc439f2281811e3630cec4ec3710b66ab33..fbf491cd189610add6419927af9d6f84
    PaletteIcon,
    SearchIcon,
    ServerIcon,
-   Settings2Icon,
-   ShieldCheckIcon,
-   SmartphoneIcon,
-+  SparklesIcon,
-   WrenchIcon,
-   XIcon,
- } from "lucide-react";
-@@ -105,6 +109,10 @@ const SETTINGS_SECTION_ICONS: Readonly<
+@@ -107,6 +111,10 @@ const SETTINGS_SECTION_ICONS: Readonly<
    "/settings/connections": ServerIcon,
    "/settings/access": ShieldCheckIcon,
    "/settings/secrets": KeyRoundIcon,
 +  "/settings/apis": PlugIcon,
 +  "/settings/home": HouseIcon,
 +  "/settings/hardware": RadioReceiverIcon,
-+  "/settings/tessaya": SparklesIcon,
++  "/settings/tessaya": AppWindowIcon,
    "/settings/maintenance": WrenchIcon,
    "/settings/labs": FlaskConicalIcon,
    "/settings/about": InfoIcon,
-@@ -115,6 +123,9 @@ const SETTINGS_SECTION_ICONS: Readonly<
+@@ -117,6 +125,9 @@ const SETTINGS_SECTION_ICONS: Readonly<
  const SETTINGS_DETAIL_PAGE_PARENTS: Readonly<Record<string, SettingsPath>> = {
    "/settings/diagnostics": "/settings/maintenance",
    "/settings/open-source-licenses": "/settings/about",
@@ -364,18 +366,18 @@ index e175fbc439f2281811e3630cec4ec3710b66ab33..fbf491cd189610add6419927af9d6f84
  
  // Attached only to the highlighted result, so it runs whenever the highlight lands on a row.
 diff --git a/apps/web/src/routeTree.gen.ts b/apps/web/src/routeTree.gen.ts
-index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71d8ad45c4 100644
+index 1b93b3966b4ef79782a61b261c0e217fa7db2300..4197b389d2f1bec7a534c59fe4a5ff3c933ce469 100644
 --- a/apps/web/src/routeTree.gen.ts
 +++ b/apps/web/src/routeTree.gen.ts
-@@ -16,6 +16,7 @@ import { Route as ConnectAgentRouteImport } from './routes/connect-agent'
- import { Route as ConnectRouteImport } from './routes/connect'
+@@ -17,6 +17,7 @@ import { Route as ConnectRouteImport } from './routes/connect'
+ import { Route as ApproveAgentRouteImport } from './routes/approve-agent'
  import { Route as ChatRouteImport } from './routes/_chat'
  import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 +import { Route as TessayaPageRouteImport } from './routes/tessaya.$page'
  import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
  import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
  import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
-@@ -25,6 +26,7 @@ import { Route as ThreadsEnvironmentIdThreadIdRouteImport } from './routes/threa
+@@ -26,6 +27,7 @@ import { Route as ThreadsEnvironmentIdThreadIdRouteImport } from './routes/threa
  import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
  import { Route as ChatSettingsVoiceRouteImport } from './routes/_chat.settings.voice'
  import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
@@ -383,7 +385,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
  import { Route as ChatSettingsStorageRouteImport } from './routes/_chat.settings.storage'
  import { Route as ChatSettingsSourceControlRouteImport } from './routes/_chat.settings.source-control'
  import { Route as ChatSettingsSnapShotRouteImport } from './routes/_chat.settings.snap-shot'
-@@ -37,6 +39,8 @@ import { Route as ChatSettingsMaintenanceRouteImport } from './routes/_chat.sett
+@@ -38,6 +40,8 @@ import { Route as ChatSettingsMaintenanceRouteImport } from './routes/_chat.sett
  import { Route as ChatSettingsLabsRouteImport } from './routes/_chat.settings.labs'
  import { Route as ChatSettingsKeybindingsRouteImport } from './routes/_chat.settings.keybindings'
  import { Route as ChatSettingsIntegrationsRouteImport } from './routes/_chat.settings.integrations'
@@ -392,7 +394,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
  import { Route as ChatSettingsGeneralRouteImport } from './routes/_chat.settings.general'
  import { Route as ChatSettingsDiffsRouteImport } from './routes/_chat.settings.diffs'
  import { Route as ChatSettingsDiagnosticsRouteImport } from './routes/_chat.settings.diagnostics'
-@@ -47,6 +51,7 @@ import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings
+@@ -48,6 +52,7 @@ import { Route as ChatSettingsBrowserRouteImport } from './routes/_chat.settings
  import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
  import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
  import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
@@ -400,7 +402,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
  import { Route as ChatSettingsAccessRouteImport } from './routes/_chat.settings.access'
  import { Route as ChatSettingsAboutRouteImport } from './routes/_chat.settings.about'
  import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
-@@ -86,6 +91,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
+@@ -92,6 +97,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
    path: '/',
    getParentRoute: () => ChatRoute,
  } as any)
@@ -412,7 +414,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
  const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
    id: '/projects/$projectKey',
    path: '/projects/$projectKey',
-@@ -132,6 +142,11 @@ const ChatSettingsThreadsRoute = ChatSettingsThreadsRouteImport.update({
+@@ -138,6 +148,11 @@ const ChatSettingsThreadsRoute = ChatSettingsThreadsRouteImport.update({
    path: '/threads',
    getParentRoute: () => ChatSettingsRoute,
  } as any)
@@ -424,7 +426,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
  const ChatSettingsStorageRoute = ChatSettingsStorageRouteImport.update({
    id: '/storage',
    path: '/storage',
-@@ -196,6 +211,16 @@ const ChatSettingsIntegrationsRoute =
+@@ -202,6 +217,16 @@ const ChatSettingsIntegrationsRoute =
      path: '/integrations',
      getParentRoute: () => ChatSettingsRoute,
    } as any)
@@ -441,7 +443,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
  const ChatSettingsGeneralRoute = ChatSettingsGeneralRouteImport.update({
    id: '/general',
    path: '/general',
-@@ -246,6 +271,11 @@ const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
+@@ -252,6 +277,11 @@ const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
    path: '/appearance',
    getParentRoute: () => ChatSettingsRoute,
  } as any)
@@ -453,7 +455,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
  const ChatSettingsAccessRoute = ChatSettingsAccessRouteImport.update({
    id: '/access',
    path: '/access',
-@@ -280,10 +310,12 @@ export interface FileRoutesByFullPath {
+@@ -287,10 +317,12 @@ export interface FileRoutesByFullPath {
    '/settings': typeof ChatSettingsRouteWithChildren
    '/usage': typeof ChatUsageRoute
    '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -466,7 +468,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/settings/archived': typeof ChatSettingsArchivedRoute
    '/settings/beta': typeof ChatSettingsBetaRoute
-@@ -294,6 +326,8 @@ export interface FileRoutesByFullPath {
+@@ -301,6 +333,8 @@ export interface FileRoutesByFullPath {
    '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
    '/settings/diffs': typeof ChatSettingsDiffsRoute
    '/settings/general': typeof ChatSettingsGeneralRoute
@@ -475,7 +477,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/settings/integrations': typeof ChatSettingsIntegrationsRoute
    '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
    '/settings/labs': typeof ChatSettingsLabsRoute
-@@ -306,6 +340,7 @@ export interface FileRoutesByFullPath {
+@@ -313,6 +347,7 @@ export interface FileRoutesByFullPath {
    '/settings/snap-shot': typeof ChatSettingsSnapShotRoute
    '/settings/source-control': typeof ChatSettingsSourceControlRoute
    '/settings/storage': typeof ChatSettingsStorageRoute
@@ -483,7 +485,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/settings/threads': typeof ChatSettingsThreadsRoute
    '/settings/voice': typeof ChatSettingsVoiceRoute
    '/settings/worktrees': typeof ChatSettingsWorktreesRoute
-@@ -322,11 +357,13 @@ export interface FileRoutesByTo {
+@@ -330,11 +365,13 @@ export interface FileRoutesByTo {
    '/settings': typeof ChatSettingsRouteWithChildren
    '/usage': typeof ChatUsageRoute
    '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -497,7 +499,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/settings/archived': typeof ChatSettingsArchivedRoute
    '/settings/beta': typeof ChatSettingsBetaRoute
-@@ -337,6 +374,8 @@ export interface FileRoutesByTo {
+@@ -345,6 +382,8 @@ export interface FileRoutesByTo {
    '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
    '/settings/diffs': typeof ChatSettingsDiffsRoute
    '/settings/general': typeof ChatSettingsGeneralRoute
@@ -506,7 +508,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/settings/integrations': typeof ChatSettingsIntegrationsRoute
    '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
    '/settings/labs': typeof ChatSettingsLabsRoute
-@@ -349,6 +388,7 @@ export interface FileRoutesByTo {
+@@ -357,6 +396,7 @@ export interface FileRoutesByTo {
    '/settings/snap-shot': typeof ChatSettingsSnapShotRoute
    '/settings/source-control': typeof ChatSettingsSourceControlRoute
    '/settings/storage': typeof ChatSettingsStorageRoute
@@ -514,7 +516,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/settings/threads': typeof ChatSettingsThreadsRoute
    '/settings/voice': typeof ChatSettingsVoiceRoute
    '/settings/worktrees': typeof ChatSettingsWorktreesRoute
-@@ -367,11 +407,13 @@ export interface FileRoutesById {
+@@ -376,11 +416,13 @@ export interface FileRoutesById {
    '/_chat/settings': typeof ChatSettingsRouteWithChildren
    '/_chat/usage': typeof ChatUsageRoute
    '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -528,7 +530,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
    '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
    '/_chat/settings/beta': typeof ChatSettingsBetaRoute
-@@ -382,6 +424,8 @@ export interface FileRoutesById {
+@@ -391,6 +433,8 @@ export interface FileRoutesById {
    '/_chat/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
    '/_chat/settings/diffs': typeof ChatSettingsDiffsRoute
    '/_chat/settings/general': typeof ChatSettingsGeneralRoute
@@ -537,7 +539,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/_chat/settings/integrations': typeof ChatSettingsIntegrationsRoute
    '/_chat/settings/keybindings': typeof ChatSettingsKeybindingsRoute
    '/_chat/settings/labs': typeof ChatSettingsLabsRoute
-@@ -394,6 +438,7 @@ export interface FileRoutesById {
+@@ -403,6 +447,7 @@ export interface FileRoutesById {
    '/_chat/settings/snap-shot': typeof ChatSettingsSnapShotRoute
    '/_chat/settings/source-control': typeof ChatSettingsSourceControlRoute
    '/_chat/settings/storage': typeof ChatSettingsStorageRoute
@@ -545,7 +547,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    '/_chat/settings/threads': typeof ChatSettingsThreadsRoute
    '/_chat/settings/voice': typeof ChatSettingsVoiceRoute
    '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
-@@ -413,10 +458,12 @@ export interface FileRouteTypes {
+@@ -423,10 +468,12 @@ export interface FileRouteTypes {
      | '/settings'
      | '/usage'
      | '/projects/$projectKey'
@@ -558,7 +560,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/settings/appearance'
      | '/settings/archived'
      | '/settings/beta'
-@@ -427,6 +474,8 @@ export interface FileRouteTypes {
+@@ -437,6 +484,8 @@ export interface FileRouteTypes {
      | '/settings/diagnostics'
      | '/settings/diffs'
      | '/settings/general'
@@ -567,7 +569,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/settings/integrations'
      | '/settings/keybindings'
      | '/settings/labs'
-@@ -439,6 +488,7 @@ export interface FileRouteTypes {
+@@ -449,6 +498,7 @@ export interface FileRouteTypes {
      | '/settings/snap-shot'
      | '/settings/source-control'
      | '/settings/storage'
@@ -575,7 +577,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/settings/threads'
      | '/settings/voice'
      | '/settings/worktrees'
-@@ -455,11 +505,13 @@ export interface FileRouteTypes {
+@@ -466,11 +516,13 @@ export interface FileRouteTypes {
      | '/settings'
      | '/usage'
      | '/projects/$projectKey'
@@ -589,7 +591,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/settings/appearance'
      | '/settings/archived'
      | '/settings/beta'
-@@ -470,6 +522,8 @@ export interface FileRouteTypes {
+@@ -481,6 +533,8 @@ export interface FileRouteTypes {
      | '/settings/diagnostics'
      | '/settings/diffs'
      | '/settings/general'
@@ -598,7 +600,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/settings/integrations'
      | '/settings/keybindings'
      | '/settings/labs'
-@@ -482,6 +536,7 @@ export interface FileRouteTypes {
+@@ -493,6 +547,7 @@ export interface FileRouteTypes {
      | '/settings/snap-shot'
      | '/settings/source-control'
      | '/settings/storage'
@@ -606,7 +608,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/settings/threads'
      | '/settings/voice'
      | '/settings/worktrees'
-@@ -499,11 +554,13 @@ export interface FileRouteTypes {
+@@ -511,11 +566,13 @@ export interface FileRouteTypes {
      | '/_chat/settings'
      | '/_chat/usage'
      | '/projects/$projectKey'
@@ -620,7 +622,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/_chat/settings/appearance'
      | '/_chat/settings/archived'
      | '/_chat/settings/beta'
-@@ -514,6 +571,8 @@ export interface FileRouteTypes {
+@@ -526,6 +583,8 @@ export interface FileRouteTypes {
      | '/_chat/settings/diagnostics'
      | '/_chat/settings/diffs'
      | '/_chat/settings/general'
@@ -629,7 +631,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/_chat/settings/integrations'
      | '/_chat/settings/keybindings'
      | '/_chat/settings/labs'
-@@ -526,6 +585,7 @@ export interface FileRouteTypes {
+@@ -538,6 +597,7 @@ export interface FileRouteTypes {
      | '/_chat/settings/snap-shot'
      | '/_chat/settings/source-control'
      | '/_chat/settings/storage'
@@ -637,7 +639,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      | '/_chat/settings/threads'
      | '/_chat/settings/voice'
      | '/_chat/settings/worktrees'
-@@ -540,6 +600,7 @@ export interface RootRouteChildren {
+@@ -553,6 +613,7 @@ export interface RootRouteChildren {
    PairRoute: typeof PairRoute
    WelcomeRoute: typeof WelcomeRoute
    ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
@@ -645,7 +647,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    ThreadsEnvironmentIdThreadIdRoute: typeof ThreadsEnvironmentIdThreadIdRoute
  }
  
-@@ -594,6 +655,13 @@ declare module '@tanstack/react-router' {
+@@ -614,6 +675,13 @@ declare module '@tanstack/react-router' {
        preLoaderRoute: typeof ChatIndexRouteImport
        parentRoute: typeof ChatRoute
      }
@@ -659,7 +661,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      '/projects/$projectKey': {
        id: '/projects/$projectKey'
        path: '/projects/$projectKey'
-@@ -657,6 +725,13 @@ declare module '@tanstack/react-router' {
+@@ -677,6 +745,13 @@ declare module '@tanstack/react-router' {
        preLoaderRoute: typeof ChatSettingsThreadsRouteImport
        parentRoute: typeof ChatSettingsRoute
      }
@@ -673,7 +675,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      '/_chat/settings/storage': {
        id: '/_chat/settings/storage'
        path: '/storage'
-@@ -741,6 +816,20 @@ declare module '@tanstack/react-router' {
+@@ -761,6 +836,20 @@ declare module '@tanstack/react-router' {
        preLoaderRoute: typeof ChatSettingsIntegrationsRouteImport
        parentRoute: typeof ChatSettingsRoute
      }
@@ -694,7 +696,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      '/_chat/settings/general': {
        id: '/_chat/settings/general'
        path: '/general'
-@@ -811,6 +900,13 @@ declare module '@tanstack/react-router' {
+@@ -831,6 +920,13 @@ declare module '@tanstack/react-router' {
        preLoaderRoute: typeof ChatSettingsAppearanceRouteImport
        parentRoute: typeof ChatSettingsRoute
      }
@@ -708,7 +710,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
      '/_chat/settings/access': {
        id: '/_chat/settings/access'
        path: '/access'
-@@ -845,6 +941,7 @@ declare module '@tanstack/react-router' {
+@@ -865,6 +961,7 @@ declare module '@tanstack/react-router' {
  interface ChatSettingsRouteChildren {
    ChatSettingsAboutRoute: typeof ChatSettingsAboutRoute
    ChatSettingsAccessRoute: typeof ChatSettingsAccessRoute
@@ -716,7 +718,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
    ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
    ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
-@@ -855,6 +952,8 @@ interface ChatSettingsRouteChildren {
+@@ -875,6 +972,8 @@ interface ChatSettingsRouteChildren {
    ChatSettingsDiagnosticsRoute: typeof ChatSettingsDiagnosticsRoute
    ChatSettingsDiffsRoute: typeof ChatSettingsDiffsRoute
    ChatSettingsGeneralRoute: typeof ChatSettingsGeneralRoute
@@ -725,7 +727,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    ChatSettingsIntegrationsRoute: typeof ChatSettingsIntegrationsRoute
    ChatSettingsKeybindingsRoute: typeof ChatSettingsKeybindingsRoute
    ChatSettingsLabsRoute: typeof ChatSettingsLabsRoute
-@@ -867,6 +966,7 @@ interface ChatSettingsRouteChildren {
+@@ -887,6 +986,7 @@ interface ChatSettingsRouteChildren {
    ChatSettingsSnapShotRoute: typeof ChatSettingsSnapShotRoute
    ChatSettingsSourceControlRoute: typeof ChatSettingsSourceControlRoute
    ChatSettingsStorageRoute: typeof ChatSettingsStorageRoute
@@ -733,7 +735,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    ChatSettingsThreadsRoute: typeof ChatSettingsThreadsRoute
    ChatSettingsVoiceRoute: typeof ChatSettingsVoiceRoute
    ChatSettingsWorktreesRoute: typeof ChatSettingsWorktreesRoute
-@@ -875,6 +975,7 @@ interface ChatSettingsRouteChildren {
+@@ -895,6 +995,7 @@ interface ChatSettingsRouteChildren {
  const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
    ChatSettingsAboutRoute: ChatSettingsAboutRoute,
    ChatSettingsAccessRoute: ChatSettingsAccessRoute,
@@ -741,7 +743,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
    ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
    ChatSettingsBetaRoute: ChatSettingsBetaRoute,
-@@ -885,6 +986,8 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
+@@ -905,6 +1006,8 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
    ChatSettingsDiagnosticsRoute: ChatSettingsDiagnosticsRoute,
    ChatSettingsDiffsRoute: ChatSettingsDiffsRoute,
    ChatSettingsGeneralRoute: ChatSettingsGeneralRoute,
@@ -750,7 +752,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    ChatSettingsIntegrationsRoute: ChatSettingsIntegrationsRoute,
    ChatSettingsKeybindingsRoute: ChatSettingsKeybindingsRoute,
    ChatSettingsLabsRoute: ChatSettingsLabsRoute,
-@@ -897,6 +1000,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
+@@ -917,6 +1020,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
    ChatSettingsSnapShotRoute: ChatSettingsSnapShotRoute,
    ChatSettingsSourceControlRoute: ChatSettingsSourceControlRoute,
    ChatSettingsStorageRoute: ChatSettingsStorageRoute,
@@ -758,7 +760,7 @@ index cbcebdd67909e3b6f7d701ba4480748f0d51ad9d..b5ef28a642c59aa0d36162a426730f71
    ChatSettingsThreadsRoute: ChatSettingsThreadsRoute,
    ChatSettingsVoiceRoute: ChatSettingsVoiceRoute,
    ChatSettingsWorktreesRoute: ChatSettingsWorktreesRoute,
-@@ -936,6 +1040,7 @@ const rootRouteChildren: RootRouteChildren = {
+@@ -957,6 +1061,7 @@ const rootRouteChildren: RootRouteChildren = {
    PairRoute: PairRoute,
    WelcomeRoute: WelcomeRoute,
    ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
@@ -784,7 +786,7 @@ index 7758c9ca559191b0a2ba6f0b14349f34af9803b2..d78d7f25fa874ca8a54443d10fab7c40
          // Send every axis so retain middleware recognizes "all" as an explicit target.
          void navigate({
 diff --git a/packages/client-runtime/src/voice-input/environment.ts b/packages/client-runtime/src/voice-input/environment.ts
-index 52fa5a0d1fe5b70ebe920bc4178fb3db26008201..cf7ab233cbe9a822f70258422041054c58fec4a2 100644
+index a8ea541f75133c4220e8c0cf3778be553a3de71a..6c01074e485e3a01163ce6f1bfdd44b98983659c 100644
 --- a/packages/client-runtime/src/voice-input/environment.ts
 +++ b/packages/client-runtime/src/voice-input/environment.ts
 @@ -124,6 +124,37 @@ export const setCloudSpeechKey = (
@@ -826,7 +828,7 @@ index 52fa5a0d1fe5b70ebe920bc4178fb3db26008201..cf7ab233cbe9a822f70258422041054c
    prepared: PreparedConnection,
    provider: CloudSpeechProvider,
 diff --git a/packages/client-runtime/src/voice-input/index.ts b/packages/client-runtime/src/voice-input/index.ts
-index 5843267800f67c0260db23fde967f6e787b48e5e..9fb86277a8dd31a8bc1e0492f0c8670111666177 100644
+index 5283d64eb0dc315ba9b552fab62488463a196990..9c9f4e91bd659e2f943ab391786316dfa060b50e 100644
 --- a/packages/client-runtime/src/voice-input/index.ts
 +++ b/packages/client-runtime/src/voice-input/index.ts
 @@ -18,6 +18,9 @@ export {
@@ -840,7 +842,7 @@ index 5843267800f67c0260db23fde967f6e787b48e5e..9fb86277a8dd31a8bc1e0492f0c86701
    getEnvironmentSpeechStatus,
    getEnvironmentSpeechStreamUrl,
 diff --git a/packages/contracts/src/environmentHttp.ts b/packages/contracts/src/environmentHttp.ts
-index 46dfcde197ac275a22d5708ccf0dbf2fd786c1f1..9b319204f1a639e069e3deec28de8228ee91b236 100644
+index 4bbae77fb922db2eb8b449764a5939066783aa11..fac7aded0aeb074fae4766a73671431e5904a82b 100644
 --- a/packages/contracts/src/environmentHttp.ts
 +++ b/packages/contracts/src/environmentHttp.ts
 @@ -55,6 +55,8 @@ import {
@@ -850,9 +852,9 @@ index 46dfcde197ac275a22d5708ccf0dbf2fd786c1f1..9b319204f1a639e069e3deec28de8228
 +  DictationCleanupKeyTest,
 +  DictationCleanupKeys,
    EnvironmentSpeechAccelerationRequest,
+   EnvironmentSpeechModelLinkRequest,
    EnvironmentSpeechModelRequest,
-   EnvironmentSpeechModels,
-@@ -802,6 +804,32 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
+@@ -811,6 +813,32 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
        error: EnvironmentScopedOperationErrors,
      }).middleware(EnvironmentAuthenticatedAuth),
    )
@@ -886,10 +888,10 @@ index 46dfcde197ac275a22d5708ccf0dbf2fd786c1f1..9b319204f1a639e069e3deec28de8228
      // Public catalog; carries no credential and no audio.
      HttpApiEndpoint.get("cloudModels", "/api/voice/cloud/openrouter/models", {
 diff --git a/packages/contracts/src/speech.ts b/packages/contracts/src/speech.ts
-index e6e4d3ddbc51eb3cc6d3ad305c61fe44cd9bbae2..79aca128d6f691056655ace7fc7a88096bf32f64 100644
+index ff3362f67fc0c922d16c4136324b8c0de6fe2f05..258c525eed5daad6d49601e7dd6e07e2444d36b8 100644
 --- a/packages/contracts/src/speech.ts
 +++ b/packages/contracts/src/speech.ts
-@@ -280,3 +280,24 @@ export const SpeechStreamEvent = Schema.Union([
+@@ -355,3 +355,24 @@ export const SpeechStreamEvent = Schema.Union([
    Schema.Struct({ type: Schema.Literal("error"), message: Schema.String }),
  ]);
  export type SpeechStreamEvent = typeof SpeechStreamEvent.Type;

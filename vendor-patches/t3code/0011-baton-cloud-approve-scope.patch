@@ -1,7 +1,7 @@
 Approving a cloud task is its own permission (baton:cloud-approve): not in the standard client scopes, held by the desktop app session and by a client paired for it.
 
 diff --git a/apps/server/src/auth/McpOAuth.test.ts b/apps/server/src/auth/McpOAuth.test.ts
-index d2d6c1d3b9967189f8883b6d88f01431d4272a0b..2fb19054c57fabafc499f28d8746f1e0b4249cca 100644
+index c7cf59db93863c4464e888bbb4b66de895e71e23..1aebf9aabb4633f1f254a13fa7a371a112756ea1 100644
 --- a/apps/server/src/auth/McpOAuth.test.ts
 +++ b/apps/server/src/auth/McpOAuth.test.ts
 @@ -1,7 +1,10 @@
@@ -14,8 +14,8 @@ index d2d6c1d3b9967189f8883b6d88f01431d4272a0b..2fb19054c57fabafc499f28d8746f1e0
 +  AuthTokenExchangeGrantType,
    AuthStandardClientScopes,
    type AuthCreatePairingCredentialInput,
-   EnvironmentHttpApi,
-@@ -593,3 +596,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
+   type EnvironmentCloudLinkStateResult,
+@@ -805,3 +808,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
    expect(matches("https://bot.example/cb", "https://bot.example/cb?x=1")).toBe(false);
    expect(matches("https://bot.example/cb", "https://evil.example/cb")).toBe(false);
  });
@@ -42,7 +42,7 @@ index d2d6c1d3b9967189f8883b6d88f01431d4272a0b..2fb19054c57fabafc499f28d8746f1e0
 +  ),
 +);
 diff --git a/apps/server/src/auth/PairingGrantStore.test.ts b/apps/server/src/auth/PairingGrantStore.test.ts
-index baa7f388f2bd4958aa179cc0984920b2e266df22..b5cbbecca0e2126d1c552115b3850856c408f122 100644
+index 5184beb09680728f6a28aee95cd95d9e124a21ad..3d541da989a67bf14618ea14f3ec7fb06d9a8fed 100644
 --- a/apps/server/src/auth/PairingGrantStore.test.ts
 +++ b/apps/server/src/auth/PairingGrantStore.test.ts
 @@ -1,4 +1,4 @@
@@ -69,7 +69,7 @@ index baa7f388f2bd4958aa179cc0984920b2e266df22..b5cbbecca0e2126d1c552115b3850856
      }).pipe(
        Effect.provide(
 diff --git a/apps/server/src/auth/PairingGrantStore.ts b/apps/server/src/auth/PairingGrantStore.ts
-index add1c7990f13c7d123ed0975004a8f24dfaac596..362cbd2deaece592488ab0e4728da2545233bf4f 100644
+index bf9eccee8c51ba5aa4718808f4ac9396267cd725..4567f2d1ae33ae6294adeefc4623cbc966546bad 100644
 --- a/apps/server/src/auth/PairingGrantStore.ts
 +++ b/apps/server/src/auth/PairingGrantStore.ts
 @@ -1,4 +1,7 @@
@@ -79,8 +79,8 @@ index add1c7990f13c7d123ed0975004a8f24dfaac596..362cbd2deaece592488ab0e4728da254
 +  AuthBatonMemorySyncScope,
    AuthStandardClientScopes,
    type AuthEnvironmentScope,
-   type AuthPairingLink,
-@@ -250,6 +253,14 @@ type ConsumeResult =
+   type AuthMcpClientAccess,
+@@ -259,6 +262,14 @@ type ConsumeResult =
      };
  
  const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
@@ -94,8 +94,8 @@ index add1c7990f13c7d123ed0975004a8f24dfaac596..362cbd2deaece592488ab0e4728da254
 +] as const;
  const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
  const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
- const PAIRING_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-@@ -325,7 +336,7 @@ const make = Effect.gen(function* () {
+ const PAIRING_TOKEN_REJECTION_LIMIT =
+@@ -332,7 +343,7 @@ const make = Effect.gen(function* () {
      const now = yield* DateTime.now;
      yield* seedGrant(config.desktopBootstrapToken, {
        method: "desktop-bootstrap",
@@ -104,7 +104,7 @@ index add1c7990f13c7d123ed0975004a8f24dfaac596..362cbd2deaece592488ab0e4728da254
        subject: "desktop-bootstrap",
        expiresAt: DateTime.add(now, {
          milliseconds: Duration.toMillis(DESKTOP_BOOTSTRAP_TTL_HOURS),
-@@ -446,7 +457,7 @@ const make = Effect.gen(function* () {
+@@ -460,7 +471,7 @@ const make = Effect.gen(function* () {
        if (yield* consumeRotatingDesktopToken(credential, now.epochMilliseconds)) {
          return {
            method: "desktop-bootstrap",
@@ -141,10 +141,10 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..0356d7a985d24e5f4732167c3e8089b5
 +    ),
    );
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
-index 79276f3851504c8fbb8eed480f6e181de68c3f32..4755579ccc5553ace46f286a75ec1849fcbf0e43 100644
+index d8da76a4b6906168fa21be08e4e03cb51915a099..c2ff1fe4c71426a04012490976b8f2ee93e43663 100644
 --- a/packages/client-runtime/src/state/commandPermissions.test.ts
 +++ b/packages/client-runtime/src/state/commandPermissions.test.ts
-@@ -131,6 +131,42 @@ describe("command permissions", () => {
+@@ -132,6 +132,42 @@ describe("command permissions", () => {
      ),
    );
  
@@ -297,7 +297,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bf96f15249e405cb4d9754265640f5fef2dcb3ba 100644
+index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..1b927193873f38354f3d7da79b73aa5f8e0f4c8e 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
 @@ -1,4 +1,5 @@
@@ -438,7 +438,7 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bf96f15249e405cb4d9754265640f5fe
    };
  }
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index caeee25295c6f1a3dc860e4736687c51cb55441f..89894710bd777ef8cd265320dd28ff008db8d28f 100644
+index 8b4a7d48d279cd309b96d8ffc17d862fcf590ef2..4918212f76752d25955e0cb567ae379dac8fdf70 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
@@ -446,10 +446,10 @@ index caeee25295c6f1a3dc860e4736687c51cb55441f..89894710bd777ef8cd265320dd28ff00
  import {
    AuthAccessWriteScope,
 +  AuthBatonCloudApproveScope,
+   AuthEnvironmentMaintainScope,
    AuthOrchestrationOperateScope,
    AuthOrchestrationReadScope,
-   AuthPreviewOperateScope,
-@@ -78,6 +79,9 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
+@@ -83,6 +84,9 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
  const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
  const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
  
@@ -459,7 +459,7 @@ index caeee25295c6f1a3dc860e4736687c51cb55441f..89894710bd777ef8cd265320dd28ff00
  export function clientRpcRequiredScopes(
    method: string,
    input: unknown,
-@@ -95,6 +99,15 @@ export function clientRpcRequiredScopes(
+@@ -100,6 +104,15 @@ export function clientRpcRequiredScopes(
      )
        return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
    }

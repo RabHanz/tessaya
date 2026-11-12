@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
-index 8045fb3dd3d4e8fd8036d6b949fc31169810d03a..e454b5d63b051c453f9a42a093f4b94c794741dc 100644
+index 717e71362a593a085cb8869b54b9a09c270ed9ff..baeb7d47fa17c240ee3181414af86f1292158231 100644
 --- a/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
 @@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,10 +10,10 @@ index 8045fb3dd3d4e8fd8036d6b949fc31169810d03a..e454b5d63b051c453f9a42a093f4b94c
  import { TerminalAppearanceSection } from "./appearance/sections/TerminalAppearanceSection";
  import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSection";
  import { ThemeAppearanceSection } from "./appearance/sections/ThemeAppearanceSection";
-@@ -28,6 +29,7 @@ export function SettingsAppearanceRouteScreen() {
-         <TextAppearanceSection />
+@@ -30,6 +31,7 @@ export function SettingsAppearanceRouteScreen() {
          <TerminalAppearanceSection />
          <CodeAppearanceSection />
+         <ToolCallsAppearanceSection />
 +        <DictationAppearanceSection />
        </ScrollView>
      </SettingsScreen>

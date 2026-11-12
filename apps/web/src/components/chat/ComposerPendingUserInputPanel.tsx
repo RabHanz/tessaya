@@ -207,7 +207,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           isCollapsed ? "Show the question and its options" : "Hide the question and its options"
         }
         data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
-        className="px-4 pt-1.5"
+        className="px-4 py-1.5"
       >
         <ComposerBanner.Content>
           <span
@@ -264,7 +264,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               text={activeQuestion.question}
               cwd={cwd}
               threadRef={threadRef}
-              className={cn("pt-2 text-foreground/85", questionTextAlign)}
+              className={cn("pt-0.5 text-foreground/85", questionTextAlign)}
             />
             {details ? (
               <details className="mt-1 text-secondary-label text-xs">
@@ -295,7 +295,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   <>
                     <span className="pointer-events-none flex h-5 shrink-0 items-center">
                       {activeQuestion.multiSelect ? (
-                        <CheckboxMark checked={isSelected} />
+                        <CheckboxMark checked={isSelected} variant="contrast" />
                       ) : (
                         <OptionRadio checked={isSelected} />
                       )}
@@ -350,7 +350,7 @@ function OptionRadio({ checked }: { checked: boolean }) {
     <span
       aria-hidden
       className={cn(
-        "relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-full border border-input bg-background not-dark:bg-clip-padding sm:size-4 dark:bg-input/32",
+        "relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-full border border-foreground/55 bg-background not-dark:bg-clip-padding sm:size-4 dark:bg-input/32",
         checked ? "shadow-none" : "shadow-xs/5",
       )}
     >

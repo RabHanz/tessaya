@@ -67,10 +67,10 @@ index 6d63287f4eb2ab10b62534f607353c54e2e71d5c..62e40b7ce683f0b1295824ce93253de9
        ),
      ),
 diff --git a/apps/server/src/mcp/threadAccess.ts b/apps/server/src/mcp/threadAccess.ts
-index 4bf90f0182fc472a8c3f355221bd5b5fcc619ff1..8c234038ab68d0cf569c4ccd9c35ebd485cf1a8c 100644
+index 48d972c5be2fd3f036b917bb10f7d41ba7a806a7..79c3cfef56985affc25cd985b698de84b9768142 100644
 --- a/apps/server/src/mcp/threadAccess.ts
 +++ b/apps/server/src/mcp/threadAccess.ts
-@@ -138,17 +138,29 @@ export const isLiveCallerShell = (
+@@ -139,17 +139,29 @@ export const isLiveCallerShell = (
        false));
  
  /** Thread callers need a live run or its background subagent in an unarchived thread. OAuth clients rely on their session and ceiling. */
@@ -112,18 +112,18 @@ index 4bf90f0182fc472a8c3f355221bd5b5fcc619ff1..8c234038ab68d0cf569c4ccd9c35ebd4
  export const assertFullAccess = (context: Caller, message: string) =>
    context.limits.runtimeMode === "full-access" && context.limits.interactionMode === "default"
 diff --git a/apps/server/src/orchestration-v2/EffectOutbox.ts b/apps/server/src/orchestration-v2/EffectOutbox.ts
-index 92e1e01ad43f2a4a4b43b0a3dad7038d75a9725a..935cac5d07fbe9e8476cdb5baf52d1ef606cf3b0 100644
+index 58aa3ea97489c77877bfbb72b805b8431f5840b4..10012abbf23683a139733cb0b8fbbfabb5370691 100644
 --- a/apps/server/src/orchestration-v2/EffectOutbox.ts
 +++ b/apps/server/src/orchestration-v2/EffectOutbox.ts
-@@ -3,6 +3,7 @@ import {
-   CheckpointScopeId,
+@@ -4,6 +4,7 @@ import {
    CommandId,
    MessageId,
+   ModelSelection,
 +  ProviderInstanceId,
    NodeId,
    ProviderSessionId,
    RunAttemptId,
-@@ -40,6 +41,12 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
+@@ -41,6 +42,12 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
      detail: Schema.optional(Schema.String),
      revokeMcpCredential: Schema.optional(Schema.Boolean),
    }),
@@ -134,21 +134,21 @@ index 92e1e01ad43f2a4a4b43b0a3dad7038d75a9725a..935cac5d07fbe9e8476cdb5baf52d1ef
 +    targetInstanceId: ProviderInstanceId,
 +  }),
    Schema.Struct({
-     type: Schema.Literal("provider-turn.start"),
-     runId: RunId,
-@@ -136,6 +143,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
- ] as const satisfies ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
+     type: Schema.Literal("provider-session.apply-model-selection"),
+     providerSessionId: ProviderSessionId,
+@@ -145,6 +152,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
  
  export const PROCESS_BOUND_EFFECT_TYPES = [
+   "provider-session.apply-model-selection",
 +  "provider-session.switch-account",
    "provider-turn.start",
    "provider-turn.interrupt",
    "provider-turn.steer",
 diff --git a/apps/server/src/orchestration-v2/EffectWorker.test.ts b/apps/server/src/orchestration-v2/EffectWorker.test.ts
-index 2329f2aa20cf02e5691a77501014c7fabeb2943e..83f05dde02dc543fffe598e6feb252aeb88a68f7 100644
+index cc43601543eec9d7b7eedac21fb1049fe5e655ae..9e7e4865617a595888995e9cf115bbe7c0f25e2a 100644
 --- a/apps/server/src/orchestration-v2/EffectWorker.test.ts
 +++ b/apps/server/src/orchestration-v2/EffectWorker.test.ts
-@@ -107,6 +107,7 @@ function layerExecutorFor(input: {
+@@ -109,6 +109,7 @@ function layerExecutorFor(input: {
          open: () => Effect.die("unused open"),
          get: () => Effect.succeedNone,
          isLive: () => Effect.succeed(false),
@@ -157,10 +157,10 @@ index 2329f2aa20cf02e5691a77501014c7fabeb2943e..83f05dde02dc543fffe598e6feb252ae
          closeInstance: () => Effect.void,
          release: () => record("release"),
 diff --git a/apps/server/src/orchestration-v2/EffectWorker.ts b/apps/server/src/orchestration-v2/EffectWorker.ts
-index c5b5ea9b383a943bfe97ef1170791cd31473d09f..1ce0bb5d3d06e5353c3853b302d310b0d42d023e 100644
+index 0013735f3b4f3e474ea8b2d3efb4e8b5c761cf11..e297f3a3cb14c0746031bfdf5ba9340f12a6af7f 100644
 --- a/apps/server/src/orchestration-v2/EffectWorker.ts
 +++ b/apps/server/src/orchestration-v2/EffectWorker.ts
-@@ -138,6 +138,15 @@ export const layerExecutor: Layer.Layer<
+@@ -156,6 +156,15 @@ export const layerExecutor: Layer.Layer<
                      }),
                  ),
                );
@@ -176,11 +176,23 @@ index c5b5ea9b383a943bfe97ef1170791cd31473d09f..1ce0bb5d3d06e5353c3853b302d310b0
            case "provider-turn.start":
              return providerTurnStart
                .start({ threadId: effect.threadId, runId: effect.request.runId, willRetry })
+diff --git a/apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.test.ts b/apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.test.ts
+index 0197a10fae2e2320c8000c5de7937a4ab1076e5f..8feedfd7f54588172327204a0a2559ff928a0426 100644
+--- a/apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.test.ts
++++ b/apps/server/src/orchestration-v2/ProviderRuntimeRecoveryService.test.ts
+@@ -772,6 +772,7 @@ it.effect(
+       assert.equal(summary.retiredEffects, 2);
+       assert.deepEqual(committedInput?.cancelUnsettledEffects?.effectTypes, [
+         "provider-session.apply-model-selection",
++        "provider-session.switch-account",
+         "provider-turn.start",
+         "provider-turn.interrupt",
+         "provider-turn.steer",
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
-index 55e2a9e50e3ef329a36c2d2c07e38a9a6a8e094e..d274ecfa2a0bfb878eace80ee42dce549e2a053f 100644
+index 25daa45a847fa5627e5179498eadbd16f415e694..6eeca0b910c256537a22409d968b0698c7ede6dd 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
-@@ -287,6 +287,7 @@ it.effect(
+@@ -289,6 +289,7 @@ it.effect(
                providerSessionId === oldSessionId ? Option.some(runtime) : Option.none(),
              ),
            isLive: (providerSessionId) => Effect.succeed(providerSessionId === oldSessionId),
@@ -189,7 +201,7 @@ index 55e2a9e50e3ef329a36c2d2c07e38a9a6a8e094e..d274ecfa2a0bfb878eace80ee42dce54
            closeInstance: () => Effect.void,
            release: () => Effect.void,
 diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
-index e94740e34712f2a98c66aef8612b8786db2c7d28..1a3d2f281789a3ed1f5901d252eadb8d5e545fa1 100644
+index 7ae8c0c43f003d64ae2e7c69a9793904d98d7c45..fff4fad70729f34536d3069085a3bda0f8828bfe 100644
 --- a/packages/provider-core/src/server/ProviderAdapter.ts
 +++ b/packages/provider-core/src/server/ProviderAdapter.ts
 @@ -37,7 +37,10 @@ import {
@@ -203,7 +215,7 @@ index e94740e34712f2a98c66aef8612b8786db2c7d28..1a3d2f281789a3ed1f5901d252eadb8d
  import type * as Stream from "effect/Stream";
  
  import type {
-@@ -604,6 +607,13 @@ export type ProviderAdapterV2SubagentOutcome = {
+@@ -646,6 +649,13 @@ export type ProviderAdapterV2SubagentOutcome = {
    readonly result: OrchestrationV2Subagent["result"];
  };
  
@@ -217,7 +229,7 @@ index e94740e34712f2a98c66aef8612b8786db2c7d28..1a3d2f281789a3ed1f5901d252eadb8d
  export interface ProviderAdapterV2SessionRuntime {
    readonly instanceId: ProviderInstanceId;
    readonly driver: ProviderDriverKind;
-@@ -620,6 +630,8 @@ export interface ProviderAdapterV2SessionRuntime {
+@@ -662,6 +672,8 @@ export interface ProviderAdapterV2SessionRuntime {
      providerThread: OrchestrationV2ProviderThread,
      options?: { readonly includeSubagents?: boolean },
    ) => Effect.Effect<boolean>;
@@ -226,7 +238,7 @@ index e94740e34712f2a98c66aef8612b8786db2c7d28..1a3d2f281789a3ed1f5901d252eadb8d
    /** Set only if all session background tasks end with its process; otherwise threads must keep Waiting. */
    readonly backgroundTasksEndWithProcess?: true;
    readonly getModelContextWindow?: (
-@@ -711,5 +723,7 @@ export class ProviderAdapterV2 extends Context.Service<
+@@ -760,5 +772,7 @@ export class ProviderAdapterV2 extends Context.Service<
      readonly openSession: (
        input: ProviderAdapterV2OpenSessionInput,
      ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;

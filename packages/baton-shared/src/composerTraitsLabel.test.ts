@@ -1,5 +1,4 @@
 import { buildTraitsTriggerDisplay } from "@t3tools/client-runtime/model-traits";
-import { ProviderDriverKind } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 // Web and mobile both label the composer with this; mobile builds before 2026-11-06 said "Ultracode Off".
@@ -10,7 +9,6 @@ describe("composer traits label", () => {
     [true, "Medium · Ultracode"],
   ])("names Ultracode only when it is on (%s)", (currentValue, label) => {
     const display = buildTraitsTriggerDisplay({
-      provider: ProviderDriverKind.make("claudeAgent"),
       descriptors: [
         {
           id: "effort",
