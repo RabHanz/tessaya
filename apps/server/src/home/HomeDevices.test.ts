@@ -314,3 +314,84 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect(
+  "runs a button's Tessaya action only when the R1 did nothing with the press, and round-trips a rebind",
+  () => {
+    const { sent, scenes, topics, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      sent.length = 0;
+      const press = (key: string, act: string, did: string, ms = 0) =>
+        devices.receive(`${root}/event/key`, JSON.stringify({ key, act, ms, did }));
+      const view = () => devices.overview.pipe(Effect.map((o) => o.devices[0]!));
+
+      // S2 double, which he has not changed: the next persona, announced by the room loop.
+      yield* press("s2", "double", "none");
+      assert.deepStrictEqual(sent, [{ topic: "voice/persona", payload: {} }]);
+      // Presses the R1 acted on itself are left alone.
+      sent.length = 0;
+      yield* press("s1", "long", "muted", 3000);
+      yield* press("s2", "tap", "start");
+      assert.lengthOf(sent, 0);
+
+      // S1 long to a prompt: the R1 is told to do nothing there, and its ack is kept.
+      yield* devices.command(
+        ID,
+        { op: "keyBind", slot: "s1.long", bind: { kind: "prompt", text: "Read me my day." } },
+        me,
+      );
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/key/bind", payload: { key: "s1", act: "long", do: "none" } },
+      ]);
+      yield* devices.receive(
+        `${root}/state/key/bind`,
+        '{"s1":{"double":"none","long":"none"},"s2":{"double":"none"},"s3":{"double":"vol_up","long":"sleep"}}',
+      );
+      const keys = (yield* view()).keys;
+      assert.deepStrictEqual(
+        [keys["s1.long"], keys["s3.double"], keys["s2.double"]],
+        [
+          { kind: "prompt", text: "Read me my day." },
+          { kind: "device", do: "vol_up" },
+          { kind: "persona" },
+        ],
+      );
+      sent.length = 0;
+      yield* press("s1", "long", "none", 3000);
+      assert.deepStrictEqual(sent, [{ topic: "voice/ask", payload: { text: "Read me my day." } }]);
+
+      // A hold runs on release, and not when it was held on into a long press.
+      yield* devices.command(
+        ID,
+        { op: "keyBind", slot: "s3.hold", bind: { kind: "home", entityId: "light.desk" } },
+        me,
+      );
+      sent.length = 0;
+      yield* press("s3", "hold", "none");
+      yield* press("s3", "hold_end", "none", 3500);
+      assert.lengthOf(scenes, 0);
+      yield* press("s3", "hold_end", "none", 800);
+      assert.deepStrictEqual(scenes, [{ entity_id: "light.desk" }]);
+      assert.deepStrictEqual(topics(), ["voice/say"]);
+
+      // S2 double back to nothing; a refused rebind is shown; a fixed press cannot be rebound.
+      yield* devices.command(
+        ID,
+        { op: "keyBind", slot: "s2.double", bind: { kind: "device", do: "none" } },
+        me,
+      );
+      sent.length = 0;
+      yield* press("s2", "double", "none");
+      assert.lengthOf(sent, 0);
+      yield* devices.receive(`${root}/state/key/bind`, '{"ok":false}');
+      assert.include((yield* view()).keyNote, "refused");
+      const fixed = yield* devices
+        .command(ID, { op: "keyBind", slot: "s2.tap", bind: { kind: "mute" } }, me)
+        .pipe(Effect.flip);
+      assert.include(fixed.why, "cannot be changed");
+    }).pipe(Effect.provide(layer));
+  },
+);

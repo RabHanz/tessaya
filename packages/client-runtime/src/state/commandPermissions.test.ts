@@ -131,6 +131,42 @@ describe("command permissions", () => {
     ),
   );
 
+  it.effect("lets a read-only grant list an R1 but not rebind its buttons", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const devices = createCommandPermissions(runtime, "baton.devices.call");
+        const list = { kind: "read", op: "list", args: {} };
+        const keyBind = { kind: "act", op: "keyBind", args: {} };
+        registry.set(
+          sessions(env),
+          AsyncResult.success({
+            ...grant(false),
+            scopes: [AuthOrchestrationReadScope],
+            permissions: [AuthOrchestrationReadScope],
+          }),
+        );
+        expect(registry.get(devices.permissionAtom(env, list))).toBe(true);
+        yield* devices.authorize(registry, env, list);
+        expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(false);
+        expect((yield* devices.authorize(registry, env, keyBind).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+        registry.set(
+          sessions(env),
+          AsyncResult.success({
+            ...grant(true),
+            scopes: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
+            permissions: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
+          }),
+        );
+        expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(true);
+        yield* devices.authorize(registry, env, keyBind);
+        expect(registry.get(devices.permissionAtom(other, keyBind))).toBe(false);
+      }),
+    ),
+  );
+
   it.effect("requires the destination provider grant to remove an incomplete connection", () =>
     Effect.scoped(
       Effect.gen(function* () {

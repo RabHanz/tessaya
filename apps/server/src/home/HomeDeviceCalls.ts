@@ -10,8 +10,11 @@ import {
   BATON_DEVICES_READ_OPS,
   DEVICE_TRANSPORTS,
   DeviceTagAction,
+  R1_KEY_SLOTS,
+  R1KeyBinding,
   R1_LEDS,
   R1_MOODS,
+  type R1KeySlot,
   type BatonDevicesCallInput,
   type BatonDevicesCallResult,
 } from "@t3tools/baton-contracts";
@@ -79,6 +82,14 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   ),
   earcons: op(Schema.Struct({ id: Id, on: Schema.Boolean }), (a, devices, by) =>
     devices.command(a.id, { op: "earcons", on: a.on }, by),
+  ),
+  keyBind: op(
+    Schema.Struct({
+      id: Id,
+      slot: Schema.Literals(Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>),
+      bind: R1KeyBinding,
+    }),
+    (a, devices, by) => devices.command(a.id, { op: "keyBind", slot: a.slot, bind: a.bind }, by),
   ),
   transport: op(
     Schema.Struct({ id: Id, transport: Schema.Literals(DEVICE_TRANSPORTS) }),

@@ -137,6 +137,8 @@ const servicesInner = IntentService.layer.pipe(
       HomeDevices.layer.pipe(
         Layer.provide(HomeDevices.brokerLayer),
         Layer.provide(homeLayer),
+        // A button bound to a thread continues or stops it through the engine's own door.
+        Layer.provide(BatonEngine.layer),
         Layer.provide(BatonPhoneInbox.layer),
       ),
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session

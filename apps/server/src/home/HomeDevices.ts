@@ -9,7 +9,13 @@ import * as NodeCrypto from "node:crypto";
 import {
   DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
+  R1_DEVICE_DEFAULTS,
+  R1_DEVICE_DOS,
+  R1_KEY_SLOTS,
   R1_MOODS,
+  type R1DeviceDo,
+  type R1KeyBinding,
+  type R1KeySlot,
   type DeviceSpeaker,
   type DeviceSpeakerAction,
   type DeviceSpeakerOutput,
@@ -21,6 +27,7 @@ import {
   type DevicesOverview,
 } from "@t3tools/baton-contracts";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { ThreadId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -30,6 +37,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { BatonEngine } from "../baton/BatonEngine.ts";
 import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
@@ -53,6 +61,7 @@ export type DeviceCommand =
   | { readonly op: "say"; readonly text: string }
   | { readonly op: "mute"; readonly muted: boolean }
   | { readonly op: "earcons"; readonly on: boolean }
+  | { readonly op: "keyBind"; readonly slot: R1KeySlot; readonly bind: R1KeyBinding }
   | { readonly op: "transport"; readonly transport: DeviceTransport }
   | { readonly op: "transportConfirm" }
   | { readonly op: "transportRevert" }
@@ -110,6 +119,8 @@ export interface Heard {
   ota: { phase: string; line: string } | null;
   camera: string | null;
   lastTag: { uid: string; at: number } | null;
+  /** The R1 answered the last `cmd/key/bind` with `{"ok":false}`. */
+  keyRefused: boolean;
   /** Set once the firmware's state/caps says it drives a Bluetooth speaker; the speaker controls stay off until then. */
   speaker: {
     state: DeviceSpeaker["state"];
@@ -134,6 +145,7 @@ const blank = (): Heard => ({
   ota: null,
   camera: null,
   lastTag: null,
+  keyRefused: false,
   speaker: null,
   samples: {},
   log: [],
@@ -319,7 +331,37 @@ interface Saved {
   /** R1s with her listening and closing sounds off (the room loop plays them by default). */
   earconsOff: Record<string, boolean>;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
+  /** Per R1: the device's bindings from its last ack, and Tessaya's (null: nothing, overriding the default). */
+  keys: Record<
+    string,
+    {
+      device: Partial<Record<R1KeySlot, R1DeviceDo>>;
+      tessaya: Partial<Record<R1KeySlot, R1KeyBinding | null>>;
+    }
+  >;
 }
+
+/** S2 double switches to the next persona until he picks something else. */
+const TESSAYA_DEFAULTS: Partial<Record<R1KeySlot, R1KeyBinding>> = {
+  "s2.double": { kind: "persona" },
+};
+/** The firmware's long press; a hold released before it is a hold, after it was the long press. */
+const LONG_PRESS_MS = 3000;
+
+const tessayaOf = (saved: Saved, id: string, slot: R1KeySlot): R1KeyBinding | null => {
+  const mine = saved.keys[id]?.tessaya[slot];
+  return mine === undefined ? (TESSAYA_DEFAULTS[slot] ?? null) : mine;
+};
+
+/** What a press does now: the device's own action unless it does nothing there and Tessaya has one. */
+const keyBindingOf = (saved: Saved, id: string, slot: R1KeySlot): R1KeyBinding => {
+  const device =
+    R1_KEY_SLOTS[slot] === "device"
+      ? (saved.keys[id]?.device[slot] ?? R1_DEVICE_DEFAULTS[slot] ?? "none")
+      : "none";
+  const tessaya = tessayaOf(saved, id, slot);
+  return device === "none" && tessaya !== null ? tessaya : { kind: "device", do: device };
+};
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
@@ -408,6 +450,7 @@ const make = Effect.gen(function* () {
   const home = yield* HomeAssistantService;
   const broker = yield* HomeDeviceBroker;
   const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
+  const engine = yield* Effect.serviceOption(BatonEngine);
   const record = yield* Effect.serviceOption(BatonRecordService);
   const scope = yield* Effect.scope;
   const incoming = yield* Queue.unbounded<{ topic: string; payload: string }>();
@@ -442,6 +485,7 @@ const make = Effect.gen(function* () {
         muted: (value["muted"] ?? {}) as Saved["muted"],
         earconsOff: (value["earconsOff"] ?? {}) as Saved["earconsOff"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
+        keys: (value["keys"] ?? {}) as Saved["keys"],
       };
     }),
     Effect.orDie,
@@ -529,12 +573,109 @@ const make = Effect.gen(function* () {
     }
   });
 
+  /** A press the device left to us (`did:"none"`) runs its Tessaya action; any other press was the device's. */
+  const runKey = Effect.fn("HomeDevices.runKey")(function* (
+    id: string,
+    body: Record<string, unknown> | null,
+  ) {
+    // A hold runs on release, so holding on into a long press does not run both.
+    if (body?.["did"] !== "none" || body["act"] === "hold") return;
+    const act =
+      body["act"] === "hold_end"
+        ? (num(body["ms"]) ?? LONG_PRESS_MS) < LONG_PRESS_MS
+          ? "hold"
+          : null
+        : body["act"];
+    const slot = `${String(body["key"])}.${String(act)}`;
+    if (!Object.hasOwn(R1_KEY_SLOTS, slot) || typeof R1_KEY_SLOTS[slot as R1KeySlot] === "object")
+      return;
+    // did:"none" says the device did nothing, whatever its last ack said.
+    const bind = tessayaOf(yield* readSaved, id, slot as R1KeySlot);
+    if (bind === null) return;
+    const by: DeviceActor = { who: `the R1's ${slot} button`, surface: "agent" };
+    const say = (text: string) => publish(id, "voice/say", { text });
+    switch (bind.kind) {
+      case "device":
+        return;
+      case "persona":
+        return yield* publish(
+          id,
+          "voice/persona",
+          bind.name === undefined ? {} : { name: bind.name },
+        );
+      case "whatsNext":
+        return yield* publish(id, "voice/ask", { text: "What's next?" });
+      case "prompt":
+        return yield* publish(id, "voice/ask", { text: bind.text });
+      case "mute":
+        return yield* command(
+          id,
+          { op: "mute", muted: (yield* readSaved).muted[id] !== true },
+          by,
+        ).pipe(Effect.ignore);
+      case "home": {
+        const domain = bind.entityId.split(".")[0] ?? "";
+        const outcome = yield* home
+          .call(
+            {
+              domain,
+              service: domain === "scene" || domain === "script" ? "turn_on" : "toggle",
+              target: { entity_id: bind.entityId },
+              why: `The R1's ${slot} button`,
+            },
+            { who: by.who, surface: "r1" },
+          )
+          .pipe(Effect.catchTags({ HomeRefusedError: (e) => Effect.succeed({ line: e.why }) }));
+        return yield* say(outcome.line);
+      }
+      case "thread": {
+        if (engine._tag === "None") return;
+        const input = { tag: "r1-key", threadId: ThreadId.make(bind.threadId) };
+        const ok =
+          bind.do === "stop"
+            ? yield* engine.value.interruptThread(input)
+            : yield* engine.value.sendMessage({ ...input, text: "Continue." });
+        return yield* say(
+          ok
+            ? `${bind.do === "stop" ? "Stopped" : "Continued"} ${bind.title}.`
+            : bind.do === "stop"
+              ? `Nothing was running in ${bind.title}.`
+              : `I couldn't continue ${bind.title}.`,
+        );
+      }
+    }
+  });
+
+  /** The R1's ack of a bind: its whole map, or `{"ok":false}` when it refused the change. */
+  const keepBinds = Effect.fn("HomeDevices.keepBinds")(function* (
+    id: string,
+    body: Record<string, unknown> | null,
+  ) {
+    const d = heard.get(id);
+    if (d === undefined || body === null) return;
+    d.keyRefused = body["ok"] === false;
+    if (d.keyRefused) return;
+    const device: Partial<Record<R1KeySlot, R1DeviceDo>> = {};
+    for (const [slot, spec] of Object.entries(R1_KEY_SLOTS)) {
+      if (spec !== "device") continue;
+      const [key, act] = slot.split(".") as [string, string];
+      const v = (body[key] as Record<string, unknown> | undefined)?.[act];
+      if (R1_DEVICE_DOS.includes(v as R1DeviceDo)) device[slot as R1KeySlot] = v as R1DeviceDo;
+    }
+    yield* change((s) => {
+      s.keys[id] = { device, tessaya: s.keys[id]?.tessaya ?? {} };
+    });
+  });
+
   const handle = Effect.fn("HomeDevices.handle")(function* (topic: string, payload: string) {
     const now = yield* Clock.currentTimeMillis;
     const result = applyMessage(heard, topic, payload, now);
     if (result === null) return;
     if (result.cameOnline) yield* rearm(result.id).pipe(Effect.forkIn(scope));
     if (result.tag !== null) yield* runTag(result.id, result.tag);
+    const tail = topic.slice(`freya/r1/${result.id}/`.length);
+    if (tail === "event/key") yield* runKey(result.id, json(payload));
+    else if (tail === "state/key/bind") yield* keepBinds(result.id, json(payload));
   });
 
   const revert = Effect.fn("HomeDevices.revert")(function* (id: string) {
@@ -592,6 +733,24 @@ const make = Effect.gen(function* () {
             ? "Her listening and closing sounds are on."
             : "Her listening and closing sounds are off.",
         );
+      case "keyBind": {
+        const spec = R1_KEY_SLOTS[c.slot];
+        const device = c.bind.kind === "device" ? c.bind.do : "none";
+        if (typeof spec === "object" || (spec === "tessaya" && device !== "none"))
+          return yield* new DeviceRefusedError({
+            why: "The R1 does that press itself; it cannot be changed.",
+          });
+        yield* change((s) => {
+          const k = (s.keys[id] ??= { device: {}, tessaya: {} });
+          k.tessaya[c.slot] = c.bind.kind === "device" ? null : c.bind;
+          // Shown at once; the R1's ack replaces it, or its refusal says so in keyNote.
+          if (spec === "device") k.device[c.slot] = device;
+        });
+        if (spec === "tessaya") return done("Saved.");
+        const [key, act] = c.slot.split(".");
+        yield* publish(id, "cmd/key/bind", { key, act, do: device });
+        return done("Saved. The R1 confirms it in a moment.");
+      }
       case "transport":
         if (c.transport === "inhouse") {
           trials.delete(id);
@@ -637,6 +796,7 @@ const make = Effect.gen(function* () {
           delete s.transport[id];
           delete s.muted[id];
           delete s.earconsOff[id];
+          delete s.keys[id];
         });
         yield* publish(id, "cmd/voice/earcons", "", true);
         if (device?.deviceId === id) yield* home.setDevice(null).pipe(Effect.ignore);
@@ -749,6 +909,12 @@ const make = Effect.gen(function* () {
       mood: d.mood,
       muted: saved.muted[id] === true,
       earcons: saved.earconsOff[id] !== true,
+      keys: Object.fromEntries(
+        (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>)
+          .filter((slot) => typeof R1_KEY_SLOTS[slot] !== "object")
+          .map((slot) => [slot, keyBindingOf(saved, id, slot)]),
+      ),
+      keyNote: d.keyRefused ? "The R1 refused the last button change." : null,
       transport: DEVICE_TRANSPORTS.includes(saved.transport[id]!)
         ? saved.transport[id]!
         : "inhouse",

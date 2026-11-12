@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
   AuthAccessWriteScope,
+  AuthBatonCloudApproveScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
@@ -78,6 +79,9 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
 const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
 const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
 
+/** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import baton-contracts. */
+const DEVICES_CALL = "baton.devices.call";
+
 export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
@@ -94,6 +98,15 @@ export function clientRpcRequiredScopes(
       (payload.action === "create_pr" || payload.action === "commit_push_pr")
     )
       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
+  }
+  // Its kind sets the scope, as the server's missingBatonScope does: owner is the camera, reboot and pictures.
+  if (method === DEVICES_CALL) {
+    const kind = (input as { kind?: unknown } | undefined)?.kind;
+    return kind === "read"
+      ? [AuthOrchestrationReadScope]
+      : kind === "owner"
+        ? [AuthOrchestrationReadScope, AuthBatonCloudApproveScope]
+        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   }
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]

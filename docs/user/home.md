@@ -71,4 +71,12 @@ R1 stops listening, and S2 starts it again.
 answers in its own voice, with its own eyes on the R1 and its own memories. It stays on for follow-ups in the 8-second
 window; once the R1 rests, Tessaya answers again.
 
-Volume and firmware updates need new firmware and come later.
+**Buttons** (firmware 3.32 and later). Some presses are the R1's own and cannot change: S2 tap starts or stops
+talking, holding S2 is push-to-talk, a long S2 press wakes it, S1 and S3 taps turn the volume up and down, and holding
+S1 and S3 together for 5 seconds starts Wi-Fi setup. The rest are yours under **Buttons** in Settings → Hardware: the
+double presses, the 3-second long presses of S1 (mic mute by default) and S3 (deep sleep by default), and holding S1
+or S3 for under 3 seconds. Each can do one of the R1's own actions or one of Tessaya's: switch persona (announced in
+the new voice), tell you what's next, toggle a lamp or run a scene (risky ones still ask first), mute her, continue or
+stop a thread, or ask her something you write. A double press of S2 switches to the next persona until you change it.
+
+Firmware updates need new firmware and come later.

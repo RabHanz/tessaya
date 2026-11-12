@@ -26,6 +26,7 @@ import {
   BatonRpcScopeAuthorization,
   tessayaSpelling,
 } from "@t3tools/baton-contracts";
+import { clientRpcRequiredScopes, type AuthEnvironmentScope } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -157,6 +158,17 @@ describe("who may import memory from a folder", () => {
     expect(missingBatonScope(call, [AuthOrchestrationReadScope], { ...read, kind: "other" })).toBe(
       AuthOrchestrationOperateScope,
     );
+    // The clients' guard (permissionAtom) asks for the same scopes, so a control is greyed out exactly when refused.
+    for (const kind of ["read", "act", "owner"])
+      for (const scopes of [
+        [AuthOrchestrationReadScope],
+        AuthStandardClientScopes,
+        [...AuthStandardClientScopes, AuthBatonCloudApproveScope],
+      ] as ReadonlyArray<ReadonlyArray<AuthEnvironmentScope>>)
+        expect(
+          clientRpcRequiredScopes(call, { ...read, kind }).find((s) => !scopes.includes(s)) ?? null,
+          `${kind} with ${scopes.length} scopes`,
+        ).toBe(missingBatonScope(call, scopes, { ...read, kind }));
   });
 
   it("lets only the desktop app's own session search through walls", () => {
