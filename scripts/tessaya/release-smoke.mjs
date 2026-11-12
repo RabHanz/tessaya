@@ -135,17 +135,21 @@ if (
   const enrol = tessaya.getByRole("button", { name: "Make my voice profile" });
   await enrol.waitFor({ timeout: 90_000 }).catch(() => undefined);
   await shot("tessaya-settings-voice-id", tessaya, /Voice ID/);
-  if (await enrol.isEnabled().catch(() => false)) {
-    await enrol.click();
-    await shot("tessaya-voice-id-enrol-card", tessaya, /Read these aloud/);
+  // The row is drawn disabled (no attribute) until voice is on, which needs a microphone.
+  const noMic = /Turn on voice first/.test(await text(tessaya));
+  if ((await enrol.count()) > 0 && !noMic) {
+    const opened = await enrol
+      .click({ timeout: 8_000 })
+      .then(() => true)
+      .catch((e) => (row("click Make my voice profile", false, e.message), false));
+    if (opened) await shot("tessaya-voice-id-enrol-card", tessaya, /Read these aloud/);
   } else
     rows.push({
       step: "Voice ID enrol card opens",
       ok: null,
-      detail:
-        (await enrol.count()) === 0
-          ? "no enrol button (voice model not ready)"
-          : "button disabled: no microphone on this machine",
+      detail: noMic
+        ? "skipped: voice is off, there is no microphone on this machine"
+        : "skipped: no enrol button (voice model not ready)",
     });
 }
 
