@@ -152,6 +152,42 @@ describe("makeRewriter", () => {
     rewriter.dispose();
   });
 
+  it("waits for his key's usual 1.3 s answer at release, and says why when it gives up", async () => {
+    vi.useFakeTimers();
+    let apiMs = 1_300;
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: "haiku",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      start: (): VisionSession => ({
+        ask: () => new Promise(() => {}),
+        alive: () => true,
+        dispose: () => {},
+      }),
+      api: (): Promise<string> =>
+        apiMs < 0
+          ? Promise.reject(new Error("timeout"))
+          : new Promise((resolve) => setTimeout(() => resolve("from the api"), apiMs)),
+    });
+    const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
+    const clean = async () => {
+      const cleaned = rewriter.clean(said);
+      await vi.advanceTimersByTimeAsync(5_000);
+      return cleaned;
+    };
+    expect((await clean()).text).toBe("from the api");
+    // 0.1.107 cut this one at 0.9 s and pasted the local text (2026-11-12).
+    expect(await clean()).toMatchObject({ stage: "model", text: "from the api" });
+    apiMs = -1;
+    expect(await clean()).toMatchObject({ stage: "fallback", why: "timed out after key timeout" });
+    rewriter.dispose();
+    vi.useRealTimers();
+  });
+
   it("keeps a session up while it should stay warm: a used-up or dead one is replaced at once", async () => {
     let started = 0;
     let alive = true;

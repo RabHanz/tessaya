@@ -52,10 +52,11 @@ const IDLE_MS = 10 * 60_000;
 const TURNS_PER_SESSION = 20;
 const API_REST_MS = 60_000;
 /**
- * Once his key answers, release waits this long for what is left, then pastes the local text. His key's Haiku took
- * 761 ms at p50 and 975 ms at p90 for a sentence under 15 words (2026-11-10), so most tails land inside it.
+ * Once his key answers, release waits this long for what is left, then pastes the local text. On 0.1.107 his key's
+ * Haiku answered in 1.05 to 1.3 s and three of four release clean-ups were cut at the old 0.9 and 1.2 s limits
+ * (2026-11-12), so this is his p90 with room for the hop to his server.
  */
-const RELEASE_BUDGET_MS = 900;
+const RELEASE_BUDGET_MS = 1_800;
 const API_SLOW_REST_MS = 15_000;
 
 interface CleanInput {
@@ -174,6 +175,8 @@ export const makeRewriter = (input: {
   let apiRestsUntil = 0;
   /** His key answered the last paid clean: release then asks it again rather than wait for a running guess. */
   let apiAnswers = false;
+  /** Why his key last failed, so a clean that then runs out of time says what took it. */
+  let apiWhy: string | null = null;
   const viaApi = async (
     text: string,
     mode: DictationMode,
@@ -187,11 +190,13 @@ export const makeRewriter = (input: {
         64 + Math.ceil(text.length / 2),
       );
       apiAnswers = answer !== null;
+      apiWhy = null;
       return answer;
     } catch (error) {
       apiAnswers = false;
       // A slow or unreachable API rests too, for less: each try costs his dictation up to 1.5 s before the session.
       const why = error instanceof Error ? error.message : "";
+      apiWhy = why || "failed";
       apiRestsUntil =
         Date.now() + (/invalid-key|rate-limit/.test(why) ? API_REST_MS : API_SLOW_REST_MS);
       return null;
@@ -210,6 +215,7 @@ export const makeRewriter = (input: {
     const paid = final || apiAnswers ? await viaApi(text, mode, context) : null;
     return paid === null ? viaSession(text, mode, context) : paid.trim();
   };
+  const timedOut = () => new Error(apiWhy === null ? "timed out" : `timed out after key ${apiWhy}`);
   /** The real clean's question, against a deadline counted from when `clean` was called. */
   const askBy =
     (deadline: number, context?: DictationContext) =>
@@ -219,12 +225,12 @@ export const makeRewriter = (input: {
       try {
         const answer = await Promise.race([
           busy.then(() => {
-            if (Date.now() >= deadline) throw new Error("timed out");
+            if (Date.now() >= deadline) throw timedOut();
             sent = true;
             return send(text, mode, true, context);
           }),
           new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error("timed out")), deadline - Date.now());
+            timer = setTimeout(() => reject(timedOut()), deadline - Date.now());
           }),
         ]);
         turns += 1;
