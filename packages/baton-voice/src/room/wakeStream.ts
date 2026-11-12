@@ -38,6 +38,9 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       pending: Int16Array;
       done: boolean;
       chain: Promise<void>;
+      /** This segment's samples and each word's best score, for one log line when it ends. */
+      samples: number;
+      best: number[];
     }
   >();
   const of = (id: string) => {
@@ -49,6 +52,8 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         pending: new Int16Array(0),
         done: false,
         chain: Promise.resolve(),
+        samples: 0,
+        best: [],
       };
       devices.set(id, d);
     }
@@ -94,12 +99,14 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       d.chain = d.chain.then(async () => {
         if (d.done) return;
         const scorer = await d.scorer;
+        d.samples += pcm.length;
         d.heard = join(d.heard, pcm).slice(-KEEP_SAMPLES);
         d.pending = join(d.pending, pcm);
         while (!d.done && d.pending.length >= scorer.chunkSamples) {
           const chunk = d.pending.slice(0, scorer.chunkSamples);
           d.pending = d.pending.slice(scorer.chunkSamples);
           const scores = await scorer.score(chunk);
+          deps.words.forEach((_, i) => (d.best[i] = Math.max(d.best[i] ?? 0, scores[i] ?? 0)));
           const at = deps.words.findIndex((w, i) => (scores[i] ?? 0) >= w.threshold);
           if (at >= 0)
             await fired(id, d, deps.words[at]!.word, scores[at]!, deps.words[at]!.threshold);
@@ -111,6 +118,15 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       const d = devices.get(id);
       if (d === undefined) return;
       d.chain = d.chain.then(async () => {
+        // One line a segment, so a name that did not wake her can be audited against the thresholds.
+        if (!d.done && d.samples > 0)
+          deps.log(
+            `[${id}] wake segment ${(d.samples / RATE).toFixed(1)} s, best ${deps.words
+              .map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(2)}/${w.threshold}`)
+              .join(", ")}`,
+          );
+        d.samples = 0;
+        d.best = [];
         drop(d);
         d.done = false;
         (await d.scorer).reset();
