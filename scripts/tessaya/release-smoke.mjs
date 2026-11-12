@@ -123,6 +123,32 @@ if (tessaya) {
   }
 }
 
+// Voice ID's guided enrolment card. The read needs a microphone, which a CI runner lacks: then it is skipped, not failed.
+if (
+  tessaya &&
+  (await click(tessaya, "Settings")) &&
+  (await click(tessaya, "Voice and wake words"))
+) {
+  const voiceId = tessaya.getByRole("switch", { name: "Voice ID", exact: true });
+  if ((await voiceId.getAttribute("aria-checked").catch(() => null)) === "false")
+    await voiceId.click({ timeout: 8_000 }).catch((e) => row("turn Voice ID on", false, e.message));
+  const enrol = tessaya.getByRole("button", { name: "Make my voice profile" });
+  await enrol.waitFor({ timeout: 90_000 }).catch(() => undefined);
+  await shot("tessaya-settings-voice-id", tessaya, /Voice ID/);
+  if (await enrol.isEnabled().catch(() => false)) {
+    await enrol.click();
+    await shot("tessaya-voice-id-enrol-card", tessaya, /Read these aloud/);
+  } else
+    rows.push({
+      step: "Voice ID enrol card opens",
+      ok: null,
+      detail:
+        (await enrol.count()) === 0
+          ? "no enrol button (voice model not ready)"
+          : "button disabled: no microphone on this machine",
+    });
+}
+
 // T3's window opens only when asked: the moved settings pages there answer with a card that opens Tessaya.
 row("windows at start (Tessaya's alone)", true, atStart.join(" | "));
 if (!pages().some(isT3) && tessaya) await click(tessaya, "Open T3 sessions");
@@ -142,12 +168,13 @@ if (t3) {
   await shot("t3-settings-tessaya", t3, /Tessaya/);
 }
 
-const failed = rows.filter((r) => !r.ok);
+const failed = rows.filter((r) => r.ok === false);
 const md = [
   "| step | ok | detail |",
   "|---|---|---|",
   ...rows.map(
-    (r) => `| ${r.step} | ${r.ok ? "yes" : "**no**"} | ${r.detail.replace(/\|/g, "/")} |`,
+    (r) =>
+      `| ${r.step} | ${r.ok === null ? "skipped" : r.ok ? "yes" : "**no**"} | ${r.detail.replace(/\|/g, "/")} |`,
   ),
 ].join("\n");
 writeFileSync(join(out, "results.md"), `${md}\n`);
