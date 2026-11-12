@@ -1,4 +1,5 @@
 import { deriveBatonSessionState, RuntimeRequestId } from "@t3tools/baton-contracts";
+import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
@@ -115,4 +116,41 @@ describe("threadShells", () => {
       }).pipe(Effect.provide(engine));
     },
   );
+});
+
+describe("keepActive", () => {
+  it.effect("leaves an archived thread alone instead of sending it commands it refuses", () => {
+    const dispatched: Array<string> = [];
+    const archived = { ...finishedShell(), archivedAt: at("2026-09-18T06:00:00.000Z") };
+    const engine = batonEngineLayer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(Orchestrator.OrchestratorV2)({
+            getThreadShell: (threadId) =>
+              Effect.succeed(threadId === archived.id ? archived : finishedShell(threadId)),
+            dispatch: (command) =>
+              Effect.sync(() => dispatched.push(command.type)).pipe(Effect.as(undefined as never)),
+            streamDomainEvents: Stream.empty,
+          }),
+          Layer.mock(ProjectStore.ProjectStoreV2)({ listShells: () => Effect.succeed([]) }),
+          Layer.mock(ThreadLaunch.ThreadLaunchService)({}),
+          Layer.mock(ThreadManagement.ThreadManagementService)({}),
+          Layer.mock(EventSink.EventSinkV2)({}),
+          Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({}),
+          Layer.succeed(
+            SecureRandom.SecureRandom,
+            SecureRandom.make((size) => new Uint8Array(size).fill(1)),
+          ),
+        ),
+      ),
+    );
+    return Effect.gen(function* () {
+      const { keepActive } = yield* BatonEngine;
+      expect(yield* keepActive({ tag: "live", threadId: archived.id, settled: true })).toBe(false);
+      expect(dispatched).toEqual([]);
+      const open = ThreadId.make("open");
+      expect(yield* keepActive({ tag: "live", threadId: open, settled: true })).toBe(true);
+      expect(dispatched).toEqual(["thread.auto-settle.set", "thread.unsettle"]);
+    }).pipe(Effect.provide(engine));
+  });
 });

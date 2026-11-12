@@ -594,6 +594,8 @@ export const make = Effect.gen(function* () {
 
   const keepActive: BatonEngineShape["keepActive"] = (input) =>
     Effect.gen(function* () {
+      // An archived thread refuses both commands; his archive stands.
+      if ((yield* threadShell(input.threadId))?.archivedAt != null) return false;
       yield* orchestrator.dispatch({
         type: "thread.auto-settle.set",
         commandId: yield* commandId(`${input.tag}:auto-settle`),
