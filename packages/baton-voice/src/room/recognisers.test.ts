@@ -50,11 +50,11 @@ it("hears a turn on the next recogniser, all of it, when the first turns it away
       },
     };
   };
-  const order = ["laptop", "onnyx"];
+  const order = ["busy", "spare"];
   const turn = turnAcross(
     (tried) => {
       const url = order.find((u) => !tried.has(u));
-      return url === undefined ? null : on(url, url === "laptop");
+      return url === undefined ? null : on(url, url === "busy");
     },
     (url, _ms, failed, next) => log.push(`${url} ${failed ? `failed, next ${next}` : "ok"}`),
     () => 0,
@@ -62,5 +62,5 @@ it("hears a turn on the next recogniser, all of it, when the first turns it away
   turn.feed(new Int16Array(100));
   turn.feed(new Int16Array(60));
   expect(await turn.finish()).toBe("heard 160 samples");
-  expect(log).toEqual(["laptop failed, next onnyx", "onnyx ok"]);
+  expect(log).toEqual(["busy failed, next spare", "spare ok"]);
 });

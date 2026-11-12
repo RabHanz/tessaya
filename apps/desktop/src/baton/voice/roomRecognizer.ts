@@ -16,7 +16,7 @@ const MAX_SAMPLES = 120 * 16_000;
 /** What health reports while he is using voice here, so the room picks another recogniser. */
 export const BUSY_QUEUE = 9;
 
-/** This computer's Tailscale address (100.64.0.0/10), or null when it is not on his tailnet. */
+/** This computer's Tailscale address (the shared range Tailscale assigns from, RFC 6598), or null off his tailnet. */
 export const tailnetAddress = (
   interfaces: ReturnType<typeof NodeOS.networkInterfaces> = NodeOS.networkInterfaces(),
 ): string | null => {
