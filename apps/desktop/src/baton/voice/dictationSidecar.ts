@@ -397,7 +397,12 @@ export interface DictationSidecar {
   readonly cancel: () => void;
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
   /** `model`: a model file of its own (the wake path's); dictation's when absent or null. */
-  readonly transcribe: (wavPath: string, model?: string | null) => Promise<string>;
+  /** `background`: the R1's room asks, not him; the recogniser's priority is not raised for it. */
+  readonly transcribe: (
+    wavPath: string,
+    model?: string | null,
+    background?: boolean,
+  ) => Promise<string>;
   /** Loads the speech model now. Resolves with the load time in ms; waits as long as the load shows progress. */
   readonly preload: () => Promise<number>;
   readonly paste: (text: string) => Promise<void>;
@@ -747,8 +752,8 @@ export const startDictationSidecar = (input: {
         deviceWaiters.push(resolve);
         send({ cmd: "devices" });
       }),
-    transcribe: async (wav, model) => {
-      const pid = child?.pid;
+    transcribe: async (wav, model, background) => {
+      const pid = background === true ? undefined : child?.pid;
       if (pid !== undefined) input.recognising?.(pid, true);
       try {
         return await call<string>(

@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 
-import { noteTime, pickRecogniser, STALE_MS } from "./recognisers.ts";
+import { noteTime, pickRecogniser, STALE_MS, turnAcross, type TurnOn } from "./recognisers.ts";
 
 const at = (...ms: number[]) => ms.map((m) => ({ ms: m, at: 0 }));
 
@@ -30,4 +30,37 @@ it("tries a recogniser again once its slow turns are a minute old, instead of ne
   const fast = { url: "far", queue: 0, recent: [{ ms: 2_000, at: STALE_MS }] };
   expect(pickRecogniser([slowOnce, fast], STALE_MS - 1)?.url).toBe("far");
   expect(pickRecogniser([slowOnce, fast], STALE_MS + 1)?.url).toBe("near");
+});
+
+it("hears a turn on the next recogniser, all of it, when the first turns it away", async () => {
+  const heard: Record<string, number> = {};
+  const log: string[] = [];
+  const on = (url: string, refuses: boolean): TurnOn => {
+    let failed = false;
+    return {
+      url,
+      turn: {
+        feed: (pcm) => void (heard[url] = (heard[url] ?? 0) + pcm.length),
+        finish: async () => {
+          failed = refuses;
+          return refuses ? "" : `heard ${heard[url]} samples`;
+        },
+        cancel: () => undefined,
+        failed: () => failed,
+      },
+    };
+  };
+  const order = ["laptop", "onnyx"];
+  const turn = turnAcross(
+    (tried) => {
+      const url = order.find((u) => !tried.has(u));
+      return url === undefined ? null : on(url, url === "laptop");
+    },
+    (url, _ms, failed, next) => log.push(`${url} ${failed ? `failed, next ${next}` : "ok"}`),
+    () => 0,
+  );
+  turn.feed(new Int16Array(100));
+  turn.feed(new Int16Array(60));
+  expect(await turn.finish()).toBe("heard 160 samples");
+  expect(log).toEqual(["laptop failed, next onnyx", "onnyx ok"]);
 });

@@ -7,6 +7,7 @@
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -396,6 +397,7 @@ import {
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
+import { startRoomRecognizer, tailnetAddress } from "./roomRecognizer.ts";
 import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createRemoteSettings } from "./remoteSettings.ts";
@@ -724,6 +726,8 @@ interface VoiceSettings {
   readonly recognizers: ReadonlyArray<string>;
   /** "Recognise on my servers": off by default; on, a dictation goes to the first healthy one, this machine last. */
   readonly recognizeOnServers: boolean;
+  /** The R1's room may recognise his speech on this computer while he is not using voice here (roomRecognizer.ts). */
+  readonly serveRoomRecognizer: boolean;
   /** Recognise on the graphics card (Windows, Vulkan): Auto when a capable card is present, On for any, Off never. */
   readonly gpuRecognition: GpuRecognition;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
@@ -838,6 +842,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cloudModel: null,
   recognizers: [],
   recognizeOnServers: false,
+  serveRoomRecognizer: true,
   gpuRecognition: "auto",
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
@@ -948,6 +953,7 @@ export const readSettings = (path: string): VoiceSettings => {
           : null,
       recognizers: recognizersFrom(saved["recognizers"]),
       recognizeOnServers: saved["recognizeOnServers"] === true,
+      serveRoomRecognizer: saved["serveRoomRecognizer"] !== false,
       gpuRecognition:
         saved["gpuRecognition"] === "on" || saved["gpuRecognition"] === "off"
           ? saved["gpuRecognition"]
@@ -1367,6 +1373,44 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let heldByButton = false;
   /** The sidecar is recording or writing out a key dictation (`busyAfter`). */
   let sidecarBusy = false;
+  let roomServer: ReturnType<typeof startRoomRecognizer> | null = null;
+  /** Serves the R1's room on his Tailscale address when the setting is on and the recogniser is up; else stops. */
+  const roomRecognizerSync = () => {
+    roomServer?.close();
+    roomServer = null;
+    const host = tailnetAddress();
+    const side = sidecar;
+    if (!settings.serveRoomRecognizer || side === null || host === null) return;
+    const tokenPath = NodePath.join(input.stateDir, "voice", "room-recognizer-token");
+    let token = "";
+    try {
+      token = NodeFS.readFileSync(tokenPath, "utf8").trim();
+    } catch {
+      token = "";
+    }
+    if (token.length < 24) {
+      token = NodeCrypto.randomBytes(24).toString("base64url");
+      NodeFS.mkdirSync(NodePath.dirname(tokenPath), { recursive: true });
+      NodeFS.writeFileSync(tokenPath, token, { mode: 0o600 });
+    }
+    roomServer = startRoomRecognizer({
+      host,
+      token,
+      // His own voice comes first: dictating, a voice turn, or a retried recording.
+      busy: () => sidecarBusy || dictatingByVoice || retrying !== null,
+      transcribe: async (pcm) => {
+        const dir = await NodeFS.promises.mkdtemp(NodePath.join(NodeOS.tmpdir(), "baton-room-"));
+        const file = NodePath.join(dir, "room.wav");
+        try {
+          await NodeFS.promises.writeFile(file, encodeWav(pcm));
+          return await side.transcribe(file, null, true);
+        } finally {
+          await NodeFS.promises.rm(dir, { recursive: true, force: true });
+        }
+      },
+      log: (line) => input.onNote?.("room-recognizer", { line }),
+    });
+  };
   let lastDictation: string | null = null;
   /** Paste-last's words: the last real dictation, never a command, a discard or a secret (`lastLanded`). */
   const lastInserted = createLastLanded();
@@ -4220,7 +4264,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (!resumeHooked) {
       resumeHooked = true;
       // After sleep the graphics card may have been reset: its session is read and warmed again before he dictates.
-      Electron.powerMonitor.on("resume", () => sidecar?.resume());
+      Electron.powerMonitor.on("resume", () => {
+        sidecar?.resume();
+        roomRecognizerSync();
+      });
     }
     resetCloudTmp();
     markPhase("dictation-sidecar-spawn:begin");
@@ -4249,6 +4296,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ),
     });
     markPhase("dictation-sidecar-spawn:end");
+    roomRecognizerSync();
     dictionary = await importWispr({
       stateDir: input.stateDir,
       appData: input.env["APPDATA"],
@@ -6493,6 +6541,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.recognizeOnServers,
       },
       {
+        id: "v.serveRoomRecognizer",
+        section: "Dictation",
+        label: "Recognise for the R1",
+        hint: "While you are not dictating or talking to Tessaya here, the R1 desk device can use this computer to recognise what you say to it, over your private network. It is faster than the R1's own server; when this computer is busy or asleep, the R1 uses that.",
+        kind: "toggle",
+        on: settings.serveRoomRecognizer,
+      },
+      {
         id: "v.recognizer",
         section: "Dictation",
         label: "My recognition servers",
@@ -7806,6 +7862,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.gpu" && (value === "auto" || value === "on" || value === "off")) {
       save({ gpuRecognition: value });
       configureDictation();
+    } else if (id === "v.serveRoomRecognizer") {
+      save({ serveRoomRecognizer: on });
+      roomRecognizerSync();
     } else if (id === "v.recognizeOnServers") {
       save({ recognizeOnServers: on });
       configureDictation();
