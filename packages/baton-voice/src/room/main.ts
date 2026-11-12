@@ -260,6 +260,7 @@ const main = async () => {
       "freya/r1/+/state/online",
       "freya/r1/+/event/session/start",
       "freya/r1/+/event/wake",
+      "freya/r1/+/cmd/voice/earcons",
     ],
     onMessage: (t, p) => room?.message(t, p),
     log,
