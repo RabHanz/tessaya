@@ -543,6 +543,36 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     expect(spoken.at(-1)).toEqual(["Freya here.", "azelma"]);
   });
 
+  it("runs at most one frame ahead while the R1 plays on Bluetooth, and its usual lead otherwise", async () => {
+    // How far ahead of real time the downlink ran when each frame went out.
+    const maxAhead = async (out: string) => {
+      const sent: number[] = [];
+      const clock = { now: () => 0 };
+      const t = setup({
+        publish: (topic) => {
+          if (topic.endsWith("/voice/down")) sent.push(clock.now());
+        },
+        speak: async function* () {
+          for (let i = 0; i < 10; i += 1) yield new Int16Array(4_800);
+        },
+      });
+      clock.now = t.deps.now;
+      t.room.message(
+        `freya/r1/${DEV}/state/voice`,
+        Buffer.from(JSON.stringify({ ev: "start", out })),
+      );
+      t.room.message(
+        `freya/r1/${DEV}/voice/say`,
+        Buffer.from(JSON.stringify({ text: "Dinner is ready." })),
+      );
+      await t.feed(false, 60);
+      expect(sent.length).toBeGreaterThan(20);
+      return Math.max(...sent.map((at, i) => i * 60 - (at - sent[0]!)));
+    };
+    expect(await maxAhead("bt")).toBeLessThanOrEqual(ROOM_CONFIG.btLeadMs + 60);
+    expect(await maxAhead("onboard")).toBeGreaterThan(ROOM_CONFIG.btLeadMs + 60);
+  });
+
   it("says a line on the R1 when asked, and hears nothing while muted", async () => {
     const t = setup();
     t.room.message(

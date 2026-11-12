@@ -156,6 +156,11 @@ export interface RoomConfig {
   readonly turn: TurnConfig;
   /** How far ahead of the R1's playback the downlink may run (its ring holds 1 s). */
   readonly leadMs: number;
+  /**
+   * The same while the R1 plays on a Bluetooth speaker: one frame, so replies arrive evenly. Wi-Fi and A2DP share the
+   * R1's radio, and a downlink running ahead arrives in bursts that starve A2DP (smp-0.3.24 bench, 12 Nov).
+   */
+  readonly btLeadMs: number;
   /** Audio held before a reply's first frame, so a slow first chunk from the voice cannot starve the R1's buffer. */
   readonly prerollMs: number;
   /** Downlink plus the R1's 150 ms prime: when a published frame is heard. */
@@ -187,6 +192,7 @@ export interface RoomConfig {
 export const ROOM_CONFIG: RoomConfig = {
   turn: ROOM_TURN,
   leadMs: 700,
+  btLeadMs: 60,
   prerollMs: 240,
   downDelayMs: 300,
   upDelayMs: 150,
@@ -274,6 +280,9 @@ const CARD_MS = 250;
 export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG) => {
   const topic = (id: string, tail: string) => `freya/r1/${id}/${tail}`;
 
+  /** R1s whose replies play on a Bluetooth speaker, from their `state/voice` reports. */
+  const btOut = new Set<string>();
+
   const openSession = (id: string) => {
     const vad = deps.vad();
     const turns = createTurnTaking(config.turn);
@@ -324,7 +333,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const frame = bytes.subarray(at, at + DOWN_FRAME_BYTES);
         const now = deps.now();
         const ahead = playUntil - now;
-        if (ahead > config.leadMs) await deps.sleep(ahead - config.leadMs);
+        const lead = btOut.has(id) ? config.btLeadMs : config.leadMs;
+        if (ahead > lead) await deps.sleep(ahead - lead);
         if (signal.aborted) return;
         const start = Math.max(deps.now(), playUntil);
         deps.publish(topic(id, "voice/down"), frame);
@@ -942,6 +952,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         } else if (m === false && src !== "boot") muted.delete(id); // a reboot must not undo a mute set from the app
       } else if (tail === "state/voice" && json()["ev"] === "ptt_end") {
         void sessions.get(id)?.released();
+      } else if (tail === "state/voice" && typeof json()["out"] === "string") {
+        // smp firmware: where replies play, at session start and whenever it changes
+        if (json()["out"] === "bt") btOut.add(id);
+        else btOut.delete(id);
       } else if (tail === "event/key") {
         // Presses the device left to us (did "none"); none has a meaning yet, so they are only logged.
         const k = json();
