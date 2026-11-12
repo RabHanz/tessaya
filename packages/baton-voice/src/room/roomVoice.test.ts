@@ -474,3 +474,62 @@ describe("her listening and closing sounds", () => {
     expect(t.published.at(-1)!.topic).toBe(`freya/r1/${DEV}/voice/down`);
   });
 });
+
+describe("her brain starting on the recogniser's partial words", () => {
+  const guessing = (partial: string, final: string) => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => (release = r));
+    const asked: string[] = [];
+    const aborted: string[] = [];
+    let atRelease = -1;
+    const t = setup({
+      recognise: () => {
+        let listener: ((text: string) => void) | null = null;
+        return {
+          feed: () => undefined,
+          onPartial: (l) => {
+            listener = l;
+          },
+          finish: async () => {
+            listener?.(partial);
+            await held;
+            return final;
+          },
+          cancel: () => undefined,
+        };
+      },
+      brain: async function* (input, signal) {
+        const words = input.messages.at(-1)!.content;
+        asked.push(words);
+        signal.addEventListener("abort", () => aborted.push(words));
+        yield "Done.";
+      },
+    });
+    const run = async () => {
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      await t.deps.sleep(300);
+      atRelease = asked.length;
+      release();
+      return t.metrics;
+    };
+    return { t, asked, aborted, run, atRelease: () => atRelease };
+  };
+
+  it("keeps the guess when the final text says the same words, so the brain started early", async () => {
+    const g = guessing("turn on the study light", "Turn on the study light.");
+    const m = await g.run();
+    expect(g.atRelease()).toBe(1);
+    expect(g.asked).toEqual(["turn on the study light"]);
+    expect(m.speculative).toBe(true);
+    expect(g.t.published.some((p) => p.topic.endsWith("voice/down"))).toBe(true);
+  });
+
+  it("drops a guess that heard different words and answers the final text instead", async () => {
+    const g = guessing("turn on the study", "turn on the study light");
+    const m = await g.run();
+    expect(g.asked).toEqual(["turn on the study", "turn on the study light"]);
+    expect(g.aborted).toContain("turn on the study");
+    expect(m.speculative).toBe(false);
+  });
+});
