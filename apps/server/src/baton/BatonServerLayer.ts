@@ -79,7 +79,7 @@ const readClaudeAccountInstances = Layer.effectDiscard(
     const ids = Object.keys((yield* (yield* ServerSettingsService).getSettings).providerInstances);
     if (Object.keys(map).length === 0 && ids.some((id) => id.startsWith("claudeAgent_"))) {
       yield* Effect.logWarning(
-        "Claude token instances exist but BATON_CLAUDE_ACCOUNT_INSTANCES is not set: their limits are unknown and none is a rotation target",
+        "Claude token instances exist but TESSAYA_CLAUDE_ACCOUNT_INSTANCES (or the old BATON_CLAUDE_ACCOUNT_INSTANCES) is not set: their limits are unknown and none is a rotation target",
         { instances: ids.filter((id) => id.startsWith("claudeAgent_")) },
       );
     }
