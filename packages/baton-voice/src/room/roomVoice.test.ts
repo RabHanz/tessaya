@@ -167,6 +167,26 @@ describe("answering only when he is talking to her", () => {
     expect(t.published.some((p) => String(p.payload).includes('"sleepy"'))).toBe(true);
   });
 
+  it("answers a request he began inside the window, however long it runs or recognition takes", async () => {
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        // The recogniser on onnyx can take seconds after he stops.
+        finish: async () => {
+          await t.deps.sleep(3_000);
+          return "turn on the study lamp and tell me what is next on my list";
+        },
+        cancel: () => undefined,
+      }),
+    });
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.deps.sleep(6_000);
+    // He starts at 6 s (inside the 8 s window) and talks for 6 s.
+    await t.feed(true, 100);
+    await t.feed(false, 60);
+    expect(t.brainCalls.length).toBe(1);
+  });
+
   it("hands a turn to the persona he calls, in its voice and eyes, until the window lapses", async () => {
     const voices: Array<string | undefined> = [];
     const t = setup({

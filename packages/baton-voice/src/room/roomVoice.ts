@@ -400,7 +400,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         });
     };
 
-    const answer = async (pcm: Int16Array, reason: string, lastVoice: number) => {
+    /** When the turn being heard began: the window is about when he started, not when recognition finished. */
+    let turnStartedAt = 0;
+    const answer = async (
+      pcm: Int16Array,
+      reason: string,
+      lastVoice: number,
+      startedAt: number,
+    ) => {
       const turn = (turnNo += 1);
       const decidedAt = deps.now();
       const current = rec;
@@ -415,7 +422,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           words,
           config.personas.map((p) => p.name),
         );
-        if (called === null && deps.now() > openUntil) return null;
+        if (called === null && startedAt > openUntil) return null;
         // A guess waits for who is speaking: it may only answer whom the final turn would answer.
         const [speaker, affect] = await sides;
         const identity = speaker ?? UNVERIFIED(deps.now());
@@ -489,7 +496,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         text,
         config.personas.map((p) => p.name),
       );
-      if (called === null && deps.now() > openUntil) {
+      if (called === null && startedAt > openUntil) {
         deps.log(`[${id}] turn ${turn}: not said to her; not answered`);
         return;
       }
@@ -629,6 +636,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             rec?.cancel();
             rec = deps.recognise();
             rec.feed(a.pcm);
+            // The preroll is already in `a.pcm`, so his first word came that long before now.
+            turnStartedAt = deps.now() - (a.pcm.length / RATE) * 1000;
             if (!asleep) face("attentive");
             break;
           case "audio":
@@ -644,7 +653,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           }
           case "end": {
             if (!asleep) gesture("nodSmall");
-            answering = answer(a.pcm, a.reason, lastVoiceAt);
+            answering = answer(a.pcm, a.reason, lastVoiceAt, turnStartedAt);
             break;
           }
         }
