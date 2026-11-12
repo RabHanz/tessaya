@@ -16,6 +16,7 @@ import * as NodePath from "node:path";
 
 import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
+import { ThreadId } from "@t3tools/contracts";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
@@ -138,7 +139,21 @@ const servicesInner = IntentService.layer.pipe(
         Layer.provide(HomeDevices.brokerLayer),
         Layer.provide(homeLayer),
         // A button bound to a thread continues or stops it through the engine's own door.
-        Layer.provide(BatonEngine.layer),
+        Layer.provide(
+          Layer.effect(
+            HomeDevices.HomeDeviceThreads,
+            Effect.map(BatonEngine.BatonEngine, (engine) =>
+              HomeDevices.HomeDeviceThreads.of({
+                run: Effect.fn("HomeDevices.HomeDeviceThreads.run")(function* (threadId, what) {
+                  const input = { tag: "r1-key", threadId: ThreadId.make(threadId) };
+                  return what === "stop"
+                    ? yield* engine.interruptThread(input)
+                    : yield* engine.sendMessage({ ...input, text: "Continue." });
+                }),
+              }),
+            ),
+          ).pipe(Layer.provide(BatonEngine.layer)),
+        ),
         Layer.provide(BatonPhoneInbox.layer),
       ),
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session

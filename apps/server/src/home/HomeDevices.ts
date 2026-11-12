@@ -27,7 +27,6 @@ import {
   type DevicesOverview,
 } from "@t3tools/baton-contracts";
 import { recordText } from "@t3tools/baton-shared/audit";
-import { ThreadId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -37,7 +36,6 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { BatonEngine } from "../baton/BatonEngine.ts";
 import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
@@ -412,6 +410,12 @@ export const brokerLayer = Layer.succeed(HomeDeviceBroker, {
   }),
 });
 
+/** A button's thread action; a seam, since importing the engine here closes an import cycle through the MCP tools. */
+export class HomeDeviceThreads extends Context.Service<
+  HomeDeviceThreads,
+  { readonly run: (threadId: string, what: "continue" | "stop") => Effect.Effect<boolean> }
+>()("t3/home/HomeDevices/HomeDeviceThreads") {}
+
 export class HomeDevices extends Context.Service<
   HomeDevices,
   {
@@ -452,7 +456,7 @@ const make = Effect.gen(function* () {
   const home = yield* HomeAssistantService;
   const broker = yield* HomeDeviceBroker;
   const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
-  const engine = yield* Effect.serviceOption(BatonEngine);
+  const threads = yield* Effect.serviceOption(HomeDeviceThreads);
   const record = yield* Effect.serviceOption(BatonRecordService);
   const scope = yield* Effect.scope;
   const incoming = yield* Queue.unbounded<{ topic: string; payload: string }>();
@@ -579,7 +583,7 @@ const make = Effect.gen(function* () {
   const runKey = Effect.fn("HomeDevices.runKey")(function* (
     id: string,
     body: Record<string, unknown> | null,
-  ) {
+  ): Effect.fn.Return<void> {
     // A hold runs on release, so holding on into a long press does not run both.
     if (body?.["did"] !== "none" || body["act"] === "hold") return;
     const act =
@@ -631,12 +635,8 @@ const make = Effect.gen(function* () {
         return yield* say(outcome.line);
       }
       case "thread": {
-        if (engine._tag === "None") return;
-        const input = { tag: "r1-key", threadId: ThreadId.make(bind.threadId) };
-        const ok =
-          bind.do === "stop"
-            ? yield* engine.value.interruptThread(input)
-            : yield* engine.value.sendMessage({ ...input, text: "Continue." });
+        if (threads._tag === "None") return;
+        const ok = yield* threads.value.run(bind.threadId, bind.do);
         return yield* say(
           ok
             ? `${bind.do === "stop" ? "Stopped" : "Continued"} ${bind.title}.`
@@ -652,7 +652,7 @@ const make = Effect.gen(function* () {
   const keepBinds = Effect.fn("HomeDevices.keepBinds")(function* (
     id: string,
     body: Record<string, unknown> | null,
-  ) {
+  ): Effect.fn.Return<void> {
     const d = heard.get(id);
     if (d === undefined || body === null) return;
     d.keyRefused = body["ok"] === false;
