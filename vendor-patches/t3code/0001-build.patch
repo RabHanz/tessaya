@@ -142,10 +142,10 @@ index 57ed8f275f020cd039d3de9cd6c0b8fa24b2d4d3..5b134dc74a279cb5c12b74ff26420c6b
      "@t3tools/contracts": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..7d4ba37932a83b3bf6aba0866397fdfb68087d8b 100644
+index 8cfb697373c318c91927adeb4f373d54a7e1922e..229cfdb89f950785400b81f12abd09599ecae8e5 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,15 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,13 +4,16 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
@@ -165,22 +165,27 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..7d4ba37932a83b3bf6aba0866397fdfb
 +| [test-signal](test-signal/)             | Whether a cheap model running the test-signal check flags low-signal tests.                          |
 +| [tessaya-assistant](tessaya-assistant/) | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                        |
 +| [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.   |
++| [tessaya-room](tessaya-room/)           | What the R1 desk device says and does on a fake house: status, the lamp, his work, the camera.       |
  
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..6f45c7aecce09ceaeb55a27731aee067676573b2 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..ee494f15b7914758ee7c4a94a292c89d27618e03 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,6 +10,8 @@
+@@ -10,8 +10,11 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
 +    "tessaya-assistant": "node tessaya-assistant/run.ts",
 +    "tessaya-outside": "node tessaya-outside/run.ts",
      "typecheck": "effect-tsgo tsrs --noEmit",
-     "test": "vp test run --config ../vite.config.ts --dir ."
+-    "test": "vp test run --config ../vite.config.ts --dir ."
++    "test": "vp test run --config ../vite.config.ts --dir .",
++    "tessaya-room": "node tessaya-room/run.ts"
    },
+   "dependencies": {
+     "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
 index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d2e1cee605c3c3ce513f88639423cc4549539667 100644
 --- a/knip.jsonc

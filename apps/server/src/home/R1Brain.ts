@@ -1,12 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalJsonInEffect:off preferSchemaOverJson:off
 /**
  * The room's brain, routed per turn by the `roomBrain` setting (no restart): his Anthropic key from Settings → APIs
- * (Haiku streamed, quickest), or his subscription via a Claude Code process started ahead and waiting on stdin
- * (one turn each). "auto" uses the key, and the subscription when the key fails before a word was said.
+ * (Haiku streamed with the room's tools, quickest), or his subscription via a Claude Code process started ahead and
+ * waiting on stdin (one turn each, no tools). "auto" uses the key, and the subscription when the key fails before a
+ * word was said (R1Device decides that).
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeOS from "node:os";
 
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,21 +17,155 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { ServerSettingsService } from "../serverSettings.ts";
-import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
+import {
+  DictationCleanupApi,
+  type ConversePart,
+  type ConverseRequest,
+} from "../speech/DictationCleanupApi.ts";
 
 export class R1BrainError extends Schema.TaggedError<R1BrainError>()("R1BrainError", {
   detail: Schema.String,
 }) {}
 
+export type R1Route = "api" | "subscription" | "auto";
+
+/** One tool the room may call, as the Messages API takes it, and what running it said. */
+export interface RoomTool {
+  readonly name: string;
+  readonly description: string;
+  readonly input_schema: unknown;
+}
+export interface ToolOutcome {
+  readonly text: string;
+  readonly isError: boolean;
+  /** A picture the model should see with the result (the R1's camera); never kept past the turn. */
+  readonly image?: { readonly mediaType: string; readonly data: string };
+  /** A house or device act's status (done, asked, refused…), for the eyes and the Record. */
+  readonly status?: string;
+}
+
+/**
+ * The room's tools as the server built them (R1Tools.layer), handed in rather than imported so the room's code stays
+ * out of the toolkits' import graph; null without them, and the turn speaks the acts form.
+ */
+export interface RoomToolSet {
+  readonly specs: ReadonlyArray<RoomTool>;
+  readonly run: (name: string, input: unknown) => Effect.Effect<ToolOutcome>;
+}
+export const RoomTools = Context.Reference<RoomToolSet | null>("t3/home/RoomTools", {
+  defaultValue: () => null,
+});
+export interface ToolTurn {
+  readonly system: string;
+  readonly user: string;
+  readonly tools: ReadonlyArray<RoomTool>;
+  readonly run: (name: string, input: unknown) => Effect.Effect<ToolOutcome>;
+}
+
 export class R1Brain extends Context.Service<
   R1Brain,
   {
-    /** The reply to one user message, as text deltas in order. */
-    readonly stream: (user: string) => Stream.Stream<string, R1BrainError>;
+    /** Which way this turn goes. */
+    readonly route: Effect.Effect<R1Route>;
+    /** The subscription's reply to one user message (the ACTS form), as text deltas in order. */
+    readonly subscription: (user: string) => Stream.Stream<string, R1BrainError>;
+    /** The key's turn with tools: its words as they come, tool rounds in between (`toolLoop`). */
+    readonly converse: (turn: ToolTurn) => Stream.Stream<string, R1BrainError>;
     /** Starts a waiting process now, so the first turn is fast too. */
     readonly warm: Effect.Effect<void>;
   }
 >()("t3/home/R1Brain") {}
+
+/** Model calls in one turn; the last one may not call a tool, so the turn always ends in words. */
+export const MAX_ROUNDS = 4;
+
+/**
+ * A spoken turn with tools: each round's words go out as they come (so "Let me check." is heard while the tool runs),
+ * then its tool calls run together and their results go back, until a round calls none or the cap is reached.
+ */
+export const toolLoop = <E>(
+  converse: (request: ConverseRequest) => Stream.Stream<ConversePart, E>,
+  turn: ToolTurn,
+) =>
+  Stream.callback<string, E>((queue) =>
+    Effect.gen(function* () {
+      const startedAt = yield* Clock.currentTimeMillis;
+      let firstAt: number | null = null;
+      let said = "";
+      const used: Array<string> = [];
+      const messages: Array<unknown> = [{ role: "user", content: turn.user }];
+      let rounds = 0;
+      while (rounds < MAX_ROUNDS) {
+        rounds += 1;
+        const calls: Array<Extract<ConversePart, { type: "tool" }>> = [];
+        let text = "";
+        const ran = yield* converse({
+          system: turn.system,
+          messages,
+          tools: turn.tools,
+          maxTokens: 400,
+          toolChoice: rounds === MAX_ROUNDS ? "none" : "auto",
+        }).pipe(
+          Stream.runForEach((part) =>
+            Effect.map(Clock.currentTimeMillis, (now) => {
+              if (part.type === "tool") return void calls.push(part);
+              // A new round's words start a new sentence for the room's speech.
+              const gap = text === "" && said !== "" && !/\s$/.test(said) ? " " : "";
+              text += part.text;
+              said += gap + part.text;
+              firstAt ??= now;
+              Queue.offerUnsafe(queue, gap + part.text);
+            }),
+          ),
+          Effect.exit,
+        );
+        if (ran._tag === "Failure") return yield* Queue.failCause(queue, ran.cause);
+        if (calls.length === 0) break;
+        used.push(...calls.map((c) => c.name));
+        const outcomes = yield* Effect.forEach(calls, (c) => turn.run(c.name, c.input), {
+          concurrency: "unbounded",
+        });
+        messages.push(
+          {
+            role: "assistant",
+            content: [
+              ...(text === "" ? [] : [{ type: "text", text }]),
+              ...calls.map((c) => ({ type: "tool_use", id: c.id, name: c.name, input: c.input })),
+            ],
+          },
+          {
+            role: "user",
+            content: calls.map((c, i) => ({
+              type: "tool_result",
+              tool_use_id: c.id,
+              content:
+                outcomes[i]!.image === undefined
+                  ? outcomes[i]!.text
+                  : [
+                      {
+                        type: "image",
+                        source: {
+                          type: "base64",
+                          media_type: outcomes[i]!.image!.mediaType,
+                          data: outcomes[i]!.image!.data,
+                        },
+                      },
+                      { type: "text", text: outcomes[i]!.text },
+                    ],
+              ...(outcomes[i]!.isError ? { is_error: true } : {}),
+            })),
+          },
+        );
+      }
+      yield* Effect.logInfo("R1 tool turn", {
+        rounds,
+        tools: used,
+        ms: (yield* Clock.currentTimeMillis) - startedAt,
+        brainFirstMs: firstAt === null ? null : firstAt - startedAt,
+      });
+      yield* Queue.end(queue);
+    }),
+  );
 
 /** A waiting process older than this is replaced, so a turn never lands on stale credentials. */
 const MAX_IDLE_MS = 10 * 60_000;
@@ -134,7 +270,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
   yield* Effect.addFinalizer(() => Effect.sync(() => ready?.proc.kill()));
 
   /** Which way the next turn goes: the key, the subscription, or the key with the subscription behind it. */
-  const route = Effect.gen(function* () {
+  const route: Effect.Effect<R1Route> = Effect.gen(function* () {
     const mode = (yield* settings.getSettings).roomBrain;
     if (mode !== "auto") return mode;
     return (yield* api.configured) ? ("auto" as const) : ("subscription" as const);
@@ -165,8 +301,8 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
       }),
     );
 
-  const viaKey = (user: string) =>
-    api.stream({ system, message: user, maxTokens: 400 }).pipe(
+  const converse = (turn: ToolTurn) =>
+    toolLoop(api.converse, turn).pipe(
       Stream.mapError(
         (error) =>
           new R1BrainError({
@@ -175,27 +311,11 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
       ),
     );
 
-  const stream = (user: string) =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const way = yield* route;
-        yield* Effect.logInfo("R1 brain route", { way });
-        if (way === "subscription") return viaSubscription(user);
-        if (way === "api") return viaKey(user);
-        // auto: the subscription answers only if the key failed before a word was said, so nothing is said twice.
-        let said = false;
-        return viaKey(user).pipe(
-          Stream.tap(() => Effect.sync(() => void (said = true))),
-          Stream.catchCause((cause) => (said ? Stream.failCause(cause) : viaSubscription(user))),
-        );
-      }),
-    );
-
   // Only the subscription route needs a process waiting; the key route never starts one.
   const warm = Effect.gen(function* () {
     if ((yield* route) === "subscription") ready ??= spawn();
   });
-  return { stream, warm } satisfies R1Brain["Service"];
+  return { route, subscription: viaSubscription, converse, warm } satisfies R1Brain["Service"];
 });
 
 export const layer = (system: string) => Layer.effect(R1Brain, make(system));

@@ -3,16 +3,22 @@ import { BAR_NOT_CONNECTED } from "@t3tools/baton-shared/phoneRelay";
 import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import { describe, expect, it } from "vite-plus/test";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { HomeAssistantService } from "./HomeAssistantService.ts";
+import { BatonPrivateMemoryService } from "../baton/BatonPrivateMemoryService.ts";
+import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
+import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import {
   calledPersona,
   dictionaryEntries,
   houseTime,
   mqttPublishBytes,
+  roomLook,
+  roomPrivate,
   runActs,
   splitActs,
   spokenReply,
@@ -175,3 +181,62 @@ describe("asking his laptop", () => {
     }),
   );
 });
+
+const voiceOf = (speaker: Partial<SpeakerLike>) => ({
+  speaker: { kind: "owner", personId: "owner", verified: true, inherited: false, ...speaker },
+});
+
+effectIt.effect("reads his private memories only when this turn's voice was verified as his", () =>
+  Effect.gen(function* () {
+    const recalled: Array<unknown> = [];
+    const stores = Layer.mock(BatonPrivateMemoryService)({
+      recall: (input) =>
+        Effect.sync(() => {
+          recalled.push(input.turn.speaker);
+          return { block: "private memories (yours): he prays at dawn", count: 1, whose: "yours" };
+        }),
+    });
+    const read = (voice: unknown) =>
+      roomPrivate(voice, "when do I pray").pipe(Effect.provide(stores));
+    for (const voice of [
+      undefined,
+      voiceOf({ verified: false }),
+      voiceOf({ inherited: true }),
+      voiceOf({ kind: "guest", personId: null }),
+      voiceOf({ kind: "saved", personId: "p1" }),
+    ])
+      expect(yield* read(voice)).toBe("");
+    expect(recalled).toHaveLength(0);
+    expect(yield* read(voiceOf({}))).toContain("he prays at dawn");
+    expect(recalled).toHaveLength(1);
+  }),
+);
+
+effectIt.effect(
+  "takes a picture at once for his verified voice, and sends anyone else's to his phone",
+  () =>
+    Effect.gen(function* () {
+      const asked: Array<DeviceActor> = [];
+      const devices = Layer.mock(HomeDevices)({
+        command: (_id, _c, by) =>
+          Effect.sync(() => {
+            asked.push(by);
+            return by.approved === true
+              ? { status: "done" as const, line: "Taking one picture." }
+              : { status: "asked" as const, line: "Sent to the Director's phone for a yes." };
+          }),
+        cameraView: () =>
+          Effect.succeed({
+            at: "2026-11-12T00:00:00.000Z",
+            dataUrl: "data:image/jpeg;base64,AAAA",
+          }),
+      });
+      const device = { deviceId: "r1-test", mqttUrl: null } as unknown as R1Device;
+      const look = (voice: unknown) => roomLook(device, voice).pipe(Effect.provide(devices));
+      const theirs = yield* look(voiceOf({ verified: false }));
+      expect([theirs.status, theirs.image]).toEqual(["asked", undefined]);
+      const his = yield* look(voiceOf({}));
+      expect(his.image).toEqual({ mediaType: "image/jpeg", data: "AAAA" });
+      expect(asked.map((by) => by.approved === true)).toEqual([false, true]);
+    }),
+);
