@@ -106,7 +106,7 @@ describe("asking his laptop", () => {
   const laptop: PeerLinkSummary = {
     environmentId: EnvironmentId.make("laptop"),
     label: "laptop",
-    urls: ["http://100.64.0.2:3773"],
+    urls: ["https://laptop.example"],
     access: "full-access",
     linkedAt: at,
     expiresAt: at,
