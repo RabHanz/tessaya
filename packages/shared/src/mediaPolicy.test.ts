@@ -80,5 +80,8 @@ describe("what media may be shown", () => {
     expect([...found].sort()).toEqual(
       ["/tmp/out/clip.mp4", "/x/y.jpg", "in.mov", "shots/a.png"].sort(),
     );
+    // A long unbroken run once backtracked quadratically and froze the server for minutes.
+    const long = pathsInto({ output: `saved out/shot.png ${"a".repeat(200_000)}` });
+    expect([...long]).toEqual(["out/shot.png"]);
   });
 });

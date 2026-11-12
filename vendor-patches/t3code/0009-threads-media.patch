@@ -391,10 +391,18 @@ index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40
      id: "todo-list",
      name: "Plan and reads",
 diff --git a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
-index f27580d909afff4109d2503610bbb903b80839c2..23f1c8b739e1a1e079981b531c7f073bac3b110f 100644
+index f27580d909afff4109d2503610bbb903b80839c2..5b1576f1abe54237886473b763e168ecb01fb7f9 100644
 --- a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 +++ b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
-@@ -21,6 +21,7 @@ import * as Context from "effect/Context";
+@@ -5,6 +5,7 @@ import {
+   OrchestrationV2StoredEvent,
+   type OrchestrationV2PlanArtifact,
+   type OrchestrationV2Run,
++  type OrchestrationV2TurnItemStatus,
+   type OrchestrationV2Subagent,
+   type OrchestrationV2ThreadProjection,
+   type ModelSelection,
+@@ -21,6 +22,7 @@ import * as Context from "effect/Context";
  import * as DateTime from "effect/DateTime";
  import * as Effect from "effect/Effect";
  import * as Layer from "effect/Layer";
@@ -402,7 +410,7 @@ index f27580d909afff4109d2503610bbb903b80839c2..23f1c8b739e1a1e079981b531c7f073b
  import * as Schema from "effect/Schema";
  import * as SqlError from "effect/sql/SqlError";
  
-@@ -34,7 +35,11 @@ import {
+@@ -34,7 +36,11 @@ import {
  import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
  import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
  import * as EventSink from "./EventSink.ts";
@@ -414,7 +422,21 @@ index f27580d909afff4109d2503610bbb903b80839c2..23f1c8b739e1a1e079981b531c7f073b
  import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
-@@ -257,6 +262,57 @@ export const layer: Layer.Layer<
+@@ -147,6 +153,13 @@ function withPlanStepDurations(
+   };
+ }
+ 
++const OPEN_ITEM_STATUSES = new Set<OrchestrationV2TurnItemStatus>([
++  "idle",
++  "pending",
++  "running",
++  "waiting",
++]);
++
+ const CONVERSATION_RUN_STATUSES = new Set<OrchestrationV2Run["status"]>([
+   "completed",
+   "interrupted",
+@@ -257,6 +270,57 @@ export const layer: Layer.Layer<
      const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
      const scope = yield* Effect.scope;
      const completedTurnAnalytics = new Set<string>();
@@ -472,7 +494,7 @@ index f27580d909afff4109d2503610bbb903b80839c2..23f1c8b739e1a1e079981b531c7f073b
  
      const makeDomainEvent =
        /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
-@@ -559,28 +615,61 @@ export const layer: Layer.Layer<
+@@ -559,28 +623,63 @@ export const layer: Layer.Layer<
                    nodeId: input.event.subagent.id,
                  }),
                ];
@@ -506,9 +528,11 @@ index f27580d909afff4109d2503610bbb903b80839c2..23f1c8b739e1a1e079981b531c7f073b
 +            case "turn_item.updated": {
 +              const item = input.event.turnItem;
 +              if (
-+                item.type === "dynamic_tool" ||
-+                item.type === "command_execution" ||
-+                item.type === "file_change"
++                (item.type === "dynamic_tool" ||
++                  item.type === "command_execution" ||
++                  item.type === "file_change") &&
++                // Once per item: rescanning growing output on every streamed update is quadratic.
++                !OPEN_ITEM_STATUSES.has(item.status)
 +              ) {
 +                noteTouched(item.runId, item);
 +              }
