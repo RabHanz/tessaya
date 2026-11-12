@@ -15,13 +15,10 @@ import { TABS, tabOf } from "./tabs.ts";
 describe("the window's speed budget", () => {
   it("keeps the page small: script, stylesheet apart from fonts, and the whole document", () => {
     const cssWithoutFonts = APP_CSS.replace(/url\(data:[^)]*\)/g, "url()");
-    // 121,000 until History's redesign (about 6,500 for its rows, actions and day summary); 128,500 until
-    // Memory's People area (about 9,500 for private stores: their forms, audit and words); 138,000 until the
-    // sidebar areas and the places search across both windows (about 8,000 with their names and search terms); 148,000
-    // until the tips and Learn Tessaya (about 7,000, most of it the tips' own words).
-    expect(APP_SCRIPT.length).toBeLessThan(158_000);
-    expect(cssWithoutFonts.length).toBeLessThan(46_000); // 45,000 until the tip card; 43,000 until History's redesign
-    expect(HOME_DOCUMENT.length).toBeLessThan(432_000); // 420,000 until the tips and Learn Tessaya
+    // Each raise and what it paid for is in docs/baton/SPEED.md; 158,000 until Voice ID's guided read card.
+    expect(APP_SCRIPT.length).toBeLessThan(164_000);
+    expect(cssWithoutFonts.length).toBeLessThan(48_000); // 46,000 until the voice card, 45,000 until the tip card; 43,000 until History's redesign
+    expect(HOME_DOCUMENT.length).toBeLessThan(438_000); // 432,000 until the voice card, 420,000 until the tips
   });
 
   it("draws the first page and any tab with little work", async () => {

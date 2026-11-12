@@ -97,6 +97,21 @@ it("folds the firmware's topics into a device, keeping only the times of a voice
     },
   );
   assert.notInclude(JSON.stringify(d.log), "unlock the door");
+  // The room loop's enrolment card is kept for the clients, a malformed one is not, and neither is logged.
+  const card = {
+    title: "Read these aloud",
+    lead: "",
+    lines: [{ text: "Hi Tessaya", state: "now", heard: 1, why: null }],
+    mic: "Agora R1 (room mic)",
+    level: 0.4,
+    phase: "reading",
+    summary: null,
+  };
+  const logged = d.log.length;
+  fold("event/enrol", JSON.stringify(card));
+  fold("event/enrol", JSON.stringify({ ...card, phase: "dancing" }));
+  assert.deepStrictEqual<unknown>(devices.get(ID)!.enrol, card);
+  assert.strictEqual(devices.get(ID)!.log.length, logged);
   fold("state/online", "0");
   assert.isFalse(devices.get(ID)!.online);
   assert.isNull(HomeDevices.applyMessage(devices, "other/topic", "1", 1));

@@ -14,8 +14,16 @@ import {
   type VoiceIdView,
 } from "./voiceIdRows.ts";
 
-const loud = (seconds: number) =>
-  Int16Array.from({ length: seconds * 16_000 }, (_, i) => Math.round(1000 * Math.sin(i / 7)));
+/** A read of `lines` sentences: 5 s of voice each, then a pause. */
+const loud = (lines: number) => {
+  const one = Int16Array.from({ length: 5.8 * 16_000 }, (_, i) =>
+    i < 5 * 16_000 ? Math.round(3000 * Math.sin(i / 7)) : 0,
+  );
+  // A second of quiet first: he looks at the card before he starts.
+  const all = new Int16Array(16_000 + one.length * lines);
+  for (let i = 0; i < lines; i += 1) all.set(one, 16_000 + i * one.length);
+  return all;
+};
 
 const setup = () => {
   const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "voiceid-"));
@@ -58,14 +66,22 @@ describe("Voice ID enrolment", () => {
     t.voiceId.sync();
     await t.voiceId.settled();
     t.voiceId.read({ kind: "owner" });
-    expect(t.voiceId.view(true).capture?.secondsLeft).toBe(30);
-    await t.read(loud(30));
+    expect(t.voiceId.view(true).enrol?.lines).toHaveLength(6);
+    expect(t.voiceId.reading()).toBe(true);
+    await t.read(loud(6));
     expect(t.voiceId.profiles()).toMatchObject([
       { id: "owner", kind: "owner", sources: ["spoken"] },
     ]);
+    expect(t.voiceId.reading()).toBe(false);
+    expect(t.voiceId.view(true).enrol).toMatchObject({
+      phase: "done",
+      summary: { headline: "Your voice profile is ready" },
+    });
+    t.voiceId.card("close");
+    expect(t.voiceId.view(true).enrol).toBeNull();
 
     t.voiceId.read({ kind: "saved", name: "Sarah" });
-    await t.read(loud(20));
+    await t.read(loud(3));
     const sarah = t.voiceId.profiles().find((p) => p.kind === "saved");
     expect(sarah).toMatchObject({ id: "sarah", name: "Sarah" });
     expect(sarah?.consentNote).toContain("Sarah agreed aloud");
@@ -75,14 +91,15 @@ describe("Voice ID enrolment", () => {
     expect(t.voiceId.profiles().map((p) => p.id)).toEqual(["owner"]);
   });
 
-  it("keeps no audio once the read has enough, and saves nothing from a read of silence", async () => {
+  it("saves nothing from a read of silence", async () => {
     using t = setup();
     t.voiceId.sync();
     await t.voiceId.settled();
     t.voiceId.read({ kind: "saved", name: "Sam" });
     await t.read(new Int16Array(20 * 16_000));
     expect(t.voiceId.profiles()).toEqual([]);
-    expect(t.voiceId.view(true).capture).toBeNull();
+    // Silence reads no sentence: the card still waits on the first.
+    expect(t.voiceId.view(true).enrol?.lines.map((l) => l.state)).toEqual(["now", "todo", "todo"]);
   });
 
   it("closes the model when Voice ID is turned off", async () => {
@@ -127,7 +144,7 @@ describe("Voice ID settings", () => {
     profiles: [],
     model: "m",
     modelState: "ready",
-    capture: null,
+    enrol: null,
     note: null,
     listening: true,
     ...over,

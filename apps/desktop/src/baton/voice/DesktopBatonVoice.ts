@@ -50,6 +50,7 @@ import {
   type EchoGuard,
   CAMPLUS_POLICY,
   spokenYesStands,
+  scriptName,
   type SpeakerEmbedder,
   type SttProvider,
   type VoiceCoreEvent,
@@ -536,7 +537,12 @@ import {
   withRetry,
 } from "./historyRetry.ts";
 import { buildTranscriptReport } from "./transcriptReport.ts";
-import { boostCore, quietThreshold, silenceWhile } from "@t3tools/baton-shared/quietSpeech";
+import {
+  boostCore,
+  inSpeechSetup,
+  quietThreshold,
+  silenceWhile,
+} from "@t3tools/baton-shared/quietSpeech";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
@@ -1401,6 +1407,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     model: SPEAKER_MODEL.id,
     appData: input.env["APPDATA"],
     onChange: () => pushHome(),
+    // The card follows his words with the local model only: nothing of the read is uploaded.
+    transcribe: (pcm) =>
+      sidecar === null ? Promise.resolve("") : makeSidecarStt(sidecar).transcribe(pcm),
+    micName: () => deviceName(),
+    scriptName: scriptName(NodeOS.userInfo().username),
     ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
     // Deleting a person deletes their private store with them.
     ...(input.privateMemory === undefined
@@ -5062,7 +5073,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Hold, toggle, the setup's test and the tray all record through the sidecar: no wake or turn while they do.
       core: silenceWhile(
         boostCore(startCore, () => settings.quietSpeech),
-        () => releaseRecordingEscape !== null,
+        // Her name is in the enrolment script, and he may say it testing the mic: neither wakes her.
+        () =>
+          inSpeechSetup({
+            recording: releaseRecordingEscape !== null,
+            reading: voiceId.reading(),
+            micTest: levelTest !== null,
+          }),
       ),
       deviceId: choiceDeviceId(choice),
       onState: (next) => {
@@ -8093,6 +8110,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ voiceId: { ...settings.voiceId, [VOICE_ID_SWITCHES[id]]: on } });
       voiceId.sync();
     } else if (id === "vid.enrol") voiceId.read({ kind: "owner" });
+    else if (id === "vid.card:redo") voiceId.card("redo");
+    else if (id === "vid.card:close") voiceId.card("close");
     else if (id === "vid.enrol:later") void forgetVoice("owner", "your voice profile");
     else if (id === "vid.people:add" && typeof value === "string" && value.trim() !== "")
       voiceId.read({ kind: "saved", name: value.trim().slice(0, 40) });

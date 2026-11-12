@@ -4,33 +4,30 @@
  * aloud through Tessaya's own microphone. Settings drives it (voiceIdRows.ts). Only vectors are kept, never audio.
  */
 import {
+  CAMPLUS_POLICY,
+  createEnrolGuide,
   createSpeakerStore,
+  enrolScript,
+  type EnrolGuide,
   type SpeakerEmbedder,
   type SpeakerProfile,
 } from "@t3tools/baton-voice";
 
-import {
-  ENROLMENT_SENTENCES,
-  enrolOwner,
-  enrolSaved,
-  SAVED_PERSON_LINES,
-} from "./speakerEnrolment.ts";
+import { enrolOwner, enrolSaved, SAVED_PERSON_LINES } from "./speakerEnrolment.ts";
 import type { VoiceIdModelState, VoiceIdSettings, VoiceIdView } from "./voiceIdRows.ts";
 
 const RATE = 16_000;
-/** His read with the Wispr seed beside it; alone it is all there is, so it is longer. */
-const OWNER_READ_S = 20;
-const OWNER_ONLY_READ_S = 30;
-const PERSON_READ_S = 20;
+/** New speech before the recogniser hears the sentence again, for the card's highlight. */
+const HEAR_EVERY = RATE * 0.7;
 
 type Embedder = SpeakerEmbedder & { readonly close: () => void };
 
 interface Capture {
   readonly who: { readonly kind: "owner" } | { readonly kind: "saved"; readonly name: string };
-  readonly lines: ReadonlyArray<string>;
-  readonly need: number;
-  readonly frames: Int16Array[];
-  got: number;
+  readonly guide: EnrolGuide;
+  /** The take and how much of it the recogniser last heard; one transcription at a time. */
+  heard: { no: number; samples: number } | null;
+  hearing: boolean;
 }
 
 export const createVoiceId = (input: {
@@ -47,6 +44,12 @@ export const createVoiceId = (input: {
   readonly onChange: () => void;
   /** A saved person was removed: their own memory goes with them. */
   readonly onPersonDeleted?: (id: string) => void;
+  /** The local recogniser, so the card can follow his words; without it the card follows his pauses alone. */
+  readonly transcribe?: (pcm: Int16Array) => Promise<string>;
+  /** The microphone he is reading into, in his words. */
+  readonly micName?: () => string;
+  /** His first name for the script, or null. */
+  readonly scriptName?: string | null;
   readonly onNote?: (kind: string, fields: Readonly<Record<string, unknown>>) => void;
 }) => {
   const store = createSpeakerStore(input.stateDir);
@@ -96,14 +99,17 @@ export const createVoiceId = (input: {
   };
 
   const finish = async (done: Capture) => {
-    const pcm = new Int16Array(done.got);
+    const clips = done.guide.clips();
+    const pcm = new Int16Array(clips.reduce((n, c) => n + c.length, 0));
     let at = 0;
-    for (const f of done.frames) {
-      pcm.set(f.subarray(0, Math.min(f.length, pcm.length - at)), at);
-      at += f.length;
+    for (const c of clips) {
+      pcm.set(c, at);
+      at += c.length;
     }
     const model = embedder;
     if (model === null) return;
+    let saved = false;
+    let rows: Array<{ label: string; value: string }> = [];
     try {
       if (done.who.kind === "owner") {
         const result = await enrolOwner({
@@ -115,6 +121,9 @@ export const createVoiceId = (input: {
           save: store.save,
           now: new Date(),
         });
+        saved = result.saved;
+        if (result.wisprClips > 0)
+          rows = [{ label: "Also used", value: `${result.wisprClips} of your Wispr recordings` }];
         note = result.saved
           ? `Your voice: made from ${result.samples} clips${result.wisprClips > 0 ? ` (${result.wisprClips} Wispr recordings read)` : ""}.`
           : "Not enough of your voice was heard to tell it apart. Try again somewhere quieter.";
@@ -130,6 +139,7 @@ export const createVoiceId = (input: {
           save: store.save,
           now: new Date(),
         });
+        saved = made !== null;
         note =
           made === null
             ? `Not enough of ${name}'s voice was heard. Try again with ${name} reading all three lines.`
@@ -142,8 +152,52 @@ export const createVoiceId = (input: {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    done.guide.finish({
+      saved,
+      headline: saved
+        ? done.who.kind === "owner"
+          ? "Your voice profile is ready"
+          : `${done.who.name}'s voice is saved`
+        : "Nothing was saved",
+      rows: saved ? rows : [{ label: "What happened", value: note ?? "" }],
+    });
     reread();
     changed();
+  };
+
+  /** The recogniser hears the sentence so far again once there is enough new speech; its words move the highlight. */
+  const hear = (c: Capture) => {
+    if (input.transcribe === undefined || c.hearing) return;
+    const take = c.guide.take();
+    if (take.pcm === null) return;
+    const last = c.heard?.no === take.no ? c.heard.samples : 0;
+    if (take.pcm.length - last < HEAR_EVERY) return;
+    c.heard = { no: take.no, samples: take.pcm.length };
+    c.hearing = true;
+    void input
+      .transcribe(take.pcm)
+      .then((text) => {
+        if (capture === c && c.guide.heard(text, take.no)) changed();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        c.hearing = false;
+      });
+  };
+
+  /** A sentence passed its checks: its voice is compared with the others', then the profile is made once all are in. */
+  const accept = (c: Capture, index: number, sentence: Int16Array) => {
+    const model = embedder;
+    const judged = (
+      model === null ? Promise.resolve(null) : model.embed(sentence).catch(() => null)
+    ).then(async (vector) => {
+      if (capture !== c) return;
+      const step = c.guide.voice(index, vector);
+      if (step.changed) changed();
+      if (step.ready) await finish(c);
+    });
+    // `settled` waits for every sentence's voice and the profile made after the last.
+    busy = Promise.all([busy, judged]).then(() => undefined);
   };
 
   return {
@@ -152,38 +206,50 @@ export const createVoiceId = (input: {
     profiles: () => profiles,
     /** The open model, while Voice ID is on and ready. */
     embedder: () => (modelState === "ready" ? embedder : null),
-    /** Starts a read: the next seconds of the microphone are this person's. */
+    /** Starts a read: the card opens with the sentences, and the microphone is this person's until it is done. */
     read: (who: Capture["who"]) => {
       if (embedder === null || capture !== null) return;
-      const seconds =
-        who.kind === "saved"
-          ? PERSON_READ_S
-          : input.settings().wisprSeed
-            ? OWNER_READ_S
-            : OWNER_ONLY_READ_S;
+      const owner = who.kind === "owner";
       capture = {
         who,
-        lines: who.kind === "saved" ? SAVED_PERSON_LINES : ENROLMENT_SENTENCES,
-        need: seconds * RATE,
-        frames: [],
-        got: 0,
+        guide: createEnrolGuide({
+          sentences: owner ? enrolScript(input.scriptName ?? null) : SAVED_PERSON_LINES,
+          title: owner ? "Read these aloud" : `${who.name}: read these aloud`,
+          lead: "Use your normal voice, at your usual distance from the mic. One sentence at a time, with a short pause between them.",
+          mic: input.micName?.() ?? "This computer's microphone",
+          tip: owner
+            ? "Using the R1 too? Enrol again from Hardware, so Tessaya knows you on the room mic as well."
+            : null,
+          otherVoiceBelow: CAMPLUS_POLICY.single.listen,
+          strongFrom: CAMPLUS_POLICY.single.act + 0.15,
+        }),
+        heard: null,
+        hearing: false,
       };
       note = null;
       changed();
     },
-    /** Every microphone frame; only a read keeps any, and only until it has enough. */
+    /** Every microphone frame; only a read in progress keeps any, and only its sentences. */
     push: (frame: Int16Array) => {
       const c = capture;
+      if (c === null || c.guide.phase() !== "reading") return;
+      const step = c.guide.frame(frame);
+      if (step.accepted !== null) accept(c, step.accepted.index, step.accepted.pcm);
+      if (step.changed) changed();
+      hear(c);
+    },
+    /** A read is under way: her wake word in the script must not wake her. */
+    reading: () => capture !== null && capture.guide.phase() === "reading",
+    /** The card's buttons: Redo starts the read again, Done or Cancel closes it. */
+    card: (action: "redo" | "close") => {
+      const c = capture;
       if (c === null) return;
-      const before = Math.ceil((c.need - c.got) / RATE);
-      c.frames.push(frame.slice());
-      c.got += frame.length;
-      if (c.got >= c.need) {
-        capture = null;
-        c.got = c.need;
-        changed();
-        busy = finish(c);
-      } else if (Math.ceil((c.need - c.got) / RATE) !== before) changed();
+      if (action === "close") capture = null;
+      else if (c.guide.phase() !== "saving") {
+        c.guide.restart();
+        c.heard = null;
+      }
+      changed();
     },
     remove: (id: string) => {
       store.remove(id);
@@ -203,14 +269,7 @@ export const createVoiceId = (input: {
       profiles,
       model: input.model,
       modelState,
-      capture:
-        capture === null
-          ? null
-          : {
-              name: capture.who.kind === "owner" ? "you" : capture.who.name,
-              lines: capture.lines,
-              secondsLeft: Math.ceil((capture.need - capture.got) / RATE),
-            },
+      enrol: capture === null ? null : capture.guide.view(),
       note,
       listening,
     }),

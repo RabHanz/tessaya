@@ -51,10 +51,13 @@ import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilt
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
+import { VoiceEnrolCard } from "./VoiceEnrolCard";
 
 const QUIET = { reportFailure: false } as const;
 const INPUT_CLASS = "rounded-lg border border-border-subtle px-3 py-2 text-base text-foreground";
 const REFRESH_MS = 5000;
+/** While he reads for an R1 enrolment, so the card keeps up with his words. */
+const ENROL_REFRESH_MS = 300;
 const LEDS = [
   ["green", "Green"],
   ["red", "Red"],
@@ -163,13 +166,15 @@ function HardwareSections({
     if (result._tag === "Success" && result.value.ok)
       setView(result.value.value as DevicesOverview);
   };
+  const reading =
+    view?.devices.some((d) => d.enrol?.phase === "reading" || d.enrol?.phase === "saving") === true;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows the server's live device status while open
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- first read, then every few seconds while the screen is open; refresh closes over this environment
+    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- first read, then every few seconds while the screen is open (faster during an enrolment read); refresh closes over this environment
     void refresh();
-    const timer = setInterval(() => void refresh(), REFRESH_MS);
+    const timer = setInterval(() => void refresh(), reading ? ENROL_REFRESH_MS : REFRESH_MS);
     return () => clearInterval(timer);
-  }, [environmentId]);
+  }, [environmentId, reading]);
 
   const run: Run = async (kind, op, args, done) => {
     if (busy) return null;
@@ -460,7 +465,7 @@ function DeviceControls({
           title="Voice ID"
           description={
             d.enrolling
-              ? "Enrolling: speak to the device as it asks."
+              ? "Enrolling: read the sentences on the card aloud to the device."
               : "Teach the device your voice, through its own microphones."
           }
         >
@@ -471,6 +476,13 @@ function DeviceControls({
             onPress={() => void run("act", "enrol", { id, cancel: d.enrolling })}
           />
         </Row>
+        {d.enrol === null ? null : (
+          <VoiceEnrolCard
+            card={d.enrol}
+            onClose={() => void run("act", "enrol", { id, cancel: true })}
+            onRedo={() => void run("act", "enrol", { id, cancel: false })}
+          />
+        )}
       </SettingsSection>
 
       {d.speaker === null ? null : (

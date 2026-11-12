@@ -8,4 +8,5 @@ export * from "./providers/onnx.ts";
 export * from "./providers/speakerOnnx.ts";
 export * from "./speaker.ts";
 export * from "./speakerStore.ts";
+export * from "./enrolGuide.ts";
 export * from "./cueSounds.ts";

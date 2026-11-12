@@ -7,7 +7,14 @@ import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
 
 import { createEchoGuard } from "../echoGuard.ts";
 import { calledName, invitesReply, isBackchannel, isDismissal } from "./addressing.ts";
-import { admits, UNVERIFIED, type SpeakerGate, type SpeakerIdentity } from "../speaker.ts";
+import { createEnrolGuide, enrolScript, type EnrolGuide } from "../enrolGuide.ts";
+import {
+  admits,
+  CAMPLUS_POLICY,
+  UNVERIFIED,
+  type SpeakerGate,
+  type SpeakerIdentity,
+} from "../speaker.ts";
 import { DOWN_FRAME_BYTES, fromBytes, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
 import type { Affect } from "./senseVoice.ts";
@@ -129,8 +136,14 @@ export interface RoomDeps {
   ) => AsyncIterable<string>;
   /** Her voice: 16 kHz PCM for one sentence, streamed. */
   readonly speak: (text: string, signal: AbortSignal, voice?: string) => AsyncIterable<Int16Array>;
-  /** Optional enrolment: the owner profile from these 4 s windows of his speech. */
-  readonly enrolOwner?: (windows: ReadonlyArray<Int16Array>) => Promise<string>;
+  /** Optional enrolment: the owner profile from these 4 s windows of his speech, and what she says about it. */
+  readonly enrolOwner?: (
+    windows: ReadonlyArray<Int16Array>,
+  ) => Promise<{ readonly saved: boolean; readonly said: string }>;
+  /** His voice as a vector, so the enrolment card can tell another voice from his; without it that check is skipped. */
+  readonly embed?: (pcm: Int16Array) => Promise<Float32Array | null>;
+  /** His first name for the enrolment script, or null. */
+  readonly ownerName?: string | null;
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   readonly log: (line: string) => void;
@@ -256,9 +269,9 @@ const speechWindows = (pcm: Int16Array, n = 4 * RATE): Int16Array[] => {
   return out;
 };
 
-const ENROL_INTRO =
-  "Let's learn your voice. Talk to me for about twenty seconds, about anything at all, and I'll tell you when I have enough.";
-const ENROL_SECONDS = 16;
+const ENROL_INTRO = "Let's learn your voice. Read the sentences on your screen, one at a time.";
+/** The card's level meter is sent this often at most; a change in the words goes at once. */
+const CARD_MS = 250;
 
 export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG) => {
   const topic = (id: string, tail: string) => `freya/r1/${id}/${tail}`;
@@ -280,7 +293,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let lastWakeCue = Number.NEGATIVE_INFINITY;
     let bargedIn = false;
     let closed = false;
-    let enrolling: Int16Array[] | null = null;
+    /** The guided enrolment while he reads, and its summary until the card is closed. */
+    let guide: EnrolGuide | null = null;
+    /** The recogniser's words for the sentence being read, across the turns it spans. */
+    let cardWords = { take: 0, prefix: "", turn: "", skip: 0, seen: 0 };
+    let cardAt = Number.NEGATIVE_INFINITY;
+    const enrolling = () => guide !== null && ["reading", "saving"].includes(guide.phase());
     /** Turns until then need no name: S2 or her name opens it, a reply to him reopens it; audio alone never does. */
     let openUntil = 0;
     /** Her last reply asked him something: a bare "yes" or "okay" is his answer, not the room's chatter. */
@@ -469,7 +487,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let guesses = 0;
       let settled = false;
       const tryGuess = (words: string) => {
-        if (settled || enrolling !== null || words.trim() === "") return;
+        if (settled || enrolling() || words.trim() === "") return;
         if (guess !== null && sameWords(guess.words, words)) return;
         if (guesses >= MAX_GUESSES) return;
         guesses += 1;
@@ -496,20 +514,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const last = guess as Guess | null;
       const kept = last !== null && sameWords(last.words, text) ? last : null;
       if (last !== null && kept === null) last.control.abort();
-      if (enrolling !== null && given === undefined) {
-        enrolling.push(...speechWindows(pcm));
-        if (enrolling.length * 4 < ENROL_SECONDS) return;
-        const windows = enrolling;
-        enrolling = null;
-        const said = await (deps.enrolOwner?.(windows) ??
-          Promise.resolve("I can't keep a voice print here."));
-        const control = new AbortController();
-        reply = control;
-        await say(said, control.signal).finally(() => {
-          if (reply === control) reply = null;
-        });
-        return;
-      }
+      // A read for the enrolment card is not said to her; a button's prompt still is.
+      if (enrolling() && given === undefined) return;
       if (text === "") return;
       const called = calledName(
         text,
@@ -667,6 +673,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           case "start":
             rec?.cancel();
             rec = deps.recognise();
+            if (enrolling()) {
+              cardWords.prefix = `${cardWords.prefix} ${cardWords.turn}`.trim();
+              cardWords.turn = "";
+              cardWords.skip = 0;
+              cardWords.seen = 0;
+              rec.onPartial?.(heardForCard);
+            }
             rec.feed(a.pcm);
             // The preroll is already in `a.pcm`, so his first word came that long before now.
             turnStartedAt = deps.now() - (a.pcm.length / RATE) * 1000;
@@ -692,6 +705,56 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
     };
 
+    const card = (now: boolean) => {
+      if (guide === null || (!now && deps.now() - cardAt < CARD_MS)) return;
+      cardAt = deps.now();
+      deps.publish(topic(id, "event/enrol"), JSON.stringify(guide.view()));
+    };
+    /** A partial for the card: the words since this sentence began, though a turn may hold the end of the last one. */
+    const heardForCard = (text: string) => {
+      const g = guide;
+      if (g === null || g.phase() !== "reading") return;
+      const said = text.split(/\s+/).filter((w) => w !== "");
+      const no = g.take().no;
+      if (no !== cardWords.take)
+        cardWords = { take: no, prefix: "", turn: "", skip: cardWords.seen, seen: 0 };
+      cardWords.seen = said.length;
+      cardWords.turn = said.slice(cardWords.skip).join(" ");
+      if (g.heard(`${cardWords.prefix} ${cardWords.turn}`.trim(), no)) card(true);
+    };
+    const enrolled = async (g: EnrolGuide) => {
+      const clips = g.clips();
+      const all = new Int16Array(clips.reduce((n, c) => n + c.length, 0));
+      let at = 0;
+      for (const c of clips) {
+        all.set(c, at);
+        at += c.length;
+      }
+      const result = await (
+        deps.enrolOwner?.(speechWindows(all)) ??
+        Promise.resolve({ saved: false, said: "I can't keep a voice print here." })
+      ).catch(() => ({
+        saved: false,
+        said: "The voice profile could not be made. Nothing was saved.",
+      }));
+      if (guide !== g) return;
+      g.finish({
+        saved: result.saved,
+        headline: result.saved ? "Your voice profile is ready" : "Nothing was saved",
+        rows: result.saved ? [] : [{ label: "What happened", value: result.said }],
+      });
+      card(true);
+      speakNow(result.said);
+    };
+    /** His sentence passed its checks: its voice is compared with the others', and the profile is made once all are in. */
+    const accepted = (g: EnrolGuide, index: number, pcm: Int16Array) =>
+      void (deps.embed?.(pcm).catch(() => null) ?? Promise.resolve(null)).then((vector) => {
+        if (guide !== g) return;
+        const step = g.voice(index, vector);
+        card(step.changed);
+        if (step.ready) void enrolled(g);
+      });
+
     const onWindow = async (window: Int16Array, arrivedAt: number) => {
       const prob = await vad.score(window);
       let heard = prob;
@@ -709,6 +772,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (closed) return;
         const arrivedAt = deps.now();
         const pcm = fromBytes(bytes);
+        // Her own voice (the intro) is not his read.
+        if (guide !== null && guide.phase() === "reading" && !speaking()) {
+          const g = guide;
+          const step = g.frame(pcm);
+          if (step.accepted !== null) accepted(g, step.accepted.index, step.accepted.pcm);
+          card(step.changed);
+        }
         const all = new Int16Array(pending.length + pcm.length);
         all.set(pending);
         all.set(pcm, pending.length);
@@ -728,11 +798,21 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           deps.publish(topic(id, "cmd/voice/stop"), "{}");
         })),
       enrol: () => {
-        enrolling = [];
+        guide = createEnrolGuide({
+          sentences: enrolScript(deps.ownerName ?? null),
+          title: "Read these aloud",
+          lead: "Stand where you usually talk to the R1, and use your normal voice. One sentence at a time, with a short pause between them.",
+          mic: "Agora R1 (room mic)",
+          tip: "Enrol on the computer too, in Tessaya's Voice ID settings, for your desk mic.",
+          otherVoiceBelow: CAMPLUS_POLICY.single.listen,
+          strongFrom: CAMPLUS_POLICY.single.act + 0.15,
+        });
+        cardWords = { take: 0, prefix: "", turn: "", skip: 0, seen: 0 };
+        card(true);
         speakNow(ENROL_INTRO);
       },
       cancelEnrol: () => {
-        enrolling = null;
+        guide = null;
       },
       /** Tessaya says this in the room now (an agent, a reminder or the Devices page), cutting off whatever she was saying. */
       say: (text: string) => {

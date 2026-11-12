@@ -449,6 +449,25 @@ html.live.boot .brand .bt{animation:rise var(--dur-slow) var(--ease-out) 120ms b
 html.live.boot #navlist>*:nth-child(-n+12){animation:rise-s var(--dur-slow) var(--ease-out) backwards}
 ${delays("#navlist>*", 12, "200ms").replace(/html\.live /g, "html.live.boot ")}
 html.live.boot #top .search,html.live.boot #top .state{animation:fade var(--dur-slow) ease 300ms backwards}
+#enrolveil{position:fixed;inset:0;z-index:20;background:var(--veil);display:grid;place-items:center;padding:24px}
+.enrol{width:min(600px,100%);max-height:calc(100vh - 48px);overflow:auto;background:var(--panel);border:1px solid var(--edge);border-radius:20px;box-shadow:var(--modal-shadow);padding:22px 24px}
+.enrol h2{display:block;font:400 24px/1.2 var(--serif);letter-spacing:0;text-transform:none;color:var(--ink);margin:0 0 4px}.enrol h2::before{content:none}
+.eprog{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--faint);margin:12px 0}
+.ebar{flex:1;height:6px;border-radius:99px;background:var(--sunk);overflow:hidden}.ebar>i{display:block;height:100%;background:var(--accent)}
+.elines{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.elines li{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:8px 10px;border-radius:12px;font-size:15px;line-height:1.5;color:var(--faint)}
+.elines .em{font-size:13px;padding-top:2px;text-align:center}
+.elines li.done{color:var(--soft)}.elines li.done .em,.elines li.now .em{color:var(--accent-text)}
+.elines li.now,.elines li.again{background:var(--accent-wash);color:var(--ink);font:400 18px/1.5 var(--serif)}
+.elines li.again{background:var(--warn-wash)}.elines li.again .em,.elines li.again .w.h{color:var(--warn)}
+.elines .w.h{color:var(--accent-text)}.elines .w.next{border-bottom:2px solid var(--accent)}
+.elines .why{display:block;font:500 13.5px/1.4 var(--sans);color:var(--warn);margin-top:4px}
+.efoot{display:flex;align-items:center;gap:10px;margin-top:16px}
+.emic{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:12.5px;color:var(--faint)}
+.emic .meter{width:90px;height:8px;margin:0;flex:none}
+.esum{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14.5px;margin:10px 0}.esum dt{color:var(--faint)}.esum dd{margin:0}
+.eq{display:inline-flex;gap:3px;margin-right:8px;vertical-align:1px}.eq i{width:14px;height:6px;border-radius:3px;background:var(--line-strong)}.eq i.on{background:var(--accent)}
+.etip{border-left:3px solid var(--accent);padding:8px 12px;background:var(--sunk);border-radius:10px;font-size:14px;color:var(--soft)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 html.motion-reduced *,html.motion-off *{animation:none!important;transition:none!important}
 html.motion-reduced #page.enter{animation:fade var(--dur-quick) ease backwards!important}
