@@ -148,6 +148,7 @@ import {
   BatonDictationWords,
   dictatingAttribute,
 } from "./BatonComposerDictation";
+import { placeholderWhile } from "@t3tools/baton-shared/composerDictation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
@@ -3577,7 +3578,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCitationSubmitAndSend={submitCitationAndSendStable}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
-                    placeholder={
+                    placeholder={placeholderWhile(
+                      tessayaDictation.state,
                       isComposerApprovalState
                         ? activePendingApproval?.supportsFeedback
                           ? "Send feedback to decline this request"
@@ -3593,8 +3595,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               : (threadProviderBlockReason ??
                                 (showProviderUnavailable
                                   ? "Enable a provider in Settings to send a message"
-                                  : DEFAULT_COMPOSER_PLACEHOLDER))
-                    }
+                                  : DEFAULT_COMPOSER_PLACEHOLDER)),
+                    )}
                     disabled={
                       projectSelectionRequired ||
                       isChoiceOnlyPendingQuestion ||
