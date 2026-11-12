@@ -4,9 +4,10 @@ import {
   resolveNavigationTabOrder,
   type NavigationTab,
 } from "./navigation-tab-order";
+import { firstTab, tessayaAppOn } from "../../tessaya/tessayaTabs";
 
 export function resolveWorkspaceTabOrder(saved: readonly unknown[] | undefined) {
-  return navigationCustomizationAvailable()
+  return navigationCustomizationAvailable() || tessayaAppOn()
     ? resolveNavigationTabOrder(saved)
     : NAVIGATION_TAB_ORDER;
 }
@@ -40,12 +41,14 @@ function emptyTab(): WorkspaceTabState {
 
 export function initialWorkspaceTabsState(): WorkspaceTabsState {
   return {
-    selectedTab: "threads",
+    selectedTab: firstTab(tessayaAppOn()),
     selectionRevision: 0,
     tabs: {
       threads: emptyTab(),
       pullRequests: emptyTab(),
       usage: emptyTab(),
+      today: emptyTab(),
+      devices: emptyTab(),
       settings: emptyTab(),
     },
   };

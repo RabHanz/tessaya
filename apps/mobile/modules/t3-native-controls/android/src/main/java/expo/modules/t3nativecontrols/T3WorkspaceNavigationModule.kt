@@ -46,6 +46,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
@@ -69,6 +76,13 @@ class T3WorkspaceNavigationModule : Module() {
     Name("T3WorkspaceNavigation")
     View(T3WorkspaceNavigationView::class) {
       Prop("tabs") { view: T3WorkspaceNavigationView, value: List<String> -> view.tabs = value }
+      // A tab's own words and 24x24 stroke icon (SVG path data), from JS; absent, the built-in ones.
+      Prop("tabLabels") { view: T3WorkspaceNavigationView, value: Map<String, String> ->
+        view.tabLabels = value
+      }
+      Prop("tabIcons") { view: T3WorkspaceNavigationView, value: Map<String, String> ->
+        view.tabIcons = value
+      }
       Prop("selectedTab") { view: T3WorkspaceNavigationView, value: String ->
         view.selectedTab = value
       }
@@ -128,6 +142,8 @@ class T3WorkspaceNavigationView(
   private val onOverlayChange by EventDispatcher()
   var tabs by mutableStateOf(listOf("threads", "pullRequests", "usage", "settings"))
   var selectedTab by mutableStateOf("threads")
+  var tabLabels by mutableStateOf(emptyMap<String, String>())
+  var tabIcons by mutableStateOf(emptyMap<String, String>())
   var rail by mutableStateOf(false)
   var floating by mutableStateOf(false)
   var dark by mutableStateOf(false)
@@ -412,7 +428,7 @@ class T3WorkspaceNavigationView(
     }
   }
 
-  private fun tabTitle(tab: String) = when (tab) {
+  private fun tabTitle(tab: String) = tabLabels[tab] ?: when (tab) {
     "threads" -> "Chats"
     "pullRequests" -> "Pulls"
     "usage" -> "Usage"
@@ -420,10 +436,16 @@ class T3WorkspaceNavigationView(
   }
 
   private fun expandedTabTitle(tab: String) =
-    if (tab == "pullRequests") "Pull Requests" else tabTitle(tab)
+    if (tab == "pullRequests" && tabLabels[tab] == null) "Pull Requests" else tabTitle(tab)
 
   @Composable
-  private fun tabIconPainter(tab: String) = painterResource(
+  private fun tabIconPainter(tab: String): Painter {
+    val path = tabIcons[tab] ?: return builtInIconPainter(tab)
+    return rememberVectorPainter(remember(path) { strokeIcon(path) })
+  }
+
+  @Composable
+  private fun builtInIconPainter(tab: String) = painterResource(
     when (tab) {
       "threads" -> R.drawable.t3_chats
       "pullRequests" -> R.drawable.t3_pull_requests
@@ -433,6 +455,21 @@ class T3WorkspaceNavigationView(
   )
 
   private companion object {
+    // Tabler-style outline icons: a 24 unit box, 2 unit round strokes; Icon's tint colours them.
+    fun strokeIcon(path: String) =
+      ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      ).addPath(
+        pathData = addPathNodes(path),
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 2f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+      ).build()
+
     // Material's 80dp compact rail, minus 8dp: still a 48dp touch target with 12dp margins.
     val RAIL_WIDTH = 72.dp
     val EXPANDED_RAIL_WIDTH = 240.dp

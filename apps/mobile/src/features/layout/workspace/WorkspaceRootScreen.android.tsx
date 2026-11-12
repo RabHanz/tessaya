@@ -24,6 +24,8 @@ import { WorkspaceAppBarScope } from "../../../components/ui/WorkspaceAppBar.and
 import { usePaneRole } from "../../../components/ui/Pane";
 import { AndroidWorkspaceSidebar } from "./AndroidWorkspaceSidebar.android";
 import type { WorkspaceTab } from "./workspace-tabs-state";
+import { TessayaTalkButton } from "../../tessaya/TessayaTalkButton";
+import { tessayaAppOn } from "../../tessaya/tessayaTabs";
 
 const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
 
@@ -111,6 +113,7 @@ function WorkspaceRoot() {
         ) : (
           <AndroidWorkspaceNavigation onNewThread={startNewTask} />
         )}
+        {tessayaAppOn() && !layout.usesSplitView ? <TessayaTalkButton /> : null}
       </View>
     </WorkspaceTabsContext>
   );

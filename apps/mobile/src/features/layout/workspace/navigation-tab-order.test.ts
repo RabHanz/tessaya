@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
+import { setTessayaApp, TESSAYA_TAB_ORDER } from "../../tessaya/tessayaTabs";
+import { initialWorkspaceTabsState } from "./workspace-tabs-state";
 import {
   NAVIGATION_TAB_ORDER,
   navigationCustomizationAvailable,
@@ -65,5 +67,21 @@ describe("navigation tab order", () => {
     expect(
       resolveSelectedNavigationTab(undefined, NAVIGATION_TAB_ORDER, "threads"),
     ).toBeUndefined();
+  });
+});
+
+describe("Tessaya's phone app", () => {
+  it("puts Today, Sessions and Devices in the bar, Pulls and Usage under You, whatever was saved", () => {
+    setTessayaApp(true);
+    try {
+      expect(resolveNavigationTabOrder(["usage", "threads"])).toEqual(TESSAYA_TAB_ORDER);
+      expect(visibleNavigationTabs(["usage"], [], 4)).toEqual(["today", "threads", "devices"]);
+      expect(overflowNavigationTabs(undefined, [])).toEqual(["pullRequests", "usage"]);
+      expect(selectedNavigationTab(undefined, "pullRequests", false, [], 4)).toBe("settings");
+      expect(initialWorkspaceTabsState().selectedTab).toBe("today");
+    } finally {
+      setTessayaApp(false);
+    }
+    expect(initialWorkspaceTabsState().selectedTab).toBe("threads");
   });
 });
