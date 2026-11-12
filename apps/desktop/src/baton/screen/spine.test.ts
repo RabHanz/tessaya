@@ -71,8 +71,9 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
         /\bjudgeToolCall\(/.test(NodeFS.readFileSync(f, "utf8")),
     );
     expect(around).toEqual([]);
-    for (const f of ["agent/agentGate.ts", "screen/ScreenCompanion.ts"])
-      expect(source(...f.split("/"))).toContain("decideTrust(");
+    expect(source("agent", "agentGate.ts")).toContain("decideTrust(");
+    // The companion gates every turn through that same gate.
+    expect(source("screen", "ScreenCompanion.ts")).toContain("createAgentGate(");
   });
 });
 
