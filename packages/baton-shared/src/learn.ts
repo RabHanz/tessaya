@@ -236,3 +236,74 @@ export function pickTip(
     null
   );
 }
+
+/** One change to his progress, the same on every device and on the server. */
+export type LearnOp =
+  | { readonly op: "use"; readonly place: string }
+  | { readonly op: "seen"; readonly id: string; readonly at: number }
+  | { readonly op: "dismiss"; readonly id: string }
+  | { readonly op: "mode"; readonly mode: TipMode }
+  | { readonly op: "day"; readonly day: string }
+  | { readonly op: "whatsNew"; readonly since: string }
+  | { readonly op: "reset" };
+
+/**
+ * Applies one change; an op it does not understand changes nothing. Self-contained (no imports, no helpers): the
+ * desktop window runs its source.
+ */
+export function applyLearnOp(progress: LearnProgress, change: LearnOp): LearnProgress {
+  const add = (list: ReadonlyArray<string>, value: string, cap: number) =>
+    list.includes(value) ? list : [...list, value].slice(-cap);
+  const text = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 60;
+  if (change.op === "use" && text(change.place))
+    return { ...progress, used: add(progress.used, change.place, 200) };
+  if (change.op === "seen" && text(change.id) && typeof change.at === "number")
+    return {
+      ...progress,
+      seen: { ...progress.seen, [change.id]: (progress.seen[change.id] ?? 0) + 1 },
+      lastTipAt: change.at,
+    };
+  if (change.op === "dismiss" && text(change.id))
+    return { ...progress, dismissed: add(progress.dismissed, change.id, 200) };
+  if (
+    change.op === "mode" &&
+    (change.mode === "daily" || change.mode === "all" || change.mode === "off")
+  )
+    return { ...progress, mode: change.mode };
+  if (change.op === "day" && /^\d{4}-\d{2}-\d{2}$/.test(change.day))
+    return { ...progress, days: add(progress.days, change.day, 60) };
+  if (change.op === "whatsNew" && text(change.since))
+    return { ...progress, whatsNewSeen: change.since };
+  if (change.op === "reset")
+    return {
+      used: [],
+      seen: {},
+      dismissed: [],
+      days: progress.days,
+      lastTipAt: null,
+      mode: progress.mode,
+      whatsNewSeen: progress.whatsNewSeen,
+    };
+  return progress;
+}
+
+/** A stored or sent progress, read defensively: anything malformed is the empty default for that field. */
+export function readLearnProgress(value: unknown): LearnProgress {
+  const v = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
+  const strings = (x: unknown) =>
+    Array.isArray(x) ? x.filter((s): s is string => typeof s === "string").slice(-200) : [];
+  const seen: Record<string, number> = {};
+  if (typeof v["seen"] === "object" && v["seen"] !== null)
+    for (const [k, n] of Object.entries(v["seen"] as Record<string, unknown>))
+      if (typeof n === "number" && Number.isFinite(n)) seen[k] = n;
+  const mode = v["mode"];
+  return {
+    used: strings(v["used"]),
+    seen,
+    dismissed: strings(v["dismissed"]),
+    days: strings(v["days"]).slice(-60),
+    lastTipAt: typeof v["lastTipAt"] === "number" ? v["lastTipAt"] : null,
+    mode: mode === "all" || mode === "off" ? mode : "daily",
+    whatsNewSeen: typeof v["whatsNewSeen"] === "string" ? v["whatsNewSeen"] : null,
+  };
+}

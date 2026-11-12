@@ -13,6 +13,9 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { BatonLearnCallInput } from "@t3tools/baton-contracts";
+import * as Schema from "effect/Schema";
+
 import { isEmbedSrc } from "./links.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
@@ -407,6 +410,8 @@ export interface BatonHomeInput {
   readonly openSessions: (liveOnly?: boolean, path?: string) => void;
   /** T3's app address, whose `/tessaya/<page>` routes this window shows inline; absent, those pages offer T3 instead. */
   readonly embed?: { readonly url: string; readonly preload: string };
+  /** His tips' progress on this machine's server (`baton.learn.call`); absent, the window keeps it alone. */
+  readonly learn?: (call: BatonLearnCallInput) => Promise<unknown>;
   /** The window moved to this tab. */
   readonly onTab?: (tab: string) => void;
   /** System, Light or Dark, as he chose it in Settings. */
@@ -463,6 +468,8 @@ const THEME = "baton-home:theme";
 const LEVEL = "baton-home:level";
 const STING = "baton-home:sting";
 const EMBED = "baton-home:embed";
+const LEARN = "baton-home:learn";
+const decodeLearnCall = Schema.decodeUnknownOption(BatonLearnCallInput);
 const GO = "baton-home:go";
 const T3_PATH = /^\/(settings|tessaya)\/[a-z-]+$/;
 /** Tessaya's palette art: the app's resources when packaged, the source tree when run from it. */
@@ -500,6 +507,12 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     ),
   );
   Electron.ipcMain.handle(EMBED, () => input.embed?.url ?? null);
+  Electron.ipcMain.handle(LEARN, (_event, call: unknown) => {
+    const decoded = decodeLearnCall(call);
+    return decoded._tag === "Some" && input.learn !== undefined
+      ? input.learn(decoded.value).catch(() => null)
+      : null;
+  });
   // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
   let tabShots = 0;
   Electron.ipcMain.on("baton-home:tab", (_event, tab: unknown) => {

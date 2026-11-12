@@ -25,7 +25,11 @@ import type {
   BatonRecordEntry,
   WatchFinding,
 } from "@t3tools/baton-contracts";
-import { BATON_DESKTOP_SETTINGS_WS_METHODS, tessayaPlaceOf } from "@t3tools/baton-contracts";
+import {
+  BATON_DESKTOP_SETTINGS_WS_METHODS,
+  BATON_LEARN_WS_METHODS,
+  tessayaPlaceOf,
+} from "@t3tools/baton-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
@@ -8157,6 +8161,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     render();
   };
 
+  const learnDoor = input.direct;
   const home = createBatonHome({
     stateDir: input.stateDir,
     state: homeState,
@@ -8169,6 +8174,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         void showLiveWhenReady(input.sessions, 10, { kind: "navigate", path });
     },
     ...(input.embed === undefined ? {} : { embed: input.embed }),
+    ...(learnDoor === undefined
+      ? {}
+      : { learn: (call) => learnDoor(BATON_LEARN_WS_METHODS.call, call, 5_000) }),
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
       if (tab === "memory") {

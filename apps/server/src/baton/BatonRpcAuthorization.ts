@@ -29,6 +29,7 @@ import {
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
+  BATON_LEARN_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -153,6 +154,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_DEVICES_WS_METHODS.call]: AuthOrchestrationReadScope,
   // Voices: listing and previews are reads; a persona's voice, the Google key and a cloud line are operate.
   [BATON_VOICE_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // Which tips he has seen: reading and marking them changes nothing but the tips.
+  [BATON_LEARN_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.
@@ -273,6 +276,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_DEVICES_WS_METHODS.call,
   // A persona's cloud voice, said by this machine's server.
   BATON_VOICE_WS_METHODS.call,
+  // The window's tips, with T3's window closed.
+  BATON_LEARN_WS_METHODS.call,
   // Every live session here and on each linked environment, and typing into a pane here.
   BATON_SESSIONS_WS_METHODS.across,
   // This machine's own catalog with T3's window closed; another machine's goes through the window.

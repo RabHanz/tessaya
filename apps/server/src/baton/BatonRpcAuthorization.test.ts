@@ -16,6 +16,7 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
+  BATON_LEARN_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
@@ -191,7 +192,8 @@ describe("rename R1: every method also answers as tessaya.*", () => {
       (t) =>
         t !== BATON_HOME_WS_METHODS.call &&
         t !== BATON_DEVICES_WS_METHODS.call &&
-        t !== BATON_VOICE_WS_METHODS.call,
+        t !== BATON_VOICE_WS_METHODS.call &&
+        t !== BATON_LEARN_WS_METHODS.call,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(refusedAsDevice(renamed, device), renamed).toBe(refusedAsDevice(tag, device));
@@ -213,7 +215,8 @@ describe("rename R1: every method also answers as tessaya.*", () => {
       (t) =>
         t !== BATON_HOME_WS_METHODS.call &&
         t !== BATON_DEVICES_WS_METHODS.call &&
-        t !== BATON_VOICE_WS_METHODS.call,
+        t !== BATON_VOICE_WS_METHODS.call &&
+        t !== BATON_LEARN_WS_METHODS.call,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(BatonRpcGroup.requests.has(renamed), renamed).toBe(true);

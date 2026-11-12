@@ -10,12 +10,18 @@ import {
   TESSAYA_SETTINGS_GROUPS,
 } from "@t3tools/baton-contracts";
 
-import { LEARN_ITEMS, pickTip, WHATS_NEW } from "@t3tools/baton-shared/learn";
+import {
+  applyLearnOp,
+  LEARN_ITEMS,
+  pickTip,
+  readLearnProgress,
+  WHATS_NEW,
+} from "@t3tools/baton-shared/learn";
 
 import { tableFor } from "./strings.ts";
 import { AREAS } from "./tabs.ts";
 
-export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))}; const AREAS = ${JSON.stringify(AREAS)}; const PLACES = ${JSON.stringify(TESSAYA_PLACES)}; const SGROUPS = ${JSON.stringify(TESSAYA_SETTINGS_GROUPS)}; const T3PLACES = ${JSON.stringify(T3_SETTINGS_PLACES)}; const LEARN_ITEMS = ${JSON.stringify(LEARN_ITEMS)}; const WHATS_NEW = ${JSON.stringify(WHATS_NEW)}; const pickTip = (${pickTip.toString().replace(/\s*\n\s*/g, " ")});
+export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))}; const AREAS = ${JSON.stringify(AREAS)}; const PLACES = ${JSON.stringify(TESSAYA_PLACES)}; const SGROUPS = ${JSON.stringify(TESSAYA_SETTINGS_GROUPS)}; const T3PLACES = ${JSON.stringify(T3_SETTINGS_PLACES)}; const LEARN_ITEMS = ${JSON.stringify(LEARN_ITEMS)}; const WHATS_NEW = ${JSON.stringify(WHATS_NEW)}; const pickTip = (${pickTip.toString().replace(/\s*\n\s*/g, " ")}); const applyLearnOp = (${applyLearnOp.toString().replace(/\s*\n\s*/g, " ")}); const readLearnProgress = (${readLearnProgress.toString().replace(/\s*\n\s*/g, " ")});
 const L = (k, v) => { let t = STR[k] !== undefined ? STR[k] : k; if (v) for (const n in v) t = t.split("{" + n + "}").join(String(v[n])); return t; };
 const real = typeof require === 'function';
 const ipc = real ? require('electron').ipcRenderer : null;
@@ -880,25 +886,35 @@ function searchPage(p) {
 // Tips (LEARN_ITEMS, pickTip): what he has opened and seen, kept in this window's storage on this computer. A tip is
 // picked once per visit to a page, so a redraw never counts it twice.
 const AREA_OF = {}; for (const a of AREAS) for (const pg of a.pages) AREA_OF[pg] = a.id;
-const LEARN0 = { used: [], seen: {}, dismissed: [], days: [], lastTipAt: null, mode: 'daily', whatsNewSeen: null };
-let learn = (() => { try { return Object.assign({}, LEARN0, JSON.parse(localStorage.getItem('tessaya.learn') || '{}')); } catch (e) { return Object.assign({}, LEARN0); } })();
+let learn = (() => { try { return readLearnProgress(JSON.parse(localStorage.getItem('tessaya.learn') || '{}')); } catch (e) { return readLearnProgress(null); } })();
 const saveLearn = () => { try { localStorage.setItem('tessaya.learn', JSON.stringify(learn)); } catch (e) {} };
-(() => { const d = new Date().toISOString().slice(0, 10); if (learn.days.indexOf(d) < 0) { learn.days = learn.days.concat([d]).slice(-60); saveLearn(); } })();
+// Every change goes to this machine's server too, so the phone and the web app count the same tips (applyLearnOp).
+function learnDo(change) {
+  learn = applyLearnOp(learn, change); saveLearn();
+  if (real) ipc.invoke('baton-home:learn', { kind: 'act', op: change.op, args: change }).catch(() => {});
+}
+learnDo({ op: 'day', day: new Date().toISOString().slice(0, 10) });
+// The server's progress is the one every device shares; what this window learned while it was away is sent up.
+if (real) ipc.invoke('baton-home:learn', { kind: 'read', op: 'get' }).then(r => {
+  if (!r || !r.ok) return; const theirs = readLearnProgress(r.value), mine = learn; learn = theirs;
+  for (const pl of mine.used) if (theirs.used.indexOf(pl) < 0) learnDo({ op: 'use', place: pl });
+  for (const id of mine.dismissed) if (theirs.dismissed.indexOf(id) < 0) learnDo({ op: 'dismiss', id: id });
+  saveLearn(); if (S) { lastSig = ''; render(S); }
+}).catch(() => {});
 let tipNow = null;
 const freshNews = () => WHATS_NEW.filter(w => !learn.whatsNewSeen || w.since > learn.whatsNewSeen);
 function learnVisit(t) {
   const tip = pickTip(LEARN_ITEMS, learn, { page: t, area: AREA_OF[t] || null }, Date.now());
   tipNow = tip ? { page: t, tip: tip } : null;
-  if (tip) { const seen = Object.assign({}, learn.seen); seen[tip.id] = (seen[tip.id] || 0) + 1; learn.seen = seen; learn.lastTipAt = Date.now(); }
-  if (learn.used.indexOf(t) < 0) learn.used = learn.used.concat([t]);
-  saveLearn();
+  if (tip) learnDo({ op: 'seen', id: tip.id, at: Date.now() });
+  if (learn.used.indexOf(t) < 0) learnDo({ op: 'use', place: t });
 }
 function tipCard(p) {
   if (tipNow && tipNow.page === cur) {
     const t = tipNow.tip, c = $('div', 'tipcard'); c.setAttribute('role', 'note'); c.append($('b', null, t.title), $('p', null, t.body));
     const row = $('div', 'tiprow'); const a = $('button', 'btn primary', t.action); a.onclick = () => { tipNow = null; modal = null; go(t.place); };
     const n = $('button', 'btn quiet', L('tip.later')); n.onclick = () => { tipNow = null; render(); };
-    const off = $('button', 'off', L('tip.off')); off.onclick = () => { learn.mode = 'off'; learn.dismissed = learn.dismissed.concat([t.id]); saveLearn(); tipNow = null; render(); };
+    const off = $('button', 'off', L('tip.off')); off.onclick = () => { learnDo({ op: 'mode', mode: 'off' }); learnDo({ op: 'dismiss', id: t.id }); tipNow = null; render(); };
     row.append(a, n, off); c.appendChild(row); p.appendChild(c); return;
   }
   const news = cur === 'home' ? freshNews() : [];
@@ -1042,8 +1058,8 @@ function modalPage(b) {
     b.appendChild($('h2', null, 'Tour'));
     b.appendChild(plainGroup([[L('wizard.rerun'), 'A minute: your microphone, dictation key, one sentence, and who does the work.', 'Start', tourStart]]));
     b.appendChild($('h2', null, L('tip.title'))); b.appendChild($('p', 'hint', L('tip.text')));
-    const tg = seg(L('tip.title'), [['daily', L('tip.daily')], ['all', L('tip.all')], ['off', L('tip.none')]], learn.mode, m => { learn.mode = m; saveLearn(); render(); }); tg.style.marginBottom = '12px'; b.appendChild(tg);
-    b.appendChild(plainGroup([[L('tip.reset'), L('tip.reset.text'), L('tip.reset'), () => { learn = Object.assign({}, LEARN0, { days: learn.days, mode: learn.mode }); tipNow = null; saveLearn(); render(); }]]));
+    const tg = seg(L('tip.title'), [['daily', L('tip.daily')], ['all', L('tip.all')], ['off', L('tip.none')]], learn.mode, m => { learnDo({ op: 'mode', mode: m }); render(); }); tg.style.marginBottom = '12px'; b.appendChild(tg);
+    b.appendChild(plainGroup([[L('tip.reset'), L('tip.reset.text'), L('tip.reset'), () => { learnDo({ op: 'reset' }); tipNow = null; render(); }]]));
     b.appendChild($('h2', null, 'Quit'));
     b.appendChild(plainGroup([['Quit Tessaya', 'Closing the window keeps Tessaya in the tray. Quit ends it.', 'Quit', 'q.quit']]));
   }
@@ -1140,7 +1156,7 @@ function syncModal() {
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
 function closeModal() { stopMeter(); modal = null; aboutSeen = false; render(); }
-function go(t) { t = MOVED[t] || t; if (cur === 'learn' && t !== 'learn' && WHATS_NEW.length) { learn.whatsNewSeen = WHATS_NEW[WHATS_NEW.length - 1].since; saveLearn(); } if (t !== cur && t !== modal) learnVisit(t); if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
+function go(t) { t = MOVED[t] || t; if (cur === 'learn' && t !== 'learn' && WHATS_NEW.length && learn.whatsNewSeen !== WHATS_NEW[WHATS_NEW.length - 1].since) learnDo({ op: 'whatsNew', since: WHATS_NEW[WHATS_NEW.length - 1].since }); if (t !== cur && t !== modal) learnVisit(t); if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 /** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
 function paletteRank(items, q) {
