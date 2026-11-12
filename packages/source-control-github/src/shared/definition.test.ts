@@ -29,6 +29,8 @@ describe("GitHub change request URLs", () => {
       "https://github.com/t3tools/t3code/pull/0",
       "https://github.com/group/sub/repo/pull/1",
       "ftp://github.com/t3tools/t3code/pull/1",
+      "https://github.com/rabhanz/‹redacted:minio_bucket›/pull/978",
+      "https://github.com/t3tools/t3%20code/pull/1",
     ]) {
       expect(parse(url), url).toBeNull();
     }
