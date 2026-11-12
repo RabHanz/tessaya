@@ -77,6 +77,9 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   mute: op(Schema.Struct({ id: Id, muted: Schema.Boolean }), (a, devices, by) =>
     devices.command(a.id, { op: "mute", muted: a.muted }, by),
   ),
+  earcons: op(Schema.Struct({ id: Id, on: Schema.Boolean }), (a, devices, by) =>
+    devices.command(a.id, { op: "earcons", on: a.on }, by),
+  ),
   transport: op(
     Schema.Struct({ id: Id, transport: Schema.Literals(DEVICE_TRANSPORTS) }),
     (a, devices, by) => devices.command(a.id, { op: "transport", transport: a.transport }, by),

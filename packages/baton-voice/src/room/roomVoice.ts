@@ -662,6 +662,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       else if (tail === "event/session/start" || tail === "event/wake") {
         sessions.get(id)?.wake();
         cue(id, "wake");
+      } else if (
+        tail === "event/session/end" ||
+        (tail === "state/voice" && ["stop", "end"].includes(String(json()["ev"])))
+      ) {
+        // The R1 closed its own session (it no longer says "Bye bye"): her closing sound, then the loop lets it go.
+        const s = sessions.get(id);
+        if (s === undefined) return;
+        cue(id, "end");
+        sessions.delete(id);
+        void deps
+          .sleep(noCues.has(id) ? 0 : soundMs("end") + config.downDelayMs)
+          .then(() => s.close());
       } else if (tail === "cmd/voice/earcons") {
         if (json()["on"] === false) noCues.add(id);
         else noCues.delete(id);

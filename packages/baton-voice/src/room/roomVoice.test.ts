@@ -393,6 +393,20 @@ describe("her listening and closing sounds", () => {
     expect(down).toBe(frames("wake") + frames("end"));
   });
 
+  it("closes softly when the R1 ends its own session, then lets the session go", async () => {
+    const t = setup();
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.deps.sleep(2_000);
+    const before = t.published.filter((p) => p.topic.endsWith("voice/down")).length;
+    t.room.message(`freya/r1/${DEV}/state/voice`, Buffer.from(JSON.stringify({ ev: "stop" })));
+    await t.deps.sleep(2_000);
+    const after = t.published.filter((p) => p.topic.endsWith("voice/down")).length;
+    expect(after - before).toBe(
+      Math.ceil((renderSound(PILL_SOUNDS.end, 16_000).length * 2) / 1_920),
+    );
+    expect(t.room.session(DEV)).toBeUndefined();
+  });
+
   it("stays silent on an R1 they are switched off for, and sounds again once switched back", async () => {
     const t = setup();
     const off = Buffer.from(JSON.stringify({ on: false }));
