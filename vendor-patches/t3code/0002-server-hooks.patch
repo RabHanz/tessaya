@@ -1619,7 +1619,7 @@ index dc67bd9387e04b91fa61d34ea47929c056256796..93263b7b064ba3389f92c2f5935bd6a2
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..33692ba633588c239c7676ceab4bcd5c247babfd 100644
+index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..3a0c7265b309704dd21d7c7d1ab9182d7088f5d8 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -1638,16 +1638,17 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..33692ba633588c239c7676ceab4bcd5c
  import { speechHttpApiLayer } from "./speech/http.ts";
  import { speechStreamRouteLayer } from "./speech/stream.ts";
  import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
-@@ -78,6 +80,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
+@@ -78,6 +80,9 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
  import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
  import * as TerminalManager from "./terminal/Manager.ts";
  import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 +import * as TessayaHandlers from "./mcp/toolkits/tessaya/handlers.ts";
++import * as R1Tools from "./home/R1Tools.ts";
 +import { TessayaToolkit } from "./mcp/toolkits/tessaya/tools.ts";
  import * as PeerForwarding from "./peer/PeerForwarding.ts";
  import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
  import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
-@@ -667,7 +671,16 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -667,7 +672,16 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    ProviderInstallation.layer,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -1664,11 +1665,12 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..33692ba633588c239c7676ceab4bcd5c
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -781,11 +794,18 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -781,11 +795,19 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
-+    BatonServerLayer.routes,
++    // The room's tools reach the R1 route from here, beside the /mcp registration of the same toolkit.
++    BatonServerLayer.routes.pipe(Layer.provide(R1Tools.layer)),
      ServerHttp.layerStaticAndDevRoute,
      Ws.layer,
      speechStreamRouteLayer,
@@ -1684,7 +1686,7 @@ index fe2740a8c7a2d41ef468766b44dbc30e3f79b8d1..33692ba633588c239c7676ceab4bcd5c
      Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
    ),
-@@ -824,6 +844,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -824,6 +846,7 @@ const layerMakeRoutes = Layer.mergeAll(
      ),
    ),
    Layer.provide(CloudSpeech.layer.pipe(Layer.provide(SecretResolver.layer))),
