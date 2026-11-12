@@ -5,13 +5,12 @@
  * looked at in a browser. Its words come from `strings.ts` (the `STR` table on the first line); apart from that first line this string holds no backticks and no dollar-brace, on purpose.
  */
 import {
-  LEARN_ITEMS,
-  pickTip,
   T3_SETTINGS_PLACES,
-  WHATS_NEW,
   TESSAYA_PLACES,
   TESSAYA_SETTINGS_GROUPS,
 } from "@t3tools/baton-contracts";
+
+import { LEARN_ITEMS, pickTip, WHATS_NEW } from "@t3tools/baton-shared/learn";
 
 import { tableFor } from "./strings.ts";
 import { AREAS } from "./tabs.ts";

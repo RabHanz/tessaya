@@ -1,5 +1,5 @@
 /**
- * Learning Tessaya: every tip she can show, and the one rule that picks the next. Shared by every surface; each keeps
+ * Learning Tessaya: every tip she can show, and the one rule that picks the next. Shared by every surface (`@t3tools/baton-shared/learn`); each keeps
  * its own `LearnProgress` (the desktop window keeps it on this computer) and asks `pickTip` what to show.
  */
 export interface LearnItem {

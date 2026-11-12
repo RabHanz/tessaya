@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { EMPTY_PROGRESS, LEARN_ITEMS, pickTip, type LearnProgress } from "./learn.ts";
-import { TESSAYA_PLACES } from "./places.ts";
+import { TESSAYA_PLACES } from "@t3tools/baton-contracts";
 
 const DAY = 24 * 3600 * 1000;
 const days = (n: number) =>
