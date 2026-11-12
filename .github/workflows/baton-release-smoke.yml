@@ -1,0 +1,82 @@
+name: Tessaya release smoke
+
+# Installs a published Tessaya desktop release on a Windows runner and screenshots the pages a release changed, through
+# the real installed app (scripts/tessaya/release-smoke.mjs). Run before a build is offered to the Director.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Desktop version, for example 0.1.110"
+        required: true
+  push:
+    branches: ["tessaya/release-smoke**"]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ inputs.version || '0.1.113' }}
+      PROOF_OUT: ${{ github.workspace }}/release-smoke-out
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/tessaya
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the released Tessaya
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "baton-v$env:VERSION" -R $env:GITHUB_REPOSITORY -p "Tessaya-$env:VERSION-x64.exe" -D installer
+          $installer = (Get-Item "installer/Tessaya-$env:VERSION-x64.exe").FullName
+          Start-Process -FilePath $installer -ArgumentList '/S' -Wait
+          $exe = Get-ChildItem -Path $env:LOCALAPPDATA, $env:ProgramFiles -Recurse -Filter 'Tessaya.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch 'resources' } | Select-Object -First 1
+          if (-not $exe) { throw 'Tessaya.exe was not installed' }
+          "TESSAYA_EXE=$($exe.FullName)" >> $env:GITHUB_ENV
+      - name: Start it with its DevTools port
+        shell: pwsh
+        run: |
+          Start-Process -FilePath $env:TESSAYA_EXE -ArgumentList '--remote-debugging-port=9229'
+          for ($i = 0; $i -lt 90; $i++) {
+            try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:9229/json/version | Out-Null; break } catch { Start-Sleep 2 }
+          }
+          Start-Sleep 30
+      - name: Smoke the changed pages
+        shell: bash
+        run: |
+          mkdir -p smoke "$PROOF_OUT" && cd smoke && npm init -y > /dev/null && npm install --no-audit --no-fund playwright-core@1.60.0 > /dev/null
+          cp ../scripts/tessaya/release-smoke.mjs .
+          node release-smoke.mjs "$TESSAYA_EXE" 2>&1 | tee "$PROOF_OUT/run.log"
+          status=${PIPESTATUS[0]}
+          { echo "## Tessaya $VERSION release smoke"; cat "$PROOF_OUT/results.md"; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - name: The R1 recogniser port listens only on a tailnet address
+        if: always()
+        shell: pwsh
+        run: |
+          # The R1 recogniser binds 8797 to the laptop's Tailscale address only; this runner has none, so nothing may listen.
+          New-Item -ItemType Directory -Force $env:PROOF_OUT | Out-Null
+          netstat -ano | Select-String ':8797' | Out-File "$env:PROOF_OUT\port-8797-netstat.txt"
+          "netstat :8797 -> $((Get-Content "$env:PROOF_OUT\port-8797-netstat.txt" | Measure-Object -Line).Lines) line(s)"
+          $l = Get-NetTCPConnection -LocalPort 8797 -State Listen -ErrorAction SilentlyContinue
+          $l | ForEach-Object { "listening on $($_.LocalAddress):8797" }
+          $bad = @($l | Where-Object { $_.LocalAddress -notlike '100.*' })
+          "| port 8797 off the tailnet | $(if ($bad.Count) { '**no**' } else { 'yes' }) | $(@($l).Count) listener(s), $($bad.Count) off the tailnet |" >> $env:GITHUB_STEP_SUMMARY
+          if ($bad.Count) { exit 1 }
+      - name: Tessaya's logs
+        if: always()
+        shell: pwsh
+        run: Copy-Item -Recurse -ErrorAction SilentlyContinue "$HOME\.t3\userdata\logs" "$env:PROOF_OUT\logs"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-smoke-${{ env.VERSION }}
+          path: release-smoke-out
+          if-no-files-found: warn
