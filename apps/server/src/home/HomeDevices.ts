@@ -324,7 +324,7 @@ interface Saved {
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export interface DeviceLink {
-  readonly publish: (topic: string, payload: string) => void;
+  readonly publish: (topic: string, payload: string, retain?: boolean) => void;
   readonly connected: () => boolean;
   readonly close: () => void;
 }
@@ -359,7 +359,8 @@ export const brokerLayer = Layer.succeed(HomeDeviceBroker, {
         log: () => {},
       });
       return {
-        publish: (topic: string, payload: string) => client.publish(topic, payload),
+        publish: (topic: string, payload: string, retain?: boolean) =>
+          client.publish(topic, payload, retain),
         connected: client.connected,
         close: client.close,
       };
