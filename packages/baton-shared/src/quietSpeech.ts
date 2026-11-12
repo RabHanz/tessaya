@@ -39,6 +39,13 @@ export const createQuietBoost = () => {
   };
 };
 
+/** Speech setup under way (a key recording, a Voice ID read, a mic test): she must not wake or answer, even at her name. */
+export const inSpeechSetup = (setup: {
+  readonly recording: boolean;
+  readonly reading: boolean;
+  readonly micTest: boolean;
+}) => setup.recording || setup.reading || setup.micTest;
+
 /** The core, with audio lifted on its way in while `on()` says so. */
 /**
  * A core that hears silence while `quiet()` is true, decided as each frame arrives: frames held for a

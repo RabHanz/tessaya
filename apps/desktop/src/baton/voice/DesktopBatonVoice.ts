@@ -537,7 +537,12 @@ import {
   withRetry,
 } from "./historyRetry.ts";
 import { buildTranscriptReport } from "./transcriptReport.ts";
-import { boostCore, quietThreshold, silenceWhile } from "@t3tools/baton-shared/quietSpeech";
+import {
+  boostCore,
+  inSpeechSetup,
+  quietThreshold,
+  silenceWhile,
+} from "@t3tools/baton-shared/quietSpeech";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
@@ -5068,8 +5073,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Hold, toggle, the setup's test and the tray all record through the sidecar: no wake or turn while they do.
       core: silenceWhile(
         boostCore(startCore, () => settings.quietSpeech),
-        // Her name is in the enrolment script: a read never wakes her.
-        () => releaseRecordingEscape !== null || voiceId.reading(),
+        // Her name is in the enrolment script, and he may say it testing the mic: neither wakes her.
+        () =>
+          inSpeechSetup({
+            recording: releaseRecordingEscape !== null,
+            reading: voiceId.reading(),
+            micTest: levelTest !== null,
+          }),
       ),
       deviceId: choiceDeviceId(choice),
       onState: (next) => {

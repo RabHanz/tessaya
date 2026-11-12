@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { boostCore, createQuietBoost, quietThreshold, silenceWhile } from "./quietSpeech.ts";
+import {
+  boostCore,
+  createQuietBoost,
+  inSpeechSetup,
+  quietThreshold,
+  silenceWhile,
+} from "./quietSpeech.ts";
 
 const tone = (amplitude: number, n = 320) =>
   Int16Array.from({ length: n }, (_, i) => Math.round(amplitude * Math.sin(i / 3)));
@@ -66,4 +72,11 @@ describe("silence while the dictation key records", () => {
     expect(heard[1]).toBeGreaterThan(0);
     expect(core.name()).toBe("kept");
   });
+});
+
+it("keeps her deaf through every speech setup, and hearing once none is under way", () => {
+  const none = { recording: false, reading: false, micTest: false };
+  expect(inSpeechSetup(none)).toBe(false);
+  for (const setup of ["recording", "reading", "micTest"] as const)
+    expect(inSpeechSetup({ ...none, [setup]: true })).toBe(true);
 });
