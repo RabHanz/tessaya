@@ -552,7 +552,7 @@ describe("her brain starting on the recogniser's partial words", () => {
     const g = guessing("turn on the study light", "turn on the study light", {
       affect: async () => {
         await mood;
-        return { emotion: "neutral", events: [] };
+        return { emotion: "neutral" as const, events: [], language: "en", text: "" };
       },
     });
     const m = await g.run();
