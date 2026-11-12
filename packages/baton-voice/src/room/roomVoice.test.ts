@@ -159,7 +159,7 @@ describe("the room voice loop", () => {
     expect(t.brainCalls).toEqual([]);
   });
 
-  it("stops talking and flushes the R1's buffer when he cuts in", async () => {
+  it("stops talking and flushes the R1's buffer when what he cut in with is his", async () => {
     let release: () => void = () => undefined;
     const hold = new Promise<void>((r) => (release = r));
     const t = setup({
@@ -176,6 +176,8 @@ describe("the room voice loop", () => {
     await t.feed(true, 20);
     await t.feed(false, 8);
     await t.feed(true, 10);
+    // Cut off once what he said is known to be his, not on sound alone (it may be her own voice).
+    await t.feed(false, 8);
     release();
     expect(
       t.published.some(
@@ -360,6 +362,42 @@ describe("answering only when he is talking to her", () => {
     await turn(room);
     expect(room.brainCalls).toEqual([]);
     expect(logs.some((l) => l.includes('not answered: "the match starts at nine"'))).toBe(true);
+  });
+
+  it("never answers her own voice coming back through the R1's mic, nor stops for it (00:40, 13 Nov)", async () => {
+    // Her real replies and what the R1 heard of them while they played.
+    const t = setup({
+      recognise: said([
+        "What time is it?",
+        "Twenty to one in the morning.",
+        "Turn on the office fan.",
+      ]),
+      brain: async function* (input) {
+        t.brainCalls.push(input);
+        yield input.messages.at(-1)!.content === "What time is it?"
+          ? "Twenty to one, in the morning. It's late for a chat."
+          : "The office fan is on.";
+      },
+      speak: async function* () {
+        // Long enough that the echo begins while she is still playing.
+        for (let i = 0; i < 20; i += 1) yield new Int16Array(3_200);
+      },
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    await turn(t);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "What time is it?",
+      "Turn on the office fan.",
+    ]);
+    expect(
+      t.published.filter(
+        (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
+      ),
+    ).toEqual([]);
   });
 
   it("acknowledges being sent away even when her brain says nothing, then rests", async () => {

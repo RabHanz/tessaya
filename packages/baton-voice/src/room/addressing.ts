@@ -39,3 +39,37 @@ export const invitesReply = (said: string): boolean =>
   /\b(?:you'?d need to|you need to|could you|would you|do you want|shall i|should i|want me to|say (?:it|that) again|let me know)\b/i.test(
     said,
   );
+
+const words = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/ise\b/g, "ize")
+    .replace(/[^a-z0-9' ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+/**
+ * Whether what the R1 heard is her own voice coming back through its mic (firmware 0.3.33 has no working echo
+ * cancellation): the heard words, mostly in order, inside what she has just been saying. One word must match exactly.
+ */
+export const isOwnVoice = (heard: string, herLines: ReadonlyArray<string>): boolean => {
+  const h = words(heard);
+  if (h.length === 0) return false;
+  const need = h.length === 1 ? 1 : Math.ceil(h.length * 0.75);
+  return herLines.some((line) => {
+    const her = words(line);
+    for (let start = 0; start < her.length; start += 1) {
+      let at = start;
+      let hit = 0;
+      for (const w of h) {
+        const found = her.indexOf(w, at);
+        if (found >= 0 && found - at <= 1) {
+          hit += 1;
+          at = found + 1;
+        }
+      }
+      if (hit >= need) return true;
+    }
+    return false;
+  });
+};

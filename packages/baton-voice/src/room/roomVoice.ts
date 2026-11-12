@@ -6,7 +6,7 @@
 import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
 
 import { createEchoGuard } from "../echoGuard.ts";
-import { calledName, invitesReply, isBackchannel, isDismissal } from "./addressing.ts";
+import { calledName, invitesReply, isBackchannel, isDismissal, isOwnVoice } from "./addressing.ts";
 import { createEnrolGuide, enrolScript, type EnrolGuide } from "../enrolGuide.ts";
 import {
   admits,
@@ -170,6 +170,8 @@ export interface RoomConfig {
   readonly firstTurnMs: number;
   /** A turn begun this soon after the window closed gets a glance, so a dropped turn is never met with nothing. */
   readonly lateCueMs: number;
+  /** How long after her last frame her voice can still come back through the R1's mic (its 1 s ring, then the room). */
+  readonly echoTailMs: number;
   /** After this long with nothing said to her, the session ends (the R1 plays its exit chime); S2 starts it again. */
   readonly idleStopMs: number;
   /** Who answers by name, the lead first; each speaks in its own voice. */
@@ -196,6 +198,7 @@ export const ROOM_CONFIG: RoomConfig = {
   replyHoldMs: 15_000,
   firstTurnMs: 30_000,
   lateCueMs: 4_000,
+  echoTailMs: 1_500,
   // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
   idleStopMs: 15 * 60_000,
   // shortcut: the default pack's personas and voices (his picks); a pack he edits on the laptop is not read here.
@@ -306,6 +309,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let invited = false;
     /** S2, a wake or her name: his first turn after it is for her, however long he takes to start (00:20, 13 Nov). */
     let firstUntil = 0;
+    /** Her last few sentences, to tell her own voice coming back through the mic from his. */
+    let herLines: string[] = [];
+    const saying = (text: string) => {
+      herLines = [...herLines, text].slice(-6);
+    };
     let asleep = false;
     const lead = config.personas[0];
     /** Who answers: the one he last called, until the window lapses. */
@@ -421,6 +429,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       );
 
     const speakNow = (text: string) => {
+      saying(text);
       const control = new AbortController();
       reply = control;
       lastActivity = deps.now();
@@ -535,6 +544,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         text,
         config.personas.map((p) => p.name),
       );
+      // Her own voice through the R1's mic (13 Nov, firmware 0.3.33): it began while she was still heard, and it is her words.
+      if (
+        given === undefined &&
+        called === null &&
+        startedAt <= playUntil + config.downDelayMs + config.echoTailMs &&
+        isOwnVoice(text, herLines)
+      ) {
+        deps.log(
+          `[${id}] turn ${turn}: her own voice; not answered: ${JSON.stringify(text.slice(0, 40))}`,
+        );
+        return;
+      }
       if (given === undefined && !addressed(text, called, startedAt)) {
         // Just after a window closed it was probably his follow-up: a glance says she heard something but held back.
         const late =
@@ -582,6 +603,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const queue: string[] = [];
         let speakingChain = Promise.resolve();
         const enqueue = (sentence: string) => {
+          saying(sentence);
           queue.push(sentence);
           const preroll = firstSentenceAt === null ? config.prerollMs : 0;
           firstSentenceAt ??= deps.now();
@@ -686,8 +708,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       for (const a of actions) {
         switch (a.kind) {
           case "barge":
+            // Not cut off on sound alone: it is often her own voice. A turn of his ends her reply when it is answered.
             bargedIn = true;
-            interrupt();
             break;
           case "start":
             rec?.cancel();
