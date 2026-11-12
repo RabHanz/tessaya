@@ -143,6 +143,8 @@ export interface TurnMetrics {
   readonly firstSoundMs: number | null;
   readonly text: string;
   readonly speaker: string;
+  /** Cosine to his profile (null with no profile): how Voice ID is measured on his real room turns. */
+  readonly speakerScore: number | null;
   readonly emotion: string;
   readonly bargedIn: boolean;
 }
@@ -469,6 +471,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         firstSoundMs: firstSound === null ? null : Math.round(firstSound),
         text,
         speaker: identity.kind,
+        speakerScore:
+          identity.confidence === null ? null : Math.round(identity.confidence * 1000) / 1000,
         emotion: affect?.emotion ?? "unknown",
         bargedIn,
       };
