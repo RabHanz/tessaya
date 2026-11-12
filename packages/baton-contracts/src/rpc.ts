@@ -194,9 +194,14 @@ import { BATON_CLOUD_WS_METHODS, BatonCloudCallInput, BatonCloudCallResult } fro
 import { BATON_HOME_WS_METHODS, BatonHomeCallInput, BatonHomeCallResult } from "./home.ts";
 import { BATON_VOICE_WS_METHODS, BatonVoiceCallInput, BatonVoiceCallResult } from "./voice.ts";
 import {
+  BATON_COMPANION_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BatonDevicesCallInput,
+  BatonDevicesRefused,
   BatonDevicesCallResult,
+  CompanionDown,
+  CompanionLinkInput,
+  CompanionUpInput,
 } from "./devices.ts";
 import {
   BATON_COMMITMENT_WS_METHODS,
@@ -521,6 +526,20 @@ const WsBatonDevicesCallRpc = Rpc.make(BATON_DEVICES_WS_METHODS.call, {
   payload: BatonDevicesCallInput,
   success: BatonDevicesCallResult,
   error: EnvironmentAuthorizationError,
+});
+
+/** A phone in companion mode: the room's messages for it, while it stays linked. */
+const WsBatonCompanionLinkRpc = Rpc.make(BATON_COMPANION_WS_METHODS.link, {
+  payload: CompanionLinkInput,
+  success: CompanionDown,
+  error: Schema.Union([BatonDevicesRefused, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsBatonCompanionUpRpc = Rpc.make(BATON_COMPANION_WS_METHODS.up, {
+  payload: CompanionUpInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([BatonDevicesRefused, EnvironmentAuthorizationError]),
 });
 
 const WsBatonVoiceCallRpc = Rpc.make(BATON_VOICE_WS_METHODS.call, {
@@ -1102,4 +1121,6 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonHomeCallRpc,
   WsBatonDevicesCallRpc,
   WsBatonVoiceCallRpc,
+  WsBatonCompanionLinkRpc,
+  WsBatonCompanionUpRpc,
 ).middleware(BatonRpcScopeAuthorization);

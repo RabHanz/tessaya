@@ -1,17 +1,18 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index b8ab00673db121554d82b6d31299b611553560b7..127b5a2d33224281004a0430a844aed474e3c97f 100644
+index b8ab00673db121554d82b6d31299b611553560b7..459bb05b5e72e514ec829d1caba841fc595246b5 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
-@@ -92,6 +92,8 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
+@@ -92,6 +92,9 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
  import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
  import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
  import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
 +import { SettingsHomeRouteScreen } from "./features/settings/SettingsHomeRouteScreen";
 +import { SettingsHardwareRouteScreen } from "./features/settings/SettingsHardwareRouteScreen";
++import { CompanionModeRouteScreen } from "./features/companion/CompanionModeRouteScreen";
  import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
  import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
  import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
-@@ -207,6 +209,16 @@ const SETTINGS_SCREENS = {
+@@ -207,6 +210,21 @@ const SETTINGS_SCREENS = {
      linking: "settings/provider-accounts",
      options: settingsPage("Providers"),
    }),
@@ -24,6 +25,11 @@ index b8ab00673db121554d82b6d31299b611553560b7..127b5a2d33224281004a0430a844aed4
 +    screen: SettingsHardwareRouteScreen,
 +    linking: "settings/hardware",
 +    options: settingsPage("Hardware"),
++  }),
++  CompanionMode: createNativeStackScreen({
++    screen: CompanionModeRouteScreen,
++    linking: "companion/:environmentId",
++    options: immersiveRoute({ hideSystemBars: true }),
 +  }),
    SettingsEnvironmentMaintenance: createNativeStackScreen({
      screen: SettingsEnvironmentMaintenanceRouteScreen,

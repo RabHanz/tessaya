@@ -179,16 +179,43 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
         )}
       </SettingsSection>
 
-      {devices.map((d) => (
-        <DeviceControls
-          key={d.id}
-          device={d}
-          tags={view?.tags ?? []}
-          busy={busy}
-          run={run}
-          environmentId={environmentId}
-        />
-      ))}
+      {devices
+        .filter((d) => d.kind === "phone")
+        .map((d) => (
+          <SettingsSection key={d.id} title={d.name}>
+            <SettingsRow
+              title="Companion mode"
+              description={
+                d.muted
+                  ? "Muted: it neither listens nor speaks."
+                  : "A phone in companion mode: her face on its screen, its microphone and speaker on the room's voice. Start it on the phone, in Settings → Hardware → This phone."
+              }
+              control={
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={busy || d.online !== true}
+                  onClick={() => void run("act", "mute", { id: d.id, muted: !d.muted })}
+                >
+                  {d.muted ? "Unmute" : "Mute"}
+                </Button>
+              }
+            />
+          </SettingsSection>
+        ))}
+
+      {devices
+        .filter((d) => d.kind === "agora-r1")
+        .map((d) => (
+          <DeviceControls
+            key={d.id}
+            device={d}
+            tags={view?.tags ?? []}
+            busy={busy}
+            run={run}
+            environmentId={environmentId}
+          />
+        ))}
 
       <RoomBrainSection environmentId={environmentId} />
 

@@ -1,4 +1,4 @@
-import { BATON_WS_METHODS } from "@t3tools/baton-contracts";
+import { BATON_COMPANION_WS_METHODS, BATON_WS_METHODS } from "@t3tools/baton-contracts";
 import {
   EnvironmentAuthorizationError,
   clientRpcRequiredScopes,
@@ -69,6 +69,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeResourceTelemetry
   // Baton (0005-client-rpc.patch)
   | typeof BATON_WS_METHODS.subscribeWorkSessions
+  | typeof BATON_COMPANION_WS_METHODS.link
   | typeof WS_METHODS.pullRequestsSubscribeRefreshes
   | typeof WS_METHODS.subscribeVcsStatus
   | typeof WS_METHODS.subscribeWorktreeSetup

@@ -122,9 +122,12 @@ export interface Heard {
   } | null;
   samples: Record<string, Array<number>>;
   log: Array<{ at: number; topic: string; text: string }>;
+  /** A phone satellite's own name (`state/name`); the R1 has none. */
+  name: string | null;
 }
 
 const blank = (): Heard => ({
+  name: null,
   online: null,
   lastSeen: null,
   batteryPct: null,
@@ -200,6 +203,9 @@ export const applyMessage = (
       d.online = up;
       break;
     }
+    case "state/name":
+      d.name = payload.trim().slice(0, 60) || null;
+      break;
     case "state/battery": {
       const pct = Number.parseInt(payload, 10);
       if (Number.isFinite(pct) && pct >= 0) d.batteryPct = pct;
@@ -737,8 +743,9 @@ const make = Effect.gen(function* () {
     const cam = cameras.get(id);
     return {
       id,
-      name: `Agora R1 (${id})`,
-      kind: "agora-r1",
+      ...(id.startsWith("phone-")
+        ? { name: `${d.name ?? "Phone"} (companion)`, kind: "phone" as const }
+        : { name: `Agora R1 (${id})`, kind: "agora-r1" as const }),
       configured: id === device?.deviceId,
       online: d.online,
       lastSeenAt: iso(d.lastSeen),

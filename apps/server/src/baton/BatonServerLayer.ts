@@ -39,6 +39,7 @@ import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as R1Brain from "../home/R1Brain.ts";
 import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
+import * as PhoneSatellite from "../home/PhoneSatellite.ts";
 import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
 import * as BatonSessionsAcross from "./BatonSessionsAcross.ts";
@@ -138,6 +139,11 @@ const servicesInner = IntentService.layer.pipe(
         Layer.provide(HomeDevices.brokerLayer),
         Layer.provide(homeLayer),
         Layer.provide(BatonPhoneInbox.layer),
+      ),
+      // Spare phones as room satellites: one broker connection per linked phone, on the R1's broker.
+      PhoneSatellite.layer.pipe(
+        Layer.provide(PhoneSatellite.brokerLayer),
+        Layer.provide(homeLayer),
       ),
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
       // on a machine with no Herdr found no way to start a thread.

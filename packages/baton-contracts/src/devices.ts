@@ -124,7 +124,8 @@ export const DeviceLogLine = Schema.Struct({
 export const DeviceView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  kind: Schema.Literal("agora-r1"),
+  /** A phone in companion mode joins the room under its own `phone-…` id, with the R1's device contract. */
+  kind: Schema.Literals(["agora-r1", "phone"]),
   /** The one set up in Settings → Home (its key and broker); others were only heard on the broker. */
   configured: Schema.Boolean,
   online: Schema.NullOr(Schema.Boolean),
@@ -170,6 +171,58 @@ export const DevicesOverview = Schema.Struct({
   pending: Schema.Array(Schema.Struct({ id: Schema.String, line: Schema.String })),
 });
 export type DevicesOverview = typeof DevicesOverview.Type;
+
+/** A device refused what was asked, with a sentence for a person. */
+export class BatonDevicesRefused extends Schema.TaggedError<BatonDevicesRefused>()(
+  "BatonDevicesRefused",
+  { why: Schema.String },
+) {}
+
+export const BATON_COMPANION_WS_METHODS = {
+  link: "baton.companion.link",
+  up: "baton.companion.up",
+} as const;
+
+/** A phone satellite's id: always `phone-…`, so a phone can never speak for an R1. */
+const SatelliteId = Schema.String.check(Schema.isPattern(/^phone-[a-z0-9]{6,24}$/));
+/** What a satellite may publish: the uplink topics the R1's contract gives a device, and nothing else. */
+export const COMPANION_UP_TOPICS = [
+  "voice/up",
+  "voice/wake",
+  "voice/wake/end",
+  "event/session/end",
+  "state/voice",
+] as const;
+
+export const CompanionLinkInput = Schema.Struct({
+  id: SatelliteId,
+  name: Schema.String.check(Schema.isMaxLength(60)),
+});
+export type CompanionLinkInput = typeof CompanionLinkInput.Type;
+
+export const CompanionUpInput = Schema.Struct({
+  id: SatelliteId,
+  /** PCM topics carry base64 16 kHz s16le; the others carry their JSON text. */
+  items: Schema.Array(
+    Schema.Struct({
+      topic: Schema.Literals(COMPANION_UP_TOPICS),
+      data: Schema.String.check(Schema.isMaxLength(64_000)),
+    }),
+  ).check(Schema.isMaxLength(40)),
+});
+export type CompanionUpInput = typeof CompanionUpInput.Type;
+
+/** The room's messages for a phone satellite. */
+export const CompanionDown = Schema.Union([
+  /** 16 kHz s16le PCM, base64, to play in order. */
+  Schema.Struct({ kind: Schema.Literal("audio"), pcm: Schema.String }),
+  /** The room opened or closed a session, or her reply was cut off. */
+  Schema.Struct({ kind: Schema.Literals(["start", "stop", "flush"]) }),
+  /** The room's eye mood (the R1's names). */
+  Schema.Struct({ kind: Schema.Literal("face"), mood: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("persona"), name: Schema.String }),
+]);
+export type CompanionDown = typeof CompanionDown.Type;
 
 export const BatonDevicesCallInput = Schema.Struct({
   kind: Schema.Literals(BATON_DEVICES_CALL_KINDS),

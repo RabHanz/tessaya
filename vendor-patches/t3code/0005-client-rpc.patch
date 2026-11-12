@@ -3,20 +3,21 @@ Subject: client-runtime: Baton's RPC group on the client protocol
 The fabric.* group rides the same socket, and its work-session stream is a subscription tag.
 
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index e74abde6a2c593b23e3215f37146265a6f3557b1..7f67e1e01abe2cf55c483cb8c2f3d15f702ed63d 100644
+index e74abde6a2c593b23e3215f37146265a6f3557b1..0f4c512264026ee439b0874491a4deb7c5184b34 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -1,3 +1,4 @@
-+import { BATON_WS_METHODS } from "@t3tools/baton-contracts";
++import { BATON_COMPANION_WS_METHODS, BATON_WS_METHODS } from "@t3tools/baton-contracts";
  import {
    EnvironmentAuthorizationError,
    clientRpcRequiredScopes,
-@@ -66,6 +67,8 @@ export type EnvironmentSubscriptionRpcTag =
+@@ -66,6 +67,9 @@ export type EnvironmentSubscriptionRpcTag =
    | typeof WS_METHODS.subscribeDiscoveredLocalServers
    | typeof WS_METHODS.subscribeDeviceState
    | typeof WS_METHODS.subscribeResourceTelemetry
 +  // Baton (0005-client-rpc.patch)
 +  | typeof BATON_WS_METHODS.subscribeWorkSessions
++  | typeof BATON_COMPANION_WS_METHODS.link
    | typeof WS_METHODS.pullRequestsSubscribeRefreshes
    | typeof WS_METHODS.subscribeVcsStatus
    | typeof WS_METHODS.subscribeWorktreeSetup

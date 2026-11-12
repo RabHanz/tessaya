@@ -28,6 +28,7 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
+  BATON_COMPANION_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
@@ -151,6 +152,10 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_HOME_WS_METHODS.call]: AuthOrchestrationReadScope,
   // Devices the same way: read looks, act drives harmless controls, owner (camera, reboot) is the approval scope.
   [BATON_DEVICES_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // A phone in companion mode joins the room: its microphone goes up, the room's voice comes down. Operate, since it
+  // drives the room loop like a device does.
+  [BATON_COMPANION_WS_METHODS.link]: AuthOrchestrationOperateScope,
+  [BATON_COMPANION_WS_METHODS.up]: AuthOrchestrationOperateScope,
   // Voices: listing and previews are reads; a persona's voice, the Google key and a cloud line are operate.
   [BATON_VOICE_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,

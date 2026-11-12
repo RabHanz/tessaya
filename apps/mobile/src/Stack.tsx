@@ -94,6 +94,7 @@ import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsD
 import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
 import { SettingsHomeRouteScreen } from "./features/settings/SettingsHomeRouteScreen";
 import { SettingsHardwareRouteScreen } from "./features/settings/SettingsHardwareRouteScreen";
+import { CompanionModeRouteScreen } from "./features/companion/CompanionModeRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
@@ -218,6 +219,11 @@ const SETTINGS_SCREENS = {
     screen: SettingsHardwareRouteScreen,
     linking: "settings/hardware",
     options: settingsPage("Hardware"),
+  }),
+  CompanionMode: createNativeStackScreen({
+    screen: CompanionModeRouteScreen,
+    linking: "companion/:environmentId",
+    options: immersiveRoute({ hideSystemBars: true }),
   }),
   SettingsEnvironmentMaintenance: createNativeStackScreen({
     screen: SettingsEnvironmentMaintenanceRouteScreen,

@@ -22,6 +22,10 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
+  BATON_COMPANION_WS_METHODS,
+  BatonDevicesRefused,
+  type CompanionLinkInput,
+  type CompanionUpInput,
   BATON_DEVICES_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
@@ -109,6 +113,7 @@ import { BatonOneShot } from "./BatonOneShot.ts";
 import { homeActorOf, serveHomeCall } from "../home/HomeCalls.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { devicesActorOf, serveDevicesCall } from "../home/HomeDeviceCalls.ts";
+import { PhoneSatellite } from "../home/PhoneSatellite.ts";
 import { BatonVoiceLibrary, serveVoiceCall } from "./BatonVoiceLibrary.ts";
 
 /** Only Claude keeps several accounts behind one config directory today. */
@@ -139,6 +144,7 @@ export type BatonServices =
   | BatonCloudService
   | HomeAssistantService
   | HomeDevices
+  | PhoneSatellite
   | R1Brain
   | BatonVoiceLibrary
   | BatonOneShot
@@ -161,6 +167,7 @@ export const BatonRuntime = Context.Reference<Context.Context<BatonServices> | n
 export const runtimeLayer = Layer.effect(BatonRuntime, Effect.context<BatonServices>());
 
 const unavailable = () => new Error("Tessaya's services are not running on this server.");
+const refused = (error: { readonly why: string }) => new BatonDevicesRefused({ why: error.why });
 
 /** §6.1 through upstream's provider.switch (D80): same thread, upstream's context handoff. */
 const handoff = Effect.fn("fabric.workSession.handoff")(function* (input: WorkSessionHandoffInput) {
@@ -880,8 +887,28 @@ export const makeHandlers = Effect.gen(function* () {
 
 type LegacyRpcs = Exclude<
   RpcGroup.Rpcs<typeof BatonRpcGroup>,
-  { readonly _tag: `tessaya.${string}` }
+  { readonly _tag: `tessaya.${string}` | `baton.companion.${string}` }
 >;
+
+/** A phone in companion mode. Kept out of the alias map below: one more pair there is past what the checker can infer. */
+const companionHandlers = Effect.map(BatonRuntime, (context) => ({
+  [BATON_COMPANION_WS_METHODS.link]: (input: CompanionLinkInput) =>
+    context === null
+      ? Stream.die(unavailable())
+      : Stream.unwrap(
+          Effect.map(PhoneSatellite, (satellite) =>
+            satellite.link(input).pipe(Stream.mapError(refused)),
+          ).pipe(Effect.provideContext(context)),
+        ),
+  [BATON_COMPANION_WS_METHODS.up]: (input: CompanionUpInput) =>
+    context === null
+      ? Effect.die(unavailable())
+      : Effect.flatMap(PhoneSatellite, (satellite) => satellite.up(input)).pipe(
+          Effect.mapError(refused),
+          Effect.as({}),
+          Effect.provideContext(context),
+        ),
+}));
 
 // Rename R1: each tessaya.* alias runs its old-named handler.
 const withTessayaAliases = <H extends RpcGroup.HandlersFrom<LegacyRpcs>>(handlers: H) =>
@@ -892,6 +919,6 @@ const withTessayaAliases = <H extends RpcGroup.HandlersFrom<LegacyRpcs>>(handler
     ),
   }) as H & { readonly [K in keyof H & string as TessayaSpelling<K>]: H[K] };
 
-export const make = Effect.flatMap(makeHandlers, (handlers) =>
-  BatonRpcGroup.toHandlers(withTessayaAliases(handlers)),
+export const make = Effect.flatMap(Effect.all([makeHandlers, companionHandlers]), ([handlers, companion]) =>
+  BatonRpcGroup.toHandlers({ ...withTessayaAliases(handlers), ...companion }),
 );

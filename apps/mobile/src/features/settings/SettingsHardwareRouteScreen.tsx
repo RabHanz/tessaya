@@ -22,6 +22,7 @@ import {
   when,
 } from "@t3tools/baton-shared/deviceView";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { useNavigation } from "@react-navigation/native";
 import { useEffect, useState, type ReactNode } from "react";
 import { Alert, Image, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -137,6 +138,7 @@ function HardwareSections({
     label: "room brain update",
     reportFailure: true,
   });
+  const navigation = useNavigation();
   const devicesCall = useAtomCommand(batonWorkSessions.devicesCall, QUIET);
   const homeCall = useAtomCommand(batonWorkSessions.homeCall, QUIET);
   const [view, setView] = useState<DevicesOverview | null>(null);
@@ -218,16 +220,53 @@ function HardwareSections({
         )}
       </SettingsSection>
 
-      {devices.map((d) => (
-        <DeviceControls
-          key={d.id}
-          device={d}
-          tags={view?.tags ?? []}
-          busy={busy}
-          run={run}
-          prefix={prefix}
-        />
-      ))}
+      <SettingsSection title={`${prefix}This phone`}>
+        <Row
+          title="Companion mode"
+          description="This phone becomes Tessaya in the room, like the R1: her face on screen, its microphone and speaker on the room's voice, and her name wakes it. Best on a charger; the screen stays on while it is open."
+        >
+          <ControlPill
+            variant="primary"
+            label="Start"
+            onPress={() => navigation.navigate("CompanionMode", { environmentId })}
+          />
+        </Row>
+      </SettingsSection>
+
+      {devices
+        .filter((d) => d.kind === "phone")
+        .map((d) => (
+          <SettingsSection key={d.id} title={`${prefix}${d.name}`}>
+            <Row
+              title="Mute"
+              description={
+                d.muted
+                  ? "Muted: it neither listens nor speaks."
+                  : "It listens for her name and answers."
+              }
+            >
+              <ControlPill
+                variant="pill"
+                label={d.muted ? "Unmute" : "Mute"}
+                disabled={busy || d.online !== true}
+                onPress={() => void run("act", "mute", { id: d.id, muted: !d.muted })}
+              />
+            </Row>
+          </SettingsSection>
+        ))}
+
+      {devices
+        .filter((d) => d.kind === "agora-r1")
+        .map((d) => (
+          <DeviceControls
+            key={d.id}
+            device={d}
+            tags={view?.tags ?? []}
+            busy={busy}
+            run={run}
+            prefix={prefix}
+          />
+        ))}
 
       <SettingsSection title={`${prefix}Room brain`}>
         <Row

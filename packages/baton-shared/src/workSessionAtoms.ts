@@ -21,6 +21,7 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
+  BATON_COMPANION_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
@@ -37,7 +38,9 @@ import {
   type WorkSessionStreamItem,
 } from "@t3tools/baton-contracts";
 import { Atom } from "effect/reactivity";
+import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import { satelliteInbox } from "./satellite.ts";
 import { persistQuery } from "@t3tools/client-runtime/state/query-persistence";
 
 import type { EnvironmentRegistry as EnvironmentRegistryModule } from "@t3tools/client-runtime/connection";
@@ -214,6 +217,18 @@ export function createBatonWorkSessionAtoms<R, E>(
     devicesCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:devices",
       tag: BATON_DEVICES_WS_METHODS.call,
+    }),
+    /** A phone in companion mode, linked while mounted; each of the room's messages goes to `satelliteInbox`. */
+    companionLink: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:baton:companion-link",
+      tag: BATON_COMPANION_WS_METHODS.link,
+      idleTtlMs: 0,
+      transform: (stream) =>
+        stream.pipe(Stream.tap((down) => Effect.sync(() => satelliteInbox.emit(down)))),
+    }),
+    companionUp: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:companion-up",
+      tag: BATON_COMPANION_WS_METHODS.up,
     }),
     voiceCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:voice",
