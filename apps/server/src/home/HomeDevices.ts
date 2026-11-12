@@ -7,8 +7,12 @@
 import * as NodeCrypto from "node:crypto";
 
 import {
+  DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
   R1_MOODS,
+  type DeviceSpeaker,
+  type DeviceSpeakerAction,
+  type DeviceSpeakerOutput,
   type DeviceStage,
   type DeviceTag,
   type DeviceTagAction,
@@ -54,6 +58,13 @@ export type DeviceCommand =
   | { readonly op: "enrol"; readonly cancel: boolean }
   | { readonly op: "diag" }
   | { readonly op: "forget" }
+  | {
+      readonly op: "speaker";
+      readonly action: DeviceSpeakerAction;
+      readonly mac?: string;
+      readonly name?: string;
+      readonly output?: DeviceSpeakerOutput;
+    }
   | { readonly op: "reboot" }
   | { readonly op: "camera" };
 
@@ -98,6 +109,14 @@ export interface Heard {
   ota: { phase: string; line: string } | null;
   camera: string | null;
   lastTag: { uid: string; at: number } | null;
+  /** Set once the firmware's state/caps says it drives a Bluetooth speaker; the speaker controls stay off until then. */
+  speaker: {
+    state: DeviceSpeaker["state"];
+    saved: DeviceSpeaker["saved"];
+    output: DeviceSpeakerOutput;
+    found: DeviceSpeaker["found"];
+    scannedAt: number | null;
+  } | null;
   samples: Record<string, Array<number>>;
   log: Array<{ at: number; topic: string; text: string }>;
 }
@@ -114,6 +133,7 @@ const blank = (): Heard => ({
   ota: null,
   camera: null,
   lastTag: null,
+  speaker: null,
   samples: {},
   log: [],
 });
@@ -130,6 +150,17 @@ const json = (text: string): Record<string, unknown> | null => {
 };
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+
+const SPEAKER_STATES: ReadonlyArray<string> = [
+  "off",
+  "idle",
+  "scanning",
+  "connecting",
+  "connected",
+  "streaming",
+  "failed",
+];
+export const MAC = /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/;
 
 const median = (values: ReadonlyArray<number>): number | null => {
   if (values.length === 0) return null;
@@ -200,6 +231,47 @@ export const applyMessage = (
     case "event/wake/boot":
       d.firmware = str(body?.["fw_ver"]) ?? str(body?.["fw"]) ?? d.firmware;
       break;
+    case "state/caps":
+      if (body?.["bt_speaker"] === true)
+        d.speaker ??= { state: "off", saved: null, output: "auto", found: [], scannedAt: null };
+      else d.speaker = null;
+      break;
+    case "state/bt": {
+      if (d.speaker === null) break;
+      const state = str(body?.["state"]);
+      if (state !== null && SPEAKER_STATES.includes(state as never))
+        d.speaker.state = state as DeviceSpeaker["state"];
+      const out = str(body?.["out"]);
+      if (out !== null && DEVICE_SPEAKER_OUTPUTS.includes(out as never))
+        d.speaker.output = out as DeviceSpeakerOutput;
+      const mac = str(body?.["mac"]);
+      d.speaker.saved =
+        body?.["saved"] === true && mac !== null
+          ? { mac, name: recordText(str(body?.["name"]) ?? mac, 40) }
+          : null;
+      break;
+    }
+    case "event/bt/devices": {
+      if (d.speaker === null) break;
+      const list = Array.isArray(body?.["devices"]) ? (body["devices"] as Array<unknown>) : [];
+      d.speaker.found = list.slice(0, 10).flatMap((x) => {
+        const v = typeof x === "object" && x !== null ? (x as Record<string, unknown>) : {};
+        const mac = str(v["mac"]);
+        return mac === null || !MAC.test(mac)
+          ? []
+          : [
+              {
+                mac,
+                name: recordText(str(v["name"]) ?? "", 40),
+                rssi: num(v["rssi"]),
+                audio: v["audio"] === true,
+              },
+            ];
+      });
+      d.speaker.scannedAt = now;
+      line = `${d.speaker.found.length} Bluetooth devices nearby`;
+      break;
+    }
     case "event/nfc": {
       const uid = payload.trim();
       if (/^[0-9a-fA-F:]{4,40}$/.test(uid)) {
@@ -551,6 +623,43 @@ const make = Effect.gen(function* () {
         if (device?.deviceId === id) yield* home.setDevice(null).pipe(Effect.ignore);
         return done("Forgotten. Set it up again in Settings → Home.");
       }
+      case "speaker": {
+        if (heard.get(id)?.speaker == null)
+          return yield* new DeviceRefusedError({
+            why: `${id}'s firmware cannot drive a Bluetooth speaker yet. Nothing was sent.`,
+          });
+        const target =
+          c.mac !== undefined ? { mac: c.mac } : c.name !== undefined ? { name: c.name } : {};
+        switch (c.action) {
+          case "scan":
+            yield* publish(id, "cmd/bt/scan", { secs: 10 });
+            return done("Looking for Bluetooth speakers for about ten seconds.");
+          case "pair":
+          case "connect":
+            yield* publish(id, `cmd/bt/${c.action}`, target);
+            return done(
+              c.action === "pair"
+                ? "Pairing. Put the speaker in pairing mode if it is not already."
+                : "Connecting to the speaker.",
+            );
+          case "disconnect":
+            yield* publish(id, "cmd/bt/disconnect", {});
+            return done("Disconnected. Replies play on the R1 until you connect again.");
+          case "forget":
+            yield* publish(id, "cmd/bt/forget", {});
+            return done("Speaker forgotten. Pair it again to use it.");
+          case "route":
+            yield* publish(id, "cmd/bt/route", { out: c.output ?? "auto" });
+            return done(
+              c.output === "bt"
+                ? "Replies play only on the Bluetooth speaker."
+                : c.output === "onboard"
+                  ? "Replies play on the R1's own speaker."
+                  : "Replies play on the Bluetooth speaker when it is connected, else on the R1.",
+            );
+        }
+        return done("Done.");
+      }
       case "reboot":
         yield* publish(id, "cmd/reboot", {});
         yield* audit(by, id, "R1 restarted", "done");
@@ -632,6 +741,7 @@ const make = Effect.gen(function* () {
         line: cam?.line ?? (d.camera === null ? null : `Camera: ${d.camera}`),
       },
       lastTag: d.lastTag === null ? null : { uid: d.lastTag.uid, at: iso(d.lastTag.at)! },
+      speaker: d.speaker === null ? null : { ...d.speaker, scannedAt: iso(d.speaker.scannedAt) },
       stages: stagesOf(d),
       log: d.log.map((l) => ({ at: iso(l.at)!, topic: l.topic, text: l.text })).toReversed(),
     };

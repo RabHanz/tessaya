@@ -16,6 +16,7 @@ import {
   clock,
   deviceStatusLine,
   msText,
+  speakerLine,
   tagActionLine,
   transportLine,
   when,
@@ -428,6 +429,10 @@ function DeviceControls({
         </Row>
       </SettingsSection>
 
+      {d.speaker === null ? null : (
+        <SpeakerSection device={d} busy={busy} run={run} prefix={prefix} />
+      )}
+
       <TagsSection device={d} tags={tags} busy={busy} run={run} prefix={prefix} />
 
       <SettingsSection title={`${prefix}Camera · ${id}`}>
@@ -762,6 +767,90 @@ function SetupSection({
           />
         </View>
       </View>
+    </SettingsSection>
+  );
+}
+
+const OUTPUTS = [
+  ["auto", "Speaker, else R1"],
+  ["bt", "Speaker only"],
+  ["onboard", "R1 only"],
+] as const;
+
+/** Shown only once the R1's firmware reports it can drive a Bluetooth speaker. */
+function SpeakerSection({
+  device: d,
+  busy,
+  run,
+  prefix,
+}: {
+  readonly device: DeviceView;
+  readonly busy: boolean;
+  readonly run: Run;
+  readonly prefix: string;
+}) {
+  const id = d.id;
+  const s = d.speaker!;
+  const off = busy || d.online !== true;
+  const linked = s.state === "connected" || s.state === "streaming";
+  return (
+    <SettingsSection title={`${prefix}Bluetooth speaker · ${id}`}>
+      <Row title={s.saved?.name ?? "Speaker"} description={speakerLine(s)}>
+        {s.saved === null ? null : (
+          <ControlPill
+            variant={linked ? "pill" : "primary"}
+            label={linked ? "Disconnect" : "Connect"}
+            disabled={off || s.state === "connecting"}
+            onPress={() =>
+              void run("act", "speaker", { id, action: linked ? "disconnect" : "connect" })
+            }
+          />
+        )}
+        {s.saved === null ? null : (
+          <ControlPill
+            variant="pill"
+            label="Forget"
+            disabled={off}
+            onPress={() => void run("act", "speaker", { id, action: "forget" })}
+          />
+        )}
+      </Row>
+      <Row divider title="Replies play on" description="">
+        {OUTPUTS.map(([output, label]) => (
+          <ControlPill
+            key={output}
+            variant={s.output === output ? "primary" : "pill"}
+            label={label}
+            disabled={off}
+            onPress={() => void run("act", "speaker", { id, action: "route", output })}
+          />
+        ))}
+      </Row>
+      <Row
+        divider
+        title="Pair a speaker"
+        description={
+          s.scannedAt === null
+            ? "Put the speaker in pairing mode, then scan."
+            : `${s.found.length} found at ${clock(s.scannedAt)}. Pick one to pair.`
+        }
+      >
+        <ControlPill
+          variant="pill"
+          label={s.state === "scanning" ? "Scanning…" : "Scan"}
+          disabled={off || s.state === "scanning"}
+          onPress={() => void run("act", "speaker", { id, action: "scan" })}
+        />
+        {s.found.map((f) => (
+          <ControlPill
+            key={f.mac}
+            variant={s.saved?.mac === f.mac ? "primary" : "pill"}
+            label={`${f.name || f.mac}${f.audio ? "" : " (not audio)"}`}
+            disabled={off}
+            onPress={() => void run("act", "speaker", { id, action: "pair", mac: f.mac })}
+          />
+        ))}
+      </Row>
     </SettingsSection>
   );
 }

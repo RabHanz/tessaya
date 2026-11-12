@@ -3,7 +3,7 @@
  * Settings → Devices' words and drawings, shared by web and mobile: a device's status line, the stage table, and a
  * still sketch of each of the R1's nine moods (SVG paths, so both clients draw the same eyes). Pure.
  */
-import type { DeviceTagAction, DeviceView, R1Mood } from "@t3tools/baton-contracts";
+import type { DeviceSpeaker, DeviceTagAction, DeviceView, R1Mood } from "@t3tools/baton-contracts";
 
 export const when = (iso: string): string =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -32,6 +32,32 @@ export const transportLine = (d: DeviceView): string =>
     : d.transport === "inhouse"
       ? "In-house: Tessaya's own room loop hears and speaks."
       : "Agora's cloud. Its account is inactive, so the device may not answer; revert to in-house if it goes quiet.";
+
+/** One line for the R1's Bluetooth speaker row, the same on web and mobile. */
+export const speakerLine = (s: DeviceSpeaker): string => {
+  const name = s.saved?.name ?? "the speaker";
+  switch (s.state) {
+    case "scanning":
+      return "Looking for Bluetooth speakers nearby.";
+    case "connecting":
+      return `Connecting to ${name}.`;
+    case "connected":
+    case "streaming":
+      return `Connected to ${name}. ${SPEAKER_OUTPUT_LINE[s.output]}`;
+    case "failed":
+      return `Could not reach ${name}. Check it is on and in range, then connect again.`;
+    default:
+      return s.saved === null
+        ? "No speaker paired. Scan, then pick one to pair."
+        : `${name} is paired but not connected. Replies play on the R1.`;
+  }
+};
+
+export const SPEAKER_OUTPUT_LINE = {
+  auto: "Replies play on it, and on the R1 when it drops.",
+  bt: "Replies play only on it.",
+  onboard: "Replies play on the R1's own speaker for now.",
+} as const;
 
 export const tagActionLine = (action: DeviceTagAction): string =>
   action.kind === "mood"
