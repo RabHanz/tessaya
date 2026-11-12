@@ -51,6 +51,7 @@ import { syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
 import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonSessionRequests } from "./BatonSessionRequests";
+import { LearnTip } from "./LearnTip";
 import { useBatonLiveOnly } from "./batonLiveOnly";
 import { Toggle } from "../ui/toggle";
 import { Button } from "../ui/button";
@@ -563,6 +564,7 @@ export function BatonSidebarSection(props: {
         onPhone={onPhone}
         onCloud={onCloud}
       />
+      {barHome === null ? null : <LearnTip environmentId={barHome} />}
       <div className="flex items-center gap-1">
         {openTessaya === undefined ? null : (
           <Button size="xs" variant="ghost" onClick={() => openTessaya()}>

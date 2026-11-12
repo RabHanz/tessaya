@@ -23,6 +23,7 @@ import {
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
+  BATON_LEARN_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -110,6 +111,7 @@ import { homeActorOf, serveHomeCall } from "../home/HomeCalls.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { devicesActorOf, serveDevicesCall } from "../home/HomeDeviceCalls.ts";
 import { BatonVoiceLibrary, serveVoiceCall } from "./BatonVoiceLibrary.ts";
+import { serveLearnCall } from "./BatonLearn.ts";
 
 /** Only Claude keeps several accounts behind one config directory today. */
 const DEFAULT_ROTATION_DRIVER = ProviderDriverKind.make("claudeAgent");
@@ -580,6 +582,7 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_HOME_WS_METHODS.call]: (input) => run(serveHomeCall(input, homeActorOf(input))),
     [BATON_DEVICES_WS_METHODS.call]: (input) => run(serveDevicesCall(input, devicesActorOf(input))),
     [BATON_VOICE_WS_METHODS.call]: (input) => run(serveVoiceCall(input)),
+    [BATON_LEARN_WS_METHODS.call]: (input) => run(serveLearnCall(input)),
     [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
     [BATON_RECORD_WS_METHODS.list]: (input) =>
       run(
