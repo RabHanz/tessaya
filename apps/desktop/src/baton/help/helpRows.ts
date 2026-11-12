@@ -117,6 +117,26 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   activity_today: ["What did you do today?", "What it did on your behalf."],
   what_happened: ["What happened overnight?", "Crashes, jobs and messages, newest first."],
   permission_off: ["Turn off Chrome", "Takes a permission back."],
+  home_find: [
+    "Which lights are in the study?",
+    "Finds devices in your house by name, room or kind.",
+  ],
+  home_state: ["Is the study fan on?", "One device now, or what it did since a time."],
+  home_do: [
+    "Turn off the study fan",
+    "Does it now, with an undo; locks, doors and heaters wait for your yes.",
+  ],
+  home_undo: ["Undo that", "Puts back her last change, within a day."],
+  home_automations: ["What automations have you made?", "Hers, or every one in the house."],
+  home_automation_save: [
+    "Turn off the study fan in 30 minutes",
+    "Anything later or repeating becomes a Home Assistant automation.",
+  ],
+  home_automation_set: ["Pause the night lights automation", "Pauses, resumes or deletes one."],
+  device_list: ["Is the R1 online?", "Your devices: online, battery, signal, firmware."],
+  device_act: ["Make the R1 look happy", "Its eyes, light, a buzz or a line said aloud."],
+  device_owner: ["Take a picture with the R1", "Camera or restart; always waits for your yes."],
+  device_tag: ["Make this tag mute the R1", "Sets what an NFC tag does when tapped on the R1."],
 };
 
 /** Tools that exist for the assistant's own steps and are not something to say. */
