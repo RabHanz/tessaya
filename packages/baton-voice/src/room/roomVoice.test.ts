@@ -291,11 +291,12 @@ describe("answering only when he is talking to her", () => {
     for (const _ of cascade) await quick(heardOnly);
     expect(heardOnly.brainCalls).toEqual([]);
 
-    // Had S2 opened it: the bare "yes" and "okay" are not for her, and her one answer leaves no room for the "yeah"s.
+    // Had S2 opened it: his first words are hers, a stray "okay" or "yeah" after her answers is not.
     const pressed = setup({ recognise: said(cascade) });
     pressed.s2();
     for (const _ of cascade) await quick(pressed);
     expect(pressed.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Yes.",
       "Movie going here.",
     ]);
   });
@@ -334,6 +335,31 @@ describe("answering only when he is talking to her", () => {
       "What time is it?",
     ]);
     expect(glances()).toBe(1);
+  });
+
+  it("after S2 his first words are hers, however late he starts, after a reply of hers too (00:20, 13 Nov)", async () => {
+    const logs: string[] = [];
+    const t = setup({ recognise: said(["What's on today?"]), log: (l) => logs.push(l) });
+    t.s2();
+    await turn(t);
+    expect(t.brainCalls).toHaveLength(1);
+
+    // S2, then a line of hers from the server, then him 13 s later: past the 8 s after her line.
+    const late = setup({ recognise: said(["What's on today?", "And tomorrow?"]) });
+    late.s2();
+    late.room.message(
+      `freya/r1/${DEV}/voice/say`,
+      Buffer.from(JSON.stringify({ text: "Morning." })),
+    );
+    await late.deps.sleep(13_000);
+    await turn(late);
+    expect(late.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["What's on today?"]);
+
+    // Audio alone still opens nothing, and the log says what was not answered.
+    const room = setup({ recognise: said(["the match starts at nine"]), log: (l) => logs.push(l) });
+    await turn(room);
+    expect(room.brainCalls).toEqual([]);
+    expect(logs.some((l) => l.includes('not answered: "the match starts at nine"'))).toBe(true);
   });
 
   it("acknowledges being sent away even when her brain says nothing, then rests", async () => {
