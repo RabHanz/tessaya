@@ -862,20 +862,26 @@ const make = Effect.gen(function* () {
         why: `There is no ${missing.join(", ")} in the house; use an id from home_find.`,
       });
     const { verdict, ids } = yield* judge(request);
-    // A toggle script flips what it runs on, so "turn on" ran on an on fan turns it off (00:42, 13 Nov). The real
-    // entity's own turn_on and turn_off do nothing when it is already so, and its state is what to read.
-    if (request.domain === "script") {
+    // A toggle script flips what it runs on, so "turn on" ran on an on fan turns it off (00:42, 13 Nov). Where the
+    // flipped entity has a state, its own turn_on and turn_off are the way; where it has none (his office fan, 01:29),
+    // nobody can tell on from off, so it runs only as an explicit flip (script.toggle) after asking him.
+    if (request.domain === "script" && request.service !== "toggle") {
       const toggles = asList(callTarget(request)["entity_id"]).filter((e) => isToggleScript(e));
       const flipped = [...ids].filter(
-        (e) => SWITCHED.has(e.split(".")[0] ?? "") && states.has(e) && !e.startsWith("script."),
+        (e) => SWITCHED.has(e.split(".")[0] ?? "") && !e.startsWith("script."),
       );
-      if (toggles.length > 0 && flipped.length > 0)
+      const known = flipped.filter((e) => states.has(e));
+      if (toggles.length > 0 && known.length > 0)
         return yield* new HomeRefusedError({
-          why: `${toggles.map(nameOf).join(", ")} only flips ${flipped
+          why: `${toggles.map(nameOf).join(", ")} only flips ${known
             .map((e) => `${e} (now ${states.get(e)!.s})`)
             .join(
               ", ",
             )}. Call turn_on or turn_off on that entity itself instead; it does nothing when it is already so.`,
+        });
+      if (toggles.length > 0)
+        return yield* new HomeRefusedError({
+          why: `${toggles.map(nameOf).join(", ")} only flips ${flipped.length > 0 ? flipped.join(", ") : "its device"}, and the house cannot tell whether it is on, so turning it on or off cannot be promised. Tell him that and ask whether to flip it; only on his yes, call script.toggle on ${toggles.join(", ")}.`,
         });
     }
     const line = lineOf(request, ids);
