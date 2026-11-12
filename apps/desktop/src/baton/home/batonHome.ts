@@ -13,7 +13,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { BatonLearnCallInput } from "@t3tools/baton-contracts";
+import { BatonLearnCallInput, type EnrolCard } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 
 import { isEmbedSrc } from "./links.ts";
@@ -116,6 +116,8 @@ export type HomeControl =
       /** His own file exists, so "Use default" does something. */
       readonly mine: boolean;
     })
+  /** The guided voice read (Voice ID): the window shows it as a card over everything. Ids: `<id>:redo`, `<id>:close`. */
+  | (HomeControlBase & { readonly kind: "enrol"; readonly card: EnrolCard })
   /** A calendar of days as a grid, oldest first, one column per week: level 0 to 4, or -1 for a blank. */
   | (HomeControlBase & {
       readonly kind: "heat";

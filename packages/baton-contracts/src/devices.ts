@@ -5,6 +5,8 @@
  */
 import * as Schema from "effect/Schema";
 
+import { EnrolCard } from "./enrolCard.ts";
+
 export const BATON_DEVICES_WS_METHODS = { call: "baton.devices.call" } as const;
 export const BATON_DEVICES_CALL_KINDS = ["read", "act", "owner"] as const;
 
@@ -226,6 +228,8 @@ export const DeviceView = Schema.Struct({
   /** While a transport trial runs: when it reverts to in-house, muted, unless confirmed. */
   revertAt: Schema.NullOr(Schema.String),
   enrolling: Schema.Boolean,
+  /** The guided read while he enrols on it, and its summary until he closes it. */
+  enrol: Schema.NullOr(EnrolCard),
   ota: Schema.NullOr(Schema.Struct({ phase: Schema.String, line: Schema.String })),
   camera: Schema.Struct({
     /** Until when the server takes a picture from it; the privacy light in every client. */

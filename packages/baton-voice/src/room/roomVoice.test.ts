@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { EnrolCard } from "@t3tools/baton-contracts";
+
 import type { SpeakerIdentity } from "../speaker.ts";
 import { UNVERIFIED } from "../speaker.ts";
 import { PILL_SOUNDS, renderSound } from "../cueSounds.ts";
@@ -90,6 +92,61 @@ describe("the room voice loop", () => {
     // Her listening sound on S2, then two sentences of 0.2 s each at 16 kHz, in 60 ms frames.
     const cue = Math.ceil((renderSound(PILL_SOUNDS.wake, 16_000).length * 2) / 1_920);
     expect(down.length).toBe(cue + 2 * Math.ceil(6_400 / 1_920));
+  });
+
+  it("guides an enrolment with the card on his screen: never answered, made from his read, then summarised", async () => {
+    const windows: number[] = [];
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "hi tessaya its me",
+        cancel: () => undefined,
+        onPartial: (l) => l("hi tessaya its me and this"),
+      }),
+      embed: async () => Float32Array.from([1, 0, 0]),
+      enrolOwner: async (w) => {
+        windows.push(w.length);
+        return { saved: true, said: "Thanks. I know your voice now." };
+      },
+    });
+    t.room.message(`freya/r1/${DEV}/voice/enrol`, new TextEncoder().encode("{}"));
+    const cards = () =>
+      t.published
+        .filter((p) => p.topic === `freya/r1/${DEV}/event/enrol`)
+        .map((p) => JSON.parse(String(p.payload)) as EnrolCard);
+    expect(cards()[0]!.lines.map((l) => l.state)).toEqual([
+      "now",
+      "todo",
+      "todo",
+      "todo",
+      "todo",
+      "todo",
+    ]);
+    await t.feed(false, 25);
+    await t.feed(true, 15);
+    // The recogniser's words move the highlight while he reads.
+    expect(cards().at(-1)!.lines[0]!.heard).toBe(6);
+    await t.feed(true, 50);
+    await t.feed(false, 14);
+    expect(
+      cards()
+        .at(-1)!
+        .lines.map((l) => l.state)
+        .slice(0, 2),
+    ).toEqual(["done", "now"]);
+    for (let i = 1; i < 6; i += 1) {
+      await t.feed(true, 65);
+      await t.feed(false, 14);
+    }
+    const last = cards().at(-1)!;
+    expect(last.phase).toBe("done");
+    expect(last.summary).toMatchObject({ quality: 3, headline: "Your voice profile is ready" });
+    expect(last.summary!.rows).toContainEqual({
+      label: "Microphone",
+      value: "Agora R1 (room mic)",
+    });
+    expect(windows).toEqual([6]);
+    expect(t.brainCalls).toEqual([]);
   });
 
   it("does not answer a voice the gate keeps out", async () => {

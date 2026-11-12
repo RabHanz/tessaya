@@ -437,7 +437,7 @@ function row(c) {
 }
 function rowsOf(list, host) {
   const wakes = list.filter(x => x.id.indexOf('v.wake:') === 0); let done = false;
-  for (const c of list) { if (c.id.indexOf('v.wake:') === 0) { if (!done) { done = true; host.appendChild(wakeRow(wakes)); } continue; } host.appendChild(row(c)); }
+  for (const c of list) { if (c.kind === 'enrol') continue; if (c.id.indexOf('v.wake:') === 0) { if (!done) { done = true; host.appendChild(wakeRow(wakes)); } continue; } host.appendChild(row(c)); }
 }
 function group(name, items) {
   const g = $('div', 'group' + (open.has(name) ? ' open' : ''));
@@ -1257,6 +1257,76 @@ function railTip(e) {
   const r = t.getBoundingClientRect(); tip.textContent = t.getAttribute('data-tip'); tip.style.top = (r.top + r.height / 2) + 'px'; tip.style.left = (r.right + 10) + 'px';
 }
 for (const ev of ['pointerover', 'pointerout', 'focusin', 'focusout']) document.addEventListener(ev, railTip);
+// The guided voice read (Voice ID): a card over everything while it runs. Its buttons and meter stay put across
+// updates, so keyboard focus is never lost as the words light up; only the sentences are rebuilt.
+let enrolEl = null, enrolOpener = null, enrolMeter = null, enrolSaid = '';
+function enrolClose() { set('vid.card:close', null); }
+function syncEnrol() {
+  const c = S.controls.find(x => x.kind === 'enrol');
+  if (!c) {
+    if (!enrolEl) return;
+    enrolEl.remove(); enrolEl = null; enrolSaid = '';
+    if (enrolMeter) { clearInterval(enrolMeter); enrolMeter = null; }
+    if (enrolOpener && enrolOpener.focus) { try { enrolOpener.focus(); } catch (_) {} }
+    enrolOpener = null; return;
+  }
+  const k = c.card, over = k.phase === 'done' || k.phase === 'failed';
+  if (!enrolEl) {
+    enrolOpener = document.activeElement;
+    enrolEl = $('div'); enrolEl.id = 'enrolveil';
+    const box = $('div', 'enrol'); box.id = 'enrolbox'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'enrolh'); box.tabIndex = -1;
+    const body = $('div'); body.id = 'enrolbody';
+    const say = $('p', 'sr'); say.id = 'enrolsay'; say.setAttribute('aria-live', 'polite');
+    const foot = $('div', 'efoot');
+    const mic = $('span', 'emic'); const lab = $('span'); lab.id = 'enrolmic';
+    const m = $('span', 'meter'); m.id = 'enrolmeter'; m.setAttribute('role', 'meter'); m.setAttribute('aria-label', 'Microphone level'); m.setAttribute('aria-valuemin', '0'); m.setAttribute('aria-valuemax', '100'); m.appendChild($('i'));
+    mic.append(lab, m);
+    const redo = $('button', 'btn', 'Redo'); redo.id = 'enrolredo'; redo.onclick = () => set('vid.card:redo', null);
+    const close = $('button', 'btn'); close.id = 'enrolclose'; close.onclick = enrolClose;
+    foot.append(mic, redo, close); box.append(body, say, foot); enrolEl.appendChild(box); document.body.appendChild(enrolEl);
+    setTimeout(() => box.focus(), 0);
+  }
+  setRegion(document.getElementById('enrolbody'), b => {
+    const h = $('h2', null, over && k.summary ? k.summary.headline : k.title); h.id = 'enrolh'; b.appendChild(h);
+    if (over && k.summary) {
+      const dl = $('dl', 'esum');
+      for (const r of k.summary.rows) {
+        const dd = $('dd');
+        if (r.label === 'Quality') { const q = $('span', 'eq'); q.setAttribute('aria-hidden', 'true'); for (let i = 1; i <= 3; i++) q.appendChild($('i', i <= k.summary.quality ? 'on' : null)); dd.appendChild(q); }
+        dd.appendChild(document.createTextNode(r.value)); dl.append($('dt', null, r.label), dd);
+      }
+      b.appendChild(dl);
+      if (k.summary.tip) b.appendChild($('p', 'etip', k.summary.tip));
+      return;
+    }
+    b.appendChild($('p', 'hint', k.phase === 'saving' ? 'Making the voice profile from your read…' : k.lead));
+    const n = k.lines.filter(l => l.state === 'done').length, again = k.lines.filter(l => l.state === 'again').length;
+    const pr = $('div', 'eprog'); const bar = $('span', 'ebar'); const fill = $('i'); fill.style.width = Math.round(100 * n / k.lines.length) + '%'; bar.appendChild(fill);
+    pr.append($('span', null, n + ' of ' + k.lines.length + ' read'), bar, $('span', null, again ? again + ' to read again' : 'about 30 s')); b.appendChild(pr);
+    const ol = $('ol', 'elines');
+    k.lines.forEach((l, i) => {
+      const li = $('li', l.state); const mk = $('span', 'em', l.state === 'done' ? '✓' : l.state === 'again' ? '↺' : l.state === 'now' ? '▸' : String(i + 1)); mk.setAttribute('aria-hidden', 'true');
+      const t = $('span');
+      if (l.state === 'now' || l.state === 'again') {
+        const ws = l.text.split(' ');
+        ws.forEach((w, j) => { t.appendChild($('span', j < l.heard ? 'w h' : j === l.heard ? 'w next' : 'w', w)); if (j < ws.length - 1) t.appendChild(document.createTextNode(' ')); });
+        if (l.why) t.appendChild($('span', 'why', l.why));
+      } else t.textContent = l.text;
+      li.append(mk, t); ol.appendChild(li);
+    });
+    b.appendChild(ol);
+  });
+  document.getElementById('enrolmic').textContent = over ? '' : 'Listening through ' + k.mic;
+  document.getElementById('enrolmeter').hidden = k.phase !== 'reading';
+  document.getElementById('enrolredo').hidden = !over;
+  const cl = document.getElementById('enrolclose'); cl.textContent = over ? 'Done' : 'Cancel'; cl.className = over ? 'btn primary' : 'btn';
+  if (over && document.activeElement !== cl && !document.getElementById('enrolbox').contains(document.activeElement)) cl.focus();
+  const cur = k.lines.find(l => l.state === 'again' || l.state === 'now');
+  const said = over && k.summary ? k.summary.headline : cur ? (cur.why ? cur.why + ' ' : 'Read: ') + cur.text : '';
+  if (said !== enrolSaid) { enrolSaid = said; document.getElementById('enrolsay').textContent = said; }
+  if (k.phase === 'reading' && !enrolMeter && real) enrolMeter = setInterval(() => ipc.invoke('baton-home:level').then(v => { const m = document.getElementById('enrolmeter'); if (!m) return; const w = Math.round(Math.min(1, Math.max(0, Math.sqrt(v) * 1.6)) * 100); m.firstChild.style.width = w + '%'; m.setAttribute('aria-valuenow', String(w)); }).catch(() => {}), 120);
+  if (k.phase !== 'reading' && enrolMeter) { clearInterval(enrolMeter); enrolMeter = null; }
+}
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
   if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.mode === 'open') { setupAuto = true; setupStep = S.extra.setup.step || 0; modal = 'setup'; }
@@ -1296,11 +1366,23 @@ function render(state) {
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => go('assistant'); top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = (cur === 'home' ? 'wide' : '') + (entering ? ' enter' : ''); if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
-  syncModal(); try { syncChrome(); } catch (e) {}
+  syncModal(); syncEnrol(); try { syncChrome(); } catch (e) {}
   if (pendingGo) { const t = pendingGo; pendingGo = null; modal = null; go(t); return; }
   if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
 addEventListener('keydown', e => {
+  // The voice card is on top of everything: Esc cancels or closes it, and Tab stays inside it.
+  if (enrolEl) {
+    if (e.key === 'Escape') { e.preventDefault(); enrolClose(); return; }
+    if (e.key !== 'Tab') return;
+    const box = document.getElementById('enrolbox'), items = Array.from(box.querySelectorAll('button')).filter(x => !x.hidden);
+    if (!items.length) { e.preventDefault(); return; }
+    const first = items[0], last = items[items.length - 1];
+    if (!box.contains(document.activeElement) || document.activeElement === box) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    return;
+  }
   if (e.key === 'Escape' && modal) closeModal();
   // Tab stays inside the settings dialog while it is open.
   if (e.key === 'Tab' && modal) {

@@ -3,6 +3,7 @@
  * the people he saved, and one switch per open decision (D1-D8 in voiceid-plan.md), each at the plan's default
  * until he changes it.
  */
+import type { EnrolCard } from "@t3tools/baton-contracts";
 import type { SpeakerProfile } from "@t3tools/baton-voice";
 
 import type { HomeControl } from "../home/batonHome.ts";
@@ -79,12 +80,8 @@ export interface VoiceIdView {
   /** The model id profiles must match to be used. */
   readonly model: string;
   readonly modelState: VoiceIdModelState;
-  /** A read under way: who, the lines on screen, and how many seconds are left. */
-  readonly capture: {
-    readonly name: string;
-    readonly lines: ReadonlyArray<string>;
-    readonly secondsLeft: number;
-  } | null;
+  /** The guided read under way, or its summary until he closes it. */
+  readonly enrol: EnrolCard | null;
   /** The result of the last enrolment or deletion. */
   readonly note: string | null;
   /** The microphone is open, so a read can be heard. */
@@ -163,14 +160,13 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
     ),
     { id: "vid.status", section: SECTION, kind: "check", ...status },
   ];
-  if (view.capture !== null)
+  if (view.enrol !== null)
     rows.push({
-      id: "vid.reading",
+      id: "vid.card",
       section: SECTION,
-      kind: "check",
-      status: "warn",
-      label: `Listening to ${view.capture.name}: ${view.capture.secondsLeft} s left`,
-      detail: `Read aloud: ${view.capture.lines.join(" ")}`,
+      label: view.enrol.title,
+      kind: "enrol",
+      card: view.enrol,
     });
   if (view.note !== null)
     rows.push({
@@ -181,7 +177,7 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
       label: view.note,
       detail: "",
     });
-  if (settings.on && view.modelState === "ready" && view.capture === null) {
+  if (settings.on && view.modelState === "ready" && view.enrol === null) {
     const cannot = view.listening ? {} : { disabled: true };
     rows.push(
       owner === undefined
@@ -190,7 +186,7 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
             section: SECTION,
             label: "Your voice",
             hint: view.listening
-              ? `You read three sentences aloud (about 20 s)${settings.wisprSeed ? ", and Tessaya also reads up to 60 of your Wispr recordings, read-only" : ""}.`
+              ? `You read six short sentences aloud (about 30 s), and the card follows along${settings.wisprSeed ? ", and Tessaya also reads up to 60 of your Wispr recordings, read-only" : ""}.`
               : "Turn on voice first: the read goes through Tessaya's microphone.",
             kind: "action",
             button: "Make my voice profile",

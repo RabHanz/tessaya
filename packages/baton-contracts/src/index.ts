@@ -25,6 +25,7 @@ export * from "./weave.ts";
 export * from "./cloud.ts";
 export * from "./home.ts";
 export * from "./devices.ts";
+export * from "./enrolCard.ts";
 export * from "./voice.ts";
 export * from "./sessionCatalog.ts";
 export * from "./watch.ts";

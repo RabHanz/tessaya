@@ -9,6 +9,7 @@ import * as NodeCrypto from "node:crypto";
 import {
   DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
+  EnrolCard,
   R1_DEVICE_DEFAULTS,
   R1_DEVICE_DOS,
   R1_KEY_SLOTS,
@@ -92,7 +93,7 @@ const TRIAL_MS = 60_000;
 const CAMERA_WINDOW_MS = 30_000;
 const SHOT_KEEP_MS = 10 * 60_000;
 const ASK_TTL_MS = 10 * 60_000;
-const ENROL_MS = 2 * 60_000;
+const ENROL_MS = 5 * 60_000;
 const REARM_AFTER_MS = [2_000, 8_000, 18_000] as const;
 export const MAX_SHOT_BYTES = 512 * 1024;
 const LOG_KEEP = 40;
@@ -134,6 +135,8 @@ export interface Heard {
   } | null;
   samples: Record<string, Array<number>>;
   log: Array<{ at: number; topic: string; text: string }>;
+  /** The room loop's enrolment card while he enrols, and its summary until he closes it. */
+  enrol: EnrolCard | null;
 }
 
 const blank = (): Heard => ({
@@ -153,7 +156,10 @@ const blank = (): Heard => ({
   speaker: null,
   samples: {},
   log: [],
+  enrol: null,
 });
+
+const decodeEnrolCard = Schema.decodeUnknownOption(EnrolCard);
 
 const json = (text: string): Record<string, unknown> | null => {
   try {
@@ -313,6 +319,13 @@ export const applyMessage = (
         d.lastTag = { uid: tag, at: now };
       }
       break;
+    }
+    case "event/enrol": {
+      // Several a second while he reads: the card, not the log.
+      const card = decodeEnrolCard(body);
+      if (card._tag === "Some") d.enrol = card.value;
+      d.lastSeen = now;
+      return { id, cameOnline, tag };
     }
     case "event/voice/metrics": {
       // The loop sends what was heard too; only the times are kept.
@@ -813,12 +826,14 @@ const make = Effect.gen(function* () {
       case "enrol":
         if (c.cancel) {
           enrolling.delete(id);
+          const card = heard.get(id);
+          if (card !== undefined) card.enrol = null;
           yield* publish(id, "voice/enrol", { cancel: true });
           return done("Enrolment cancelled.");
         }
         enrolling.set(id, now + ENROL_MS);
         yield* publish(id, "voice/enrol", {});
-        return done("Enrolling: speak to the device as it asks.");
+        return done("Enrolling: read the sentences on the card aloud to the device.");
       case "diag":
         yield* publish(id, "cmd/diag/dump", {});
         yield* publish(id, "cmd/power/status", {});
@@ -957,6 +972,7 @@ const make = Effect.gen(function* () {
         : "inhouse",
       revertAt: iso(trials.get(id) ?? null),
       enrolling: (enrolling.get(id) ?? 0) > now,
+      enrol: d.enrol,
       ota: d.ota,
       camera: {
         armedUntil: iso(cam?.armedUntil ?? null),
@@ -990,7 +1006,13 @@ const make = Effect.gen(function* () {
         });
     }
     for (const [id, until] of trials) if (until <= now) yield* revert(id);
-    for (const [id, until] of enrolling) if (until <= now) enrolling.delete(id);
+    for (const [id, until] of enrolling)
+      if (until <= now) {
+        enrolling.delete(id);
+        // A read the room loop stopped reporting is dropped; a summary stays until he closes it.
+        const d = heard.get(id);
+        if (d?.enrol != null && ["reading", "saving"].includes(d.enrol.phase)) d.enrol = null;
+      }
     for (const [id, cam] of cameras) {
       if (cam.armedUntil !== null && cam.armedUntil <= now && cam.shot === null)
         cameras.set(id, {

@@ -58,8 +58,11 @@ import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { VoiceEnrolCard } from "./VoiceEnrolCard";
 
 const REFRESH_MS = 5000;
+/** While he reads for an R1 enrolment, so the card keeps up with his words. */
+const ENROL_REFRESH_MS = 300;
 type Kind = "read" | "act" | "owner";
 
 export function HardwareSettingsPanel() {
@@ -116,13 +119,15 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
     if (result._tag === "Success" && result.value.ok)
       setView(result.value.value as DevicesOverview);
   };
+  const reading =
+    view?.devices.some((d) => d.enrol?.phase === "reading" || d.enrol?.phase === "saving") === true;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows the server's live device status while open
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- first read, then every few seconds while the page is open; refresh closes over the environment
+    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- first read, then every few seconds while the page is open (faster during an enrolment read); refresh closes over the environment
     void refresh();
-    const timer = window.setInterval(() => void refresh(), REFRESH_MS);
+    const timer = window.setInterval(() => void refresh(), reading ? ENROL_REFRESH_MS : REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [environmentId]);
+  }, [environmentId, reading]);
 
   const run = async (
     kind: Kind,
@@ -458,7 +463,7 @@ function DeviceControls({
           title="Voice ID"
           description={
             d.enrolling
-              ? "Enrolling: speak to the device as it asks."
+              ? "Enrolling: read the sentences on the card aloud to the device."
               : "Teach the device your voice, through its own microphones."
           }
           control={
@@ -472,6 +477,13 @@ function DeviceControls({
             </Button>
           }
         />
+        {d.enrol === null ? null : (
+          <VoiceEnrolCard
+            card={d.enrol}
+            onClose={() => void run("act", "enrol", { id, cancel: true })}
+            onRedo={() => void run("act", "enrol", { id, cancel: false })}
+          />
+        )}
       </SettingsSection>
 
       {d.speaker === null ? null : <SpeakerSection device={d} busy={busy} run={run} />}
