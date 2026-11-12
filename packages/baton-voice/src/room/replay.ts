@@ -72,7 +72,8 @@ const main = async () => {
       if (t.endsWith("/voice/down")) {
         firstDown ??= now();
         lastDown = now();
-      } else metrics = JSON.parse(String(p)) as Record<string, unknown>;
+      } else if (t.endsWith("/event/voice/metrics"))
+        metrics = JSON.parse(String(p)) as Record<string, unknown>;
     },
     log: () => undefined,
   });
