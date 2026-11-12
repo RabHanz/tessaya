@@ -501,7 +501,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a
 +  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476d94cd422 100644
+index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b478b31f0b 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -512,7 +512,23 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
  import { fromYaml } from "@t3tools/shared/schemaYaml";
  import * as HostProcess from "@t3tools/shared/HostProcess";
  import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
-@@ -749,6 +750,9 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
+@@ -241,6 +242,15 @@ export class KeyringNativePackageMissingError extends Schema.TaggedError<Keyring
+   }
+ }
+ 
++export class BatonVoiceGpuFileMissingError extends Schema.TaggedError<BatonVoiceGpuFileMissingError>()(
++  "BatonVoiceGpuFileMissingError",
++  { file: Schema.String, searched: Schema.Array(Schema.String) },
++) {
++  override get message(): string {
++    return `${this.file} was not built: looked in ${this.searched.join(", ")}`;
++  }
++}
++
+ export class ClerkPasskeyNativePackageMissingError extends Schema.TaggedError<ClerkPasskeyNativePackageMissingError>()(
+   "ClerkPasskeyNativePackageMissingError",
+   {
+@@ -749,6 +759,9 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
    "sidecar-invalid",
    "unpacked-native-missing",
    "resource-monitor-missing",
@@ -522,7 +538,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
    "wsl-runtime-missing",
    "wsl-runtime-invalid",
    "file-limit-exceeded",
-@@ -775,6 +779,15 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
+@@ -775,6 +788,15 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
      if (this.reason === "resource-monitor-missing") {
        return "Windows packaged payload is missing the resource monitor executable.";
      }
@@ -538,7 +554,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
      if (this.reason === "wsl-runtime-missing") {
        return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
      }
-@@ -994,6 +1007,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
+@@ -994,6 +1016,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
    "!**/*.d.cts",
    "!apps/desktop/resources/browser-secret",
    "!apps/desktop/resources/browser-secret/**/*",
@@ -547,7 +563,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
    "!apps/desktop/prod-resources/browser-secret",
    "!apps/desktop/prod-resources/browser-secret/**/*",
    "!apps/desktop/prod-resources/windows-server",
-@@ -1024,6 +1039,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+@@ -1024,6 +1048,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
    const unusedArch = arch === "arm64" ? "x64" : "arm64";
    return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/**/prebuilds/darwin-${unusedArch}/**/*`];
  }
@@ -569,7 +585,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1061,7 +1091,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1061,7 +1100,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
@@ -580,7 +596,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1090,6 +1122,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1090,6 +1131,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
@@ -589,7 +605,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
  export const DESKTOP_EXTRA_RESOURCES = [
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
-@@ -1099,6 +1133,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1099,6 +1142,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -620,7 +636,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2405,163 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2414,187 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -764,8 +780,32 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
 +    // The graphics-card build's modules: the exe does not start without transcribe.dll and its ggml DLLs.
 +    if (builds[0]!.features === "gpu") {
 +      const dir = path.dirname(built[0]!);
++      // transcribe-cpp-sys copies its DLLs four levels above its OUT_DIR, meant to be beside the exe; with cargo's newer
++      // build-dir layout (13 Nov runners, 0.1.118) that is target/release/build instead.
++      const buildDir = path.join(dir, "build");
++      const installs = (yield* fs.readDirectory(buildDir).pipe(Effect.orElseSucceed(() => [])))
++        .filter((name) => name.startsWith("transcribe-cpp-sys-"))
++        .map((name) => path.join(buildDir, name, "out", "bin"));
 +      for (const file of BATON_VOICE_GPU_FILES) {
-+        yield* fs.copyFile(path.join(dir, file), path.join(destination, file));
++        const candidates = [
++          path.join(dir, file),
++          // Cargo's newer build-dir layout nests OUT_DIR one level deeper, so the -sys crate's copy lands in build/.
++          path.join(buildDir, file),
++          ...installs.map((bin) => path.join(bin, file)),
++        ];
++        let from: string | undefined;
++        for (const candidate of candidates)
++          if (from === undefined && (yield* fs.exists(candidate))) from = candidate;
++        if (from === undefined)
++          return yield* new BatonVoiceGpuFileMissingError({
++            file,
++            searched: [
++              ...candidates,
++              `${dir}: ${(yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => []))).join(" ")}`,
++              `${buildDir}: ${(yield* fs.readDirectory(buildDir).pipe(Effect.orElseSucceed(() => []))).join(" ")}`,
++            ],
++          });
++        yield* fs.copyFile(from, path.join(destination, file));
 +      }
 +    }
 +  } else {
@@ -784,7 +824,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +3007,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +3040,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -792,7 +832,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3155,6 +3371,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3155,6 +3404,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -812,7 +852,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3418,6 +3647,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3418,6 +3680,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -859,7 +899,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3779,6 +4048,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3779,6 +4081,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -873,7 +913,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3811,6 +4087,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3811,6 +4120,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);

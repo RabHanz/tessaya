@@ -242,6 +242,15 @@ export class KeyringNativePackageMissingError extends Schema.TaggedError<Keyring
   }
 }
 
+export class BatonVoiceGpuFileMissingError extends Schema.TaggedError<BatonVoiceGpuFileMissingError>()(
+  "BatonVoiceGpuFileMissingError",
+  { file: Schema.String, searched: Schema.Array(Schema.String) },
+) {
+  override get message(): string {
+    return `${this.file} was not built: looked in ${this.searched.join(", ")}`;
+  }
+}
+
 export class ClerkPasskeyNativePackageMissingError extends Schema.TaggedError<ClerkPasskeyNativePackageMissingError>()(
   "ClerkPasskeyNativePackageMissingError",
   {
@@ -2545,8 +2554,32 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
     // The graphics-card build's modules: the exe does not start without transcribe.dll and its ggml DLLs.
     if (builds[0]!.features === "gpu") {
       const dir = path.dirname(built[0]!);
+      // transcribe-cpp-sys copies its DLLs four levels above its OUT_DIR, meant to be beside the exe; with cargo's newer
+      // build-dir layout (13 Nov runners, 0.1.118) that is target/release/build instead.
+      const buildDir = path.join(dir, "build");
+      const installs = (yield* fs.readDirectory(buildDir).pipe(Effect.orElseSucceed(() => [])))
+        .filter((name) => name.startsWith("transcribe-cpp-sys-"))
+        .map((name) => path.join(buildDir, name, "out", "bin"));
       for (const file of BATON_VOICE_GPU_FILES) {
-        yield* fs.copyFile(path.join(dir, file), path.join(destination, file));
+        const candidates = [
+          path.join(dir, file),
+          // Cargo's newer build-dir layout nests OUT_DIR one level deeper, so the -sys crate's copy lands in build/.
+          path.join(buildDir, file),
+          ...installs.map((bin) => path.join(bin, file)),
+        ];
+        let from: string | undefined;
+        for (const candidate of candidates)
+          if (from === undefined && (yield* fs.exists(candidate))) from = candidate;
+        if (from === undefined)
+          return yield* new BatonVoiceGpuFileMissingError({
+            file,
+            searched: [
+              ...candidates,
+              `${dir}: ${(yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => []))).join(" ")}`,
+              `${buildDir}: ${(yield* fs.readDirectory(buildDir).pipe(Effect.orElseSucceed(() => []))).join(" ")}`,
+            ],
+          });
+        yield* fs.copyFile(from, path.join(destination, file));
       }
     }
   } else {
