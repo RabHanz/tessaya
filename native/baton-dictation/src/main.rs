@@ -152,6 +152,9 @@ struct Config {
     /// each press in case it hears nothing (micprobe.rs).
     #[serde(default)]
     fallbacks: Vec<String>,
+    /// How long his mic stays open after a dictation, so the next press starts at once; 0 lets it go (keep_mic_warm).
+    #[serde(default, rename = "micWarmMs")]
+    mic_warm_ms: u64,
 }
 
 enum Msg {
@@ -1428,6 +1431,67 @@ impl LiveSink {
     }
 }
 
+/// Takes the kept-open mic's audio and drops it: only holding the device open matters (keep_mic_warm).
+struct Drain;
+
+impl Sink for Drain {
+    fn process_chunk(&mut self, _chunk: AudioChunk<'_>) {}
+}
+
+/// His mic held open after a dictation: his Scarlett took 0.7 to 0.9 s to wake for the first press after a long idle
+/// (2026-11-12), every other press 80 to 330 ms. Dropping it closes the stream and lets the device sleep.
+struct Warm {
+    mic: Option<String>,
+    until: Instant,
+    _recorder: Recorder<Drain>,
+}
+
+#[derive(Debug, PartialEq)]
+enum WarmStep {
+    Release,
+    Extend,
+    Open,
+}
+
+/// After a dictation on `mic`: let the held mic go, keep it longer, or open this one (a new mic replaces the old).
+fn warm_step(warm_ms: u64, held_on: Option<&Option<String>>, mic: &Option<String>) -> WarmStep {
+    if warm_ms == 0 {
+        WarmStep::Release
+    } else if held_on == Some(mic) {
+        WarmStep::Extend
+    } else {
+        WarmStep::Open
+    }
+}
+
+fn keep_mic_warm(warm: &std::cell::RefCell<Option<Warm>>, warm_ms: u64, mic: &Option<String>) {
+    let mut held = warm.borrow_mut();
+    let until = Instant::now() + Duration::from_millis(warm_ms);
+    match warm_step(warm_ms, held.as_ref().map(|w| &w.mic), mic) {
+        WarmStep::Release => *held = None,
+        WarmStep::Extend => {
+            if let Some(w) = held.as_mut() {
+                w.until = until;
+            }
+        }
+        WarmStep::Open => {
+            *held = None;
+            let opened = recorder_config(mic.as_deref(), None, false).and_then(|cfg| {
+                let recorder = Recorder::open_with_failure_handler(cfg, |_| {}).map_err(|e| e.to_string())?;
+                recorder.start(Drain).map_err(|e| e.to_string())?;
+                Ok(recorder)
+            });
+            match opened {
+                Ok(recorder) => {
+                    *held = Some(Warm { mic: mic.clone(), until, _recorder: recorder });
+                    emit(json!({"ev": "mic_warm", "mic": mic, "ms": warm_ms}));
+                }
+                Err(error) => emit(json!({"ev": "mic_warm", "mic": mic, "error": error})),
+            }
+        }
+    }
+}
+
 enum Source {
     Mic(Recorder<LiveSink>),
     Fake(Arc<AtomicBool>),
@@ -1975,6 +2039,8 @@ fn serve() {
     // The mic that heard him when his first choice stayed silent: first at the next press, until his choice hears him.
     let lead: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
     let mut judged = Instant::now();
+    let warm: std::cell::RefCell<Option<Warm>> = std::cell::RefCell::new(None);
+    let warm_ms = std::cell::Cell::new(0u64);
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
     // `via`: the hold key, the toggle key, or `start` (a held mouse button or the desktop), for the timing line.
@@ -2122,6 +2188,10 @@ fn serve() {
                 emit(of_dictation(json!({"ev": "error", "message": message}), Some(current.id)));
             }
         }
+        // After the words are on their way: opening the kept mic takes 100 to 300 ms of this loop, once.
+        if matches!(current.source, Source::Mic(_)) {
+            keep_mic_warm(&warm, warm_ms.get(), &current.mic);
+        }
     };
 
     loop {
@@ -2138,6 +2208,10 @@ fn serve() {
             Ok(message) => message,
             Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {
+                if warm.borrow().as_ref().is_some_and(|w| Instant::now() >= w.until) {
+                    *warm.borrow_mut() = None;
+                    emit(json!({"ev": "mic_warm", "released": true}));
+                }
                 if recording.as_ref().is_some_and(|r| over_limit(r.started.elapsed())) {
                     held = false;
                     finish(&mut recording, &job_tx, false);
@@ -2157,6 +2231,14 @@ fn serve() {
                                 if next.device != config.device || next.fallbacks != config.fallbacks {
                                     *lead.borrow_mut() = None;
                                 }
+                                // Another mic, or quiet hours or his choice changed how long: the held one goes now.
+                                if next.device != config.device
+                                    || next.channel != config.channel
+                                    || next.mic_warm_ms != config.mic_warm_ms
+                                {
+                                    *warm.borrow_mut() = None;
+                                }
+                                warm_ms.set(next.mic_warm_ms);
                                 config = next;
                                 meter_on.store(config.meter, Ordering::Relaxed);
                                 let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
@@ -2200,6 +2282,8 @@ fn serve() {
                     // The computer woke from sleep: the graphics card is read and warmed again.
                     "resume" => {
                         let _ = job_tx.send(Work::GpuReset);
+                        // A device held across sleep may be gone: the next dictation opens it again.
+                        *warm.borrow_mut() = None;
                     }
                     "load" => {
                         let id = value["id"].as_u64();
@@ -2692,6 +2776,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mic_stays_open_on_the_mic_he_used_until_he_turns_it_off_or_changes_mic() {
+        let scarlett = Some("Microphone (Scarlett Solo USB)".to_string());
+        let other = Some("Headset".to_string());
+        assert_eq!(warm_step(900_000, None, &scarlett), WarmStep::Open);
+        assert_eq!(warm_step(900_000, Some(&scarlett), &scarlett), WarmStep::Extend);
+        // A dictation on another mic (his choice changed, or the first stayed silent) moves the held one there.
+        assert_eq!(warm_step(900_000, Some(&scarlett), &other), WarmStep::Open);
+        // Off, or quiet hours (the desktop sends 0): let go at once.
+        assert_eq!(warm_step(0, Some(&scarlett), &scarlett), WarmStep::Release);
+        assert_eq!(warm_step(0, None, &None), WarmStep::Release);
+    }
 
     #[test]
     fn a_word_heard_again_at_the_seam_is_written_once_but_his_own_repeat_stays() {

@@ -49,6 +49,8 @@ export interface DictationConfig {
   readonly meter?: boolean;
   /** His other plugged-in mics in his order: tried when `device` will not open, and heard beside it at each press. */
   readonly fallbacks?: ReadonlyArray<string>;
+  /** How long his mic stays open after a dictation so the next press starts at once; 0 lets it go at once (micAwake.ts). */
+  readonly micWarmMs?: number;
   /** His recognisers on his own servers, in his order; empty: the laptop decodes (native remote.rs). */
   readonly recognizers?: ReadonlyArray<RecognizerServer>;
   readonly gpu?: GpuRecognition;

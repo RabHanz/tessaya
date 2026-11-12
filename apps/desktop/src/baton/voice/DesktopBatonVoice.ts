@@ -337,6 +337,7 @@ import { createDictationHold } from "./dictationHold.ts";
 import { createComposerDictation, routePill } from "./composerDictation.ts";
 import { cleanupLevelNow } from "./cleanupLevel.ts";
 import { ownFieldFocused } from "./ownWindowField.ts";
+import { micAwakeMs, micAwakeOf, type MicAwake } from "./micAwake.ts";
 import * as Electron from "electron";
 
 import {
@@ -517,6 +518,7 @@ import { buildAuditTrail, describeAuditTrail } from "@t3tools/baton-shared/audit
 import { describeWatch, findingsFromRecord } from "@t3tools/baton-shared/watch";
 import {
   freshFindings,
+  inQuietHours,
   isSilenced,
   morningBrief,
   noticeLine,
@@ -713,6 +715,8 @@ interface VoiceSettings {
   readonly paste: PasteMethod;
   /** T3's composer microphone on this desktop: Tessaya's dictation (the default) or T3's own voice input. */
   readonly composerMic: "tessaya" | "t3";
+  /** How long his microphone stays open after a dictation, so the next starts at once (micAwake.ts). */
+  readonly micAwake: MicAwake;
   /** The languages he speaks; empty detects any. */
   readonly languages: ReadonlyArray<string>;
   /** Who turns his speech into words: this computer (default), or a cloud provider on his own key. */
@@ -832,6 +836,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   composerMic: "tessaya",
+  micAwake: "15m",
   languages: ["en"],
   recognition: "local",
   cloudProvider: "openai",
@@ -918,6 +923,7 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       composerMic: saved["composerMic"] === "t3" ? "t3" : "tessaya",
+      micAwake: micAwakeOf(saved["micAwake"]),
       showWords: saved["showWords"] !== false,
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
@@ -3618,8 +3624,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
   };
 
+  const micWarmNow = () =>
+    micAwakeMs(settings.micAwake, inQuietHours(settings.quietHours, new Date().getHours()));
+  // Quiet hours begin and end on the hour: the helper is told then, so the mic light goes off for the night.
+  let micWarmSent = micWarmNow();
+  setInterval(() => {
+    if (micWarmNow() !== micWarmSent) configureDictation();
+  }, 5 * 60_000).unref();
   const configureDictation = () => {
     if (sidecar === null) return;
+    micWarmSent = micWarmNow();
     const device = choice.kind === "pinned" ? choice.device.label : null;
     const baton = settings.dictation === "baton" && parakeetPath !== null;
     sidecar.configure({
@@ -3628,6 +3642,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       toggle: baton ? keysOf("toggle") : null,
       device,
       fallbacks: backupMics(devices, preference(), device),
+      micWarmMs: micWarmNow(),
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
       language: recogniserHint(settings.languages),
@@ -6512,6 +6527,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.doubleTap,
       },
       {
+        id: "v.micAwake",
+        section: "Dictation",
+        label: "Keep the microphone ready",
+        hint: "After you dictate, your microphone stays open for a while so the next dictation starts the moment you press, with no wait for it to wake. Windows shows the microphone as in use during that time. Never in quiet hours.",
+        kind: "choice",
+        value: settings.micAwake,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "15m", label: "15 minutes (recommended)" },
+          { value: "always", label: "Always" },
+        ],
+      },
+      {
         id: "v.composerMic",
         section: "Dictation",
         label: "Microphone in the T3 composer",
@@ -7830,6 +7858,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ recognizers: settings.recognizers.filter((u) => u !== value) });
       configureDictation();
       render();
+    } else if (id === "v.micAwake") {
+      save({ micAwake: micAwakeOf(value) });
+      configureDictation();
     } else if (id === "v.composerMic") {
       save({ composerMic: value === "t3" ? "t3" : "tessaya" });
     } else if (id === "v.doubleTap") {
