@@ -2197,7 +2197,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     clean: (raw, app) =>
       app.window === undefined
         ? Promise.resolve(null)
-        : writeClean(raw, app).then((c) => (dictationTimer?.cleaned(c.stage, c.speculated), c)),
+        : writeClean(raw, app).then(
+            (c) => (dictationTimer?.cleaned(c.stage, c.speculated, undefined, c.why), c),
+          ),
     fit: (text, app) =>
       app.window === undefined
         ? Promise.resolve(text)
@@ -2440,8 +2442,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         (await sidecar.foreground().catch(() => null)) ??
         focusedApp;
       const timer = startDictationTiming({ ev: "text", id: null, text: request.text }, "voice");
-      const { text, stage, speculated } = await writeClean(request.text, app);
-      timer.cleaned(stage, speculated);
+      const { text, stage, speculated, why } = await writeClean(request.text, app);
+      timer.cleaned(stage, speculated, undefined, why);
       const fitted = await fitToCaret(text, app);
       timer.fitted();
       const target = app.window;

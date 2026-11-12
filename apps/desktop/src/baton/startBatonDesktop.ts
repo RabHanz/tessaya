@@ -706,12 +706,12 @@ export const startBatonDesktop = Effect.gen(function* () {
       direct,
       privateMemory,
       // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
-      // subscription session. The wait matches the server's 1.2 s limit, with a little for the hop.
+      // subscription session. The wait matches the server's 2.5 s limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {
         const answer = (await direct(
           "baton.dictation.cleanupApi",
           { system, message, maxTokens },
-          1_500,
+          2_800,
         )) as { readonly configured?: boolean; readonly text?: unknown };
         return answer?.configured === true && typeof answer.text === "string" ? answer.text : null;
       },
