@@ -11,4 +11,6 @@ export const DEVICE_TOOL_TEXT = {
     "The device's camera (op camera: one picture) or a restart (op reboot), by its id. These never run from here: they come back `asked`, sent to the Director's phone for a yes. Then tell him it waits for his yes, and never say a picture was taken or the device restarted. Use only when he asked for exactly that.",
   device_tag:
     "Assign or remove what an NFC tag does when tapped on the R1: op assign with uid (hex, from device_list's lastTag), label, and action ({kind: mute | unmute} | {kind: mood, mood} | {kind: scene, entityId} for a Home Assistant scene, which the house's own risk check still judges); op remove with uid.",
+  set_device_volume:
+    'Change how loud you speak, when he asks: "speak up", "louder", "I can\'t hear you": up; "quieter", "too loud": down; "max volume", "as loud as you can": max; "normal volume": default; or a level from 10 to 100. It takes effect from your very next sentence. Then confirm in a word or two at the new level, such as "Better?" or "How\'s this?", never a number and never "volume set". If it was already at the top, say that is as loud as you go here.',
 } as const;

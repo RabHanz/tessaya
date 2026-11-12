@@ -615,7 +615,10 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
       user: roomData(context),
       tools: [...tools.specs, LOOK],
       run: (name, args) =>
-        (name === LOOK.name ? roomLook(device, input.voice) : tools.run(name, args)).pipe(
+        (name === LOOK.name
+          ? roomLook(device, input.voice)
+          : tools.run(name, args, input.device)
+        ).pipe(
           Effect.catchCause(() =>
             Effect.succeed<ToolOutcome>({ text: "it did not work", isError: true }),
           ),

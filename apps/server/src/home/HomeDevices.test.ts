@@ -442,3 +442,38 @@ it.effect("turns the R1's screen as asked and shows what it reports back", () =>
     assert.deepStrictEqual(yield* view(), { rotate: 180, mode: "auto", note: "not standing" });
   }).pipe(Effect.provide(layer));
 });
+
+it.effect(
+  "sets how loud she speaks on the R1 in steps from the level it reports, and keeps it",
+  () => {
+    const { sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      sent.length = 0;
+      const set = (to: "up" | "down" | "max" | "default") =>
+        devices.command(ID, { op: "volume", to }, agent);
+      // No report yet: a step starts from the firmware's 0 dB.
+      assert.include((yield* set("up")).line, "louder");
+      // The firmware's own report wins (his S1/S3 presses change it too).
+      yield* devices.receive(`${root}/state/volume`, '{"pct":40}');
+      yield* set("down");
+      yield* devices.receive(`${root}/state/volume`, '{"pct":25}');
+      yield* set("max");
+      yield* devices.receive(`${root}/state/volume`, '{"pct":100}');
+      assert.strictEqual((yield* set("max")).line, "Already as loud as this device goes.");
+      yield* set("default");
+      assert.deepStrictEqual(
+        sent.map((s) => [s.topic, s.payload]),
+        [
+          ["cmd/volume", { pct: 86 }],
+          ["cmd/volume", { pct: 25 }],
+          ["cmd/volume", { pct: 100 }],
+          ["cmd/volume", { pct: 100 }],
+          ["cmd/volume", { pct: 71 }],
+        ],
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);

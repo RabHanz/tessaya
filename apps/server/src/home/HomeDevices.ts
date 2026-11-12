@@ -29,6 +29,7 @@ import {
   type DevicesOverview,
 } from "@t3tools/baton-contracts";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -70,6 +71,8 @@ export type DeviceCommand =
   | { readonly op: "transportRevert" }
   | { readonly op: "enrol"; readonly cancel: boolean }
   | { readonly op: "diag" }
+  /** How loud she speaks on it (firmware `cmd/volume`, r1/bt-smp 0.3.x; earlier firmware ignores it). */
+  | { readonly op: "volume"; readonly to: VolumeTo }
   | { readonly op: "forget" }
   | {
       readonly op: "speaker";
@@ -87,6 +90,9 @@ export interface DeviceOutcome {
 }
 
 /** Owner ops: never run for an agent without his yes. */
+/** The firmware's 0 dB on the DAC (r1bt_volume_get's fallback). */
+const R1_DEFAULT_VOLUME = 71;
+
 const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["reboot", "camera"]);
 
 const TRIAL_MS = 60_000;
@@ -137,6 +143,8 @@ export interface Heard {
   log: Array<{ at: number; topic: string; text: string }>;
   /** The room loop's enrolment card while he enrols, and its summary until he closes it. */
   enrol: EnrolCard | null;
+  /** The firmware's retained `state/volume`, 0-100. */
+  volume: number | null;
 }
 
 const blank = (): Heard => ({
@@ -157,6 +165,7 @@ const blank = (): Heard => ({
   samples: {},
   log: [],
   enrol: null,
+  volume: null,
 });
 
 const decodeEnrolCard = Schema.decodeUnknownOption(EnrolCard);
@@ -271,6 +280,9 @@ export const applyMessage = (
     case "event/wake/boot":
       d.firmware = str(body?.["fw_ver"]) ?? str(body?.["fw"]) ?? d.firmware;
       break;
+    case "state/volume":
+      d.volume = num(body?.["pct"]) ?? d.volume;
+      break;
     case "state/caps":
       if (body?.["bt_speaker"] === true)
         d.speaker ??= { state: "off", saved: null, output: "auto", found: [], scannedAt: null };
@@ -364,6 +376,8 @@ interface Saved {
   muted: Record<string, boolean>;
   /** R1s with her listening and closing sounds off (the room loop plays them by default). */
   earconsOff: Record<string, boolean>;
+  /** Per R1: the level she last set by voice, so a step has a base before the firmware reports one. */
+  volume: Record<string, number>;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
   /** Per R1: the device's bindings from its last ack, and Tessaya's (null: nothing, overriding the default). */
   keys: Record<
@@ -524,6 +538,7 @@ const make = Effect.gen(function* () {
         transport: (value["transport"] ?? {}) as Saved["transport"],
         muted: (value["muted"] ?? {}) as Saved["muted"],
         earconsOff: (value["earconsOff"] ?? {}) as Saved["earconsOff"],
+        volume: (value["volume"] ?? {}) as Saved["volume"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
         keys: (value["keys"] ?? {}) as Saved["keys"],
       };
@@ -745,6 +760,15 @@ const make = Effect.gen(function* () {
       case "led":
         yield* publish(id, "cmd/led/set", { ...LED[c.color], mode: "solid" });
         return done(`The light is ${c.color}.`);
+      case "volume": {
+        const before = heard.get(id)?.volume ?? (yield* readSaved).volume[id] ?? R1_DEFAULT_VOLUME;
+        const after = volumeAfter(before, c.to, R1_DEFAULT_VOLUME);
+        yield* change((s) => {
+          s.volume[id] = after;
+        });
+        yield* publish(id, "cmd/volume", { pct: after });
+        return done(volumeLine(before, after));
+      }
       case "vibrate":
         yield* publish(id, "cmd/vibrate", { ms: Math.min(Math.max(Math.round(c.ms), 10), 1500) });
         return done("It buzzed.");

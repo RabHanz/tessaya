@@ -27,6 +27,9 @@ export interface RoomCase {
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
 
+/** A short, natural confirmation: no level read out, no "volume set". */
+const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80}$/i;
+
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
@@ -67,6 +70,31 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/\bred\b/i],
     calls: ["room_look"],
     callsAtMost: { room_look: 1 },
+  },
+  {
+    id: "louder",
+    source:
+      "Director 2026-11-13: she changes her own volume when asked, and confirms at the new level",
+    said: ["speak louder, I can't hear you"],
+    lastSays: [PLAIN],
+    calls: ["set_device_volume"],
+    callsAtMost: { set_device_volume: 1, home_do: 0 },
+  },
+  {
+    id: "max-volume",
+    source: "Director 2026-11-13",
+    said: ["max volume"],
+    lastSays: [PLAIN],
+    calls: ["set_device_volume"],
+    callsAtMost: { set_device_volume: 1, home_do: 0 },
+  },
+  {
+    id: "too-loud",
+    source: "Director 2026-11-13",
+    said: ["that's too loud"],
+    lastSays: [PLAIN],
+    calls: ["set_device_volume"],
+    callsAtMost: { set_device_volume: 1, home_do: 0 },
   },
   {
     id: "no-look",

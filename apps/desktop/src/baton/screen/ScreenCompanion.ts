@@ -4,6 +4,7 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/SCREEN.md.
  */
+import { volumeAfter, volumeLine } from "@t3tools/baton-shared/speakingVolume";
 import { speakerPath, type SpeakerIdentity, type SpokenAnswer } from "@t3tools/baton-voice";
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { appOf, tracedTurns } from "@t3tools/baton-shared/skillLearning";
@@ -2736,6 +2737,13 @@ export const startScreenCompanion = (input: {
   const hisHost: ToolHost = {
     ...toolHost,
     jobs: (op, args) => toolHost.jobs(op, op === "team" ? { ...args, agent: face.id } : args),
+    // The player takes the setting as each sentence opens, so her next one is already at it. Here 100 is full scale, the default.
+    speakingVolume: (to) => {
+      const before = Math.round(settings.volume * 100);
+      const after = volumeAfter(before, to, 100);
+      save({ volume: after / 100 });
+      return volumeLine(before, after);
+    },
   };
   const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
     sessionWithOwnMcp(
