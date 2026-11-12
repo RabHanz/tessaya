@@ -24,7 +24,7 @@
  */
 import { classifyDictation } from "@t3tools/baton-shared/dictation";
 import { wakeWordLead } from "@t3tools/baton-shared/wakeVerify";
-import { answerOf, isCancelPhrase } from "@t3tools/baton-shared/voiceTurn";
+import { answerOf, isCancelPhrase, isStandingYes } from "@t3tools/baton-shared/voiceTurn";
 
 export type VoiceMode =
   | "sleeping"
@@ -84,6 +84,8 @@ export type VoiceEvent =
       readonly token: string;
       readonly prompt: string;
       readonly at: number;
+      /** Asked beside a card: it stays open, and the window with it, until he answers or the card is answered. */
+      readonly hold?: boolean;
     };
 
 export type VoiceEffect =
@@ -99,7 +101,8 @@ export type VoiceEffect =
   | { readonly kind: "session_message"; readonly text: string }
   /** Text for the focused editable field. Never leaves the client. */
   | { readonly kind: "dictate"; readonly text: string }
-  | { readonly kind: "confirmed"; readonly token: string }
+  /** `always`: he also said not to ask about this again. */
+  | { readonly kind: "confirmed"; readonly token: string; readonly always?: true }
   | {
       readonly kind: "cancelled";
       readonly token: string;
@@ -268,7 +271,13 @@ export const reduceVoice = (
     case "tick":
       return expired;
     case "clear_pending":
-      return step(s.pending?.token === event.token ? { ...s, pending: null } : s, carry);
+      return step(
+        s.pending?.token === event.token
+          ? // A held question kept the window open; once answered elsewhere it runs as a conversation's would.
+            { ...s, pending: null, deadline: s.deadline ?? event.at + timings.conversationMs }
+          : s,
+        carry,
+      );
 
     case "set_direct_session": {
       const next = { ...s, directSession: event.enabled };
@@ -305,11 +314,15 @@ export const reduceVoice = (
         {
           ...s,
           mode: s.mode === "dictation" ? s.mode : "conversation",
-          deadline: event.at + Math.max(timings.conversationMs, timings.confirmationMs),
+          deadline:
+            event.hold === true
+              ? null
+              : event.at + Math.max(timings.conversationMs, timings.confirmationMs),
           pending: {
             token: event.token,
             prompt: event.prompt,
-            expiresAt: event.at + timings.confirmationMs,
+            // Counted from the ask, 15 s ran out while she was still saying the question (2026-11-12).
+            expiresAt: event.hold === true ? Infinity : event.at + timings.confirmationMs,
           },
         },
         [...carry, ...superseded, { kind: "speak", text: event.prompt }],
@@ -408,7 +421,14 @@ const utterance = (
     if (answer === "yes") {
       return step(
         { ...s, pending: null, mode: "conversation", deadline: at + timings.conversationMs },
-        [...carry, { kind: "confirmed", token: s.pending.token }],
+        [
+          ...carry,
+          {
+            kind: "confirmed",
+            token: s.pending.token,
+            ...(isStandingYes(words) ? { always: true as const } : {}),
+          },
+        ],
       );
     }
     if (answer === "no") {

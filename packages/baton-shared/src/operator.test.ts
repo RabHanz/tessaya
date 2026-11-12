@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { guardDecision } from "./brain.ts";
-import { describeToolCall, judgeToolCall, keyIsNavigation, type ToolCall } from "./operator.ts";
+import {
+  addressBarAfter,
+  describeToolCall,
+  judgeToolCall,
+  keyIsNavigation,
+  spokenOutcome,
+  type ToolCall,
+} from "./operator.ts";
 
 const on = { actWithoutAsking: true, tainted: false };
 const off = { actWithoutAsking: false, tainted: false };
@@ -321,6 +328,9 @@ describe("keys after a read", () => {
       ["ctrl", "f"],
       ["ctrl", "shift", "left"],
       ["shift", "end"],
+      // A blank tab and the address bar: nothing leaves until Enter (2026-11-12).
+      ["ctrl", "t"],
+      ["ctrl", "l"],
     ]) {
       expect(keyIsNavigation(keys)).toBe(true);
     }
@@ -334,11 +344,9 @@ describe("keys after a read", () => {
       ["ctrl", "alt", "delete"],
       ["ctrl", "shift", "escape"],
       ["ctrl", "w"],
-      ["ctrl", "t"],
       ["ctrl", "n"],
       ["ctrl", "q"],
       ["ctrl", "r"],
-      ["ctrl", "l"],
       ["enter"],
       ["f5"],
       ["ctrl", "s"],
@@ -388,6 +396,87 @@ describe("cloud tools", () => {
         "allow",
       );
     }
+  });
+});
+
+describe("a browser's address bar (2026-11-12: four cards to open Google)", () => {
+  const press = (keys: string[]): ToolCall => ({
+    tool: "mcp__baton__press_keys",
+    input: { keys, why: "go there" },
+  });
+  const type = (text: string, window?: string): ToolCall => ({
+    tool: "mcp__baton__type_text",
+    input: { text, why: "the address", ...(window === undefined ? {} : { window }) },
+  });
+  const read = { ...off, tainted: true };
+  it("opens what was typed there with Enter; after a read, only a bare address", () => {
+    expect(
+      judgeToolCall(press(["enter"]), {
+        ...off,
+        addressBar: "youtube.com/results?search_query=mkbhd",
+      }).verdict,
+    ).toBe("allow");
+    expect(judgeToolCall(press(["enter"]), { ...read, addressBar: "google.com" }).verdict).toBe(
+      "allow",
+    );
+    expect(
+      judgeToolCall(press(["enter"]), { ...read, addressBar: "https://www.google.com/" }).verdict,
+    ).toBe("allow");
+    // A read could plant a query that carries something out.
+    expect(
+      judgeToolCall(press(["enter"]), { ...read, addressBar: "evil.example/?q=notes" }).verdict,
+    ).toBe("ask");
+    // Nothing typed, not in the bar, or a chord: Enter may send, as before.
+    expect(judgeToolCall(press(["enter"]), { ...off, addressBar: "" }).verdict).toBe("ask");
+    expect(judgeToolCall(press(["enter"]), off).verdict).toBe("ask");
+    expect(judgeToolCall(press(["ctrl", "enter"]), { ...off, addressBar: "x.com" }).verdict).toBe(
+      "ask",
+    );
+  });
+  it("takes typing after a read, but not a secret, and not into a window it names", () => {
+    expect(judgeToolCall(type("google.com"), { ...read, addressBar: "" }).verdict).toBe("allow");
+    expect(judgeToolCall(type("google.com"), read).verdict).toBe("ask");
+    expect(judgeToolCall(type("password: hunter22"), { ...read, addressBar: "" }).verdict).toBe(
+      "ask",
+    );
+    expect(judgeToolCall(type("google.com", "Notepad"), { ...read, addressBar: "" }).verdict).toBe(
+      "ask",
+    );
+  });
+  it("is opened by Ctrl+T or Ctrl+L in a browser, filled by typing, and left by anything else", () => {
+    const step = (tool: string, input: Record<string, unknown>) => ({ tool, input });
+    expect(addressBarAfter(undefined, step("press_keys", { keys: ["ctrl", "t"] }), true)).toBe("");
+    expect(addressBarAfter(undefined, step("press_keys", { keys: ["Control", "L"] }), true)).toBe(
+      "",
+    );
+    expect(
+      addressBarAfter(undefined, step("press_keys", { keys: ["ctrl", "t"] }), false),
+    ).toBeUndefined();
+    expect(addressBarAfter("", step("type_text", { text: "google.com" }), true)).toBe("google.com");
+    expect(
+      addressBarAfter("", step("type_text", { text: "x", window: "Notepad" }), true),
+    ).toBeUndefined();
+    expect(
+      addressBarAfter("google.com", step("click_element", { label: "x" }), true),
+    ).toBeUndefined();
+    expect(
+      addressBarAfter("google.com", step("press_keys", { keys: ["enter"] }), true),
+    ).toBeUndefined();
+    expect(addressBarAfter("go", step("wait_for", { label: "x" }), true)).toBe("go");
+  });
+  it("lets a batch open Google after a read in a browser, and nowhere else", () => {
+    const steps = {
+      tool: "mcp__baton__act_batch",
+      input: {
+        steps: [
+          { tool: "press_keys", args: { keys: ["ctrl", "t"] } },
+          { tool: "type_text", args: { text: "google.com" } },
+          { tool: "press_keys", args: { keys: ["enter"] } },
+        ],
+      },
+    };
+    expect(judgeToolCall(steps, { ...read, browser: true }).verdict).toBe("allow");
+    expect(judgeToolCall(steps, read).verdict).toBe("ask");
   });
 });
 
@@ -455,5 +544,19 @@ describe("the target text a baton tool names", () => {
     ] as const) {
       expect(judgeToolCall(baton(tool, input), off).verdict, tool).not.toBe("allow");
     }
+  });
+});
+
+describe("a spoken answer to the gate's question", () => {
+  const box = { yes: 0, cancel: 1, noOnExpiry: false };
+  it("is the yes button for a yes or a standing yes, the cancel one for a no or other words", () => {
+    expect(spokenOutcome("yes", box)).toBe(0);
+    expect(spokenOutcome("always", box)).toBe(0);
+    expect(spokenOutcome("no", box)).toBe(1);
+    expect(spokenOutcome("other", box)).toBe(1);
+  });
+  it("waits for the card when it runs out, unless running out is a no", () => {
+    expect(spokenOutcome("expired", box)).toBeNull();
+    expect(spokenOutcome("expired", { ...box, noOnExpiry: true })).toBe(1);
   });
 });

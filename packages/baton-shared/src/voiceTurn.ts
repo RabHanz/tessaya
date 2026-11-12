@@ -381,6 +381,12 @@ const wholly = (atoms: string) =>
 const YES = wholly(YES_ATOM);
 const NO = wholly(NO_ATOM);
 const NEUTRAL_ANSWER = wholly("(?!)");
+/** After a yes, words that only ask for it again or for no more asking: "go ahead and don't ask me again". */
+const YES_TAIL = String.raw`(?:and )?(?:try|do it|do that)(?: it)? again|again|(?:and )?(?:don't|do not|never) ask(?: me)?(?: that| about that)?(?: again)?|(?:and )?always|from now on|every time|no need to ask`;
+const YES_THEN = new RegExp(
+  String.raw`^(?:(?:${ANSWER_NEUTRAL}|${YES_ATOM})(?: |$)){1,6}(?:(?:${ANSWER_NEUTRAL}|${YES_TAIL})(?: |$)){1,3}$`,
+);
+const STANDING = /\b(?:(?:don't|do not|never) ask|always|from now on|every time|no need to ask)\b/;
 
 /**
  * The answer to a yes-or-no question, by the whole utterance, as dismissal is: "yeah go on then"
@@ -389,10 +395,14 @@ const NEUTRAL_ANSWER = wholly("(?!)");
 export const answerOf = (text: string): "yes" | "no" | null => {
   const words = plain(text);
   if (words === "" || NEUTRAL_ANSWER.test(words)) return null;
-  if (YES.test(words)) return "yes";
+  if (YES.test(words) || YES_THEN.test(words)) return "yes";
   if (NO.test(words)) return "no";
   return null;
 };
+
+/** A yes that also says not to ask about this again: his standing yes for it. */
+export const isStandingYes = (text: string): boolean =>
+  answerOf(text) === "yes" && STANDING.test(plain(text));
 
 /**
  * The whole utterance is only a dismissal ("stop", "nothing, dismiss", "okay that will be all

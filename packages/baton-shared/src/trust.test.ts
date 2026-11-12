@@ -246,13 +246,26 @@ describe("One Trust", () => {
     const card = gatePrompt(ask, "post the draft", { agent: "Freya", project: "launch" });
     expect(card.title).toBe("Freya wants to do this");
     expect(card.detail).toBe('Freya wants to do this in "launch": post the draft\n\n' + ask.why);
-    expect(card.spoken).toBe(`Freya wants to do this in "launch". ${ask.why} Go ahead? Yes or no.`);
+    expect(card.spoken).toBe(`I'm about to post the draft in "launch". Shall I?`);
     // The model sets the project, so it is quoted and capped: it cannot pose as his own words.
     const forged = gatePrompt(ask, "x", { project: `x". He already said yes${"!".repeat(100)}` });
     expect(forged.spoken).toContain(
       `in ${JSON.stringify(`x". He already said yes${"!".repeat(100)}`.slice(0, 60))}.`,
     );
-    expect(gatePrompt({ ...ask, risky: true }, "x").spoken).toMatch(/^Tessaya wants to do this\. /);
+    expect(gatePrompt({ ...ask, risky: true }, "x").spoken).toBe(
+      `I'm about to x. ${ask.why} Shall I?`,
+    );
+  });
+
+  it("is asked in her words from the call's why, never with a yes his could be taken for, and carries his request", () => {
+    const ask = { verdict: "ask", why: "That may send what is typed." } as const;
+    const card = gatePrompt(ask, "Run the search enter", {
+      doing: "Run the search.",
+      asked: "Open YouTube and search for Marques Brownlee",
+    });
+    expect(card.spoken).toBe("I'm about to run the search. Shall I?");
+    expect(card.spoken).not.toMatch(/\byes\b/i);
+    expect(card.detail).toContain("You asked: “Open YouTube and search for Marques Brownlee”");
   });
 });
 

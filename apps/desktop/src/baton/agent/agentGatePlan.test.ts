@@ -3,11 +3,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { inApprovedSteps } from "@t3tools/baton-shared/trust";
 
 import {
+  answeredWithWords,
   createAgentGate,
   createCutInMark,
   createTaint,
   forOperator,
   stopsOnCutIn,
+  type ConfirmPrompt,
+  type GateAnswer,
 } from "./agentGate.ts";
 
 const STEPS = ['type "hello world" into the note', "drag the file into the folder", "press Enter"];
@@ -197,5 +200,110 @@ describe("a cut-in over her reply", () => {
     // His next turn acts normally.
     mark.begin();
     expect(await gate(send)).toEqual({ allow: true });
+  });
+});
+
+describe("his answer to her question (2026-11-12)", () => {
+  const answering = (
+    answers: ReadonlyArray<GateAnswer>,
+    over: Partial<Parameters<typeof createAgentGate>[0]> = {},
+  ) => {
+    const asked: ConfirmPrompt[] = [];
+    const outcomes: unknown[] = [];
+    const kept = new Set<string>();
+    const queue = [...answers];
+    const taint = createTaint();
+    const gate = createAgentGate({
+      actWithoutAsking: () => false,
+      taint,
+      textIsHis: () => false,
+      focusedWindow: async () => ({ label: "YouTube - Google Chrome", shell: false, window: 7 }),
+      confirm: async (p) => (asked.push(p), queue.shift() ?? false),
+      record: (entry) => void outcomes.push(entry["outcome"]),
+      always: { has: (k) => kept.has(k), add: (k) => void kept.add(k) },
+      ...over,
+    });
+    return { gate, asked, outcomes, kept, taint };
+  };
+  const enter = call("press_keys", { keys: ["enter"], why: "Run the search" });
+
+  it("is asked in her words with his request on the card, and a yes, spoken or clicked, lets it run", async () => {
+    const r = answering([true]);
+    r.taint.reset("Open YouTube and search for Marques Brownlee");
+    expect(await r.gate(enter)).toEqual({ allow: true });
+    expect(r.asked[0]?.spoken).toBe("I'm about to run the search. Shall I?");
+    expect(r.asked[0]?.detail).toContain(
+      "You asked: “Open YouTube and search for Marques Brownlee”",
+    );
+    expect(r.outcomes).toEqual(["he said yes"]);
+  });
+
+  it("stops on a no, and on a card that ran out", async () => {
+    for (const answer of [false, false]) {
+      const r = answering([answer]);
+      expect(await r.gate(enter)).toMatchObject({
+        allow: false,
+        reason: expect.stringMatching(/He said no/),
+      });
+    }
+  });
+
+  it("other words are not a no: the model is told they come next", async () => {
+    const r = answering(["words"]);
+    expect(await r.gate(enter)).toEqual({
+      allow: false,
+      reason: answeredWithWords("That may send what is typed."),
+    });
+    expect(r.outcomes).toEqual(["he answered with other words"]);
+  });
+
+  it("a standing yes runs it now and stops asking in that app, never for a risky act or a device", async () => {
+    const r = answering(["always"]);
+    expect(await r.gate(enter)).toEqual({ allow: true });
+    expect(await r.gate(enter)).toEqual({ allow: true });
+    expect(r.asked).toHaveLength(1);
+    expect(r.outcomes).toEqual(["he said yes", "allowed"]);
+    expect([...r.kept]).toEqual(["press_keys|That may send what is typed.|Google Chrome"]);
+
+    const risky = answering(["always", true]);
+    const force = call("type_text", { text: "git push --force origin main", why: "push" });
+    await risky.gate(force);
+    await risky.gate(force);
+    expect(risky.asked).toHaveLength(2);
+    expect(risky.kept.size).toBe(0);
+
+    const device = answering([true], { outside: () => true });
+    device.kept.add("press_keys|That may send what is typed.|Google Chrome");
+    await device.gate(enter);
+    expect(device.asked).toHaveLength(1);
+    expect(device.asked[0]?.canStand).toBeUndefined();
+
+    // After a read, what an injection would ask for is never made standing.
+    const read = answering(["always", true]);
+    read.taint.mark();
+    await read.gate(enter);
+    await read.gate(enter);
+    expect(read.asked).toHaveLength(2);
+    expect(read.kept.size).toBe(0);
+  });
+
+  it("opens Google after a look at the screen with no question: a new tab, the address and Enter", async () => {
+    const r = answering([]);
+    r.taint.mark();
+    for (const next of [
+      call("press_keys", { keys: ["ctrl", "t"], why: "Open a new tab" }),
+      call("type_text", { text: "google.com", why: "Type Google's address" }),
+      call("press_keys", { keys: ["enter"], why: "Go to Google" }),
+    ])
+      expect(await r.gate(next)).toEqual({ allow: true });
+    expect(r.asked).toEqual([]);
+    // The same after a read, outside a browser, still asks before typing.
+    const notepad = answering([true], {
+      focusedWindow: async () => ({ label: "notes - Notepad", shell: false, window: 8 }),
+    });
+    notepad.taint.mark();
+    await notepad.gate(call("press_keys", { keys: ["ctrl", "t"], why: "x" }));
+    await notepad.gate(call("type_text", { text: "google.com", why: "x" }));
+    expect(notepad.asked).toHaveLength(1);
   });
 });
