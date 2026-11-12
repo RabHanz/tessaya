@@ -356,6 +356,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
                   preroll,
                 ),
           );
+          // If the brain's stream fails first, the catch below skips `await speakingChain`: an abort must not crash us.
+          speakingChain.catch(() => undefined);
         };
         const tessaya: Tessaya = {
           speaker: identity,
