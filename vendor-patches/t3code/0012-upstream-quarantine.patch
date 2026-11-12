@@ -165,7 +165,7 @@ index 6b1388f0ccfecb5ffe8ab85cdd1825b2d1470473..eec4ec5315893f42863f6cb6b36eb6b3
      const projections = yield* ProjectionStore.ProjectionStoreV2;
      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index f64a95f2a8ea2f3254db213eaf78da9a053a3da2..bfa7626a3d3da11ea4de2bea52ea86f6652affcf 100644
+index f64a95f2a8ea2f3254db213eaf78da9a053a3da2..fff9ee2a9f24b0bf89da163cac4c7ed7b67215ac 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -7575,6 +7575,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
@@ -187,6 +187,81 @@ index f64a95f2a8ea2f3254db213eaf78da9a053a3da2..bfa7626a3d3da11ea4de2bea52ea86f6
      "restarts a continuation that failed before its prompt, unless stopped (%s)",
      (stopped) =>
        Effect.gen(function* () {
+@@ -8407,6 +8410,74 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
+       assert.isFalse(yield* effectWorker.runOnce());
+     }),
+   );
++
++  // Tessaya: a provider picked while a turn runs takes over at once.
++  it.effect("stops the running turn and continues on a provider picked mid-turn", () =>
++    Effect.gen(function* () {
++      const projects = yield* ProjectService.ProjectService;
++      const orchestrator = yield* Orchestrator.OrchestratorV2;
++      const threadManagement = yield* ThreadManagementService.ThreadManagementService;
++      const projectId = ProjectId.make("runtime-layer-hot-swap-project");
++      const threadId = ThreadId.make("runtime-layer-hot-swap-thread");
++      yield* projects.create({
++        commandId: CommandId.make("runtime-layer-hot-swap-project-create"),
++        projectId,
++        title: "Hot swap project",
++        workspaceRoot: "/tmp/runtime-layer-hot-swap-project",
++      });
++      yield* orchestrator.dispatch({
++        type: "thread.create",
++        createdBy: "user",
++        creationSource: "web",
++        commandId: CommandId.make("runtime-layer-hot-swap-create"),
++        threadId,
++        projectId,
++        title: "Hot swap",
++        modelSelection,
++        runtimeMode: "full-access",
++        interactionMode: "default",
++        branch: null,
++        worktreePath: null,
++      });
++      yield* orchestrator.dispatch({
++        type: "message.dispatch",
++        createdBy: "user",
++        creationSource: "web",
++        commandId: CommandId.make("runtime-layer-hot-swap-message"),
++        threadId,
++        messageId: MessageId.make("runtime-layer-hot-swap-message"),
++        text: "Work on this.",
++        attachments: [],
++        modelSelection,
++        dispatchMode: { type: "start_immediately" },
++      });
++      const first = (yield* orchestrator.getThreadProjection(threadId)).runs[0];
++      assert.equal(first?.status, "starting");
++
++      const claudeSelection = { ...modelSelection, instanceId: claudeInstanceId };
++      yield* threadManagement.dispatch({
++        type: "thread.model-selection.set",
++        commandId: CommandId.make("runtime-layer-hot-swap-pick"),
++        threadId,
++        modelSelection: claudeSelection,
++        providerChangeApproved: true,
++      });
++
++      const after = yield* orchestrator.getThreadProjection(threadId);
++      assert.equal(after.thread.providerInstanceId, claudeInstanceId);
++      assert.deepEqual(
++        after.runs.map((run) => [run.providerInstanceId, run.status === "interrupted"]),
++        [
++          [modelSelection.instanceId, true],
++          [claudeInstanceId, false],
++        ],
++      );
++      assert.equal(
++        after.messages.find((message) => message.id === after.runs[1]?.userMessageId)?.text,
++        "Continue where you left off.",
++      );
++    }),
++  );
+ });
+ 
+ it.layer(layerTest)("snooze queued runs", (it) => {
 diff --git a/apps/server/src/provider/AntigravityInstallation.test.ts b/apps/server/src/provider/AntigravityInstallation.test.ts
 index f1c58250fd4b0611865222ac4d164aa20795bf8f..f3beae7124cb730faca09b9e348e873e2073c928 100644
 --- a/apps/server/src/provider/AntigravityInstallation.test.ts

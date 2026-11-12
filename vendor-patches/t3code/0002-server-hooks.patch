@@ -1216,7 +1216,7 @@ index d2f21a772ac9921992736dbc2cd04d28c5af0daa..24f3840b63f268ba0af2677bf1bd33c9
            type: "provider-runtime.continue",
            sourceRunId: runId,
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..7c7d5aa175b1c948995b3a4f965deb0f19af3de4 100644
+index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..4f9d7433ed3ac403e6c3f85f032c0f28914c3f53 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -1,7 +1,13 @@
@@ -1233,7 +1233,7 @@ index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..7c7d5aa175b1c948995b3a4f965deb0f
  import type {
    ProjectionRecordField,
    ProjectionRecordFilter,
-@@ -62,11 +68,13 @@ import * as Orchestrator from "./Orchestrator.ts";
+@@ -62,11 +68,14 @@ import * as Orchestrator from "./Orchestrator.ts";
  import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
  import { projectedRowEncodedBytes } from "./threadHistoryPaging.ts";
  import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -1244,10 +1244,11 @@ index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..7c7d5aa175b1c948995b3a4f965deb0f
  import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
  import * as ServerSettings from "../serverSettings.ts";
 +import { instanceLabel } from "@t3tools/baton-shared/liveThread";
++import { hotSwapProvider, isSelectionCommand } from "../baton/ProviderHotSwap.ts";
  
  export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
  
-@@ -321,7 +329,10 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
+@@ -321,7 +330,10 @@ export class ThreadManagementProviderInstanceDisabledError extends Schema.Tagged
    },
  ) {
    override get message(): string {
@@ -1259,7 +1260,7 @@ index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..7c7d5aa175b1c948995b3a4f965deb0f
    }
  }
  
-@@ -676,10 +687,27 @@ const make = Effect.gen(function* () {
+@@ -676,10 +688,27 @@ const make = Effect.gen(function* () {
        Effect.andThen(orchestrator.getCheckpointContext(threadId)),
      );
  
@@ -1287,7 +1288,7 @@ index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..7c7d5aa175b1c948995b3a4f965deb0f
    // Full-thread exports can otherwise hold every SQLite reader and stall ordinary thread opens.
    const transcriptExportPermits = yield* Semaphore.make(2);
    const getThreadTranscript = Effect.fn("orchestrationV2.threadManagement.getThreadTranscript")(
-@@ -715,6 +743,7 @@ const make = Effect.gen(function* () {
+@@ -715,6 +744,7 @@ const make = Effect.gen(function* () {
    ) =>
      ensureProjectionTranscript(threadId).pipe(
        Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),
@@ -1295,7 +1296,7 @@ index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..7c7d5aa175b1c948995b3a4f965deb0f
      );
  
    const assertDispatchTargetEnabled = (command: OrchestrationV2ServerCommand) => {
-@@ -725,7 +754,12 @@ const make = Effect.gen(function* () {
+@@ -725,7 +755,12 @@ const make = Effect.gen(function* () {
              assertProviderInstanceEnabled({
                projectId: projection.thread.projectId,
                commandId: command.commandId,
@@ -1309,7 +1310,30 @@ index 26c00b243bcf7049adb6b27e8d6df17b2d30593b..7c7d5aa175b1c948995b3a4f965deb0f
              }),
            ),
          );
-@@ -1612,7 +1646,7 @@ const make = Effect.gen(function* () {
+@@ -760,11 +795,21 @@ const make = Effect.gen(function* () {
+     }
+   };
+ 
+-  const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
++  const dispatchOnce: ThreadManagementServiceShape["dispatch"] = (command) =>
+     ensureCommandTranscripts(command).pipe(
+       Effect.andThen(assertDispatchTargetEnabled(command)),
+       Effect.andThen(orchestrator.dispatch(command)),
+     );
++  // Tessaya: a provider picked mid-turn takes over at once instead of being refused.
++  const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
++    dispatchOnce(command).pipe(
++      Effect.catchTags({
++        OrchestratorProviderSelectionBusyError: (busy) =>
++          isSelectionCommand(command)
++            ? hotSwapProvider(orchestrator, command, busy, dispatchOnce)
++            : Effect.fail(busy),
++      }),
++    );
+ 
+   const getProjectThreadRecords: ThreadManagementServiceShape["getProjectThreadRecords"] = (
+     input,
+@@ -1612,7 +1657,7 @@ const make = Effect.gen(function* () {
      ),
      getThreadProjection,
      getCheckpointContext,
