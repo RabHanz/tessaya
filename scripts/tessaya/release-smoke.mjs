@@ -61,8 +61,9 @@ const click = async (page, label) => {
 };
 
 console.log("windows at start:", await describe());
-const isT3 = (p) => /^https?:\/\/(127\.0\.0\.1|localhost)/.test(p.url()) && !p.url().includes("/tessaya/");
-const isTessaya = (p) => !isT3(p) && !/devtools|about:blank|pill|mascot/i.test(p.url()) && !p.url().includes("/tessaya/");
+// T3's window is the t3code://app hash router (or the server origin in a browser); Tessaya's is baton-window*.html.
+const isT3 = (p) => /^(t3code:\/\/app|https?:\/\/(127\.0\.0\.1|localhost))/.test(p.url()) && !p.url().includes("/tessaya/");
+const isTessaya = (p) => /baton-window[^/]*\.html/.test(p.url());
 
 // Tessaya's window, opened at Devices › Hardware by a second launch with a link (as from a notification or Ctrl+K).
 spawn(exe, ["tessaya://settings/hardware"], { detached: true, stdio: "ignore" }).unref();
@@ -70,6 +71,10 @@ const tessaya = await waitFor(isTessaya);
 row("Tessaya's window opens from tessaya://settings/hardware", tessaya !== null, (await describe()).join(" | "));
 if (tessaya) {
   await tessaya.bringToFront().catch(() => undefined);
+  // A fresh install opens on the setup tour; he can skip it the same way.
+  await tessaya.getByText("Skip the rest", { exact: true }).first().click({ timeout: 5_000 }).catch(() => undefined);
+  await sleep(1500);
+  spawn(exe, ["tessaya://settings/hardware"], { detached: true, stdio: "ignore" }).unref();
   await shot("tessaya-devices-hardware", tessaya, /Hardware/);
   if ((await click(tessaya, "Devices")) && (await click(tessaya, "Hardware"))) {
     await shot("tessaya-devices-hardware-clicked", tessaya, /Hardware/);
@@ -84,13 +89,13 @@ if (tessaya) {
 const t3 = await waitFor(isT3);
 row("T3's window is open", t3 !== null, (await describe()).join(" | "));
 if (t3) {
-  const origin = new URL(t3.url()).origin;
+  const at = (route) => (t3.url().startsWith("t3code:") ? `t3code://app/#/settings/${route}` : `${new URL(t3.url()).origin}/settings/${route}`);
   await t3.bringToFront().catch(() => undefined);
   for (const route of ["hardware", "home", "apis"]) {
-    await t3.goto(`${origin}/settings/${route}`).catch((e) => row(`T3 /settings/${route}`, false, e.message));
+    await t3.goto(at(route)).catch((e) => row(`T3 /settings/${route}`, false, e.message));
     await shot(`t3-settings-${route}-moved`, t3, /moved to Tessaya/i);
   }
-  await t3.goto(`${origin}/settings/tessaya`).catch(() => undefined);
+  await t3.goto(at("tessaya")).catch(() => undefined);
   await shot("t3-settings-tessaya", t3, /Tessaya/);
 }
 
