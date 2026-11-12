@@ -1,10 +1,19 @@
+import { it as effectIt } from "@effect/vitest";
+import { BAR_NOT_CONNECTED } from "@t3tools/baton-shared/phoneRelay";
+import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HomeAssistantService } from "./HomeAssistantService.ts";
 import {
   calledPersona,
   dictionaryEntries,
   houseTime,
   mqttPublishBytes,
+  runActs,
   splitActs,
   spokenReply,
   sseReply,
@@ -90,4 +99,79 @@ it("answers as the persona he called by name, and as Tessaya for her own name or
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "executive" })).toBeNull();
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "nobody" })).toBeNull();
   expect(calledPersona(DEFAULT_OS_PACK, undefined)).toBeNull();
+});
+
+describe("asking his laptop", () => {
+  const at = DateTime.makeUnsafe("2026-11-12T00:00:00.000Z");
+  const laptop: PeerLinkSummary = {
+    environmentId: EnvironmentId.make("laptop"),
+    label: "laptop",
+    urls: ["http://100.64.0.2:3773"],
+    access: "full-access",
+    linkedAt: at,
+    expiresAt: at,
+    lastReachedAt: null,
+    lastError: null,
+    status: "reachable",
+  };
+  /** A linked laptop whose Tessaya answers `tessaya_ask` with `asked` and its status with `answer`. */
+  const linked = (links: ReadonlyArray<PeerLinkSummary>, asked: object, answer: object) => {
+    const calls: Array<string> = [];
+    const provide = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        // A laptop act never reaches the house.
+        Effect.provideService(HomeAssistantService, {} as never),
+        Effect.provideService(
+          PeerLinks.PeerLinks,
+          PeerLinks.PeerLinks.of({
+            enabled: Effect.succeed(true),
+            list: Effect.succeed(links),
+          } as never),
+        ),
+        Effect.provideService(
+          PeerMcpClient.PeerMcpClient,
+          PeerMcpClient.PeerMcpClient.of({
+            call: (input) => {
+              calls.push(input.tool);
+              return Effect.succeed((input.tool === "tessaya_ask" ? asked : answer) as never);
+            },
+          }),
+        ),
+      );
+    return { calls, provide };
+  };
+  const look = splitActs(
+    'ACTS [{"tool":"laptop_ask","args":{"question":"what is on my laptop"}}]\nLet me look.',
+  )!.acts;
+
+  effectIt.effect("speaks the laptop's own answer, not her guess", () =>
+    Effect.gen(function* () {
+      const fake = linked(
+        [laptop],
+        { id: "mcp-x-1", status: "queued", line: "Waiting." },
+        { id: "mcp-x-1", status: "answered", line: "VS Code and Chrome are open." },
+      );
+      const outcomes = yield* fake.provide(runActs(look));
+      expect(fake.calls).toEqual(["tessaya_ask", "tessaya_ask_status"]);
+      expect(spokenReply("Let me look.", outcomes)).toBe("VS Code and Chrome are open.");
+    }),
+  );
+
+  effectIt.effect("says plainly when no laptop is linked or Tessaya is not open there", () =>
+    Effect.gen(function* () {
+      const none = linked([], {}, {});
+      expect(spokenReply("It shows Chrome.", yield* none.provide(runActs(look)))).toBe(
+        "I couldn't: your laptop isn't linked to this server, so I can't see it.",
+      );
+      expect(none.calls).toEqual([]);
+      const closed = linked(
+        [laptop],
+        { id: null, status: "not asked", line: BAR_NOT_CONNECTED },
+        {},
+      );
+      expect(spokenReply("It shows Chrome.", yield* closed.provide(runActs(look)))).toBe(
+        "I couldn't: Tessaya isn't open on your laptop, so I can't see it.",
+      );
+    }),
+  );
 });
