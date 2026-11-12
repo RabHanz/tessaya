@@ -121,6 +121,10 @@ export const stepDictation = (
   }
 };
 
+/** The editor's placeholder while a dictation runs: none, since its words are the box's content from the first one. */
+export const placeholderWhile = (state: ComposerDictation, placeholder: string): string =>
+  state.phase === "idle" ? placeholder : "";
+
 /** The control shows ✕ and ✓ unless the key is held: letting go is the commit then. */
 export const showsActions = (state: ComposerDictation): boolean =>
   (state.phase === "listening" || state.phase === "working") && state.mode === "free";
