@@ -167,12 +167,25 @@ it.effect(
       expect(refused.isFailure).toBe(true);
       expect(yield* inbox.take).toBeNull();
 
-      const made = yield* callTool("auto", runtime, "tessaya_ask", { text: "stop job 3" });
+      // A linked server's session id is a whole uuid (the R1 asking his laptop, 13 Nov): its ask still gets an id.
+      const made = yield* callTool(
+        "auto",
+        runtime,
+        "tessaya_ask",
+        { text: "stop job 3" },
+        "3f2b8c1e-9d4a-4e6b-8a7c-1d2e3f4a5b6c",
+      );
       const id = (made.result as { id: string }).id;
       expect(id).toMatch(/^mcp-/);
       expect(yield* inbox.take).toMatchObject({ id, text: "stop job 3", source: "device" });
 
-      const status = yield* callTool("read-only", runtime, "tessaya_ask_status", { id });
+      const status = yield* callTool(
+        "read-only",
+        runtime,
+        "tessaya_ask_status",
+        { id },
+        "3f2b8c1e-9d4a-4e6b-8a7c-1d2e3f4a5b6c",
+      );
       expect(status.result).toMatchObject({ id, status: "taken" });
 
       yield* inbox.post({ id: "web-aaaa-0001", text: "his own words" });

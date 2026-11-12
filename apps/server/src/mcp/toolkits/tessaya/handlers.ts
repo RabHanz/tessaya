@@ -71,15 +71,16 @@ export const layer = McpToolAccess.toLayer(
         Option.getOrNull(decodeAsked(value)),
       );
     // The agent's own requests carry its session in their id, so it reads only those and is capped per session.
+    // 16 characters: with "mcp-", "-" and a uuid the id stays within the inbox's 64 (a linked server's session is a uuid).
     const ownerOf = Effect.map(McpInvocationContext.McpInvocationContext, (scope) =>
-      (scope.client?.sessionId ?? "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 24),
+      (scope.client?.sessionId ?? "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 16),
     );
     // A request for the Director, filed as this agent's (an outside client's session, or a thread agent's thread).
     const askHim = Effect.fn("TessayaMcp.askHim")(function* (text: string) {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const owner = (scope.client?.sessionId ?? `t${scope.thread?.threadId ?? "unknown"}`)
         .replace(/[^a-zA-Z0-9]/g, "")
-        .slice(0, 24);
+        .slice(0, 16);
       const id = `mcp-${owner}-${yield* random.uuidV4()}`;
       const asked = yield* phone("ask", { id, text }).pipe(
         Effect.provideService(AskOwner, owner),
