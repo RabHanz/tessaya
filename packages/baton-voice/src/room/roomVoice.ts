@@ -9,6 +9,7 @@ import { createEchoGuard } from "../echoGuard.ts";
 import { calledName, isDismissal } from "./addressing.ts";
 import { admits, UNVERIFIED, type SpeakerGate, type SpeakerIdentity } from "../speaker.ts";
 import { DOWN_FRAME_BYTES, fromBytes, toBytes } from "./audio.ts";
+import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
 import type { Affect } from "./senseVoice.ts";
 import {
   createTurnTaking,
@@ -19,6 +20,16 @@ import {
 } from "./turnTaking.ts";
 
 const RATE = 16_000;
+
+/**
+ * Her listening and closing sounds on the R1 (firmware 3.31.1 dropped Beken's spoken "Uh huh" and "Bye bye"): the
+ * desktop pill's own notes, louder because they leave a small speaker across a room rather than a laptop's.
+ */
+const CUE_GAIN = 5;
+const cueSamples = (name: PillSound): Int16Array =>
+  Int16Array.from(renderSound(PILL_SOUNDS[name], RATE), (v) =>
+    Math.max(-32768, Math.min(32767, Math.round(v * CUE_GAIN * 32767))),
+  );
 
 export interface RoomPersona {
   readonly id: string;
@@ -196,6 +207,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let lastVoiceAt = deps.now();
     let lastActivity = deps.now();
     let turnNo = 0;
+    let lastWakeCue = Number.NEGATIVE_INFINITY;
     let bargedIn = false;
     let closed = false;
     let enrolling: Int16Array[] | null = null;
@@ -553,6 +565,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (reply !== null) interrupt();
         speakNow(text);
       },
+      /** One of her cues on the downlink, paced like speech so the echo guard knows it; a second wake cue within 1.5 s is dropped. */
+      cue: (name: PillSound) => {
+        if (name === "wake" && deps.now() - lastWakeCue < 1_500) return;
+        if (name === "wake") lastWakeCue = deps.now();
+        void send(cueSamples(name), new AbortController().signal, () => undefined).catch(
+          () => undefined,
+        );
+      },
       /** S2 or the R1's own wake: he is talking to her now. */
       wake: () => {
         openUntil = Math.max(openUntil, deps.now() + config.followMs);
@@ -583,6 +603,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const sessions = new Map<string, ReturnType<typeof openSession>>();
   /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
   const muted = new Set<string>();
+  /** R1s with her listening and closing sounds off (`cmd/voice/earcons {"on":false}`, retained); on by default. */
+  const noCues = new Set<string>();
+  const cue = (id: string, name: PillSound) => {
+    if (!noCues.has(id)) sessions.get(id)?.cue(name);
+  };
   const start = (id: string) => {
     sessions.get(id)?.close();
     const s = openSession(id);
@@ -630,10 +655,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const text = json()["text"];
         if (typeof text === "string" && text.trim() !== "")
           (sessions.get(id) ?? start(id)).say(text.trim().slice(0, 500));
-      } else if (tail === "cmd/voice/start") start(id);
-      else if (tail === "cmd/voice/stop") stop(id);
-      else if (tail === "event/session/start" || tail === "event/wake") sessions.get(id)?.wake();
-      else if (tail === "voice/enrol") {
+      } else if (tail === "cmd/voice/start") {
+        start(id);
+        cue(id, "wake");
+      } else if (tail === "cmd/voice/stop") stop(id);
+      else if (tail === "event/session/start" || tail === "event/wake") {
+        sessions.get(id)?.wake();
+        cue(id, "wake");
+      } else if (tail === "cmd/voice/earcons") {
+        if (json()["on"] === false) noCues.add(id);
+        else noCues.delete(id);
+      } else if (tail === "voice/enrol") {
         if (json()["cancel"] === true) sessions.get(id)?.cancelEnrol();
         else (sessions.get(id) ?? start(id)).enrol();
       } else if (
@@ -647,8 +679,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     sweep: () => {
       for (const [id, s] of sessions)
         if (s.tick() === "stop") {
-          deps.publish(topic(id, "cmd/voice/stop"), "{}");
-          stop(id);
+          // Her closing sound plays out before the R1 is told to stop (it no longer says "Bye bye" itself).
+          const closing = noCues.has(id) ? 0 : soundMs("end") + config.downDelayMs;
+          cue(id, "end");
+          sessions.delete(id);
+          void deps.sleep(closing).then(() => {
+            deps.publish(topic(id, "cmd/voice/stop"), "{}");
+            s.close();
+          });
         }
     },
     session: (id: string) => sessions.get(id),

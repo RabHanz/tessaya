@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { SpeakerIdentity } from "../speaker.ts";
 import { UNVERIFIED } from "../speaker.ts";
+import { PILL_SOUNDS, renderSound } from "../cueSounds.ts";
 import { toBytes } from "./audio.ts";
 import {
   createRoomVoice,
@@ -80,8 +81,9 @@ describe("the room voice loop", () => {
     ]);
     expect(t.brainCalls[0]!.tessaya.speaker?.kind).toBe("unverified");
     const down = t.published.filter((p) => p.topic === `freya/r1/${DEV}/voice/down`);
-    // Two sentences of 0.2 s each at 16 kHz, in 60 ms frames.
-    expect(down.length).toBe(2 * Math.ceil(6_400 / 1_920));
+    // Her listening sound on S2, then two sentences of 0.2 s each at 16 kHz, in 60 ms frames.
+    const cue = Math.ceil((renderSound(PILL_SOUNDS.wake, 16_000).length * 2) / 1_920);
+    expect(down.length).toBe(cue + 2 * Math.ceil(6_400 / 1_920));
   });
 
   it("does not answer a voice the gate keeps out", async () => {
@@ -366,5 +368,42 @@ describe("cutting in on her", () => {
     await feed(false, 30);
     // An abort nobody handles fails the run (vitest reports unhandled rejections); the room also stays open.
     expect(room.session(DEV)).toBeDefined();
+  });
+});
+
+describe("her listening and closing sounds", () => {
+  const order = (published: Array<{ topic: string }>) =>
+    published
+      .map((p) => p.topic.split(`${DEV}/`)[1]!)
+      .filter((t) => t === "voice/down" || t === "cmd/voice/stop")
+      .filter((t, i, all) => i === 0 || t !== all[i - 1]);
+
+  it("sounds once when the R1 wakes, and closes softly before it is told to stop", async () => {
+    const t = setup();
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    // The firmware's own session event right behind S2 is the same wake: one sound, not two.
+    t.room.message(`freya/r1/${DEV}/event/session/start`, new Uint8Array());
+    await t.deps.sleep(ROOM_CONFIG.idleStopMs + 1_000);
+    t.room.sweep();
+    await t.deps.sleep(2_000);
+    expect(order(t.published)).toEqual(["voice/down", "cmd/voice/stop"]);
+    const down = t.published.filter((p) => p.topic.endsWith("voice/down")).length;
+    const frames = (name: "wake" | "end") =>
+      Math.ceil((renderSound(PILL_SOUNDS[name], 16_000).length * 2) / 1_920);
+    expect(down).toBe(frames("wake") + frames("end"));
+  });
+
+  it("stays silent on an R1 they are switched off for, and sounds again once switched back", async () => {
+    const t = setup();
+    const off = Buffer.from(JSON.stringify({ on: false }));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/earcons`, off);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.deps.sleep(ROOM_CONFIG.idleStopMs + 1_000);
+    t.room.sweep();
+    await t.deps.sleep(2_000);
+    expect(order(t.published)).toEqual(["cmd/voice/stop"]);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/earcons`, Buffer.from(JSON.stringify({ on: true })));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    expect(t.published.at(-1)!.topic).toBe(`freya/r1/${DEV}/voice/down`);
   });
 });
