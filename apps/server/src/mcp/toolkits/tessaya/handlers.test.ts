@@ -29,9 +29,12 @@ import { TessayaToolkit } from "./tools.ts";
 
 const thread = ThreadId.make("thread:tessaya");
 
-/** One tool call by an outside agent with this access, a T3 thread agent ("thread"), or the R1's room ("room"). */
+/**
+ * One tool call by an outside agent with this access, a T3 thread agent ("thread"), the R1's room ("room"), or
+ * another server of his over an approval-required peer link ("linked").
+ */
 const callTool = (
-  caller: AuthMcpClientAccess | "thread" | "room",
+  caller: AuthMcpClientAccess | "thread" | "room" | "linked",
   runtime: Context.Context<never>,
   name: keyof (typeof TessayaToolkit)["tools"],
   input: unknown,
@@ -64,7 +67,14 @@ const callTool = (
                   ? undefined
                   : caller === "room"
                     ? ROOM_CLIENT
-                    : { sessionId, label: "Claude Code", access: caller },
+                    : caller === "linked"
+                      ? {
+                          sessionId,
+                          label: "T3 Code · home server",
+                          access: "approval-required",
+                          linked: true,
+                        }
+                      : { sessionId, label: "Claude Code", access: caller },
               capabilities: new Set(["orchestration" as const]),
               issuedAt: 0,
             }),
@@ -170,6 +180,33 @@ it.effect(
         id: "web-aaaa-0001",
       });
       expect(other.result).toMatchObject({ id: null, line: "No such request." });
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);
+
+it.effect(
+  "a linked server's ask is taken as a device's words, which the desktop's gate asks him to act on; it still cannot move his threads",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      yield* inbox.take;
+      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+
+      const asked = yield* callTool("linked", runtime, "tessaya_ask", {
+        text: "what's on my screen?",
+      });
+      expect(asked.isFailure).toBe(false);
+      const id = (asked.result as { id: string }).id;
+      expect(yield* inbox.take).toMatchObject({
+        id,
+        text: "what's on my screen?",
+        source: "device",
+      });
+
+      const moved = yield* callTool("linked", runtime, "tessaya_move_into_tessaya", {
+        threadId: "thread:his-own",
+      });
+      expect(moved.isFailure).toBe(true);
+      expect(yield* inbox.take).toBeNull();
     }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );
 
