@@ -103,7 +103,7 @@ index 736f7cd3019f02fa7f18c4a2fe0a442022d448a6..a715d9f4ec78721a481e7534e4b6f47b
      val RAIL_WIDTH = 72.dp
      val EXPANDED_RAIL_WIDTH = 240.dp
 diff --git a/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx b/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx
-index 246a0c9d7cb74548ae107902d2819112abbb20dd..2b027f3fa4ed792a3347ba6214672fe388298e0d 100644
+index 382336367e2fd3704ef436c5c198287d09f4cf90..93fb25469ad9573f9aeb9e8e1a4ce0b564d691de 100644
 --- a/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx
 +++ b/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx
 @@ -27,6 +27,7 @@ import { useAndroidWorkspaceRoot } from "./AndroidWorkspaceTabsProvider";
@@ -123,7 +123,7 @@ index 246a0c9d7cb74548ae107902d2819112abbb20dd..2b027f3fa4ed792a3347ba6214672fe3
    readonly selectedTab: AndroidWorkspaceNavigationTab;
    readonly dark: boolean;
    readonly textScale: number;
-@@ -121,6 +124,10 @@ export function AndroidWorkspaceNavigation(props: {
+@@ -120,6 +123,10 @@ export function AndroidWorkspaceNavigation(props: {
          rail={rail}
          floating={floating}
          tabs={tabs}
@@ -156,11 +156,11 @@ index 17fc0069eb8e678617f1951410f306bdf6732bce..e3ac5c469b7e2547a29f6b5acbb8fc89
      <>
        <NativeStackScreenOptions options={{ headerSearchBarOptions: undefined }} />
 diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
-index 2ede0bcddee4b53fd668cf1b94a6b987b4908a25..a8eed9ae62ead554a9c959df9f6a0f68bb02bab1 100644
+index 2247ea50c9a4a8a516cd1325f653b9c91839596b..b54a17c2855b3d6d031c8f57585bb725bcfb365c 100644
 --- a/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
 +++ b/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
 @@ -29,6 +29,9 @@ import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
- import { useAdaptiveWorkspaceLayout } from "../AdaptiveWorkspaceLayout";
+ import { useAdaptiveWorkspaceLayout, useWorkspacePaneState } from "../AdaptiveWorkspaceLayout";
  import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
  
 +import { TessayaTalkButton } from "../../tessaya/TessayaTalkButton";
@@ -181,7 +181,7 @@ index 2ede0bcddee4b53fd668cf1b94a6b987b4908a25..a8eed9ae62ead554a9c959df9f6a0f68
    const selectTab = useSelectWorkspaceTab();
    const [provenance, setProvenance] = useState(0);
    const systemTabBar = useSystemWorkspaceTabBar();
-@@ -133,10 +137,16 @@ export function WorkspaceNativeTabs(props: {
+@@ -134,10 +138,16 @@ export function WorkspaceNativeTabs(props: {
                key={slot}
                screenKey={slot}
                title=""
@@ -200,7 +200,7 @@ index 2ede0bcddee4b53fd668cf1b94a6b987b4908a25..a8eed9ae62ead554a9c959df9f6a0f68
                    : tab === "pullRequests"
                      ? { type: "templateSource", templateSource: PULL_REQUEST_ICON }
                      : { type: "sfSymbol", name: NAVIGATION_TAB_ICONS[tab] },
-@@ -157,6 +167,7 @@ export function WorkspaceNativeTabs(props: {
+@@ -158,6 +168,7 @@ export function WorkspaceNativeTabs(props: {
            );
          })}
        </Tabs.Host>
@@ -242,11 +242,11 @@ index 9ecb6fa933fa88f06c899ccbdd92eb65bcc90585..e12ae5fcec02031062ea90b7073b9563
      settings: 0,
    };
    return {
-diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx
-index 0734c1e877482ff0858d1f22856067b2573520eb..ee2fca4c22c4f747e8418f112e07dcca59308b5d 100644
---- a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx
-+++ b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.ios.tsx
-@@ -52,7 +52,12 @@ export function WorkspaceToolbar(props: {
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx
+index 3d27b096c1831fde6a294b8508489228e5fa752f..484ed00308d7f44119a2ac06d7268cb05dd5aeeb 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx
+@@ -53,7 +53,12 @@ export function WorkspaceToolbar(props: {
    // The Settings list takes the selected tab's place, so search follows it.
    const selectedTab = workspace.settingsOpen ? "settings" : workspace.state.selectedTab;
    const tab = workspace.state.tabs[selectedTab];
