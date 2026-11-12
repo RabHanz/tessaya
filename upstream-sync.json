@@ -1,93 +1,15 @@
 {
-  "at": "2026-11-10T22:37:10.372Z",
-  "result": "conflict",
+  "at": "2026-11-12T22:31:36.525Z",
+  "result": "disk",
   "ok": false,
-  "pin": "ade473018d32003658b7d38693e083ee2e314bd8",
-  "target": "17a6a01d84e3adf9f29df2639d6b6079a434e1b2",
-  "behindCommits": 266,
-  "oldestUnsyncedDays": 2,
-  "conflictingPatches": [
-    "0002-server-hooks.patch",
-    "0004-claude-account-home.patch",
-    "0006-web-sidebar.patch",
-    "0007-desktop.patch",
-    "0008-web-panes.patch",
-    "0009-threads-media.patch",
-    "0013-one-picker.patch",
-    "0014-provider-change-guard.patch",
-    "0017-dictation-cleanup-key.patch"
-  ],
-  "conflictingFiles": [
-    "apps/desktop/src/window/DesktopWindow.ts",
-    "apps/server/src/auth/EnvironmentAuth.ts",
-    "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts",
-    "apps/server/src/orchestration-v2/Orchestrator.ts",
-    "apps/server/src/serverSettings.test.ts",
-    "apps/web/src/components/Sidebar.tsx",
-    "apps/web/src/components/chat/ChatComposer.tsx",
-    "apps/web/src/components/chat/ComposerControlsBar.tsx",
-    "apps/web/src/components/chat/MessagesTimeline.tsx",
-    "apps/web/src/components/chat/ProviderModelPicker.tsx",
-    "apps/web/src/components/chat/useComposerSend.ts",
-    "apps/web/src/routes/__root.tsx"
-  ],
-  "touching": {
-    "apps/desktop/src/window/DesktopWindow.ts": [
-      "3725817edc fix(desktop): input during window teardown no longer throws in the main process (#33620)",
-      "2922e8fb59 fix(desktop): right-clicking a mailto link offers Copy Email Address (#33262)",
-      "206a8e6937 fix(desktop): close focused DevTools with Cmd+W (#33518)"
-    ],
-    "apps/server/src/auth/EnvironmentAuth.ts": [
-      "9a0d02723c feat: approve agent sign-ins on app.t3.codes with T3 Connect (#33632)",
-      "965ddc1d6c feat(web,server): use T3 Code in another app (MCP) (#33196)"
-    ],
-    "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts": [
-      "bcee0f5d28 fix(server): Claude turns whose CLI exits before its first frame fail instead of running forever (#33008)",
-      "4c361199f4 fix(server): Claude threads can allow an MCP app for the session (#33707)",
-      "16a6c1c41f fix(web): show details for background commands (#33647)"
-    ],
-    "apps/server/src/orchestration-v2/Orchestrator.ts": [
-      "d756fed7aa fix(server): provider switches hand off started cancelled runs (#34016)",
-      "0e2841d5a7 feat(opencode): mirror native goals across clients (#33758)",
-      "9b352a04de perf(server): MCP tool calls no longer read the caller's whole thread (#33295)"
-    ],
-    "apps/server/src/serverSettings.test.ts": [
-      "eb97d82156 feat: text generators let model APIs write titles, commits, and transcript cleanup (#33147)",
-      "8e1581ad8c fix(server): a duplicate variable row no longer deletes a stored secret (#31337)"
-    ],
-    "apps/web/src/components/Sidebar.tsx": [
-      "44e894ffd7 fix(web): preserve search result titles in drag previews (#34017)",
-      "f06bfa69c7 fix(web): drag command palette threads into the composer (#33990)",
-      "75200f45c6 fix(web): thread navigation shortcuts honor previewFocus and previewOpen conditions (#29678)"
-    ],
-    "apps/web/src/components/chat/ChatComposer.tsx": [
-      "9cd7a04797 fix(web): sending from an empty citation comment clears the composer (#33440)",
-      "b48b8ea2a0 fix(web): prompt suggestions show after a steered turn (#33706)",
-      "ad9e87111f feat(web): send messages while attachments upload (#33092)"
-    ],
-    "apps/web/src/components/chat/ComposerControlsBar.tsx": [
-      "402d0623d5 fix(composer): persist model picks before the next message (#31739)",
-      "521ac7c218 feat(settings): clean up Labs: promote tool calls, remove plan mode and old toggles (#33131)"
-    ],
-    "apps/web/src/components/chat/MessagesTimeline.tsx": [
-      "a88a0adfa1 fix(web): keep HTML previews anchored when accordions expand (#34003)",
-      "57d5e98272 fix(web): minimap next turn is disabled at the bottom of a thread (#33038)",
-      "4df0c1302a refactor: upgrade Legend List to 3.7.2 and drop our list workarounds (#28125)"
-    ],
-    "apps/web/src/components/chat/ProviderModelPicker.tsx": [
-      "d0f7a509cc feat(models): the model picker checks for new models when it opens (#33511)"
-    ],
-    "apps/web/src/components/chat/useComposerSend.ts": [
-      "ad9e87111f feat(web): send messages while attachments upload (#33092)",
-      "521ac7c218 feat(settings): clean up Labs: promote tool calls, remove plan mode and old toggles (#33131)"
-    ],
-    "apps/web/src/routes/__root.tsx": [
-      "dd0737d3e2 feat: approve agent sign-ins with T3 Connect instead of a code (#33600)",
-      "4f0b74e190 feat(web): first run is one Welcome page instead of a 3-step wizard (#33209)",
-      "965ddc1d6c feat(web,server): use T3 Code in another app (MCP) (#33196)"
-    ]
-  },
+  "pin": "32882540fb1296bd1870253f3fe32bc8369f8a17",
+  "target": "b63d3c592318ce936f787c48023f0dba498056dd",
+  "behindCommits": 315,
+  "oldestUnsyncedDays": 0,
+  "conflictingPatches": [],
+  "conflictingFiles": [],
+  "touching": {},
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261110T223629Z.log",
-  "hint": "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR."
+  "log": "/home/dev/.t3/baton-autosync/20261112T223129Z.log",
+  "hint": "Skipped: the volume is below its free-space floor."
 }
