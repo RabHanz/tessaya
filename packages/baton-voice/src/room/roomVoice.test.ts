@@ -171,7 +171,7 @@ describe("answering only when he is talking to her", () => {
     const t = setup({
       recognise: () => ({
         feed: () => undefined,
-        // The recogniser on onnyx can take seconds after he stops.
+        // The recogniser can take seconds after he stops.
         finish: async () => {
           await t.deps.sleep(3_000);
           return "turn on the study lamp and tell me what is next on my list";
