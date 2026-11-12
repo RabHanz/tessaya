@@ -46,6 +46,7 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
   } as unknown as string[]);
   ws.binaryType = "arraybuffer";
   const queued: Uint8Array<ArrayBuffer>[] = [];
+  const partialListeners: Array<(text: string) => void> = [];
   let open = false;
   let ended = false;
   let settle: ((text: string) => void) | null = null;
@@ -63,6 +64,8 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
   ws.addEventListener("message", (e) => {
     if (typeof e.data !== "string") return;
     const m = JSON.parse(e.data) as { ev?: string; text?: string; message?: string };
+    if (m.ev === "partial" && typeof m.text === "string")
+      for (const l of partialListeners) l(m.text);
     if (m.ev === "text") settle?.(m.text ?? "");
     if (m.ev === "error") settle?.("");
     if (m.ev === "text" || m.ev === "error") ws.close();
@@ -80,6 +83,7 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
       return result;
     },
     cancel: () => ws.close(),
+    onPartial: (listener) => void partialListeners.push(listener),
   };
 };
 
