@@ -2566,7 +2566,14 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
         for (const candidate of candidates)
           if (from === undefined && (yield* fs.exists(candidate))) from = candidate;
         if (from === undefined)
-          return yield* new BatonVoiceGpuFileMissingError({ file, searched: candidates });
+          return yield* new BatonVoiceGpuFileMissingError({
+            file,
+            searched: [
+              ...candidates,
+              `${dir}: ${(yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => []))).join(" ")}`,
+              `${buildDir}: ${(yield* fs.readDirectory(buildDir).pipe(Effect.orElseSucceed(() => []))).join(" ")}`,
+            ],
+          });
         yield* fs.copyFile(from, path.join(destination, file));
       }
     }
