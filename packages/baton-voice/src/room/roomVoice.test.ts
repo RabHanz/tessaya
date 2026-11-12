@@ -194,6 +194,32 @@ describe("answering only when he is talking to her", () => {
   });
 });
 
+describe("waking by name with no session open", () => {
+  it("hears the wake stream only between sessions, and opens one with the persona he called", async () => {
+    const frames: string[] = [];
+    const t = setup({
+      wake: { frame: (id) => frames.push(id), end: () => undefined },
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "what broke?",
+        cancel: () => undefined,
+      }),
+    });
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(frames).toEqual([DEV]);
+    t.room.woken(DEV, "Alfred");
+    const start = t.published.find((p) => p.topic === `freya/r1/${DEV}/cmd/voice/start`);
+    expect(start).toBeDefined();
+    // The R1's echo of its start opens the session.
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(frames).toEqual([DEV]);
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls[0]?.tessaya.persona).toBe("engineering");
+  });
+});
+
 describe("how her reply sounds and looks on the R1", () => {
   const downSamples = (published: Array<{ topic: string; payload: Uint8Array | string }>) =>
     published

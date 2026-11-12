@@ -79,6 +79,11 @@ export interface RoomDeps {
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   readonly log: (line: string) => void;
+  /** Her name with no session open (`voice/wake`): voiced segments only, never recognised beyond the wake check. */
+  readonly wake?: {
+    readonly frame: (deviceId: string, pcm: Uint8Array) => void;
+    readonly end: (deviceId: string) => void;
+  };
 }
 
 export interface RoomConfig {
@@ -573,6 +578,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           () => undefined,
         );
       },
+      /** He called this persona by name to wake her. */
+      call: (name: string) => {
+        const named = config.personas.find((p) => p.name === name);
+        if (named !== undefined && named !== persona) {
+          persona = named;
+          look();
+        }
+      },
       /** S2 or the R1's own wake: he is talking to her now. */
       wake: () => {
         openUntil = Math.max(openUntil, deps.now() + config.followMs);
@@ -608,6 +621,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const cue = (id: string, name: PillSound) => {
     if (!noCues.has(id)) sessions.get(id)?.cue(name);
   };
+  /** Who woke an R1 by name, until its session starts. */
+  const calledBy = new Map<string, string>();
   const start = (id: string) => {
     sessions.get(id)?.close();
     const s = openSession(id);
@@ -656,8 +671,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (typeof text === "string" && text.trim() !== "")
           (sessions.get(id) ?? start(id)).say(text.trim().slice(0, 500));
       } else if (tail === "cmd/voice/start") {
-        start(id);
+        const s = start(id);
+        const word = calledBy.get(id);
+        calledBy.delete(id);
+        if (word !== undefined) s.call(word);
         cue(id, "wake");
+      } else if (tail === "voice/wake") {
+        if (!sessions.has(id) && !muted.has(id)) deps.wake?.frame(id, payload);
+      } else if (tail === "voice/wake/end") {
+        deps.wake?.end(id);
       } else if (tail === "cmd/voice/stop") stop(id);
       else if (tail === "event/session/start" || tail === "event/wake") {
         sessions.get(id)?.wake();
@@ -690,6 +712,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
     },
     session: (id: string) => sessions.get(id),
+    /** The wake check heard `word`: the R1 starts its session (its echo opens ours) with that persona answering. */
+    woken: (id: string, word: string) => {
+      if (sessions.has(id)) return;
+      calledBy.set(id, word);
+      deps.publish(topic(id, "cmd/voice/start"), "{}");
+    },
     close: () => {
       for (const id of Array.from(sessions.keys())) stop(id);
     },
