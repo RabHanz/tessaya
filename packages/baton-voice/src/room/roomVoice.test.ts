@@ -119,6 +119,53 @@ describe("the room voice loop", () => {
   });
 });
 
+describe("answering only when he is talking to her", () => {
+  /** His 12 Nov turns in order, each one heard in turn. */
+  const said = (texts: ReadonlyArray<string>) => {
+    let n = 0;
+    return () => {
+      const text = texts[n++] ?? "";
+      return { feed: () => undefined, finish: async () => text, cancel: () => undefined };
+    };
+  };
+  const turn = async (t: ReturnType<typeof setup>) => {
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+  };
+
+  it("answers after S2 and in the window after her reply, then only her name, and not at all once dismissed", async () => {
+    const t = setup({
+      recognise: said([
+        "Can you see my laptop?",
+        "My laptop itself.",
+        "This is a test of Tessa dictation.",
+        "Casea, can you hear me?",
+        "No, dismissed.",
+        "Did you hear me?",
+        "Say yeah.",
+      ]),
+    });
+    await turn(t);
+    await turn(t);
+    await t.deps.sleep(10_000);
+    t.room.sweep();
+    await turn(t);
+    await turn(t);
+    await turn(t);
+    await turn(t);
+    await turn(t);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Can you see my laptop?",
+      "My laptop itself.",
+      "Casea, can you hear me?",
+      "No, dismissed.",
+      "Say yeah.",
+    ]);
+    // Asleep between them: sleepy eyes, and no attentive look or nod for speech that was not for her.
+    expect(t.published.some((p) => String(p.payload).includes('"sleepy"'))).toBe(true);
+  });
+});
+
 describe("how her reply sounds and looks on the R1", () => {
   const downSamples = (published: Array<{ topic: string; payload: Uint8Array | string }>) =>
     published

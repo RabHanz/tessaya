@@ -93,7 +93,8 @@ const LEAD_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
  * comma after it, or with a question or request next. "Tessa said she would call me later" is about her.
  */
 const ADDRESSED_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
-  tessaya: ["tessa"],
+  // "Seya" and "Casea": his "Tessaya" from across the room on the R1's one mic (12 Nov).
+  tessaya: ["tessa", "seya", "casea"],
 };
 const ASKING =
   /^(?:what|whats|who|where|when|why|how|please|tell|open|show|send|start|set|remind|play|turn|give|find|check|bring|type|explain|look|read|stop)$/;

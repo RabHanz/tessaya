@@ -245,6 +245,8 @@ const main = async () => {
       "freya/r1/+/voice/say",
       "freya/r1/+/voice/ctl",
       "freya/r1/+/state/online",
+      "freya/r1/+/event/session/start",
+      "freya/r1/+/event/wake",
     ],
     onMessage: (t, p) => room?.message(t, p),
     log,
