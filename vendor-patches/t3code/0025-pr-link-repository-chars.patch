@@ -1,0 +1,30 @@
+diff --git a/packages/source-control-github/src/shared/definition.test.ts b/packages/source-control-github/src/shared/definition.test.ts
+index eadf35620416e154feb1089369aad5c2631be21e..a3d0910a50d53f0621ce18c2a1172c057ebb1910 100644
+--- a/packages/source-control-github/src/shared/definition.test.ts
++++ b/packages/source-control-github/src/shared/definition.test.ts
+@@ -29,6 +29,8 @@ describe("GitHub change request URLs", () => {
+       "https://github.com/t3tools/t3code/pull/0",
+       "https://github.com/group/sub/repo/pull/1",
+       "ftp://github.com/t3tools/t3code/pull/1",
++      "https://github.com/rabhanz/‹redacted:minio_bucket›/pull/978",
++      "https://github.com/t3tools/t3%20code/pull/1",
+     ]) {
+       expect(parse(url), url).toBeNull();
+     }
+diff --git a/packages/source-control-github/src/shared/definition.ts b/packages/source-control-github/src/shared/definition.ts
+index a9b8818a78b7487af27a6fd8264f85662bdaac43..9148c5f8b6f43ab91a1a557ed17137cdb0203ba6 100644
+--- a/packages/source-control-github/src/shared/definition.ts
++++ b/packages/source-control-github/src/shared/definition.ts
+@@ -99,7 +99,11 @@ export const definition = defineSourceControl({
+   // A known project's host can be any GitHub Enterprise Server name.
+   parseCommitUrl: (url, known) =>
+     known || isGitHubHost(url.hostname) ? parseCommitPath(url, COMMIT_PATH) : null,
+-  parseChangeRequestUrl: (url) => parseChangeRequestPath(url, CHANGE_REQUEST_PATH),
++  parseChangeRequestUrl: (url) => {
++    const link = parseChangeRequestPath(url, CHANGE_REQUEST_PATH);
++    // A redacted or mangled URL must not become a repository GitHub cannot address.
++    return link && isRepositoryPath(link.repository) ? link : null;
++  },
+   repositoryUrlFromPage: (url) =>
+     isGitHubHost(url.hostname) ? repositoryUrlFromPagePath(url, REPOSITORY_PAGE_PATH) : null,
+   // GitHub writes every bare reference through `/issues/`, including pull requests.
