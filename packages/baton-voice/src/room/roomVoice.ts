@@ -62,6 +62,8 @@ export interface RoomConfig {
   readonly turn: TurnConfig;
   /** How far ahead of the R1's playback the downlink may run (its ring holds 1 s). */
   readonly leadMs: number;
+  /** Audio held before a reply's first frame, so a slow first chunk from the voice cannot starve the R1's buffer. */
+  readonly prerollMs: number;
   /** Downlink plus the R1's 150 ms prime: when a published frame is heard. */
   readonly downDelayMs: number;
   /** When a mic frame we receive was spoken. */
@@ -82,7 +84,8 @@ export interface RoomConfig {
 
 export const ROOM_CONFIG: RoomConfig = {
   turn: ROOM_TURN,
-  leadMs: 360,
+  leadMs: 700,
+  prerollMs: 240,
   downDelayMs: 300,
   upDelayMs: 150,
   idleStopMs: 25_000,
@@ -199,16 +202,79 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
     };
 
-    const say = async (text: string, signal: AbortSignal, onFirstAudio?: () => void) => {
+    const play = async (
+      audio: AsyncIterable<Int16Array>,
+      signal: AbortSignal,
+      onFirstAudio?: () => void,
+      prerollMs = 0,
+    ) => {
       let first = false;
-      for await (const pcm of deps.speak(text, signal)) {
-        if (signal.aborted) return;
-        await send(pcm, signal, () => {
+      let held: Int16Array[] = [];
+      let heldMs = 0;
+      const out = async (pcm: Int16Array) =>
+        send(pcm, signal, () => {
           if (!first) onFirstAudio?.();
           first = true;
         });
+      for await (const pcm of audio) {
+        if (signal.aborted) return;
+        if (heldMs < prerollMs) {
+          held.push(pcm);
+          heldMs += (pcm.length / RATE) * 1000;
+          if (heldMs < prerollMs) continue;
+          for (const h of held) await out(h);
+          held = [];
+          continue;
+        }
+        await out(pcm);
       }
+      for (const h of held) await out(h);
     };
+    const say = (text: string, signal: AbortSignal, onFirstAudio?: () => void) =>
+      play(deps.speak(text, signal), signal, onFirstAudio, config.prerollMs);
+
+    /** Starts her voice on `text` at once (after the sentence before it), buffering what it says for `play`. */
+    let synthesis: Promise<void> = Promise.resolve();
+    const ahead = (text: string, signal: AbortSignal): AsyncIterable<Int16Array> => {
+      const chunks: Int16Array[] = [];
+      let done = false;
+      let failed: unknown = null;
+      let wake: (() => void) | null = null;
+      const nudge = () => {
+        wake?.();
+        wake = null;
+      };
+      synthesis = synthesis.then(async () => {
+        try {
+          for await (const pcm of deps.speak(text, signal)) {
+            if (signal.aborted) break;
+            chunks.push(pcm);
+            nudge();
+          }
+        } catch (error) {
+          failed = error;
+        } finally {
+          done = true;
+          nudge();
+        }
+      });
+      return {
+        async *[Symbol.asyncIterator]() {
+          for (let i = 0; ;) {
+            if (i < chunks.length) yield chunks[i++]!;
+            else if (done) {
+              if (failed !== null) throw failed;
+              return;
+            } else await new Promise<void>((r) => (wake = r));
+          }
+        },
+      };
+    };
+
+    /** The eyes and gestures (firmware 3.30.x `cmd/eye/set` and `cmd/eye/gesture`); unknown names are ignored there. */
+    const face = (mood: string) => deps.publish(topic(id, "cmd/eye/set"), JSON.stringify({ mood }));
+    const gesture = (name: string) =>
+      deps.publish(topic(id, "cmd/eye/gesture"), JSON.stringify({ name }));
 
     const speakNow = (text: string) => {
       const control = new AbortController();
@@ -257,6 +323,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       history.push({ role: "user", content: text });
+      // One reply at a time: two playing at once interleave their frames on the downlink, which sounds chopped.
+      if (reply !== null) interrupt();
       const control = new AbortController();
       reply = control;
       let brainFirst: number | null = null;
@@ -270,16 +338,23 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         let speakingChain = Promise.resolve();
         const enqueue = (sentence: string) => {
           queue.push(sentence);
+          const preroll = firstSentenceAt === null ? config.prerollMs : 0;
           firstSentenceAt ??= deps.now();
+          const audio = ahead(sentence, control.signal);
           speakingChain = speakingChain.then(() =>
             control.signal.aborted
               ? undefined
-              : say(sentence, control.signal, () => {
-                  if (firstSound === null) {
-                    firstSound = deps.now() - lastVoice;
-                    ttsFirst = deps.now() - (firstSentenceAt ?? deps.now());
-                  }
-                }),
+              : play(
+                  audio,
+                  control.signal,
+                  () => {
+                    if (firstSound === null) {
+                      firstSound = deps.now() - lastVoice;
+                      ttsFirst = deps.now() - (firstSentenceAt ?? deps.now());
+                    }
+                  },
+                  preroll,
+                ),
           );
         };
         const tessaya: Tessaya = {
@@ -301,6 +376,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         if (buffer.trim() !== "") enqueue(buffer.trim());
         await speakingChain;
+        // Back to rest once the R1 has played the last of it (the server's own mood may still hold until then).
+        if (!control.signal.aborted)
+          void deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())).then(() => {
+            if (reply === null || reply === control) face("neutral");
+          });
       } catch (error) {
         if (!control.signal.aborted) {
           deps.log(
@@ -345,6 +425,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             rec?.cancel();
             rec = deps.recognise();
             rec.feed(a.pcm);
+            face("attentive");
             break;
           case "audio":
             rec?.feed(a.pcm);
@@ -359,6 +440,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           }
           case "end": {
             lastActivity = deps.now();
+            gesture("nodSmall");
             void answer(a.pcm, a.reason, lastVoiceAt);
             break;
           }
