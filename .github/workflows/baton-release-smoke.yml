@@ -19,7 +19,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     env:
-      VERSION: ${{ inputs.version || '0.1.109' }}
+      VERSION: ${{ inputs.version || '0.1.110' }}
       PROOF_OUT: ${{ github.workspace }}/release-smoke-out
     steps:
       - uses: actions/checkout@v6
@@ -57,6 +57,19 @@ jobs:
           status=${PIPESTATUS[0]}
           { echo "## Tessaya $VERSION release smoke"; cat "$PROOF_OUT/results.md"; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
+      - name: The R1 recogniser port listens only on a tailnet address
+        if: always()
+        shell: pwsh
+        run: |
+          # #801 binds 8797 to the laptop's Tailscale address only; this runner has none, so nothing may listen at all.
+          New-Item -ItemType Directory -Force $env:PROOF_OUT | Out-Null
+          netstat -ano | Select-String ':8797' | Out-File "$env:PROOF_OUT\port-8797-netstat.txt"
+          "netstat :8797 -> $((Get-Content "$env:PROOF_OUT\port-8797-netstat.txt" | Measure-Object -Line).Lines) line(s)"
+          $l = Get-NetTCPConnection -LocalPort 8797 -State Listen -ErrorAction SilentlyContinue
+          $l | ForEach-Object { "listening on $($_.LocalAddress):8797" }
+          $bad = @($l | Where-Object { $_.LocalAddress -notlike '100.*' })
+          "| port 8797 off the tailnet | $(if ($bad.Count) { '**no**' } else { 'yes' }) | $(@($l).Count) listener(s), $($bad.Count) off the tailnet |" >> $env:GITHUB_STEP_SUMMARY
+          if ($bad.Count) { exit 1 }
       - name: Tessaya's logs
         if: always()
         shell: pwsh
