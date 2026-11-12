@@ -3,6 +3,8 @@
  * `voice/up`, asks her server, speaks on `voice/down` and stops when he cuts in. I/O is passed in for tests.
  * @module baton-voice/room/roomVoice
  */
+import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
+
 import { createEchoGuard } from "../echoGuard.ts";
 import { calledName, isDismissal } from "./addressing.ts";
 import { admits, UNVERIFIED, type SpeakerGate, type SpeakerIdentity } from "../speaker.ts";
@@ -18,6 +20,13 @@ import {
 
 const RATE = 16_000;
 
+export interface RoomPersona {
+  readonly id: string;
+  /** What he calls it by. */
+  readonly name: string;
+  readonly voice: string;
+}
+
 export interface RecogniserTurn {
   readonly feed: (pcm: Int16Array) => void;
   /** The final text once the audio has ended. */
@@ -26,6 +35,8 @@ export interface RecogniserTurn {
 }
 
 export interface Tessaya {
+  /** Who he called: the persona that answers this turn, in its own voice and with its own memory. */
+  readonly persona?: string;
   readonly speaker?: SpeakerIdentity;
   readonly emotion?: { readonly label: string; readonly events: ReadonlyArray<string> };
 }
@@ -51,7 +62,7 @@ export interface RoomDeps {
     signal: AbortSignal,
   ) => AsyncIterable<string>;
   /** Her voice: 16 kHz PCM for one sentence, streamed. */
-  readonly speak: (text: string, signal: AbortSignal) => AsyncIterable<Int16Array>;
+  readonly speak: (text: string, signal: AbortSignal, voice?: string) => AsyncIterable<Int16Array>;
   /** Optional enrolment: the owner profile from these 4 s windows of his speech. */
   readonly enrolOwner?: (windows: ReadonlyArray<Int16Array>) => Promise<string>;
   readonly now: () => number;
@@ -73,8 +84,8 @@ export interface RoomConfig {
   readonly followMs: number;
   /** After this long with nothing said to her, the session ends (the R1 plays its exit chime); S2 starts it again. */
   readonly idleStopMs: number;
-  /** The names that wake her, the lead first. */
-  readonly names: ReadonlyArray<string>;
+  /** Who answers by name, the lead first; each speaks in its own voice. */
+  readonly personas: ReadonlyArray<RoomPersona>;
   /** The speaker and mood readers may hold the reply this long at most. */
   readonly sideMs: number;
   readonly gate: SpeakerGate;
@@ -96,7 +107,12 @@ export const ROOM_CONFIG: RoomConfig = {
   followMs: 8_000,
   // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
   idleStopMs: 15 * 60_000,
-  names: ["Tessaya", "Freya", "Alfred", "Sebastian"],
+  // shortcut: the default pack's personas and voices (his picks); a pack he edits on the laptop is not read here.
+  personas: DEFAULT_OS_PACK.personas.map((p) => ({
+    id: p.id,
+    name: p.wake ?? p.name,
+    voice: p.voice,
+  })),
   sideMs: 250,
   // His room: guests are heard only when he lets them; until he enrols through the R1 every voice is unverified.
   gate: {
@@ -184,6 +200,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Turns until then need no name: a session opens on S2, and each reply leaves a short window. */
     let openUntil = deps.now() + config.followMs;
     let asleep = false;
+    const lead = config.personas[0];
+    /** Who answers: the one he last called, until the window lapses. */
+    let persona = lead;
     const history: Array<{ role: "user" | "assistant"; content: string }> = [];
 
     const speaking = () => reply !== null || deps.now() < playUntil + config.downDelayMs;
@@ -242,11 +261,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       for (const h of held) await out(h);
     };
     const say = (text: string, signal: AbortSignal, onFirstAudio?: () => void) =>
-      play(deps.speak(text, signal), signal, onFirstAudio, config.prerollMs);
+      play(deps.speak(text, signal, persona?.voice), signal, onFirstAudio, config.prerollMs);
 
     /** Starts her voice on `text` at once (after the sentence before it), buffering what it says for `play`. */
     let synthesis: Promise<void> = Promise.resolve();
     const ahead = (text: string, signal: AbortSignal): AsyncIterable<Int16Array> => {
+      const voice = persona?.voice;
       const chunks: Int16Array[] = [];
       let done = false;
       let failed: unknown = null;
@@ -257,7 +277,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       };
       synthesis = synthesis.then(async () => {
         try {
-          for await (const pcm of deps.speak(text, signal)) {
+          for await (const pcm of deps.speak(text, signal, voice)) {
             if (signal.aborted) break;
             chunks.push(pcm);
             nudge();
@@ -286,6 +306,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const face = (mood: string) => deps.publish(topic(id, "cmd/eye/set"), JSON.stringify({ mood }));
     const gesture = (name: string) =>
       deps.publish(topic(id, "cmd/eye/gesture"), JSON.stringify({ name }));
+    /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
+    const look = () =>
+      deps.publish(
+        topic(id, "cmd/eye/persona"),
+        JSON.stringify({ name: (persona?.name ?? "").toLowerCase() }),
+      );
 
     const speakNow = (text: string) => {
       const control = new AbortController();
@@ -324,10 +350,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       if (text === "") return;
-      const called = calledName(text, config.names);
+      const called = calledName(
+        text,
+        config.personas.map((p) => p.name),
+      );
       if (called === null && deps.now() > openUntil) {
         deps.log(`[${id}] turn ${turn}: not said to her; not answered`);
         return;
+      }
+      const named = config.personas.find((p) => p.name === called);
+      if (named !== undefined && named !== persona) {
+        persona = named;
+        look();
       }
       if (asleep) face("attentive");
       asleep = false;
@@ -381,6 +415,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speakingChain.catch(() => undefined);
         };
         const tessaya: Tessaya = {
+          ...(persona === undefined || persona === lead ? {} : { persona: persona.id }),
           speaker: identity,
           ...(affect === undefined
             ? {}
@@ -524,6 +559,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (quiet && !asleep && deps.now() > openUntil) {
           asleep = true;
           face("sleepy");
+          if (persona !== lead) {
+            persona = lead;
+            look();
+          }
         }
         return quiet && deps.now() - lastActivity > config.idleStopMs ? "stop" : null;
       },

@@ -7,8 +7,10 @@
  */
 import * as NodeCrypto from "node:crypto";
 import * as NodeNet from "node:net";
+import * as NodePath from "node:path";
 
 import { recordText } from "@t3tools/baton-shared/audit";
+import { DEFAULT_OS_PACK, type OsPack, type Persona } from "@t3tools/baton-shared/osPack";
 import { biasTranscript, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -26,6 +28,8 @@ import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { BatonMemoryService } from "../baton/BatonMemoryService.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
+import { readPack } from "../baton/OperatingSystemPack.ts";
+import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
 import { R1Brain } from "./R1Brain.ts";
@@ -167,7 +171,15 @@ interface R1Context {
   readonly memories: ReadonlyArray<string>;
   readonly voice: unknown;
   readonly now: string;
+  readonly persona: Persona | null;
 }
+
+/** The persona he called by name on the R1 (the room loop sends its pack id); null for the lead or an unknown id. */
+export const calledPersona = (pack: OsPack, voice: unknown): Persona | null => {
+  const id =
+    typeof voice === "object" && voice !== null && "persona" in voice ? voice.persona : null;
+  return pack.personas.find((p) => !p.lead && p.id === id) ?? null;
+};
 
 /** What never changes between turns: the warm brain is started with it as its system prompt. */
 const R1_RULES = [
@@ -185,6 +197,11 @@ const R1_RULES = [
 ];
 
 const r1Data = (input: R1Context) => [
+  ...(input.persona === null
+    ? []
+    : [
+        `He called ${input.persona.name} this turn: answer as ${input.persona.name} (${input.persona.role}), in the first person, not as Tessaya. The acts and rules are the same.`,
+      ]),
   `Now: ${input.now}.`,
   `Devices that may match: ${quoted(input.devices)}`,
   `Last action: ${quoted(input.lastAction)}`,
@@ -271,13 +288,20 @@ const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard) {
   const automations = /automation|remind|timer|schedule/i.test(input.heard)
     ? yield* home.automations({}).pipe(Effect.orElseSucceed(() => null))
     : null;
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  const persona = calledPersona(
+    Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath)),
+    input.voice,
+  );
   const memory = yield* Effect.serviceOption(BatonMemoryService);
   const memories =
     memory._tag === "None"
       ? []
-      : (yield* memory.value.search({ text: input.heard, limit: 3 })).map((h) =>
-          recordText(h.item.text, 200),
-        );
+      : (yield* memory.value.search({
+          text: input.heard,
+          limit: 3,
+          ...(persona === null ? {} : { agent: persona.id }),
+        })).map((h) => recordText(h.item.text, 200));
   const context: R1Context = {
     heard: input.heard,
     history: input.history,
@@ -286,6 +310,7 @@ const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard) {
     automations,
     memories,
     voice: input.voice,
+    persona,
     now: houseTime(yield* Clock.currentTimeMillis, yield* home.timeZone),
   };
   return { device, context };

@@ -164,6 +164,32 @@ describe("answering only when he is talking to her", () => {
     // Asleep between them: sleepy eyes, and no attentive look or nod for speech that was not for her.
     expect(t.published.some((p) => String(p.payload).includes('"sleepy"'))).toBe(true);
   });
+
+  it("hands a turn to the persona he calls, in its voice and eyes, until the window lapses", async () => {
+    const voices: Array<string | undefined> = [];
+    const t = setup({
+      recognise: said(["Alfred, what broke?", "And the fix?", "Tessaya, what time is it?"]),
+      speak: async function* (_text, _signal, voice) {
+        voices.push(voice);
+        yield new Int16Array(3_200);
+      },
+    });
+    await turn(t);
+    await turn(t);
+    await t.deps.sleep(10_000);
+    t.room.sweep();
+    await turn(t);
+    expect(t.brainCalls.map((c) => c.tessaya.persona)).toEqual([
+      "engineering",
+      "engineering",
+      undefined,
+    ]);
+    expect(new Set(voices)).toEqual(new Set(["peter_yearsley", "eve"]));
+    expect(voices.at(-1)).toBe("eve");
+    expect(
+      t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
+    ).toEqual(['{"name":"alfred"}', '{"name":"tessaya"}']);
+  });
 });
 
 describe("how her reply sounds and looks on the R1", () => {
