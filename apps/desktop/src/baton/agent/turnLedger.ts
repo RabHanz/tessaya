@@ -1,4 +1,5 @@
 import type { TraceCall, TurnTrace } from "@t3tools/baton-shared/skillLearning";
+import type { SpeakerIdentity } from "@t3tools/baton-voice";
 
 import { SessionClosed } from "../screen/claudeVision.ts";
 
@@ -20,6 +21,8 @@ export interface TurnRecord {
   readonly answers: Record<string, string>;
   /** The learned skills this turn was given. */
   readonly skills: string[];
+  /** Whose voice asked for this turn: a short spoken yes to its question is theirs. */
+  readonly speaker?: SpeakerIdentity | null;
 }
 
 const empty = (): TurnRecord => ({
@@ -54,8 +57,8 @@ export const createTurnLedger = () => {
   const waiting: Array<{ readonly record: TurnRecord }> = [];
   let running: TurnRecord | null = null;
   return {
-    ask: () => {
-      const slot = { record: empty() };
+    ask: (speaker: SpeakerIdentity | null = null) => {
+      const slot = { record: { ...empty(), ...(speaker === null ? {} : { speaker }) } };
       waiting.push(slot);
       return {
         record: () => slot.record,

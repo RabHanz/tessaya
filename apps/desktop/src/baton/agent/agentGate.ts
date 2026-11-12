@@ -5,6 +5,7 @@
  */
 import * as DateTime from "effect/DateTime";
 import {
+  addressBarAfter,
   batchSteps,
   batonToolName,
   describeToolCall,
@@ -73,6 +74,9 @@ export interface TurnTaint {
   readonly field: () => string;
   /** What he said to start this turn: typing his own words is not following something it read. */
   readonly said: () => string;
+  /** What this turn typed into a browser's address bar since it opened it; undefined when it is not there. */
+  readonly addressBar: () => string | undefined;
+  readonly setAddressBar: (typed: string | undefined) => void;
   readonly reset: (said?: string) => void;
 }
 
@@ -81,6 +85,7 @@ export const createTaint = (): TurnTaint => {
   let scope: TypingScope | null = null;
   let field = "";
   let said = "";
+  let addressBar: string | undefined;
   return {
     mark: () => void (tainted = true),
     on: () => tainted,
@@ -91,11 +96,14 @@ export const createTaint = (): TurnTaint => {
     noteField: (next) => void (field = next),
     field: () => field,
     said: () => said,
+    addressBar: () => addressBar,
+    setAddressBar: (typed) => void (addressBar = typed),
     reset: (next = "") => {
       said = next;
       tainted = false;
       scope = null;
       field = "";
+      addressBar = undefined;
     },
   };
 };
@@ -108,12 +116,27 @@ export const fieldOf = (input: Readonly<Record<string, unknown>>): string =>
       ? `element:#${input["id"]}`
       : `point:${Math.round(Number(input["x"]) / 60)},${Math.round(Number(input["y"]) / 60)}`;
 
+/** The window with the keyboard is a web browser, by its title. */
+const BROWSER = /\b(?:chrome|chromium|edge|firefox|brave|opera|vivaldi|arc|safari)\b/i;
+
+/** The model's refusal when he answered her question with other words: those words are his next turn, not a no. */
+export const answeredWithWords = (why: string): string =>
+  `${why} He answered your question with other words, not a yes or a no, so it was not done yet. He did not decline, so do not say he did. His words come to you next; act on them then.`;
+
+/**
+ * His answer to a gate question: true or "always" (and do not ask about this again) is a yes, false a no, and
+ * "words" means he said something else, which reaches the assistant as his next sentence.
+ */
+export type GateAnswer = boolean | "always" | "words";
+
 export interface ConfirmPrompt {
   readonly title: string;
   readonly detail: string;
   readonly spoken: string;
   /** A question that runs out is a no, and no setting covers it. */
   readonly noOnExpiry: boolean;
+  /** He may answer "always" (the card's Always allow): an ordinary ask on his own turn, not a command line or a read. */
+  readonly canStand?: boolean;
 }
 
 /** What a device's or agent's turn may do without asking him: reading Tessaya's own state. Nothing on screen, no files. */
@@ -171,7 +194,15 @@ export const createAgentGate = (input: {
     /** The window's handle, when the platform has one: a title can change under typing. */
     readonly window?: number;
   }>;
-  readonly confirm: (prompt: ConfirmPrompt) => Promise<boolean>;
+  readonly confirm: (prompt: ConfirmPrompt) => Promise<GateAnswer>;
+  /**
+   * His standing yeses ("go ahead and don't ask me again"), by tool, reason and app: an ordinary ask he has already
+   * answered that way goes ahead. Never a risky one, never a device's turn.
+   */
+  readonly always?: {
+    readonly has: (key: string) => boolean;
+    readonly add: (key: string) => void;
+  };
   /** A click's target is a text box in the last tree read. */
   readonly pointerField?: (tool: string, input: Readonly<Record<string, unknown>>) => boolean;
   readonly record: (entry: Readonly<Record<string, unknown>>) => void;
@@ -231,6 +262,7 @@ export const createAgentGate = (input: {
       : named !== ""
         ? { label: named, shell: namesShell(named) }
         : await input.focusedWindow();
+    const browser = focus !== null && BROWSER.test(focus.label);
     const scope: TypingScope | null =
       name === "type_text" && focus !== null
         ? { window: focus.label, field: input.taint.field() }
@@ -257,6 +289,8 @@ export const createAgentGate = (input: {
       tainted:
         outside || (input.taint.on() && !(scope !== null && input.taint.typingAllowedFor(scope))),
       ...(focus === null ? {} : { focusedShell: focus.shell }),
+      ...(browser ? { browser: true } : {}),
+      ...(input.taint.addressBar() === undefined ? {} : { addressBar: input.taint.addressBar()! }),
       ...(input.pointerField?.(name, call.input) === true ? { pointerField: true } : {}),
       textIsHis:
         !outside &&
@@ -296,6 +330,10 @@ export const createAgentGate = (input: {
     const action = describeToolCall(call);
     /** A click names the box that typing goes to; Enter or a send ends any yes given to typing. */
     const after = () => {
+      let bar = input.taint.addressBar();
+      for (const step of name === "act_batch" ? steps : [{ tool: name, input: call.input }])
+        bar = addressBarAfter(bar, step, browser);
+      input.taint.setAddressBar(bar);
       if (name === "click" || name === "click_element") input.taint.noteField(fieldOf(call.input));
       if (name === "press_keys" || name === "session_send") input.taint.clearTyping();
       for (const step of steps) {
@@ -355,19 +393,41 @@ export const createAgentGate = (input: {
       return { allow: true };
     }
     const project = call.input["project"];
-    const prompt = gatePrompt(judged, action, {
+    const app = focus?.label.split(" - ").at(-1)?.trim() ?? "";
+    const standingKey = `${name}|${judged.why}|${app}`;
+    // Never for what follows a read or reaches a command line: that is what an injection would ask for.
+    const canStand =
+      input.always !== undefined &&
+      judged.risky !== true &&
+      !outside &&
+      focus?.shell !== true &&
+      !context.tainted;
+    const standing = canStand && input.always?.has(standingKey) === true;
+    const asked = gatePrompt(judged, action, {
       ...(agent === undefined ? {} : { agent: agent.name }),
       ...(typeof project === "string" && project !== "" ? { project } : {}),
+      ...(typeof call.input["why"] === "string" ? { doing: call.input["why"] } : {}),
+      ...(outside ? {} : { asked: input.taint.said() }),
     });
-    const yes = await input.confirm(prompt).catch(() => false);
+    const prompt = canStand ? { ...asked, canStand } : asked;
+    const answer: GateAnswer = standing ? true : await input.confirm(prompt).catch(() => false);
+    const yes = answer === true || answer === "always";
+    if (answer === "always" && canStand) input.always?.add(standingKey);
     input.record({
       tool: call.tool,
       action,
-      outcome: yes ? "he said yes" : "he said no",
+      outcome: standing
+        ? "allowed"
+        : yes
+          ? "he said yes"
+          : answer === "words"
+            ? "he answered with other words"
+            : "he said no",
       ...(judged.risky === true ? { risky: true } : {}),
-      why: judged.why,
+      why: standing ? `${judged.why} He said not to ask about this again.` : judged.why,
     });
-    logSocial(yes ? "he said yes" : "he said no");
+    logSocial(yes ? "he said yes" : answer === "words" ? "not done" : "he said no");
+    if (answer === "words") return { allow: false, reason: answeredWithWords(judged.why) };
     if (!yes) return { allow: false, reason: `${judged.why} He said no. Stop and tell him.` };
     // The yes was for the window judged before he was asked; keys must not follow focus elsewhere.
     if (focus !== null) {

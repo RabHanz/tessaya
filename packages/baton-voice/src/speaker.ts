@@ -266,6 +266,22 @@ export const voiceApproval = (
   cardRequired: risk === "risky" || !voiceYes || identity?.kind !== "owner",
 });
 
+/**
+ * Whether a spoken yes stands without the card (D4). A "yes" is too short to judge, so an unjudged one is the voice of
+ * the turn it answers; one judged as someone else's never is (2026-11-12: every short yes was sent to the card).
+ */
+export const spokenYesStands = (
+  heard: SpeakerIdentity,
+  turn: SpeakerIdentity | null,
+  risk: "ordinary" | "risky",
+  voiceYes: boolean,
+): boolean =>
+  !voiceApproval(
+    heard.kind === "unverified" && turn?.kind === "owner" ? turn : heard,
+    risk,
+    voiceYes,
+  ).cardRequired;
+
 /** How far one confident turn moves his centroid (D6). */
 const ADAPT_WEIGHT = 0.02;
 /** Only a turn this far above the act cut-off teaches: a doubtful one could pull him towards someone else. */

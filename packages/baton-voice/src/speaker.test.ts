@@ -10,6 +10,7 @@ import {
   identityOf,
   speakerPath,
   UNVERIFIED,
+  spokenYesStands,
   voiceApproval,
   type SpeakerGate,
   type SpeakerIdentity,
@@ -235,6 +236,17 @@ describe("the speaker identity", () => {
       cardRequired: true,
     });
     expect(voiceApproval(who("unverified"), "ordinary", true).cardRequired).toBe(true);
+  });
+
+  it("takes a yes too short to judge as the voice of the turn it answers, never one judged as someone else's", () => {
+    const turn = who("owner", { verified: true });
+    // 2026-11-12: "Yes." at 1.2 s came back unverified, and the card waited with nothing said.
+    expect(spokenYesStands(who("unverified"), turn, "ordinary", true)).toBe(true);
+    expect(spokenYesStands(who("unverified"), who("guest"), "ordinary", true)).toBe(false);
+    expect(spokenYesStands(who("unverified"), null, "ordinary", true)).toBe(false);
+    expect(spokenYesStands(who("guest"), turn, "ordinary", true)).toBe(false);
+    expect(spokenYesStands(who("unverified"), turn, "risky", true)).toBe(false);
+    expect(spokenYesStands(who("unverified"), turn, "ordinary", false)).toBe(false);
   });
 
   it("adapts his profile a little, and only from a confident long clip of him", () => {

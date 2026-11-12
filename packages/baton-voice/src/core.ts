@@ -152,8 +152,11 @@ export interface VoiceCoreSnapshot {
   readonly currentTarget: string | null;
 }
 
+/** "always": a yes and not to ask again. "other": he said something else, which goes to the assistant as his next words. */
+export type SpokenAnswer = "yes" | "always" | "no" | "other" | "expired";
+
 export interface SpokenQuestion {
-  readonly answer: Promise<"yes" | "no" | "expired">;
+  readonly answer: Promise<SpokenAnswer>;
   /** Answered some other way. */
   readonly cancel: () => void;
 }
@@ -380,13 +383,14 @@ export const createVoiceCore = (input: {
     emit({ type: "state", state, target });
   };
 
-  const asked = new Map<string, (answer: "yes" | "no" | "expired") => void>();
+  const asked = new Map<string, (answer: SpokenAnswer) => void>();
   let questions = 0;
   const confirm = (prompt: string): SpokenQuestion => {
     questions += 1;
     const token = `spoken-${questions}`;
-    const answer = new Promise<"yes" | "no" | "expired">((resolve) => asked.set(token, resolve));
-    enqueue(() => dispatch({ type: "request_confirmation", token, prompt, at: now() }));
+    const answer = new Promise<SpokenAnswer>((resolve) => asked.set(token, resolve));
+    // Asked beside a card: the question stays open as long as the card does.
+    enqueue(() => dispatch({ type: "request_confirmation", token, prompt, at: now(), hold: true }));
     return {
       answer,
       cancel: () => {
@@ -492,8 +496,16 @@ export const createVoiceCore = (input: {
         if (answer !== undefined) {
           asked.delete(effect.token);
           answer(
-            // Superseded by another sentence or question is a no: the turn waiting on it must end, not wait on.
-            effect.kind === "confirmed" ? "yes" : effect.reason === "expired" ? "expired" : "no",
+            // Superseded by another sentence: the turn waiting on it ends, and his words are its next turn.
+            effect.kind === "confirmed"
+              ? effect.always === true
+                ? "always"
+                : "yes"
+              : effect.reason === "expired"
+                ? "expired"
+                : effect.reason === "superseded"
+                  ? "other"
+                  : "no",
           );
           continue;
         }
@@ -979,7 +991,8 @@ export const createVoiceCore = (input: {
           machine.pending !== null &&
           machine.mode !== "dictation" &&
           !disposed &&
-          reply.split(/\s+/).length <= 4
+          // "go ahead and don't ask me again" is seven.
+          reply.split(/\s+/).length <= 7
             ? answerOf(reply)
             : null;
         const sheSaid = hers

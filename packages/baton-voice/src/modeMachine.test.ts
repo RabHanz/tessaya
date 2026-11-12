@@ -248,6 +248,31 @@ describe("voice mode machine (§12.3)", () => {
     expect(superseded.effects.map((e) => e.kind)).toEqual(["speak", "cancelled", "command"]);
   });
 
+  it("asked beside a card, stays open until he answers, however long she takes to say it (2026-11-12)", () => {
+    const late = DEFAULT_TIMINGS.confirmationMs + DEFAULT_TIMINGS.conversationMs + 5_000;
+    const held = play([
+      { type: "wake", at: 0 },
+      { type: "request_confirmation", token: "t1", prompt: "?", at: 0, hold: true },
+      { type: "tick", at: late },
+      { type: "utterance", text: "Go ahead.", at: late + 1 },
+    ]);
+    expect(held.effects.map((e) => e.kind)).toEqual(["speak", "confirmed"]);
+    // Answered on the card: the window runs on as a conversation's, then closes.
+    const clicked = play([
+      { type: "wake", at: 0 },
+      { type: "request_confirmation", token: "t1", prompt: "?", at: 0, hold: true },
+      { type: "clear_pending", token: "t1", at: late },
+    ]);
+    expect(clicked.state.pending).toBeNull();
+    expect(play([{ type: "tick", at: late + 1_000 }], clicked.state).state.mode).toBe(
+      "conversation",
+    );
+    expect(
+      play([{ type: "tick", at: late + DEFAULT_TIMINGS.conversationMs + 1 }], clicked.state).state
+        .mode,
+    ).toBe("sleeping");
+  });
+
   it("hears a yes or a no by the whole sentence, and gives anything mixed to the assistant", () => {
     const answer = (text: string) =>
       play([
@@ -261,6 +286,11 @@ describe("voice mode machine (§12.3)", () => {
     for (const no of ["nah", "No, not now.", "don't"]) {
       expect(answer(no)[0], no).toEqual({ kind: "cancelled", token: "t1", reason: "declined" });
     }
+    // 2026-11-12: both were his yes, and both were taken as something else.
+    expect(answer("Yes, try again.")).toEqual([{ kind: "confirmed", token: "t1" }]);
+    expect(answer("go ahead and don't ask me again")).toEqual([
+      { kind: "confirmed", token: "t1", always: true },
+    ]);
     for (const other of ["no, send it to Sam instead", "don't forget to cc me, yes"]) {
       expect(answer(other), other).toEqual([
         { kind: "cancelled", token: "t1", reason: "superseded" },

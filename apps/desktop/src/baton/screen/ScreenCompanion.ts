@@ -4,7 +4,7 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/SCREEN.md.
  */
-import { speakerPath, type SpeakerIdentity } from "@t3tools/baton-voice";
+import { speakerPath, type SpeakerIdentity, type SpokenAnswer } from "@t3tools/baton-voice";
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { appOf, tracedTurns } from "@t3tools/baton-shared/skillLearning";
 import { replayTurn } from "../agent/replay.ts";
@@ -225,6 +225,8 @@ interface ScreenSettings {
   readonly volume: number;
   /** Low-risk work runs with no Run it box and no spoken yes. Off until he turns it on. */
   readonly actWithoutAsking: boolean;
+  /** His standing yeses ("don't ask me again"), as the gate keys them; turning Act without asking off clears them. */
+  readonly alwaysAllowed: ReadonlyArray<string>;
   /** A remote session the Director gave baton:hands may drive this computer (REMOTE_HANDS.md). Off until he turns it on. */
   readonly remoteHands: boolean;
   /** He is away: a remote call that would ask him is refused instead, since nobody can answer. */
@@ -259,6 +261,7 @@ const DEFAULTS: ScreenSettings = {
   voice: DEFAULT_POCKET_VOICE,
   volume: 1,
   actWithoutAsking: false,
+  alwaysAllowed: [],
   remoteHands: false,
   remoteHandsAway: false,
   actCursor: true,
@@ -394,11 +397,15 @@ export interface AssistantActions {
    * Voice ID (D4): may the spoken yes just heard stand without the box? False keeps the box up. Absent: it may.
    * Also whether a saved person's words are passed on to him as a notice (D5).
    */
-  readonly spokenYes?: (risk: "ordinary" | "risky") => boolean;
+  readonly spokenYes?: (
+    risk: "ordinary" | "risky",
+    /** Who spoke the turn the question belongs to: a yes too short to judge is theirs. */
+    turnSpeaker: SpeakerIdentity | null,
+  ) => boolean;
   readonly savedMessages?: () => boolean;
   /** A yes or no by voice, beside any box. Null when nothing is listening. */
   readonly confirm?: (prompt: string) => {
-    readonly answer: Promise<"yes" | "no" | "expired">;
+    readonly answer: Promise<SpokenAnswer>;
     readonly cancel: () => void;
   } | null;
   /** Unused since the old router was deleted; still supplied by DesktopBatonVoice until that file drops them. */
@@ -1167,6 +1174,8 @@ export const startScreenCompanion = (input: {
     yes = 0,
     /** A question that runs out is a no, and the box comes down. */
     noOnExpiry = false,
+    /** His spoken answer was a yes and "don't ask again", or other words that go to the assistant next. */
+    heard?: (how: "always" | "words") => void,
   ): Promise<number> => {
     const aloud = voiceTurn ? (actions?.confirm?.(spoken) ?? null) : null;
     // The companion asks mid-task: taking focus would move his keys and the window being worked on (CU-2).
@@ -1183,8 +1192,21 @@ export const startScreenCompanion = (input: {
     const outcome = spokenOutcome(first.said, { yes, cancel: box.cancel, noOnExpiry });
     if (outcome === null) return boxed;
     // Voice ID (D4): a question that is a no when it runs out is treated as risky, so only the box can say yes.
-    if (outcome === yes && actions?.spokenYes?.(noOnExpiry ? "risky" : "ordinary") === false)
+    if (
+      outcome === yes &&
+      actions?.spokenYes?.(noOnExpiry ? "risky" : "ordinary", turns.current().speaker ?? null) ===
+        false
+    ) {
+      // Never a silent wait on the card: she says why his yes did not count.
+      say(
+        noOnExpiry
+          ? "That one needs a tap on the card. A spoken yes isn't enough for it."
+          : "I couldn't tell that was your voice, so tap the card for that one.",
+      );
       return boxed;
+    }
+    if (first.said === "always" && outcome === yes) heard?.("always");
+    if (first.said === "other") heard?.("words");
     windows.closePrompt();
     await boxed;
     return outcome;
@@ -1197,9 +1219,10 @@ export const startScreenCompanion = (input: {
     yes = 0,
     noOnExpiry = false,
     needs?: "cloud-approve",
+    heard?: (how: "always" | "words") => void,
   ): Promise<number> => {
     try {
-      return await askOnce(box, spoken, yes, noOnExpiry, needs);
+      return await askOnce(box, spoken, yes, noOnExpiry, needs, heard);
     } finally {
       // He answers her question over her voice: that is his answer, not a cut-in that stops the turn.
       cutIns.begin();
@@ -1211,6 +1234,7 @@ export const startScreenCompanion = (input: {
     yes: number,
     noOnExpiry: boolean,
     needs?: "cloud-approve",
+    heard?: (how: "always" | "words") => void,
   ): Promise<number> => {
     // Every confirm, the gate's and the screen's, mouse, Chrome and plan alike, comes through here.
     // A device's question that nobody answers is a no, on every path.
@@ -1230,7 +1254,7 @@ export const startScreenCompanion = (input: {
             cancel: box.cancel,
             ...(needs === undefined ? {} : { needs }),
           }) ?? null);
-    const local = askLocal(shown, question, yes, expiresAsNo);
+    const local = askLocal(shown, question, yes, expiresAsNo, heard);
     if (mirrored === null) return local;
     const first = await Promise.race([
       local.then((index) => ({ index })),
@@ -1313,8 +1337,9 @@ export const startScreenCompanion = (input: {
     if (hands === null || handle === undefined || ownWindow(handle)) return null;
     const dir = NodePath.join(input.stateDir, "screen");
     const out = NodePath.join(dir, `window-${Date.now()}.bmp`);
+    // Off the main thread: a read of this bitmap under a virus scan stalled it 14 s (2026-11-12).
     try {
-      NodeFS.mkdirSync(dir, { recursive: true });
+      await NodeFS.promises.mkdir(dir, { recursive: true });
       const done = await hands.captureWindow({ handle, out });
       const { width, height, left, top } = done;
       if (width === undefined || height === undefined || left === undefined || top === undefined)
@@ -1322,11 +1347,11 @@ export const startScreenCompanion = (input: {
       const bounds = Electron.screen.screenToDipRect(null, { x: left, y: top, width, height });
       shotWindow = handle;
       shotLabel = now?.label ?? null;
-      return shotOf(bmpImage(NodeFS.readFileSync(out), width, height), bounds);
+      return shotOf(bmpImage(await NodeFS.promises.readFile(out), width, height), bounds);
     } catch {
       return null;
     } finally {
-      NodeFS.rmSync(out, { force: true });
+      await NodeFS.promises.rm(out, { force: true }).catch(() => undefined);
     }
   };
 
@@ -1921,19 +1946,28 @@ export const startScreenCompanion = (input: {
       focusedWindow: gateWindow,
       pointerField: (tool, call) =>
         tool === "click_element" && clickTargetsField(lastControls, call),
-      confirm: async (p) =>
-        (await askHandsFree(
+      confirm: async (p) => {
+        // "Always allow" only where the gate keeps standing yeses (`canStand`), and never on a device's turn.
+        const offer = p.canStand === true && !turnLock.deviceRunning();
+        let how: "always" | "words" | null = null;
+        const response = await askHandsFree(
           {
             title: p.title,
             detail: p.detail,
-            buttons: ["Go ahead", "Not now"],
-            cancel: 1,
+            buttons: offer ? ["Go ahead", "Always allow", "Not now"] : ["Go ahead", "Not now"],
+            cancel: offer ? 2 : 1,
             scoped: true,
           },
           p.spoken,
           0,
           p.noOnExpiry,
-        )) === 0,
+          undefined,
+          (h) => (how = h),
+        );
+        if (response === 0) return how === "always" && offer ? "always" : true;
+        if (offer && response === 1) return "always";
+        return how === "words" ? "words" : false;
+      },
       inPlan: () => planGrant?.steps ?? null,
       agent: () => ({
         ...face,
@@ -1948,17 +1982,29 @@ export const startScreenCompanion = (input: {
       record,
       ...own,
     });
-  const agentGate = gateFor(agentTaint, (entry) => {
-    if (typeof entry["tool"] === "string") {
-      // The tool itself is listed once, by onTool.
-      turns
-        .current()
-        .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
-      // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
-      input.onActivity?.("Working");
-    }
-    input.onAction?.({ by: "assistant", persona: face.name, ...entry });
-  });
+  const agentGate = gateFor(
+    agentTaint,
+    (entry) => {
+      if (typeof entry["tool"] === "string") {
+        // The tool itself is listed once, by onTool.
+        turns
+          .current()
+          .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
+        // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
+        input.onActivity?.("Working");
+      }
+      input.onAction?.({ by: "assistant", persona: face.name, ...entry });
+    },
+    {
+      always: {
+        has: (key) => settings.alwaysAllowed.includes(key),
+        add: (key) =>
+          save({
+            alwaysAllowed: [...settings.alwaysAllowed.filter((k) => k !== key), key].slice(-50),
+          }),
+      },
+    },
+  );
   const operatorGate = gateFor(
     operatorTaint,
     (entry) => input.onAction?.({ by: settings.operator, persona: face.name, ...entry }),
@@ -3073,7 +3119,7 @@ export const startScreenCompanion = (input: {
     answering += 1;
     const speaker = face.id;
     const brain = chooseTurnBrain(text, faceModel, tierMemories.of(speaker).previous(), manual());
-    const mine = turns.ask();
+    const mine = turns.ask(heardFrom);
     const record = mine.record;
     let firstTokenAt: number | null = null;
     let firstAudioAt: number | null = null;
@@ -3932,7 +3978,11 @@ export const startScreenCompanion = (input: {
           });
         }
       } else if (id === "s.social") save({ socialOn: value === true });
-      else if (id === "s.act") save({ actWithoutAsking: value === true });
+      else if (id === "s.act")
+        save({
+          actWithoutAsking: value === true,
+          ...(value === true ? {} : { alwaysAllowed: [] }),
+        });
       else if (id === "s.hands") save({ remoteHands: value === true });
       else if (id === "s.cursor") save({ actCursor: value === true });
       else if (id === "s.handsAway") save({ remoteHandsAway: value === true });

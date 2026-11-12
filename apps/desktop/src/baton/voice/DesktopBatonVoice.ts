@@ -45,7 +45,7 @@ import {
   type BatonVoiceCore,
   type EchoGuard,
   CAMPLUS_POLICY,
-  voiceApproval,
+  spokenYesStands,
   type SpeakerEmbedder,
   type SttProvider,
   type VoiceCoreEvent,
@@ -3348,10 +3348,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       };
     },
     confirm: (prompt) => core?.confirm(prompt) ?? null,
-    // D4: while Voice ID runs, a spoken yes stands alone only for ordinary things and only in his voice.
-    spokenYes: (risk) =>
+    // D4: while Voice ID runs, a spoken yes stands alone only for ordinary things and only in his voice. A "yes" is
+    // too short to judge, so it is the voice of the turn it answers; one judged as someone else's still is not his.
+    spokenYes: (risk, turnSpeaker) =>
       !speakerIdentity.running() ||
-      !voiceApproval(speakerIdentity.current(), risk, settings.voiceId.voiceYes).cardRequired,
+      spokenYesStands(speakerIdentity.current(), turnSpeaker, risk, settings.voiceId.voiceYes),
     savedMessages: () => settings.voiceId.savedMessages,
     folder: (window) => focusedFolder(window, input.platform),
     grammarPlaces: async (said) => {

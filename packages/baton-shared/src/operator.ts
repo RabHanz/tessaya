@@ -4,6 +4,7 @@
  * made it, and code decides. A model's reply can never widen this.
  */
 import { highRiskSubject } from "./intentParser.ts";
+import { detectSecret } from "./memory.ts";
 import { dangerousCommand, sensitiveAction } from "./screenCompanion.ts";
 import { isChromeTool, judgeChrome } from "./webPolicy.ts";
 
@@ -81,6 +82,10 @@ export interface JudgeContext {
   readonly pointerField?: boolean;
   /** The text is his own words or Baton's own earlier reply, found in the conversation. */
   readonly textIsHis?: boolean;
+  /** The window with the keyboard is a web browser. */
+  readonly browser?: boolean;
+  /** Typed into a browser's address bar this turn since Ctrl+T or Ctrl+L opened it; absent when it is not there. */
+  readonly addressBar?: string;
   /** His own Chrome (Claude in Chrome): what the gate knows about the page and the accounts. */
   readonly chrome?: {
     readonly socialOn: boolean;
@@ -261,12 +266,13 @@ const NAV_KEYS = new Set([
   "escape",
   "esc",
 ]);
-const EDIT_LETTERS = new Set(["a", "c", "x", "v", "z", "y", "f"]);
+// T and L open a blank tab or the address bar: nothing goes anywhere until Enter, which is judged on its own.
+const EDIT_LETTERS = new Set(["a", "c", "x", "v", "z", "y", "f", "t", "l"]);
 
 /**
- * Keys that carry nothing out and open nothing: navigation, Backspace, Delete, Escape, and Ctrl+A, C, X,
- * V, Z, Y, F, each with Shift or Ctrl only. Anything else asks after a read (a Win+R or Alt+F4 is how
- * an injection would start). Unknown is ask.
+ * Keys that carry nothing out: navigation, Backspace, Delete, Escape, and Ctrl+A, C, X, V, Z, Y, F, T, L,
+ * each with Shift or Ctrl only. Anything else asks after a read (a Win+R or Alt+F4 is how an injection
+ * would start). Unknown is ask.
  */
 export const keyIsNavigation = (keys: ReadonlyArray<string>): boolean => {
   const parts = keys.map((k) => k.toLowerCase().trim());
@@ -283,6 +289,31 @@ export const keyIsNavigation = (keys: ReadonlyArray<string>): boolean => {
     return true;
   }
   return EDIT_LETTERS.has(main) && ctrl;
+};
+
+const keysOf = (input: Readonly<Record<string, unknown>>): ReadonlyArray<string> =>
+  Array.isArray(input["keys"]) ? input["keys"].map((k) => String(k).toLowerCase().trim()) : [];
+
+/** A web address with nothing after the host: opening it carries nothing a page could have planted. */
+const BARE_ADDRESS = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+\/?$/i;
+
+/** What is in a browser's address bar after this step: Ctrl+T or Ctrl+L opens it, typing fills it, anything else leaves it. */
+export const addressBarAfter = (
+  bar: string | undefined,
+  step: { readonly tool: string; readonly input: Readonly<Record<string, unknown>> },
+  browser: boolean,
+): string | undefined => {
+  const tool = batonToolName(step.tool);
+  if (tool === "wait_for") return bar;
+  if (tool === "type_text")
+    return bar === undefined || typeof step.input["window"] === "string"
+      ? undefined
+      : bar + String(step.input["text"] ?? "");
+  if (tool !== "press_keys" || !browser) return undefined;
+  const keys = keysOf(step.input).map((k) => (k === "control" ? "ctrl" : k));
+  return keys.length === 2 && keys[0] === "ctrl" && (keys[1] === "t" || keys[1] === "l")
+    ? ""
+    : undefined;
 };
 
 const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): ToolVerdict => {
@@ -311,7 +342,12 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
           why: "It would type into a command line, where nobody reads it first.",
         };
       }
-      return outgoing
+      // The address bar it opened sends nothing until Enter, which is judged on its own (2026-11-12: four cards to
+      // open Google). Anywhere else, text after a read may be what the read planted.
+      return outgoing &&
+        (context.addressBar === undefined ||
+          typeof call.input["window"] === "string" ||
+          detectSecret(text) !== null)
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "press_keys":
@@ -319,7 +355,14 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       if (context.focusedShell === true)
         return { verdict: "ask", why: "It would press keys in a command line." };
       if (SENDS.test(Array.isArray(call.input["keys"]) ? call.input["keys"].join(" ") : "")) {
-        return { verdict: "ask", why: "That may send what is typed." };
+        // Enter in a browser's address bar only opens what was typed there; after a read, only a bare address.
+        const typed = context.addressBar?.trim() ?? "";
+        return keysOf(call.input).length === 1 &&
+          typed !== "" &&
+          (!context.tainted || BARE_ADDRESS.test(typed)) &&
+          !sensitiveAction(text)
+          ? { verdict: "allow" }
+          : { verdict: "ask", why: "That may send what is typed." };
       }
       if (sensitiveAction(text))
         return { verdict: "ask", why: "It deletes, sends, pays or publishes." };
@@ -486,12 +529,14 @@ const judgeBatch = (call: ToolCall, context: JudgeContext): ToolVerdict => {
   let worst: ToolVerdict = { verdict: "allow" };
   const rank = (v: ToolVerdict) =>
     v.verdict === "deny" ? 3 : v.verdict === "ask" ? (v.risky === true ? 2 : 1) : 0;
+  let addressBar = context.addressBar;
   for (const step of steps) {
     const one = judgeToolCall(
       { tool: `${BATON_TOOL_PREFIX}${step.tool}`, input: step.input },
-      context,
+      { ...context, ...(addressBar === undefined ? {} : { addressBar }) },
     );
     if (rank(one) > rank(worst)) worst = one;
+    addressBar = addressBarAfter(addressBar, step, context.browser === true);
   }
   return worst;
 };
@@ -555,28 +600,47 @@ export const announceTool = (ran: number, tool: string) => ({
   ran: tool === "WebSearch" ? ran : ran + 1,
 });
 
-/** What the gate says out loud and shows, naming who asks and for which project. A risky call's question that runs out is a no. */
+/**
+ * What the gate shows and what she says, naming who asks and for which project. A risky call's question that runs out
+ * is a no. She asks in her own words, from the call's `why`, and never says "yes": his "Yes" said over "Yes or no." was
+ * taken for her own voice (2026-11-12).
+ */
 export const gatePrompt = (
   judged: Extract<ToolVerdict, { verdict: "ask" }>,
   action: string,
-  who: { readonly agent?: string; readonly project?: string } = {},
+  who: {
+    readonly agent?: string;
+    readonly project?: string;
+    /** The call's own `why`, the model's few words for what it does. */
+    readonly doing?: string;
+    /** What he said to start the turn, so the card carries the conversation it belongs to. */
+    readonly asked?: string;
+  } = {},
 ) => {
   const agent = who.agent ?? "Tessaya";
-  const asks = `${agent} wants to do this${who.project === undefined ? "" : ` in ${JSON.stringify(who.project.slice(0, 60))}`}`;
+  const where = who.project === undefined ? "" : ` in ${JSON.stringify(who.project.slice(0, 60))}`;
+  const asks = `${agent} wants to do this${where}`;
+  const doing = (who.doing ?? action)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120)
+    .replace(/[.!?]+$/, "");
+  const said = (who.asked ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
   return {
     title: judged.risky ? "This one is risky" : `${agent} wants to do this`,
-    detail: `${asks}: ${action}\n\n${judged.why}`,
-    spoken:
-      judged.risky === true
-        ? `${asks}. ${judged.why} Do you want it done? Say yes or no.`
-        : `${asks}. ${judged.why} Go ahead? Yes or no.`,
+    detail: `${asks}: ${action}\n\n${judged.why}${said === "" ? "" : `\n\nYou asked: “${said}”`}`,
+    spoken: `I'm about to ${doing.charAt(0).toLowerCase()}${doing.slice(1)}${where}.${judged.risky === true ? ` ${judged.why}` : ""} Shall I?`,
     noOnExpiry: judged.risky === true,
   };
 };
 
 /** What a spoken answer decides: the button index, or null to go on waiting for the box. */
 export const spokenOutcome = (
-  said: "yes" | "no" | "expired",
+  said: "yes" | "always" | "no" | "other" | "expired",
   option: { readonly yes: number; readonly cancel: number; readonly noOnExpiry: boolean },
 ): number | null =>
-  said === "expired" && !option.noOnExpiry ? null : said === "yes" ? option.yes : option.cancel;
+  said === "expired" && !option.noOnExpiry
+    ? null
+    : said === "yes" || said === "always"
+      ? option.yes
+      : option.cancel;

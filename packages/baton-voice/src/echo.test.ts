@@ -628,8 +628,9 @@ describe("a yes or no asked aloud", () => {
     for (const [said, want] of [
       ["Yes.", "yes"],
       ["No.", "no"],
-      // A new sentence instead of an answer lapses the question as a no, so the turn waiting on it ends.
-      ["Explain how a VPN works.", "no"],
+      ["go ahead and don't ask me again", "always"],
+      // A new sentence instead of an answer: the turn waiting on it ends, and the sentence is his next turn.
+      ["Explain how a VPN works.", "other"],
     ] as const) {
       const r = asking(said);
       const question = r.core.confirm("Run it?");
@@ -639,13 +640,14 @@ describe("a yes or no asked aloud", () => {
     }
   });
 
-  it("runs out to expired, so the box can still answer", async () => {
-    const r = asking("");
+  it("stays open as long as the card does, so a yes after she finishes asking still counts (2026-11-12)", async () => {
+    const r = asking("Go ahead.");
     const question = r.core.confirm("Run it?");
     await r.core.idle();
-    for (let i = 0; i < frames(16); i += 1) r.core.pushAudio(new Int16Array(FRAME));
+    for (let i = 0; i < frames(50); i += 1) r.core.pushAudio(new Int16Array(FRAME));
     await r.core.idle();
-    expect(await question.answer).toBe("expired");
+    await r.talk();
+    expect(await question.answer).toBe("yes");
   });
 
   it("forgets the question once the box has answered", async () => {

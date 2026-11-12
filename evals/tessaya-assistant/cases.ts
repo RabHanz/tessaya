@@ -8,6 +8,8 @@ import type { BatonJob } from "../../packages/baton-contracts/src/jobs.ts";
 import type { BatonRecordEntry } from "../../packages/baton-contracts/src/record.ts";
 import { buildAuditTrail, describeAuditTrail } from "../../packages/baton-shared/src/audit.ts";
 import type { CutIn } from "../../packages/baton-shared/src/endOfTurn.ts";
+import { answeredWithWords } from "../../apps/desktop/src/baton/agent/agentGate.ts";
+import { chooseBrowserRoute } from "../../apps/desktop/src/baton/screen/browserRoute.ts";
 
 export interface AssistantCase {
   readonly id: string;
@@ -65,6 +67,20 @@ export interface AssistantCase {
     readonly pinned?: boolean;
   }>;
 }
+
+/** His Chrome as the 2026-11-12 session had it: his own Chrome off, so the window is worked by sight and keys. */
+const chromeBySight = (() => {
+  const choice = chooseBrowserRoute({
+    task: "act",
+    needsLogin: false,
+    ownChromeOn: false,
+    chrome: { state: "not-connected", message: "Chrome is not connected." },
+    chromeVisible: true,
+    accessibility: "unknown",
+    relaunchApproved: false,
+  });
+  return [`${choice.route}: ${choice.why}`, ...choice.steps.map((step) => `- ${step}`)].join("\n");
+})();
 
 /** An agreed job that needs an engineer and a researcher, as jobs_list reads it out. */
 const agreedShopJob = describeJobs([
@@ -956,5 +972,66 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["none"],
     says: "366",
     maxWords: 15,
+  },
+  // ONE SPINE (2026-11-12 computer-use session): she asks inside the turn, and his answer comes back into it.
+  {
+    id: "asked-answer-other-words-not-a-no",
+    source:
+      "2026-11-12 laptop session: he answered her Enter question with 'go ahead and don't ask me again', the gate called it a no, and she said he declined",
+    said: "Open YouTube and play any video by Marques Brownlee.",
+    window: "chrome.exe: New Tab - Google Chrome",
+    first: [
+      "press_keys",
+      "type_text",
+      "act_batch",
+      "screen_capture",
+      "window_focus",
+      "ui_tree",
+      "browser_route",
+    ],
+    answers: {
+      browser_route: chromeBySight,
+      window_focus: "New Tab - Google Chrome is in front and has the keyboard.",
+      ui_tree: "The window's controls can't be read here. Take a screenshot instead.",
+      screen_capture: "the window he is using (New Tab - Google Chrome), image 1280x800.",
+      type_text: "Typed into New Tab - Google Chrome.",
+      press_keys: `Tessaya refused: ${answeredWithWords("That may send what is typed.")}`,
+      act_batch: `Tessaya refused: ${answeredWithWords("That may send what is typed.")}`,
+      click: "Clicked.",
+      click_element: "Clicked.",
+    },
+    notSays: ["declined", "said no", "didn't want", "did not want"],
+    rubric:
+      "Her reply does not say he declined, that a step was refused, that he said no, or that he did not give his yes. Saying what is still to do, or asking him once in her own words whether to do it, is fine.",
+  },
+  {
+    id: "asked-yes-continues-the-turn",
+    source:
+      "2026-11-12 laptop session control: after his yes the same turn goes on and she reports it done, never a new question",
+    said: "Open YouTube and search for Marques Brownlee.",
+    window: "chrome.exe: New Tab - Google Chrome",
+    first: [
+      "press_keys",
+      "type_text",
+      "act_batch",
+      "screen_capture",
+      "window_focus",
+      "ui_tree",
+      "browser_route",
+    ],
+    answers: {
+      browser_route: chromeBySight,
+      window_focus: "New Tab - Google Chrome is in front and has the keyboard.",
+      ui_tree: "The window's controls can't be read here. Take a screenshot instead.",
+      screen_capture: "the window he is using (YouTube - Google Chrome), image 1280x800.",
+      type_text: "Typed into New Tab - Google Chrome.",
+      press_keys: "Pressed enter in YouTube - Google Chrome.",
+      click: "Clicked.",
+      click_element: "Clicked.",
+      act_batch:
+        "Done: pressed ctrl l, typed the address, pressed enter in YouTube - Google Chrome.",
+    },
+    rubric:
+      "Her reply says the YouTube search for Marques Brownlee ran, in a sentence or two, and does not ask him to confirm it or to repeat his request.",
   },
 ];
