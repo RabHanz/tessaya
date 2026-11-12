@@ -24,7 +24,7 @@ import {
   FOOT_SHARE,
   bodyRect,
   edgesFor,
-  followWindow,
+  followFocus,
   landing,
   pathBetween,
   standAt,
@@ -83,6 +83,8 @@ interface Saved {
   readonly x?: number;
   readonly snoozeUntil?: number;
   readonly hiddenUntil?: number;
+  /** He put her somewhere himself: she stays there instead of following his windows. */
+  readonly placed?: boolean;
 }
 
 const HIT_NEAR_MS = 80;
@@ -113,6 +115,7 @@ const readSaved = (file: string): Saved => {
       ...(num("x") === undefined ? {} : { x: num("x")! }),
       ...(num("snoozeUntil") === undefined ? {} : { snoozeUntil: num("snoozeUntil")! }),
       ...(num("hiddenUntil") === undefined ? {} : { hiddenUntil: num("hiddenUntil")! }),
+      ...(value["placed"] === true ? { placed: true } : {}),
     };
   } catch {
     return {};
@@ -360,7 +363,15 @@ export const createDesktopMascot = (input: {
       },
       { type: "separator" },
       ...(edges().some((e) => e.kind === "window")
-        ? [{ label: "Sit on the window you're in", click: () => standOn(edges()[0]!, x, 12) }]
+        ? [
+            {
+              label: "Sit on the window you're in",
+              click: () => {
+                save({ placed: false });
+                standOn(edges()[0]!, x, 12);
+              },
+            },
+          ]
         : []),
       {
         label: "Sit on the taskbar",
@@ -370,6 +381,7 @@ export const createDesktopMascot = (input: {
             x,
             Infinity,
           );
+          save({ placed: true });
           standOn(floor, x, 12);
         },
       },
@@ -379,7 +391,9 @@ export const createDesktopMascot = (input: {
               label: "Move to the other screen",
               click: () => {
                 const other = edges().find((e) => e.kind === "floor" && e.display !== here);
-                if (other !== undefined) standOn(other, (other.x1 + other.x2) / 2, 12);
+                if (other === undefined) return;
+                save({ placed: true });
+                standOn(other, (other.x1 + other.x2) / 2, 12);
               },
             },
           ]
@@ -400,7 +414,7 @@ export const createDesktopMascot = (input: {
     const next = landing(edges(), cx, b.y + b.height * FOOT_SHARE);
     edge = next;
     x = cx;
-    save({ x: cx });
+    save({ x: cx, placed: next.kind === "floor" });
     glide(standAt(next, cx, size()), 10, () => {
       call(`window.mascot.play("squish")`);
       cue(momentOf(phase) ?? "rest");
@@ -486,14 +500,17 @@ export const createDesktopMascot = (input: {
       fg = window;
       if (wasFull !== full) return apply();
       if (!moved || edge === null || dragging !== null || win === null || !win.isVisible()) return;
-      const follow = followWindow(edge, x, edges());
-      if (follow !== null) {
-        if (follow.edge !== edge) standOn(follow.edge, follow.x, 8);
-        return;
-      }
-      // Her window closed or another took its place: she drops to the edge below.
-      const b = win.getBounds();
-      standOn(landing(edges(), x, b.y + b.height * FOOT_SHARE + 1), x, 12);
+      if (snoozed()) return;
+      const next = followFocus({
+        current: edge,
+        x,
+        edges: edges(),
+        placed: saved.placed === true,
+        still: options.motion === "important",
+      });
+      if (next.how === "stay") return;
+      if (next.how === "hop") call(`window.mascot.play("hop")`);
+      standOn(next.edge, next.x, next.how === "ride" ? 8 : 14);
     },
     asleep: (on) => {
       if (on === sleeping) return;

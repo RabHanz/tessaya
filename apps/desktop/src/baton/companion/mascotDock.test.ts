@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   FOOT_SHARE,
   edgesFor,
+  followFocus,
   followWindow,
   landing,
   standAt,
@@ -128,5 +129,32 @@ describe("followWindow", () => {
 
   it("leaves her alone on a floor", () => {
     expect(followWindow(floor, 900, [floor])).toEqual({ edge: floor, x: 900 });
+  });
+});
+
+describe("followFocus", () => {
+  const floor = { kind: "floor" as const, x1: 0, x2: 1920, y: 1032, display: 1 };
+  const top = { kind: "window" as const, x1: 200, x2: 1100, y: 300, display: 1 };
+  const go = (
+    current: typeof floor | typeof top,
+    edges: ReadonlyArray<typeof floor | typeof top>,
+    placed = false,
+    still = false,
+  ) => followFocus({ current, x: 1500, edges, placed, still });
+
+  it("hops up onto the window he is in, unless he put her down himself or she keeps still", () => {
+    expect(go(floor, [top, floor])).toEqual({ edge: top, x: 1040, how: "hop" });
+    expect(go(floor, [top, floor], true).how).toBe("stay");
+    expect(go(floor, [top, floor], false, true).how).toBe("stay");
+  });
+
+  it("rides her window, and moves to the next one or drops when it goes", () => {
+    const moved = { ...top, x1: 260, x2: 1160 };
+    expect(go(top, [moved, floor])).toMatchObject({ edge: moved, how: "ride" });
+    expect(go(top, [top, floor]).how).toBe("stay");
+    expect(go(top, [floor])).toMatchObject({ edge: floor, how: "drop" });
+    const other = { ...top, x1: 100, x2: 700 };
+    expect(go(top, [other, floor])).toMatchObject({ edge: other, how: "hop" });
+    expect(go(top, [other, floor], false, true)).toMatchObject({ edge: floor, how: "drop" });
   });
 });

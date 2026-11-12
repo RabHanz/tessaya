@@ -8,11 +8,21 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  if (window.mascot) return;
  const raf = window.requestAnimationFrame.bind(window);
  let fps = 24, still = 24, lastT = 0;
+ // Every callback asked for before the next frame runs in that one frame, so two loops never double the rate.
+ let queued = [], timer = 0;
  window.requestAnimationFrame = (cb) => {
+  queued.push(cb);
+  if (timer) return 0;
+  const run = () => raf((t) => {
+   const early = 1000 / fps - (t - lastT);
+   if (early > 4) { timer = setTimeout(run, early); return; }
+   timer = 0; lastT = t; const due = queued; queued = []; for (const f of due) f(t);
+  });
   const wait = 1000 / fps - (performance.now() - lastT);
-  const go = () => raf((t) => { lastT = t; cb(t); });
-  return wait > 2 ? setTimeout(go, wait) : go();
+  timer = wait > 2 ? setTimeout(run, wait) : (run(), 1);
+  return 0;
  };
+ window.cancelAnimationFrame = () => { queued = []; };
  const svg = document.getElementById("c");
  let rig = null, persona = "", peak = 0.02, level = 0, speaking = false;
  const ipc = window.mascotIpc;

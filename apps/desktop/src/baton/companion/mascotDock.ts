@@ -141,6 +141,31 @@ export const followWindow = (
   return { edge: now, x: x + (now.x1 - current.x1) };
 };
 
+/**
+ * Where she goes when the window he is in changes. She rides along with her window, drops when it goes, and, unless he
+ * put her somewhere himself, hops up onto the window he moves to (never in Important only, where she keeps still).
+ */
+export const followFocus = (input: {
+  readonly current: Edge;
+  readonly x: number;
+  readonly edges: ReadonlyArray<Edge>;
+  /** He dragged her or chose a place from her menu. */
+  readonly placed: boolean;
+  readonly still: boolean;
+}): { readonly edge: Edge; readonly x: number; readonly how: "stay" | "ride" | "hop" | "drop" } => {
+  const top = input.edges.find((e) => e.kind === "window");
+  const hop = !input.placed && !input.still && top !== undefined;
+  const ride = followWindow(input.current, input.x, input.edges);
+  if (input.current.kind === "window" && ride !== null) {
+    const same = ride.edge.x1 === input.current.x1 && ride.edge.y === input.current.y;
+    return { ...ride, how: same ? "stay" : "ride" };
+  }
+  if (hop)
+    return { edge: top, x: Math.min(Math.max(input.x, top.x1 + 60), top.x2 - 60), how: "hop" };
+  if (input.current.kind === "floor") return { edge: input.current, x: input.x, how: "stay" };
+  return { edge: landing(input.edges, input.x, input.current.y + 1), x: input.x, how: "drop" };
+};
+
 /** Positions along an eased path from one point to another, one per frame. */
 export const pathBetween = (
   from: { readonly x: number; readonly y: number },
