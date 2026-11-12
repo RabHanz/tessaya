@@ -6,7 +6,7 @@
  */
 import { BatonHomeCallResult } from "@t3tools/baton-contracts";
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
-import type { VolumeTo } from "@t3tools/baton-shared/speakingVolume";
+import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -89,10 +89,13 @@ const volumeTo = (input: unknown): VolumeTo | null => {
 };
 
 /** On this room's R1, through the devices' own command path. */
-const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown) {
+const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, heardOn?: string) {
   const to = volumeTo(input);
   if (to === null)
     return { text: "Say up, down, max, default or a level.", isError: true } as ToolOutcome;
+  // The replay harness's pretend R1: the turn runs as on his, and his speaker is left alone.
+  if (heardOn?.startsWith("replay-") === true)
+    return { text: volumeLine(71, volumeAfter(71, to, 71)), isError: false } as ToolOutcome;
   const device = yield* Effect.serviceOption(HomeAssistantService).pipe(
     Effect.flatMap((h) => (h._tag === "None" ? Effect.succeed(null) : h.value.device)),
   );
@@ -152,7 +155,7 @@ const makeRoomTools = Effect.gen(function* () {
     McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer),
   ).pipe(Effect.provideService(SecureRandom.SecureRandom, random.value));
   const environmentId = yield* environment.value.getEnvironmentId;
-  const run = Effect.fn("R1Tools.run")(function* (name: string, input: unknown) {
+  const run = Effect.fn("R1Tools.run")(function* (name: string, input: unknown, device?: string) {
     if (name === LAPTOP.name) {
       const question =
         typeof input === "object" && input !== null && "question" in input
@@ -161,7 +164,7 @@ const makeRoomTools = Effect.gen(function* () {
       const told = yield* askLaptop(question);
       return { text: told.line, isError: !told.ok, status: told.status } as ToolOutcome;
     }
-    if (name === VOLUME.name) return yield* setRoomVolume(input);
+    if (name === VOLUME.name) return yield* setRoomVolume(input, device);
     if (!allowed.has(name))
       return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
     const scope: McpInvocationScope = {

@@ -50,7 +50,8 @@ export interface ToolOutcome {
  */
 export interface RoomToolSet {
   readonly specs: ReadonlyArray<RoomTool>;
-  readonly run: (name: string, input: unknown) => Effect.Effect<ToolOutcome>;
+  /** `device`: the R1 that heard the turn, when the loop said (a replay's pretend R1 has no speaker to change). */
+  readonly run: (name: string, input: unknown, device?: string) => Effect.Effect<ToolOutcome>;
 }
 export const RoomTools = Context.Reference<RoomToolSet | null>("t3/home/RoomTools", {
   defaultValue: () => null,
