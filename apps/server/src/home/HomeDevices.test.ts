@@ -406,3 +406,24 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect("turns the R1's screen as asked and shows what it reports back", () => {
+  const { sent, layer } = setup();
+  return Effect.gen(function* () {
+    const devices = yield* HomeDevices.HomeDevices;
+    yield* devices.tick;
+    yield* devices.receive(`${root}/state/online`, "1");
+    sent.length = 0;
+    for (const set of ["auto", "normal", "flipped", "calibrate"] as const)
+      yield* devices.command(ID, { op: "display", set }, me);
+    assert.deepStrictEqual(
+      sent.map((s) => s.payload),
+      [{ mode: "auto" }, { deg: 0 }, { deg: 180 }, { mode: "calibrate" }],
+    );
+    yield* devices.receive(`${root}/state/display`, '{"rotate":180,"mode":"auto"}');
+    const view = () => devices.overview.pipe(Effect.map((o) => o.devices[0]!.display));
+    assert.deepStrictEqual(yield* view(), { rotate: 180, mode: "auto", note: null });
+    yield* devices.receive(`${root}/state/display`, '{"ok":false,"reason":"not standing"}');
+    assert.deepStrictEqual(yield* view(), { rotate: 180, mode: "auto", note: "not standing" });
+  }).pipe(Effect.provide(layer));
+});

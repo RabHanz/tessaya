@@ -16,6 +16,7 @@ import {
   type R1DeviceDo,
   type R1KeyBinding,
   type R1KeySlot,
+  type DeviceDisplaySet,
   type DeviceSpeaker,
   type DeviceSpeakerAction,
   type DeviceSpeakerOutput,
@@ -62,6 +63,7 @@ export type DeviceCommand =
   | { readonly op: "mute"; readonly muted: boolean }
   | { readonly op: "earcons"; readonly on: boolean }
   | { readonly op: "keyBind"; readonly slot: R1KeySlot; readonly bind: R1KeyBinding }
+  | { readonly op: "display"; readonly set: DeviceDisplaySet }
   | { readonly op: "transport"; readonly transport: DeviceTransport }
   | { readonly op: "transportConfirm" }
   | { readonly op: "transportRevert" }
@@ -119,6 +121,7 @@ export interface Heard {
   ota: { phase: string; line: string } | null;
   camera: string | null;
   lastTag: { uid: string; at: number } | null;
+  display: DeviceView["display"];
   /** The R1 answered the last `cmd/key/bind` with `{"ok":false}`. */
   keyRefused: boolean;
   /** Set once the firmware's state/caps says it drives a Bluetooth speaker; the speaker controls stay off until then. */
@@ -146,6 +149,7 @@ const blank = (): Heard => ({
   camera: null,
   lastTag: null,
   keyRefused: false,
+  display: { rotate: null, mode: null, note: null },
   speaker: null,
   samples: {},
   log: [],
@@ -240,6 +244,23 @@ export const applyMessage = (
     case "state/camera":
       d.camera = str(body?.["ev"]) ?? d.camera;
       break;
+    case "state/display": {
+      if (body?.["ok"] === false) {
+        d.display = {
+          ...d.display,
+          note: recordText(str(body["reason"]) ?? "The R1 refused that.", 120),
+        };
+        break;
+      }
+      const rotate = num(body?.["rotate"]);
+      const mode = String(body?.["mode"] ?? "");
+      d.display = {
+        rotate: rotate === 0 || rotate === 180 ? rotate : d.display.rotate,
+        mode: mode === "auto" || mode === "0" || mode === "180" ? mode : d.display.mode,
+        note: null,
+      };
+      break;
+    }
     case "event/announce":
     case "event/wake/boot":
       d.firmware = str(body?.["fw_ver"]) ?? str(body?.["fw"]) ?? d.firmware;
@@ -753,6 +774,19 @@ const make = Effect.gen(function* () {
         yield* publish(id, "cmd/key/bind", { key, act, do: device });
         return done("Saved. The R1 confirms it in a moment.");
       }
+      case "display":
+        yield* publish(
+          id,
+          "cmd/display/rotate",
+          c.set === "normal" ? { deg: 0 } : c.set === "flipped" ? { deg: 180 } : { mode: c.set },
+        );
+        return done(
+          c.set === "calibrate"
+            ? "The way it stands now is upright."
+            : c.set === "auto"
+              ? "The screen turns with the R1."
+              : `The screen stays ${c.set === "normal" ? "upright" : "upside down"}.`,
+        );
       case "transport":
         if (c.transport === "inhouse") {
           trials.delete(id);
@@ -917,6 +951,7 @@ const make = Effect.gen(function* () {
           .map((slot) => [slot, keyBindingOf(saved, id, slot)]),
       ),
       keyNote: d.keyRefused ? "The R1 refused the last button change." : null,
+      display: d.display,
       transport: DEVICE_TRANSPORTS.includes(saved.transport[id]!)
         ? saved.transport[id]!
         : "inhouse",

@@ -14,11 +14,14 @@ import {
   type R1Mood,
 } from "@t3tools/baton-contracts";
 import {
+  DISPLAY_CHOICES,
   EYE_SCREENS,
   KEY_ROWS,
   MOOD_EYES,
   clock,
   deviceStatusLine,
+  displayChoiceOf,
+  displayLine,
   keyBindingFrom,
   keyBindingLine,
   keyChoiceOf,
@@ -400,6 +403,23 @@ function DeviceControls({
             label={d.earcons ? "Turn off" : "Turn on"}
             disabled={off}
             onPress={() => void run("act", "earcons", { id, on: !d.earcons })}
+          />
+        </Row>
+        <Row divider title="Screen" description={displayLine(d)}>
+          {DISPLAY_CHOICES.map(([value, label]) => (
+            <ControlPill
+              key={value}
+              variant={value === displayChoiceOf(d) ? "primary" : "pill"}
+              label={label}
+              disabled={off}
+              onPress={() => void run("act", "display", { id, set: value })}
+            />
+          ))}
+          <ControlPill
+            variant="pill"
+            label="Set upright"
+            disabled={off}
+            onPress={() => void run("act", "display", { id, set: "calibrate" })}
           />
         </Row>
       </SettingsSection>

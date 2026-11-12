@@ -79,4 +79,7 @@ or S3 for under 3 seconds. Each can do one of the R1's own actions or one of Tes
 the new voice), tell you what's next, toggle a lamp or run a scene (risky ones still ask first), mute her, continue or
 stop a thread, or ask her something you write. A double press of S2 switches to the next persona until you change it.
 
+**Screen** (firmware 3.32). Auto turns the screen with the R1; Normal or Upside down pins it. If Auto has it the
+wrong way up, stand the R1 the way you use it and press **Set upright**.
+
 Firmware updates need new firmware and come later.

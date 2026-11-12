@@ -15,11 +15,14 @@ import {
   type R1Mood,
 } from "@t3tools/baton-contracts";
 import {
+  DISPLAY_CHOICES,
   EYE_SCREENS,
   KEY_ROWS,
   MOOD_EYES,
   clock,
   deviceStatusLine,
+  displayChoiceOf,
+  displayLine,
   keyBindingFrom,
   keyBindingLine,
   keyChoiceOf,
@@ -365,6 +368,35 @@ function DeviceControls({
             />
           }
         />
+        <SettingsRow title="Screen" description={displayLine(d)}>
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Select
+              value={displayChoiceOf(d)}
+              onValueChange={(set) => void run("act", "display", { id, set })}
+            >
+              <SelectTrigger size="sm" aria-label="Screen rotation" disabled={off}>
+                <SelectValue>
+                  {DISPLAY_CHOICES.find(([v]) => v === displayChoiceOf(d))?.[1]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                {DISPLAY_CHOICES.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={off}
+              onClick={() => void run("act", "display", { id, set: "calibrate" })}
+            >
+              Set upright
+            </Button>
+          </div>
+        </SettingsRow>
       </SettingsSection>
 
       <SettingsSection title={`Voice · ${id}`}>
