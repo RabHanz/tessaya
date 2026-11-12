@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index b8ab00673db121554d82b6d31299b611553560b7..127b5a2d33224281004a0430a844aed474e3c97f 100644
+index d93bf076a78e045607568bef44c11995d5f22cb8..7ded2963cf6b13aeefb06c0ac71fb0c8d90b50f8 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
 @@ -92,6 +92,8 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
@@ -11,7 +11,7 @@ index b8ab00673db121554d82b6d31299b611553560b7..127b5a2d33224281004a0430a844aed4
  import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
  import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
  import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
-@@ -207,6 +209,16 @@ const SETTINGS_SCREENS = {
+@@ -208,6 +210,16 @@ const SETTINGS_SCREENS = {
      linking: "settings/provider-accounts",
      options: settingsPage("Providers"),
    }),
@@ -29,10 +29,10 @@ index b8ab00673db121554d82b6d31299b611553560b7..127b5a2d33224281004a0430a844aed4
      screen: SettingsEnvironmentMaintenanceRouteScreen,
      linking: "settings/maintenance",
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index a0e24692e1e89514c92c762cda1471e1221e57d5..cc1f244b8f3a4a98abc1fb5f6d2a5a6428372f88 100644
+index 50ad81383addc75250b37025d1bfb43ce05a9da5..be2236ed95ca5ad21192a10f7676ea8ca2b693c3 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-@@ -236,8 +236,19 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -266,8 +266,19 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
@@ -52,20 +52,34 @@ index a0e24692e1e89514c92c762cda1471e1221e57d5..cc1f244b8f3a4a98abc1fb5f6d2a5a64
 +    },
      {
        rows: [
-         page("SettingsOrganization", "gearshape", "General"),
-@@ -247,7 +258,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
-           ? [page("SettingsNavigation", "line.3.horizontal", "Navigation tabs")]
+         page("SettingsOrganization", "gearshape", gt("General")),
+@@ -282,7 +293,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
+           ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
            : []),
-         ...(Platform.OS === "ios" ? [page("SettingsKeyboard", "keyboard", "Keyboard")] : []),
--        page("SettingsVoice", "mic", "Voice"),
+         page("SettingsKeyboard", "keyboard", gt("Keyboard")),
+-        page("SettingsVoice", "mic", gt("Voice")),
        ],
      },
      {
+diff --git a/apps/mobile/src/features/settings/components/SettingsRow.tsx b/apps/mobile/src/features/settings/components/SettingsRow.tsx
+index ce61dec7cfe69d5100b15fb3ac4766fec44e2e82..b773f4084130aeb25860b70d5e1e9cbcbbc66709 100644
+--- a/apps/mobile/src/features/settings/components/SettingsRow.tsx
++++ b/apps/mobile/src/features/settings/components/SettingsRow.tsx
+@@ -37,7 +37,8 @@ export function SettingsRow(props: {
+   const onPress = () => {
+     if (props.target) {
+       if (inList) openSettings(navigation, props.target);
+-      else navigation.navigate(props.target);
++      // Tessaya's two pages take the targets past 25, where TypeScript stops checking navigate per member.
++      else navigation.navigate(props.target as never);
+     } else if (props.fullScreenTarget) {
+       navigation.navigate(props.fullScreenTarget);
+     } else {
 diff --git a/apps/mobile/src/features/settings/components/settings-page-targets.ts b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-index eadd9c46fff7bf22a5b28a6346c9943c21cbcebc..5ce5011b0e099c912d19e09953d835a64887072f 100644
+index a92922a66d1e3525b89f0e68de7da337f6770ce2..8167d29bd5cd4c2a86d336d269c34824d4d84e66 100644
 --- a/apps/mobile/src/features/settings/components/settings-page-targets.ts
 +++ b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-@@ -14,6 +14,8 @@ export const SETTINGS_PAGE_TARGETS = [
+@@ -15,6 +15,8 @@ export const SETTINGS_PAGE_TARGETS = [
    "SettingsLabs",
    "SettingsEnvironmentMaintenance",
    "SettingsProviderAccounts",

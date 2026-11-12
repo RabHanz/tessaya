@@ -4,10 +4,10 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 3c5f499a1cb3c2f90be617821076f69fa6633a73..ca9ef977a83ed06a459c4a77215c5b86bb54f667 100644
+index d515819dd4cf75cbe88baa08ebaf7267a1b425f3..09ab94b44d728074dfd2cbc3667cb70c679b7eb5 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -38,6 +38,8 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
+@@ -40,6 +40,8 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
  import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
  import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
  import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -16,7 +16,7 @@ index 3c5f499a1cb3c2f90be617821076f69fa6633a73..ca9ef977a83ed06a459c4a77215c5b86
  
  const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
  const MAX_TCP_PORT = 65_535;
-@@ -185,6 +187,10 @@ const bootstrap = Effect.gen(function* () {
+@@ -187,6 +189,10 @@ const bootstrap = Effect.gen(function* () {
      clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
    });
    yield* installDesktopIpcHandlers();
@@ -27,7 +27,7 @@ index 3c5f499a1cb3c2f90be617821076f69fa6633a73..ca9ef977a83ed06a459c4a77215c5b86
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
-@@ -195,7 +201,7 @@ const bootstrap = Effect.gen(function* () {
+@@ -209,7 +215,7 @@ const bootstrap = Effect.gen(function* () {
  
    if (!settings.localEnvironmentEnabled) {
      yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");
@@ -36,7 +36,7 @@ index 3c5f499a1cb3c2f90be617821076f69fa6633a73..ca9ef977a83ed06a459c4a77215c5b86
        yield* desktopWindow.createMainIfBackendReady;
      }
      return;
-@@ -257,7 +263,8 @@ const bootstrap = Effect.gen(function* () {
+@@ -287,7 +293,8 @@ const bootstrap = Effect.gen(function* () {
        !environment.isDevelopment &&
        !settings.wslOnly &&
        Option.isSome(config) &&
@@ -72,10 +72,10 @@ index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc4
            }
          }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
 diff --git a/apps/desktop/src/backend/DesktopBackendConfiguration.ts b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..4f4c652794e5c14b9a2d40914e6a8a51bb1da04e 100644
+index e7b8405f8124df01ba5888dd68a033a1bf36f5fe..0bd26f46600e6c54c1f7be44bb3606ce15a30a4f 100644
 --- a/apps/desktop/src/backend/DesktopBackendConfiguration.ts
 +++ b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-@@ -535,6 +535,21 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
+@@ -539,6 +539,21 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
          ...backendChildEnvPatch(),
          ELECTRON_RUN_AS_NODE: "1",
          T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
@@ -98,10 +98,10 @@ index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..4f4c652794e5c14b9a2d40914e6a8a51
        },
        extendEnv: true,
 diff --git a/apps/desktop/src/backend/DesktopBackendManager.test.ts b/apps/desktop/src/backend/DesktopBackendManager.test.ts
-index 2741daa1ddd074c8b4693ae9dae143bb04b85c05..eb123ca0187d8b6409da4ce91dde9971a81d05bb 100644
+index 3126d12a2e938d7ded94da9a28d1e0e220770597..44af6c188a1f1a25363a8c638f2304332e54f567 100644
 --- a/apps/desktop/src/backend/DesktopBackendManager.test.ts
 +++ b/apps/desktop/src/backend/DesktopBackendManager.test.ts
-@@ -721,6 +721,57 @@ describe("DesktopBackendManager", () => {
+@@ -722,6 +722,57 @@ describe("DesktopBackendManager", () => {
      ),
    );
  
@@ -156,11 +156,11 @@ index 2741daa1ddd074c8b4693ae9dae143bb04b85c05..eb123ca0187d8b6409da4ce91dde9971
 +    ),
 +  );
 +
-   it.effect("the quit stop deadline waits for a backend that only exits at the force kill", () =>
+   it.effect("the quit stop keeps waiting for a backend that outlasts its deadline", () =>
      Effect.scoped(
        Effect.gen(function* () {
 diff --git a/apps/desktop/src/backend/DesktopBackendManager.ts b/apps/desktop/src/backend/DesktopBackendManager.ts
-index 98de41e2471551e19e909cc8f5048cbc39ad8116..da00f2c4704578452f32fd50120d385753aed9af 100644
+index d24b2f52f295c0e45c444eeee3d6767e53255463..45f0f3c2cfa6637eba0e658d7490790d53c0aed2 100644
 --- a/apps/desktop/src/backend/DesktopBackendManager.ts
 +++ b/apps/desktop/src/backend/DesktopBackendManager.ts
 @@ -31,6 +31,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
@@ -171,7 +171,7 @@ index 98de41e2471551e19e909cc8f5048cbc39ad8116..da00f2c4704578452f32fd50120d3857
  
  const INITIAL_RESTART_DELAY = Duration.millis(500);
  const MAX_RESTART_DELAY = Duration.seconds(10);
-@@ -573,7 +574,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
+@@ -586,7 +587,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
      ),
    );
  
@@ -193,10 +193,10 @@ index 98de41e2471551e19e909cc8f5048cbc39ad8116..da00f2c4704578452f32fd50120d3857
    const exit = yield* handle.exitCode.pipe(
      Effect.withSpan("desktop.backendProcess.awaitExit"),
 diff --git a/apps/desktop/src/electron/ElectronWindow.test.ts b/apps/desktop/src/electron/ElectronWindow.test.ts
-index 478d49012901454076dd97348e159f76c7ee1113..ee705da8a37c612b89ba56c7c05f10c695e7ddd4 100644
+index 9eb41ed4e240237cbb916230f1a91f6edc42f76d..18e4ddb2cf5dcf36e6f2dba9a747a0ffe27bc212 100644
 --- a/apps/desktop/src/electron/ElectronWindow.test.ts
 +++ b/apps/desktop/src/electron/ElectronWindow.test.ts
-@@ -56,6 +56,7 @@ vi.mock("electron", () => ({
+@@ -65,6 +65,7 @@ vi.mock("electron", () => ({
  }));
  
  import * as ElectronWindow from "./ElectronWindow.ts";
@@ -204,7 +204,7 @@ index 478d49012901454076dd97348e159f76c7ee1113..ee705da8a37c612b89ba56c7c05f10c6
  
  const layerTestFor = (platform: NodeJS.Platform) =>
    ElectronWindow.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform)));
-@@ -163,6 +164,18 @@ describe("ElectronWindow", () => {
+@@ -179,6 +180,18 @@ describe("ElectronWindow", () => {
      }).pipe(Effect.provide(layerTest)),
    );
  
@@ -224,7 +224,7 @@ index 478d49012901454076dd97348e159f76c7ee1113..ee705da8a37c612b89ba56c7c05f10c6
      Effect.gen(function* () {
        const electronWindow = yield* ElectronWindow.ElectronWindow;
 diff --git a/apps/desktop/src/electron/ElectronWindow.ts b/apps/desktop/src/electron/ElectronWindow.ts
-index 985f9c00775a0a37ae1027d3c75d158622beeb85..943e2167c147c5fb0d6124ad7203315125b284a3 100644
+index 15a117a52b050a82d8834978f3e7077b0c5025ec..c2ff03a701d216fdc423dca5ac5ed2f3e5c206b5 100644
 --- a/apps/desktop/src/electron/ElectronWindow.ts
 +++ b/apps/desktop/src/electron/ElectronWindow.ts
 @@ -20,6 +20,7 @@ import {
@@ -235,7 +235,7 @@ index 985f9c00775a0a37ae1027d3c75d158622beeb85..943e2167c147c5fb0d6124ad72033151
  
  function windowsForegroundFocusTarget(window: Electron.BrowserWindow) {
    return {
-@@ -185,7 +186,7 @@ export const make = Effect.gen(function* () {
+@@ -186,7 +187,7 @@ export const make = Effect.gen(function* () {
      }
  
      const first = Option.fromNullishOr(
@@ -314,10 +314,10 @@ index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca
    };
  }
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 7c44ec51337854e989c7506abcea8ec2eb4d0164..f9f524f8b4b71a2d8366e87bad31ba305f63c1f2 100644
+index a538b821ff77c2502c22439b40bfa7b67d94743b..c048952b538439a2ec3e10ce0a5a1effb8517411 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
-@@ -12,6 +12,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+@@ -13,6 +13,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
  
  import * as IpcChannels from "./ipc/channels.ts";
  import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
@@ -325,7 +325,7 @@ index 7c44ec51337854e989c7506abcea8ec2eb4d0164..f9f524f8b4b71a2d8366e87bad31ba30
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
-@@ -458,3 +459,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -519,3 +520,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);
@@ -362,7 +362,7 @@ index 24b233b465d53958d18c910d28141d130c1a9a8f..22475b41be342dd32670172cb8e84cd2
  
    pool.close();
 diff --git a/apps/desktop/src/snapShot/RegionSnapShot.ts b/apps/desktop/src/snapShot/RegionSnapShot.ts
-index c640198524af0d22ed57fa96a66157ab2fce2dcb..5ba58ebdf158683a74d6ba14addf6cd74ad5484f 100644
+index d354f41acf3f3d2bacbf29335820c5bd7d96285c..ed294b0407a54b1bbb81e9366bf2188e293c995b 100644
 --- a/apps/desktop/src/snapShot/RegionSnapShot.ts
 +++ b/apps/desktop/src/snapShot/RegionSnapShot.ts
 @@ -7,6 +7,7 @@ import * as Electron from "electron";
@@ -515,7 +515,7 @@ index 542e3f13c08dc6a5df34de1737130db0b7313c16..bfc84d21276db4636bfe44fab332c3d3
        warm();
        active.add(workerProcess);
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 4f8949823e354618ba1eaf12694de9561cac99f7..e74d257e36fc4ab5e8f16885b58d1cb77544c830 100644
+index 497b315ef5225b7e3c0cdad7a5ea9ca7ddd02034..bcb9a7aea2db032c5705ee10e547a7ebffd9701c 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -17,6 +17,7 @@ import { vi } from "vite-plus/test";
@@ -526,7 +526,7 @@ index 4f8949823e354618ba1eaf12694de9561cac99f7..e74d257e36fc4ab5e8f16885b58d1cb7
    session: {
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
-@@ -477,6 +478,12 @@ describe("DesktopWindow", () => {
+@@ -487,6 +488,12 @@ describe("DesktopWindow", () => {
        DesktopWindow.resolveInitialMainWindowBounds(persistedBounds, [displays[0]!]),
        DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE,
      );
@@ -538,9 +538,26 @@ index 4f8949823e354618ba1eaf12694de9561cac99f7..e74d257e36fc4ab5e8f16885b58d1cb7
 +    );
    });
  
-   it("rejects renderer navigations whose origin only serializes as null", () => {
+   it("restores a window saved 1px past a display edge, and nothing further out", () => {
+@@ -500,11 +507,12 @@ describe("DesktopWindow", () => {
+       DesktopWindow.resolveInitialMainWindowBounds(snappedBounds, displays),
+       snappedBounds,
+     );
++    // Tessaya allows Windows' 16px invisible resize border, so "further out" starts past it.
+     for (const bounds of [
+-      { x: 1922, y: 30, width: 1280, height: 945 },
+-      { x: 1918, y: 30, width: 1280, height: 945 },
+-      { x: 1921, y: -2, width: 1279, height: 945 },
+-      { x: 1920, y: 976, width: 1280, height: 946 },
++      { x: 1937, y: 30, width: 1280, height: 945 },
++      { x: 1903, y: 30, width: 1280, height: 945 },
++      { x: 1921, y: -17, width: 1279, height: 945 },
++      { x: 1920, y: 992, width: 1280, height: 945 },
+     ]) {
+       assert.deepEqual(
+         DesktopWindow.resolveInitialMainWindowBounds(bounds, displays),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d7630b37418d 100644
+index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..d3db11913ddb9507e7cb7acd9865a5aca9036cc3 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
 @@ -13,6 +13,9 @@ import * as Electron from "electron";
@@ -551,33 +568,20 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
 +import { setOverlaySafely, syncsWithT3Appearance } from "../baton/lastAppWindow.ts";
 +import { takeMainHold } from "../baton/launchWindows.ts";
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+ import * as DesktopPrimaryPaste from "../app/DesktopPrimaryPaste.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
- import * as DesktopState from "../app/DesktopState.ts";
-@@ -148,15 +151,19 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
+@@ -167,8 +170,8 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
  
  type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
  
-+// Windows counts a window's invisible resize border, so a snapped window overhangs the display.
-+const WINDOW_FRAME_OVERHANG = 16;
-+
+-// A window snapped to a display edge can be reported 1px past that edge.
+-const SAVED_BOUNDS_EDGE_TOLERANCE_PX = 1;
++// A snapped window can overhang its display: Windows counts the window's invisible resize border.
++const SAVED_BOUNDS_EDGE_TOLERANCE_PX = 16;
+ 
  function windowFitsWithinDisplay(
    windowBounds: DesktopAppSettings.DesktopWindowBounds,
-   displayBounds: DisplayBounds,
- ): boolean {
-+  const slack = WINDOW_FRAME_OVERHANG;
-   return (
--    windowBounds.x >= displayBounds.x &&
--    windowBounds.y >= displayBounds.y &&
--    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width &&
--    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height
-+    windowBounds.x >= displayBounds.x - slack &&
-+    windowBounds.y >= displayBounds.y - slack &&
-+    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width + slack &&
-+    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height + slack
-   );
- }
- 
-@@ -272,14 +279,14 @@ function syncWindowAppearance(
+@@ -347,14 +350,14 @@ function syncWindowAppearance(
    platform: NodeJS.Platform,
  ): Effect.Effect<void> {
    return Effect.sync(() => {
@@ -594,7 +598,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
      }
    });
  }
-@@ -397,6 +404,17 @@ export const make = Effect.gen(function* () {
+@@ -473,6 +476,18 @@ export const make = Effect.gen(function* () {
        yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
      }
      if (yield* Ref.get(desktopState.quitting)) return Option.none();
@@ -607,12 +611,13 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
 +      sandbox: true,
 +      webviewTag: true,
 +      // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
++      // The app's own fullscreen elements reach OS fullscreen through syncHtmlFullscreen.
 +      disableHtmlFullscreenWindowResize: true,
 +    };
      const window = yield* electronWindow.create({
        ...initialBounds,
        minWidth: DesktopAppSettings.MIN_MAIN_WINDOW_SIZE.width,
-@@ -408,17 +426,7 @@ export const make = Effect.gen(function* () {
+@@ -484,18 +499,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
        ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
@@ -625,13 +630,14 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
 -        sandbox: true,
 -        webviewTag: true,
 -        // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
+-        // The app's own fullscreen elements reach OS fullscreen through syncHtmlFullscreen.
 -        disableHtmlFullscreenWindowResize: true,
 -      },
 +      webPreferences: rendererPreferences,
      });
      if (yield* Ref.get(desktopState.quitting)) {
        yield* electronWindow.destroyAll;
-@@ -522,26 +530,6 @@ export const make = Effect.gen(function* () {
+@@ -617,32 +621,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -654,11 +660,17 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
 -          PASSKEY_BRIDGE_ARGUMENT,
 -        ];
 -      }
+-      if (!primaryPaste.enabled) {
+-        webPreferences.additionalArguments = [
+-          ...(webPreferences.additionalArguments ?? []),
+-          PRIMARY_PASTE_DISABLED_ARGUMENT,
+-        ];
+-      }
 -    });
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -619,33 +607,65 @@ export const make = Effect.gen(function* () {
+@@ -733,33 +711,71 @@ export const make = Effect.gen(function* () {
          installContextMenu(popup, popup.webContents);
        });
      };
@@ -706,6 +718,12 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
 +            PASSKEY_BRIDGE_ARGUMENT,
 +          ];
 +        }
++        if (!primaryPaste.enabled) {
++          webPreferences.additionalArguments = [
++            ...(webPreferences.additionalArguments ?? []),
++            PRIMARY_PASTE_DISABLED_ARGUMENT,
++          ];
++        }
 +      });
 +      contents.on("did-attach-webview", (_event, guest) => {
 +        installContextMenu(owner, guest);
@@ -750,7 +768,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
  
      const quitShortcutHandler = makeQuitShortcutHandler({
        platform: environment.platform,
-@@ -1010,6 +1030,7 @@ export const make = Effect.gen(function* () {
+@@ -1136,6 +1152,7 @@ export const make = Effect.gen(function* () {
      }),
      activate: Effect.gen(function* () {
        if (yield* Ref.get(desktopState.quitting)) return;
@@ -758,7 +776,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..967f37a7a7a9a9fafb99b5a83731d763
        const existingWindow = yield* currentMainWindow;
        if (Option.isSome(existingWindow)) {
          yield* revealMain(existingWindow.value);
-@@ -1035,7 +1056,8 @@ export const make = Effect.gen(function* () {
+@@ -1161,7 +1178,8 @@ export const make = Effect.gen(function* () {
        backendHasStarted = true;
        yield* Ref.set(backendReadyRef, true);
        yield* logWindowInfo("backend ready", { source: "http", url: httpBaseUrl.href });

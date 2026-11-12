@@ -45,7 +45,7 @@ index 7e1ae602f979db00d082c795aee4973f39cbd30f..dff188ea1988f4db03047d56f9268d9a
      const actions: string[] = [];
      return Effect.gen(function* () {
 diff --git a/apps/web/index.html b/apps/web/index.html
-index a7a5e7450b3debd171a2d4334a9df4b81edbcbfb..226fa2661e6de763ae90ac05372da80817b593ee 100644
+index 1a8bc02e19c9df28efecf541427a03ef657e7fd4..c61883f90fdab325b58af080ee47d72c1ad4bc24 100644
 --- a/apps/web/index.html
 +++ b/apps/web/index.html
 @@ -8,6 +8,7 @@
@@ -56,7 +56,7 @@ index a7a5e7450b3debd171a2d4334a9df4b81edbcbfb..226fa2661e6de763ae90ac05372da808
      <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
      <link rel="manifest" href="/manifest.webmanifest" />
      <script>
-@@ -673,9 +674,7 @@
+@@ -680,9 +681,7 @@
    <body>
      <div id="root">
        <div id="boot-shell">
@@ -8052,7 +8052,7 @@ index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff2
    ]
  }
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc44911852 100644
+index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..1249a90955f6f3f64af3e9694f072c4cbc1f72ad 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -20,6 +20,8 @@ import {
@@ -8064,7 +8064,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { toastManager } from "../ui/toast";
-@@ -73,7 +75,7 @@ const TITLE_MENU_OPEN_DELAY_MS = 500;
+@@ -71,7 +73,7 @@ function resolveRenameCommit(input: {
  export const ChatHeader = memo(function ChatHeader({
    activeThreadEnvironmentId,
    activeThreadId,
@@ -8073,7 +8073,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc
    activeThreadLinkOrigin,
    isServerThread,
    activeProject,
-@@ -84,6 +86,11 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -82,6 +84,11 @@ export const ChatHeader = memo(function ChatHeader({
    onOpenProjectSettings,
    onFindInThread,
  }: ChatHeaderProps) {
@@ -8085,7 +8085,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc
    const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
    const activeProjectCwd = activeProject?.workspaceRoot ?? null;
    const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
-@@ -169,7 +176,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -167,7 +174,7 @@ export const ChatHeader = memo(function ChatHeader({
      setRenaming({
        environmentId: activeThreadEnvironmentId,
        threadId: activeThreadId,
@@ -8094,7 +8094,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc
      });
    };
    const commitRename = (title: string) => {
-@@ -177,7 +184,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -175,7 +182,7 @@ export const ChatHeader = memo(function ChatHeader({
      if (!readEnvironmentScope(activeThreadEnvironmentId, AuthOrchestrationOperateScope)) return;
      const resolution = resolveRenameCommit({
        title,
@@ -8103,7 +8103,7 @@ index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..5d659a51a62551bb87ba0b6c9da08ccc
      });
      if (resolution.action === "reject-empty") {
        toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
-@@ -430,6 +437,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -393,6 +400,7 @@ export const ChatHeader = memo(function ChatHeader({
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
@@ -8223,10 +8223,10 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..618f18cea064815d2ca010f3e7450514
            })}
          </div>
 diff --git a/apps/web/src/components/chat/ProviderInstanceIcon.tsx b/apps/web/src/components/chat/ProviderInstanceIcon.tsx
-index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf078167b235e1 100644
+index e7e3253d2c4fe11234153583d50508a6bccfcd2b..a1b6ff017967310d49236cec21902beefa4d44a9 100644
 --- a/apps/web/src/components/chat/ProviderInstanceIcon.tsx
 +++ b/apps/web/src/components/chat/ProviderInstanceIcon.tsx
-@@ -65,6 +65,8 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
+@@ -94,6 +94,8 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
    acpRegistryIconUrl?: string | undefined;
    showBadge?: boolean;
    badgeContent?: "initials" | "none";
@@ -8235,7 +8235,7 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
    size?: "default" | "compact";
    className?: string;
    iconClassName?: string;
-@@ -132,7 +134,9 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
+@@ -186,7 +188,9 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
            style={{ borderColor: indicatorBackground }}
            aria-hidden
          >
@@ -8247,10 +8247,10 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
        ) : null}
      </span>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f20b7d47a 100644
+index 1813eba8056567a645ee922b57d85d2bef5f24c7..c58c50d1546ceaf0d0e55a06f64e156af5e31d5a 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -109,6 +109,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
+@@ -112,6 +112,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
  import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
@@ -8259,7 +8259,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
  import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
  import { InlineButton } from "../ui/button";
-@@ -533,6 +535,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
+@@ -543,6 +545,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
  
  type SidebarThreadRowProps = {
    thread: SidebarThreadSummary;
@@ -8268,7 +8268,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f
    // "folder" is a one-line row inside a boring sidebar project folder;
    // "folder-multiline" adds the card's branch and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
-@@ -1044,7 +1048,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1064,7 +1068,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        )}
        dir={textDirection(thread.title)}
      >
@@ -8281,7 +8281,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f
      </span>
    );
    const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
-@@ -1175,6 +1183,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1195,6 +1203,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          aria-hidden
          className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
        >
@@ -8289,7 +8289,7 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f
          {remoteMachineIcon}
          <SidebarProviderStack
            thread={thread}
-@@ -1185,6 +1194,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1205,6 +1214,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    );
    const titleLineIcons = metaLineEmpty ? (
      <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
@@ -8298,10 +8298,10 @@ index 41cb733daff152035d24c8e88f39e72b2b711816..d69b6584ddaf3eec2892ca8fbc86192f
        <SidebarProviderStack
          thread={thread}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index 1207b5017100d7300d7a161e676531d145f45a75..cf21c658da01125a5dc56283ae1519ff32e3e2bd 100644
+index c2e15c4abab376551d6133dd6e0272265d2cc0d5..7a7c5ba52bb45d861de0ffb8e495301132cd1008 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
-@@ -26,6 +26,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
+@@ -27,6 +27,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
  import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
  import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
  import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
@@ -8310,7 +8310,7 @@ index 1207b5017100d7300d7a161e676531d145f45a75..cf21c658da01125a5dc56283ae1519ff
  import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
  import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
  import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
-@@ -149,6 +151,8 @@ function RootRouteBranch() {
+@@ -148,6 +150,8 @@ function RootRouteBranch() {
    // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
    const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
    if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
@@ -8319,24 +8319,24 @@ index 1207b5017100d7300d7a161e676531d145f45a75..cf21c658da01125a5dc56283ae1519ff
    const hostedPromptLinkLanding = useHostedPromptLinkLanding(
      authGateState.status === "hosted-static",
    );
-@@ -181,6 +185,8 @@ function RootRouteBranch() {
+@@ -172,6 +176,8 @@ function RootRouteBranch() {
    if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
      return <Outlet />;
    }
 +  // Baton (0008-web-panes.patch): Tessaya's window shows these pages alone, without T3's sidebar.
 +  if (pathname.startsWith("/tessaya/")) return <Outlet />;
  
-   const appShell = (
-     <CommandPalette>
-@@ -205,7 +211,7 @@ function RootRouteBranch() {
-         <RelayClientInstallDialog />
-         <ConnectOnboardingDialog />
-         <SshPasswordPromptDialog />
--        <SnapShotCoordinator />
-+        {isMainWindow() ? <SnapShotCoordinator /> : null}
-         <ReopenClosedViewShortcut />
-         <ConfirmDialogHost />
-         <CustomSnoozeDialogHost />
+   // Settings can reopen /welcome mid-session, so it mounts everything the app does except the
+   // first-run gate and the event router, whose first navigation would leave the page.
+@@ -185,7 +191,7 @@ function RootRouteBranch() {
+       <RelayClientInstallDialog />
+       <ConnectOnboardingDialog />
+       <SshPasswordPromptDialog />
+-      <SnapShotCoordinator />
++      {isMainWindow() ? <SnapShotCoordinator /> : null}
+       <ReopenClosedViewShortcut />
+       <ConfirmDialogHost />
+       <CustomSnoozeDialogHost />
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 index 4ac36acedf761847ea5db4db237120aaa0da9939..6000541e431ca46a1dbcb5774da2c9511c1f2583 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts

@@ -220,7 +220,12 @@ export function useLiveTraits(
   const { sessionId, busy, apply } = useLiveSessionChange(threadRef);
   const { effort } = useLiveState(threadRef);
   if (sessionId === null || traits === null || traits.threadRef === undefined) return traits;
-  const { threadRef: target, draftId: _draftId, ...rest } = traits;
+  const {
+    threadRef: target,
+    draftId: _draftId,
+    onDraftModelOptionsChange: _onDraftModelOptionsChange,
+    ...rest
+  } = traits;
   const real = withRealEffort(traits.models, traits.modelOptions, effort);
   return {
     ...rest,

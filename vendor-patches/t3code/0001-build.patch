@@ -6,20 +6,20 @@ The scripts package typecheck leaves out scripts/tessaya, whose run-by-node tool
 app sources outside that project.
 
 diff --git a/.gitignore b/.gitignore
-index b6b793e020ef1917d262a026246f52c1a825dbe2..0d6bd743640058c912c4d0a67ce01f8fc45220c3 100644
+index 85b7c5b4bf02f04de806cfc85cee3e2db93bfd79..6f4507647fa4855d49ccb2bdb72744c918b2369f 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -48,3 +48,4 @@ node_modules/
+@@ -49,3 +49,4 @@ node_modules/
  
  # pnpm content-addressable store; never belongs in the repo.
  .pnpm-store/
 +apps/server/resources/memory-model/model_quantized.onnx
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 3d9e3239840cfe53200983ed3b0de487191cb551..530735fd2f21100eaf37bc3ba10ab2ba2bfd58e9 100644
+index 68e944688b1f9520702d6da1692360ae449093f0..776184c8d5be21ca296ca920cd3ec1eac6544829 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -15,6 +15,9 @@
-     "@crowecawcaw/xa11y": "0.13.0",
+     "@crowecawcaw/xa11y": "0.15.4",
      "@effect/platform-node": "catalog:",
      "@napi-rs/keyring": "^1.3.0",
 +    "@t3tools/baton-contracts": "workspace:*",
@@ -33,7 +33,7 @@ index 3d9e3239840cfe53200983ed3b0de487191cb551..530735fd2f21100eaf37bc3ba10ab2ba
      "electron-webauthn": "catalog:",
      "ffi-rs": "1.3.2",
 +    "onnxruntime-node": "1.30.0",
-     "playwright-core": "1.60.0",
+     "playwright-core": "1.64.1",
      "react-grab": "^0.1.32",
      "tldts": "catalog:"
 diff --git a/apps/desktop/resources/installer.nsh b/apps/desktop/resources/installer.nsh
@@ -59,10 +59,10 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index ba375768150971d21761ca38f5afd3715a4f1c03..aeb12f41c652e3c34be79eee40a49b0b9e992c71 100644
+index 455901299edc31b4c958e7c523eb3faf31563f44..951bffb3190e252a5933aced2930d2a233ed33b0 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
-@@ -149,6 +149,31 @@ export default defineConfig({
+@@ -159,6 +159,31 @@ export default defineConfig({
        outExtensions: () => ({ js: ".cjs" }),
        entry: ["src/mac-permission-preload.ts"],
      },
@@ -93,12 +93,12 @@ index ba375768150971d21761ca38f5afd3715a4f1c03..aeb12f41c652e3c34be79eee40a49b0b
 +    },
    ],
    test: {
-     include: [...defaultInclude, "../../native/kde-snap-shot/src/*.test.ts"],
+     // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index e93c0733fa09a82d359454200b420d18c0a0a1b5..be7e3863a5e15337aefa4f475be6cc21e9500890 100644
+index ca0b86a7a06d712ab5375c4b3eb7289e93ed0c8e..c108ecf1b09e0710a6f087933d651d82c7e00087 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
-@@ -69,6 +69,8 @@
+@@ -72,6 +72,8 @@
      "@react-navigation/elements": "2.9.45",
      "@react-navigation/native": "7.5.1",
      "@react-navigation/native-stack": "7.21.0",
@@ -108,7 +108,7 @@ index e93c0733fa09a82d359454200b420d18c0a0a1b5..be7e3863a5e15337aefa4f475be6cc21
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 3a6797d90da28a2bda38e3a0cedfeb2a9e086652..bc2cc54b8eef7df692b0a86d09ae7ea8943dde3a 100644
+index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..3aca1ef3560ddb8b4a25a731feb4e379c4f8e807 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -43,6 +43,8 @@
@@ -120,19 +120,19 @@ index 3a6797d90da28a2bda38e3a0cedfeb2a9e086652..bc2cc54b8eef7df692b0a86d09ae7ea8
      "@t3tools/provider-acp": "workspace:*",
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
-@@ -66,6 +68,7 @@
+@@ -67,6 +69,7 @@
      "effect": "catalog:",
      "ffi-rs": "1.3.2",
      "node-pty": "^1.2.0-beta.15",
 +    "onnxruntime-node": "1.30.0",
-     "playwright-core": "1.60.0",
+     "playwright-core": "1.64.1",
      "proper-lockfile": "4.1.2",
      "saxes": "6.0.0",
 diff --git a/apps/web/package.json b/apps/web/package.json
-index 57ed8f275f020cd039d3de9cd6c0b8fa24b2d4d3..5b134dc74a279cb5c12b74ff26420c6b8e51b1b1 100644
+index a7959f92357bd3a38846531edc99919dbb516893..c588833869565afb99a01cb850e4747528d6e031 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
-@@ -31,6 +31,8 @@
+@@ -34,6 +34,8 @@
      "@noble/hashes": "catalog:",
      "@pierre/diffs": "catalog:",
      "@pierre/trees": "1.0.0-beta.6",
@@ -187,10 +187,10 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..ee494f15b7914758ee7c4a94a292c89d
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc0a8b1abc 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..ecb94b0c5ac5da6afd81d42f75557ea5537d0e4e 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
-@@ -36,6 +36,9 @@
+@@ -41,6 +41,9 @@
          "prepare-server-compile-cache.cjs",
          "smoke-desktop-app.ts",
          "verify-windows-desktop-artifact.ts",
@@ -198,9 +198,9 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc
 +        "baton/**/*.{ts,mjs}",
 +        "tessaya/**/*.{ts,mjs}",
        ],
-       "ignoreDependencies": ["agent-device", "esbuild"],
+       "ignoreDependencies": ["esbuild"],
        // The `t3` npm package's files: copied into the package, never imported.
-@@ -49,6 +52,8 @@
+@@ -54,6 +57,8 @@
          "src/bin.ts!",
          "src/claude-history-worker.ts!",
          "scripts/cli.ts",
@@ -209,7 +209,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc
          "scripts/fetch-expo-schema.ts",
          "scripts/probe-claude-fork-local-rollback-replay.ts",
          "scripts/update-test-shard-weights.ts",
-@@ -58,13 +63,22 @@
+@@ -63,13 +68,22 @@
          "graphql.config.ts",
        ],
        // The generated operations export every selection's class.
@@ -233,7 +233,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc
          "@t3tools/web",
          "@napi-rs/keyring",
          "ffi-rs",
-@@ -72,13 +86,21 @@
+@@ -77,13 +91,21 @@
        ],
      },
      "apps/desktop": {
@@ -255,7 +255,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
-@@ -91,7 +113,8 @@
+@@ -96,7 +118,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -265,7 +265,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -100,13 +123,21 @@
+@@ -105,13 +128,21 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -288,7 +288,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -152,6 +183,13 @@
+@@ -157,6 +188,13 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -303,10 +303,10 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..d3a5fa98d934d7638f41af3a66e71dbc
        "includeEntryExports": true,
        "entry": ["test/fixtures/*.ts"],
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
-index f52115577f1084fd030cfb818f9624b82d086481..713e12b64e147e81fa5ef5b892cc132592a3803e 100644
+index d1e74151e53e3a0548407d9744ff97d6732068d7..73b02a228b90f88f241ce087eabef0f6c5d838b6 100644
 --- a/packages/client-runtime/package.json
 +++ b/packages/client-runtime/package.json
-@@ -546,6 +546,7 @@
+@@ -574,6 +574,7 @@
    },
    "dependencies": {
      "@pierre/diffs": "catalog:",
@@ -315,7 +315,7 @@ index f52115577f1084fd030cfb818f9624b82d086481..713e12b64e147e81fa5ef5b892cc1325
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index d64fc1a679f0c506a0897c29b81c6a625d4c8174..a47469445dce521d68c3dd4fa869bc16733a27d9 100644
+index e38d84c393ded7dc521cee21b7b57ff1a1e23a19..cf573a2291e6c15cbd689e601e3a970337495223 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -21,6 +21,8 @@ allowBuilds:
@@ -326,7 +326,7 @@ index d64fc1a679f0c506a0897c29b81c6a625d4c8174..a47469445dce521d68c3dd4fa869bc16
 +  onnxruntime-node: false
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false
-   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
+   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.18-497fbe63.tgz": true
 diff --git a/scripts/build-cli-archive.ts b/scripts/build-cli-archive.ts
 index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa02dfffc4 100644
 --- a/scripts/build-cli-archive.ts
@@ -383,7 +383,7 @@ index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa
      repoRoot,
      stageDir: contentDir,
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 02f19b07b4531a4cd2760c99e642f694f56ab138..d6f7edc532437b9ad0cfa2d9f2679854edcd9105 100644
+index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a59bbacf6 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
 @@ -56,6 +56,10 @@ import {
@@ -416,7 +416,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..d6f7edc532437b9ad0cfa2d9f2679854
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1292,6 +1308,56 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1335,6 +1351,56 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -473,7 +473,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..d6f7edc532437b9ad0cfa2d9f2679854
        }),
      ),
    );
-@@ -1828,3 +1894,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1871,3 +1937,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -501,7 +501,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..d6f7edc532437b9ad0cfa2d9f2679854
 +  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..8e3bfdbf60d4fd5deb866dbf8344e70edb99b206 100644
+index 92c0974b546da1018262308d8a608c0f82163873..132ef838bc124467de463bf638d3d476d94cd422 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -792,7 +792,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..8e3bfdbf60d4fd5deb866dbf8344e70e
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3148,6 +3364,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3155,6 +3371,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -812,7 +812,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..8e3bfdbf60d4fd5deb866dbf8344e70e
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3411,6 +3640,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3418,6 +3647,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -859,7 +859,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..8e3bfdbf60d4fd5deb866dbf8344e70e
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3772,6 +4041,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3779,6 +4048,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -873,7 +873,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..8e3bfdbf60d4fd5deb866dbf8344e70e
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3804,6 +4080,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3811,6 +4087,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
@@ -952,10 +952,10 @@ index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26
  
  export function isDesktopRuntimeExternalDependency(id: string): boolean {
 diff --git a/scripts/prepare-server-compile-cache.cjs b/scripts/prepare-server-compile-cache.cjs
-index e2918c852bf7ce156a7f2e6c358f4bdb6ddc71b5..488dcb73317942cf997fa2c1d74e7c6d3349e84f 100644
+index 0c5890cf2138343395e01b18a231ccd918f9b67f..e8b2a19d89522577d7de00ffd95c7dcade9f3ba2 100644
 --- a/scripts/prepare-server-compile-cache.cjs
 +++ b/scripts/prepare-server-compile-cache.cjs
-@@ -58,7 +58,8 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) =>
+@@ -57,7 +57,8 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) =>
        runner,
        `require(${JSON.stringify(helper)}).generatePreparedServerCache(${JSON.stringify(resources)}).then(()=>process.exit(0),e=>{console.error(e);process.exit(1)})`,
      );
@@ -1001,7 +1001,7 @@ index 61307d2992e025a13693a423d81907bc2d645487..3552cff95908c0faefda81e458c9fb80
 +  "exclude": ["tessaya/**"]
  }
 diff --git a/third-party-licenses.config.json b/third-party-licenses.config.json
-index e6d38a17e2d876bf3a91fb368cf4397428c73b3b..3250b4ff7c96e907184ae6a546def1dcef00dc28 100644
+index 16204c173080f09fb245a56f148a71ab1e254a36..bd2ee7cc1453fdee83499a765add56979d0b3f69 100644
 --- a/third-party-licenses.config.json
 +++ b/third-party-licenses.config.json
 @@ -229,6 +229,22 @@

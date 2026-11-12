@@ -37,7 +37,8 @@ export function SettingsRow(props: {
   const onPress = () => {
     if (props.target) {
       if (inList) openSettings(navigation, props.target);
-      else navigation.navigate(props.target);
+      // Tessaya's two pages take the targets past 25, where TypeScript stops checking navigate per member.
+      else navigation.navigate(props.target as never);
     } else if (props.fullScreenTarget) {
       navigation.navigate(props.fullScreenTarget);
     } else {

@@ -179,6 +179,7 @@ it.effect("reads a collected reference again once it is invalidated", () =>
         cloudSpeechCredentials: { openai: source("voice#key"), xai: "", openrouter: "" },
         dictationCleanupCredentials: { anthropic: "" },
         usageLimitSources,
+        textGenerators: {},
         easDeviceHosts,
         simlockDeviceHosts,
       }),

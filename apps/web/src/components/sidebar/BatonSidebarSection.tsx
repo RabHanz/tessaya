@@ -55,7 +55,7 @@ import { LearnTip } from "./LearnTip";
 import { useBatonLiveOnly } from "./batonLiveOnly";
 import { Toggle } from "../ui/toggle";
 import { Button } from "../ui/button";
-import { SparklesIcon } from "lucide-react";
+import { AppWindowIcon } from "lucide-react";
 
 const COPIED_KEY = "t3:baton:commitments-copied";
 /** Which linked-to-own commitment copies have finished; a lost marker only repeats a copy that changes nothing. */
@@ -568,7 +568,7 @@ export function BatonSidebarSection(props: {
       <div className="flex items-center gap-1">
         {openTessaya === undefined ? null : (
           <Button size="xs" variant="ghost" onClick={() => openTessaya()}>
-            <SparklesIcon />
+            <AppWindowIcon />
             Open Tessaya
           </Button>
         )}

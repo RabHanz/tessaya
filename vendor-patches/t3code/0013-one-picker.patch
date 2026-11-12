@@ -3,10 +3,10 @@ Usage details (ComposerPickerFooter children, onUsageLimitsCommand), and on mobi
 provider with account rows (BatonAccountRow), the session's real effort, and the header's limit chip.
 
 diff --git a/apps/mobile/src/features/threads/ThreadComposer.tsx b/apps/mobile/src/features/threads/ThreadComposer.tsx
-index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..0dc4d7428effb68e6887ec3cf3704af4f71b0013 100644
+index e36900736e8e23ef3b877618aa52f0460e130b23..24a4b4357de4a102ffa86786be4843df409a4135 100644
 --- a/apps/mobile/src/features/threads/ThreadComposer.tsx
 +++ b/apps/mobile/src/features/threads/ThreadComposer.tsx
-@@ -33,7 +33,14 @@ import {
+@@ -32,7 +32,14 @@ import {
  import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
  import type { ReactNode } from "react";
  import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
@@ -21,8 +21,8 @@ index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..0dc4d7428effb68e6887ec3cf3704af4
 +} from "react-native";
  import { composerImageGallery } from "../../lib/composerImageGallery";
  import { filePreviewGallery } from "../../lib/filePreviewGallery";
- import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
-@@ -56,6 +63,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
+ import { FilePreviewModal, type FilePreviewSource } from "../../components/ui/FilePreviewModal";
+@@ -55,6 +62,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
  import { themeColorWithAlpha } from "../../lib/mobileTheme";
  import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
  import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -30,7 +30,7 @@ index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..0dc4d7428effb68e6887ec3cf3704af4
  import {
    getComposerDraftSnapshot,
    composerDraftsAtom,
-@@ -106,14 +114,13 @@ import { useComposerCommandMenu } from "./use-composer-command-menu";
+@@ -105,14 +113,13 @@ import { useComposerCommandMenu } from "./use-composer-command-menu";
  import type { ComposerEnvironmentCandidate } from "@t3tools/client-runtime/composerThreadItems";
  import { offersLinkedEnvironments } from "@t3tools/client-runtime/link-request";
  import {
@@ -47,16 +47,16 @@ index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..0dc4d7428effb68e6887ec3cf3704af4
  import { useVoiceInputController } from "../voice-input/useVoiceInputController";
  import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
  import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
-@@ -584,6 +591,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
+@@ -587,6 +594,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
      voiceInput.elapsedSeconds,
    );
    const isVoiceInputPresented = voicePresentation.statusKind === "active";
 +  const pillLook = usePillLook(props.environmentId);
 +  const dark = useColorScheme() === "dark";
    const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
-   const { layout, setComposerEditing } = useAdaptiveWorkspaceLayout();
+   const { layout } = useAdaptiveWorkspaceLayout();
    const floatingSidebarComposer = useAndroidFloatingTabs() && layout.usesSplitView;
-@@ -730,6 +739,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
+@@ -729,6 +738,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
    const openSettings = () => {
      settingsSheetPresentation.open();
    };
@@ -64,7 +64,7 @@ index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..0dc4d7428effb68e6887ec3cf3704af4
  
    useFocusEffect(() => {
      if (!settingsRoutePresentedRef.current) {
-@@ -1148,28 +1158,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
+@@ -1147,28 +1157,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                  paddingTop={0}
                  style={{ gap: 0 }}
                >
@@ -103,31 +103,31 @@ index 57bda9aa98c9b302ea40a6d1b7e4535acc0510a9..0dc4d7428effb68e6887ec3cf3704af4
                      <ComposerActionButton
                        size={usesLargeControls ? "large" : "regular"}
 diff --git a/apps/mobile/src/features/threads/ThreadHeader.tsx b/apps/mobile/src/features/threads/ThreadHeader.tsx
-index 955dd5d800b4927b7cc4707d6d817bf1aad0ce04..ddf1b7d07e8c64a9ed97cdfe626f70b166c53ed9 100644
+index d0045bf5f284ea3d2463a516f9c393028bca2dd6..5a42a37abd5de1b3c7488b3f7f28164e1467a656 100644
 --- a/apps/mobile/src/features/threads/ThreadHeader.tsx
 +++ b/apps/mobile/src/features/threads/ThreadHeader.tsx
 @@ -21,6 +21,7 @@ export function ThreadHeader(props: {
+   readonly hasThreadCwd: boolean;
    readonly inspectorMode: ThreadInspectorMode | null;
-   readonly onToggleInspector: () => void;
    readonly onOpenFilesInspector: () => void;
 +  readonly batonAction?: AppBarAction | null;
  }) {
    const goBack = useWorkspaceBackNavigation("threads");
-   const { panes, toggleAuxiliaryPane, composerKeyboardActive, startNewTask } =
-@@ -58,7 +59,7 @@ export function ThreadHeader(props: {
+   const { toggleAuxiliaryPane, startNewTask } = useAdaptiveWorkspaceLayout();
+@@ -57,7 +58,7 @@ export function ThreadHeader(props: {
              }
            : undefined
        }
 -      actions={actions}
 +      actions={props.batonAction ? [props.batonAction, ...actions] : actions}
        menus={menus}
-       trailing={
-         props.fileInspectorSupported && props.hasThreadCwd ? (
+       hideBottomBorder
+     />
 diff --git a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
-index 80a3e8643a567176df20717e36360bc1334071b8..affb9f84af3d0b10d5e863e47af293a2911f1121 100644
+index 6205fd1281797983c7b326a42bbb4fc872c9e6c9..3c28aa724781bbbbdc527a86b6ea993b9b1e8675 100644
 --- a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
 +++ b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
-@@ -104,6 +104,7 @@ import {
+@@ -109,6 +109,7 @@ import {
    threadRouteIsHydrating,
    threadRouteOpensDraft,
  } from "./thread-route-hydration";
@@ -135,7 +135,7 @@ index 80a3e8643a567176df20717e36360bc1334071b8..affb9f84af3d0b10d5e863e47af293a2
  import { ThreadHeader } from "./ThreadHeader";
  import { resumeThread } from "./resume-thread";
  import {
-@@ -503,7 +504,9 @@ function ThreadRouteContent(
+@@ -526,7 +527,9 @@ function ThreadRouteContent(
        : scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
    // The title it had at delegation, until this client sees the parent itself.
    const delegatedFromThread = useThreadShell(delegatedFromRef);
@@ -145,7 +145,7 @@ index 80a3e8643a567176df20717e36360bc1334071b8..affb9f84af3d0b10d5e863e47af293a2
      selectedThreadProject?.title ?? null,
      selectedEnvironmentConnection?.environmentLabel ?? null,
      // A linked environment's delegated task names its parent; other linked work its origin.
-@@ -669,6 +672,7 @@ function ThreadRouteContent(
+@@ -685,6 +688,7 @@ function ThreadRouteContent(
        runtimeMode: composer.runtimeMode ?? selectedThread.runtimeMode,
        interactionMode: composer.interactionMode ?? selectedThread.interactionMode,
        modelSelection: composer.modelSelection,
@@ -153,8 +153,8 @@ index 80a3e8643a567176df20717e36360bc1334071b8..affb9f84af3d0b10d5e863e47af293a2
        messageId: MessageId.make(uuidv4()),
        createdAt: new Date().toISOString(),
        setRuntimeMode: setThreadRuntimeMode,
-@@ -969,6 +973,7 @@ function ThreadRouteContent(
-                 onToggleInspector={handleToggleInspector}
+@@ -983,6 +987,7 @@ function ThreadRouteContent(
+                 inspectorMode={inspectorMode}
                  onOpenFilesInspector={handleOpenFilesInspector}
                  onReturnToThread={props.onReturnToThread}
 +                batonAction={batonHeader.action}
@@ -162,10 +162,10 @@ index 80a3e8643a567176df20717e36360bc1334071b8..affb9f84af3d0b10d5e863e47af293a2
              )
            }
 diff --git a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
-index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439950abdc1 100644
+index 48325d9477d2eeceed2e825a9d7f8a84c61d40df..48704788045840bede607949432442dbe4b3f1a4 100644
 --- a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
 +++ b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
-@@ -103,6 +103,9 @@ import {
+@@ -102,6 +102,9 @@ import {
  import { useSearchToolbarInset } from "../../components/ui/useBarInset";
  import type { AppBarSearch } from "../../components/ui/AppBar";
  import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
@@ -175,7 +175,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
  import {
    compatibleRuntimeModeForChoices,
    runtimeModeChoicesForSupportedModes,
-@@ -257,6 +260,8 @@ type ThreadSettingsSubmenuPage =
+@@ -256,6 +259,8 @@ type ThreadSettingsSubmenuPage =
  
  type ThreadSettingsSessionProps = {
    readonly environmentId: EnvironmentId | null;
@@ -184,7 +184,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
    readonly projectId: ProjectId | null;
    readonly providerInstanceId?: ProviderInstanceId;
    readonly lockedProviderInstanceId?: ProviderInstanceId;
-@@ -282,6 +287,7 @@ export type ExistingThreadSettingsRouteParams = {
+@@ -281,6 +286,7 @@ export type ExistingThreadSettingsRouteParams = {
  
  type ThreadSettingsSessionValue = {
    readonly environmentId: EnvironmentId | null;
@@ -192,7 +192,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
    readonly providerInstanceId?: ProviderInstanceId;
    readonly providerGroups: ReadonlyArray<ProviderGroup>;
    readonly favoriteKeys: ReadonlySet<string>;
-@@ -471,7 +477,9 @@ function ThreadSettingsSessionProvider(
+@@ -470,7 +476,9 @@ function ThreadSettingsSessionProvider(
      });
    };
    const [showLegacyToggle, setShowLegacyToggle] = useState(false);
@@ -203,7 +203,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
    const [searchQuery, setSearchQuery] = useState("");
    const [providerExpansionOverrides, setProviderExpansionOverrides] = useState<ReadonlySet<string>>(
      () => new Set(),
-@@ -594,6 +602,7 @@ function ThreadSettingsSessionProvider(
+@@ -591,6 +599,7 @@ function ThreadSettingsSessionProvider(
  
    const value = {
      environmentId: props.environmentId,
@@ -211,7 +211,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
      providerInstanceId: props.providerInstanceId,
      providerGroups,
      manageHidden,
-@@ -715,22 +724,37 @@ function ThreadSettingsProviderListHeader(props: {
+@@ -712,22 +721,37 @@ function ThreadSettingsProviderListHeader(props: {
    const onToggle = () => session.toggleProvider(props.provider.key);
  
    return (
@@ -259,7 +259,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
      if (
        session.providerFilter !== null &&
        session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
-@@ -1168,11 +1192,13 @@ function ThreadSettingsModelsScreen() {
+@@ -1178,11 +1202,13 @@ function ThreadSettingsModelsScreen() {
    const providerFilters = [
      { id: "all-providers", title: "All providers", value: null },
      { id: "favorites", title: "Favorites", value: FAVORITES_PROVIDER_FILTER },
@@ -278,7 +278,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
    ];
  
    return (
-@@ -1312,6 +1338,12 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1322,6 +1348,12 @@ export function ExistingThreadSettingsRouteScreen({
    // A queued edit can end while the sheet is open; the prompt then belongs to the thread's draft.
    const draftKey = activeComposerDraftKey(threadKey, route.params.draftKey, queuedRunEdit);
    const prompt = useComposerDraft(draftKey).text;
@@ -291,7 +291,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
  
    if (!selectedThread) {
      return <View className="flex-1 bg-sheet" />;
-@@ -1343,6 +1375,7 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1353,6 +1385,7 @@ export function ExistingThreadSettingsRouteScreen({
    return (
      <ThreadSettingsPickerScreen
        environmentId={selectedThread.environmentId}
@@ -299,7 +299,7 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
        projectId={selectedThread.projectId}
        providerInstanceId={modelSelection.instanceId}
        {...(lockedProviderInstanceId ? { lockedProviderInstanceId } : {})}
-@@ -1351,15 +1384,25 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1361,15 +1394,25 @@ export function ExistingThreadSettingsRouteScreen({
        prompt={prompt}
        onPromptChange={(text) => setComposerDraftText(draftKey, text)}
        reportedModelSelection={reportedModelSelection}
@@ -333,10 +333,10 @@ index a505e5b3f39f78583b95278a1c2677edc6c97f8d..3972a266dae698f8512ff8ddcf7a1439
        runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
        onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3364c20e4 100644
+index fae55b8923d560c76164039d8eb9802b4f32a0b5..63a3b05a90793ef126dececcc6292a34a5047d84 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
-@@ -140,7 +140,15 @@ import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
+@@ -136,7 +136,15 @@ import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
  import { useDictationShortcut } from "../../speech/useDictationShortcut";
  import { useDictationSubmissionShortcut } from "../../speech/useDictationSubmissionShortcut";
  import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
@@ -353,7 +353,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
  import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
  import { shortcutLabelForCommand } from "../../keybindings";
  import {
-@@ -337,6 +345,8 @@ export interface ChatComposerHandle {
+@@ -329,6 +337,8 @@ export interface ChatComposerHandle {
      environmentContexts: EnvironmentContextRecord[];
      selectedPromptEffort: string | null;
      selectedModelSelection: ModelSelection;
@@ -362,9 +362,9 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
      multipleModelSelections: ReadonlyArray<ModelSelection> | null;
      providerAvailable: boolean;
      selectedProvider: ProviderDriverKind;
-@@ -426,7 +436,10 @@ export interface ChatComposerProps {
+@@ -411,7 +421,10 @@ export interface ChatComposerProps {
+   runtimeMode: RuntimeMode;
    defaultRuntimeMode?: RuntimeMode;
-   interactionMode: ProviderInteractionMode;
  
 +  /** Limits the picker; null while the thread can hand off to another provider. */
    lockedProvider: ProviderDriverKind | null;
@@ -373,15 +373,15 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
    providerStatuses: ServerProvider[];
    providerCatalogKnown: boolean;
    activeProjectDefaultModelSelection: ModelSelection | null | undefined;
-@@ -555,6 +568,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -531,6 +544,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+     respondingRequestIds,
      runtimeMode,
-     interactionMode: requestedInteractionMode,
      lockedProvider,
 +    threadProvider,
      providerStatuses,
      providerCatalogKnown,
      activeProjectDefaultModelSelection,
-@@ -906,14 +920,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -875,14 +889,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        activeThreadModelSelection?.instanceId,
        activeProjectDefaultModelSelection?.instanceId,
      ],
@@ -420,7 +420,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
    const providerSetupInstanceId = noProviderAvailable
      ? (unavailableProviderInstanceId ??
        (lockedProvider === null
-@@ -951,7 +987,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -918,7 +954,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        ? attachmentBlockReason
        : (attachmentBlockReason ??
          runtimeModeCeilingDenial ??
@@ -430,8 +430,8 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
 +          : null)));
    const isSendDisabled = sendDisabledReason !== null;
    const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
-   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
-@@ -1849,6 +1887,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+   const selectedProviderSkills = selectedProviderStatus
+@@ -1795,6 +1833,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      isComposerApprovalState ||
      activePendingIsResponding ||
      activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
@@ -459,7 +459,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
    const speechInput = useEnvironmentSpeechInput({
      environmentId,
      projectId: activeProjectId,
-@@ -1856,28 +1915,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1802,28 +1861,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      ownerKey: questionAttachmentTarget ?? composerDraftTargetKey,
      draftText: prompt,
      disabled: dictationDisabled,
@@ -496,9 +496,9 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
 +  });
 +  const pillLook = useComposerPillLook(environmentId);
    const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
-   const voiceSendDisabledReason =
-     sendDisabledReason ?? (speechInput.preparing ? "Preparing voice input" : null);
-@@ -2471,6 +2519,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+   const submissionTarget = activePendingProgress ? "pending-user-input" : "provider-turn";
+   const submissionBlocked = isComposerSubmissionBlocked({
+@@ -2447,6 +2495,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        onModelPickerOpenChange={setIsComposerModelPickerOpen}
        modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
        getModelDisabledReason={getModelDisabledReason}
@@ -506,7 +506,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
      />
    );
    // An open question owns the space above the composer. Only a machine problem,
-@@ -3109,6 +3158,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3089,6 +3138,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
          environmentContexts: composerEnvironmentContexts,
          selectedPromptEffort,
          selectedModelSelection,
@@ -516,28 +516,29 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
          multipleModelSelections:
            routeKind === "draft" && multipleModelSelections !== null
              ? multipleModelSelections.map((selection) =>
-@@ -3181,6 +3233,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3157,6 +3209,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+       selectedInstanceId,
        reportedModelSelection,
-       settings.planModeEnabled,
        selectedModelSelection,
 +      composerDraft.modelSelectionExplicit,
 +      composerDraft.activeProvider,
        multipleModelSelections,
        setMultipleModelSelections,
        routeKind,
-@@ -3369,7 +3423,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
-                   aria-label="Expand composer"
-                 >
-                   {prompt.trim() ||
--                    (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything...")}
+@@ -3344,10 +3398,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+                       contextRecords={composerContextRecords}
+                       theme={resolvedTheme}
+                     />
+-                  ) : showProviderUnavailable ? (
+-                    "Enable a provider in Settings"
+                   ) : (
+-                    "Ask anything..."
 +                    (threadProviderBlockReason ??
-+                      (showProviderUnavailable
-+                        ? "Enable a provider in Settings"
-+                        : "Ask anything..."))}
++                    (showProviderUnavailable ? "Enable a provider in Settings" : "Ask anything..."))
+                   )}
                  </button>
                  {collapsedComposerImagePreviews}
-                 <button
-@@ -3480,7 +3537,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3459,7 +3512,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
  
                {composerAttachmentFileList}
  
@@ -546,7 +547,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
                  {previewFile ? (
                    <ComposerFilePreviewDialog
                      file={previewFile}
-@@ -3521,7 +3578,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3500,7 +3553,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                      onCitationSubmitAndSend={submitCitationAndSendStable}
                      onCitationDraftSave={saveCitationDraftToPromptStable}
                      onPaste={onComposerPasteStable}
@@ -556,20 +557,23 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
                        isComposerApprovalState
                          ? activePendingApproval?.supportsFeedback
                            ? "Send feedback to decline this request"
-@@ -3534,18 +3592,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
-                             ? "Add feedback to refine the plan, or leave this blank to implement it"
-                             : projectSelectionRequired
-                               ? "Choose a project above to start a thread"
--                              : showProviderUnavailable
--                                ? "Enable a provider in Settings to send a message"
--                                : DEFAULT_COMPOSER_PLACEHOLDER
+@@ -3511,10 +3565,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+                             : "Type your own answer, or leave this blank to use the selected option"
+                           : projectSelectionRequired
+                             ? "Choose a project above to start a thread"
+-                            : showProviderUnavailable
+-                              ? "Enable a provider in Settings to send a message"
+-                              : (offeredPromptSuggestion ?? DEFAULT_COMPOSER_PLACEHOLDER)
 -                    }
-+                              : (threadProviderBlockReason ??
-+                                (showProviderUnavailable
-+                                  ? "Enable a provider in Settings to send a message"
-+                                  : DEFAULT_COMPOSER_PLACEHOLDER)),
++                            : (threadProviderBlockReason ??
++                              (showProviderUnavailable
++                                ? "Enable a provider in Settings to send a message"
++                                : (offeredPromptSuggestion ?? DEFAULT_COMPOSER_PLACEHOLDER))),
 +                    )}
-                     disabled={
+                     placeholderSuffix={
+                       offeredPromptSuggestion !== null ? (
+                         <span className="ml-2 inline-flex align-[1px]">
+@@ -3526,10 +3581,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                        projectSelectionRequired ||
                        isChoiceOnlyPendingQuestion ||
                        activePendingIsResponding ||
@@ -583,7 +587,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
                  {showMobilePendingAnswerActions ? (
                    <div
                      data-chat-composer-mobile-pending-actions="true"
-@@ -3582,21 +3643,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3559,21 +3616,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                message={providerInputSubmissionError ?? composerSubmissionError}
              />
  
@@ -607,7 +611,7 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
                    pendingUserInputs.length > 0 && "pt-2",
                    showMobilePendingAnswerActions &&
                      speechInput.state.phase === "idle" &&
-@@ -3604,6 +3656,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3581,6 +3629,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                  )}
                >
                  {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
@@ -622,8 +626,8 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
                  <div
                    data-chat-composer-actions="right"
                    data-chat-composer-transition-actions="true"
-@@ -3680,28 +3740,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
-                       : {})}
+@@ -3641,28 +3697,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+                     onToggleKeepFullHistory={props.onToggleKeepFullHistory}
                    >
                      {speechInput.available ? (
 -                      <>
@@ -660,10 +664,10 @@ index be106a251592ebba7d7f223fc889d1886768d089..615406f02b421c7246b727892ecf75c3
                      <VoiceInputSetup
                        environmentId={speechInput.transcriptionEnvironmentId}
 diff --git a/apps/web/src/components/chat/ComposerModelEffort.tsx b/apps/web/src/components/chat/ComposerModelEffort.tsx
-index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2ad1dd5aaf5463d62e5a4ba9fdb51373bce0d92b 100644
+index f56997ff2a6a11813f69ee69e2968a042141d9af..ae1a6bb0f04ef44942fb5b70ec4cc0a907d2f339 100644
 --- a/apps/web/src/components/chat/ComposerModelEffort.tsx
 +++ b/apps/web/src/components/chat/ComposerModelEffort.tsx
-@@ -618,7 +618,8 @@ function UltracodeControl(props: { traits: TraitsSelectionInput }) {
+@@ -599,7 +599,8 @@ function UltracodeControl(props: { traits: TraitsSelectionInput }) {
    if (traits.modelIsUnavailable || !ultracodeToggle) return null;
    const on = ultracodeToggle.currentValue === true;
    return (
@@ -673,7 +677,7 @@ index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2ad1dd5aaf5463d62e5a4ba9fdb51373
        <button
          type="button"
          aria-pressed={on}
-@@ -681,6 +682,7 @@ export function ComposerPickerFooter(props: {
+@@ -662,6 +663,7 @@ export function ComposerPickerFooter(props: {
    runtimeMode: RuntimeMode;
    runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
    onRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -681,7 +685,7 @@ index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2ad1dd5aaf5463d62e5a4ba9fdb51373
  }) {
    return (
      <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2">
-@@ -691,6 +693,7 @@ export function ComposerPickerFooter(props: {
+@@ -672,6 +674,7 @@ export function ComposerPickerFooter(props: {
          options={props.runtimeModeOptions}
          onChange={props.onRuntimeModeChange}
        />
@@ -690,10 +694,10 @@ index 10a4f7fa91892c5415cb97ff61a24e278fd079a3..2ad1dd5aaf5463d62e5a4ba9fdb51373
    );
  }
 diff --git a/apps/web/src/components/chat/ModelPickerContent.tsx b/apps/web/src/components/chat/ModelPickerContent.tsx
-index f040df764cda9188e68a9f70ee639d3a258d98ae..364a458468670e49e80bbcf6c2e49dc2810ab0e4 100644
+index 4cbd23af0965ec9c414321f6561d4d128f64e13e..8ff58fe7b7e2a81b4c65fce3bd0333ff5cbf1c8f 100644
 --- a/apps/web/src/components/chat/ModelPickerContent.tsx
 +++ b/apps/web/src/components/chat/ModelPickerContent.tsx
-@@ -368,6 +368,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+@@ -345,6 +345,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
    onFocusEffort?: () => void;
    /** Closes the list column, inside the popup's fixed height. */
    listFooter?: ReactNode;
@@ -702,7 +706,7 @@ index f040df764cda9188e68a9f70ee639d3a258d98ae..364a458468670e49e80bbcf6c2e49dc2
  }) {
    const {
      searchInputRef,
-@@ -710,6 +712,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+@@ -703,6 +705,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
  
    const selectedEntry =
      selectedInstanceId === "favorites" ? undefined : entryByInstanceId.get(selectedInstanceId);
@@ -710,7 +714,7 @@ index f040df764cda9188e68a9f70ee639d3a258d98ae..364a458468670e49e80bbcf6c2e49dc2
    const providerSetupEntries =
      !isSearching && canOpenProviderSetup
        ? instanceEntries.filter(
-@@ -1008,6 +1011,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
+@@ -1001,6 +1004,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                onTouchStart={(e) => e.stopPropagation()}
              />
  
@@ -724,18 +728,18 @@ index f040df764cda9188e68a9f70ee639d3a258d98ae..364a458468670e49e80bbcf6c2e49dc2
                listRef={modelListRef}
                itemKeys={filteredItemKeys}
 diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
-index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..d45cfcd096769e2b2194efd928c1639e7be19130 100644
+index e05736b0d412d15c8689508d7cd6d8333a8b8013..bfce9b5106a72b4f7b9e8ddb347f34e53d0f1720 100644
 --- a/apps/web/src/components/chat/ProviderModelPicker.tsx
 +++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
-@@ -12,6 +12,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
- import { cn } from "~/lib/utils";
+@@ -23,6 +23,7 @@ import { cn } from "~/lib/utils";
  import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
+ import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
  import { ChatGptSharingControl } from "./ChatGptSharingControl";
 +import { useBatonPickerAnchor } from "./BatonPickerAccount";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
  import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
-@@ -112,10 +113,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+@@ -125,6 +126,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     */
    effortColumn?: ReactNode;
    footer?: ReactNode;
@@ -743,13 +747,16 @@ index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..d45cfcd096769e2b2194efd928c1639e
  }) {
    const composerFloatingLayerProps = useComposerMenuProps();
    const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
-   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
+@@ -145,6 +147,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+   useEffect(() => {
+     if (isMenuOpen) refreshModelCatalog();
+   }, [isMenuOpen]);
 +  // Opened from the header's account chip, it hangs under that chip instead of the composer.
 +  const batonAnchor = useBatonPickerAnchor(isMenuOpen);
    const searchInputRef = useRef<HTMLInputElement>(null);
    const triggerRef = useRef<HTMLButtonElement>(null);
    const popupRef = useRef<HTMLDivElement | null>(null);
-@@ -274,6 +278,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+@@ -304,6 +308,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
            : (props.getModelDisabledReason?.(instanceId, model) ?? null)
        }
        onInstanceModelChange={handleInstanceModelChange}
@@ -757,7 +764,7 @@ index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..d45cfcd096769e2b2194efd928c1639e
        {...(docked
          ? {
              docked,
-@@ -420,6 +425,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+@@ -450,6 +455,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
          {...(docked
            ? { side: "top" as const, collisionAvoidance: { side: "shift", align: "shift" } as const }
            : {})}
@@ -766,10 +773,10 @@ index 2e47b4c2fe3b44db5347f65c3f2676a7228efb27..d45cfcd096769e2b2194efd928c1639e
          padding="none"
          touchBackdrop
 diff --git a/vite.config.ts b/vite.config.ts
-index fb6255cf9636350f177eb574adb6d23c7fd77ba0..f1ab73b91a85ed3b72f1976abd08bd8c5a39d42b 100644
+index e6e46335e1a46b19d8267cab0b70a9b7d3d97245..aad8b20f5a40415f6257a65cc9971d9bdb7cb735 100644
 --- a/vite.config.ts
 +++ b/vite.config.ts
-@@ -166,6 +166,8 @@ export default defineConfig({
+@@ -172,6 +172,8 @@ export default defineConfig({
    },
    fmt: {
      ignorePatterns: [
@@ -778,7 +785,7 @@ index fb6255cf9636350f177eb574adb6d23c7fd77ba0..f1ab73b91a85ed3b72f1976abd08bd8c
        ".repos/**",
        "infra/task-cache/vendor/**",
        // Macroscope requires one glob per line; Markdown formatting corrupts it.
-@@ -201,6 +203,8 @@ export default defineConfig({
+@@ -207,6 +209,8 @@ export default defineConfig({
    },
    lint: {
      ignorePatterns: [
@@ -787,7 +794,7 @@ index fb6255cf9636350f177eb574adb6d23c7fd77ba0..f1ab73b91a85ed3b72f1976abd08bd8c
        ".repos",
        ".repos/**",
        "infra/task-cache/vendor/**",
-@@ -649,6 +653,7 @@ export default defineConfig({
+@@ -640,6 +644,7 @@ export default defineConfig({
            "apps/mobile/src/features/review/ReviewSheet.tsx",
            "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
            "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",

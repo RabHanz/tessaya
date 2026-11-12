@@ -3,7 +3,7 @@ Subject: client-runtime: Baton's RPC group on the client protocol
 The fabric.* group rides the same socket, and its work-session stream is a subscription tag.
 
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index e74abde6a2c593b23e3215f37146265a6f3557b1..7f67e1e01abe2cf55c483cb8c2f3d15f702ed63d 100644
+index 8ae3ea79c56f84a2d1057c79f6582eadd7120f6e..df27766601c8b716f3b4fac9fa47f769eed305fb 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -1,3 +1,4 @@
@@ -11,7 +11,7 @@ index e74abde6a2c593b23e3215f37146265a6f3557b1..7f67e1e01abe2cf55c483cb8c2f3d15f
  import {
    EnvironmentAuthorizationError,
    clientRpcRequiredScopes,
-@@ -66,6 +67,8 @@ export type EnvironmentSubscriptionRpcTag =
+@@ -67,6 +68,8 @@ export type EnvironmentSubscriptionRpcTag =
    | typeof WS_METHODS.subscribeDiscoveredLocalServers
    | typeof WS_METHODS.subscribeDeviceState
    | typeof WS_METHODS.subscribeResourceTelemetry
@@ -19,7 +19,7 @@ index e74abde6a2c593b23e3215f37146265a6f3557b1..7f67e1e01abe2cf55c483cb8c2f3d15f
 +  | typeof BATON_WS_METHODS.subscribeWorkSessions
    | typeof WS_METHODS.pullRequestsSubscribeRefreshes
    | typeof WS_METHODS.subscribeVcsStatus
-   | typeof WS_METHODS.subscribeWorktreeSetup
+   | typeof WS_METHODS.subscribeVcsBranch
 diff --git a/packages/client-runtime/src/rpc/protocol.ts b/packages/client-runtime/src/rpc/protocol.ts
 index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..49490d5542856898889747cebc6a3b34c9f83342 100644
 --- a/packages/client-runtime/src/rpc/protocol.ts
@@ -37,10 +37,10 @@ index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..49490d5542856898889747cebc6a3b34
  export type WsRpcProtocolClient =
    RpcClientFactory extends Effect.Effect<infer Client, any, any> ? Client : never;
 diff --git a/packages/client-runtime/src/state/threadRequests.test.ts b/packages/client-runtime/src/state/threadRequests.test.ts
-index c8c43f23340873f8850e027dd8dd5a40f171c4dd..c07b7a6efc86706190ea6769010d58a7b11cd81f 100644
+index f6eb4e1f76cb1d2217ec12c244acc6e1c7a3d304..ce36148b3f6240ab9b4e75cbdcfd2cf18caf8693 100644
 --- a/packages/client-runtime/src/state/threadRequests.test.ts
 +++ b/packages/client-runtime/src/state/threadRequests.test.ts
-@@ -323,6 +323,13 @@ describe("pending v2 questions", () => {
+@@ -329,6 +329,13 @@ describe("pending v2 questions", () => {
      ]);
    });
  
@@ -55,11 +55,11 @@ index c8c43f23340873f8850e027dd8dd5a40f171c4dd..c07b7a6efc86706190ea6769010d58a7
      const live = {
        ...projection,
 diff --git a/packages/client-runtime/src/state/threadRequests.ts b/packages/client-runtime/src/state/threadRequests.ts
-index 7c3c44c4caa592103a6deb69983866f4dba2f62b..c5d695a4ce7994cdaadb228ca1fe132cb7e7b951 100644
+index 99fd12ba5b360365f0c65acc17ac7e2895d08975..43fc91ff61a9b3bf99c4cf00a731b3bfd9a56f6c 100644
 --- a/packages/client-runtime/src/state/threadRequests.ts
 +++ b/packages/client-runtime/src/state/threadRequests.ts
-@@ -223,6 +223,19 @@ export function pendingRuntimeRequestIds(
-   );
+@@ -233,6 +233,19 @@ export function makeThreadRequestsResolvedAnnouncer(
+   };
  }
  
 +const WAITING_QUESTION: ThreadUserInputQuestion = {
@@ -78,7 +78,7 @@ index 7c3c44c4caa592103a6deb69983866f4dba2f62b..c5d695a4ce7994cdaadb228ca1fe132c
  export function derivePendingThreadRequests(
    projection: Pick<ThreadStructure, "runtimeRequests" | "turnItems">,
  ): PendingThreadRequests {
-@@ -237,7 +250,19 @@ export function derivePendingThreadRequests(
+@@ -247,7 +260,19 @@ export function derivePendingThreadRequests(
          (candidate) =>
            candidate.type === "user_input_request" && candidate.requestId === request.id,
        );
