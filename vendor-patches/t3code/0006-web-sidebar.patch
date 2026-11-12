@@ -3,7 +3,7 @@ Subject: web: Baton's block in the sidebar
 One element, above upstream's thread list; everything else is in components/sidebar/Baton*.
 
 diff --git a/apps/desktop/src/ipc/methods/snapShot.test.ts b/apps/desktop/src/ipc/methods/snapShot.test.ts
-index 7e1ae602f979db00d082c795aee4973f39cbd30f..dff188ea1988f4db03047d56f9268d9a4f6b0d6d 100644
+index 7e1ae602f979db00d082c795aee4973f39cbd30f..401bd01c2aab6ea28fd39fcdf0621e1655d38af5 100644
 --- a/apps/desktop/src/ipc/methods/snapShot.test.ts
 +++ b/apps/desktop/src/ipc/methods/snapShot.test.ts
 @@ -11,6 +11,7 @@ import {
@@ -14,13 +14,15 @@ index 7e1ae602f979db00d082c795aee4973f39cbd30f..dff188ea1988f4db03047d56f9268d9a
  } from "./snapShot.ts";
  
  describe("window capture IPC", () => {
-@@ -67,6 +68,29 @@ describe("window capture IPC", () => {
+@@ -67,6 +68,31 @@ describe("window capture IPC", () => {
      );
    });
  
 +  it.effect("still refuses a pending-snapshot read from a detached window", () => {
 +    return Effect.gen(function* () {
-+      const detached = yield* Effect.exit(listPendingSnapShots.handler(undefined, { sender: { id: 8 } }));
++      const detached = yield* Effect.exit(
++        listPendingSnapShots.handler(undefined, { sender: { id: 8 } }),
++      );
 +      assert(Exit.isFailure(detached));
 +      assert.deepEqual(yield* listPendingSnapShots.handler(undefined, { sender: { id: 7 } }), []);
 +    }).pipe(

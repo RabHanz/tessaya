@@ -10,6 +10,8 @@ import * as NodePath from "node:path";
 
 import * as Electron from "electron";
 
+import { trustRenderer } from "./trustedRenderers.ts";
+
 const WINDOW_NAME_PREFIX = "baton-window-";
 const WINDOW_ID = /^[a-z0-9-]{1,40}$/;
 const STATE_FILE = "baton-detached-windows.json";
@@ -88,6 +90,7 @@ export function installDetachedWindows(
       const id = detachedWindowId(details.url, applicationUrl);
       if (id === null) return;
       openWindows.add(id);
+      trustRenderer(window.webContents);
       guard(window);
       watch(window.webContents);
       let timer: ReturnType<typeof setTimeout> | undefined;
