@@ -1,3 +1,5 @@
+A pull request URL whose repository GitHub cannot address (a redacted or mangled name) is not linked to a thread.
+
 diff --git a/packages/source-control-github/src/shared/definition.test.ts b/packages/source-control-github/src/shared/definition.test.ts
 index eadf35620416e154feb1089369aad5c2631be21e..a3d0910a50d53f0621ce18c2a1172c057ebb1910 100644
 --- a/packages/source-control-github/src/shared/definition.test.ts
