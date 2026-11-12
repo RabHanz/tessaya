@@ -26,3 +26,16 @@ export const isDismissal = (text: string): boolean =>
   /\b(?:dismissed|that'?s all|that will be all|that'?ll be all|go to sleep|goodbye|good night|stop listening)\b/i.test(
     text,
   );
+
+/** A bare "yes", "okay" or "yeah": an answer to her, or the room's chatter when she asked nothing (19:05, 12 Nov). */
+export const isBackchannel = (text: string): boolean =>
+  /^(?:yes|yeah|yep|yup|yah|no|nope|okay|ok|right|sure|alright|all right|mm+|hmm+|uh huh)[.!?]*$/i.test(
+    text.trim(),
+  );
+
+/** Her reply asks him something or hands him a next step, so his answer may take longer to come. */
+export const invitesReply = (said: string): boolean =>
+  /\?\s*$/.test(said.trim()) ||
+  /\b(?:you'?d need to|you need to|could you|would you|do you want|shall i|should i|want me to|say (?:it|that) again|let me know)\b/i.test(
+    said,
+  );

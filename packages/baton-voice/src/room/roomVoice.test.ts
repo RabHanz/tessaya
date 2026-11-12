@@ -59,7 +59,13 @@ const setup = (over: Partial<RoomDeps> = {}) => {
       await room.session(DEV)!.drained();
     }
   };
-  return { room, feed, published, brainCalls, metrics, deps };
+  /** He presses S2 (her listening sound off, so the downlink carries only her reply). */
+  const s2 = () => {
+    room.message(`freya/r1/${DEV}/cmd/voice/earcons`, Buffer.from('{"on":false}'));
+    room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    room.message(`freya/r1/${DEV}/cmd/voice/earcons`, Buffer.from('{"on":true}'));
+  };
+  return { room, feed, s2, published, brainCalls, metrics, deps };
 };
 
 describe("the room voice loop", () => {
@@ -89,6 +95,7 @@ describe("the room voice loop", () => {
   it("does not answer a voice the gate keeps out", async () => {
     const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.05 };
     const t = setup({ speaker: async () => guest });
+    t.s2();
     await t.feed(true, 20);
     await t.feed(false, 30);
     expect(t.brainCalls).toEqual([]);
@@ -107,6 +114,7 @@ describe("the room voice loop", () => {
         yield new Int16Array(16_000);
       },
     });
+    t.s2();
     await t.feed(true, 20);
     await t.feed(false, 8);
     await t.feed(true, 10);
@@ -147,6 +155,7 @@ describe("answering only when he is talking to her", () => {
         "Say yeah.",
       ]),
     });
+    t.s2();
     await turn(t);
     await turn(t);
     await t.deps.sleep(10_000);
@@ -211,6 +220,78 @@ describe("answering only when he is talking to her", () => {
     expect(
       t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
     ).toEqual(['{"name":"alfred"}', '{"name":"tessaya"}']);
+  });
+
+  it("does not chain into a conversation with the room (19:05, 12 Nov): audio alone opens nothing, a stray 'yeah' extends nothing", async () => {
+    const cascade = ["Yes.", "Okay.", "Movie going here.", "Yeah.", "Yeah."];
+    // Short lines a second or two apart, as they came.
+    const quick = async (t: ReturnType<typeof setup>) => {
+      await t.feed(true, 10);
+      await t.feed(false, 10);
+    };
+    const heardOnly = setup({ recognise: said(cascade) });
+    for (const _ of cascade) await quick(heardOnly);
+    expect(heardOnly.brainCalls).toEqual([]);
+
+    // Had S2 opened it: the bare "yes" and "okay" are not for her, and her one answer leaves no room for the "yeah"s.
+    const pressed = setup({ recognise: said(cascade) });
+    pressed.s2();
+    for (const _ of cascade) await quick(pressed);
+    expect(pressed.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Movie going here.",
+    ]);
+  });
+
+  it("holds the window for his answer when her reply asks for one (19:23:44, 12 Nov), and glances at a turn just too late", async () => {
+    const replies: Record<string, string> = {
+      "Can you take a look at my laptop?":
+        "I can't look at your laptop, because it isn't linked to this server. You'd need to link it first.",
+      "What time is it?": "It's twenty-three minutes past seven.",
+    };
+    const t = setup({
+      recognise: said([
+        "Can you take a look at my laptop?",
+        "How do I link it?",
+        "What time is it?",
+        "And the date?",
+      ]),
+      brain: async function* (input) {
+        t.brainCalls.push(input);
+        yield replies[input.messages.at(-1)!.content] ?? "Fine.";
+      },
+    });
+    const glances = () => t.published.filter((p) => String(p.payload).includes('"glance"')).length;
+    t.s2();
+    await turn(t);
+    // Past the usual 8 s after her reply, inside the longer hold.
+    await t.deps.sleep(8_000);
+    await turn(t);
+    await turn(t);
+    // Her answer asked nothing: the window is 8 s, and this one starts a second or so after it closed.
+    await t.deps.sleep(6_000);
+    await turn(t);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Can you take a look at my laptop?",
+      "How do I link it?",
+      "What time is it?",
+    ]);
+    expect(glances()).toBe(1);
+  });
+
+  it("acknowledges being sent away even when her brain says nothing, then rests", async () => {
+    const spoken: string[] = [];
+    const t = setup({
+      recognise: said(["I said dismissed."]),
+      brain: async function* () {},
+      speak: async function* (text) {
+        spoken.push(text);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.s2();
+    await turn(t);
+    expect(spoken).toEqual(["Okay."]);
+    expect(t.published.at(-1)).toMatchObject({ payload: '{"mood":"sleepy"}' });
   });
 });
 
@@ -298,6 +379,7 @@ describe("how her reply sounds and looks on the R1", () => {
           yield new Int16Array(3_200).fill(text.startsWith("first") ? 1 : 2);
       },
     });
+    t.s2();
     await t.feed(true, 20);
     await t.feed(false, 8);
     await t.feed(true, 20);
@@ -325,6 +407,7 @@ describe("how her reply sounds and looks on the R1", () => {
       },
     });
     box.published = t.published;
+    t.s2();
     await t.feed(true, 20);
     await t.feed(false, 8);
     await t.metrics;
@@ -336,6 +419,7 @@ describe("how her reply sounds and looks on the R1", () => {
 
   it("looks attentive while he talks, nods when he is done, and rests once she has finished", async () => {
     const t = setup();
+    t.s2();
     await t.feed(true, 20);
     await t.feed(false, 8);
     await t.metrics;
@@ -549,6 +633,7 @@ describe("her brain starting on the recogniser's partial words", () => {
       ...over,
     });
     const run = async () => {
+      t.s2();
       await t.feed(true, 20);
       await t.feed(false, 8);
       await t.deps.sleep(300);

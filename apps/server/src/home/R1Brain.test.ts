@@ -97,7 +97,7 @@ effectIt.effect("stops calling tools at the round cap: the last round may only s
 );
 
 effectIt.effect(
-  "hands a tool's failure back as an error in its own words, and speaks each round as a new sentence",
+  "hands a tool's failure back as an error in its own words, and speaks only the outcome, never the words before a tool call",
   () =>
     Effect.gen(function* () {
       const model = scripted([
@@ -113,7 +113,7 @@ effectIt.effect(
           }),
         ),
       ).pipe(Stream.mkString);
-      expect(said).toBe("Let me check. The house isn't answering.");
+      expect(said).toBe("The house isn't answering.");
       expect(model.requests[1]!.messages.at(-1)).toEqual({
         role: "user",
         content: [

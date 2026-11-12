@@ -6,7 +6,7 @@
 import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
 
 import { createEchoGuard } from "../echoGuard.ts";
-import { calledName, isDismissal } from "./addressing.ts";
+import { calledName, invitesReply, isBackchannel, isDismissal } from "./addressing.ts";
 import { admits, UNVERIFIED, type SpeakerGate, type SpeakerIdentity } from "../speaker.ts";
 import { DOWN_FRAME_BYTES, fromBytes, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
@@ -111,6 +111,8 @@ export interface RoomDeps {
   readonly vad: () => { readonly score: (window: Int16Array) => Promise<number> };
   readonly smartTurn: (pcm: Int16Array) => Promise<number>;
   readonly recognise: () => RecogniserTurn;
+  /** A throwaway decode as a session opens: the first clip after a quiet spell is otherwise about 1.5 s slower. */
+  readonly warm?: () => void;
   readonly speaker?: (pcm: Int16Array) => Promise<SpeakerIdentity>;
   readonly affect?: (pcm: Int16Array) => Promise<Affect>;
   /** Tessaya's turn on her server: the reply as text deltas. */
@@ -151,6 +153,10 @@ export interface RoomConfig {
   readonly upDelayMs: number;
   /** After her reply (or S2), he may go on without her name for this long; after that only her name wakes her. */
   readonly followMs: number;
+  /** The window after a reply that asks him something or tells him what to do next: his answer takes longer. */
+  readonly replyHoldMs: number;
+  /** A turn begun this soon after the window closed gets a glance, so a dropped turn is never met with nothing. */
+  readonly lateCueMs: number;
   /** After this long with nothing said to her, the session ends (the R1 plays its exit chime); S2 starts it again. */
   readonly idleStopMs: number;
   /** Who answers by name, the lead first; each speaks in its own voice. */
@@ -174,6 +180,8 @@ export const ROOM_CONFIG: RoomConfig = {
   downDelayMs: 300,
   upDelayMs: 150,
   followMs: 8_000,
+  replyHoldMs: 15_000,
+  lateCueMs: 4_000,
   // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
   idleStopMs: 15 * 60_000,
   // shortcut: the default pack's personas and voices (his picks); a pack he edits on the laptop is not read here.
@@ -273,8 +281,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let bargedIn = false;
     let closed = false;
     let enrolling: Int16Array[] | null = null;
-    /** Turns until then need no name: a session opens on S2, and each reply leaves a short window. */
-    let openUntil = deps.now() + config.followMs;
+    /** Turns until then need no name: S2 or her name opens it, a reply to him reopens it; audio alone never does. */
+    let openUntil = 0;
+    /** Her last reply asked him something: a bare "yes" or "okay" is his answer, not the room's chatter. */
+    let invited = false;
     let asleep = false;
     const lead = config.personas[0];
     /** Who answers: the one he last called, until the window lapses. */
@@ -400,6 +410,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         });
     };
 
+    /** Said to her: she was named, or it began inside the window and is more than a stray "yeah" she did not ask for. */
+    const addressed = (words: string, called: string | null, startedAt: number) =>
+      called !== null || (startedAt <= openUntil && (invited || !isBackchannel(words)));
+
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
     /** `given` is a turn already in words (an R1 button's prompt): addressed to her, with no voice to read. */
@@ -426,7 +440,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           words,
           config.personas.map((p) => p.name),
         );
-        if (called === null && startedAt > openUntil) return null;
+        if (!addressed(words, called, startedAt)) return null;
         // A guess waits for who is speaking (it may only answer whom the final turn would answer), not for the mood.
         const speaker = await speakerP;
         const affect = affectNow;
@@ -501,8 +515,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         text,
         config.personas.map((p) => p.name),
       );
-      if (called === null && given === undefined && startedAt > openUntil) {
-        deps.log(`[${id}] turn ${turn}: not said to her; not answered`);
+      if (given === undefined && !addressed(text, called, startedAt)) {
+        // Just after a window closed it was probably his follow-up: a glance says she heard something but held back.
+        const late =
+          openUntil > 0 && startedAt > openUntil && startedAt - openUntil <= config.lateCueMs;
+        if (late) gesture("glance");
+        deps.log(`[${id}] turn ${turn}: not said to her; not answered${late ? " (a glance)" : ""}`);
         return;
       }
       const named = config.personas.find((p) => p.name === called);
@@ -583,12 +601,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           done.forEach(enqueue);
         }
         if (buffer.trim() !== "") enqueue(buffer.trim());
+        // Sent away, she always says so before she rests, even when her brain had nothing to add.
+        if (dismissed && said.trim() === "") {
+          said = "Okay.";
+          enqueue(said);
+        }
         await speakingChain;
         // Back to rest once the R1 has played the last of it (the server's own mood may still hold until then).
         if (!control.signal.aborted)
           void deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())).then(() => {
-            if (reply === null || reply === control) face("neutral");
+            if (reply === null || reply === control) face(dismissed ? "sleepy" : "neutral");
           });
+        if (dismissed) asleep = true;
       } catch (error) {
         if (control.signal.aborted) deps.log(`[${id}] turn ${turn}: cut off`);
         else {
@@ -600,10 +624,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           );
         }
       } finally {
-        if (reply === control || reply === null)
+        if (reply === control || reply === null) {
+          invited = !dismissed && invitesReply(said);
           openUntil = dismissed
             ? 0
-            : Math.max(deps.now(), playUntil + config.downDelayMs) + config.followMs;
+            : Math.max(deps.now(), playUntil + config.downDelayMs) +
+              (invited ? config.replyHoldMs : config.followMs);
+        }
         if (reply === control) reply = null;
         if (said.trim() !== "") history.push({ role: "assistant", content: said.trim() });
         lastActivity = deps.now();
@@ -783,11 +810,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   };
   /** Who woke an R1 by name, until its session starts. */
   const calledBy = new Map<string, string>();
-  const start = (id: string) => {
+  const start = (id: string, how = "audio") => {
     sessions.get(id)?.close();
     const s = openSession(id);
     sessions.set(id, s);
-    deps.log(`[${id}] session open`);
+    deps.warm?.();
+    deps.log(`[${id}] session open (${how})`);
     return s;
   };
   const stop = (id: string) => {
@@ -852,7 +880,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (typeof text === "string" && text.trim() !== "" && !muted.has(id))
           (sessions.get(id) ?? start(id)).ask(text.trim().slice(0, 400));
       } else if (tail === "cmd/voice/start") {
-        const s = start(id);
+        const s = start(id, "S2 or wake");
+        s.wake();
         const word = calledBy.get(id);
         calledBy.delete(id);
         if (word !== undefined) s.call(word);

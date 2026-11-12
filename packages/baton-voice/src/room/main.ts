@@ -282,7 +282,12 @@ const brain = (url: string, key: string): RoomDeps["brain"] =>
     const res = await fetch(url, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ messages: input.messages, stream: true, tessaya: input.tessaya }),
+      body: JSON.stringify({
+        messages: input.messages,
+        stream: true,
+        tessaya: input.tessaya,
+        device: input.deviceId,
+      }),
       signal,
     });
     if (!res.ok || res.body === null) throw new Error(`Tessaya answered ${res.status}`);
@@ -391,6 +396,9 @@ const main = async () => {
           log,
         });
   startCameraRelay();
+  const recognise = recognisers();
+  // Faint noise, not silence, so the recogniser really decodes: that is what is slow after a quiet spell.
+  const warmClip = Int16Array.from({ length: 9_600 }, (_, i) => ((i * 7919) % 401) - 200);
   room = createRoomVoice(
     {
       ...(wake === undefined ? {} : { wake }),
@@ -404,7 +412,12 @@ const main = async () => {
         return { score: async (w) => (await scorer).score(w) };
       },
       smartTurn: (pcm) => smart.complete(pcm),
-      recognise: recognisers(),
+      recognise,
+      warm: () => {
+        const turn = recognise();
+        turn.feed(warmClip);
+        void turn.finish().catch(() => undefined);
+      },
       speaker: async (pcm) => {
         const at = Date.now();
         const vector = await embedder.embed(pcm);

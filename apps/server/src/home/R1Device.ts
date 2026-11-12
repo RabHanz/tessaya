@@ -375,6 +375,8 @@ interface R1Heard {
   readonly heard: string;
   readonly history: ReadonlyArray<{ readonly role: string; readonly content: string }>;
   readonly voice?: unknown;
+  /** The loop's device id; the replay harness's pretend R1s (`replay-…`) are not his room. */
+  readonly device?: string;
 }
 
 /** The house, the last action and memories for this turn, and the eyes set to thinking. */
@@ -474,7 +476,7 @@ export const runActs = Effect.fn("R1Device.runActs")(function* (
 /** The eyes and the Record once a turn is over. */
 const r1Finish = Effect.fn("R1Device.finish")(function* (
   device: R1Device | null,
-  heard: string,
+  input: R1Heard,
   said: string,
   outcomes: ReadonlyArray<ActOutcome>,
 ) {
@@ -488,8 +490,8 @@ const r1Finish = Effect.fn("R1Device.finish")(function* (
   if (record._tag === "Some")
     yield* record.value.append({
       kind: "device",
-      actor: "r1",
-      subject: `heard ${JSON.stringify(recordText(heard, 160))}`,
+      actor: input.device?.startsWith("replay-") === true ? "r1-replay" : "r1",
+      subject: `heard ${JSON.stringify(recordText(input.heard, 160))}`,
       outcome: outcomes.length === 0 ? "answered" : `acted ${outcomes.length}`,
       detail: recordText(said, 300),
     });
@@ -509,7 +511,7 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   }
   const outcomes = yield* runActs(plan.value.acts);
   const said = spokenReply(plan.value.say, outcomes);
-  yield* r1Finish(device, input.heard, said, outcomes);
+  yield* r1Finish(device, input, said, outcomes);
   return said;
 });
 
@@ -637,7 +639,7 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
     said += sorry;
     say(sorry);
   }
-  yield* r1Finish(device, input.heard, said.trim(), outcomes);
+  yield* r1Finish(device, input, said.trim(), outcomes);
   return said;
 });
 
@@ -709,7 +711,7 @@ const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"], tools: RoomRunn
       const outcomes = yield* runActs(final.acts);
       const said = spokenReply(final.rest.trim(), outcomes);
       if (final.acts.length > 0) say(said);
-      yield* r1Finish(device, input.heard, said, outcomes);
+      yield* r1Finish(device, input, said, outcomes);
       yield* Queue.end(queue);
     }),
   );
@@ -722,6 +724,7 @@ const ChatBody = Schema.Struct({
   model: Schema.optional(Schema.String),
   /** From an in-house voice pipeline: who seems to be speaking and how they sound. Shown to the model as data. */
   tessaya: Schema.optional(Schema.Unknown),
+  device: Schema.optional(Schema.String),
 });
 const decodeChat = Schema.decodeUnknownOption(Schema.fromJsonString(ChatBody));
 const textOf = (content: unknown): string =>
@@ -800,7 +803,12 @@ export const routes = HttpRouter.use((router) =>
       if (Option.isSome(brain) && body.value.stream !== false)
         return HttpServerResponse.stream(
           r1TurnStream(
-            { heard, history: turns.slice(0, -1), voice: body.value.tessaya },
+            {
+              heard,
+              history: turns.slice(0, -1),
+              voice: body.value.tessaya,
+              ...(body.value.device === undefined ? {} : { device: body.value.device }),
+            },
             brain.value,
             tools,
           ).pipe(
@@ -816,6 +824,7 @@ export const routes = HttpRouter.use((router) =>
         heard,
         history: turns.slice(0, -1),
         voice: body.value.tessaya,
+        ...(body.value.device === undefined ? {} : { device: body.value.device }),
       }).pipe(
         Effect.provideContext(context),
         Effect.orElseSucceed(() => "Sorry, something went wrong on my side."),
