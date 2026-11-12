@@ -75,6 +75,7 @@ import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+import { hotSwapProvider, isSelectionCommand } from "../baton/ProviderHotSwap.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 
@@ -794,10 +795,20 @@ const make = Effect.gen(function* () {
     }
   };
 
-  const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
+  const dispatchOnce: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
       Effect.andThen(assertDispatchTargetEnabled(command)),
       Effect.andThen(orchestrator.dispatch(command)),
+    );
+  // Tessaya: a provider picked mid-turn takes over at once instead of being refused.
+  const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
+    dispatchOnce(command).pipe(
+      Effect.catchTags({
+        OrchestratorProviderSelectionBusyError: (busy) =>
+          isSelectionCommand(command)
+            ? hotSwapProvider(orchestrator, command, busy, dispatchOnce)
+            : Effect.fail(busy),
+      }),
     );
 
   const getProjectThreadRecords: ThreadManagementServiceShape["getProjectThreadRecords"] = (
