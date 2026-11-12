@@ -1040,9 +1040,9 @@ function modalPage(b) {
     const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);
     if (facts.length) { b.appendChild($('h2', null, 'Version')); b.appendChild(plainGroup(facts.map(([l, v]) => [l, v]))); }
     b.appendChild($('h2', null, 'Tour'));
-    b.appendChild(plainGroup([[L('wizard.rerun'), 'Two minutes: microphone, voices, what she may do, privacy, and how to stop her.', 'Start', tourStart]]));
+    b.appendChild(plainGroup([[L('wizard.rerun'), 'A minute: your microphone, dictation key, one sentence, and who does the work.', 'Start', tourStart]]));
     b.appendChild($('h2', null, L('tip.title'))); b.appendChild($('p', 'hint', L('tip.text')));
-    b.appendChild(seg(L('tip.title'), [['daily', L('tip.daily')], ['all', L('tip.all')], ['off', L('tip.none')]], learn.mode, m => { learn.mode = m; saveLearn(); render(); }));
+    const tg = seg(L('tip.title'), [['daily', L('tip.daily')], ['all', L('tip.all')], ['off', L('tip.none')]], learn.mode, m => { learn.mode = m; saveLearn(); render(); }); tg.style.marginBottom = '12px'; b.appendChild(tg);
     b.appendChild(plainGroup([[L('tip.reset'), L('tip.reset.text'), L('tip.reset'), () => { learn = Object.assign({}, LEARN0, { days: learn.days, mode: learn.mode }); tipNow = null; saveLearn(); render(); }]]));
     b.appendChild($('h2', null, 'Quit'));
     b.appendChild(plainGroup([['Quit Tessaya', 'Closing the window keeps Tessaya in the tray. Quit ends it.', 'Quit', 'q.quit']]));
@@ -1170,7 +1170,7 @@ function paletteItems() {
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
   cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
   cmd('Run the standing jobs now', 'The ones you have switched on', () => set('trust.standing-run', null));
-  cmd(L('wizard.rerun'), 'Two minutes: microphone, voices, what she may do, privacy, how to stop her', tourStart);
+  cmd(L('wizard.rerun'), 'A minute: microphone, dictation key, one sentence, who does the work', tourStart);
   for (const c of S.controls) {
     if (c.id.indexOf('trust.standing:') === 0 || c.id.indexOf('trust.rule:') === 0) cmd((c.on ? 'Turn off standing job: ' : 'Turn on standing job: ') + c.label, 'Unattended work, counted and logged', () => set(c.id, !c.on));
     else if (c.kind === 'session' && c.canOpen) items.push({ kind: 'Session', label: 'Open session ' + c.label, hint: c.project + ' ' + c.box, run: () => set(c.id, null) });
