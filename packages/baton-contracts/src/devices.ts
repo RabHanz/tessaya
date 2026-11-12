@@ -15,6 +15,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "vibrate",
   "say",
   "mute",
+  "earcons",
   "transport",
   "transportConfirm",
   "transportRevert",
@@ -23,6 +24,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "nfcAssign",
   "nfcRemove",
   "forget",
+  "speaker",
 ] as const;
 export const BATON_DEVICES_OWNER_OPS = ["reboot", "camera", "cameraView", "cameraClear"] as const;
 
@@ -65,6 +67,46 @@ export const DeviceTag = Schema.Struct({
 });
 export type DeviceTag = typeof DeviceTag.Type;
 
+/** What the speaker op asks the firmware to do. `route` picks where replies play. */
+export const DEVICE_SPEAKER_ACTIONS = [
+  "scan",
+  "pair",
+  "connect",
+  "disconnect",
+  "forget",
+  "route",
+] as const;
+export type DeviceSpeakerAction = (typeof DEVICE_SPEAKER_ACTIONS)[number];
+/** auto: the Bluetooth speaker while it streams, else the R1's own speaker. */
+export const DEVICE_SPEAKER_OUTPUTS = ["auto", "bt", "onboard"] as const;
+export type DeviceSpeakerOutput = (typeof DEVICE_SPEAKER_OUTPUTS)[number];
+
+/** An external Bluetooth speaker (the R1 as an A2DP source). */
+export const DeviceSpeaker = Schema.Struct({
+  state: Schema.Literals([
+    "off",
+    "idle",
+    "scanning",
+    "connecting",
+    "connected",
+    "streaming",
+    "failed",
+  ]),
+  /** The saved speaker, kept across reboots until forgotten. */
+  saved: Schema.NullOr(Schema.Struct({ mac: Schema.String, name: Schema.String })),
+  output: Schema.Literals(DEVICE_SPEAKER_OUTPUTS),
+  found: Schema.Array(
+    Schema.Struct({
+      mac: Schema.String,
+      name: Schema.String,
+      rssi: Schema.NullOr(Schema.Number),
+      audio: Schema.Boolean,
+    }),
+  ),
+  scannedAt: Schema.NullOr(Schema.String),
+});
+export type DeviceSpeaker = typeof DeviceSpeaker.Type;
+
 export const DeviceStage = Schema.Struct({
   name: Schema.String,
   lastMs: Schema.NullOr(Schema.Number),
@@ -96,6 +138,8 @@ export const DeviceView = Schema.Struct({
   mode: Schema.Literals(["satellite", "standalone"]),
   mood: Schema.NullOr(Schema.String),
   muted: Schema.Boolean,
+  /** Her listening and closing sounds on this R1 (the room loop's cues). */
+  earcons: Schema.Boolean,
   transport: Schema.Literals(DEVICE_TRANSPORTS),
   /** While a transport trial runs: when it reverts to in-house, muted, unless confirmed. */
   revertAt: Schema.NullOr(Schema.String),
@@ -108,6 +152,8 @@ export const DeviceView = Schema.Struct({
     line: Schema.NullOr(Schema.String),
   }),
   lastTag: Schema.NullOr(Schema.Struct({ uid: Schema.String, at: Schema.String })),
+  /** null until the firmware announces it can drive a Bluetooth speaker (state/caps); clients hide the controls. */
+  speaker: Schema.NullOr(DeviceSpeaker),
   stages: Schema.Array(DeviceStage),
   log: Schema.Array(DeviceLogLine),
 });

@@ -1,3 +1,4 @@
+import { TESSAYA_PLACES } from "@t3tools/baton-contracts";
 import { HOSTED_APP_CHANNEL } from "~/branding";
 import { isElectron, isSecretsFeatureEnabled } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
@@ -38,6 +39,7 @@ export type SettingsPath =
   | "/settings/apis"
   | "/settings/home"
   | "/settings/hardware"
+  | "/settings/tessaya"
   | "/settings/maintenance"
   | "/settings/labs"
   | "/settings/about"
@@ -109,6 +111,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/apis": "APIs",
   "/settings/home": "Home",
   "/settings/hardware": "Hardware",
+  "/settings/tessaya": "Tessaya",
   "/settings/maintenance": "Maintenance",
   "/settings/labs": "Labs",
   "/settings/about": "About",
@@ -153,14 +156,17 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       "/settings/connections",
       "/settings/access",
       ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
-      "/settings/apis",
-      "/settings/home",
-      "/settings/hardware",
     ],
   },
   {
     heading: null,
-    paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
+    paths: [
+      "/settings/maintenance",
+      "/settings/labs",
+      "/settings/about",
+      "/settings/archived",
+      "/settings/tessaya",
+    ],
   },
 ];
 
@@ -1326,6 +1332,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/hardware",
     searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
   },
+  // Tessaya's own settings live in her window; T3's search finds them and says where.
+  ...TESSAYA_PLACES.map((place) => ({
+    id: `tessaya-${place.id}`,
+    title: place.label,
+    to: "/settings/tessaya" as const,
+    searchTerms: [`tessaya ${place.group} ${place.terms.join(" ")}`],
+  })),
   {
     id: "archive",
     title: "Archived threads",
@@ -1360,6 +1373,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/apis": null,
   "/settings/home": null,
   "/settings/hardware": null,
+  "/settings/tessaya": null,
   "/settings/scheduled-tasks": null,
   "/settings/maintenance": null,
   "/settings/labs": null,

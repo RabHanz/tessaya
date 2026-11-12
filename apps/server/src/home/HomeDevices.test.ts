@@ -14,7 +14,7 @@ const ID = "r1-3d57b3";
 const root = `freya/r1/${ID}`;
 
 const setup = () => {
-  const sent: Array<{ topic: string; payload: unknown }> = [];
+  const sent: Array<{ topic: string; payload: unknown; retain?: boolean }> = [];
   const scenes: Array<unknown> = [];
   let record: R1Device | null = {
     deviceKey: "k".repeat(30),
@@ -26,8 +26,12 @@ const setup = () => {
   const broker = Layer.succeed(HomeDevices.HomeDeviceBroker, {
     connect: () =>
       Effect.succeed({
-        publish: (topic: string, payload: string) =>
-          void sent.push({ topic: topic.replace(`${root}/`, ""), payload: JSON.parse(payload) }),
+        publish: (topic: string, payload: string, retain?: boolean) =>
+          void sent.push({
+            topic: topic.replace(`${root}/`, ""),
+            payload: payload === "" ? "" : JSON.parse(payload),
+            ...(retain === true ? { retain } : {}),
+          }),
         connected: () => true,
         close: () => {},
       }),
@@ -127,9 +131,16 @@ it.effect(
       assert.deepStrictEqual(sent[1]!.payload, { ev: "mute" });
       const view = (yield* devices.overview).devices[0]!;
       assert.deepStrictEqual(
-        [view.id, view.configured, view.online, view.muted],
-        [ID, true, true, true],
+        [view.id, view.configured, view.online, view.muted, view.earcons],
+        [ID, true, true, true, true],
       );
+      // Her cues off for this R1: kept, and retained on the broker so the room loop has it after a restart.
+      sent.length = 0;
+      yield* devices.command(ID, { op: "earcons", on: false }, me);
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/voice/earcons", payload: { on: false }, retain: true },
+      ]);
+      assert.isFalse((yield* devices.overview).devices[0]!.earcons);
     }).pipe(Effect.provide(layer));
   },
 );
@@ -196,6 +207,17 @@ it.effect(
       yield* TestClock.adjust("11 minutes");
       yield* devices.tick;
       assert.isNull(yield* devices.cameraView(ID));
+
+      // His own spoken request at the R1, his voice verified: his yes, through the same gate.
+      const shots = () => topics().filter((t) => t.endsWith("cmd/camera/capture")).length;
+      const before = shots();
+      const his = yield* devices.command(
+        ID,
+        { op: "camera" },
+        { who: "Tessaya in the room", surface: "assistant", approved: true },
+      );
+      assert.strictEqual(his.status, "done");
+      assert.strictEqual(shots(), before + 1);
     }).pipe(Effect.provide(layer));
   },
 );
@@ -237,6 +259,69 @@ it.effect(
       const forgot = yield* serveDevicesCall({ kind: "act", op: "forget", args: { id: ID } }, me);
       assert.isTrue(forgot.ok);
       assert.isNull(record());
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "keeps the speaker controls off until the firmware says it drives one, then sends them and folds what it reports",
+  () => {
+    const { sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* TestClock.adjust("20 seconds");
+      sent.length = 0;
+      const pair = {
+        kind: "act",
+        op: "speaker",
+        args: { id: ID, action: "pair", mac: "AA:BB:CC:DD:EE:FF" },
+      } as const;
+
+      const early = yield* serveDevicesCall(pair, me);
+      assert.isFalse(early.ok);
+      assert.include(early.error, "cannot drive a Bluetooth speaker");
+      assert.isNull((yield* devices.overview).devices[0]!.speaker);
+      assert.lengthOf(sent, 0);
+
+      yield* devices.receive(`${root}/state/caps`, '{"fw":"smp-0.1.0","bt_speaker":true}');
+      const badMac = yield* serveDevicesCall(
+        { kind: "act", op: "speaker", args: { id: ID, action: "pair", mac: "AA:BB" } },
+        me,
+      );
+      assert.isFalse(badMac.ok);
+      assert.isTrue((yield* serveDevicesCall(pair, me)).ok);
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/bt/pair", payload: { mac: "AA:BB:CC:DD:EE:FF" } },
+      ]);
+
+      yield* devices.receive(
+        `${root}/event/bt/devices`,
+        '{"devices":[{"mac":"AA:BB:CC:DD:EE:FF","name":"Flip 5","rssi":-58,"audio":true},{"mac":"junk"}]}',
+      );
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"streaming","mac":"AA:BB:CC:DD:EE:FF","name":"Flip 5","out":"auto","saved":true}',
+      );
+      const speaker = (yield* devices.overview).devices[0]!.speaker!;
+      assert.deepStrictEqual(
+        [
+          speaker.state,
+          speaker.saved,
+          speaker.output,
+          speaker.found.length,
+          speaker.found[0]!.name,
+        ],
+        ["streaming", { mac: "AA:BB:CC:DD:EE:FF", name: "Flip 5" }, "auto", 1, "Flip 5"],
+      );
+
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"idle","mac":"","saved":false,"out":"onboard"}',
+      );
+      const after = (yield* devices.overview).devices[0]!.speaker!;
+      assert.deepStrictEqual([after.state, after.saved, after.output], ["idle", null, "onboard"]);
     }).pipe(Effect.provide(layer));
   },
 );

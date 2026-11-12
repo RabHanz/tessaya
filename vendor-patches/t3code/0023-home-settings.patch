@@ -29,15 +29,35 @@ index b8ab00673db121554d82b6d31299b611553560b7..127b5a2d33224281004a0430a844aed4
      screen: SettingsEnvironmentMaintenanceRouteScreen,
      linking: "settings/maintenance",
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index a0e24692e1e89514c92c762cda1471e1221e57d5..9d57c485102edd77bd7581db3e056d3dba8ba01a 100644
+index a0e24692e1e89514c92c762cda1471e1221e57d5..cc1f244b8f3a4a98abc1fb5f6d2a5a6428372f88 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-@@ -256,6 +256,8 @@ function useSettingsIndexSections(): SettingsListSection[] {
-         serverPage("SettingsProviderAccounts", "person.crop.circle", "Providers"),
-         serverPage("SettingsThreads", "text.bubble", "Threads"),
-         page("SettingsScheduledTasks", "clock", "Scheduled tasks"),
-+        serverPage("SettingsHome", "house", "Home"),
+@@ -236,8 +236,19 @@ function useSettingsIndexSections(): SettingsListSection[] {
+   ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
+   const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
+     page(target, icon, label, { disabled: noServerTargets });
+-  // The same pages and groups as Settings on web, minus what mobile has no setting for.
++  // Tessaya's own settings first, grouped as in her desktop window; then T3's, as on web.
+   return [
++    {
++      title: "Talking to Tessaya",
++      rows: [page("SettingsVoice", "mic", "Voice and dictation")],
++    },
++    {
++      title: "Home and devices",
++      rows: [
++        serverPage("SettingsHome", "house", "Home Assistant"),
 +        serverPage("SettingsHardware", "face.smiling", "Hardware"),
++      ],
++    },
+     {
+       rows: [
+         page("SettingsOrganization", "gearshape", "General"),
+@@ -247,7 +258,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
+           ? [page("SettingsNavigation", "line.3.horizontal", "Navigation tabs")]
+           : []),
+         ...(Platform.OS === "ios" ? [page("SettingsKeyboard", "keyboard", "Keyboard")] : []),
+-        page("SettingsVoice", "mic", "Voice"),
        ],
      },
      {

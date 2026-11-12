@@ -174,6 +174,7 @@ export const createSessionsBridge = (input: {
         request.kind === "open" ||
         request.kind === "send" ||
         request.kind === "showLive" ||
+        request.kind === "navigate" ||
         !(await windowClosed())
       )
         return ask(request, waitMs);
@@ -227,9 +228,10 @@ export const createSessionsBridge = (input: {
 export async function showLiveWhenReady(
   bridge: Pick<SessionsBridge, "request"> | undefined,
   tries = 10,
+  request: BatonSessionRequest = { kind: "showLive" },
 ): Promise<boolean> {
   for (let i = 0; bridge !== undefined && i < tries; i += 1) {
-    if ((await bridge.request({ kind: "showLive" }, 2_000))?.ok === true) return true;
+    if ((await bridge.request(request, 2_000))?.ok === true) return true;
   }
   return false;
 }

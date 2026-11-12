@@ -17,7 +17,11 @@ import {
   type OsPack,
 } from "@t3tools/baton-shared/osPack";
 import { setPersonaField } from "@t3tools/baton-shared/personaFile";
-import { commercialBuild, voiceLibrary } from "@t3tools/baton-shared/voiceLibrary";
+import {
+  commercialBuild,
+  DEFAULT_POCKET_VOICE,
+  voiceLibrary,
+} from "@t3tools/baton-shared/voiceLibrary";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES } from "../voice/pocketVoice.ts";
@@ -182,7 +186,7 @@ export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
   return pack.personas.map((persona) => {
     const id = fileIdOf(persona.id);
     const model = modelOf(pack, persona.id);
-    const fallback = splitFront(defaultText(id)).fields["voice"] ?? "anna";
+    const fallback = splitFront(defaultText(id)).fields["voice"] ?? DEFAULT_POCKET_VOICE;
     let own: string | undefined;
     try {
       own = splitFront(NodeFS.readFileSync(fileFor(dir, id)!, "utf8")).fields["voice"];

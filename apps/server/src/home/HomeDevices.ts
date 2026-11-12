@@ -7,8 +7,12 @@
 import * as NodeCrypto from "node:crypto";
 
 import {
+  DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
   R1_MOODS,
+  type DeviceSpeaker,
+  type DeviceSpeakerAction,
+  type DeviceSpeakerOutput,
   type DeviceStage,
   type DeviceTag,
   type DeviceTagAction,
@@ -40,6 +44,8 @@ export class DeviceRefusedError extends Schema.TaggedError<DeviceRefusedError>()
 export interface DeviceActor {
   readonly who: string;
   readonly surface: "settings" | "agent" | "assistant";
+  /** His yes is already given: his own spoken request at the R1, his voice verified this turn (R1Device). */
+  readonly approved?: boolean;
 }
 
 export type DeviceCommand =
@@ -48,12 +54,20 @@ export type DeviceCommand =
   | { readonly op: "vibrate"; readonly ms: number }
   | { readonly op: "say"; readonly text: string }
   | { readonly op: "mute"; readonly muted: boolean }
+  | { readonly op: "earcons"; readonly on: boolean }
   | { readonly op: "transport"; readonly transport: DeviceTransport }
   | { readonly op: "transportConfirm" }
   | { readonly op: "transportRevert" }
   | { readonly op: "enrol"; readonly cancel: boolean }
   | { readonly op: "diag" }
   | { readonly op: "forget" }
+  | {
+      readonly op: "speaker";
+      readonly action: DeviceSpeakerAction;
+      readonly mac?: string;
+      readonly name?: string;
+      readonly output?: DeviceSpeakerOutput;
+    }
   | { readonly op: "reboot" }
   | { readonly op: "camera" };
 
@@ -98,6 +112,14 @@ export interface Heard {
   ota: { phase: string; line: string } | null;
   camera: string | null;
   lastTag: { uid: string; at: number } | null;
+  /** Set once the firmware's state/caps says it drives a Bluetooth speaker; the speaker controls stay off until then. */
+  speaker: {
+    state: DeviceSpeaker["state"];
+    saved: DeviceSpeaker["saved"];
+    output: DeviceSpeakerOutput;
+    found: DeviceSpeaker["found"];
+    scannedAt: number | null;
+  } | null;
   samples: Record<string, Array<number>>;
   log: Array<{ at: number; topic: string; text: string }>;
 }
@@ -114,6 +136,7 @@ const blank = (): Heard => ({
   ota: null,
   camera: null,
   lastTag: null,
+  speaker: null,
   samples: {},
   log: [],
 });
@@ -130,6 +153,17 @@ const json = (text: string): Record<string, unknown> | null => {
 };
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+
+const SPEAKER_STATES: ReadonlyArray<string> = [
+  "off",
+  "idle",
+  "scanning",
+  "connecting",
+  "connected",
+  "streaming",
+  "failed",
+];
+export const MAC = /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/;
 
 const median = (values: ReadonlyArray<number>): number | null => {
   if (values.length === 0) return null;
@@ -200,6 +234,47 @@ export const applyMessage = (
     case "event/wake/boot":
       d.firmware = str(body?.["fw_ver"]) ?? str(body?.["fw"]) ?? d.firmware;
       break;
+    case "state/caps":
+      if (body?.["bt_speaker"] === true)
+        d.speaker ??= { state: "off", saved: null, output: "auto", found: [], scannedAt: null };
+      else d.speaker = null;
+      break;
+    case "state/bt": {
+      if (d.speaker === null) break;
+      const state = str(body?.["state"]);
+      if (state !== null && SPEAKER_STATES.includes(state as never))
+        d.speaker.state = state as DeviceSpeaker["state"];
+      const out = str(body?.["out"]);
+      if (out !== null && DEVICE_SPEAKER_OUTPUTS.includes(out as never))
+        d.speaker.output = out as DeviceSpeakerOutput;
+      const mac = str(body?.["mac"]);
+      d.speaker.saved =
+        body?.["saved"] === true && mac !== null
+          ? { mac, name: recordText(str(body?.["name"]) ?? mac, 40) }
+          : null;
+      break;
+    }
+    case "event/bt/devices": {
+      if (d.speaker === null) break;
+      const list = Array.isArray(body?.["devices"]) ? (body["devices"] as Array<unknown>) : [];
+      d.speaker.found = list.slice(0, 10).flatMap((x) => {
+        const v = typeof x === "object" && x !== null ? (x as Record<string, unknown>) : {};
+        const mac = str(v["mac"]);
+        return mac === null || !MAC.test(mac)
+          ? []
+          : [
+              {
+                mac,
+                name: recordText(str(v["name"]) ?? "", 40),
+                rssi: num(v["rssi"]),
+                audio: v["audio"] === true,
+              },
+            ];
+      });
+      d.speaker.scannedAt = now;
+      line = `${d.speaker.found.length} Bluetooth devices nearby`;
+      break;
+    }
     case "event/nfc": {
       const uid = payload.trim();
       if (/^[0-9a-fA-F:]{4,40}$/.test(uid)) {
@@ -243,13 +318,15 @@ export const stagesOf = (d: Heard): ReadonlyArray<DeviceStage> =>
 interface Saved {
   transport: Record<string, DeviceTransport>;
   muted: Record<string, boolean>;
+  /** R1s with her listening and closing sounds off (the room loop plays them by default). */
+  earconsOff: Record<string, boolean>;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
 }
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export interface DeviceLink {
-  readonly publish: (topic: string, payload: string) => void;
+  readonly publish: (topic: string, payload: string, retain?: boolean) => void;
   readonly connected: () => boolean;
   readonly close: () => void;
 }
@@ -284,7 +361,8 @@ export const brokerLayer = Layer.succeed(HomeDeviceBroker, {
         log: () => {},
       });
       return {
-        publish: (topic: string, payload: string) => client.publish(topic, payload),
+        publish: (topic: string, payload: string, retain?: boolean) =>
+          client.publish(topic, payload, retain),
         connected: client.connected,
         close: client.close,
       };
@@ -364,6 +442,7 @@ const make = Effect.gen(function* () {
       return {
         transport: (value["transport"] ?? {}) as Saved["transport"],
         muted: (value["muted"] ?? {}) as Saved["muted"],
+        earconsOff: (value["earconsOff"] ?? {}) as Saved["earconsOff"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
       };
     }),
@@ -392,10 +471,10 @@ const make = Effect.gen(function* () {
         })
       : Effect.void;
 
-  const publish = (id: string, path: string, payload: unknown) =>
+  const publish = (id: string, path: string, payload: unknown, retain = false) =>
     Effect.sync(() => {
       const text = typeof payload === "string" ? payload : JSON.stringify(payload);
-      link?.publish(`freya/r1/${id}/${path}`, text);
+      link?.publish(`freya/r1/${id}/${path}`, text, retain);
     });
 
   const live = (id: string) =>
@@ -503,6 +582,18 @@ const make = Effect.gen(function* () {
         });
         yield* publish(id, "voice/ctl", { ev: c.muted ? "mute" : "unmute" });
         return done(c.muted ? "Muted: it does not listen or speak." : "Unmuted.");
+      case "earcons":
+        yield* change((s) => {
+          if (c.on) delete s.earconsOff[id];
+          else s.earconsOff[id] = true;
+        });
+        // Retained, so the room loop has it again after a restart.
+        yield* publish(id, "cmd/voice/earcons", { on: c.on }, true);
+        return done(
+          c.on
+            ? "Her listening and closing sounds are on."
+            : "Her listening and closing sounds are off.",
+        );
       case "transport":
         if (c.transport === "inhouse") {
           trials.delete(id);
@@ -547,9 +638,48 @@ const make = Effect.gen(function* () {
         yield* change((s) => {
           delete s.transport[id];
           delete s.muted[id];
+          delete s.earconsOff[id];
         });
+        yield* publish(id, "cmd/voice/earcons", "", true);
         if (device?.deviceId === id) yield* home.setDevice(null).pipe(Effect.ignore);
         return done("Forgotten. Set it up again in Settings → Home.");
+      }
+      case "speaker": {
+        if (heard.get(id)?.speaker == null)
+          return yield* new DeviceRefusedError({
+            why: `${id}'s firmware cannot drive a Bluetooth speaker yet. Nothing was sent.`,
+          });
+        const target =
+          c.mac !== undefined ? { mac: c.mac } : c.name !== undefined ? { name: c.name } : {};
+        switch (c.action) {
+          case "scan":
+            yield* publish(id, "cmd/bt/scan", { secs: 10 });
+            return done("Looking for Bluetooth speakers for about ten seconds.");
+          case "pair":
+          case "connect":
+            yield* publish(id, `cmd/bt/${c.action}`, target);
+            return done(
+              c.action === "pair"
+                ? "Pairing. Put the speaker in pairing mode if it is not already."
+                : "Connecting to the speaker.",
+            );
+          case "disconnect":
+            yield* publish(id, "cmd/bt/disconnect", {});
+            return done("Disconnected. Replies play on the R1 until you connect again.");
+          case "forget":
+            yield* publish(id, "cmd/bt/forget", {});
+            return done("Speaker forgotten. Pair it again to use it.");
+          case "route":
+            yield* publish(id, "cmd/bt/route", { out: c.output ?? "auto" });
+            return done(
+              c.output === "bt"
+                ? "Replies play only on the Bluetooth speaker."
+                : c.output === "onboard"
+                  ? "Replies play on the R1's own speaker."
+                  : "Replies play on the Bluetooth speaker when it is connected, else on the R1.",
+            );
+        }
+        return done("Done.");
       }
       case "reboot":
         yield* publish(id, "cmd/reboot", {});
@@ -573,7 +703,7 @@ const make = Effect.gen(function* () {
     by: DeviceActor,
   ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
     if (c.op !== "forget") yield* live(id);
-    if (RISKY_OPS.has(c.op) && by.surface !== "settings") {
+    if (RISKY_OPS.has(c.op) && by.surface !== "settings" && by.approved !== true) {
       const now = yield* Clock.currentTimeMillis;
       const askId = `device-${now.toString(36)}${(counter++ % 1296).toString(36)}`;
       const line = `${by.who} wants to ${describe(c)} on ${id}`;
@@ -620,6 +750,7 @@ const make = Effect.gen(function* () {
       mode: "satellite",
       mood: d.mood,
       muted: saved.muted[id] === true,
+      earcons: saved.earconsOff[id] !== true,
       transport: DEVICE_TRANSPORTS.includes(saved.transport[id]!)
         ? saved.transport[id]!
         : "inhouse",
@@ -632,6 +763,7 @@ const make = Effect.gen(function* () {
         line: cam?.line ?? (d.camera === null ? null : `Camera: ${d.camera}`),
       },
       lastTag: d.lastTag === null ? null : { uid: d.lastTag.uid, at: iso(d.lastTag.at)! },
+      speaker: d.speaker === null ? null : { ...d.speaker, scannedAt: iso(d.speaker.scannedAt) },
       stages: stagesOf(d),
       log: d.log.map((l) => ({ at: iso(l.at)!, topic: l.topic, text: l.text })).toReversed(),
     };

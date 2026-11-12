@@ -14,8 +14,8 @@ const texts = (pieces: ReturnType<typeof speechPieces>) =>
 
 describe("interjections before the voice", () => {
   it.each([
-    ["Hmm, let me check.", "Hmmm, let me check."],
-    ["Hmmmm. That failed.", "Hmmm. That failed."],
+    ["Hmmmm, let me check.", "Hmm, let me check."],
+    ["Hmm. That failed.", "Hmm. That failed."],
     ["Ugh, the build broke again.", "Uhhgh, the build broke again."],
     ["Mm hmm, done.", "Mm hm, done."],
     ["uh-huh", "Uh huh"],

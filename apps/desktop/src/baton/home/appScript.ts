@@ -4,9 +4,16 @@
  * fixed icon paths below). Outside Electron it reads `window.__BATON_STATE__`, so every tab can be
  * looked at in a browser. Its words come from `strings.ts` (the `STR` table on the first line); apart from that first line this string holds no backticks and no dollar-brace, on purpose.
  */
-import { tableFor } from "./strings.ts";
+import {
+  T3_SETTINGS_PLACES,
+  TESSAYA_PLACES,
+  TESSAYA_SETTINGS_GROUPS,
+} from "@t3tools/baton-contracts";
 
-export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))};
+import { tableFor } from "./strings.ts";
+import { AREAS } from "./tabs.ts";
+
+export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))}; const AREAS = ${JSON.stringify(AREAS)}; const PLACES = ${JSON.stringify(TESSAYA_PLACES)}; const SGROUPS = ${JSON.stringify(TESSAYA_SETTINGS_GROUPS)}; const T3PLACES = ${JSON.stringify(T3_SETTINGS_PLACES)};
 const L = (k, v) => { let t = STR[k] !== undefined ? STR[k] : k; if (v) for (const n in v) t = t.split("{" + n + "}").join(String(v[n])); return t; };
 const real = typeof require === 'function';
 const ipc = real ? require('electron').ipcRenderer : null;
@@ -58,6 +65,9 @@ const ICON = {
   fold: '<path d="M6 9l6 6 6-6"/>',
   chev: '<path d="M1 1l4 4 4-4"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/>',
+  hardware: '<rect x="5" y="3" width="14" height="18" rx="3"/><circle cx="12" cy="10" r="3"/><path d="M9 17h6"/>',
+  homeassistant: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M12 13v3M10.5 14.5h3"/>',
+  phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
@@ -70,16 +80,17 @@ if (real) {
     if (p) set('tf.file', p);
   });
 }
-// The sidebar holds the work; every setting is in the Settings window (CATS), reached from the foot of the sidebar.
-const GROUPS = [['Now', ['home','now','sessions','approvals','jobs','cloud','trust','usage']], ['Dictation', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']]];
-const GROUP_OF = {}; for (const [gname, ids] of GROUPS) for (const gid of ids) GROUP_OF[gid] = gname.toLowerCase();
-const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]').map(g => g === 'Voice' ? 'Dictation' : g).filter(g => g !== 'Settings')); } catch (e) { return new Set(); } })();
-const saveFolded = () => { try { localStorage.setItem('tessaya.folded', JSON.stringify([...foldedGroups])); } catch (e) {} };
-const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','help'].map(id => [id, L('tab.' + id)]);
-const CATS = ['general','voice','personas','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
+// The sidebar holds the work in five areas (AREAS); only the one in use stays open. Every setting is in Settings,
+// and each area's gear row opens its own part of it.
+const HUE = { today: 'now', talk: 'dictation', know: 'knowledge', devices: 'settings', agents: 'now' };
+const GROUP_OF = {}; for (const a of AREAS) for (const gid of a.pages) GROUP_OF[gid] = HUE[a.id];
+const openAreas = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.areas') || '[]')); } catch (e) { return new Set(); } })();
+const saveAreas = () => { try { localStorage.setItem('tessaya.areas', JSON.stringify([...openAreas])); } catch (e) {} };
+const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','homeassistant','phone','help'].map(id => [id, L('tab.' + id)]);
+const CATS = ['accounts','apis','general','voice','personas','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
 const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
 const INTRO = {};
-for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
+for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','homeassistant','phone','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = (() => { try { return localStorage.getItem('tessaya.rail') === '1'; } catch (e) { return false; } })(), modal = null, S = null, query = '';
 let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
@@ -858,10 +869,27 @@ const tabName = id => ((TABS.find(t => t[0] === id) || CATS.find(t => t[0] === i
 function searchPage(p) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const hits = S.controls.filter(c => c.kind !== 'session' && c.tab !== 'setup' && words.every(w => (c.label + ' ' + (c.hint || '') + ' ' + (c.section || '')).toLowerCase().includes(w)));
-  p.appendChild(pageHead('Search', hits.length ? hits.length + (hits.length === 1 ? ' setting' : ' settings') + ' for \u201c' + query + '\u201d' : 'Nothing matches \u201c' + query + '\u201d. Try a shorter word.'));
+  const places = placeHits(words);
+  p.appendChild(pageHead('Search', hits.length || places.length ? (hits.length + places.length) + ((hits.length + places.length) === 1 ? ' result' : ' results') + ' for \u201c' + query + '\u201d' : 'Nothing matches \u201c' + query + '\u201d. Try a shorter word.'));
+  if (places.length) { p.appendChild($('h2', null, L('search.places'))); p.appendChild(plainGroup(places.map(pl => [pl.label, pl.where, 'Open', () => { query = ''; pl.open(); }]))); }
   const by = new Map(); for (const c of hits) { const t = c.tab || 'advanced'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
   for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + (CATS.some(c => c[0] === t) ? 'Settings, ' : '') + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
 }
+// Pages and Settings in both windows that match every word; one in T3's window opens it there.
+function placeHits(words) {
+  const has = (label, terms) => words.length > 0 && words.every(w => (label + ' ' + terms.join(' ')).toLowerCase().includes(w));
+  const mine = PLACES.filter(pl => has(pl.label, pl.terms)).map(pl => ({ label: pl.label, where: pl.group, open: () => { modal = null; go(pl.id); } }));
+  const t3 = T3PLACES.filter(pl => has(pl.label, pl.terms)).map(pl => ({ label: pl.label, where: L('search.t3'), open: () => real && ipc.send('baton-home:sessions', pl.path) }));
+  return mine.concat(t3);
+}
+let embedUrl = null;
+if (real) ipc.invoke('baton-home:embed').then(u => { embedUrl = u || null; if (S) { lastSig = ''; render(S); } }).catch(() => {});
+// Pages built in T3's web app (Hardware, Home Assistant, APIs, accounts, voices), shown inside this window.
+function embed(p, page) {
+  if (!embedUrl) { p.appendChild($('div', 'empty', L('embed.missing'))); const b = $('button', 'btn gap-top', L('embed.open')); b.onclick = () => real && ipc.send('baton-home:sessions', '/tessaya/' + page); p.appendChild(b); return; }
+  const w = document.createElement('webview'); w.className = 'embed'; w.setAttribute('src', embedUrl + 'tessaya/' + page); p.appendChild(w);
+}
+function phonePage(p) { p.appendChild(plainGroup([[L('phone.pair'), L('phone.pair.text'), L('phone.pair'), () => real && ipc.send('baton-home:sessions', '/settings/access')]])); }
 // Sessions are T3's thread list (P5): counts here, the list filtered to live sessions there.
 const showLive = () => real && ipc.send('baton-home:sessions', 'live');
 function liveSessionsPage(p) {
@@ -877,6 +905,8 @@ function tabPage(p) {
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   if (cur === 'sessions') return liveSessionsPage(p);
+  if (cur === 'hardware' || cur === 'homeassistant') return embed(p, cur);
+  if (cur === 'phone') return phonePage(p);
   const items = tabControls(cur);
   const EMPTY = { approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
@@ -961,6 +991,8 @@ function modalPage(b) {
   if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = tourStart; b.appendChild(rr); ; return; }
   b.appendChild(pageHead(L('cat.' + modal), L('cat.' + modal + '.text')));
   const items = catSections(b, modal);
+  if (modal === 'accounts' || modal === 'apis') embed(b, modal);
+  if (modal === 'personas') { b.appendChild($('h2', null, L('embed.voices'))); embed(b, 'voices'); }
   if (modal === 'general') {
     const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);
     if (facts.length) { b.appendChild($('h2', null, 'Version')); b.appendChild(plainGroup(facts.map(([l, v]) => [l, v]))); }
@@ -1050,8 +1082,11 @@ function syncModal() {
   v.classList.remove('out'); v.classList.add('on');
   setRegion(document.getElementById('mnav'), nav => {
     if (modal === 'setup') { nav.appendChild($('h4', null, 'Setup')); const sp = (S.extra || {}).setup; for (const [i, st] of ((sp && sp.steps) || []).entries()) { const b = $('button', 'nav', (i + 1) + '. ' + st.title); if (i === setupStep) b.setAttribute('aria-current', 'step'); b.onclick = () => setupGo(i); nav.appendChild(b); } return; }
-    nav.appendChild($('h4', null, 'Settings'));
-    for (const [id, l] of CATS) { const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
+    for (const g of SGROUPS) {
+      nav.appendChild($('h4', null, g));
+      // A place that is a page (Dictation, Hardware) closes Settings and opens the page: one home for each setting.
+      for (const pl of PLACES.filter(x => x.group === g)) { const isCat = CATS.some(c => c[0] === pl.id); const b = $('button', 'nav', isCat ? L('cat.' + pl.id) : pl.label); if (modal === pl.id) b.setAttribute('aria-current', 'page'); b.onclick = () => { if (isCat) { modal = pl.id; render(); } else { modal = null; go(pl.id); } }; nav.appendChild(b); }
+    }
     nav.appendChild($('div', 'ver', 'Tessaya ' + (((S.extra || {}).about || {}).version || '')));
   });
   const mbody = document.getElementById('mbody');
@@ -1085,6 +1120,7 @@ function paletteItems() {
   cmd('Ask Tessaya', 'Type a question or a request', () => set('q.ask', null));
   cmd('Clear the screen', 'Remove the pointer and cards', () => set('q.clear', null));
   cmd('Open T3 sessions', '', () => real && ipc.send('baton-home:sessions'));
+  for (const pl of T3PLACES) items.push({ kind: 'T3', label: pl.label, hint: L('search.t3') + ' ' + pl.terms.join(' '), run: () => real && ipc.send('baton-home:sessions', pl.path) });
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
   cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
   cmd('Run the standing jobs now', 'The ones you have switched on', () => set('trust.standing-run', null));
@@ -1169,10 +1205,13 @@ function render(state) {
   const brand = $('div', 'brand'); brand.id = 'brand'; const mk = $('span'); mk.id = 'mark'; markButton(mk, 'side'); mk.innerHTML = markHtml('side'); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
   const nav = $('nav'); nav.setAttribute('aria-label', 'Tessaya pages'); nav.id = 'navlist';
   const names = Object.fromEntries(TABS);
-  for (const [gname, ids] of GROUPS) {
-    const folded = foldedGroups.has(gname); const gl = $('button', 'glabel'); gl.setAttribute('data-g', gname.toLowerCase()); gl.setAttribute('aria-expanded', String(!folded)); gl.append($('span', null, gname), icon('fold', 14));
-    gl.onclick = () => { if (foldedGroups.has(gname)) foldedGroups.delete(gname); else foldedGroups.add(gname); saveFolded(); render(); }; nav.appendChild(gl);
-    for (const id of ids) { if (folded && cur !== id && !collapsed) continue; const b = $('button', 'nav'); b.setAttribute('data-g', GROUP_OF[id]); b.setAttribute('data-tip', names[id]); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
+  for (const a of AREAS) {
+    const here = a.pages.includes(cur), open = here || openAreas.has(a.id), aname = L('area.' + a.id);
+    const gl = $('button', 'glabel'); gl.setAttribute('data-g', HUE[a.id]); gl.setAttribute('aria-expanded', String(open)); gl.append($('span', null, aname), icon('fold', 14));
+    gl.onclick = () => { if (openAreas.has(a.id)) openAreas.delete(a.id); else openAreas.add(a.id); saveAreas(); render(); }; nav.appendChild(gl);
+    if (!open && !collapsed) continue;
+    for (const id of a.pages) { const b = $('button', 'nav'); b.setAttribute('data-g', GROUP_OF[id]); b.setAttribute('data-tip', names[id]); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
+    if (a.settings && !collapsed) { const sb2 = $('button', 'nav sub'); sb2.setAttribute('data-g', HUE[a.id]); sb2.append(icon('settings'), $('span', null, L('area.settings', { area: aname }))); sb2.onclick = () => go(a.settings); nav.appendChild(sb2); }
   }
   side.appendChild(nav);
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
@@ -1196,6 +1235,7 @@ function render(state) {
   });
   const page = document.getElementById('page'); const pageClass = (cur === 'home' ? 'wide' : '') + (entering ? ' enter' : ''); if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
   syncModal(); try { syncChrome(); } catch (e) {}
+  if (pendingGo) { const t = pendingGo; pendingGo = null; modal = null; go(t); return; }
   if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
 addEventListener('keydown', e => {
@@ -1212,6 +1252,9 @@ addEventListener('keydown', e => {
   }
 });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
+// tessaya://settings/<place>, from T3's window, a link or a second launch: the place opens once the state is in.
+let pendingGo = null;
+if (real) ipc.on('baton-home:go', (_e, t) => { if (typeof t !== 'string') return; if (!S) { pendingGo = t; return; } modal = null; go(t); });
 if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
 // The mark breathes whenever the window can be seen, focused or not; minimised or hidden, nothing runs.
 function syncBreath() { document.documentElement.classList.toggle('live', !document.hidden); }

@@ -6,6 +6,7 @@ import {
   liveWords,
   mixColour,
   parseColour,
+  placeholderWhile,
   settleWords,
   showsActions,
   stepDictation,
@@ -35,6 +36,10 @@ describe("dictation in the chat box", () => {
       },
     });
     expect(stepDictation(settling, { type: "done" })).toBe(IDLE_DICTATION);
+    // The placeholder never shows under his words, and comes back only once the dictation is over.
+    for (const state of [listening, heard, working, settling])
+      expect(placeholderWhile(state, "Ask anything")).toBe("");
+    expect(placeholderWhile(IDLE_DICTATION, "Ask anything")).toBe("Ask anything");
   });
 
   it("hands-free shows ✕ and ✓, and a latched hold turns into it", () => {

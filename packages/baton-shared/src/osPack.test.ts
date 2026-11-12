@@ -50,16 +50,16 @@ describe("the roster", () => {
     expect(rosterLine(hidden, "operations")).not.toContain("Sebastian");
   });
   it("answers a wake word with that persona's name and voice", () => {
-    expect(who(DEFAULT_OS_PACK, "Freya")).toBe("Freya/vera");
-    expect(who(DEFAULT_OS_PACK, "alfred")).toBe("Alfred/charles");
-    expect(who(DEFAULT_OS_PACK, "Tessaya")).toBe("Tessaya/anna");
+    expect(who(DEFAULT_OS_PACK, "Freya")).toBe("Freya/azelma");
+    expect(who(DEFAULT_OS_PACK, "alfred")).toBe("Alfred/peter_yearsley");
+    expect(who(DEFAULT_OS_PACK, "Tessaya")).toBe("Tessaya/eve");
   });
   it("falls back to the lead for an unknown wake word, a hotkey or a typed ask", () => {
-    expect(who(DEFAULT_OS_PACK, "Onyx")).toBe("Tessaya/anna");
-    expect(who(DEFAULT_OS_PACK, null)).toBe("Tessaya/anna");
+    expect(who(DEFAULT_OS_PACK, "Onyx")).toBe("Tessaya/eve");
+    expect(who(DEFAULT_OS_PACK, null)).toBe("Tessaya/eve");
     // Sebastian has no wake word yet, so his word wakes the lead; his name in the sentence reaches him.
-    expect(who(DEFAULT_OS_PACK, "Sebastian")).toBe("Tessaya/anna");
-    expect(who(DEFAULT_OS_PACK, null, "Sebastian, compare these two")).toBe("Sebastian/paul");
+    expect(who(DEFAULT_OS_PACK, "Sebastian")).toBe("Tessaya/eve");
+    expect(who(DEFAULT_OS_PACK, null, "Sebastian, compare these two")).toBe("Sebastian/michael");
   });
   it("lets his file override the default field by field, and add a face of his own", () => {
     const pack = mergePack({
@@ -72,7 +72,9 @@ describe("the roster", () => {
     expect(pack.roles["operations"]).toBe("My operator.");
     expect(who(pack, "Onyx")).toBe("Lex/paul");
     // A file with no front-matter keeps the default face.
-    expect(who(mergePack({ roles: { engineering: "Mine." } }), "Alfred")).toBe("Alfred/charles");
+    expect(who(mergePack({ roles: { engineering: "Mine." } }), "Alfred")).toBe(
+      "Alfred/peter_yearsley",
+    );
   });
   it("reads each persona's team and the projects it leads, telling apart two projects with one title", () => {
     const pack = mergePack({

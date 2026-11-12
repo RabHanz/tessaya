@@ -109,7 +109,7 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
 import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
 import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
 import { AdvancedSettings } from "./AdvancedSettings";
-import { VoiceLibrarySections } from "./VoiceLibrarySettings";
+import { TessayaMovedSection } from "./TessayaPlaces";
 import {
   SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingResetButton,
@@ -1615,7 +1615,7 @@ export function VoiceSettingsPanel() {
           />
         ) : null}
       </SettingsSection>
-      <VoiceLibrarySections />
+      <TessayaMovedSection place="personas" />
     </SettingsPageContainer>
   );
 }

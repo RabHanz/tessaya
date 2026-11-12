@@ -28,6 +28,19 @@ export const artDir = (dirname: string, resourcesPath: string | undefined): stri
   return candidates.find((dir) => NodeFS.existsSync(dir)) ?? candidates[0]!;
 };
 
+/**
+ * Her characters (apps/web/public/companion, from the Character Studio): the build puts them in the resources folder;
+ * run from the source tree they are in the web app's public folder.
+ */
+export const companionDir = (dirname: string, resourcesPath: string | undefined): string => {
+  const candidates = [
+    ...(resourcesPath === undefined ? [] : [NodePath.join(resourcesPath, "companion")]),
+    NodePath.join(dirname, "..", "..", "web", "public", "companion"),
+    NodePath.join(dirname, "..", "..", "..", "web", "public", "companion"),
+  ];
+  return candidates.find((dir) => NodeFS.existsSync(dir)) ?? candidates[0]!;
+};
+
 /** The bytes of one file, or null when it is missing: a missing animation only means the still mark. */
 export const readArt = (dir: string, name: string): Buffer | null => {
   try {

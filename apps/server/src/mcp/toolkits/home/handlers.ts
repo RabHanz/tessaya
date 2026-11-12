@@ -17,6 +17,16 @@ const unavailable = new OrchestratorMcpFailure({
 });
 
 type Args = Readonly<Record<string, unknown>>;
+
+/**
+ * The room device's own caller (R1Tools): built only in-process, so no token can claim it. Its house acts go as
+ * Tessaya on surface "r1", where the gate never takes a yes: anyone in the room can talk to it.
+ */
+export const ROOM_CLIENT: McpInvocationContext.McpClientCaller = {
+  sessionId: "r1-room",
+  label: "the desk device in his home",
+  access: "approval-required",
+};
 const linked = { linkedCallers: "allowed" } as const;
 
 /** Handler declarations for `HomeToolkit`, spread into Tessaya's toolkit layer. */
@@ -30,10 +40,13 @@ export const make = Effect.gen(function* () {
     if (context === null) return yield* unavailable;
     const scope = yield* McpInvocationContext.McpInvocationContext;
     // An outside client's name, or the T3 thread asking; never a yes, which only his own gate gives.
-    const by: HomeActor = {
-      who: scope.client === undefined ? "an agent in T3" : "an outside agent",
-      surface: "agent",
-    };
+    const by: HomeActor =
+      scope.client === ROOM_CLIENT
+        ? { who: "Tessaya", surface: "r1" }
+        : {
+            who: scope.client === undefined ? "an agent in T3" : "an outside agent",
+            surface: "agent",
+          };
     return yield* serveHomeCall({ kind, op, args }, by).pipe(Effect.provideContext(context));
   });
   return {

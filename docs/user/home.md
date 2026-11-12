@@ -62,4 +62,13 @@ R1**. **Forget** removes all of it from this server again.
   When an agent or the assistant asks for a picture or a restart, you get the question on your phone first.
 - **Diagnostics:** how long each stage of a spoken turn took, and the device's recent log.
 
+**Talking to it.** Press S2 or start with her name ("Tessaya, …"); for about 8 seconds after each reply you can go on
+without the name. Anything else said in the room, such as your dictation, a call or the TV, is not answered. Say
+"dismissed" or "that's all" to end the conversation; her name or S2 wakes her again. After 15 quiet minutes the
+R1 stops listening, and S2 starts it again.
+
+**Other personas.** Start with another persona's name ("Alfred, …", "Freya, …", "Sebastian, …") and that persona
+answers in its own voice, with its own eyes on the R1 and its own memories. It stays on for follow-ups in the 8-second
+window; once the R1 rests, Tessaya answers again.
+
 Volume and firmware updates need new firmware and come later.

@@ -81,6 +81,7 @@ import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrid
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as TessayaHandlers from "./mcp/toolkits/tessaya/handlers.ts";
+import * as R1Tools from "./home/R1Tools.ts";
 import { TessayaToolkit } from "./mcp/toolkits/tessaya/tools.ts";
 import * as PeerForwarding from "./peer/PeerForwarding.ts";
 import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
@@ -794,7 +795,8 @@ const layerMakeRoutes = Layer.mergeAll(
     GuestHttp.layer,
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
-    BatonServerLayer.routes,
+    // The room's tools reach the R1 route from here, beside the /mcp registration of the same toolkit.
+    BatonServerLayer.routes.pipe(Layer.provide(R1Tools.layer)),
     ServerHttp.layerStaticAndDevRoute,
     Ws.layer,
     speechStreamRouteLayer,

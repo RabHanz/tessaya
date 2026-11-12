@@ -11,7 +11,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
@@ -22,22 +21,58 @@ const API = "https://api.anthropic.com/v1";
 const MODEL = "claude-haiku-5-5";
 const isApiKey = Schema.is(CloudSpeechApiKey);
 
-/** The text of one Messages API stream line (`data: {...content_block_delta...}`), or null for any other line. */
-export const sseTextDelta = (line: string): string | null => {
-  if (!line.startsWith("data:")) return null;
-  try {
-    const event = JSON.parse(line.slice(5)) as {
+/** What one streamed Messages API turn gives: its words as they come, and each tool call once its input is whole. */
+export type ConversePart =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "tool"; readonly id: string; readonly name: string; readonly input: unknown };
+
+/** Reads one turn's stream lines in order; holds a tool call's input until its block stops. */
+export const converseReader = () => {
+  const open = new Map<number, { id: string; name: string; json: string }>();
+  return (line: string): ReadonlyArray<ConversePart> => {
+    if (!line.startsWith("data:")) return [];
+    let event: {
       type?: string;
-      delta?: { type?: string; text?: string };
+      index?: number;
+      content_block?: { type?: string; id?: string; name?: string };
+      delta?: { type?: string; text?: string; partial_json?: string };
     };
-    return event.type === "content_block_delta" &&
-      event.delta?.type === "text_delta" &&
-      event.delta.text
-      ? event.delta.text
-      : null;
-  } catch {
-    return null;
-  }
+    try {
+      event = JSON.parse(line.slice(5)) as typeof event;
+    } catch {
+      return [];
+    }
+    const index = event.index ?? -1;
+    if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
+      open.set(index, {
+        id: event.content_block.id ?? "",
+        name: event.content_block.name ?? "",
+        json: "",
+      });
+      return [];
+    }
+    if (event.type === "content_block_delta") {
+      if (event.delta?.type === "text_delta" && event.delta.text)
+        return [{ type: "text", text: event.delta.text }];
+      const tool = open.get(index);
+      if (event.delta?.type === "input_json_delta" && tool !== undefined)
+        tool.json += event.delta.partial_json ?? "";
+      return [];
+    }
+    if (event.type === "content_block_stop") {
+      const tool = open.get(index);
+      if (tool === undefined) return [];
+      open.delete(index);
+      let input: unknown = {};
+      try {
+        input = tool.json.trim() === "" ? {} : JSON.parse(tool.json);
+      } catch {
+        input = {};
+      }
+      return [{ type: "tool", id: tool.id, name: tool.name, input }];
+    }
+    return [];
+  };
 };
 const MessagesResponse = Schema.Struct({
   content: Schema.Array(
@@ -49,6 +84,19 @@ export interface DictationCleanupRequest {
   readonly system: string;
   readonly message: string;
   readonly maxTokens: number;
+}
+export interface ConverseRequest {
+  readonly system: string;
+  /** The Messages API's own messages: text, tool calls and their results. */
+  readonly messages: ReadonlyArray<unknown>;
+  readonly tools: ReadonlyArray<{
+    readonly name: string;
+    readonly description: string;
+    readonly input_schema: unknown;
+  }>;
+  readonly maxTokens: number;
+  /** "none" makes the model answer in words: the last round of a capped tool loop. */
+  readonly toolChoice?: "auto" | "none";
 }
 export type DictationCleanupResult =
   | { readonly configured: false }
@@ -66,10 +114,10 @@ export class DictationCleanupApi extends Context.Service<
     readonly cleanup: (
       input: DictationCleanupRequest,
     ) => Effect.Effect<DictationCleanupResult, DictationCleanupError | ServerSettingsError>;
-    /** One streamed Haiku answer as text deltas; fails `unreadable-key` when no key is saved. */
-    readonly stream: (
-      input: DictationCleanupRequest,
-    ) => Stream.Stream<string, DictationCleanupError | ServerSettingsError>;
+    /** One streamed Haiku turn that may call tools; fails `unreadable-key` when no key is saved. */
+    readonly converse: (
+      input: ConverseRequest,
+    ) => Stream.Stream<ConversePart, DictationCleanupError | ServerSettingsError>;
   }
 >()("t3/speech/DictationCleanupApi") {}
 
@@ -176,16 +224,20 @@ export const layer = Layer.effect(
       (effect) =>
         effect.pipe(
           Effect.timeoutOrElse({
-            // Short enough that the subscription fallback still fits a short dictation's limit (hardLimitMs).
-            duration: "1200 millis",
+            // His p90 on 0.1.107 with a cold connection (2026-11-12); 1.2 s cut three of four answers at 1.05-1.3 s.
+            duration: "2500 millis",
             orElse: () => Effect.fail(new DictationCleanupError({ reason: "timeout" })),
           }),
         ),
     );
 
-    const stream = (input: DictationCleanupRequest) =>
+    const converse = (input: ConverseRequest) =>
       Stream.unwrap(
         Effect.gen(function* () {
+          const tools = input.tools.map((tool, i) =>
+            // The tools are the same every turn: cached with the system prompt.
+            i === input.tools.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : tool,
+          );
           const request = yield* authorized(
             HttpClientRequest.post(`${API}/messages`).pipe(
               HttpClientRequest.bodyJsonUnsafe({
@@ -195,7 +247,10 @@ export const layer = Layer.effect(
                 system: [
                   { type: "text", text: input.system, cache_control: { type: "ephemeral" } },
                 ],
-                messages: [{ role: "user", content: input.message }],
+                messages: input.messages,
+                ...(tools.length === 0
+                  ? {}
+                  : { tools, tool_choice: { type: input.toolChoice ?? "auto" } }),
                 thinking: { type: "disabled" },
               }),
             ),
@@ -205,18 +260,16 @@ export const layer = Layer.effect(
           const response = yield* execute(request);
           if (response.status < 200 || response.status >= 300)
             return yield* rejected(response.status);
+          const read = converseReader();
           return response.stream.pipe(
             Stream.mapError(() => new DictationCleanupError({ reason: "unreachable" })),
             Stream.decodeText,
             Stream.splitLines,
-            Stream.filterMap((line) => {
-              const delta = sseTextDelta(line);
-              return delta === null ? Result.failVoid : Result.succeed(delta);
-            }),
+            Stream.flatMap((line) => Stream.fromIterable(read(line))),
           );
         }),
       );
 
-    return DictationCleanupApi.of({ configured, setKey, test, cleanup, stream });
+    return DictationCleanupApi.of({ configured, setKey, test, cleanup, converse });
   }),
 );

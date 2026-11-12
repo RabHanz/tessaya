@@ -7,9 +7,12 @@
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
 
-import { createSileroScorer } from "../providers/onnx.ts";
+import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
+
+import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "../speaker.ts";
 import { createSpeakerStore } from "../speakerStore.ts";
@@ -19,6 +22,7 @@ import { noteTime, pickRecogniser, type RecogniserState } from "./recognisers.ts
 import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
+import { createWakeStream } from "./wakeStream.ts";
 
 const env = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;
@@ -42,6 +46,7 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
   } as unknown as string[]);
   ws.binaryType = "arraybuffer";
   const queued: Uint8Array<ArrayBuffer>[] = [];
+  const partialListeners: Array<(text: string) => void> = [];
   let open = false;
   let ended = false;
   let settle: ((text: string) => void) | null = null;
@@ -59,6 +64,8 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
   ws.addEventListener("message", (e) => {
     if (typeof e.data !== "string") return;
     const m = JSON.parse(e.data) as { ev?: string; text?: string; message?: string };
+    if (m.ev === "partial" && typeof m.text === "string")
+      for (const l of partialListeners) l(m.text);
     if (m.ev === "text") settle?.(m.text ?? "");
     if (m.ev === "error") settle?.("");
     if (m.ev === "text" || m.ev === "error") ws.close();
@@ -76,6 +83,7 @@ const recogniserTurn = (url: string, token: string): RecogniserTurn => {
       return result;
     },
     cancel: () => ws.close(),
+    onPartial: (listener) => void partialListeners.push(listener),
   };
 };
 
@@ -111,7 +119,7 @@ const recognisers = () => {
       const [url, file] = pair.split("=") as [string, string];
       return { url: url.trim(), token: NodeFS.readFileSync(file.trim(), "utf8").trim() };
     });
-  let states: RecogniserState[] = list.map((r) => ({ url: r.url, queue: 0, recentMs: [] }));
+  let states: RecogniserState[] = list.map((r) => ({ url: r.url, queue: 0, recent: [] }));
   const refresh = async () => {
     const queues = await Promise.all(list.map((r) => health(r.url, r.token)));
     states = states.map((s, i) => ({ ...s, queue: queues[i] ?? null }));
@@ -119,7 +127,7 @@ const recognisers = () => {
   void refresh();
   setInterval(() => void refresh(), 2_000);
   return (): RecogniserTurn => {
-    const chosen = pickRecogniser(states) ?? states[0]!;
+    const chosen = pickRecogniser(states, Date.now()) ?? states[0]!;
     const token = list.find((r) => r.url === chosen.url)!.token;
     const turn = recogniserTurn(chosen.url, token);
     return {
@@ -129,7 +137,7 @@ const recognisers = () => {
         const text = await turn.finish();
         const ms = performance.now() - started;
         states = states.map((s) =>
-          s.url === chosen.url ? { ...s, recentMs: noteTime(s.recentMs, ms) } : s,
+          s.url === chosen.url ? { ...s, recent: noteTime(s.recent, ms, Date.now()) } : s,
         );
         log(`recogniser ${chosen.url.replace(/^ws:\/\//, "")} ${Math.round(ms)} ms`);
         return text;
@@ -167,13 +175,24 @@ const startPocket = async () => {
     if (i > 300) throw new Error("pocket did not start");
     await new Promise((r) => setTimeout(r, 200));
   }
-  return async function* (text: string, signal: AbortSignal) {
-    const res = await fetch(`http://127.0.0.1:${port}/tts`, {
+  const tts = (text: string, signal: AbortSignal, voice?: string) =>
+    fetch(`http://127.0.0.1:${port}/tts`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ text }).toString(),
+      body: new URLSearchParams({
+        text,
+        ...(voice === undefined ? {} : { voice_url: pocketVoiceUrl(voice) }),
+      }).toString(),
       signal,
     });
+  // Pocket fetches a voice on its first use (about 8 s on the voice host), so every persona's is fetched now, not mid-reply.
+  for (const p of ROOM_CONFIG.personas)
+    await tts("Ready.", AbortSignal.timeout(60_000), p.voice).then(
+      (r) => r.arrayBuffer(),
+      (e: unknown) => log(`voice ${p.voice} not ready: ${String(e)}`),
+    );
+  return async function* (text: string, signal: AbortSignal, voice?: string) {
+    const res = await tts(text, signal, voice);
     if (!res.ok || res.body === null) throw new Error(`voice answered ${res.status}`);
     const read = createWavReader();
     const down = createResampler24to16();
@@ -182,6 +201,40 @@ const startPocket = async () => {
       if (pcm.length > 0) yield pcm;
     }
   };
+};
+
+/**
+ * The R1 posts a camera picture to its LAN host (it is not on the tailnet), so this host takes it and hands it to
+ * Tessaya's server, which keeps it only while a capture it asked for is armed.
+ */
+const startCameraRelay = () => {
+  const port = Number(process.env["R1_CAMERA_PORT"] ?? "0");
+  if (port === 0) return;
+  const upload = new URL("/camera/upload", env("R1_BRAIN_URL")).toString();
+  NodeHttp.createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://r1");
+    if (req.method !== "POST" || url.pathname !== "/camera/upload") {
+      res.writeHead(404).end();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > 4_000_000) req.destroy();
+      else chunks.push(c);
+    });
+    req.on("end", () => {
+      void fetch(`${upload}${url.search}`, {
+        method: "POST",
+        headers: { "content-type": req.headers["content-type"] ?? "image/jpeg" },
+        body: Buffer.concat(chunks),
+      }).then(
+        (r) => res.writeHead(r.status).end(),
+        () => res.writeHead(502).end(),
+      );
+    });
+  }).listen(port, "0.0.0.0", () => log(`camera relay on :${port}`));
 };
 
 /** Tessaya's turn on her server, OpenAI chat-completions shape, streamed. */
@@ -245,6 +298,15 @@ const main = async () => {
       "freya/r1/+/voice/say",
       "freya/r1/+/voice/ctl",
       "freya/r1/+/state/online",
+      "freya/r1/+/event/session/start",
+      "freya/r1/+/event/wake",
+      "freya/r1/+/voice/wake",
+      "freya/r1/+/voice/wake/end",
+      "freya/r1/+/state/mic",
+      "freya/r1/+/state/voice",
+      "freya/r1/+/event/key",
+      "freya/r1/+/cmd/voice/earcons",
+      "freya/r1/+/event/session/end",
     ],
     onMessage: (t, p) => room?.message(t, p),
     log,
@@ -255,8 +317,40 @@ const main = async () => {
       .map((s) => s.trim())
       .filter(Boolean),
   );
+  // His wake words as the desktop ships them (wakeDefaults.ts); a word whose model is not on this host is skipped.
+  const words = [
+    { word: "Tessaya", file: "tessaya.onnx", threshold: 0.99 },
+    { word: "Alfred", file: "alfred.onnx", threshold: 0.95 },
+    { word: "Freya", file: "freya.onnx", threshold: 0.95 },
+  ].filter((w) => NodeFS.existsSync(model(w.file)));
+  const confirmWith = recognisers();
+  const wake =
+    words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
+      ? undefined
+      : createWakeStream({
+          words,
+          scorer: () =>
+            createOpenWakeWordScorer({
+              melspectrogram: model("melspectrogram.onnx"),
+              embedding: model("embedding_model.onnx"),
+              wakes: words.map((w) => ({
+                word: w.word,
+                path: model(w.file),
+                threshold: w.threshold,
+              })),
+            }),
+          confirm: (pcm) => {
+            const turn = confirmWith();
+            turn.feed(pcm);
+            return turn.finish();
+          },
+          onWake: (id, word) => room?.woken(id, word),
+          log,
+        });
+  startCameraRelay();
   room = createRoomVoice(
     {
+      ...(wake === undefined ? {} : { wake }),
       publish: (t, p) => {
         mqtt.publish(t, p);
         if (t.endsWith("/event/voice/metrics"))
