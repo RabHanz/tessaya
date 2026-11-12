@@ -156,21 +156,24 @@ export const layer = McpToolAccess.toLayer(
           }),
         ),
       ),
-      tessaya_ask: McpToolAccess.writesWithCapability((input) =>
-        call(
-          Effect.gen(function* () {
-            const owner = yield* ownerOf;
-            const id = `mcp-${owner}-${yield* random.uuidV4()}`;
-            const asked = yield* phone("ask", { id, text: input.text }).pipe(
-              Effect.provideService(AskOwner, owner),
-            );
-            return {
-              id: asked?.ok === false ? null : id,
-              status: asked?.status ?? "not asked",
-              line: asked?.line ?? "Nothing was asked.",
-            };
-          }),
-        ),
+      // A linked server may ask too (the R1 asking his laptop): it is a device's words, which the gate asks him to act on.
+      tessaya_ask: McpToolAccess.writes(
+        (input) =>
+          call(
+            Effect.gen(function* () {
+              const owner = yield* ownerOf;
+              const id = `mcp-${owner}-${yield* random.uuidV4()}`;
+              const asked = yield* phone("ask", { id, text: input.text }).pipe(
+                Effect.provideService(AskOwner, owner),
+              );
+              return {
+                id: asked?.ok === false ? null : id,
+                status: asked?.status ?? "not asked",
+                line: asked?.line ?? "Nothing was asked.",
+              };
+            }),
+          ),
+        { linkedCallers: "allowed" },
       ),
       tessaya_state: McpToolAccess.reads((input) =>
         call(
