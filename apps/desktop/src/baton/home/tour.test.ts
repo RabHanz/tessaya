@@ -21,10 +21,10 @@ const probe = (page: Awaited<ReturnType<typeof open>>) => {
 
 describe("the tour", () => {
   it("reopens where it was left, also on an install that answered the offer", async () => {
-    const page = await open("none", 4);
+    const page = await open("none", 3);
     page.exec("tourStart()");
-    expect(probe(page)).toBe("4 setup");
-    expect(page.textOf("mbody")).toContain(`Step 5 of ${SETUP_STEPS.length}`);
+    expect(probe(page)).toBe("3 setup");
+    expect(page.textOf("mbody")).toContain(`Step 4 of ${SETUP_STEPS.length}`);
   });
   it("closes on Esc or the backdrop without losing the place or being marked done", async () => {
     const page = await open("offer", 3);

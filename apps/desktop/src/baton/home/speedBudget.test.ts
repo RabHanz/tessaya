@@ -17,10 +17,11 @@ describe("the window's speed budget", () => {
     const cssWithoutFonts = APP_CSS.replace(/url\(data:[^)]*\)/g, "url()");
     // 121,000 until History's redesign (about 6,500 for its rows, actions and day summary); 128,500 until
     // Memory's People area (about 9,500 for private stores: their forms, audit and words); 138,000 until the
-    // sidebar areas and the places search across both windows (about 8,000 with their names and search terms).
-    expect(APP_SCRIPT.length).toBeLessThan(148_000);
-    expect(cssWithoutFonts.length).toBeLessThan(45_000); // 43,000 until History's redesign
-    expect(HOME_DOCUMENT.length).toBeLessThan(420_000);
+    // sidebar areas and the places search across both windows (about 8,000 with their names and search terms); 148,000
+    // until the tips and Learn Tessaya (about 7,000, most of it the tips' own words).
+    expect(APP_SCRIPT.length).toBeLessThan(158_000);
+    expect(cssWithoutFonts.length).toBeLessThan(46_000); // 45,000 until the tip card; 43,000 until History's redesign
+    expect(HOME_DOCUMENT.length).toBeLessThan(432_000); // 420,000 until the tips and Learn Tessaya
   });
 
   it("draws the first page and any tab with little work", async () => {

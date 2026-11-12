@@ -3,19 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { meterWidth, resumeStep, SETUP_STEPS, setupHoldControl, setupMode } from "./firstRun.ts";
 
 describe("first-run guide", () => {
-  it("covers what a newcomer needs, in order, with cloud tasks last and optional", () => {
-    expect(SETUP_STEPS.map((s) => s.id)).toEqual([
-      "welcome",
-      "mic",
-      "wake",
-      "assistant",
-      "hands",
-      "key",
-      "try",
-      "privacy",
-      "stop",
-      "cloud",
-    ]);
+  it("gets a newcomer to a first success and leaves the rest to tips", () => {
+    expect(SETUP_STEPS.map((s) => s.id)).toEqual(["welcome", "mic", "key", "try", "assistant"]);
     // Every fact has words: a missing string would show its key.
     for (const step of SETUP_STEPS)
       for (const f of step.facts ?? []) {

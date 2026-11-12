@@ -325,6 +325,10 @@ button.sname:hover{color:var(--hue-text)}
 #modal{grid-template-rows:minmax(0,1fr)}
 #mnav h4:not(:first-child){margin-top:12px}
 .nav.sub{color:var(--faint);font-size:12.5px}
+.tipcard{border:1px solid var(--hue-edge);border-left:3px solid var(--hue);background:var(--hue-wash);border-radius:var(--r);padding:12px 16px;margin:0 0 18px}
+.tipcard b{display:block}.tipcard p{margin:4px 0 10px;color:var(--soft)}
+.tiprow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tiprow .off{background:none;border:0;color:var(--faint);font:inherit;font-size:12.5px;cursor:pointer;margin-left:auto;text-decoration:underline}
 webview.embed{display:flex;width:100%;height:calc(100vh - 210px);min-height:420px;border:0;border-radius:var(--r);overflow:hidden;margin-top:12px}
 #mnav .ver{margin-top:auto;padding:10px;color:var(--faint);font-size:12px}
 #mbody{padding:26px 32px;overflow:auto;position:relative}

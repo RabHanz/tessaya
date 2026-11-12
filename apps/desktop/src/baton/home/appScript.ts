@@ -10,10 +10,12 @@ import {
   TESSAYA_SETTINGS_GROUPS,
 } from "@t3tools/baton-contracts";
 
+import { LEARN_ITEMS, pickTip, WHATS_NEW } from "@t3tools/baton-shared/learn";
+
 import { tableFor } from "./strings.ts";
 import { AREAS } from "./tabs.ts";
 
-export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))}; const AREAS = ${JSON.stringify(AREAS)}; const PLACES = ${JSON.stringify(TESSAYA_PLACES)}; const SGROUPS = ${JSON.stringify(TESSAYA_SETTINGS_GROUPS)}; const T3PLACES = ${JSON.stringify(T3_SETTINGS_PLACES)};
+export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))}; const AREAS = ${JSON.stringify(AREAS)}; const PLACES = ${JSON.stringify(TESSAYA_PLACES)}; const SGROUPS = ${JSON.stringify(TESSAYA_SETTINGS_GROUPS)}; const T3PLACES = ${JSON.stringify(T3_SETTINGS_PLACES)}; const LEARN_ITEMS = ${JSON.stringify(LEARN_ITEMS)}; const WHATS_NEW = ${JSON.stringify(WHATS_NEW)}; const pickTip = (${pickTip.toString().replace(/\s*\n\s*/g, " ")});
 const L = (k, v) => { let t = STR[k] !== undefined ? STR[k] : k; if (v) for (const n in v) t = t.split("{" + n + "}").join(String(v[n])); return t; };
 const real = typeof require === 'function';
 const ipc = real ? require('electron').ipcRenderer : null;
@@ -86,11 +88,11 @@ const HUE = { today: 'now', talk: 'dictation', know: 'knowledge', devices: 'sett
 const GROUP_OF = {}; for (const a of AREAS) for (const gid of a.pages) GROUP_OF[gid] = HUE[a.id];
 const openAreas = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.areas') || '[]')); } catch (e) { return new Set(); } })();
 const saveAreas = () => { try { localStorage.setItem('tessaya.areas', JSON.stringify([...openAreas])); } catch (e) {} };
-const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','homeassistant','phone','help'].map(id => [id, L('tab.' + id)]);
+const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','homeassistant','phone','learn','help'].map(id => [id, L('tab.' + id)]);
 const CATS = ['accounts','apis','general','voice','personas','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
 const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
 const INTRO = {};
-for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','homeassistant','phone','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
+for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','homeassistant','phone','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = (() => { try { return localStorage.getItem('tessaya.rail') === '1'; } catch (e) { return false; } })(), modal = null, S = null, query = '';
 let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
@@ -875,6 +877,44 @@ function searchPage(p) {
   const by = new Map(); for (const c of hits) { const t = c.tab || 'advanced'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
   for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + (CATS.some(c => c[0] === t) ? 'Settings, ' : '') + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
 }
+// Tips (LEARN_ITEMS, pickTip): what he has opened and seen, kept in this window's storage on this computer. A tip is
+// picked once per visit to a page, so a redraw never counts it twice.
+const AREA_OF = {}; for (const a of AREAS) for (const pg of a.pages) AREA_OF[pg] = a.id;
+const LEARN0 = { used: [], seen: {}, dismissed: [], days: [], lastTipAt: null, mode: 'daily', whatsNewSeen: null };
+let learn = (() => { try { return Object.assign({}, LEARN0, JSON.parse(localStorage.getItem('tessaya.learn') || '{}')); } catch (e) { return Object.assign({}, LEARN0); } })();
+const saveLearn = () => { try { localStorage.setItem('tessaya.learn', JSON.stringify(learn)); } catch (e) {} };
+(() => { const d = new Date().toISOString().slice(0, 10); if (learn.days.indexOf(d) < 0) { learn.days = learn.days.concat([d]).slice(-60); saveLearn(); } })();
+let tipNow = null;
+const freshNews = () => WHATS_NEW.filter(w => !learn.whatsNewSeen || w.since > learn.whatsNewSeen);
+function learnVisit(t) {
+  const tip = pickTip(LEARN_ITEMS, learn, { page: t, area: AREA_OF[t] || null }, Date.now());
+  tipNow = tip ? { page: t, tip: tip } : null;
+  if (tip) { const seen = Object.assign({}, learn.seen); seen[tip.id] = (seen[tip.id] || 0) + 1; learn.seen = seen; learn.lastTipAt = Date.now(); }
+  if (learn.used.indexOf(t) < 0) learn.used = learn.used.concat([t]);
+  saveLearn();
+}
+function tipCard(p) {
+  if (tipNow && tipNow.page === cur) {
+    const t = tipNow.tip, c = $('div', 'tipcard'); c.setAttribute('role', 'note'); c.append($('b', null, t.title), $('p', null, t.body));
+    const row = $('div', 'tiprow'); const a = $('button', 'btn primary', t.action); a.onclick = () => { tipNow = null; modal = null; go(t.place); };
+    const n = $('button', 'btn quiet', L('tip.later')); n.onclick = () => { tipNow = null; render(); };
+    const off = $('button', 'off', L('tip.off')); off.onclick = () => { learn.mode = 'off'; learn.dismissed = learn.dismissed.concat([t.id]); saveLearn(); tipNow = null; render(); };
+    row.append(a, n, off); c.appendChild(row); p.appendChild(c); return;
+  }
+  const news = cur === 'home' ? freshNews() : [];
+  if (news.length) { const c = $('div', 'tipcard'); c.setAttribute('role', 'note'); c.appendChild($('b', null, L('tip.newOn', { title: news[0].title }))); const row = $('div', 'tiprow'); const a = $('button', 'btn quiet', L('learn.open')); a.onclick = () => go('learn'); row.appendChild(a); c.appendChild(row); p.appendChild(c); }
+}
+function learnPage(p) {
+  const done = LEARN_ITEMS.filter(i => learn.used.indexOf(i.place) >= 0).length;
+  p.appendChild($('p', 'hint', L('learn.progress', { done: done, all: LEARN_ITEMS.length })));
+  const news = freshNews();
+  if (news.length) { p.appendChild($('h2', null, L('learn.new'))); p.appendChild(plainGroup(news.map(w => [w.title, '', L('learn.show'), () => { modal = null; go(w.place); }]))); }
+  for (const a of AREAS) {
+    const items = LEARN_ITEMS.filter(i => i.area === a.id); if (!items.length) continue;
+    p.appendChild($('h2', null, L('area.' + a.id)));
+    p.appendChild(plainGroup(items.map(i => [(learn.used.indexOf(i.place) >= 0 ? '\u2713 ' : '') + i.title, i.body, L('learn.show'), () => { modal = null; go(i.place); }])));
+  }
+}
 // Pages and Settings in both windows that match every word; one in T3's window opens it there.
 function placeHits(words) {
   const has = (label, terms) => words.length > 0 && words.every(w => (label + ' ' + terms.join(' ')).toLowerCase().includes(w));
@@ -900,9 +940,11 @@ function liveSessionsPage(p) {
 }
 function tabPage(p) {
   if (query.trim() && !modal) return searchPage(p);
+  if (!modal) tipCard(p);
   if (cur === 'home') return home(p);
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
-  if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; p.appendChild(tb); }
+  if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; const lb = $('button', 'btn', L('learn.open')); lb.style.marginLeft = '8px'; lb.onclick = () => go('learn'); p.append(tb, lb); }
+  if (cur === 'learn') return learnPage(p);
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   if (cur === 'sessions') return liveSessionsPage(p);
@@ -998,7 +1040,10 @@ function modalPage(b) {
     const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);
     if (facts.length) { b.appendChild($('h2', null, 'Version')); b.appendChild(plainGroup(facts.map(([l, v]) => [l, v]))); }
     b.appendChild($('h2', null, 'Tour'));
-    b.appendChild(plainGroup([[L('wizard.rerun'), 'Two minutes: microphone, voices, what she may do, privacy, and how to stop her.', 'Start', tourStart]]));
+    b.appendChild(plainGroup([[L('wizard.rerun'), 'A minute: your microphone, dictation key, one sentence, and who does the work.', 'Start', tourStart]]));
+    b.appendChild($('h2', null, L('tip.title'))); b.appendChild($('p', 'hint', L('tip.text')));
+    const tg = seg(L('tip.title'), [['daily', L('tip.daily')], ['all', L('tip.all')], ['off', L('tip.none')]], learn.mode, m => { learn.mode = m; saveLearn(); render(); }); tg.style.marginBottom = '12px'; b.appendChild(tg);
+    b.appendChild(plainGroup([[L('tip.reset'), L('tip.reset.text'), L('tip.reset'), () => { learn = Object.assign({}, LEARN0, { days: learn.days, mode: learn.mode }); tipNow = null; saveLearn(); render(); }]]));
     b.appendChild($('h2', null, 'Quit'));
     b.appendChild(plainGroup([['Quit Tessaya', 'Closing the window keeps Tessaya in the tray. Quit ends it.', 'Quit', 'q.quit']]));
   }
@@ -1095,7 +1140,7 @@ function syncModal() {
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
 function closeModal() { stopMeter(); modal = null; aboutSeen = false; render(); }
-function go(t) { t = MOVED[t] || t; if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
+function go(t) { t = MOVED[t] || t; if (cur === 'learn' && t !== 'learn' && WHATS_NEW.length) { learn.whatsNewSeen = WHATS_NEW[WHATS_NEW.length - 1].since; saveLearn(); } if (t !== cur && t !== modal) learnVisit(t); if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 /** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
 function paletteRank(items, q) {
@@ -1125,7 +1170,7 @@ function paletteItems() {
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
   cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
   cmd('Run the standing jobs now', 'The ones you have switched on', () => set('trust.standing-run', null));
-  cmd(L('wizard.rerun'), 'Two minutes: microphone, voices, what she may do, privacy, how to stop her', tourStart);
+  cmd(L('wizard.rerun'), 'A minute: microphone, dictation key, one sentence, who does the work', tourStart);
   for (const c of S.controls) {
     if (c.id.indexOf('trust.standing:') === 0 || c.id.indexOf('trust.rule:') === 0) cmd((c.on ? 'Turn off standing job: ' : 'Turn on standing job: ') + c.label, 'Unattended work, counted and logged', () => set(c.id, !c.on));
     else if (c.kind === 'session' && c.canOpen) items.push({ kind: 'Session', label: 'Open session ' + c.label, hint: c.project + ' ' + c.box, run: () => set(c.id, null) });

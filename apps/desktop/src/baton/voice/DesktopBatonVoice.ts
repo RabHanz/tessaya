@@ -8451,7 +8451,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   }, MIC_POLL_MS).unref();
 
   render();
-  // First run after install opens both windows; after that the Start switches decide (launchWindows.ts).
+  // First run after install opens Tessaya alone; after that the Start switches decide (launchWindows.ts).
   const shownPath = NodePath.join(input.stateDir, "baton-home.shown");
   const firstRun = !NodeFS.existsSync(shownPath);
   if (firstRun) {

@@ -1,8 +1,7 @@
 /**
- * The tour for someone new to Tessaya: short steps, each reusing a control the window already has, so
- * nothing here is a second copy of a setting. No step is required; Skip finishes it, and it reopens where
- * it was left. A fresh install opens it; an existing one is offered it once on Home. Help and Settings
- * run it again.
+ * The tour: the few steps to a first success, each reusing a window control. Everything else comes later as one tip
+ * at a time (`LEARN_ITEMS`). No step is required; it reopens where it was left. A fresh install opens it; an
+ * existing one is offered it once on Home.
  */
 import { DESKTOP_HOLD_KEYS } from "@t3tools/baton-contracts";
 import type { HomeControl } from "../home/batonHome.ts";
@@ -27,28 +26,9 @@ const STEPS: ReadonlyArray<
 > = [
   { id: "welcome", controls: [] },
   { id: "mic", controls: ["v.enabled", "v.mic"], meter: true },
-  { id: "wake", controls: ["v.wake:", "s.voice", "v.persona:"] },
-  { id: "assistant", controls: ["s.brain", "s.brainCheck"] },
-  { id: "hands", controls: ["s.act", "s.capture", "s.chrome"], facts: 4 },
   { id: "key", controls: ["setup.hold"] },
   { id: "try", controls: [], tryBox: true },
-  {
-    id: "privacy",
-    controls: ["v.keepVoice", "pr.awWindow", "pr.awIdle", "pr.awFocus", "pr.awJobs"],
-    facts: 2,
-  },
-  { id: "stop", controls: [], facts: 5 },
-  {
-    id: "cloud",
-    controls: [
-      "cl.set.on",
-      "cl.det.",
-      "cl.signin.",
-      "cl.set.cap",
-      "setup.cloud.github",
-      "setup.cloud.always",
-    ],
-  },
+  { id: "assistant", controls: ["s.brain", "s.brainCheck"] },
 ];
 
 export const SETUP_STEPS: ReadonlyArray<SetupStep> = STEPS.map(({ facts, ...s }) => ({

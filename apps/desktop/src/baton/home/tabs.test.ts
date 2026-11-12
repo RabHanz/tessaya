@@ -140,7 +140,7 @@ describe("areas and places", () => {
   it("puts every page but Help in exactly one area, and every area's gear on a Settings page", () => {
     const placed: ReadonlyArray<string> = AREAS.flatMap((a) => [...a.pages]);
     expect(new Set(placed).size).toBe(placed.length);
-    expect(TABS.map((t) => t.id).filter((id) => !placed.includes(id))).toEqual(["help"]);
+    expect(TABS.map((t) => t.id).filter((id) => !placed.includes(id))).toEqual(["learn", "help"]);
     for (const a of AREAS)
       if (a.settings !== null) expect(SETTINGS.map((s) => s.id)).toContain(a.settings);
   });
