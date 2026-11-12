@@ -80,8 +80,9 @@ export class R1Brain extends Context.Service<
 export const MAX_ROUNDS = 4;
 
 /**
- * A spoken turn with tools: each round's words go out as they come (so "Let me check." is heard while the tool runs),
- * then its tool calls run together and their results go back, until a round calls none or the cap is reached.
+ * A spoken turn with tools: a round's tool calls run together and their results go back, until a round calls none or
+ * the cap is reached. Only that last round is spoken: words before a tool call ("I'll ask your laptop…") are a promise
+ * its outcome may break, so the room hears the outcome (and the route's "One moment." if it is slow).
  */
 export const toolLoop = <E>(
   converse: (request: ConverseRequest) => Stream.Stream<ConversePart, E>,
@@ -91,7 +92,6 @@ export const toolLoop = <E>(
     Effect.gen(function* () {
       const startedAt = yield* Clock.currentTimeMillis;
       let firstAt: number | null = null;
-      let said = "";
       const used: Array<string> = [];
       const messages: Array<unknown> = [{ role: "user", content: turn.user }];
       let rounds = 0;
@@ -109,18 +109,17 @@ export const toolLoop = <E>(
           Stream.runForEach((part) =>
             Effect.map(Clock.currentTimeMillis, (now) => {
               if (part.type === "tool") return void calls.push(part);
-              // A new round's words start a new sentence for the room's speech.
-              const gap = text === "" && said !== "" && !/\s$/.test(said) ? " " : "";
               text += part.text;
-              said += gap + part.text;
               firstAt ??= now;
-              Queue.offerUnsafe(queue, gap + part.text);
             }),
           ),
           Effect.exit,
         );
         if (ran._tag === "Failure") return yield* Queue.failCause(queue, ran.cause);
-        if (calls.length === 0) break;
+        if (calls.length === 0) {
+          if (text !== "") Queue.offerUnsafe(queue, text);
+          break;
+        }
         used.push(...calls.map((c) => c.name));
         const outcomes = yield* Effect.forEach(calls, (c) => turn.run(c.name, c.input), {
           concurrency: "unbounded",
