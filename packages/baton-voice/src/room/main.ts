@@ -31,6 +31,11 @@ const env = (key: string, fallback?: string): string => {
 };
 const secret = (key: string) => NodeFS.readFileSync(env(key), "utf8").trim();
 const log = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+/** A fatal stop that is always in the journal: written synchronously to stderr before exiting. */
+const fail = (line: string): never => {
+  NodeFS.writeSync(2, `${new Date().toISOString()} ${line}\n`);
+  process.exit(1);
+};
 
 /** CAM++ as the desktop ships it: a profile made with another model is never compared. */
 const SPEAKER_MODEL_ID = "campplus-voxceleb-357a834f";
@@ -187,17 +192,17 @@ const startPocket = async () => {
       env: { HOME: process.env["HOME"], RAYON_NUM_THREADS: env("R1_TTS_THREADS", "2") },
     },
   );
-  proc.on("exit", (code) => {
-    log(`pocket exited (${code}); the loop restarts with it`);
-    process.exit(1);
-  });
+  proc.on("exit", (code) => fail(`pocket exited (${code}); the loop restarts with it`));
+  log("voice: waiting for pocket");
+  const since = Date.now();
   for (let i = 0; ; i += 1) {
     const ok = await fetch(`http://127.0.0.1:${port}/health`).then(
       (r) => r.ok,
       () => false,
     );
     if (ok) break;
-    if (i > 300) throw new Error("pocket did not start");
+    if (Date.now() - since > 180_000)
+      throw new Error("pocket did not answer its health check in 180 s");
     await new Promise((r) => setTimeout(r, 200));
   }
   const tts = (text: string, signal: AbortSignal, voice?: string) =>
@@ -210,12 +215,21 @@ const startPocket = async () => {
       }).toString(),
       signal,
     });
-  // Pocket fetches a voice on its first use (about 8 s on the voice host), so every persona's is fetched now, not mid-reply.
-  for (const p of ROOM_CONFIG.personas)
-    await tts("Ready.", AbortSignal.timeout(60_000), p.voice).then(
-      (r) => r.arrayBuffer(),
-      (e: unknown) => log(`voice ${p.voice} not ready: ${String(e)}`),
-    );
+  log(`voice: pocket up in ${Date.now() - since} ms`);
+  // Pocket fetches a voice on its first use (about 8 s on the voice host): each persona's is fetched now, in the
+  // background, so a slow or failed fetch never holds the loop from starting.
+  void (async () => {
+    for (const p of ROOM_CONFIG.personas) {
+      const at = Date.now();
+      await tts("Ready.", AbortSignal.timeout(60_000), p.voice).then(
+        async (r) => {
+          await r.arrayBuffer();
+          log(`voice ${p.voice} ready in ${Date.now() - at} ms`);
+        },
+        (e: unknown) => log(`voice ${p.voice} not ready: ${String(e)}`),
+      );
+    }
+  })();
   return async function* (text: string, signal: AbortSignal, voice?: string) {
     const res = await tts(text, signal, voice);
     if (!res.ok || res.body === null) throw new Error(`voice answered ${res.status}`);
@@ -292,6 +306,7 @@ const brain = (url: string, key: string): RoomDeps["brain"] =>
 
 const main = async () => {
   const threads = Number(env("R1_ONNX_THREADS", "2"));
+  log("starting: loading models");
   const silero = model("silero_vad.onnx");
   const smart = await createSmartTurn(model("smart-turn-v3.2-cpu.onnx"), threads);
   const sense = NodeFS.existsSync(model("sensevoice.int8.onnx"))
@@ -304,6 +319,7 @@ const main = async () => {
   const embedder = await createSpeakerEmbedder(model("campplus.onnx"), SPEAKER_MODEL_ID, 1);
   const store = createSpeakerStore(state);
   const policy = { ...CAMPLUS_POLICY, model: SPEAKER_MODEL_ID };
+  log("starting: models loaded");
   const speak = await startPocket();
   const deviceKey = secret("R1_DEVICE_KEY_FILE");
   const metricsFile = NodePath.join(state, "metrics.ndjson");
@@ -440,6 +456,7 @@ const main = async () => {
 };
 
 void main().catch((error: unknown) => {
-  log(`room loop failed: ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
+  fail(
+    `room loop failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+  );
 });
