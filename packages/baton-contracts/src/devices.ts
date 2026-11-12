@@ -15,6 +15,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "vibrate",
   "say",
   "mute",
+  "earcons",
   "transport",
   "transportConfirm",
   "transportRevert",
@@ -137,6 +138,8 @@ export const DeviceView = Schema.Struct({
   mode: Schema.Literals(["satellite", "standalone"]),
   mood: Schema.NullOr(Schema.String),
   muted: Schema.Boolean,
+  /** Her listening and closing sounds on this R1 (the room loop's cues). */
+  earcons: Schema.Boolean,
   transport: Schema.Literals(DEVICE_TRANSPORTS),
   /** While a transport trial runs: when it reverts to in-house, muted, unless confirmed. */
   revertAt: Schema.NullOr(Schema.String),

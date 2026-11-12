@@ -52,6 +52,7 @@ export type DeviceCommand =
   | { readonly op: "vibrate"; readonly ms: number }
   | { readonly op: "say"; readonly text: string }
   | { readonly op: "mute"; readonly muted: boolean }
+  | { readonly op: "earcons"; readonly on: boolean }
   | { readonly op: "transport"; readonly transport: DeviceTransport }
   | { readonly op: "transportConfirm" }
   | { readonly op: "transportRevert" }
@@ -315,13 +316,15 @@ export const stagesOf = (d: Heard): ReadonlyArray<DeviceStage> =>
 interface Saved {
   transport: Record<string, DeviceTransport>;
   muted: Record<string, boolean>;
+  /** R1s with her listening and closing sounds off (the room loop plays them by default). */
+  earconsOff: Record<string, boolean>;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
 }
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export interface DeviceLink {
-  readonly publish: (topic: string, payload: string) => void;
+  readonly publish: (topic: string, payload: string, retain?: boolean) => void;
   readonly connected: () => boolean;
   readonly close: () => void;
 }
@@ -356,7 +359,8 @@ export const brokerLayer = Layer.succeed(HomeDeviceBroker, {
         log: () => {},
       });
       return {
-        publish: (topic: string, payload: string) => client.publish(topic, payload),
+        publish: (topic: string, payload: string, retain?: boolean) =>
+          client.publish(topic, payload, retain),
         connected: client.connected,
         close: client.close,
       };
@@ -436,6 +440,7 @@ const make = Effect.gen(function* () {
       return {
         transport: (value["transport"] ?? {}) as Saved["transport"],
         muted: (value["muted"] ?? {}) as Saved["muted"],
+        earconsOff: (value["earconsOff"] ?? {}) as Saved["earconsOff"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
       };
     }),
@@ -464,10 +469,10 @@ const make = Effect.gen(function* () {
         })
       : Effect.void;
 
-  const publish = (id: string, path: string, payload: unknown) =>
+  const publish = (id: string, path: string, payload: unknown, retain = false) =>
     Effect.sync(() => {
       const text = typeof payload === "string" ? payload : JSON.stringify(payload);
-      link?.publish(`freya/r1/${id}/${path}`, text);
+      link?.publish(`freya/r1/${id}/${path}`, text, retain);
     });
 
   const live = (id: string) =>
@@ -575,6 +580,18 @@ const make = Effect.gen(function* () {
         });
         yield* publish(id, "voice/ctl", { ev: c.muted ? "mute" : "unmute" });
         return done(c.muted ? "Muted: it does not listen or speak." : "Unmuted.");
+      case "earcons":
+        yield* change((s) => {
+          if (c.on) delete s.earconsOff[id];
+          else s.earconsOff[id] = true;
+        });
+        // Retained, so the room loop has it again after a restart.
+        yield* publish(id, "cmd/voice/earcons", { on: c.on }, true);
+        return done(
+          c.on
+            ? "Her listening and closing sounds are on."
+            : "Her listening and closing sounds are off.",
+        );
       case "transport":
         if (c.transport === "inhouse") {
           trials.delete(id);
@@ -619,7 +636,9 @@ const make = Effect.gen(function* () {
         yield* change((s) => {
           delete s.transport[id];
           delete s.muted[id];
+          delete s.earconsOff[id];
         });
+        yield* publish(id, "cmd/voice/earcons", "", true);
         if (device?.deviceId === id) yield* home.setDevice(null).pipe(Effect.ignore);
         return done("Forgotten. Set it up again in Settings → Home.");
       }
@@ -729,6 +748,7 @@ const make = Effect.gen(function* () {
       mode: "satellite",
       mood: d.mood,
       muted: saved.muted[id] === true,
+      earcons: saved.earconsOff[id] !== true,
       transport: DEVICE_TRANSPORTS.includes(saved.transport[id]!)
         ? saved.transport[id]!
         : "inhouse",

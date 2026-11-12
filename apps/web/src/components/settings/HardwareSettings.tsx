@@ -343,6 +343,18 @@ function DeviceControls({
             />
           }
         />
+        <SettingsRow
+          title="Earcons"
+          description="A soft sound when it starts listening and when it closes."
+          control={
+            <Switch
+              checked={d.earcons}
+              disabled={off}
+              aria-label="Earcons"
+              onCheckedChange={(on) => void run("act", "earcons", { id, on })}
+            />
+          }
+        />
       </SettingsSection>
 
       <SettingsSection title={`Voice · ${id}`}>

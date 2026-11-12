@@ -378,6 +378,18 @@ function DeviceControls({
             onPress={() => void run("act", "mute", { id, muted: !d.muted })}
           />
         </Row>
+        <Row
+          divider
+          title="Earcons"
+          description="A soft sound when it starts listening and when it closes."
+        >
+          <ControlPill
+            variant="pill"
+            label={d.earcons ? "Turn off" : "Turn on"}
+            disabled={off}
+            onPress={() => void run("act", "earcons", { id, on: !d.earcons })}
+          />
+        </Row>
       </SettingsSection>
 
       <SettingsSection title={`${prefix}Voice · ${id}`}>

@@ -14,7 +14,7 @@ const ID = "r1-3d57b3";
 const root = `freya/r1/${ID}`;
 
 const setup = () => {
-  const sent: Array<{ topic: string; payload: unknown }> = [];
+  const sent: Array<{ topic: string; payload: unknown; retain?: boolean }> = [];
   const scenes: Array<unknown> = [];
   let record: R1Device | null = {
     deviceKey: "k".repeat(30),
@@ -26,8 +26,12 @@ const setup = () => {
   const broker = Layer.succeed(HomeDevices.HomeDeviceBroker, {
     connect: () =>
       Effect.succeed({
-        publish: (topic: string, payload: string) =>
-          void sent.push({ topic: topic.replace(`${root}/`, ""), payload: JSON.parse(payload) }),
+        publish: (topic: string, payload: string, retain?: boolean) =>
+          void sent.push({
+            topic: topic.replace(`${root}/`, ""),
+            payload: payload === "" ? "" : JSON.parse(payload),
+            ...(retain === true ? { retain } : {}),
+          }),
         connected: () => true,
         close: () => {},
       }),
@@ -127,9 +131,16 @@ it.effect(
       assert.deepStrictEqual(sent[1]!.payload, { ev: "mute" });
       const view = (yield* devices.overview).devices[0]!;
       assert.deepStrictEqual(
-        [view.id, view.configured, view.online, view.muted],
-        [ID, true, true, true],
+        [view.id, view.configured, view.online, view.muted, view.earcons],
+        [ID, true, true, true, true],
       );
+      // Her cues off for this R1: kept, and retained on the broker so the room loop has it after a restart.
+      sent.length = 0;
+      yield* devices.command(ID, { op: "earcons", on: false }, me);
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/voice/earcons", payload: { on: false }, retain: true },
+      ]);
+      assert.isFalse((yield* devices.overview).devices[0]!.earcons);
     }).pipe(Effect.provide(layer));
   },
 );
