@@ -179,7 +179,7 @@ const startPocket = async () => {
       }).toString(),
       signal,
     });
-  // Pocket fetches a voice on its first use (about 8 s on onnyx), so every persona's is fetched now, not mid-reply.
+  // Pocket fetches a voice on its first use (about 8 s on the voice host), so every persona's is fetched now, not mid-reply.
   for (const p of ROOM_CONFIG.personas)
     await tts("Ready.", AbortSignal.timeout(60_000), p.voice).then(
       (r) => r.arrayBuffer(),
