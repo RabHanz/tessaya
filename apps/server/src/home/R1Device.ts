@@ -379,6 +379,8 @@ interface R1Heard {
   readonly device?: string;
 }
 
+const isReplay = (input: R1Heard) => input.device?.startsWith("replay-") === true;
+
 /** The house, the last action and memories for this turn, and the eyes set to thinking. */
 /** His shared dictionary as vocabulary entries: each term spelt his way, its aliases as the forms it is heard as. */
 export const dictionaryEntries = (
@@ -386,7 +388,7 @@ export const dictionaryEntries = (
 ): ReadonlyArray<VocabularyEntry> =>
   words.map((w) => ({ phrase: w.term, replacement: null, heard: w.aliases }));
 
-const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, withHouse = true) {
+export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, withHouse = true) {
   // His names, as dictation fixes them ("Tessa" → "Tessaya"), from the environment's shared dictionary.
   const settings = yield* Effect.serviceOption(ServerSettingsService);
   const words =
@@ -398,7 +400,8 @@ const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, withHouse
         );
   const input = { ...raw, heard: biasTranscript(raw.heard, dictionaryEntries(words)) };
   const home = yield* HomeAssistantService;
-  const device = yield* home.device;
+  // A replay turn has no device: its eyes and camera are his real R1's, so they stay still.
+  const device = isReplay(input) ? null : yield* home.device;
   yield* eyes(device, "thinking", 15_000).pipe(Effect.forkDetach);
   const status = yield* home.status;
   const lastAction = (yield* home.actions(1))[0] ?? null;
@@ -490,7 +493,7 @@ const r1Finish = Effect.fn("R1Device.finish")(function* (
   if (record._tag === "Some")
     yield* record.value.append({
       kind: "device",
-      actor: input.device?.startsWith("replay-") === true ? "r1-replay" : "r1",
+      actor: isReplay(input) ? "r1-replay" : "r1",
       subject: `heard ${JSON.stringify(recordText(input.heard, 160))}`,
       outcome: outcomes.length === 0 ? "answered" : `acted ${outcomes.length}`,
       detail: recordText(said, 300),

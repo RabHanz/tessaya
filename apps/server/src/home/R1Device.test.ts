@@ -17,6 +17,7 @@ import {
   dictionaryEntries,
   houseTime,
   mqttPublishBytes,
+  r1Gather,
   roomLook,
   roomPrivate,
   runActs,
@@ -239,4 +240,27 @@ effectIt.effect(
       expect(his.image).toEqual({ mediaType: "image/jpeg", data: "AAAA" });
       expect(asked.map((by) => by.approved === true)).toEqual([false, true]);
     }),
+);
+
+effectIt.effect("a replay turn never reaches his real R1's eyes; his own turn does", () =>
+  Effect.gen(function* () {
+    let read = 0;
+    const real = { deviceId: "r1-his", mqttUrl: null } as unknown as R1Device;
+    const home = Layer.mock(HomeAssistantService)({
+      device: Effect.sync(() => {
+        read += 1;
+        return real;
+      }),
+      status: Effect.succeed({ state: "connected", line: "" } as never),
+      actions: () => Effect.succeed([]),
+      timeZone: Effect.succeed("Asia/Karachi"),
+    });
+    const gather = (device: string) =>
+      r1Gather({ heard: "test of dictation", history: [], device }, false).pipe(
+        Effect.provide(home),
+      );
+    expect((yield* gather("replay-3")).device).toBeNull();
+    expect(read).toBe(0);
+    expect((yield* gather("r1-his")).device).toBe(real);
+  }),
 );
