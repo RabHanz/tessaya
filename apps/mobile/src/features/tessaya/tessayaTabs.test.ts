@@ -4,6 +4,7 @@ import {
   firstTab,
   primaryTabCapacity,
   talkGesture,
+  TESSAYA_NATIVE_TABS,
   TESSAYA_PRIMARY_TABS,
   TESSAYA_TAB_ORDER,
 } from "./tessayaTabs";
@@ -25,5 +26,17 @@ describe("Tessaya's phone tabs", () => {
     expect(talkGesture(120)).toBe("tap");
     expect(talkGesture(280)).toBe("hold");
     expect(talkGesture(2000)).toBe("hold");
+  });
+
+  it("gives Android's native bar words and an outline icon for every tab it draws", () => {
+    for (const tab of [...TESSAYA_TAB_ORDER.slice(0, TESSAYA_PRIMARY_TABS), "settings"]) {
+      expect(
+        TESSAYA_NATIVE_TABS.labels[tab as keyof typeof TESSAYA_NATIVE_TABS.labels],
+        tab,
+      ).toBeTruthy();
+    }
+    // Sessions keeps T3's own chats icon; the others are path data the native side parses (no <circle>).
+    for (const path of Object.values(TESSAYA_NATIVE_TABS.icons))
+      expect(path).toMatch(/^M[0-9MmAaHhVvLlZz .\-]+$/);
   });
 });

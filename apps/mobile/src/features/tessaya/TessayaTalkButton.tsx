@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useRef, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -13,8 +13,8 @@ import { talkGesture } from "./tessayaTabs";
 import { useTessayaHome } from "./TessayaTodayScreen";
 
 const SIZE = 64;
-// Clears the iOS tab bar and sits in the thumb's reach, centred.
-const ABOVE_TAB_BAR = 58;
+// Clears the tab bar (iOS 49pt, Android's 80dp) and sits in the thumb's reach, centred.
+const ABOVE_TAB_BAR = Platform.OS === "android" ? 92 : 58;
 const NO_SELECTION = { start: 0, end: 0 } as const;
 
 /**

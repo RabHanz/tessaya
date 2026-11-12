@@ -11,6 +11,129 @@ index 9367ade408e9599cb56ab71e97fbbb530fd9bb51..edbdce27c70afb6b930e9fa0d038f109
  import { registerRootComponent } from "expo";
  import "react-native-gesture-handler";
  import { LogBox } from "react-native";
+diff --git a/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt b/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt
+index 736f7cd3019f02fa7f18c4a2fe0a442022d448a6..a715d9f4ec78721a481e7534e4b6f47bed2ef06c 100644
+--- a/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt
++++ b/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt
+@@ -46,6 +46,13 @@ import androidx.compose.ui.draw.clip
+ import androidx.compose.ui.draw.clipToBounds
+ import androidx.compose.ui.draw.shadow
+ import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.graphics.SolidColor
++import androidx.compose.ui.graphics.StrokeCap
++import androidx.compose.ui.graphics.StrokeJoin
++import androidx.compose.ui.graphics.painter.Painter
++import androidx.compose.ui.graphics.vector.ImageVector
++import androidx.compose.ui.graphics.vector.addPathNodes
++import androidx.compose.ui.graphics.vector.rememberVectorPainter
+ import androidx.compose.ui.layout.onSizeChanged
+ import androidx.compose.ui.platform.ComposeView
+ import androidx.compose.ui.platform.LocalDensity
+@@ -69,6 +76,13 @@ class T3WorkspaceNavigationModule : Module() {
+     Name("T3WorkspaceNavigation")
+     View(T3WorkspaceNavigationView::class) {
+       Prop("tabs") { view: T3WorkspaceNavigationView, value: List<String> -> view.tabs = value }
++      // A tab's own words and 24x24 stroke icon (SVG path data), from JS; absent, the built-in ones.
++      Prop("tabLabels") { view: T3WorkspaceNavigationView, value: Map<String, String> ->
++        view.tabLabels = value
++      }
++      Prop("tabIcons") { view: T3WorkspaceNavigationView, value: Map<String, String> ->
++        view.tabIcons = value
++      }
+       Prop("selectedTab") { view: T3WorkspaceNavigationView, value: String ->
+         view.selectedTab = value
+       }
+@@ -128,6 +142,8 @@ class T3WorkspaceNavigationView(
+   private val onOverlayChange by EventDispatcher()
+   var tabs by mutableStateOf(listOf("threads", "pullRequests", "usage", "settings"))
+   var selectedTab by mutableStateOf("threads")
++  var tabLabels by mutableStateOf(emptyMap<String, String>())
++  var tabIcons by mutableStateOf(emptyMap<String, String>())
+   var rail by mutableStateOf(false)
+   var floating by mutableStateOf(false)
+   var dark by mutableStateOf(false)
+@@ -412,7 +428,7 @@ class T3WorkspaceNavigationView(
+     }
+   }
+ 
+-  private fun tabTitle(tab: String) = when (tab) {
++  private fun tabTitle(tab: String) = tabLabels[tab] ?: when (tab) {
+     "threads" -> "Chats"
+     "pullRequests" -> "Pulls"
+     "usage" -> "Usage"
+@@ -420,10 +436,16 @@ class T3WorkspaceNavigationView(
+   }
+ 
+   private fun expandedTabTitle(tab: String) =
+-    if (tab == "pullRequests") "Pull Requests" else tabTitle(tab)
++    if (tab == "pullRequests" && tabLabels[tab] == null) "Pull Requests" else tabTitle(tab)
++
++  @Composable
++  private fun tabIconPainter(tab: String): Painter {
++    val path = tabIcons[tab] ?: return builtInIconPainter(tab)
++    return rememberVectorPainter(remember(path) { strokeIcon(path) })
++  }
+ 
+   @Composable
+-  private fun tabIconPainter(tab: String) = painterResource(
++  private fun builtInIconPainter(tab: String) = painterResource(
+     when (tab) {
+       "threads" -> R.drawable.t3_chats
+       "pullRequests" -> R.drawable.t3_pull_requests
+@@ -433,6 +455,21 @@ class T3WorkspaceNavigationView(
+   )
+ 
+   private companion object {
++    // Tabler-style outline icons: a 24 unit box, 2 unit round strokes; Icon's tint colours them.
++    fun strokeIcon(path: String) =
++      ImageVector.Builder(
++        defaultWidth = 24.dp,
++        defaultHeight = 24.dp,
++        viewportWidth = 24f,
++        viewportHeight = 24f,
++      ).addPath(
++        pathData = addPathNodes(path),
++        stroke = SolidColor(Color.Black),
++        strokeLineWidth = 2f,
++        strokeLineCap = StrokeCap.Round,
++        strokeLineJoin = StrokeJoin.Round,
++      ).build()
++
+     // Material's 80dp compact rail, minus 8dp: still a 48dp touch target with 12dp margins.
+     val RAIL_WIDTH = 72.dp
+     val EXPANDED_RAIL_WIDTH = 240.dp
+diff --git a/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx b/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx
+index 246a0c9d7cb74548ae107902d2819112abbb20dd..2b027f3fa4ed792a3347ba6214672fe388298e0d 100644
+--- a/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx
++++ b/apps/mobile/src/features/layout/workspace/AndroidWorkspaceNavigation.android.tsx
+@@ -27,6 +27,7 @@ import { useAndroidWorkspaceRoot } from "./AndroidWorkspaceTabsProvider";
+ import { useNavigationTabOrder, useHiddenNavigationTabs } from "./navigation-tabs";
+ import { useWorkspaceTabs } from "./WorkspaceTabsContext";
+ import { FLOATING_TABS, floatingTabsMetrics } from "./floating-workspace-tabs";
++import { TESSAYA_NATIVE_TABS, tessayaAppOn } from "../../tessaya/tessayaTabs";
+ 
+ // Matches RAIL_WIDTH in the native rail.
+ export const ANDROID_WORKSPACE_RAIL_WIDTH = 72;
+@@ -35,6 +36,8 @@ interface NativeNavigationProps extends ViewProps {
+   readonly rail: boolean;
+   readonly floating: boolean;
+   readonly tabs: readonly string[];
++  readonly tabLabels?: Readonly<Record<string, string>>;
++  readonly tabIcons?: Readonly<Record<string, string>>;
+   readonly selectedTab: AndroidWorkspaceNavigationTab;
+   readonly dark: boolean;
+   readonly textScale: number;
+@@ -121,6 +124,10 @@ export function AndroidWorkspaceNavigation(props: {
+         rail={rail}
+         floating={floating}
+         tabs={tabs}
++        // Baton (0025-tessaya-phone.patch): Tessaya's tabs bring their own words and icons.
++        {...(tessayaAppOn()
++          ? { tabLabels: TESSAYA_NATIVE_TABS.labels, tabIcons: TESSAYA_NATIVE_TABS.icons }
++          : {})}
+         selectedTab={selectedTab}
+         dark={themeAppearance === "dark"}
+         textScale={scale}
 diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
 index 17fc0069eb8e678617f1951410f306bdf6732bce..e3ac5c469b7e2547a29f6b5acbb8fc8989283a61 100644
 --- a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
@@ -85,6 +208,27 @@ index 2ede0bcddee4b53fd668cf1b94a6b987b4908a25..a8eed9ae62ead554a9c959df9f6a0f68
        {(deviceType === "pad" ||
          compactTabs ||
          (layout.variant === "medium" &&
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx
+index a03a36bc947627c0f903239d14bb5599e370fa9b..1a5443312d9ae1fc27b92ccfadf707f2a8515129 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx
+@@ -24,6 +24,8 @@ import { WorkspaceAppBarScope } from "../../../components/ui/WorkspaceAppBar.and
+ import { usePaneRole } from "../../../components/ui/Pane";
+ import { AndroidWorkspaceSidebar } from "./AndroidWorkspaceSidebar.android";
+ import type { WorkspaceTab } from "./workspace-tabs-state";
++import { TessayaTalkButton } from "../../tessaya/TessayaTalkButton";
++import { tessayaAppOn } from "../../tessaya/tessayaTabs";
+ 
+ const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
+ 
+@@ -111,6 +113,7 @@ function WorkspaceRoot() {
+         ) : (
+           <AndroidWorkspaceNavigation onNewThread={startNewTask} />
+         )}
++        {tessayaAppOn() && !layout.usesSplitView ? <TessayaTalkButton /> : null}
+       </View>
+     </WorkspaceTabsContext>
+   );
 diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
 index 9ecb6fa933fa88f06c899ccbdd92eb65bcc90585..e12ae5fcec02031062ea90b7073b9563a88d99de 100644
 --- a/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
@@ -241,6 +385,18 @@ index 6a44e617e53ede0535bd1555925be6adb3e242ca..80e3958e232279431e7408c55faa3b72
        ? detailRoute(state, tab, selections, options.check, options.seedPullRequest)
        : undefined;
    const routes = [...[home, ...(detail ? [detail] : [])].map(keyed), ...overlays];
+diff --git a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts
+index f1c839630eb34bc37f5ea675da0b5af203589f5e..6074070fc5861e923a025cf13e35dedd70d63563 100644
+--- a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts
++++ b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts
+@@ -232,6 +232,7 @@ vi.mock("./AndroidWorkspaceNavigation", () => ({
+   FloatingWorkspaceTabs: () => null,
+ }));
+ vi.mock("./WorkspaceNoTabs", () => ({ WorkspaceNoTabs: () => null }));
++vi.mock("../../tessaya/TessayaTalkButton", () => ({ TessayaTalkButton: () => null }));
+ vi.mock("../../../components/ui/Pane", () => ({ usePaneRole: () => "screen" }));
+ vi.mock("./AndroidWorkspaceSidebar.android", () => ({ AndroidWorkspaceSidebar: () => null }));
+ vi.mock("../../../components/ui/WorkspaceAppBar.android", () => ({
 diff --git a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
 index 3598894115dc3f8f6f8e20cfb4d203ddc0df2063..07c42c7f2aa8d761e18d30aae28ae3fa837bdd90 100644
 --- a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts

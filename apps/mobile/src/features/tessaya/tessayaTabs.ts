@@ -36,3 +36,18 @@ export const setTessayaApp = (on: boolean) => {
   tessayaApp = on;
 };
 export const tessayaAppOn = () => tessayaApp;
+
+/** What Android's native tab bar draws for Tessaya's tabs: its words, and 24 unit outline icons as SVG path data. */
+export const TESSAYA_NATIVE_TABS = {
+  labels: { today: "Today", threads: "Sessions", devices: "Devices", settings: "You" },
+  icons: {
+    // A sun.
+    today:
+      "M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4 -1.4M17.7 6.3l1.4 -1.4",
+    // The R1: a rounded body, its eye and its grille.
+    devices:
+      "M8 3h8a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-8a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3zM9 10a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M9 17h6",
+    // A person.
+    settings: "M8 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2",
+  },
+} as const;

@@ -232,6 +232,7 @@ vi.mock("./AndroidWorkspaceNavigation", () => ({
   FloatingWorkspaceTabs: () => null,
 }));
 vi.mock("./WorkspaceNoTabs", () => ({ WorkspaceNoTabs: () => null }));
+vi.mock("../../tessaya/TessayaTalkButton", () => ({ TessayaTalkButton: () => null }));
 vi.mock("../../../components/ui/Pane", () => ({ usePaneRole: () => "screen" }));
 vi.mock("./AndroidWorkspaceSidebar.android", () => ({ AndroidWorkspaceSidebar: () => null }));
 vi.mock("../../../components/ui/WorkspaceAppBar.android", () => ({

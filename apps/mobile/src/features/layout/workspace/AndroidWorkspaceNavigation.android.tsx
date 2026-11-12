@@ -27,6 +27,7 @@ import { useAndroidWorkspaceRoot } from "./AndroidWorkspaceTabsProvider";
 import { useNavigationTabOrder, useHiddenNavigationTabs } from "./navigation-tabs";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { FLOATING_TABS, floatingTabsMetrics } from "./floating-workspace-tabs";
+import { TESSAYA_NATIVE_TABS, tessayaAppOn } from "../../tessaya/tessayaTabs";
 
 // Matches RAIL_WIDTH in the native rail.
 export const ANDROID_WORKSPACE_RAIL_WIDTH = 72;
@@ -35,6 +36,8 @@ interface NativeNavigationProps extends ViewProps {
   readonly rail: boolean;
   readonly floating: boolean;
   readonly tabs: readonly string[];
+  readonly tabLabels?: Readonly<Record<string, string>>;
+  readonly tabIcons?: Readonly<Record<string, string>>;
   readonly selectedTab: AndroidWorkspaceNavigationTab;
   readonly dark: boolean;
   readonly textScale: number;
@@ -120,6 +123,10 @@ export function AndroidWorkspaceNavigation(props: {
         rail={rail}
         floating={floating}
         tabs={tabs}
+        // Baton (0025-tessaya-phone.patch): Tessaya's tabs bring their own words and icons.
+        {...(tessayaAppOn()
+          ? { tabLabels: TESSAYA_NATIVE_TABS.labels, tabIcons: TESSAYA_NATIVE_TABS.icons }
+          : {})}
         selectedTab={selectedTab}
         dark={themeAppearance === "dark"}
         textScale={scale}
