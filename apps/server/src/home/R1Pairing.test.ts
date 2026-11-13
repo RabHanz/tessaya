@@ -75,6 +75,7 @@ const setup = () => {
         Layer.mock(R1Reach)({
           status: Effect.succeed({
             away: false,
+            offered: false,
             tunnel: false,
             endpoints: { broker: ["ws://192.168.1.20:3773/api/r1/mqtt"], proxy: "" },
             line: "",

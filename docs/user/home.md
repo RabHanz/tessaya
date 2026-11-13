@@ -50,6 +50,12 @@ seen, with its controls. A home can have several. To add one, give its id and it
 when the R1 connects to this server itself (`ws://<this server>:<port>/api/r1/mqtt`), which needs no broker of its own;
 fill it in only for an R1 on a separate MQTT broker. **Forget** removes all of it from this server again.
 
+**Add an R1.** A new R1 shows a pairing QR on its right eye. In Settings → Hardware → **Add an R1**, paste the QR's
+text (`T3R1:…`, from your phone's camera) with your Wi-Fi name and password. In Chrome, **Set up over Bluetooth** does
+the rest; if your computer asks for a passkey, enter the six digits shown there and on the R1's eyes. Anywhere else,
+**Get a setup code**, join the R1's own Wi-Fi (the QR on its left eye) and paste the code into its page. After the first
+R1 you are asked once whether it may work away from home.
+
 **Away from home.** At home the R1 connects over your own network. Turn on **Away from home** (in Hardware, by asking
 Tessaya, or from the card your phone gets when the R1 could not reach home) and it can also connect through T3 Connect
 when it is elsewhere; turn it off to keep it home only. The server sends the R1 its addresses by itself, also when your
