@@ -44,7 +44,17 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
     judgeToolCall({ tool, input }, { actWithoutAsking: false, tainted: false });
 
   it("every tool is in the table the gate reads", () => {
-    // The house and device tools come from his server's registry, judged here by name (batonTools.test covers them).
+    // The house, device and work tools come from his server's registry, judged here by name (batonTools.test covers
+    // them); the desktop's own standing jobs (job_create and kin) stay its own.
+    const fromServer = new Set([
+      "job_start",
+      "job_agree",
+      "job_refine",
+      "job_split",
+      "job_retry",
+      "job_stop",
+      "job_schedule",
+    ]);
     expect(new Set(tools)).toEqual(
       new Set(
         [...BATON_TOOLS].filter(
@@ -52,7 +62,8 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
             !REMOTE_ONLY_TOOLS.has(t) &&
             !ROOM_ONLY_TOOLS.has(t) &&
             !t.startsWith("home_") &&
-            !t.startsWith("device_"),
+            !t.startsWith("device_") &&
+            !fromServer.has(t),
         ),
       ),
     );

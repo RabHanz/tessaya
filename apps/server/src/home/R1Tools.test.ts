@@ -72,6 +72,12 @@ describe("the room's tools for a replay", () => {
     ]);
     // The desktop's own screen and volume stay its own; the room's laptop and speaker are not its tools.
     expect(["laptop_ask", "set_device_volume", "tessaya_ask"].some((n) => desk.has(n))).toBe(false);
+    // His work reaches the desktop from the one table: no job tool of its own (SPINE-UNIFY S2).
+    expect(
+      ["job_start", "job_agree", "job_schedule", "schedules_list", "project_add"].every((n) =>
+        desk.has(n),
+      ),
+    ).toBe(true);
   });
 
   it("takes a number or a yes/no sent as a string, as every timer was (07:39, 13 Nov)", () => {
@@ -132,7 +138,5 @@ describe("the room's tools for a replay", () => {
     // Starting work is the owner's (machine reach, A2): a lower voice is held for a step-up.
     expect(stepUpNeeds("job_start", 1)).toBe(2);
     expect(stepUpNeeds("job_stop", 2)).toBeNull();
-    // The desktop has its own job tools over the same flow.
-    expect(DESK_TOOL_SPECS.some((s) => s.name.startsWith("job_"))).toBe(false);
   });
 });

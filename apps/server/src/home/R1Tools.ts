@@ -108,7 +108,7 @@ const ROOM_TOOLS = [
   "cloud_dispatch",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
-/** The room's work tools (jobs, schedules, projects, cloud), judged by the desktop's table; the desktop has its own. */
+/** The work tools (jobs, schedules, projects, cloud), judged by the desktop's table (judgeToolCall). */
 const JOB_TOOLS: ReadonlySet<string> = new Set(JobTools.map((tool) => tool.name));
 
 /**
@@ -116,9 +116,7 @@ const JOB_TOOLS: ReadonlySet<string> = new Set(JobTools.map((tool) => tool.name)
  * Not tessaya_ask: the desktop is where those asks are answered.
  */
 const DESK_TOOLS = [
-  ...ROOM_TOOLS.filter(
-    (name) => name !== "tessaya_ask" && name !== "tessaya_ask_status" && !JOB_TOOLS.has(name),
-  ),
+  ...ROOM_TOOLS.filter((name) => name !== "tessaya_ask" && name !== "tessaya_ask_status"),
   "device_act",
   "device_owner",
   "device_tag",
@@ -516,7 +514,12 @@ const makeRunners = Effect.gen(function* () {
       const origin = yield* TurnOrigin;
       const judged = jobVerdict(name, input, origin?.tainted === true);
       if (typeof judged === "object") return { text: judged.refused, isError: true } as ToolOutcome;
-      if (judged === "card" && (origin?.assurance ?? 0) < CARD_YES) {
+      // The desk with no turn is the desktop app's own call through its desk door: its gate already asked him.
+      if (
+        judged === "card" &&
+        (origin !== null || vessel.holds) &&
+        (origin?.assurance ?? 0) < CARD_YES
+      ) {
         if (!vessel.holds || device === undefined || origin === null || Option.isNone(stepUps))
           return {
             text: "That needs his yes on his phone, and it can't be asked from here.",

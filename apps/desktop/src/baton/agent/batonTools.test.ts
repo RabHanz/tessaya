@@ -52,8 +52,18 @@ describe("the assistant's tool table", () => {
     );
     const acts = ["home_do", "home_undo", "home_automation_save", "home_automation_set"];
     const devices = ["device_act", "device_owner", "device_tag"];
+    // His work is the server's too: the desktop keeps no job tool of its own (SPINE-UNIFY S2).
+    const work = [
+      "job_start",
+      "job_agree",
+      "job_refine",
+      "job_split",
+      "job_retry",
+      "job_stop",
+      "job_schedule",
+    ];
     const registry = {
-      specs: [...house, ...[...acts, ...devices].map((n) => spec(n))],
+      specs: [...house, ...[...acts, ...devices, ...work].map((n) => spec(n))],
       call: async () => "done",
     };
     const names = buildBatonTools({ ...host([]), shared: registry }).map((t) => t.name);

@@ -21,6 +21,7 @@ import {
   rosterLine,
 } from "../../packages/baton-shared/src/osPack.ts";
 import { memoryBlock } from "../../packages/baton-shared/src/memory.ts";
+import { DESK_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
 import {
@@ -91,6 +92,11 @@ const sample = async (c: AssistantCase, index: number): Promise<Sample> => {
   const model = values.model ?? brain.model;
   const ran = await replayTurn({
     claudeBinary: values.claude!,
+    // His server's shared tools as the desktop gets them: listed, never run (the job tools live there now).
+    shared: {
+      specs: DESK_TOOL_SPECS,
+      call: async (name) => `(eval) ${name} was not run.`,
+    },
     // The sample's index seeds the greeting's manner, so a rerun is comparable sample by sample.
     seed: index,
     brain: { model, effort: values.effort ?? brain.effort },

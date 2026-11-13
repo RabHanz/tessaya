@@ -408,6 +408,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["job_start"],
   },
   {
+    id: "project-add",
+    source:
+      "Director 13 Nov 19:05 GMT+5: start projects by voice; the desktop reaches project_add from the shared table (S2)",
+    said: "add the acme/app repository as a new project",
+    first: ["project_add"],
+    not: ["job_start"],
+  },
+  {
+    id: "schedules-list",
+    source: "the desktop reaches the shared schedule tools (SPINE-UNIFY S2)",
+    said: "which scheduled tasks do I have?",
+    first: ["schedules_list"],
+  },
+  {
     id: "split-by-specialist",
     model: "opus",
     source: "INT-5 control: an explicit split by specialist reaches the job tools",
