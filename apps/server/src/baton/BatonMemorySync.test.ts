@@ -13,6 +13,7 @@ import { BatonMemoryService } from "./BatonMemoryService.ts";
 import {
   BatonMemorySync,
   layer,
+  roundDue,
   SYNC_OFF,
   peerUrl,
   syncRound,
@@ -245,3 +246,11 @@ it.live(
       stored.delete("tessaya-memory-sync-peers");
     }).pipe(Effect.provide(serviceLayer)),
 );
+
+it("sends a new memory at the next look, and otherwise pulls from the other servers every two minutes", () => {
+  assert.isTrue(roundDue({ changedHere: true, sinceLastMs: 15_000 }));
+  assert.isFalse(roundDue({ changedHere: false, sinceLastMs: 15_000 }));
+  assert.isTrue(roundDue({ changedHere: false, sinceLastMs: 120_000 }));
+  // The first look after start: nothing has run yet.
+  assert.isTrue(roundDue({ changedHere: false, sinceLastMs: Number.POSITIVE_INFINITY }));
+});

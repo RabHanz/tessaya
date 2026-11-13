@@ -17,6 +17,7 @@ import { NOT_HERE } from "@t3tools/baton-shared/historyIndex";
 import type { MemoryChange } from "@t3tools/baton-shared/memory";
 import { syncOriginAllowed } from "@t3tools/baton-shared/syncOrigin";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -31,7 +32,14 @@ import { BatonMemoryService } from "./BatonMemoryService.ts";
 
 const SECRET = "tessaya-memory-sync-peers";
 const ENABLED_KEY = "memory_sync";
-const EVERY = "10 minutes";
+/** How often this server looks for its own new memories to send (Memory v2 step 4: a write reaches home in seconds). */
+const LOOK_EVERY = "15 seconds";
+/** A round with nothing new here still pulls what other servers learned, this often. */
+const IDLE_ROUND_MS = 2 * 60_000;
+
+/** Whether a sync round is due: something new here to send, or long enough since the last one to pull. */
+export const roundDue = (input: { readonly changedHere: boolean; readonly sinceLastMs: number }) =>
+  input.changedHere || input.sinceLastMs >= IDLE_ROUND_MS;
 const PEER_TIMEOUT_MS = 15_000;
 /** Longer than a peer's own history script may run, shorter than the search's whole deadline. */
 const HISTORY_PEER_TIMEOUT_MS = 10_000;
@@ -275,11 +283,21 @@ export const make = Effect.gen(function* () {
     };
   }).pipe(Effect.withSpan("BatonMemorySync.run"));
 
+  let seenUpTo: string | null = null;
+  let lastRoundAt = Number.NEGATIVE_INFINITY;
   yield* Effect.gen(function* () {
-    if (yield* enabled) yield* run;
+    if (!(yield* enabled)) return;
+    const fresh = yield* memory.changesSince(seenUpTo);
+    const now = yield* Clock.currentTimeMillis;
+    // The first look sends everything once; after that only what is new since the last round.
+    if (!roundDue({ changedHere: fresh.changes.length > 0, sinceLastMs: now - lastRoundAt }))
+      return;
+    yield* run;
+    seenUpTo = fresh.upTo;
+    lastRoundAt = now;
   }).pipe(
     Effect.ignoreCause({ log: true }),
-    Effect.repeat(Schedule.spaced(EVERY)),
+    Effect.repeat(Schedule.spaced(LOOK_EVERY)),
     Effect.forkScoped,
   );
 

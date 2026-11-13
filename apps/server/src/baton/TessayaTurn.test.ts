@@ -1,6 +1,7 @@
 import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import type { LearnInput } from "@t3tools/baton-shared/memoryLearning";
 import { assert, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -258,3 +259,48 @@ layer("TessayaTurn", (it) => {
       }),
   );
 });
+
+/** A server with its own database and turn pipeline; it lives as long as the test's scope. */
+const home = Layer.build(
+  turnLayer.pipe(
+    Layer.provideMerge(memoryLayer),
+    Layer.provideMerge(learning),
+    Layer.provideMerge(stores),
+    Layer.provideMerge(SqlitePersistenceMemory),
+  ),
+).pipe(
+  Effect.map((context) => ({
+    memory: Context.get(context, BatonMemoryService),
+    turn: Context.get(context, TessayaTurn),
+  })),
+);
+
+it.effect(
+  "said to a device on one server, recalled on the desktop's after a sync (cross-vessel)",
+  () =>
+    Effect.gen(function* () {
+      const r1Server = yield* home;
+      const laptopServer = yield* home;
+      yield* r1Server.turn
+        .remember("The boiler service is booked for the twelfth")
+        .pipe(
+          Effect.provideService(TurnOrigin, originOf({ vessel: device, origin: "R1", text: "" })),
+        );
+      const before = yield* laptopServer.turn.begin({
+        vessel: desktop,
+        text: "when is the boiler service",
+      });
+      assert.notInclude(before.block, "boiler service is booked");
+      // One sync round, as BatonMemorySync runs within seconds of a write.
+      const hello = yield* laptopServer.memory.syncHello;
+      const pulled = yield* r1Server.memory.changesSince(
+        hello.cursors[r1Server.memory.origin] ?? null,
+      );
+      yield* laptopServer.memory.applyChanges(pulled.origin, pulled.changes, pulled.upTo);
+      const after = yield* laptopServer.turn.begin({
+        vessel: desktop,
+        text: "when is the boiler service",
+      });
+      assert.include(after.block, "boiler service is booked for the twelfth");
+    }),
+);
