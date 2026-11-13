@@ -68,4 +68,36 @@ describe("remote hands loop", () => {
     await loop.tick();
     expect(posts.at(-1)).toEqual(["reply", { id: "c2", result: { ok: false, error: "boom" } }]);
   });
+
+  it("offers its own hands to the brain only when they change, again after the hub was away, and passes the turn on", async () => {
+    const takes: Array<unknown> = [];
+    let up = true;
+    const origin = { label: "R1", hisVoice: true, member: "owner", assurance: 2, tainted: false };
+    const seen: Array<unknown> = [];
+    const loop = createRemoteHandsLoop({
+      post: async (path, body) => {
+        if (!up) throw new Error("down");
+        if (path === "take") takes.push(body);
+        return path === "take"
+          ? {
+              status: 200,
+              json: {
+                call: { id: "c3", tool: "screen_capture", args: {}, session: "turn:R1", origin },
+              },
+            }
+          : { status: 200, json: {} };
+      },
+      enabled: () => true,
+      offered: () => [{ name: "screen_capture", description: "d", input_schema: {} }],
+      run: async (call) => (seen.push(call.origin), { ok: true }),
+    });
+    await loop.tick();
+    await loop.tick();
+    up = false;
+    await loop.tick();
+    up = true;
+    await loop.tick();
+    expect(takes.map((b) => "tools" in (b as object))).toEqual([true, false, true]);
+    expect(seen[0]).toEqual(origin);
+  });
 });

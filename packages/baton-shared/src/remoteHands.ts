@@ -28,6 +28,9 @@ export const CALL_TIMEOUT_MS = 60_000;
 export const HOST_LISTENING_MS = 45_000;
 const AUDIT_KEEP = 200;
 
+/** Not a tool for the model: the server asks his yes in the desktop's own approval box with it. */
+export const HIS_YES = "his_yes";
+
 /** A tool the desktop offers a brain turn, as it publishes it. */
 export interface HandsToolSpec {
   readonly name: string;

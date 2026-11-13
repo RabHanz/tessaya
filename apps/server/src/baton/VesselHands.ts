@@ -9,6 +9,8 @@ import * as NodePath from "node:path";
 
 import {
   createHandsBroker,
+  HIS_YES,
+  type HandsOrigin,
   type HandsBroker,
   type HandsResult,
 } from "@t3tools/baton-shared/remoteHands";
@@ -19,7 +21,14 @@ import * as Layer from "effect/Layer";
 import * as ServerConfig from "../config.ts";
 import type { ToolOutcome } from "../home/R1Brain.ts";
 import type { VesselTool } from "./TessayaBrain.ts";
-import { originOf } from "./TessayaTurn.ts";
+/** The turn's origin as `TurnOrigin` and `originOf` carry it. */
+interface TurnOriginValue {
+  readonly label: string;
+  readonly hisVoice?: boolean | undefined;
+  readonly member?: string | null | undefined;
+  readonly assurance?: number | undefined;
+  readonly tainted?: boolean | undefined;
+}
 
 const AUDIT_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -64,27 +73,45 @@ export const toolOutcome = (result: HandsResult): ToolOutcome => {
 };
 
 /** What the desktop offers now, as a brain turn's own tools, each call carrying the turn so its gate knows who asked. */
+const handsOrigin = (origin: TurnOriginValue): HandsOrigin => ({
+  label: origin.label,
+  hisVoice: origin.hisVoice === true,
+  member: origin.member ?? null,
+  assurance: origin.assurance ?? 0,
+  tainted: origin.tainted === true,
+});
+
+/**
+ * His yes in the desktop's own approval box, for a desk turn running here; "unreachable" when the desktop is not
+ * listening or does not answer, so the caller asks his phone instead.
+ */
+export const askHisYes = (hands: HandsBroker, origin: TurnOriginValue, what: string) =>
+  Effect.promise(() =>
+    hands.call(`turn:${origin.label}`, HIS_YES, { what }, handsOrigin(origin)),
+  ).pipe(
+    Effect.map((r): "yes" | "no" | "unreachable" =>
+      !r.ok ? "unreachable" : r.text === "yes" ? "yes" : "no",
+    ),
+  );
+
 export const vesselTools = (
   hands: HandsBroker,
-  origin: ReturnType<typeof originOf>,
+  origin: TurnOriginValue,
 ): ReadonlyArray<VesselTool> =>
-  hands.published().map((spec) => ({
-    spec,
-    run: (args: unknown) =>
-      Effect.promise(() =>
-        hands.call(
-          `turn:${origin.label}`,
-          spec.name,
-          typeof args === "object" && args !== null && !Array.isArray(args)
-            ? (args as Record<string, unknown>)
-            : {},
-          {
-            label: origin.label,
-            hisVoice: origin.hisVoice,
-            member: origin.member,
-            assurance: origin.assurance,
-            tainted: origin.tainted,
-          },
-        ),
-      ).pipe(Effect.map(toolOutcome)),
-  }));
+  hands
+    .published()
+    .filter((spec) => spec.name !== HIS_YES)
+    .map((spec) => ({
+      spec,
+      run: (args: unknown) =>
+        Effect.promise(() =>
+          hands.call(
+            `turn:${origin.label}`,
+            spec.name,
+            typeof args === "object" && args !== null && !Array.isArray(args)
+              ? (args as Record<string, unknown>)
+              : {},
+            handsOrigin(origin),
+          ),
+        ).pipe(Effect.map(toolOutcome)),
+    }));
