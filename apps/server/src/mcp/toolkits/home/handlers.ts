@@ -59,6 +59,26 @@ export const vesselOf = (
       : null;
 const linked = { linkedCallers: "allowed" } as const;
 
+/**
+ * The list with its counts made here, so she says them rather than counting rows (.138's suite: "three are running"
+ * for two, then "let me correct that" aloud). Running and paused are of the automations still in the house.
+ */
+export const withCounts = <T extends { readonly ok: boolean; readonly value?: unknown }>(
+  result: T,
+): T => {
+  if (!result.ok || !Array.isArray(result.value)) return result;
+  const rows = result.value as ReadonlyArray<{
+    readonly status?: unknown;
+    readonly paused?: unknown;
+  }>;
+  const live = rows.filter((r) => r.status === "active");
+  const paused = live.filter((r) => r.paused === true).length;
+  return {
+    ...result,
+    value: { running: live.length - paused, paused, total: live.length, automations: rows },
+  };
+};
+
 /** Handler declarations for `HomeToolkit`, spread into Tessaya's toolkit layer. */
 export const make = Effect.gen(function* () {
   const context = yield* BatonRuntime;
@@ -87,7 +107,7 @@ export const make = Effect.gen(function* () {
     home_find: McpToolAccess.reads((input: Args) => home("read", "find", { ...input })),
     home_state: McpToolAccess.reads((input: Args) => home("read", "state", { ...input })),
     home_automations: McpToolAccess.reads((input: Args) =>
-      home("read", "automations", { ...input }),
+      Effect.map(home("read", "automations", { ...input }), withCounts),
     ),
     // His linked servers ask here for the house (HomeAssistantService.viaPeer); the risk check runs here either way.
     home_do: McpToolAccess.writes((input: Args) => home("act", "do", { ...input }), linked),
