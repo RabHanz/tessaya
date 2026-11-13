@@ -8,6 +8,7 @@ import {
   isDismissal,
   isOwnVoice,
   isUnfinished,
+  looksComplete,
 } from "./addressing.ts";
 
 const NAMES = ["Tessaya", "Freya", "Alfred", "Sebastian"];
@@ -109,6 +110,18 @@ describe("his sentence left unfinished, and what a log keeps", () => {
       "Is it possible to?",
     ])
       expect(isUnfinished(t), t).toBe(false);
+  });
+
+  it("reads a whole question or request with or without its full stop, for an early start", () => {
+    for (const t of [
+      "What time is it",
+      "Turn on the office fan",
+      "Is the desk lamp on?",
+      "Okay, thanks.",
+    ])
+      expect(looksComplete(t), t).toBe(true);
+    for (const t of ["Is it possible to", "Turn on the", "So each one", "Okay", ""])
+      expect(looksComplete(t), t).toBe(false);
   });
 
   it("logs a line that was not for her by length and hash, never its words", () => {
