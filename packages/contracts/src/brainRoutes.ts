@@ -43,9 +43,32 @@ export type BrainCredentialRoute = typeof BrainCredentialRoute.Type;
 export const BrainEffort = Schema.Literals(["low", "medium", "high", "xhigh", "max"]);
 export type BrainEffort = typeof BrainEffort.Type;
 
-/** A Claude Code alias (`sonnet`) or a full model id (`claude-sonnet-5-5`); both work on either credential's path. */
+/**
+ * The models a row can name, so "use Opus for talking" resolves by voice: Claude Code's aliases first (the newest
+ * of each size, and what he says: "haiku", "sonnet", "opus"), then full ids, then the other providers' lineups
+ * (BRAIN-DESIGN §1.2). Both alias and id work on either credential's path.
+ */
+const BRAIN_MODELS = [
+  "haiku",
+  "sonnet",
+  "opus",
+  "claude-haiku-5-5",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+  "gpt-6-astra",
+  "gpt-6-luna",
+  "gpt-5.5",
+  "gpt-5.4-mini",
+  "gpt-5.4-nano",
+  "gemini-3.8-flash",
+  "gemini-2.5-flash-lite",
+] as const;
+export const BrainModel = Schema.Literals(BRAIN_MODELS).annotate({
+  description: 'Say "haiku", "sonnet" or "opus" for Claude; the others are full model ids.',
+});
+
 export const BrainModelRoute = Schema.Struct({
-  model: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  model: BrainModel,
   effort: Schema.optionalKey(BrainEffort),
 });
 export type BrainModelRoute = typeof BrainModelRoute.Type;
