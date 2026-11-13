@@ -755,6 +755,22 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/opus/i],
   },
   {
+    // His rule, set by voice, sends the next coding question straight to Opus, which answers in the same turn.
+    id: "escalate-rule-go",
+    proves: [],
+    said: [
+      "From now on, coding questions go straight to Opus without asking me.",
+      "How should I structure retries with backoff in a TypeScript HTTP client?",
+    ],
+    uses: [["settings_set"], ["brain_escalate"]],
+    check: (last, calls) =>
+      !calls.some((c) => c.name === "brain_escalate" && c.text.startsWith("go"))
+        ? "Opus was not handed the task"
+        : last.replace(/^(?:One moment\.\s*)?Putting Opus on this\.\s*/i, "").length < 40
+          ? "Opus said nothing after the hand-off"
+          : null,
+  },
+  {
     // Small talk never reaches for Opus.
     id: "escalate-not",
     proves: [],
