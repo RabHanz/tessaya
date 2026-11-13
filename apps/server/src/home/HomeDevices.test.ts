@@ -739,6 +739,7 @@ it.effect(
       what: "settings set",
       member,
       needs: 2 as const,
+      phone: true,
       run: (raised: unknown) => Effect.sync(() => void ran.push(raised)),
     });
     return Effect.gen(function* () {
@@ -777,6 +778,12 @@ it.effect(
       assert.isTrue(yield* inbox.answerPrompt(second, 0));
       yield* TestClock.adjust("2 seconds");
       assert.deepStrictEqual(ran.at(-1), { member: "owner", assurance: 2 });
+      // A replay's held act never reaches his phone; its own answer still runs it.
+      const replay = yield* stepUps.hold({ ...held("owner"), phone: false });
+      assert.deepStrictEqual(yield* inbox.pending, []);
+      assert.isTrue(
+        yield* stepUps.settle(ID, { act: replay, ok: true, how: "voice", member: null }),
+      );
     }).pipe(
       Effect.provide(
         layer.pipe(

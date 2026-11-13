@@ -28,6 +28,8 @@ export interface HeldAct {
   readonly what: string;
   readonly member: string | null;
   readonly needs: Assurance;
+  /** Also a card on the phone inbox; never for a replay. */
+  readonly phone: boolean;
   readonly run: HeldRun;
 }
 
@@ -58,8 +60,8 @@ export class StepUps extends Context.Service<
   {
     /** Holds the act: the vessel is told and the phone gets a card; the act id comes back. */
     readonly hold: (act: HeldAct) => Effect.Effect<string>;
-    /** The vessel's answer, from the device that sent it. */
-    readonly settle: (device: string, done: StepUpDone) => Effect.Effect<void>;
+    /** The vessel's answer, from the device that sent it: whether the act ran. */
+    readonly settle: (device: string, done: StepUpDone) => Effect.Effect<boolean>;
     /** The vessel's owner (the device broker) is told of each held act, to ask on that device. */
     readonly listen: (
       onHold: (device: string, act: string) => Effect.Effect<void>,
@@ -88,7 +90,7 @@ const make = Effect.gen(function* () {
     const id = `stepup-${yield* Clock.currentTimeMillis}-${yield* Random.nextIntBetween(0, 1e6)}`;
     held.set(id, act);
     for (const l of listeners) yield* l(act.device, id);
-    if (Option.isSome(inbox)) {
+    if (Option.isSome(inbox) && act.phone) {
       const phone = inbox.value;
       yield* phone.mirror({
         id,
@@ -121,11 +123,12 @@ const make = Effect.gen(function* () {
 
   const settle = Effect.fn("StepUps.settle")(function* (device: string, done: StepUpDone) {
     const act = held.get(done.act);
-    if (act === undefined) return;
+    if (act === undefined) return false;
     const level = stepUpLevel(done, act.device, device);
     // Not enough (no, a button for an act that needs a voice): the card on the phone still decides it.
-    if (level < act.needs) return;
+    if (level < act.needs) return false;
     yield* release(done.act, { member: done.member ?? act.member, assurance: level });
+    return true;
   });
 
   return StepUps.of({

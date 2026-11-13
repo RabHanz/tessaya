@@ -399,33 +399,36 @@ const makeRunners = Effect.gen(function* () {
       if (name === VOLUME.name && allowed.has(name)) return yield* setRoomVolume(input, device);
       if (!allowed.has(name))
         return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
-      const dry = replayDryRun(name, input, device);
-      if (dry !== null) return dry;
-      // Only once Voice ID can tell anyone apart (a member has a voice): until then nothing is narrowed here.
+      // Held for a step-up only where a vessel judged the voice (it sent one) and Voice ID can tell anyone apart (a
+      // member has a voice). A replay holds too, with no card on his phone, and its act then runs as a dry run.
       const origin = yield* TurnOrigin;
       const needs = origin === null ? null : stepUpNeeds(name, origin.assurance ?? 0);
       if (
         needs !== null &&
         origin !== null &&
+        origin.speaker != null &&
         vessel.holds &&
         device !== undefined &&
         Option.isSome(stepUps) &&
         Option.isSome(voices) &&
         (yield* voices.value.current).length > 0
       ) {
-        yield* stepUps.value.hold({
+        const act = yield* stepUps.value.hold({
           device,
           what: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
           member: origin.member ?? null,
           needs,
+          phone: !device.startsWith("replay-"),
           run: (raised) =>
             run(name, raw, device).pipe(
               Effect.provideService(TurnOrigin, { ...origin, ...raised }),
               Effect.asVoid,
             ),
         });
-        return { text: HELD_LINE, isError: false, status: "asked" } as ToolOutcome;
+        return { text: `${HELD_LINE} (${act})`, isError: false, status: "asked" } as ToolOutcome;
       }
+      const dry = replayDryRun(name, input, device);
+      if (dry !== null) return dry;
       const scope: McpInvocationScope = {
         environmentId,
         capabilities: new Set(["orchestration"]),
