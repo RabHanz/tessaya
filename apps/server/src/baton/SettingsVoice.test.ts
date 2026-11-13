@@ -38,7 +38,7 @@ it("finds a setting by his words", () => {
 const setup = () => {
   const desktop = { holdKeyCues: true as unknown, holdKey: "F9" as unknown };
   const desktopLayer = Layer.succeed(BatonDesktopSettings)({
-    get: Effect.sync(() => ({ effective: { ...desktop } }) as never),
+    get: Effect.sync(() => ({ connected: true, effective: { ...desktop } }) as never),
     set: (patch) =>
       Effect.sync(() => {
         Object.assign(desktop, patch);

@@ -1,3 +1,4 @@
+import { TurnOrigin } from "../baton/TessayaTurn.ts";
 import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/baton-shared/phoneRelay";
 import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
@@ -348,6 +349,22 @@ describe("asking his laptop", () => {
         "VS Code is open.",
       );
       expect(older.calls).toEqual(["tessaya_ask from R1", "tessaya_ask", "tessaya_ask_status"]);
+      // The turn's own vessel (TurnOrigin) names it when the pipeline gives one.
+      const named = linked(
+        [laptop],
+        { id: "mcp-x-1", status: "queued", line: "Waiting." },
+        { id: "mcp-x-1", status: "answered", line: "Chrome." },
+      );
+      yield* named.provide(
+        runActs(look).pipe(
+          Effect.provideService(TurnOrigin, {
+            kind: "device",
+            id: "r1-3d57b3",
+            label: "the kitchen R1",
+          }),
+        ),
+      );
+      expect(named.calls[0]).toBe("tessaya_ask from the kitchen R1");
     }),
   );
 

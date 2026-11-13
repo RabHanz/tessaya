@@ -3,6 +3,7 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import {
   choicesOf,
   entryOf,
@@ -76,16 +77,20 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const scope = yield* McpInvocationContext.McpInvocationContext;
           const room = scope.client === ROOM_CLIENT || scope.client === ROOM_REPLAY_CLIENT;
+          const via = (yield* TurnOrigin)?.label;
           return yield* inRuntime(
             setSetting({
               ...input,
               // The suite's pretend R1 is checked as for real and changes nothing.
               dryRun: scope.client === ROOM_REPLAY_CLIENT,
-              who: room
-                ? "Tessaya in the room"
-                : scope.client === undefined
-                  ? "an agent in T3"
-                  : "an outside agent",
+              who:
+                via !== undefined
+                  ? `Tessaya via ${via}`
+                  : room
+                    ? "Tessaya in the room"
+                    : scope.client === undefined
+                      ? "an agent in T3"
+                      : "an outside agent",
             }).pipe(Effect.provideContext(context!)),
           );
         }),

@@ -30,6 +30,7 @@ import packageJson from "../../../../package.json" with { type: "json" };
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -244,10 +245,12 @@ export const layer = McpToolAccess.toLayer(
             Effect.gen(function* () {
               const owner = yield* ownerOf;
               const id = `mcp-${owner}-${yield* random.uuidV4()}`;
+              // The vessel the turn came through (TurnOrigin), else what the caller says it came from.
+              const origin = (yield* TurnOrigin)?.label ?? input.origin;
               const asked = yield* phone("ask", {
                 id,
                 text: input.text,
-                ...(input.origin === undefined ? {} : { origin: input.origin }),
+                ...(origin === undefined ? {} : { origin }),
               }).pipe(Effect.provideService(AskOwner, owner));
               return {
                 id: asked?.ok === false ? null : id,
