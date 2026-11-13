@@ -24,7 +24,7 @@ import {
   type CutIn,
   type Playing,
 } from "@t3tools/baton-shared/endOfTurn";
-import { isAddressedFollowUp } from "@t3tools/baton-shared/followUp";
+import { addressedAtDesk } from "./turnRules.ts";
 import { answerOf, isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
 import { classifyDictation } from "@t3tools/baton-shared/dictation";
 
@@ -751,8 +751,7 @@ export const createVoiceCore = (input: {
         machine.mode === "conversation" &&
         machine.pending === null &&
         stripWake(cleaned, timings.wakeWords) === cleaned &&
-        !(spokenLately.at(-1)?.trim().endsWith("?") ?? false) &&
-        !isAddressedFollowUp(said)
+        !addressedAtDesk(said, spokenLately.at(-1)?.trim().endsWith("?") ?? false)
       ) {
         return emit({ type: "dropped", text: cleaned, reason: "not addressed" });
       }
