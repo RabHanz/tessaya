@@ -1127,12 +1127,17 @@ describe("her brain starting on the recogniser's partial words", () => {
   };
 
   it("keeps the guess when the final text says the same words, so the brain started early", async () => {
-    const g = guessing("turn on the study light", "Turn on the study light.");
+    const played: string[] = [];
+    const g = guessing("turn on the study light", "Turn on the study light.", {
+      played: (callId) => played.push(callId),
+    });
     const m = await g.run();
     expect(g.atRelease()).toBe(1);
     expect(g.asked).toEqual(["turn on the study light"]);
     expect(m.speculative).toBe(true);
     expect(g.t.published.some((p) => p.topic.endsWith("voice/down"))).toBe(true);
+    // Only now, played to him, may the server record the guess and learn from it.
+    expect(played).toHaveLength(1);
   });
 
   it("starts the guess without waiting for the mood reader, which is slower on the voice host", async () => {
@@ -1152,11 +1157,20 @@ describe("her brain starting on the recogniser's partial words", () => {
   });
 
   it("drops a guess that heard different words and answers the final text instead", async () => {
-    const g = guessing("turn on the study", "turn on the study light");
+    const played: string[] = [];
+    const sent: Array<{ speculative?: true; callId?: string }> = [];
+    const g = guessing("turn on the study", "turn on the study light", {
+      played: (callId) => played.push(callId),
+      brain: async function* (input) {
+        sent.push(input.tessaya);
+        yield "Done.";
+      },
+    });
     const m = await g.run();
-    expect(g.asked).toEqual(["turn on the study", "turn on the study light"]);
-    expect(g.aborted).toContain("turn on the study");
     expect(m.speculative).toBe(false);
+    // The guess went out marked as one, the final turn did not, and the thrown-away guess is never reported played.
+    expect(sent.map((t) => t.speculative === true)).toEqual([true, false]);
+    expect(played).toEqual([]);
   });
 });
 

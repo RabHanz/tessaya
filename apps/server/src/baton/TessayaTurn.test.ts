@@ -199,6 +199,13 @@ layer("TessayaTurn", (it) => {
         assert.isUndefined(byText("Nothing to keep"));
         assert.isUndefined(byText("Buy me"));
 
+        // What he asked to keep stands in every later turn on a device, even from a voice not yet verified (13 Nov, 10:35).
+        const next = yield* as(
+          on(null),
+          turn.begin({ vessel: device, text: "what time is it", sessionless: true }),
+        );
+        assert.include(next.block, "The gate code changes every month");
+
         // Forget: only his verified voice; anyone else is told where he can.
         const id = his.id!;
         const refused = yield* as(on(null), turn.forget(id));

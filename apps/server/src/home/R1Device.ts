@@ -371,7 +371,7 @@ export const r1Data = (input: R1Context) => [
 export const ROOM_SYSTEM = [
   `${SELF}. this turn reaches you through a speaker in a room of his home: you are heard, not read, so answer in one or two short spoken sentences, plain words, no lists or markdown.`,
   NAMES,
-  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state, so "is the lamp on?" is answered from home_state, never from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_memory_remember to keep what he asks you to remember, tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
+  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state, so "is the lamp on?" is answered from home_state, never from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_memory_remember to keep what he asks you to remember or how he wants something done from now on (never promise "from now on" without it), tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
   `${TOOL_FAILED}. ${NEVER_MISSING}`,
   ANSWER_ONLY,
   LIKE_A_PERSON,
@@ -594,8 +594,49 @@ export const runActs = Effect.fn("R1Device.runActs")(function* (
   return outcomes;
 });
 
-/** The eyes and the Record once a turn is over. */
+/**
+ * A guess the loop started on his partial words (`tessaya.speculative`, with its `callId`): its reply may never be
+ * played, so the Record and learning wait until the loop says it played (`/turns/played`). An unplayed one is dropped.
+ */
+const unplayed = new Map<string, { readonly at: number; readonly commit: Effect.Effect<void> }>();
+const UNPLAYED_MS = 120_000;
+const UNPLAYED_MAX = 32;
+
+const speculativeCall = (voice: unknown): string | null => {
+  if (typeof voice !== "object" || voice === null) return null;
+  const v = voice as { speculative?: unknown; callId?: unknown };
+  return v.speculative === true && typeof v.callId === "string" && v.callId.length <= 64
+    ? v.callId
+    : null;
+};
+
+/** The loop played this guess's reply: its Record line and learning go in now. False when there is no such guess. */
+export const r1Played = Effect.fn("R1Device.played")(function* (callId: string) {
+  const held = unplayed.get(callId);
+  if (held === undefined) return false;
+  unplayed.delete(callId);
+  yield* held.commit;
+  return true;
+});
+
+/** The eyes, the Record and learning once a turn is over; a guess's wait until it is played. */
 const r1Finish = Effect.fn("R1Device.finish")(function* (
+  device: R1Device | null,
+  input: R1Heard,
+  said: string,
+  outcomes: ReadonlyArray<ActOutcome>,
+  turn: TurnEnvelope,
+) {
+  const commit = r1Commit(device, input, said, outcomes, turn);
+  const callId = speculativeCall(input.voice);
+  if (callId === null) return yield* commit;
+  const now = yield* Clock.currentTimeMillis;
+  for (const [id, held] of unplayed)
+    if (now - held.at > UNPLAYED_MS || unplayed.size >= UNPLAYED_MAX) unplayed.delete(id);
+  unplayed.set(callId, { at: now, commit: Effect.ignore(commit) });
+});
+
+const r1Commit = Effect.fn("R1Device.commit")(function* (
   device: R1Device | null,
   input: R1Heard,
   said: string,
@@ -889,6 +930,9 @@ const ChatBody = Schema.Struct({
   trace: Schema.optional(Schema.Boolean),
 });
 const decodeChat = Schema.decodeUnknownOption(Schema.fromJsonString(ChatBody));
+const decodePlayed = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ callId: Schema.String.check(Schema.isMaxLength(64)) })),
+);
 const textOf = (content: unknown): string =>
   typeof content === "string"
     ? content
@@ -1041,5 +1085,20 @@ export const routes = HttpRouter.use((router) =>
       });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     yield* router.add("POST", "/api/devices/r1/v1/chat/completions", chat);
+    // The loop played a guess's reply: only now does it reach the Record and learning.
+    const played = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (device === null) return error(503, "This server has no R1 set up.");
+      if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
+      if (body._tag === "None") return error(400, "That is not a played turn.");
+      const found = yield* r1Played(body.value.callId).pipe(Effect.provideContext(context));
+      return HttpServerResponse.jsonUnsafe({ committed: found });
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    yield* router.add("POST", "/api/devices/r1/v1/turns/played", played);
   }),
 );

@@ -335,6 +335,16 @@ const brain = (url: string, key: string): RoomDeps["brain"] =>
     }
   };
 
+/** A guess's reply was heard in full: the server records it and learns from it now (best effort, never retried). */
+const played =
+  (url: string, key: string): NonNullable<RoomDeps["played"]> =>
+  (callId) =>
+    void fetch(url.replace(/\/chat\/completions$/, "/turns/played"), {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ callId }),
+    }).catch((error: unknown) => log(`played ${callId} not recorded: ${String(error)}`));
+
 const main = async () => {
   const threads = Number(env("R1_ONNX_THREADS", "2"));
   log("starting: loading models");
@@ -465,6 +475,7 @@ const main = async () => {
       },
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
+      played: played(env("R1_BRAIN_URL"), deviceKey),
       // A bench's turns for regression cases, only while it set `cmd/voice/no-reply` with `keep` (never his).
       keep: (b) => {
         const dir = NodePath.join(state, "bench");

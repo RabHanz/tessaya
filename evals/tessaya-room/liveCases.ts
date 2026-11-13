@@ -285,6 +285,16 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ bins: /bin/i.test(String(input["text"] ?? "")) }),
   },
   {
+    // 10:35, 13 Nov: "speak it normally in AM and PM" was lost after she promised "from here on".
+    id: "preference",
+    proves: ["tessaya_memory_remember"],
+    said: ["From now on, say times in AM and PM, not the 24-hour clock."],
+    uses: [["tessaya_memory_remember"]],
+    clean: ["tessaya_memory_remember"],
+    argsOf: "tessaya_memory_remember",
+    args: (input) => ({ ampm: /\b(am|pm|a\.m\.|p\.m\.)/i.test(String(input["text"] ?? "")) }),
+  },
+  {
     id: "memory-about",
     proves: ["tessaya_memory_about"],
     said: ["What do you know about my dentist?"],
