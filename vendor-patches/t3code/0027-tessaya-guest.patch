@@ -1,0 +1,56 @@
+Tessaya's window loads T3's guest page (tessayaGuest.tsx), not the whole app: bootstrap picks it by flag, and the connection layer and utils stop loading the drafts store.
+
+diff --git a/apps/web/src/bootstrap.ts b/apps/web/src/bootstrap.ts
+index b6f422c5d68f4dd5bbcd95b1cd66812745957462..62e0b6ca3abf42dc066c7ed30e5a4189c3f12805 100644
+--- a/apps/web/src/bootstrap.ts
++++ b/apps/web/src/bootstrap.ts
+@@ -1,4 +1,7 @@
+ import { showBootError } from "./lib/bootError";
++import { isTessayaGuest } from "./tessayaGuestFlag";
+ 
+ // Shared dev chunks need the React refresh preamble first. Catch failures before React mounts.
+-void import("./main").then(({ startup }) => startup).catch(showBootError);
++void (isTessayaGuest(window.location.search) ? import("./tessayaGuest") : import("./main"))
++  .then(({ startup }) => startup)
++  .catch(showBootError);
+diff --git a/apps/web/src/connection/platform.ts b/apps/web/src/connection/platform.ts
+index dcd50342f1c91c78d4dca18286a96073e284da98..1e6d56d4450185ad622d3011c0efe5a4a7209f0f 100644
+--- a/apps/web/src/connection/platform.ts
++++ b/apps/web/src/connection/platform.ts
+@@ -49,7 +49,6 @@ import {
+   readPrimaryEnvironmentTarget,
+   type PrimaryEnvironmentTarget,
+ } from "../environments/primary/target";
+-import { clearComposerDraftsEnvironment } from "../composerDraftStore";
+ import { isHostedStaticApp } from "../hostedPairing";
+ import { isLocalEnvironmentDisabled } from "../localEnvironment";
+ import { randomUUID } from "../lib/utils";
+@@ -794,9 +793,12 @@ const layerEnvironmentOwnedDataCleanup = Layer.succeed(
+   Persistence.EnvironmentOwnedDataCleanup,
+   Persistence.EnvironmentOwnedDataCleanup.of({
+     clear: Effect.fn("Persistence.EnvironmentOwnedDataCleanup.clear")(function (environmentId) {
+-      return Effect.sync(() => {
+-        clearComposerDraftsEnvironment(environmentId);
+-      });
++      // Lazy: Tessaya's guest page connects environments but must never load (and persist) the drafts store.
++      return Effect.promise(() =>
++        import("../composerDraftStore").then((drafts) =>
++          drafts.clearComposerDraftsEnvironment(environmentId),
++        ),
++      );
+     }),
+   }),
+ );
+diff --git a/apps/web/src/lib/utils.ts b/apps/web/src/lib/utils.ts
+index 747af2d52dd35966d69ec22cf3a61c35d1f6755f..162bb90846c51b89f66caf3fd4cd0003fcfe69db 100644
+--- a/apps/web/src/lib/utils.ts
++++ b/apps/web/src/lib/utils.ts
+@@ -3,7 +3,7 @@ import { isMacPlatform } from "@t3tools/shared/keybindings";
+ import { type CxOptions, cx } from "class-variance-authority";
+ import * as Hex from "effect/encoding/Hex";
+ import { extendTailwindMerge } from "tailwind-merge";
+-import { DraftId } from "../composerDraftStore";
++import { DraftId } from "../draftId";
+ 
+ // Register extra font sizes and background images so tailwind-merge does not
+ // treat text-2xs or bg-composer-seam-below as colors.

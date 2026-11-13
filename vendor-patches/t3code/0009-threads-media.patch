@@ -1945,7 +1945,7 @@ index b7f1f7ac366f313c7f36801a17997ae2fd47293a..4020588f721e495813ba295b47312757
      const store = useComposerDraftStore.getState();
      store.addFiles(threadRef, [makeFile("file-pending")]);
 diff --git a/apps/web/src/composerDraftStore.ts b/apps/web/src/composerDraftStore.ts
-index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a277531836ce2081 100644
+index 95473066534c191a635b0b27e0d1626cf3f6b06d..dcf2ea7e0f68980bc94cb06a5d7d054223ca35e1 100644
 --- a/apps/web/src/composerDraftStore.ts
 +++ b/apps/web/src/composerDraftStore.ts
 @@ -89,6 +89,7 @@ import {
@@ -1956,6 +1956,17 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
  import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
  import { useShallow } from "zustand/react/shallow";
  import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
+@@ -115,8 +116,8 @@ const COMPOSER_DRAFT_STORAGE_VERSION = 9;
+ const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
+ export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
+ 
+-export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
+-export type DraftId = typeof DraftId.Type;
++import { DraftId } from "./draftId";
++export { DraftId };
+ 
+ const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
+ 
 @@ -242,6 +243,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
  const PersistedComposerThreadDraftState = Schema.Struct({
    prompt: Schema.String,

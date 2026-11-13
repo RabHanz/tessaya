@@ -16,7 +16,7 @@ import * as NodePath from "node:path";
 import { BatonLearnCallInput, type EnrolCard } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 
-import { isEmbedSrc } from "./links.ts";
+import { guestLinkOut, isEmbedSrc } from "./links.ts";
 import { admitTrustedGuestsToClerk, trustRenderer } from "../trustedRenderers.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
@@ -734,6 +734,13 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         const appUrl = input.embed?.url;
         guest.on("will-navigate", (event, url) => {
           if (appUrl === undefined || !url.startsWith(appUrl)) event.preventDefault();
+        });
+        // A link to the rest of T3 (Hardware's voice settings, an account's provider) opens in T3's own window.
+        guest.on("did-navigate-in-page", (_event, url, isMainFrame) => {
+          const path = appUrl === undefined || !isMainFrame ? null : guestLinkOut(appUrl, url);
+          if (path === null) return;
+          input.openSessions(false, T3_PATH.test(path) ? path : undefined);
+          guest.navigationHistory.goBack();
         });
         trustRenderer(guest);
       });

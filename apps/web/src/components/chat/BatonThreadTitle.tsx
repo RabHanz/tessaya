@@ -6,7 +6,7 @@ import {
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useEnvironments } from "../../state/environments";
-import { useBatonAccounts } from "./BatonPickerAccount";
+import { useBatonAccounts } from "../../state/batonAccounts";
 
 /** A thread's title as shown: a live thread's without the account and machine names it ends with (display only). */
 export function useDisplayThreadTitle(

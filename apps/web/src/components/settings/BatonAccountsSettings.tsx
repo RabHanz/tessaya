@@ -17,7 +17,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { useEnvironmentProviders } from "../../state/environments";
-import { useBatonAccounts } from "../chat/BatonPickerAccount";
+import { useBatonAccounts } from "../../state/batonAccounts";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Radio, RadioGroup } from "../ui/radio-group";
