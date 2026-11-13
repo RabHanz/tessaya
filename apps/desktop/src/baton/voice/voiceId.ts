@@ -23,7 +23,10 @@ const HEAR_EVERY = RATE * 0.7;
 type Embedder = SpeakerEmbedder & { readonly close: () => void };
 
 interface Capture {
-  readonly who: { readonly kind: "owner" } | { readonly kind: "saved"; readonly name: string };
+  readonly who:
+    | { readonly kind: "owner" }
+    /** `id`: a household member's id, so their profile and their member are one person. */
+    | { readonly kind: "saved"; readonly name: string; readonly id?: string };
   readonly guide: EnrolGuide;
   /** The take and how much of it the recogniser last heard; one transcription at a time. */
   heard: { no: number; samples: number } | null;
@@ -132,6 +135,7 @@ export const createVoiceId = (input: {
         const name = done.who.name;
         const made = await enrolSaved({
           name,
+          ...(done.who.id === undefined ? {} : { id: done.who.id }),
           taken: profiles.map((p) => p.id),
           embedder: model,
           spoken: pcm,

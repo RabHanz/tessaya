@@ -304,6 +304,7 @@ import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { createPrivateTab } from "../memory/privateTab.ts";
 import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
+import { createHouseholdTab, type HouseholdCall } from "../memory/householdTab.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
 import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
@@ -1220,6 +1221,8 @@ export interface DesktopBatonVoiceInput {
   readonly direct?: (method: string, input: unknown, timeoutMs?: number) => Promise<unknown>;
   /** His private memory stores on this machine's server, for the Memory tab. */
   readonly privateMemory?: PrivateMemory;
+  /** The household's members on this machine's server, for the Memory tab's Household area. */
+  readonly household?: HouseholdCall;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** The voice match model in the voice model worker (VOICE-ID); absent, Voice ID cannot run here. */
@@ -5342,6 +5345,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     refresh: () => home.refresh(),
     reveal: (file) => Electron.shell.showItemInFolder(file),
   });
+  const householdTab =
+    input.household === undefined
+      ? null
+      : createHouseholdTab({
+          call: input.household,
+          // Their voice profile is saved under their member id, so Voice ID's verdict names the member.
+          enrol: (member) => voiceId.read({ kind: "saved", name: member.name, id: member.id }),
+          refresh: () => home.refresh(),
+        });
   const privateTab =
     input.privateMemory === undefined
       ? null
@@ -6418,6 +6430,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...presenceControls(settings),
       ...at("memory"),
       ...(privateTab?.controls() ?? []),
+      ...(householdTab?.controls() ?? []),
       ...(privateTab === null || privateTab.everyday() ? memoryTab.controls() : []),
       ...vaultTab.controls(),
       ...at("pack"),
@@ -7312,6 +7325,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
     if (privateTab?.act(id, value)) return;
+    if (householdTab?.act(id, value)) return;
     if (memoryTab.act(id, value)) return;
     if (vaultTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
@@ -8188,6 +8202,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (tab === "memory") {
         void memoryTab.load();
         void privateTab?.load();
+        void householdTab?.load();
       } else privateTab?.close();
       if (tab === "approvals") void cloud.refresh().catch(() => undefined);
       // The Cloud page refreshes every minute while it is open, and not otherwise.

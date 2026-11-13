@@ -47,6 +47,7 @@ describe("the window's words", () => {
     "../cloud/cloudRows.ts",
     "../memory/privateRows.ts",
     "../memory/privateTab.ts",
+    "../memory/householdTab.ts",
   ];
   it.each(MOVED)("%s has no user-facing text of its own", (file) => {
     const source = read(file);

@@ -1,0 +1,280 @@
+import * as NodePlatformCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, describe, it } from "@effect/vitest";
+import { memberSubject } from "@t3tools/baton-shared/household";
+import { AuthStandardClientScopes } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
+
+import * as ServerConfig from "../config.ts";
+import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as SessionStore from "../auth/SessionStore.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
+import { layerMemory as BatonDatabaseMemory } from "./BatonDatabase.ts";
+import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
+import {
+  BatonPrivateMemoryService,
+  PrivateCaller,
+  PrivateKdf,
+  layer as privateLayer,
+} from "./BatonPrivateMemoryService.ts";
+import { HouseholdCaller, TessayaHousehold, layer as householdLayer } from "./TessayaHousehold.ts";
+
+const authLayer = EnvironmentAuth.layer.pipe(
+  Layer.provide(ManagedPolicy.layerTest()),
+  Layer.provide(SqlitePersistence.layerMemory),
+  Layer.provide(ServerSecretStore.layer),
+  Layer.provide(ServerEnvironment.layerIdentity),
+  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-household-test-" })),
+);
+const secrets = Layer.mock(ServerSecretStore.ServerSecretStore)({
+  getOrCreateRandom: (_name, bytes) => Effect.succeed(new Uint8Array(bytes).fill(7)),
+});
+/** The owner's approving device: it answers every ask with `answer` (0 is yes). */
+const approver = (answer: number | null) =>
+  Layer.mock(BatonPhoneInbox)({
+    mirror: () => Effect.void,
+    promptAnswer: () => Effect.succeed(answer),
+  });
+const stackWith = (answer: number | null) =>
+  householdLayer.pipe(
+    Layer.provideMerge(privateLayer),
+    Layer.provideMerge(approver(answer)),
+    Layer.provide(secrets),
+    Layer.provideMerge(Layer.succeed(PrivateKdf, { N: 2 ** 10, r: 8, p: 1 })),
+    Layer.provideMerge(BatonDatabaseMemory),
+    Layer.provideMerge(authLayer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer)),
+  );
+
+/** The owner at his desktop (A3), Sara's own phone (A2), and voices. */
+const owner = { member: "owner", assurance: 3, via: "the desktop" } as const;
+const as =
+  (caller: typeof HouseholdCaller.defaultValue extends () => infer C ? C : never) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.provideService(effect, HouseholdCaller, caller);
+const call = (input: Parameters<TessayaHousehold["Service"]["call"]>[0]) =>
+  Effect.flatMap(TessayaHousehold, (h) => h.call(input));
+
+const metadata = { deviceType: "mobile" as const, os: "iOS", browser: "Safari" };
+/** Redeems a pairing code as a phone would, returning the session it bought. */
+const redeem = (code: string) =>
+  Effect.gen(function* () {
+    const auth = yield* EnvironmentAuth.EnvironmentAuth;
+    const sessions = yield* SessionStore.SessionStore;
+    const exchange = yield* auth.createBrowserSession(code, metadata);
+    return yield* auth.authenticateHttpRequest({
+      cookies: { [sessions.cookieName]: exchange.sessionToken },
+      headers: {},
+    } as unknown as Parameters<
+      EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
+    >[0]);
+  });
+
+const test = (name: string, body: () => Effect.Effect<void, unknown, never>) =>
+  it.effect(name, body);
+const run = <A, E>(
+  answer: number | null,
+  effect: Effect.Effect<A, E, Layer.Success<ReturnType<typeof stackWith>>>,
+) => Effect.provide(effect, stackWith(answer));
+
+describe("TessayaHousehold", () => {
+  test("starts with the owner, under the id his voice and store use", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const h = yield* TessayaHousehold;
+        assert.strictEqual(yield* h.roleOf("owner"), "owner");
+        const listed = yield* as(owner)(call({ op: "list" }));
+        assert.deepStrictEqual(
+          listed.members?.map((m) => [m.id, m.role, m.you]),
+          [["owner", "owner", true]],
+        );
+      }),
+    ));
+
+  test("an invite pairs one device for that member, capped at the role's scopes, never T3's", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const invited = yield* as(owner)(call({ op: "invite", name: "Sara", role: "adult" }));
+        assert.strictEqual(invited.status, "done");
+        const sara = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.name === "Sara",
+        )!;
+        assert.strictEqual(sara.state, "invited");
+        assert.strictEqual(sara.inviteCode, invited.code);
+        const session = yield* redeem(invited.code!);
+        assert.strictEqual(session.subject, memberSubject(sara.id));
+        assert.deepStrictEqual([...session.scopes], ["tessaya:member"]);
+        for (const scope of AuthStandardClientScopes) assert.notInclude([...session.scopes], scope);
+        const after = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.id === sara.id,
+        )!;
+        assert.deepStrictEqual([after.state, after.devices, after.inviteCode], ["active", 1, null]);
+        // Sara sees the members, but no one's codes or birth dates.
+        const hers = yield* as({ member: sara.id, assurance: 2, via: "her phone" })(
+          call({ op: "list" }),
+        );
+        assert.isTrue(hers.members!.every((m) => m.inviteCode === null));
+      }),
+    ));
+
+  test("roles bound who manages whom, and guests and strangers see nothing", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const sara = (yield* as(owner)(call({ op: "invite", name: "Sara", role: "admin" }))).status;
+        assert.strictEqual(sara, "done");
+        const members = (yield* as(owner)(call({ op: "list" }))).members!;
+        const saraId = members.find((m) => m.name === "Sara")!.id;
+        const omar = yield* as(owner)(call({ op: "invite", name: "Omar", role: "adult" }));
+        const omarId = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.name === "Omar",
+        )!.id;
+        const asSara = as({ member: saraId, assurance: 3, via: "her phone" });
+        const asOmar = as({ member: omarId, assurance: 3, via: "his phone" });
+        assert.strictEqual(omar.status, "done");
+        const lines = [
+          (yield* asOmar(call({ op: "invite", name: "Ali", role: "adult" }))).line,
+          (yield* asSara(call({ op: "invite", name: "Ali", role: "admin" }))).line,
+          (yield* asSara(call({ op: "remove", id: "owner" }))).line,
+          (yield* asSara(call({ op: "machine", id: omarId, on: true }))).line,
+          (yield* as({ member: null, assurance: 0, via: "a voice" })(call({ op: "list" }))).line,
+          (yield* as({ member: "owner", service: true, assurance: 2, via: "an agent" })(
+            call({ op: "invite", name: "Ali", role: "adult" }),
+          )).line,
+        ];
+        assert.deepStrictEqual(lines, [
+          "Only the owner or an admin manages members.",
+          "Only the owner makes someone an admin.",
+          "Nobody can remove the owner.",
+          "Only the owner gives or takes this computer.",
+          "Only members of this home can see that.",
+          "Only the owner or an admin manages members.",
+        ]);
+        // An admin manages adults.
+        assert.strictEqual(
+          (yield* asSara(call({ op: "setRole", id: omarId, role: "child" }))).status,
+          "done",
+        );
+        // A turn that read outside content never changes members, whoever it speaks for.
+        const tainted = yield* as({ ...owner, tainted: true })(call({ op: "remove", id: omarId }));
+        assert.strictEqual(tainted.status, "refused");
+      }),
+    ));
+
+  test("below A3, an admin act waits for the owner's yes and happens only on it", () =>
+    Effect.gen(function* () {
+      const voice = { member: "owner", assurance: 2, via: "Tessaya via R1" } as const;
+      const yes = yield* run(
+        0,
+        Effect.gen(function* () {
+          const asked = yield* as(voice)(call({ op: "invite", name: "Maya", role: "child" }));
+          yield* TestClock.adjust("3 seconds");
+          return [
+            asked.status,
+            (yield* as(owner)(call({ op: "list" }))).members!.map((m) => m.name),
+          ];
+        }),
+      );
+      assert.deepStrictEqual(yes, ["asked", ["Owner", "Maya"]]);
+      const no = yield* run(
+        1,
+        Effect.gen(function* () {
+          yield* as(voice)(call({ op: "invite", name: "Maya", role: "child" }));
+          yield* TestClock.adjust("3 seconds");
+          return (yield* as(owner)(call({ op: "list" }))).members!.map((m) => m.name);
+        }),
+      );
+      assert.deepStrictEqual(no, ["Owner"]);
+    }));
+
+  test("removing signs out every device at once, keeps the data 7 days for export, then destroys it; restore undoes", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const auth = yield* EnvironmentAuth.EnvironmentAuth;
+        const stores = yield* BatonPrivateMemoryService;
+        const invited = yield* as(owner)(call({ op: "invite", name: "Sara", role: "adult" }));
+        const id = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.name === "Sara",
+        )!.id;
+        yield* redeem(invited.code!);
+        const second = yield* as({ member: id, assurance: 2, via: "her phone" })(
+          call({ op: "pair", id }),
+        );
+        yield* redeem(second.code!);
+        const desk = { session: "desk", desktop: true } as const;
+        yield* Effect.provideService(
+          stores.setup({ name: "Owner", pin: "27182818" }),
+          PrivateCaller,
+          desk,
+        );
+        yield* Effect.provideService(
+          stores.setup({ personId: id, name: "Sara", pin: "314159" }),
+          PrivateCaller,
+          desk,
+        );
+        const pending = yield* as(owner)(call({ op: "pair", id }));
+        assert.strictEqual(pending.status, "done");
+
+        const removed = yield* as(owner)(call({ op: "remove", id }));
+        assert.include(removed.line, "signed out everywhere");
+        const live = (yield* auth.listSessions()).filter((s) => s.subject === memberSubject(id));
+        assert.lengthOf(live, 0);
+        assert.isFalse(
+          (yield* auth.listPairingLinks()).some((l) => l.subject === memberSubject(id)),
+        );
+        const leaving = (yield* as(owner)(call({ op: "list" }))).members!.find((m) => m.id === id)!;
+        assert.strictEqual(leaving.state, "leaving");
+        assert.strictEqual(yield* (yield* TessayaHousehold).roleOf(id), null);
+
+        // Restore within the window keeps her data; a second removal then runs out the window.
+        assert.strictEqual((yield* as(owner)(call({ op: "restore", id }))).status, "done");
+        yield* as(owner)(call({ op: "remove", id }));
+        yield* TestClock.adjust("6 days");
+        assert.strictEqual(yield* (yield* TessayaHousehold).purgeDue, 0);
+        assert.isTrue((yield* stores.people).some((s) => s.personId === id));
+        yield* TestClock.adjust("2 days");
+        yield* (yield* TessayaHousehold).purgeDue;
+        assert.isFalse((yield* stores.people).some((s) => s.personId === id));
+        assert.isFalse((yield* as(owner)(call({ op: "list" }))).members!.some((m) => m.id === id));
+      }),
+    ));
+
+  test("a narrower role or a withdrawn machine grant signs out the devices that held more", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const auth = yield* EnvironmentAuth.EnvironmentAuth;
+        const invited = yield* as(owner)(call({ op: "invite", name: "Sara", role: "admin" }));
+        const id = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.name === "Sara",
+        )!.id;
+        yield* redeem(invited.code!);
+        const granted = yield* as(owner)(call({ op: "machine", id, on: true }));
+        assert.include(granted.warning ?? "", "anything on this computer");
+        const machine = yield* redeem(granted.code!);
+        assert.include([...machine.scopes], "terminal:operate");
+        const devices = () =>
+          Effect.map(
+            auth.listSessions(),
+            (all) => all.filter((s) => s.subject === memberSubject(id)).length,
+          );
+        assert.strictEqual(yield* devices(), 2);
+        yield* as(owner)(call({ op: "machine", id, on: false }));
+        assert.strictEqual(yield* devices(), 1);
+        yield* as(owner)(call({ op: "setRole", id, role: "adult" }));
+        assert.strictEqual(yield* devices(), 0);
+        assert.strictEqual(
+          (yield* as(owner)(call({ op: "machine", id: "owner", on: false }))).status,
+          "done",
+        );
+      }),
+    ));
+});

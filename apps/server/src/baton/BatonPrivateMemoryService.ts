@@ -183,6 +183,12 @@ export class BatonPrivateMemoryService extends Context.Service<
       readonly recoveryCode?: string | undefined;
       readonly newPin: string;
     }) => Effect.Effect<BatonPrivateStore, BatonPrivateRefusedError>;
+    /**
+     * The household's own acts, never a client's: end every lease a member's sessions hold (they were removed), and
+     * destroy a person's store without their PIN (their export window ended, or "remove now").
+     */
+    readonly endLeasesOf: (member: string) => Effect.Effect<number>;
+    readonly shred: (personId: string) => Effect.Effect<boolean>;
     readonly remove: (input: {
       readonly storeId: string;
       readonly pin?: string | undefined;
@@ -842,6 +848,25 @@ export const make = Effect.gen(function* () {
       );
       yield* audit(row, "changed PIN", "ok");
       return yield* describe(yield* needStore(row.id));
+    }, serial),
+
+    endLeasesOf: Effect.fn("BatonPrivateMemoryService.endLeasesOf")((member: string) =>
+      serial(
+        Effect.sync(() => {
+          let n = 0;
+          for (const [storeId, open] of opened) {
+            for (const [session, lease] of open.sessions)
+              if (lease.member === member && open.sessions.delete(session)) n++;
+            if (open.sessions.size === 0) close(storeId);
+          }
+          return n;
+        }),
+      ),
+    ),
+
+    shred: Effect.fn("BatonPrivateMemoryService.shred")(function* (personId) {
+      const row = yield* storeOfPerson(personId);
+      return Option.isSome(row) ? yield* removeStore(row.value, true) : false;
     }, serial),
 
     remove: Effect.fn("BatonPrivateMemoryService.remove")(function* (input) {

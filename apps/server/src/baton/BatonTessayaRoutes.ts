@@ -10,6 +10,7 @@ import * as NodePath from "node:path";
 import {
   BATON_METHOD_OF,
   BatonPrivateCallInput,
+  BatonHouseholdCallInput,
   BatonPrivateCallResult,
   BatonRpcGroup,
 } from "@t3tools/baton-contracts";
@@ -35,12 +36,15 @@ import {
   askSourceOf,
   memoryViewerOf,
   missingBatonScope,
+  householdCallerOf,
+  householdRefusal,
   privateCallerOf,
   privateRefusal,
   syncCredentialOf,
 } from "./BatonRpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
+import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
@@ -463,6 +467,49 @@ export const routes = HttpRouter.use((router) =>
         ),
       ),
     );
+    // The household's members (ACCOUNTS-IDENTITY-DESIGN I-1): the rules are TessayaHousehold's, by the caller's member.
+    const decodeHousehold = Schema.decodeUnknownEffect(BatonHouseholdCallInput);
+    const householdCall = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
+      if (session._tag === "None")
+        return HttpServerResponse.jsonUnsafe(
+          { message: "Not paired." },
+          { status: 401, headers: PAGE_HEADERS },
+        );
+      const refusedHere = householdRefusal(session.value);
+      if (refusedHere !== null)
+        return HttpServerResponse.jsonUnsafe(
+          { message: refusedHere },
+          { status: 403, headers: PAGE_HEADERS },
+        );
+      const input = yield* decodeHousehold(
+        yield* request.json.pipe(Effect.orElseSucceed(() => ({}))),
+      ).pipe(Effect.option);
+      if (input._tag === "None")
+        return HttpServerResponse.jsonUnsafe(
+          { message: "That request is not valid." },
+          { status: 400, headers: PAGE_HEADERS },
+        );
+      const result = yield* Effect.promise(() =>
+        run(
+          Effect.flatMap(TessayaHousehold, (h) => h.call(input.value)).pipe(
+            Effect.provideService(HouseholdCaller, householdCallerOf(session.value)),
+          ),
+        ),
+      );
+      return HttpServerResponse.jsonUnsafe({ value: result }, { headers: PAGE_HEADERS });
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe(
+            { message: "That did not work." },
+            { status: 500, headers: PAGE_HEADERS },
+          ),
+        ),
+      ),
+    );
+    yield* router.add("POST", "/tessaya/household", householdCall);
     yield* router.add("POST", "/tessaya/private", privateCall);
     yield* router.add("POST", "/tessaya/desk/*", desk);
     yield* router.add("POST", "/tessaya/rehearse/*", rehearse);

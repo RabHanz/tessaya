@@ -34,7 +34,11 @@ import {
   isBad,
   markHealthy,
 } from "@t3tools/baton-shared/startGuard";
-import { BATON_SESSIONS_WS_METHODS, tessayaPlaceOf } from "@t3tools/baton-contracts";
+import {
+  BATON_SESSIONS_WS_METHODS,
+  type BatonHouseholdCallResult,
+  tessayaPlaceOf,
+} from "@t3tools/baton-contracts";
 import { approvalRecord } from "@t3tools/baton-shared/approvals";
 import { DEFAULT_POCKET_VOICE } from "@t3tools/baton-shared/voiceLibrary";
 import { inFlightLine } from "@t3tools/baton-shared/turnsInFlight";
@@ -62,6 +66,7 @@ import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
 import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
+import type { HouseholdCall } from "./memory/householdTab.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
 import { runFreyaImport } from "./memory/freyaImport.ts";
 import { isTessayaLink, placeInArgs, TESSAYA_SCHEME } from "./home/links.ts";
@@ -490,6 +495,9 @@ export const startBatonDesktop = Effect.gen(function* () {
     const privateMemory = createPrivateMemory((op, args = {}) =>
       own("/tessaya/private", { op, ...args }),
     );
+    // The household lives on this machine's own server, like the stores it shreds.
+    const household: HouseholdCall = (op, args = {}) =>
+      own("/tessaya/household", { op, ...args }) as Promise<BatonHouseholdCallResult>;
     // The screen locked or the machine slept: this desktop's stores close, and so do sessions that read them.
     const lockPrivate = () => {
       void privateMemory.lockAll();
@@ -706,6 +714,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       mainWindowUp: t3Up,
       direct,
       privateMemory,
+      household,
       // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
       // subscription session. The wait matches the server's 2.5 s limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {

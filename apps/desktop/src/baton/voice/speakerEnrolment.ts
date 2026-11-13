@@ -260,6 +260,8 @@ export const personId = (name: string, taken: ReadonlyArray<string>): string => 
 /** Someone he saves, from their read alone (no Wispr: those are only his). Null when there is too little. */
 export const enrolSaved = async (input: {
   readonly name: string;
+  /** A household member's id: their profile takes it (re-enrolling replaces theirs). Never "owner". */
+  readonly id?: string;
   readonly taken: ReadonlyArray<string>;
   readonly embedder: { readonly model: string; readonly embed: Embed };
   readonly spoken: Int16Array;
@@ -271,7 +273,8 @@ export const enrolSaved = async (input: {
   const made = enrol(spoken.vectors);
   if (made === null) return null;
   const profile: SpeakerProfile = {
-    id: personId(input.name, input.taken),
+    id:
+      input.id !== undefined && input.id !== "owner" ? input.id : personId(input.name, input.taken),
     name: input.name,
     kind: "saved",
     model: input.embedder.model,

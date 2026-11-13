@@ -15,6 +15,8 @@ import {
   AuthOrchestrationOperateScope,
   AuthAccessReadScope,
   AuthOrchestrationReadScope,
+  AuthTessayaGuestScope,
+  AuthTessayaMemberScope,
   BATON_ACCOUNT_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
@@ -45,7 +47,7 @@ import {
   type BatonRpcGroup,
   BATON_METHOD_OF,
 } from "@t3tools/baton-contracts";
-import { memberOfSubject } from "@t3tools/baton-shared/household";
+import { isMemberSubject, memberOfSubject, type Assurance } from "@t3tools/baton-shared/household";
 import { authScopeRequiredResponse, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -477,3 +479,31 @@ export const layer = (
         )
       : Effect.fail(rpcAuthorizationError(missing));
   });
+
+/**
+ * Who a household request is from (TessayaHousehold): the member the session acts for; a token's device that names no
+ * member is a service acting for the owner. The desktop app's own session and an approving device count as A3.
+ */
+// shortcut: A3 is the desktop's own session or an approving device until I-3 adds a PIN or passkey step-up per act.
+export const householdCallerOf = (
+  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
+) => ({
+  member: memberOfSubject(session.subject),
+  service: !isMemberSubject(session.subject) && askSourceOf(session) === "device",
+  assurance: (session.scopes.includes(AuthBatonHandsHostScope) ||
+  session.scopes.includes(AuthBatonCloudApproveScope)
+    ? 3
+    : 2) as Assurance,
+  via: session.scopes.includes(AuthBatonHandsHostScope) ? "the desktop" : "a paired device",
+});
+
+/** Why this session may not use the household route at all, or null: a member's, a guest's or an owner's client. */
+export const householdRefusal = (session: Pick<AuthenticatedSession, "scopes">): string | null =>
+  [
+    AuthTessayaMemberScope,
+    AuthTessayaGuestScope,
+    AuthOrchestrationReadScope,
+    AuthBatonHandsHostScope,
+  ].some((scope) => session.scopes.includes(scope))
+    ? null
+    : "This device is not paired for a member of this home.";
