@@ -50,7 +50,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonMemoryEmbedder } from "./BatonMemoryEmbedder.ts";
-import { nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
+import { cosine, nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -195,6 +195,18 @@ export class BatonMemoryService extends Context.Service<
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
     /** Deletes the item and leaves a tombstone so a sync cannot bring it back. */
     readonly forget: (id: string) => Effect.Effect<boolean>;
+    /**
+     * Current items close in meaning (cosine at or above `min`), within one scope and the same visibility, closest
+     * first: what the nightly sweep judges. Empty without the local model.
+     */
+    readonly meaningPairs: (
+      min: number,
+      limit: number,
+    ) => Effect.Effect<
+      ReadonlyArray<{ readonly a: MemoryItem; readonly b: MemoryItem; readonly cosine: number }>
+    >;
+    /** The sweep's verdict that `by` replaces `old`: the old one is kept as history ("Replaced"), out of recall. */
+    readonly supersede: (oldId: string, byId: string) => Effect.Effect<boolean>;
     /** He said yes to a held proposal. */
     readonly accept: (id: string) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
     /** What recall ranks for a sentence (keywords and meaning fused), best first, before the block's budget cuts it. */
@@ -655,6 +667,54 @@ export const make = Effect.gen(function* () {
     ).map(({ key }) => key);
   });
 
+  const meaningPairs = Effect.fn("BatonMemoryService.meaningPairs")(function* (
+    min: number,
+    limit: number,
+  ) {
+    if (model === null) return [];
+    const rows = yield* sql<ItemRow & { vector: Uint8Array; text_hash: string }>`
+      SELECT i.*, v.vector AS vector, v.text_hash AS text_hash FROM fabric_memory_vectors v
+      JOIN fabric_memory_items i ON i.id = v.item_id
+      WHERE v.model = ${model} AND i.superseded_by IS NULL AND i.proposed = 0
+    `.pipe(Effect.orDie);
+    // shortcut: every pair is compared (fine to a few thousand items, nightly); an ANN index past ~5k.
+    const live = rows
+      .filter((row) => row.text_hash === textHash(row.text))
+      .map((row) => ({ item: fromRow(row), vector: vectorFromBytes(row.vector) }))
+      .slice(0, 3_000);
+    const pairs: Array<{ a: MemoryItem; b: MemoryItem; cosine: number }> = [];
+    for (let i = 0; i < live.length; i++)
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i]!;
+        const b = live[j]!;
+        if (
+          a.item.scope !== b.item.scope ||
+          a.item.scopeRef !== b.item.scopeRef ||
+          (a.item.visibility ?? "household") !== (b.item.visibility ?? "household") ||
+          (a.item.persona ?? null) !== (b.item.persona ?? null)
+        )
+          continue;
+        const c = cosine(a.vector, b.vector);
+        if (c >= min) pairs.push({ a: a.item, b: b.item, cosine: c });
+      }
+    return pairs.toSorted((x, y) => y.cosine - x.cosine).slice(0, limit);
+  });
+
+  const supersede = Effect.fn("BatonMemoryService.supersede")(function* (
+    oldId: string,
+    byId: string,
+  ) {
+    const old = yield* read(oldId);
+    const by = yield* read(byId);
+    if (old === null || by === null || old.id === by.id || by.supersededBy !== null) return false;
+    const at = yield* nowIso;
+    yield* sql`
+      UPDATE fabric_memory_items SET superseded_by = ${by.id}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
+      WHERE id = ${old.id}
+    `.pipe(Effect.orDie);
+    return true;
+  });
+
   const related = Effect.fn("BatonMemoryService.related")(function* (context: {
     readonly text?: string | undefined;
     readonly scopeRef?: string | null | undefined;
@@ -1083,6 +1143,8 @@ export const make = Effect.gen(function* () {
     }),
     pin,
     forget,
+    meaningPairs,
+    supersede,
     // An accepted proposal joins recall, so it is embedded now.
     accept: Effect.fn("BatonMemoryService.acceptThenEmbed")(function* (id: string) {
       const item = yield* accept(id);
