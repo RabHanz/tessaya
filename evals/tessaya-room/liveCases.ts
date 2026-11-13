@@ -413,6 +413,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/Z[-.,\s]+A[-.,\s]+Y[-.,\s]+D/i],
   },
   {
+    id: "whos-home",
+    proves: ["tessaya_whos_home"],
+    said: ["Who's home right now?"],
+    uses: [["tessaya_whos_home"]],
+    clean: ["tessaya_whos_home"],
+  },
+  {
     id: "memory-about",
     proves: ["tessaya_memory_about"],
     said: ["What do you know about my dentist?"],

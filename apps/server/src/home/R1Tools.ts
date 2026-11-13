@@ -66,6 +66,7 @@ const ROOM_TOOLS = [
   "tessaya_memory_remember",
   "tessaya_memory_forget",
   "tessaya_memory_about",
+  "tessaya_whos_home",
   "tessaya_preference_set",
   "tessaya_ask",
   "tessaya_ask_status",

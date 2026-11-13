@@ -279,6 +279,30 @@ export const layer = McpToolAccess.toLayer(
           ),
         ),
       ),
+      // A guest's voice learns nothing about who lives here.
+      tessaya_whos_home: McpToolAccess.reads(() =>
+        call(
+          withTurn((turn) =>
+            Effect.gen(function* () {
+              const origin = yield* TurnOrigin;
+              if (origin !== null && (origin.member === null || origin.member === undefined))
+                return yield* Effect.fail({
+                  reason: "I only say who's home to the people who live here.",
+                });
+              return {
+                people: (yield* turn.whoIsHome).map(
+                  ({ name, lastSeenMinutes, via, likelyHome }) => ({
+                    name,
+                    lastSeenMinutes,
+                    via,
+                    likelyHome,
+                  }),
+                ),
+              };
+            }),
+          ),
+        ),
+      ),
       tessaya_memory_about: McpToolAccess.reads((input) =>
         call(withTurn((turn) => Effect.map(turn.about(input.subject), (items) => ({ items })))),
       ),

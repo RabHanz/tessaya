@@ -338,6 +338,28 @@ const PreferenceSetTool = Tool.make("tessaya_preference_set", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const WhosHomeTool = Tool.make("tessaya_whos_home", {
+  ...shared,
+  description:
+    "Who in the household Tessaya has lately heard by voice or seen active on their own device, most recent first, with where and how many minutes ago; likelyHome is within the last half hour. A guess from what she heard, never a tracker: say it that way. Only for the household's own members, never a guest.",
+  // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
+  success: Schema.Struct({
+    people: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        lastSeenMinutes: Schema.Number,
+        via: Schema.String,
+        likelyHome: Schema.Boolean,
+      }),
+    ),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const MemoryAboutTool = Tool.make("tessaya_memory_about", {
   ...shared,
   description:
@@ -491,6 +513,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryRememberTool,
   MemoryForgetTool,
   MemoryAboutTool,
+  WhosHomeTool,
   PreferenceSetTool,
   RulesTool,
   SessionsTool,

@@ -169,6 +169,21 @@ export const originOf = (turn: TurnEnvelope) => ({
 export const NOT_HIS_VOICE_TO_FORGET =
   "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
 
+/** One member she has lately heard or seen active. */
+export interface WhoIsHome {
+  readonly member: string;
+  readonly name: string;
+  readonly lastSeenMinutes: number;
+  /** Where: the vessel ("R1", "desktop"), so "Sara was in the kitchen 5 minutes ago". */
+  readonly via: string;
+  /** Heard within the last half hour. */
+  readonly likelyHome: boolean;
+}
+/** Heard this recently: likely still home. */
+const PRESENCE_HOME_MS = 30 * 60_000;
+/** Forgotten after a day: presence is a state, never a history. */
+const PRESENCE_FORGET_MS = 24 * 60 * 60_000;
+
 /** A member asked to keep something and has no store of their own yet. */
 export const NO_STORE_FOR_MEMBER =
   "Set up your own memory first: choose your PIN in Tessaya on your phone. Until then I can't keep that for you.";
@@ -251,6 +266,11 @@ export class TessayaTurn extends Context.Service<
      * Several people heard in one turn (HOUSEHOLD-DESIGN §9b): one context each, in speaking order, built only from
      * that person's own preferences and conversation, with nothing private read for anyone.
      */
+    /**
+     * Who is home, as far as she can tell (HOUSEHOLD-DESIGN §7): each member heard by a verified voice, or active on
+     * their own device, today, most recent first. A state for noticing and suggestions, not a history.
+     */
+    readonly whoIsHome: Effect.Effect<ReadonlyArray<WhoIsHome>>;
     readonly beginMany: (
       turns: ReadonlyArray<TurnEnvelope>,
     ) => Effect.Effect<ReadonlyArray<TurnContext>>;
@@ -461,6 +481,7 @@ export const make = Effect.gen(function* () {
     if (turn.turnRef !== undefined && sentence.ids.length > 0)
       yield* memory.markUsed(turn.turnRef, sentence.ids);
     const member = turnIdentity(turn).member;
+    yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
     return {
       block: [standing.block, extra, nameOnceLine(turn.nameOnce)]
@@ -473,6 +494,41 @@ export const make = Effect.gen(function* () {
       who: { member, name: preferences.name ?? (yield* memberName(member)) },
     };
   });
+
+  // shortcut: in this server's memory, as HOUSEHOLD-DESIGN §7 asks (a state, not a history); a restart forgets it.
+  const seen = new Map<string, { at: number; via: string }>();
+  /**
+   * Who was just here: a voice verified on its own audio (A2) on a vessel, or a member's own signed-in device typing.
+   * A guess (an unverified or carried-over voice), a guest, a replay or a turn not said to her proves nothing.
+   */
+  const notePresence = Effect.fn("TessayaTurn.notePresence")(function* (turn: TurnEnvelope) {
+    if (turn.rehearsal === true || turn.addressed === false) return;
+    const identity = turnIdentity(turn);
+    if (identity.member === null || identity.assurance < 2) return;
+    seen.set(identity.member, {
+      at: yield* Clock.currentTimeMillis,
+      via: turn.origin ?? `${turn.vessel.kind} ${turn.vessel.id}`,
+    });
+  });
+
+  const whoIsHome = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    const out: Array<WhoIsHome> = [];
+    for (const [member, s] of seen) {
+      if (now - s.at > PRESENCE_FORGET_MS) {
+        seen.delete(member);
+        continue;
+      }
+      out.push({
+        member,
+        name: (yield* preferencesOf(member)).name ?? (yield* memberName(member)) ?? member,
+        lastSeenMinutes: Math.floor((now - s.at) / 60_000),
+        via: s.via,
+        likelyHome: now - s.at <= PRESENCE_HOME_MS,
+      });
+    }
+    return out.toSorted((a, b) => a.lastSeenMinutes - b.lastSeenMinutes);
+  }).pipe(Effect.withSpan("TessayaTurn.whoIsHome"));
 
   const beginMany = Effect.fn("TessayaTurn.beginMany")(function* (
     turns: ReadonlyArray<TurnEnvelope>,
@@ -612,7 +668,16 @@ export const make = Effect.gen(function* () {
     }));
   });
 
-  return TessayaTurn.of({ begin, beginMany, end, remember, forget, about, setPreference });
+  return TessayaTurn.of({
+    begin,
+    beginMany,
+    end,
+    remember,
+    forget,
+    about,
+    setPreference,
+    whoIsHome,
+  });
 });
 
 export const layer = Layer.effect(TessayaTurn, make);
