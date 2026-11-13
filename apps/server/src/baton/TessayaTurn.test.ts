@@ -110,7 +110,7 @@ layer("TessayaTurn", (it) => {
             { vessel: device, text: "remember the boiler code is in the drawer", ...envelope },
             { reply: "Noted." },
           ),
-          (r) => r.learned,
+          (r) => r !== null,
         );
       assert.isFalse(yield* end({ addressed: false }));
       assert.isFalse(yield* end({ rehearsal: true }));

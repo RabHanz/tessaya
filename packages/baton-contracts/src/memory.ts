@@ -170,6 +170,13 @@ export class BatonMemoryRefusedError extends Schema.TaggedError<BatonMemoryRefus
 }
 
 /** After a turn: what he said and what came back, for the extractor (D150). Dictation is never sent. */
+/** Who spoke, as voice ID judged the turn; the private stores' gate reads the same shape. */
+export const BatonTurnSpeaker = Schema.Struct({
+  kind: Schema.Literals(["owner", "saved", "guest", "unverified"]),
+  personId: Schema.NullOr(Schema.String),
+  verified: Schema.Boolean,
+  inherited: Schema.Boolean,
+});
 export const BatonMemoryLearnInput = Schema.Struct({
   said: Schema.String,
   reply: Schema.String,
@@ -188,6 +195,10 @@ export const BatonMemoryLearnInput = Schema.Struct({
   at: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(40))),
   /** His IANA zone, kept for the episodes the server writes on its own. */
   timeZone: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+  /** Said to her (the turn pipeline's envelope); absent counts as said to her. */
+  addressed: Schema.optionalKey(Schema.Boolean),
+  /** Who spoke, by voice; null or absent for a typed turn in his own window. */
+  speaker: Schema.optionalKey(Schema.NullOr(BatonTurnSpeaker)),
 });
 export const BatonMemoryLearnResult = Schema.Struct({
   stored: Schema.Number,

@@ -2931,6 +2931,7 @@ export const startScreenCompanion = (input: {
           agentTaint.on(),
           project,
           before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
+          voiceTurn ? heardFrom : null,
         );
       },
       beginTurn,

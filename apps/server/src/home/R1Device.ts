@@ -45,6 +45,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
+import { MemoryViewer } from "../baton/BatonMemoryService.ts";
 import { readPack } from "../baton/OperatingSystemPack.ts";
 import { TessayaTurn, type TurnEnvelope } from "../baton/TessayaTurn.ts";
 import * as ServerConfig from "../config.ts";
@@ -427,7 +428,10 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
   const pipeline = yield* Effect.serviceOption(TessayaTurn);
   const begun = Option.isNone(pipeline)
     ? { block: "", ids: [], privateBlock: "" }
-    : yield* pipeline.value.begin(turn);
+    : yield* pipeline.value
+        .begin(turn)
+        // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
+        .pipe(Effect.provideService(MemoryViewer, "desktop"));
   const context: R1Context = {
     heard: input.heard,
     privateBlock: withHouse ? "" : begun.privateBlock,
