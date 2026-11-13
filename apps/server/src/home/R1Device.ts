@@ -25,7 +25,7 @@ import {
 } from "@t3tools/baton-shared/assistantPrompt";
 import { recordText } from "@t3tools/baton-shared/audit";
 import { spokenTime } from "@t3tools/baton-shared/brain";
-import { isNarration } from "@t3tools/baton-shared/narration";
+import { isNarration, withoutSelfIntro } from "@t3tools/baton-shared/narration";
 import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import {
   DEFAULT_OS_PACK,
@@ -147,14 +147,20 @@ const publishOnce = (device: R1Device, topic: string, payload: string, retain = 
 
 export type R1Mood = "thinking" | "happy" | "curious" | "sad" | "worried" | "sleepy" | "neutral";
 
-/** The eyes, held against Agora's own moods for a while; nothing when the device has no broker set. */
-const eyes = (device: R1Device | null, mood: R1Mood, holdMs = 6000) =>
+/** The room loop's inbox for eye moods (`roomVoice.ts`); it writes `cmd/eye/set` itself. */
+const eyeIntentTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/eye`;
+
+/**
+ * A mood the server would like the eyes to show, sent to the room loop as an intent: the loop is the device's one
+ * writer and weighs it against its own (listening, speaking). Nothing when the device has no broker set.
+ */
+const eyes = (device: R1Device | null, mood: R1Mood, holdMs: number, reason: string) =>
   device?.mqttUrl == null || device.deviceId === null
     ? Effect.void
     : publishOnce(
         device,
-        `freya/r1/${device.deviceId}/cmd/eye/set`,
-        JSON.stringify({ mood, priority: "sensor", hold_ms: holdMs }),
+        eyeIntentTopic(device.deviceId),
+        JSON.stringify({ vessel: device.deviceId, mood, holdMs, reason }),
       ).pipe(Effect.ignore);
 
 /** His pronunciations (`voicePronounce`) for the room loop's voice: the whole map as JSON, retained for a late loop. */
@@ -293,13 +299,20 @@ export const withoutSelfIntros = (
 };
 
 /**
- * What the room hears of her streamed words: whole sentences only, and never one that is her reasoning
- * (`isNarration`). `flush` speaks what is left once she has finished.
+ * What the room hears of her streamed words: whole sentences only, never one that is her reasoning (`isNarration`),
+ * and never a "Freya here." opener (`withoutSelfIntro`; `names` are the pack's personas). What is spoken is what the
+ * Record keeps and what she learns from. `flush` speaks what is left once she has finished.
  */
-export const speakableSentences = (say: (sentence: string) => void) => {
+export const speakableSentences = (
+  say: (sentence: string) => void,
+  names: ReadonlyArray<string> = [],
+) => {
   let held = "";
   const out = (sentence: string) => {
-    if (sentence.trim() !== "" && !isNarration(sentence)) say(sentence);
+    if (sentence.trim() === "" || isNarration(sentence)) return;
+    const kept = withoutSelfIntro(sentence, names);
+    // A sentence that was only the opener says nothing; one with more keeps its trailing space.
+    if (kept !== "") say(kept === sentence.trim() ? sentence : `${kept} `);
   };
   return {
     push: (words: string) => {
@@ -320,9 +333,9 @@ export const speakableSentences = (say: (sentence: string) => void) => {
 };
 
 /** A whole reply without her reasoning. */
-export const withoutNarration = (text: string): string => {
+export const withoutNarration = (text: string, names: ReadonlyArray<string> = []): string => {
   let kept = "";
-  const s = speakableSentences((sentence) => (kept += sentence));
+  const s = speakableSentences((sentence) => (kept += sentence), names);
   s.push(text);
   s.flush();
   return kept.trim();
@@ -513,7 +526,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
   const home = yield* HomeAssistantService;
   // A replay turn has no device: its eyes and camera are his real R1's, so they stay still.
   const device = isReplay(input) ? null : yield* home.device;
-  yield* eyes(device, "thinking", 15_000).pipe(Effect.forkDetach);
+  yield* eyes(device, "thinking", 15_000, "gathering the turn").pipe(Effect.forkDetach);
   const status = yield* home.status;
   const lastAction = (yield* home.actions(1))[0] ?? null;
   // With tools, she looks the house up herself; the acts form needs it in view.
@@ -577,7 +590,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
     roster: rosterLine(pack.personas, persona?.id ?? ""),
     now: houseTime(yield* Clock.currentTimeMillis, timeZone),
   };
-  return { device, context, turn };
+  return { device, context, turn, names: pack.personas.map((p) => p.name) };
 });
 
 export const runActs = Effect.fn("R1Device.runActs")(function* (
@@ -699,7 +712,7 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
     : outcomes.some((o) => !o.ok || o.status === "failed")
       ? "sad"
       : "happy";
-  yield* eyes(device, mood, 4000);
+  yield* eyes(device, mood, 4000, "the turn's outcome");
   const record = yield* Effect.serviceOption(BatonRecordService);
   if (record._tag === "Some")
     yield* record.value.append({
@@ -713,18 +726,18 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 
 /** One turn, whatever carried his words: the Agora bridge, or the room voice loop. */
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
-  const { device, context, turn } = yield* r1Gather(input);
+  const { device, context, turn, names } = yield* r1Gather(input);
   const oneShot = yield* BatonOneShot;
   const plan = yield* oneShot
     .run({ prompt: r1Prompt(context), outputSchema: R1Plan, role: "voice" })
     .pipe(Effect.option);
   if (Option.isNone(plan)) {
     // Her brain did not answer: the eyes say so, the words fill in.
-    yield* eyes(device, "worried");
+    yield* eyes(device, "worried", 6000, "the brain did not answer");
     return "Sorry, I lost my train of thought. Say that again?";
   }
   const outcomes = yield* runActs(plan.value.acts);
-  const said = spokenReply(withoutNarration(plan.value.say), outcomes);
+  const said = spokenReply(withoutNarration(plan.value.say, names), outcomes);
   yield* r1Finish(device, input, said, outcomes, turn);
   return said;
 });
@@ -823,7 +836,7 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   calls?: Array<RoomCall>,
 ) {
   const startedAt = yield* Clock.currentTimeMillis;
-  const { device, context, turn } = yield* r1Gather(input, false);
+  const { device, context, turn, names } = yield* r1Gather(input, false);
   yield* Effect.logInfo("R1 turn timing", {
     route: "tools",
     gatherMs: (yield* Clock.currentTimeMillis) - startedAt,
@@ -833,7 +846,7 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   const sentences = speakableSentences((sentence) => {
     said += sentence;
     say(sentence);
-  });
+  }, names);
   const ran = yield* brain
     .converse({
       system: ROOM_SYSTEM,
@@ -919,12 +932,12 @@ export const r1TurnStream = (
       }
       // The subscription, or the key's fallback: the acts form, no tools.
       const startedAt = yield* Clock.currentTimeMillis;
-      const { device, context, turn } = yield* r1Gather(input);
+      const { device, context, turn, names } = yield* r1Gather(input);
       const gatheredAt = yield* Clock.currentTimeMillis;
       let firstAt: number | null = null;
       let text = "";
       let spoken = 0;
-      const sentences = speakableSentences(say);
+      const sentences = speakableSentences(say, names);
       const outcome = yield* brain.subscription(r1Data(context).join("\n")).pipe(
         Stream.runForEach((delta) =>
           Effect.map(Clock.currentTimeMillis, (now) => {
@@ -957,7 +970,7 @@ export const r1TurnStream = (
       }
       if (final.acts.length === 0) sentences.flush();
       const outcomes = yield* runActs(final.acts);
-      const said = spokenReply(withoutNarration(final.rest), outcomes);
+      const said = spokenReply(withoutNarration(final.rest, names), outcomes);
       if (final.acts.length > 0) say(said);
       yield* r1Finish(device, input, said, outcomes, turn);
       yield* Queue.end(queue);
