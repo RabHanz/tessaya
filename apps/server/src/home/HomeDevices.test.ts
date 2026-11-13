@@ -11,6 +11,7 @@ import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import * as HomeDevices from "./HomeDevices.ts";
+import { R1Reach } from "./R1Reach.ts";
 
 import { VoiceForgets, layer as VoiceForgetsLayer } from "../baton/VoiceForgets.ts";
 import { MemberPreferences, layer as MemberPreferencesLayer } from "../baton/MemberPreferences.ts";
@@ -56,12 +57,27 @@ const setup = () => {
         return { status: "done", id: "x", line: "done", undoId: null, states: [] };
       }),
   });
+  let away = false;
+  const reachStatus = () => ({
+    away,
+    tunnel: true,
+    endpoints: { broker: [], proxy: "" },
+    line: away ? "Away on." : "Home only.",
+  });
+  const reach = Layer.mock(R1Reach)({
+    status: Effect.sync(reachStatus),
+    setAway: (on) =>
+      Effect.sync(() => {
+        away = on;
+        return reachStatus();
+      }),
+  });
   const layer = HomeDevices.layer.pipe(
-    Layer.provideMerge(Layer.mergeAll(broker, home, inboxLayer, recordLayer, registryLayer)),
+    Layer.provideMerge(Layer.mergeAll(broker, home, inboxLayer, recordLayer, registryLayer, reach)),
     Layer.provideMerge(BatonDatabaseMemory),
   );
   const topics = () => sent.map((s) => s.topic);
-  return { sent, scenes, topics, layer, record: () => record };
+  return { sent, scenes, topics, layer, record: () => record, away: () => away };
 };
 
 const me = { who: "the Director", surface: "settings" } as const;
@@ -262,6 +278,26 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect("offers away-from-home on his phone when the R1 says it could not reach home", () => {
+  const { layer, away } = setup();
+  return Effect.gen(function* () {
+    const devices = yield* HomeDevices.HomeDevices;
+    const inbox = yield* BatonPhoneInbox;
+    yield* devices.tick;
+    yield* devices.receive(`${root}/event/net/away`, "{}");
+    yield* devices.receive(`${root}/event/net/away`, "{}");
+    const cards = (yield* inbox.pending).filter((p) => p.detail.includes("away from home"));
+    assert.lengthOf(cards, 1);
+    assert.isFalse(away());
+    assert.isTrue(yield* inbox.answerPrompt(cards[0]!.id, 0));
+    yield* devices.tick;
+    assert.isTrue(away());
+    // Settings is his own: no card; the way back is the same door.
+    const off = yield* devices.command(ID, { op: "away", on: false }, me);
+    assert.deepStrictEqual([off.status, away()], ["done", false]);
+  }).pipe(Effect.provide(layer));
+});
 
 it.effect(
   "runs a tapped tag's action, refuses an owner op on the act kind, and forgets the device",

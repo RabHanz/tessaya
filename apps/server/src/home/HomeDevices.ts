@@ -62,6 +62,7 @@ import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
 import { R1Hub } from "./R1Hub.ts";
+import { R1Reach } from "./R1Reach.ts";
 
 /** settings is him in Settings → Devices (the RPC checked his scope); anyone else asks before camera or reboot. */
 export interface DeviceActor {
@@ -99,6 +100,8 @@ export type DeviceCommand =
     }
   | { readonly op: "reboot" }
   | { readonly op: "camera" }
+  /** "Away from home": the R1 may also connect through T3 Connect (R1Reach); a setting of this server, not the R1. */
+  | { readonly op: "away"; readonly on: boolean }
   /**
    * Any registry item on any vessel, by its manifest. `confirmed`: he said yes to this change in the conversation,
    * which a `confirm` item needs from her; an agent's never counts.
@@ -120,7 +123,7 @@ export interface DeviceOutcome {
 /** The firmware's 0 dB on the DAC (r1bt_volume_get's fallback). */
 const R1_DEFAULT_VOLUME = 71;
 
-const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["reboot", "camera"]);
+const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["reboot", "camera", "away"]);
 /** How long a private item's live light shows after it is used. */
 const LIVE_MS = 30_000;
 
@@ -694,6 +697,7 @@ const make = Effect.gen(function* () {
   const broker = yield* HomeDeviceBroker;
   const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
   const threads = yield* Effect.serviceOption(HomeDeviceThreads);
+  const reach = yield* Effect.serviceOption(R1Reach);
   const record = yield* Effect.serviceOption(BatonRecordService);
   const registry = yield* DeviceRegistry;
   const scope = yield* Effect.scope;
@@ -977,6 +981,20 @@ const make = Effect.gen(function* () {
     });
   });
 
+  /**
+   * The R1 says it was away and could not reach home (firmware F2, reported once it is back): with away off, his phone
+   * gets a card to turn it on. One card at a time.
+   */
+  const offerAway = Effect.fn("HomeDevices.offerAway")(function* (id: string) {
+    if (reach._tag === "None" || (yield* reach.value.status).away) return;
+    if ([...asks.values()].some((a) => a.command.op === "away")) return;
+    yield* command(
+      id,
+      { op: "away", on: true },
+      { who: "Your R1, after it could not reach home,", surface: "agent" },
+    ).pipe(Effect.ignore);
+  });
+
   const handle = Effect.fn("HomeDevices.handle")(function* (topic: string, payload: string) {
     const now = yield* Clock.currentTimeMillis;
     const result = applyMessage(heard, topic, payload, now);
@@ -996,6 +1014,7 @@ const make = Effect.gen(function* () {
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
     if (tail === "event/key") yield* runKey(result.id, json(payload));
+    else if (tail === "event/net/away") yield* offerAway(result.id);
     else if (tail === "state/key/bind") yield* keepBinds(result.id, json(payload));
     else if (tail === "voice/stepup/done") yield* stepUpDone(result.id, json(payload));
     else if (
@@ -1200,9 +1219,13 @@ const make = Effect.gen(function* () {
       ? "take one camera picture"
       : c.op === "reboot"
         ? "restart the device"
-        : c.op === "item"
-          ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
-          : c.op;
+        : c.op === "away"
+          ? c.on
+            ? "let the R1 work away from home"
+            : "keep the R1 to home only"
+          : c.op === "item"
+            ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
+            : c.op;
 
   /** A registry item and its device, or why there is none. */
   const itemOf = Effect.fn("HomeDevices.itemOf")(function* (id: string, itemId: string) {
@@ -1226,6 +1249,11 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const done = (line: string): DeviceOutcome => ({ status: "done", line });
     switch (c.op) {
+      case "away": {
+        if (reach._tag === "None")
+          return yield* new DeviceRefusedError({ why: "This server does not run the R1 hub." });
+        return done((yield* reach.value.setAway(c.on)).line);
+      }
       case "eye":
         // Through the room loop, the device's one writer for the eyes; it holds a server mood for 30 s at most.
         yield* publish(id, "voice/intent/eye", {
@@ -1473,7 +1501,7 @@ const make = Effect.gen(function* () {
         return yield* new DeviceRefusedError({
           why: "Only he forgets a device, in Settings or by asking Tessaya.",
         });
-    } else yield* live(id);
+    } else if (c.op !== "away") yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
       if (by.dryRun === true)
         return {

@@ -31,6 +31,7 @@ import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDe
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { DeviceTriggers } from "./DeviceTriggers.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { R1Reach } from "./R1Reach.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);
@@ -192,6 +193,16 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   nfcRemove: op(Schema.Struct({ uid: Text(40) }), (a, devices) => devices.removeTag(a.uid)),
   cameraView: op(ById, (a, devices) => devices.cameraView(a.id)),
   cameraClear: op(ById, (a, devices) => devices.cameraClear(a.id)),
+  away: op(Schema.Struct({ id: Id, enabled: Schema.Boolean }), (a, devices, by) =>
+    devices.command(a.id, { op: "away", on: a.enabled }, by),
+  ),
+  reach: op(Schema.Struct({}), () =>
+    Effect.flatMap(Effect.serviceOption(R1Reach), (reach) =>
+      Option.isNone(reach)
+        ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+        : reach.value.status,
+    ),
+  ),
   busLogin: op(Schema.Struct({}), () =>
     Effect.flatMap(Effect.serviceOption(R1Hub), (hub) =>
       Option.isNone(hub)

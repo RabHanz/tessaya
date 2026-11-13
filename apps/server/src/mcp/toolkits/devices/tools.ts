@@ -81,7 +81,10 @@ const OwnerTool = Tool.make("device_owner", {
   description: DEVICE_TOOL_TEXT.device_owner,
   parameters: Schema.Struct({
     id: Id,
-    op: Schema.Literals(["camera", "reboot"]),
+    op: Schema.Literals(["camera", "reboot", "away"]),
+    enabled: Schema.optional(Schema.Boolean).annotate({
+      description: "For away: true lets the R1 connect away from home, false keeps it home only.",
+    }),
     on: Schema.optional(On),
     ...PeerOrigin,
   }),

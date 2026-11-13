@@ -184,6 +184,16 @@ function HardwareSections({
       },
     });
   };
+  const [reach, setReach] = useState<{ away: boolean; line: string } | null>(null);
+  // Read once and after each change, not on every refresh: it asks the tunnel for its address.
+  const readReach = async () => {
+    const result = await devicesCall({
+      environmentId,
+      input: { kind: "read", op: "reach", args: {} },
+    });
+    if (result._tag === "Success" && result.value.ok)
+      setReach(result.value.value as { away: boolean; line: string });
+  };
   const refresh = async () => {
     publishPhone();
     const result = await devicesCall({
@@ -197,8 +207,10 @@ function HardwareSections({
     view?.devices.some((d) => d.enrol?.phase === "reading" || d.enrol?.phase === "saving") === true;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows the server's live device status while open
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- first read, then every few seconds while the screen is open (faster during an enrolment read); refresh closes over this environment
+    // oxlint-disable-next-line react/set-state-in-effect -- first read, then every few seconds while the screen is open (faster during an enrolment read); refresh closes over this environment
     void refresh();
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- once per environment, like refresh
+    void readReach();
     const timer = setInterval(() => void refresh(), reading ? ENROL_REFRESH_MS : REFRESH_MS);
     return () => clearInterval(timer);
   }, [environmentId, reading]);
@@ -236,6 +248,24 @@ function HardwareSections({
                 : `${view.broker.state === "connected" ? "Connected to" : "Connecting to"} ${view.broker.host ?? "the broker"}.`
           }
         />
+        {reach === null || view?.broker.host !== "this server" ? null : (
+          <Row divider title="Away from home" description={reach.line}>
+            {[true, false].map((enabled) => (
+              <ControlPill
+                key={String(enabled)}
+                variant={reach.away === enabled ? "primary" : "pill"}
+                label={enabled ? "On" : "Home only"}
+                accessibilityLabel={enabled ? "Away from home: on" : "Away from home: home only"}
+                disabled={busy}
+                onPress={() => {
+                  const id = devices.find((d) => d.configured)?.id;
+                  if (id !== undefined)
+                    void run("owner", "away", { id, enabled }).then(() => readReach());
+                }}
+              />
+            ))}
+          </Row>
+        )}
         {devices.map((d) => (
           <Row
             key={d.id}

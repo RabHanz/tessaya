@@ -12,7 +12,7 @@ export const BATON_DEVICES_WS_METHODS = { call: "baton.devices.call" } as const;
 export const BATON_DEVICES_CALL_KINDS = ["read", "act", "owner", "vessel"] as const;
 
 /** `items` and `read` are the registry's: every device's items, and their values. */
-export const BATON_DEVICES_READ_OPS = ["list", "items", "read"] as const;
+export const BATON_DEVICES_READ_OPS = ["list", "items", "read", "reach"] as const;
 export const BATON_DEVICES_ACT_OPS = [
   "eye",
   "led",
@@ -40,6 +40,8 @@ export const BATON_DEVICES_OWNER_OPS = [
   "camera",
   "cameraView",
   "cameraClear",
+  // "Away from home" on or off (R1Reach): an agent's ask goes to his phone, as the camera's does.
+  "away",
   // The R1 hub's bus login, for a room loop or a watching server on another machine.
   "busLogin",
 ] as const;
