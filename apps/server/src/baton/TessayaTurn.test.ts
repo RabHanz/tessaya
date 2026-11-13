@@ -12,10 +12,12 @@ import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.t
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
+  SessionMember,
   TessayaTurn,
   TurnOrigin,
   layer as turnLayer,
   originOf,
+  turnIdentity,
   type TurnEnvelope,
 } from "./TessayaTurn.ts";
 
@@ -96,6 +98,34 @@ it.effect("a turn's tools know which vessel heard it", () =>
 );
 
 layer("TessayaTurn", (it) => {
+  it.effect(
+    "a member's own device types as that member: kept apart and never teaching his memory",
+    () =>
+      Effect.gen(function* () {
+        setup();
+        const turn = yield* TessayaTurn;
+        const phone: TurnEnvelope["vessel"] = { kind: "phone", id: "sara-phone" };
+        const asSara = <A, E>(work: Effect.Effect<A, E>) =>
+          Effect.provideService(work, SessionMember, "sara");
+        yield* TestClock.adjust("11 minutes");
+        const kept = yield* asSara(
+          turn.end(
+            { vessel: phone, text: "remember my exam is on Friday" },
+            { reply: "Good luck." },
+          ),
+        );
+        assert.isNull(kept);
+        assert.lengthOf(learned, 0);
+        const hers = yield* asSara(turn.begin({ vessel: phone, text: "and then?" }));
+        assert.strictEqual(hers.conversation.key, "person:sara");
+        assert.lengthOf(hers.conversation.turns, 2);
+        // The owner's household conversation never saw it.
+        const his = yield* turn.begin({ vessel: desktop, text: "and then?" });
+        assert.notInclude(his.conversation.turns.map((t) => t.content).join(" "), "exam");
+        assert.strictEqual(turnIdentity({ vessel: phone, member: "sara" }).member, "sara");
+      }),
+  );
+
   it.effect("every vessel gets the same memory for the same words and persona", () =>
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;
