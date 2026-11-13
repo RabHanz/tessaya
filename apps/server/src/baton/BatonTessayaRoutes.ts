@@ -47,6 +47,7 @@ import {
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
+import { runAskWorker } from "./AskWorker.ts";
 import { peerTurnHands, PeerTurnBody, relayDeskTurn, servePeerTurn } from "./DeskRelay.ts";
 import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
@@ -386,6 +387,18 @@ export const routes = HttpRouter.use((router) =>
           return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
         return yield* deskToolsAnswer(calledAs, request);
       }
+      // The one brain answers his phone's, the web bar's and agents' asks here (S6), as the desktop's setting says.
+      if (calledAs === "brain-asks") {
+        if (!session.value.scopes.includes(AuthBatonHandsHostScope))
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+        const on = (
+          (yield* request.json.pipe(Effect.orElseSucceed(() => ({})))) as { on?: unknown }
+        ).on;
+        yield* Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.setBrainAnswers(on === true)).pipe(
+          Effect.provideContext(context),
+        );
+        return HttpServerResponse.jsonUnsafe({ value: { on: on === true } });
+      }
       // His sentence at the desk, through the one brain (SPINE-UNIFY S4): only the desktop app's own session sends it.
       if (calledAs === "turn") {
         if (!session.value.scopes.includes(AuthBatonHandsHostScope) || deskTools === null)
@@ -619,6 +632,13 @@ export const routes = HttpRouter.use((router) =>
       ),
     );
     yield* router.add("POST", "/tessaya/peer/*", peer);
+    // The one brain's ask worker: idle unless the desktop's one-brain setting turned `brain.asks` on.
+    if (deskTools !== null)
+      yield* runAskWorker(deskTools).pipe(
+        Effect.provideContext(context),
+        Effect.catchCause((cause) => Effect.logWarning("ask worker stopped", cause)),
+        Effect.forkScoped,
+      );
     yield* router.add("POST", "/tessaya/desk/*", desk);
     yield* router.add("POST", "/tessaya/rehearse/*", rehearse);
     yield* router.add("GET", "/tessaya/hands/*", handsApi);

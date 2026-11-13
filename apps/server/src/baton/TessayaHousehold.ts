@@ -172,6 +172,8 @@ export class TessayaHousehold extends Context.Service<
       readonly machine: boolean;
       readonly name: string;
     } | null>;
+    /** The linked server holding the household (its label), or null: this one. Also where a desk turn goes (S4c). */
+    readonly homeOn: Effect.Effect<string | null>;
     /** Destroys the data of members whose export window ended. */
     readonly purgeDue: Effect.Effect<number>;
     /** Another of this home's servers destroyed this member's data: this server's vessels forget their voice too. */
@@ -1102,6 +1104,7 @@ export const make = Effect.gen(function* () {
   return TessayaHousehold.of({
     call,
     callHere,
+    homeOn,
     roleOf,
     grantsOf,
     purgeDue,
