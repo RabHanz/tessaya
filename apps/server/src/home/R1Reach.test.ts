@@ -65,7 +65,12 @@ it.effect("sends the R1 its list when it comes online, again only when the list 
     const layer = R1ReachModule.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(R1Hub, { ...hub, busLogin: Effect.succeed({ user: "", key: "" }) }),
+          Layer.succeed(R1Hub, {
+            ...hub,
+            busLogin: Effect.succeed({ user: "", key: "" }),
+            noteKeyUse: () => Effect.void,
+            keyUsedOutside: () => null,
+          }),
           Layer.mock(HomeAssistantService)({ device: Effect.succeed(record) }),
           Layer.mock(ServerSecretStore)({
             get: (name) => Effect.sync(() => Option.fromNullishOr(store.get(name))),

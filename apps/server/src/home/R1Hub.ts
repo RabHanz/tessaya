@@ -15,6 +15,7 @@ import {
   topicMatches,
   type Incoming,
 } from "@t3tools/baton-shared/mqtt";
+import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -23,6 +24,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Socket from "effect/socket/Socket";
+import type { HttpServerRequest } from "effect/http";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { isPrivateNetworkAddress } from "../startupAccess.ts";
@@ -123,7 +125,10 @@ export const makeHub = (
 ) => {
   const retained = new Map<string, Buffer>();
   const subscribers = new Set<Subscriber>();
-  const sessions = new Map<string, { will: unknown; readonly close: () => void }>();
+  const sessions = new Map<
+    string,
+    { will: unknown; grant: HubGrant | null; readonly close: () => void }
+  >();
 
   const route = (topic: string, payload: Buffer, retain: boolean) => {
     if (retain) {
@@ -166,6 +171,7 @@ export const makeHub = (
     let ended = false;
     const self = {
       will: null as { topic: string; payload: Buffer; retain: boolean } | null,
+      grant: null as HubGrant | null,
       close: () => {
         ended = true;
         io.close();
@@ -205,6 +211,7 @@ export const makeHub = (
         clientId = c.clientId === "" ? NodeCrypto.randomUUID() : c.clientId;
         keepAliveS = c.keepAliveS;
         self.will = c.will;
+        self.grant = given;
         sessions.set(clientId, self);
         subscribers.add(sub);
         io.send(connack(0));
@@ -293,7 +300,19 @@ export const makeHub = (
   const publish = (topic: string, payload: string | Uint8Array, retain = false) =>
     route(topic, toBuffer(payload), retain);
 
-  return { attach, open, publish };
+  /** Closes every socket an R1 holds (it was forgotten): no will, and its next CONNECT is refused by the record. */
+  const dropDevice = (id: string) => {
+    for (const session of sessions.values())
+      if (session.grant?.kind === "device" && session.grant.id === id) {
+        session.will = null;
+        session.close();
+      }
+  };
+
+  const connected = (id: string) =>
+    [...sessions.values()].some((s) => s.grant?.kind === "device" && s.grant.id === id);
+
+  return { attach, open, publish, dropDevice, connected };
 };
 
 export type Hub = ReturnType<typeof makeHub>;
@@ -301,6 +320,10 @@ export type Hub = ReturnType<typeof makeHub>;
 export class R1Hub extends Context.Service<
   R1Hub,
   Hub & {
+    /** A device-key request over HTTP (the room loop, another server); remembered when it came from another machine. */
+    readonly noteKeyUse: (remote: string | undefined) => Effect.Effect<void>;
+    /** When the device key was last used from another machine, or null. */
+    readonly keyUsedOutside: () => number | null;
     /** The bus login for the room loop or another server; the key is made on first ask and kept in the secret store. */
     readonly busLogin: Effect.Effect<{ readonly user: string; readonly key: string }>;
   }
@@ -309,6 +332,9 @@ export class R1Hub extends Context.Service<
 const digest = (s: string) => NodeCrypto.createHash("sha256").update(s).digest();
 const sameKey = (given: string, expected: string) =>
   given !== "" && NodeCrypto.timingSafeEqual(digest(given), digest(expected));
+
+const isLoopbackAddress = (address: string) =>
+  address.startsWith("127.") || address === "::1" || address === "::ffff:127.0.0.1";
 
 /** What an R1 logs in with: its device key, or the password it already had on a broker of its own (adopted). */
 export const deviceGrant = (
@@ -319,6 +345,7 @@ export const deviceGrant = (
   device?.deviceId === user &&
   DEVICE_ID.test(user) &&
   (sameKey(pass, device.deviceKey) ||
+    (device.previousKey != null && sameKey(pass, device.previousKey)) ||
     (device.devicePass != null && sameKey(pass, device.devicePass)))
     ? { kind: "device", id: user }
     : null;
@@ -337,8 +364,23 @@ export const layer = Layer.effect(
         ? Effect.map(busKey, (key) =>
             Option.isSome(key) && sameKey(pass, key.value) ? { kind: "bus" as const } : null,
           )
-        : Effect.map(home.device, (device) => deviceGrant(device, user, pass)),
+        : Effect.gen(function* () {
+            const device = yield* home.device;
+            const grant = deviceGrant(device, user, pass);
+            // The R1 logged in with its current key: a rotation finished, and the old one stops working.
+            if (
+              grant !== null &&
+              device !== null &&
+              (device.previousKey != null || device.devicePass != null) &&
+              sameKey(pass, device.deviceKey)
+            )
+              yield* home
+                .setDevice({ ...device, previousKey: null, devicePass: null })
+                .pipe(Effect.ignore);
+            return grant;
+          }),
     );
+    let outsideUseAt: number | null = null;
     const tcp = yield* Config.String("TESSAYA_R1_MQTT_TCP").pipe(
       Config.withDefault(""),
       Effect.orDie,
@@ -359,6 +401,11 @@ export const layer = Layer.effect(
     }
     return R1Hub.of({
       ...hub,
+      noteKeyUse: Effect.fn("R1Hub.noteKeyUse")(function* (remote: string | undefined) {
+        if (remote !== undefined && !isLoopbackAddress(remote))
+          outsideUseAt = yield* Clock.currentTimeMillis;
+      }),
+      keyUsedOutside: () => outsideUseAt,
       busLogin: Effect.map(busKey, (key) => ({
         user: R1_BUS_USER,
         key: Option.getOrElse(key, () => ""),
@@ -490,3 +537,16 @@ export const publishToDevice = (
         );
         return Effect.sync(cancel);
       });
+
+/**
+ * After a device-key check passed on an HTTP route: who used the key, so a rotation can warn that something on another
+ * machine (a room loop, a second server) needs the new one. Through the tunnel the peer is local, so the header counts.
+ */
+export const noteDeviceKeyUse = (request: HttpServerRequest.HttpServerRequest) =>
+  Effect.flatMap(Effect.serviceOption(R1Hub), (hub) =>
+    Option.isNone(hub)
+      ? Effect.void
+      : hub.value.noteKeyUse(
+          request.headers["cf-connecting-ip"] ?? Option.getOrUndefined(request.remoteAddress),
+        ),
+  );

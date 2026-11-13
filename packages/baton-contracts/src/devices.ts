@@ -42,6 +42,9 @@ export const BATON_DEVICES_OWNER_OPS = [
   "cameraClear",
   // "Away from home" on or off (R1Reach): an agent's ask goes to his phone, as the camera's does.
   "away",
+  // Pairing (R1Pairing): claim a new R1 by the code on its eye; a new device key over the live link.
+  "claim",
+  "rotate",
   // The R1 hub's bus login, for a room loop or a watching server on another machine.
   "busLogin",
 ] as const;

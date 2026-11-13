@@ -698,6 +698,7 @@ const make = Effect.gen(function* () {
   const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
   const threads = yield* Effect.serviceOption(HomeDeviceThreads);
   const reach = yield* Effect.serviceOption(R1Reach);
+  const hub = yield* Effect.serviceOption(R1Hub);
   const record = yield* Effect.serviceOption(BatonRecordService);
   const registry = yield* DeviceRegistry;
   const scope = yield* Effect.scope;
@@ -1392,6 +1393,8 @@ const make = Effect.gen(function* () {
         yield* publish(id, "cmd/voice/earcons", "", true);
         yield* registry.forget(id);
         if (device?.deviceId === id) yield* home.setDevice(null).pipe(Effect.ignore);
+        // Its live link to this server's hub closes now; its next login is refused.
+        if (hub._tag === "Some") hub.value.dropDevice(id);
         return done("Forgotten. Set it up again in Settings → Home.");
       }
       case "speaker": {

@@ -364,7 +364,9 @@ function DeviceControls({
   const id = d.id;
   const off = busy || d.online !== true;
   const [say, setSay] = useState("");
-  const [confirm, setConfirm] = useState<"reboot" | "forget" | null>(null);
+  const [confirm, setConfirm] = useState<"reboot" | "forget" | "rotate" | null>(null);
+  // The server's warning when something on another machine uses the key: asked once more.
+  const [rotateWarning, setRotateWarning] = useState<string | null>(null);
   const [picture, setPicture] = useState<{ at: string; dataUrl: string } | null>(null);
 
   return (
@@ -759,6 +761,15 @@ function DeviceControls({
           }
         />
         <SettingsRow
+          title="New device key"
+          description="Sends the R1 a new key over its link; the old one stops working once it uses the new one."
+          control={
+            <Button size="xs" variant="outline" disabled={off} onClick={() => setConfirm("rotate")}>
+              Rotate key
+            </Button>
+          }
+        />
+        <SettingsRow
           title="Forget this device"
           description="Removes its settings and its key from this server. Set it up again below."
           control={
@@ -778,12 +789,19 @@ function DeviceControls({
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirm === "reboot" ? `Restart ${id}?` : `Forget ${id}?`}
+              {confirm === "reboot"
+                ? `Restart ${id}?`
+                : confirm === "rotate"
+                  ? `New key for ${id}?`
+                  : `Forget ${id}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm === "reboot"
                 ? "It stops listening while it restarts. In-house voice comes back on by itself."
-                : "Its key, broker and tag settings are removed from this server. Nothing on the device changes."}
+                : confirm === "rotate"
+                  ? (rotateWarning ??
+                    "It keeps working: the R1 saves the new key and uses it from its next connection.")
+                  : "Its key, broker and tag settings are removed from this server. Nothing on the device changes."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -794,12 +812,24 @@ function DeviceControls({
               onClick={() => {
                 const op = confirm;
                 setConfirm(null);
+                if (op === "rotate") {
+                  const confirmed = rotateWarning !== null;
+                  setRotateWarning(null);
+                  void run("owner", "rotate", { id, confirmed }).then((v) => {
+                    const r = v as { status?: string; line?: string } | null;
+                    if (r?.status === "confirm") {
+                      setRotateWarning(r.line ?? "");
+                      setConfirm("rotate");
+                    }
+                  });
+                  return;
+                }
                 void (op === "reboot"
                   ? run("owner", "reboot", { id })
                   : run("act", "forget", { id }));
               }}
             >
-              {confirm === "reboot" ? "Restart" : "Forget"}
+              {confirm === "reboot" ? "Restart" : confirm === "rotate" ? "Rotate key" : "Forget"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

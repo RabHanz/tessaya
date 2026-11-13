@@ -684,6 +684,36 @@ function DeviceControls({
         </Row>
         <Row
           divider
+          title="New device key"
+          description="Sends the R1 a new key over its link; the old one stops working once it uses the new one."
+        >
+          <ControlPill
+            variant="pill"
+            label="Rotate key"
+            disabled={off}
+            onPress={() =>
+              confirm(
+                `New key for ${id}?`,
+                "It keeps working: the R1 saves the new key and uses it from its next connection.",
+                "Rotate key",
+                () =>
+                  void run("owner", "rotate", { id, confirmed: false }).then((v) => {
+                    const r = v as { status?: string; line?: string } | null;
+                    // Something on another machine uses the key: one more yes.
+                    if (r?.status === "confirm")
+                      confirm(
+                        `New key for ${id}?`,
+                        r.line ?? "",
+                        "Rotate anyway",
+                        () => void run("owner", "rotate", { id, confirmed: true }),
+                      );
+                  }),
+              )
+            }
+          />
+        </Row>
+        <Row
+          divider
           title="Forget this device"
           description="Removes its settings and its key from this server."
         >

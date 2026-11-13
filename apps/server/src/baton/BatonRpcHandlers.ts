@@ -115,6 +115,7 @@ import { BatonOneShot } from "./BatonOneShot.ts";
 import { homeActorOf, serveHomeCall } from "../home/HomeCalls.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { R1Hub } from "../home/R1Hub.ts";
+import { R1Pairing } from "../home/R1Pairing.ts";
 import { R1Reach } from "../home/R1Reach.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { VoiceArbiter } from "../home/VoiceArbiter.ts";
@@ -152,6 +153,7 @@ export type BatonServices =
   | HomeAssistantService
   | R1Hub
   | R1Reach
+  | R1Pairing
   | HomeDevices
   | DeviceRegistry
   | VoiceArbiter
