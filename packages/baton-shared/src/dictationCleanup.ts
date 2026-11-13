@@ -629,7 +629,11 @@ export const checkRewrite = (
       !correctedAway(input, digits.replace(/[£$€,]/g, ""))
     )
       return fail(`rewrote number ${digits}`);
-  for (const number of kept) if (!given.includes(number)) return fail(`new number ${number}`);
+  // His "one" is left out of what he gave (it is as often a pronoun), so a 1 the answer wrote for it is his.
+  const saidOne = /\bone\b/i.test(input);
+  for (const number of kept)
+    if (!given.includes(number) && !(number === "1" && saidOne))
+      return fail(`new number ${number}`);
   for (const number of given)
     if (!kept.includes(number) && !correctedAway(input, number))
       return fail(`lost number ${number}`);
