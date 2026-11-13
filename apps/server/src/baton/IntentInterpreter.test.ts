@@ -13,7 +13,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { IntentProvider, IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 
-import { chooseInterpreterInstance, INTENT_MODEL_SLUG } from "./IntentInterpreter.ts";
+import { chooseInterpreterInstance } from "./IntentInterpreter.ts";
+
+/** The routing table's `intent` model; the choice of account does not depend on it. */
+const MODEL = "haiku";
 
 const provider = (
   overrides: Partial<IntentProvider> & { readonly instanceId: string },
@@ -46,9 +49,10 @@ describe("choosing the account that reads a sentence", () => {
         provider({ instanceId: "claude-sablebox", signedIn: false }),
         provider({ instanceId: "claudeAgent" }),
       ]),
+      MODEL,
     );
 
-    expect(chosen).toEqual({ instanceId: "claudeAgent", model: INTENT_MODEL_SLUG });
+    expect(chosen).toEqual({ instanceId: "claudeAgent", model: MODEL });
   });
 
   it("keeps the environment's own order among accounts that can answer", () => {
@@ -57,6 +61,7 @@ describe("choosing the account that reads a sentence", () => {
         provider({ instanceId: "claude-sablebox" }),
         provider({ instanceId: "claudeAgent" }),
       ]),
+      MODEL,
     );
 
     // Stable and predictable: not "the one with most quota", because the
@@ -74,14 +79,18 @@ describe("choosing the account that reads a sentence", () => {
         provider({ instanceId: "codex", driver: "codex" }),
         provider({ instanceId: "claudeAgent" }),
       ]),
+      MODEL,
     );
 
-    expect(chosen).toEqual({ instanceId: "claudeAgent", model: INTENT_MODEL_SLUG });
+    expect(chosen).toEqual({ instanceId: "claudeAgent", model: MODEL });
   });
 
   it("has nothing to choose when the only accounts are on drivers that cannot", () => {
     expect(
-      chooseInterpreterInstance(vocabularyOf([provider({ instanceId: "codex", driver: "codex" })])),
+      chooseInterpreterInstance(
+        vocabularyOf([provider({ instanceId: "codex", driver: "codex" })]),
+        MODEL,
+      ),
     ).toBeNull();
   });
 
@@ -90,6 +99,7 @@ describe("choosing the account that reads a sentence", () => {
     // refusing to try would be the same silence in a different costume.
     const chosen = chooseInterpreterInstance(
       vocabularyOf([provider({ instanceId: "codex", signedIn: false })]),
+      MODEL,
     );
 
     expect(chosen?.instanceId).toBe("codex");
@@ -99,6 +109,7 @@ describe("choosing the account that reads a sentence", () => {
     expect(
       chooseInterpreterInstance(
         vocabularyOf([provider({ instanceId: "claudeAgent", available: false })]),
+        MODEL,
       ),
     ).toBeNull();
   });

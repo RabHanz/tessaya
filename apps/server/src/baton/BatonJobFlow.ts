@@ -61,8 +61,9 @@ import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.t
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
-import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
-import { ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
+import { planningFrame, readPack } from "./OperatingSystemPack.ts";
+import { routeFor } from "./BrainRoutes.ts";
+import { DEFAULT_ROUTING, ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
 import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
@@ -93,6 +94,20 @@ const onBrain = (selection: ModelSelection, brain: Brain): ModelSelection => ({
   model: brain.model,
   options: [{ id: "effort", value: brain.effort }],
 });
+
+/**
+ * Routine work runs on the brain's routing table's `background` model. The job's own provider login carries it, as
+ * every part of a job does; the table's login column applies to Tessaya's own calls.
+ */
+const routineBrain = routeFor("background").pipe(
+  Effect.map((route) => ({ model: route.model, effort: route.effort ?? ROUTINE_EFFORT })),
+  // A part must still start when the settings file can't be read: on the cheap model, and the log says why.
+  Effect.catch((error) =>
+    Effect.logWarning("brain: settings unreadable; a routine part runs on the cheap model", {
+      error: error.message,
+    }).pipe(Effect.as({ model: DEFAULT_ROUTING.cheap, effort: ROUTINE_EFFORT })),
+  ),
+);
 
 /** The planning frame, with the brief of the specialist a part is given to. */
 const frame = (userdata: string, role: string | undefined): string => {
@@ -652,10 +667,7 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
       modelSelection: !(yield* routesByTable(shell.modelSelection.instanceId))
         ? shell.modelSelection
         : input.routine === true
-          ? onBrain(shell.modelSelection, {
-              model: readRouting(userdata).cheap,
-              effort: ROUTINE_EFFORT,
-            })
+          ? onBrain(shell.modelSelection, yield* routineBrain)
           : input.role !== undefined &&
               shell.modelSelection.model === modelOf(readPack(userdata), "executive").model
             ? onBrain(shell.modelSelection, modelOf(readPack(userdata), input.role))

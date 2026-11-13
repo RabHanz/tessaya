@@ -4,6 +4,7 @@ import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretReso
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Stream from "effect/Stream";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { expect, vi } from "vite-plus/test";
 import * as ServerSettings from "../serverSettings.ts";
@@ -79,6 +80,28 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     yield* choose("codex", "gpt-6-luna", 2);
     yield* fetching(api.cleanup(input));
     expect(yield* bodyModel(2)).toBe("claude-haiku-5-5");
+
+    // The spend guard: a role off the key's list is refused before anything is sent, and nothing falls back.
+    const sent = upstream.mock.calls.length;
+    const turn = { system: "Be brief.", messages: [], tools: [], maxTokens: 64 };
+    const deep = { role: "deep", model: "claude-opus-5-5", effort: "medium" } as const;
+    expect(yield* Effect.flip(fetching(Stream.runDrain(api.converse(deep, turn))))).toMatchObject({
+      _tag: "BrainRefused",
+      role: "deep",
+    });
+    yield* settings.updateSettings({ brainKeyRoles: { anthropic: [] } });
+    expect(yield* Effect.flip(fetching(api.cleanup(input)))).toMatchObject({
+      _tag: "BrainRefused",
+      role: "cleanup",
+    });
+    expect(upstream.mock.calls.length).toBe(sent);
+    // His table: cleanup back on the key, on the model his row names.
+    yield* settings.updateSettings({
+      brainKeyRoles: { anthropic: ["cleanup"] },
+      brainModels: { cleanup: { model: "claude-haiku-4-5" } },
+    });
+    yield* fetching(api.cleanup(input));
+    expect(yield* bodyModel(sent)).toBe("claude-haiku-4-5");
 
     upstream.mockResolvedValueOnce(new Response("nope", { status: 401 }));
     expect(yield* Effect.flip(fetching(api.cleanup(input)))).toMatchObject({

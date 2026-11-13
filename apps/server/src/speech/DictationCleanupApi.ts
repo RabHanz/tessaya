@@ -1,4 +1,7 @@
+import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
+import { brainRoute, keyRefusal, type BrainRoute } from "@t3tools/baton-shared/brainRoutes";
 import {
+  type BrainRole,
   CloudSpeechApiKey,
   DictationCleanupError,
   type DictationCleanupKeyTest,
@@ -18,7 +21,6 @@ import * as ServerSettings from "../serverSettings.ts";
 import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
 
 const API = "https://api.anthropic.com/v1";
-const MODEL = "claude-haiku-5-5";
 const isApiKey = Schema.is(CloudSpeechApiKey);
 
 /** What one streamed Messages API turn gives: its words as they come, and each tool call once its input is whole. */
@@ -98,11 +100,34 @@ export interface ConverseRequest {
   /** "none" makes the model answer in words: the last round of a capped tool loop. */
   readonly toolChoice?: "auto" | "none";
 }
+/** Which role a call is for and the model the routing table gave it (`brainRoute`). */
+export type ConverseRoute = Pick<BrainRoute, "role" | "model" | "effort">;
+
+/**
+ * Thinking off before the first word, the way each model allows it: Sonnet 5.5 refuses `disabled` and takes
+ * `between_tools`; Opus 5.5 can't turn it off, so its effort carries the speed.
+ */
+const quickThinking = (model: string) =>
+  /opus/.test(model)
+    ? {}
+    : /^(?:claude-)?sonnet(?:-5-5)?$/.test(model)
+      ? { thinking: { type: "between_tools" } }
+      : { thinking: { type: "disabled" } };
+
+/** The routing table does not let the key serve this call's role (the spend guard). */
+export class BrainRefused extends Schema.TaggedError<BrainRefused>()("BrainRefused", {
+  role: Schema.String,
+  why: Schema.String,
+}) {}
+
 export type DictationCleanupResult =
   | { readonly configured: false }
   | { readonly configured: true; readonly text: string; readonly ms: number };
 
-/** The Anthropic key saved in Settings → APIs, read only here: for dictation cleanup and the room device's turn. */
+/**
+ * The Anthropic key saved in Settings → APIs, read only here. Every call names its role, and a role the key may not
+ * serve (the brain's routing table, `brainKeyRoles`) is refused before anything is sent: the spend guard.
+ */
 export class DictationCleanupApi extends Context.Service<
   DictationCleanupApi,
   {
@@ -113,11 +138,15 @@ export class DictationCleanupApi extends Context.Service<
     readonly test: Effect.Effect<DictationCleanupKeyTest["result"], ServerSettingsError>;
     readonly cleanup: (
       input: DictationCleanupRequest,
-    ) => Effect.Effect<DictationCleanupResult, DictationCleanupError | ServerSettingsError>;
-    /** One streamed Haiku turn that may call tools; fails `unreadable-key` when no key is saved. */
+    ) => Effect.Effect<
+      DictationCleanupResult,
+      DictationCleanupError | BrainRefused | ServerSettingsError
+    >;
+    /** One streamed turn that may call tools; fails `unreadable-key` when no key is saved, `refused` off its roles. */
     readonly converse: (
+      route: ConverseRoute,
       input: ConverseRequest,
-    ) => Stream.Stream<ConversePart, DictationCleanupError | ServerSettingsError>;
+    ) => Stream.Stream<ConversePart, DictationCleanupError | BrainRefused | ServerSettingsError>;
   }
 >()("t3/speech/DictationCleanupApi") {}
 
@@ -162,6 +191,14 @@ export const layer = Layer.effect(
             : "unreachable",
       });
 
+    // Off the key's roles: logged, and the call fails with BrainRefused. Nothing falls back from here.
+    const allow = Effect.fn("DictationCleanupApi.allow")(function* (role: BrainRole) {
+      const why = keyRefusal(yield* settings.getSettings, "anthropic", role);
+      if (why === null) return;
+      yield* Effect.logWarning("brain: an API call was refused", { role, why });
+      return yield* new BrainRefused({ role, why });
+    });
+
     const setKey = Effect.fn("DictationCleanupApi.setKey")(function* (
       key: Redacted.Redacted<string> | SecretReference | null,
     ) {
@@ -194,18 +231,19 @@ export const layer = Layer.effect(
 
     const cleanup = Effect.fn("DictationCleanupApi.cleanup")(
       function* (input: DictationCleanupRequest) {
-        // The one cleanup setting's model when it is Claude's; any other provider's model is not this key's.
-        const chosen = (yield* settings.getSettings).dictationCleanup.model?.model;
+        yield* allow("cleanup");
+        // Cleanup never reads the cheap model: any value does here.
+        const route = brainRoute(yield* settings.getSettings, "cleanup", DEFAULT_ROUTING.cheap);
         const request = yield* authorized(
           HttpClientRequest.post(`${API}/messages`).pipe(
             HttpClientRequest.bodyJsonUnsafe({
-              model: chosen?.startsWith("claude-") ? chosen : MODEL,
+              model: route.model,
               max_tokens: input.maxTokens,
               system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
               messages: [{ role: "user", content: input.message }],
               // As measured in the cleanup A/B: no thinking at low effort, the fastest Haiku answer.
-              thinking: { type: "disabled" },
-              output_config: { effort: "low" },
+              ...quickThinking(route.model),
+              output_config: { effort: route.effort ?? "low" },
             }),
           ),
         );
@@ -231,9 +269,10 @@ export const layer = Layer.effect(
         ),
     );
 
-    const converse = (input: ConverseRequest) =>
+    const converse = (route: ConverseRoute, input: ConverseRequest) =>
       Stream.unwrap(
         Effect.gen(function* () {
+          yield* allow(route.role);
           const tools = input.tools.map((tool, i) =>
             // The tools are the same every turn: cached with the system prompt.
             i === input.tools.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : tool,
@@ -241,7 +280,7 @@ export const layer = Layer.effect(
           const request = yield* authorized(
             HttpClientRequest.post(`${API}/messages`).pipe(
               HttpClientRequest.bodyJsonUnsafe({
-                model: MODEL,
+                model: route.model,
                 max_tokens: input.maxTokens,
                 stream: true,
                 system: [
@@ -251,7 +290,8 @@ export const layer = Layer.effect(
                 ...(tools.length === 0
                   ? {}
                   : { tools, tool_choice: { type: input.toolChoice ?? "auto" } }),
-                thinking: { type: "disabled" },
+                ...quickThinking(route.model),
+                ...(route.effort === null ? {} : { output_config: { effort: route.effort } }),
               }),
             ),
           );

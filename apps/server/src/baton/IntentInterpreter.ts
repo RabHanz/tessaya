@@ -42,16 +42,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import { BatonOneShot } from "./BatonOneShot.ts";
-
-/**
- * The tier that reads a sentence against a list of names.
- *
- * Named here rather than configured because the choice is a property of the
- * task, not of the deployment: this is classification against a closed
- * vocabulary, the cheapest capable model does it, and anything larger spends
- * the user's quota to arrive at the same answer more slowly.
- */
-export const INTENT_MODEL_SLUG = "haiku";
+import { onSubscription, routeFor } from "./BrainRoutes.ts";
 
 /**
  * The drivers that can read a sentence into a command.
@@ -111,29 +102,44 @@ export class BatonIntentInterpreter extends Context.Service<
  */
 export const chooseInterpreterInstance = (
   vocabulary: IntentVocabulary,
+  /** The brain's routing table's `intent` model: the cheapest capable one by default. */
+  model: string,
 ): { readonly instanceId: string; readonly model: string } | null => {
   const capable = vocabulary.providers.filter(
     (provider) => provider.available && INTENT_CAPABLE_DRIVERS.has(provider.driver),
   );
   const chosen = capable.find((provider) => provider.signedIn) ?? capable[0];
   if (chosen === undefined) return null;
-  return { instanceId: chosen.instanceId, model: INTENT_MODEL_SLUG };
+  return { instanceId: chosen.instanceId, model };
 };
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const oneShot = yield* BatonOneShot;
+  const intentModel = routeFor("intent").pipe(
+    Effect.map(onSubscription),
+    Effect.flatMap((path) =>
+      "refused" in path
+        ? Effect.logWarning("brain: reading a sentence was refused", { why: path.refused }).pipe(
+            Effect.as(null),
+          )
+        : Effect.succeed(path.model),
+    ),
+    Effect.orElseSucceed(() => null),
+  );
 
   const interpret: BatonIntentInterpreter["Service"]["interpret"] = ({ sentence, vocabulary }) =>
     Effect.gen(function* () {
-      const chosen = chooseInterpreterInstance(vocabulary);
+      const model = yield* intentModel;
+      if (model === null) return null;
+      const chosen = chooseInterpreterInstance(vocabulary, model);
       if (chosen === null) return null;
 
       const prompt = buildIntentModelPrompt({ sentence, vocabulary });
       const reply = yield* oneShot
         .run({
           prompt,
-          model: chosen.model,
+          role: "intent",
           // Every field required, so a partial answer is a decode failure rather than a silent
           // default; every id is checked against the environment afterwards.
           outputSchema: Schema.Struct({

@@ -68,7 +68,6 @@ import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService, type HomeActor, type R1Device } from "./HomeAssistantService.ts";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
-const MODEL = "haiku";
 
 const utf8 = (text: string) => {
   const bytes = Buffer.from(text, "utf8");
@@ -631,7 +630,7 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   const { device, context, turn } = yield* r1Gather(input);
   const oneShot = yield* BatonOneShot;
   const plan = yield* oneShot
-    .run({ prompt: r1Prompt(context), outputSchema: R1Plan, model: MODEL })
+    .run({ prompt: r1Prompt(context), outputSchema: R1Plan, role: "voice" })
     .pipe(Effect.option);
   if (Option.isNone(plan)) {
     // Her brain did not answer: the eyes say so, the words fill in.

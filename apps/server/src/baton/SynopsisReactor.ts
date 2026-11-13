@@ -52,16 +52,6 @@ import { BatonEngine } from "./BatonEngine.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
-/**
- * The tier that writes two sentences about a turn.
- *
- * A step above the intent classifier, because this is writing rather than
- * matching: the difference between "Running tests" and "The reconnect fix is in
- * and the queue drain no longer double-schedules" is the whole point, and the
- * cheapest tier does not reliably produce the second.
- */
-export const SYNOPSIS_MODEL_SLUG = "sonnet";
-
 export class BatonSynopsisReactor extends Context.Service<
   BatonSynopsisReactor,
   {
@@ -195,7 +185,7 @@ export const make = Effect.gen(function* () {
           objective: workSession.objective,
           turns,
         }),
-        model: SYNOPSIS_MODEL_SLUG,
+        role: "synopsis",
         outputSchema: Schema.Struct({
           // The descriptions are the instruction the model follows: unannotated, the first real
           // run narrated the request ("Wrote a two-sentence status update for ...").
