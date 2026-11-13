@@ -106,6 +106,8 @@ const FROST_SETTLE_MS = 160;
 /** The phases that show a waveform and no word: his voice or Baton's, live. */
 const WAVE_PHASES = ["listening", "speaking", "dictating"];
 
+/** A verified speaker with no name yet. */
+const PERSON = `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.6" r="2.7" fill="currentColor"/><path d="M3.2 13.6c.6-2.7 2.5-4.2 4.8-4.2s4.2 1.5 4.8 4.2z" fill="currentColor"/></svg>`;
 const MARK = `<svg viewBox="0 0 256 256" aria-hidden="true"><path fill="currentColor" d="${MARK_REVERSED_PATH}"/></svg>`;
 
 /**
@@ -167,6 +169,12 @@ body.down #p:not(.isl){bottom:auto;top:${PILL_LINE}px;translate:-50% -100%}
 :root[data-design=quiet] #mk{width:15px;height:15px}:root[data-design=lively] #mk{width:17px;height:17px}
 #mk.sting{animation:sting .6s var(--pop) both}
 @keyframes sting{0%{scale:.4;opacity:0}60%{scale:1.2;opacity:1}100%{scale:1}}
+/* Who she knows she is talking to: still, beside her mark, only while the session is verified (speakerIdentity.ts). */
+#who{place-items:center;box-sizing:border-box;width:16px;height:16px;margin-left:-3px;border-radius:50%;background:var(--raised);color:var(--fg);font:var(--w-cap) 9px/1 var(--font)}
+#who svg{width:11px;height:11px}
+:root[data-design=quiet] #who{width:15px;height:15px;background:none;box-shadow:inset 0 0 0 1px var(--grey);color:var(--fg2);font-size:8.5px}
+:root[data-design=lively] #who{width:17px;height:17px;margin-left:-2px;background:var(--pri);color:var(--on-pri);font-size:9.5px}
+#p[data-who]:is([data-s=aListen],[data-s=aThink],[data-s=aSpeak]) #who{display:grid}
 #gl{place-items:center;width:18px;height:18px;color:var(--fail)}#gl svg{width:16px;height:16px}
 :root[data-design=quiet] #p[data-s=esc] #gl{display:none}
 :root[data-design=lively] #gl{width:34px;height:34px;border-radius:12px;background:var(--fail-bg);box-shadow:var(--pb-shadow)}:root[data-design=lively] #gl svg{width:15px;height:15px}
@@ -228,12 +236,13 @@ body.moving #ok{display:flex}
 @media (prefers-reduced-motion:reduce){#p,#p *{transition:none!important;animation:none!important}#d b{opacity:.7}}
 html.motion-reduced #p,html.motion-reduced #p *,html.motion-off #p,html.motion-off #p *{transition:none!important;animation:none!important}
 html.motion-reduced #d b,html.motion-off #d b{opacity:.7}
-${ISLAND_CSS}</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite" data-s="listen"><svg id="rim" aria-hidden="true"><defs><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0"/><stop offset=".42"/></linearGradient></defs><rect/></svg><div id="row"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)">${ICON.x}</button><span id="gl" aria-hidden="true"></span><div id="wv"><span id="mk">${MARK}</span><i id="mic" title="Microphone on"></i><canvas id="w" width="64" height="20" aria-hidden="true"></canvas><span id="t"></span><span id="d"><b></b><b></b><b></b></span><span id="c"></span><i id="bal" aria-hidden="true"></i></div><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert">${ICON.check}</button><span id="st"><span>Stop</span>${ICON.stop}</span></div><span id="sr" class="sr"></span>${ISLAND_HTML}</div>${ISLAND_MEASURE}
+${ISLAND_CSS}</style></head><body><button id="ok" type="button" aria-label="Save pill position" title="Save pill position"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="p" role="status" aria-live="polite" data-s="listen"><svg id="rim" aria-hidden="true"><defs><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0"/><stop offset=".42"/></linearGradient></defs><rect/></svg><div id="row"><button id="dx" class="db" type="button" aria-label="Discard the dictation" title="Discard (Esc)">${ICON.x}</button><span id="gl" aria-hidden="true"></span><div id="wv"><span id="mk">${MARK}</span><span id="who" aria-hidden="true"></span><i id="mic" title="Microphone on"></i><canvas id="w" width="64" height="20" aria-hidden="true"></canvas><span id="t"></span><span id="d"><b></b><b></b><b></b></span><span id="c"></span><i id="bal" aria-hidden="true"></i></div><button id="dv" class="db" type="button" aria-label="Insert the dictation" title="Insert">${ICON.check}</button><span id="st"><span>Stop</span>${ICON.stop}</span></div><span id="sr" class="sr"></span>${ISLAND_HTML}</div>${ISLAND_MEASURE}
 <script>
 const $=i=>document.getElementById(i),SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)},PILL_LINE=${PILL_LINE};
 const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
 const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
 const GLYPH={esc:${JSON.stringify(ICON.x)},error:${JSON.stringify(ICON.alert)}};
+const PERSON=${JSON.stringify(PERSON)};
 const design=()=>document.documentElement.dataset.design||'tessaya';
 // A damped spring sampled into CSS linear(): spring motion with no script per frame (stiffness, damping ratio).
 const spring=(k,ratio)=>{const c=2*ratio*Math.sqrt(k);let x=0,v=0,t=0;const dt=1/600,pts=[];
@@ -336,6 +345,7 @@ window.pill={
   // phase puts the plain pill back.
   const plain=v.island!==true||(!island.hasWords()&&(v.wave==='sweep'||/Esc again/.test(v.caption||'')));
   const s=stateOf(v,!plain);p.dataset.s=s;
+  if(v.who==null)delete p.dataset.who;else{p.dataset.who='';if(v.who)$('who').textContent=v.who;else $('who').innerHTML=PERSON;}
   if(plain)island.stop();
   p.className=plain?'on':'on isl';
   if(!plain&&(v.fresh===true||!island.on()))island.start();
@@ -451,6 +461,8 @@ export const createVoicePill = (input: {
   readonly onChange?: (state: TurnState) => void;
   /** The persona whose face goes in place of the mark for this phase, or null for the mark (baton-shared/companion). */
   readonly face?: (phase: TurnPhase) => string | null;
+  /** The verified speaker's initial beside her mark (`pillWho`): null for none, "" for a person with no name yet. */
+  readonly who?: () => string | null;
   /** Her characters' folder (COMPANION_DIR): the face needs the studio's scripts. */
   readonly companionDir?: string;
   /** Move pill went on or off, from wherever, so the tray's tick follows. */
@@ -1030,7 +1042,7 @@ export const createVoicePill = (input: {
       if (!words) setTall(false);
       setEscape(turnHoldsEscape(state));
       call(
-        `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true, island, fresh })})`,
+        `window.pill.show(${JSON.stringify({ ...view, phase: state.phase, voice: input.voiceDictating?.() === true, island, fresh, who: input.who?.() ?? null })})`,
       );
       showFace(previous.phase);
       if (event.type === "wake") {
