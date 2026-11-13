@@ -8,6 +8,7 @@ import {
   converseReader,
   type ConversePart,
   type ConverseRequest,
+  type StreamUsage,
 } from "../speech/DictationCleanupApi.ts";
 import { MAX_ROUNDS, readLine, toolLoop, type ToolTurn } from "./R1Brain.ts";
 
