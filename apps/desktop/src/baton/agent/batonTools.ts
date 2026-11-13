@@ -219,15 +219,6 @@ const str = (a: Args, key: string, max = 20_000): string => {
   return v;
 };
 
-const strings = (a: Args, key: string): ReadonlyArray<string> => {
-  const v = a[key];
-  if (v === undefined) return [];
-  if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || x.length > 300)) {
-    throw new Error(`${key} must be a list of short strings.`);
-  }
-  return v as string[];
-};
-
 const object = (props: Record<string, unknown>, required: ReadonlyArray<string> = []) => ({
   type: "object",
   properties: props,
@@ -1330,67 +1321,6 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       run: async () => ({ text: await host.jobs("brief", {}) }),
     },
     {
-      name: "job_start",
-      description: JOB_TOOL_TEXT.job_start,
-      inputSchema: object(
-        {
-          title: { type: "string", maxLength: 120 },
-          goal: { type: "string", maxLength: 4000 },
-          project: { type: "string", maxLength: 200 },
-          run_on: {
-            type: "string",
-            maxLength: 60,
-            description:
-              "Which connected computer runs the worker: its name as the sidebar shows it. Leave out, or 'this computer', to run it here. The project must exist there.",
-          },
-          folders: { type: "array", items: { type: "string" }, maxItems: 10 },
-          tools: {
-            type: "array",
-            items: { enum: ["read", "edit", "shell", "web", "sessions"] },
-            maxItems: 5,
-          },
-          worker: { type: "string", maxLength: 60 },
-          report_every_minutes: {
-            type: "number",
-            minimum: 0,
-            maximum: 1440,
-            description:
-              "A progress report in the job's record this often while it runs; 0 is off; 60 if not given.",
-          },
-        },
-        ["title", "goal", "project"],
-      ),
-      run: async (a) => ({
-        text: await host.jobs("start", {
-          title: str(a, "title", 120),
-          goal: str(a, "goal", 4_000),
-          project: str(a, "project", 200),
-          ...(typeof a["run_on"] === "string" && a["run_on"].trim() !== ""
-            ? { runOn: str(a, "run_on", 60) }
-            : {}),
-          folders: strings(a, "folders"),
-          tools: strings(a, "tools"),
-          ...(typeof a["worker"] === "string" && a["worker"].trim() !== ""
-            ? { worker: str(a, "worker", 60) }
-            : {}),
-          ...(a["report_every_minutes"] === undefined
-            ? {}
-            : { reportEveryMinutes: Math.max(0, Math.min(1440, num(a, "report_every_minutes"))) }),
-        }),
-      }),
-    },
-    {
-      name: "job_retry",
-      description: JOB_TOOL_TEXT.job_retry,
-      inputSchema: object({ id: { type: "string" }, reason: { type: "string", maxLength: 400 } }, [
-        "id",
-        "reason",
-      ]),
-      run: async (a) => ({
-        text: await host.jobs("retry", { id: str(a, "id", 200), reason: str(a, "reason", 400) }),
-      }),
-    },
-    {
       name: "skill_draft",
       description:
         "Write a draft skill (a SKILL.md) from a finished job, for him to read and edit. It is opened for him and never installed by itself; adding it goes through the Skills tab review.",
@@ -1440,77 +1370,6 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       }),
     },
     {
-      name: "job_refine",
-      description: JOB_TOOL_TEXT.job_refine,
-      inputSchema: object(
-        {
-          id: { type: "string" },
-          text: { type: "string", maxLength: 4000 },
-          widens: { type: "boolean" },
-        },
-        ["id", "text"],
-      ),
-      run: async (a) => ({
-        text: await host.jobs("refine", {
-          id: str(a, "id", 200),
-          text: str(a, "text", 4_000),
-          widens: a["widens"] === true,
-        }),
-      }),
-    },
-    {
-      name: "job_agree",
-      description: JOB_TOOL_TEXT.job_agree,
-      inputSchema: object({ id: { type: "string" } }, ["id"]),
-      run: async (a) => ({ text: await host.jobs("agree", { id: str(a, "id", 200) }) }),
-    },
-    {
-      name: "job_split",
-      description: JOB_TOOL_TEXT.job_split,
-      inputSchema: object(
-        {
-          id: { type: "string" },
-          parts: {
-            type: "array",
-            minItems: 1,
-            maxItems: 8,
-            items: object(
-              {
-                title: { type: "string", maxLength: 120 },
-                goal: { type: "string", maxLength: 4000 },
-                role: { type: "string", maxLength: 40 },
-                routine: { type: "boolean" },
-                after: { type: "array", items: { type: "integer", minimum: 1 }, maxItems: 7 },
-              },
-              ["title", "goal"],
-            ),
-          },
-        },
-        ["id", "parts"],
-      ),
-      run: async (a) => {
-        const parts = a["parts"];
-        if (!Array.isArray(parts) || parts.length === 0 || parts.length > 8) {
-          throw new Error("parts must be one to eight parts.");
-        }
-        const clean = parts.map((p) => {
-          const part = (typeof p === "object" && p !== null ? p : {}) as Args;
-          return {
-            title: str(part, "title", 120),
-            goal: str(part, "goal", 4_000),
-            ...(typeof part["role"] === "string" && part["role"] !== ""
-              ? { role: part["role"] }
-              : {}),
-            ...(part["routine"] === true ? { routine: true } : {}),
-            ...(Array.isArray(part["after"])
-              ? { after: part["after"].filter((n): n is number => Number.isInteger(n) && n >= 1) }
-              : {}),
-          };
-        });
-        return { text: await host.jobs("split", { id: str(a, "id", 200), parts: clean }) };
-      },
-    },
-    {
       name: "rule_create",
       description:
         "A standing rule about a session or job: when it finishes, fails or needs him, have a worker (Claude, Codex) review it, send it back, or tell him. Put what he asked as one sentence in this shape: 'when <session name> finishes, have Codex review it and tell me'. Without confirmed it only reads the rule back: say that read-back to him. Call again with confirmed: true only after he says yes to it.",
@@ -1523,29 +1382,6 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
           sentence: str(a, "sentence", 400),
         }),
       }),
-    },
-    {
-      name: "job_stop",
-      description: JOB_TOOL_TEXT.job_stop,
-      inputSchema: object({ id: { type: "string" } }, ["id"]),
-      run: async (a) => ({ text: await host.jobs("stop", { id: str(a, "id", 200) }) }),
-    },
-    {
-      name: "job_schedule",
-      description: JOB_TOOL_TEXT.job_schedule,
-      inputSchema: object(
-        { id: { type: "string" }, every_minutes: { type: "number", minimum: 0, maximum: 10080 } },
-        ["id", "every_minutes"],
-      ),
-      run: async (a) => {
-        const minutes = Math.max(0, Math.min(10_080, num(a, "every_minutes")));
-        return {
-          text: await host.jobs("schedule", {
-            id: str(a, "id", 200),
-            everyMinutes: minutes === 0 ? null : minutes,
-          }),
-        };
-      },
     },
     {
       name: "job_grant",
@@ -1667,9 +1503,9 @@ const sharedTools = (host: ToolHost, own: ReadonlyArray<BatonTool>): ReadonlyArr
   const shared = host.shared;
   if (shared === undefined) return [];
   const mine = new Set(own.map((t) => t.name));
-  return shared.specs
+  const listed = shared.specs
     .filter((s) => !mine.has(s.name) && COVERED_BY_OWN[s.name] === undefined)
-    .map((s) => ({
+    .map((s): BatonTool => ({
       name: s.name,
       description: s.description,
       inputSchema: s.input_schema as Readonly<Record<string, unknown>>,
@@ -1677,4 +1513,32 @@ const sharedTools = (host: ToolHost, own: ReadonlyArray<BatonTool>): ReadonlyArr
       ...(s.core === true ? { core: true } : {}),
       run: async (a: Args) => ({ text: await shared.call(s.name, a) }),
     }));
+  // A server older than this desktop has no work tools: she says so instead of finding no way to start a job.
+  const older =
+    shared.specs.length > 0 && !shared.specs.some((s) => s.name === SERVER_WORK_TOOLS[0]);
+  return older
+    ? [
+        ...listed,
+        ...SERVER_WORK_TOOLS.map((name): BatonTool => ({
+          name,
+          description: `${name.replace(/_/g, " ")} (his jobs).`,
+          inputSchema: object({}),
+          shared: "read",
+          run: async () => ({ text: SERVER_TOO_OLD }),
+        })),
+      ]
+    : listed;
 };
+
+/** His work tools, which his server serves (SPINE-UNIFY S2). */
+const SERVER_WORK_TOOLS = [
+  "job_start",
+  "job_agree",
+  "job_refine",
+  "job_split",
+  "job_retry",
+  "job_stop",
+  "job_schedule",
+] as const;
+const SERVER_TOO_OLD =
+  "Jobs need his server updated: it is older than this desktop. Tell him in one sentence; nothing was started.";

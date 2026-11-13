@@ -52,8 +52,18 @@ describe("the assistant's tool table", () => {
     );
     const acts = ["home_do", "home_undo", "home_automation_save", "home_automation_set"];
     const devices = ["device_act", "device_owner", "device_tag"];
+    // His work is the server's too: the desktop keeps no job tool of its own (SPINE-UNIFY S2).
+    const work = [
+      "job_start",
+      "job_agree",
+      "job_refine",
+      "job_split",
+      "job_retry",
+      "job_stop",
+      "job_schedule",
+    ];
     const registry = {
-      specs: [...house, ...[...acts, ...devices].map((n) => spec(n))],
+      specs: [...house, ...[...acts, ...devices, ...work].map((n) => spec(n))],
       call: async () => "done",
     };
     const names = buildBatonTools({ ...host([]), shared: registry }).map((t) => t.name);
@@ -61,6 +71,20 @@ describe("the assistant's tool table", () => {
       new Set([...BATON_TOOLS].filter((t) => !REMOTE_ONLY_TOOLS.has(t) && !ROOM_ONLY_TOOLS.has(t))),
     );
     expect(buildBatonTools(host([])).some((t) => t.name === "home_do")).toBe(false);
+  });
+
+  it("says his server is too old for jobs when it serves no work tools, rather than having no way to start one", async () => {
+    const older = buildBatonTools({
+      ...host([]),
+      shared: {
+        specs: [{ name: "home_find", description: "", input_schema: {}, readonly: true }],
+        call: async () => "done",
+      },
+    });
+    const start = older.find((t) => t.name === "job_start");
+    expect((await start!.run({})).text).toContain("server updated");
+    // Not offline: with no list at all, nothing is made up.
+    expect(buildBatonTools(host([])).some((t) => t.name === "job_start")).toBe(false);
   });
 
   it("adds each shared tool once, with whether it reads, and never one its own tools cover", async () => {
@@ -82,6 +106,7 @@ describe("the assistant's tool table", () => {
           spec("settings_set", false),
           spec("tessaya_memory_search", true),
           spec("memory_search", true),
+          spec("job_start", false),
         ],
         call: async (name, args) => (called.push([name, args]), "changed"),
       },
@@ -90,6 +115,7 @@ describe("the assistant's tool table", () => {
     expect(shared.map((t) => [t.name, t.shared, t.core])).toEqual([
       ["settings_find", "read", true],
       ["settings_set", "write", undefined],
+      ["job_start", "write", undefined],
     ]);
     expect(await shared[1]!.run({ key: "desktop:chime", value: false })).toEqual({
       text: "changed",
