@@ -89,6 +89,12 @@ describe("Voice ID enrolment", () => {
     t.voiceId.remove("sarah");
     expect(t.deleted).toEqual(["sarah"]);
     expect(t.voiceId.profiles().map((p) => p.id)).toEqual(["owner"]);
+
+    // A household member's voice is saved under their member id, so the verdict names the member.
+    t.voiceId.card("close");
+    t.voiceId.read({ kind: "saved", name: "Maya", id: "maya-3f2a" });
+    await t.read(loud(3));
+    expect(t.voiceId.profiles().map((p) => p.id)).toEqual(["owner", "maya-3f2a"]);
   });
 
   it("saves nothing from a read of silence", async () => {

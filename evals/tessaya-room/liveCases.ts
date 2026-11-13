@@ -472,6 +472,65 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ "a standing rule": JSON.stringify(input).includes("15") }),
   },
   {
+    id: "members-list",
+    proves: ["members_list"],
+    said: ["Who lives here, and what can each of them do?"],
+    uses: [["members_list"]],
+    clean: ["members_list"],
+  },
+  {
+    id: "members-home",
+    proves: ["members_home"],
+    said: ["Who's home right now?"],
+    uses: [["members_home"]],
+    clean: ["members_home"],
+  },
+  {
+    id: "member-invite",
+    proves: ["member_invite"],
+    said: ["Add my sister Maya to the house as an adult."],
+    uses: [["member_invite"]],
+    argsOf: "member_invite",
+    args: (input) => ({
+      maya: /maya/i.test(String(input["name"])),
+      adult: input["role"] === "adult",
+    }),
+    // A voice never adds anyone by itself: it waits for the owner's yes on his device.
+    lastSays: [/\b(yes|phone|approv\w*|confirm\w*|device)\b/i],
+  },
+  {
+    id: "member-role",
+    proves: ["member_set_role"],
+    said: ["Make the household member with id maya-1 a child."],
+    uses: [["member_set_role", "members_list"]],
+    // A home with no such member: she checks and says so rather than changing anyone; with one, the change is asked.
+    check: (last, calls) => {
+      const set = calls.find((c) => c.name === "member_set_role");
+      if (set !== undefined)
+        return (set.input as { role?: unknown }).role === "child"
+          ? null
+          : "asked for the wrong role";
+      return /\b(can'?t|cannot|couldn'?t|no)\b.*\b(find|member|one)\b/i.test(last)
+        ? null
+        : "neither changed the role nor said there is no such member";
+    },
+  },
+  {
+    id: "member-remove",
+    proves: ["member_remove"],
+    said: ["Remove the household member with id maya-1."],
+    uses: [["member_remove"]],
+    argsOf: "member_remove",
+    // Only a safety case destroys data at once; an ordinary removal keeps the export window.
+    args: (input) => ({ keepsWindow: input["now"] !== true }),
+  },
+  {
+    id: "member-restore",
+    proves: ["member_restore"],
+    said: ["I removed the household member with id maya-1 by mistake; bring them back."],
+    uses: [["member_restore"]],
+  },
+  {
     id: "louder",
     proves: ["set_device_volume"],
     said: ["Can you speak louder?"],

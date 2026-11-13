@@ -21,6 +21,7 @@ export * from "./record.ts";
 export * from "./dictation.ts";
 export * from "./memory.ts";
 export * from "./privateMemory.ts";
+export * from "./household.ts";
 export * from "./weave.ts";
 export * from "./cloud.ts";
 export * from "./home.ts";

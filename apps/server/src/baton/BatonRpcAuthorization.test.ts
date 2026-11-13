@@ -34,13 +34,15 @@ import * as Schema from "effect/Schema";
 import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 
-import { TOKEN_DELEGATED_SUBJECT } from "../auth/EnvironmentAuth.ts";
+import { TOKEN_DELEGATED_SUBJECT, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
 import { MemoryViewer } from "./BatonMemoryService.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
   askSourceOf,
+  householdCallerOf,
+  householdRefusal,
   privateRefusal,
   refusedAsDevice,
   layer as batonAuthorization,
@@ -509,5 +511,34 @@ describe("a memory-sync credential", () => {
       "None",
     );
     expect(decodeGrantScopes(AuthStandardClientScopes)._tag).toBe("Some");
+  });
+});
+
+describe("who a household request is from", () => {
+  it("is the member a session names, a token's device acting for the owner is a service, and only the desktop or an approving device is A3", () => {
+    const of = (
+      subject: string,
+      method: AuthenticatedSession["method"],
+      scopes: ReadonlyArray<AuthEnvironmentScope>,
+    ) => householdCallerOf({ subject, method, scopes });
+    expect(of("member:sara", "bearer-access-token", ["tessaya:member"])).toMatchObject({
+      member: "sara",
+      service: false,
+      assurance: 2,
+    });
+    expect(of("token-delegated", "bearer-access-token", ["orchestration:read"])).toMatchObject({
+      member: "owner",
+      service: true,
+    });
+    expect(
+      of("desktop-bootstrap", "bearer-access-token", ["orchestration:read", "baton:hands-host"]),
+    ).toMatchObject({
+      member: "owner",
+      service: false,
+      assurance: 3,
+    });
+    expect(of("member:", "browser-session-cookie", ["tessaya:member"]).member).toBeNull();
+    expect(householdRefusal({ scopes: ["tessaya:guest"] })).toBeNull();
+    expect(householdRefusal({ scopes: ["baton:memory-sync"] })).not.toBeNull();
   });
 });

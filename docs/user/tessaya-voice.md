@@ -24,6 +24,14 @@ Under **People**, type someone's name and press **Add** while they sit with you.
 - A very short reply ("yes", "stop") is too short to tell voices apart. It counts as unverified, and a risky yes then always needs the card.
 - If the model or your profile is missing, Tessaya hears everyone as before, unless **Ignore everyone if Voice ID cannot run** is on.
 
+## Household
+
+Tessaya serves everyone who lives with you. In Tessaya's window, open **Memory**, then **Household**. Pick a role and type a name under **Add someone**: they get a code to pair their own phone, valid for a day. Then press **Enrol voice** beside them while they sit with you, so Tessaya knows their voice as theirs. You can also ask her by voice ("add my sister Maya as an adult", "who lives here?", "who's home?").
+
+- **Roles**: an admin manages members and devices but never the owner; adults have their own memory, devices and asks; children are limited; guests can talk and nothing more. A new device of theirs never gets your computer's threads, terminals or files unless you give them **this computer** separately.
+- Adding someone, raising a role and removing someone by voice is sent to your phone or desktop for a yes first.
+- **Remove** signs them out everywhere at once and keeps their data for 7 days so they can export it; **Restore** undoes it until then. **Remove now** destroys their data at once, for a safety case.
+
 ## Good to know
 
 - **Stop** it by saying "stop", "quiet", "enough" or "cancel" while it talks. It hears those with no wake word and nothing else said over its voice.

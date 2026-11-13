@@ -74,6 +74,7 @@ import { importFolder } from "./BatonMemoryImport.ts";
 import { pullAction, searchHistory } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { TessayaTurn, type TurnEnvelope } from "./TessayaTurn.ts";
+import { TessayaHousehold } from "./TessayaHousehold.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonCloudService } from "./BatonCloudService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
@@ -155,6 +156,7 @@ export type BatonServices =
   | BatonSessionsAcross
   | BatonMemoryLearning
   | TessayaTurn
+  | TessayaHousehold
   | ServerConfig.ServerConfig
   | ScheduledTaskService
   | ThreadAccountMoves

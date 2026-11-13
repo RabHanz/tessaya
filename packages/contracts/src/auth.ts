@@ -67,6 +67,13 @@ export const AuthBatonHandsHostScope = "baton:hands-host" as const;
  * can do only these; it is minted on the server it reads.
  */
 export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
+/**
+ * A household member's own device (ACCOUNTS-IDENTITY-DESIGN §3.3): Tessaya's member methods, which check the member and
+ * role themselves. Never part of the standard client scopes, and it reaches no thread, terminal or file.
+ */
+export const AuthTessayaMemberScope = "tessaya:member" as const;
+/** A guest pass's device: less than a member's; Tessaya's methods decide what it may do. */
+export const AuthTessayaGuestScope = "tessaya:guest" as const;
 const AuthEnvironmentScopeName = Schema.Literals([
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
@@ -89,6 +96,8 @@ const AuthEnvironmentScopeName = Schema.Literals([
   AuthBatonHandsScope,
   AuthBatonHandsHostScope,
   AuthBatonMemorySyncScope,
+  AuthTessayaMemberScope,
+  AuthTessayaGuestScope,
 ]);
 /**
  * Baton was renamed Tessaya. Each `baton:` scope also decodes from its `tessaya:` spelling, and this build still
@@ -197,6 +206,8 @@ const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope
   [AuthBatonHandsScope]: AuthOrchestrationOperateScope,
   [AuthBatonHandsHostScope]: AuthOrchestrationOperateScope,
   [AuthBatonMemorySyncScope]: AuthOrchestrationOperateScope,
+  [AuthTessayaMemberScope]: AuthOrchestrationReadScope,
+  [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
 };
 
 /** Keep permission denials decodable by clients with the original scope enum. */

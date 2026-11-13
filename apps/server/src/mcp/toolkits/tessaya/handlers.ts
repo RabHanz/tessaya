@@ -38,6 +38,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
+import * as MembersHandlers from "../members/handlers.ts";
 import * as SettingsHandlers from "../settings/handlers.ts";
 import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
 
@@ -214,6 +215,7 @@ export const layer = McpToolAccess.toLayer(
       ...(yield* HomeHandlers.make),
       ...(yield* DeviceHandlers.make),
       ...(yield* SettingsHandlers.make),
+      ...(yield* MembersHandlers.make),
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
       // State and names only: no synopsis, prompt or folder, and a walled project's work by its project's name.

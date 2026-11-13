@@ -42,6 +42,7 @@ import * as ThreadManagementService from "../../../orchestration-v2/ThreadManage
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
+import { MembersTools } from "../members/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
 
 const shared = {
@@ -464,6 +465,7 @@ export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
   ...DeviceTools,
   ...SettingsTools,
+  ...MembersTools,
   JobsTool,
   WatchTool,
   RecordTool,

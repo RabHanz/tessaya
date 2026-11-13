@@ -38,6 +38,7 @@ import * as BatonCloudService from "./BatonCloudService.ts";
 import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
 import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as R1Brain from "../home/R1Brain.ts";
+import * as TessayaHousehold from "./TessayaHousehold.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
 import * as R1Device from "../home/R1Device.ts";
@@ -217,6 +218,8 @@ const servicesInner = IntentService.layer.pipe(
     ),
   ),
   // Beside the mergeAll above, not in it: one more member there loses its types.
+  // The household's members, over the private stores it shreds; asks for the owner's yes go through the phone inbox.
+  Layer.provideMerge(TessayaHousehold.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   Layer.provideMerge(BatonPrivateMemoryService.layer),
   Layer.provideMerge(BatonVoiceLibrary.layer),
   // The Record under everything above, so any service can write to it.
