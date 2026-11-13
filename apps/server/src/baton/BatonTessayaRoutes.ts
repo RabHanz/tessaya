@@ -531,7 +531,13 @@ export const routes = HttpRouter.use((router) =>
       const result = yield* Effect.promise(() =>
         run(
           Effect.flatMap(TessayaHousehold, (h) => h.call(input.value)).pipe(
-            Effect.provideService(HouseholdCaller, householdCallerOf(session.value)),
+            Effect.provideService(HouseholdCaller, {
+              ...householdCallerOf(session.value),
+              // A passkey is for the site the page is on.
+              ...(typeof request.headers["origin"] === "string"
+                ? { origin: request.headers["origin"] }
+                : {}),
+            }),
           ),
         ),
       );
