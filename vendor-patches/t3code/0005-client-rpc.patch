@@ -3,7 +3,7 @@ Subject: client-runtime: Baton's RPC group on the client protocol
 The fabric.* group rides the same socket, and its work-session stream is a subscription tag.
 
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index 8ae3ea79c56f84a2d1057c79f6582eadd7120f6e..df27766601c8b716f3b4fac9fa47f769eed305fb 100644
+index 93e3f47121b2c9eba201799095951b241c22aee0..4d1d55fec2327a3b46f02fb312b87c188dfa3527 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -1,3 +1,4 @@

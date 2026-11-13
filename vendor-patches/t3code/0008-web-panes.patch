@@ -4,10 +4,10 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2d60fc6bc 100644
+index f50954c42531737680fe89a202a99e3727c3c793..3b9d820e9b670031c76f4b9184f0db342e047187 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -347,7 +347,7 @@ import {
+@@ -352,7 +352,7 @@ import {
    shouldRefocusComposerOnWindowFocus,
  } from "./ChatView.logic";
  import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -16,7 +16,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
  import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
  import { appAtomRegistry } from "../rpc/atomRegistry";
  import { assetEnvironment } from "../state/assets";
-@@ -398,6 +398,8 @@ type ChatViewProps =
+@@ -403,6 +403,8 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -25,7 +25,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
        forceExpandedMobileComposer?: boolean;
        /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
        embedded?: SideChatParentPanel;
-@@ -409,6 +411,7 @@ type ChatViewProps =
+@@ -414,6 +416,7 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -33,7 +33,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
        forceExpandedMobileComposer?: boolean;
        embedded?: never;
        routeKind: "draft";
-@@ -424,6 +427,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -429,6 +432,7 @@ export default function ChatView(props: ChatViewProps) {
      routeKind,
      onDiffPanelOpen,
      reserveTitleBarControlInset = true,
@@ -41,7 +41,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
      forceExpandedMobileComposer = false,
      embedded: parentPanel,
    } = props;
-@@ -501,7 +505,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -506,7 +510,10 @@ export default function ChatView(props: ChatViewProps) {
          });
    const promptRef = useRef("");
    const localComposerRef = useRef<ChatComposerHandle | null>(null);
@@ -53,7 +53,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
    const queuedRunEdit = useQueuedRunEdit({
      environmentId,
      routeThreadRef,
-@@ -1303,6 +1310,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1330,6 +1337,10 @@ export default function ChatView(props: ChatViewProps) {
      ],
      lockedProvider,
      lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
@@ -64,7 +64,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
    });
    const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
    const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-@@ -1803,7 +1814,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1824,7 +1835,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -73,7 +73,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2664,8 +2675,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2685,8 +2696,9 @@ export default function ChatView(props: ChatViewProps) {
    // composer effect above.
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
    useEffect(() => {
@@ -85,7 +85,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
  
    const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
      terminalFocus: getTerminalFocusOwner() !== null,
-@@ -2755,12 +2767,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2776,12 +2788,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -101,7 +101,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3253,8 +3266,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3275,8 +3288,10 @@ export default function ChatView(props: ChatViewProps) {
      />
    );
    const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
@@ -113,7 +113,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
        showMaximizeControl={!shouldUsePlanSidebarSheet}
        rightPanelOpen={rightPanelOpen}
        animationsActive={panelAnimationsActive}
-@@ -3282,7 +3297,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3304,7 +3319,9 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -124,7 +124,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3309,13 +3326,12 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3331,13 +3348,12 @@ export default function ChatView(props: ChatViewProps) {
                COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
              )}
            >
@@ -139,7 +139,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
              {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
-@@ -3333,6 +3349,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3355,6 +3371,9 @@ export default function ChatView(props: ChatViewProps) {
                  : {})}
                {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
              />
@@ -149,7 +149,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
            </header>
          )}
  
-@@ -3659,6 +3678,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3683,6 +3702,7 @@ export default function ChatView(props: ChatViewProps) {
                                  runtimeMode={runtimeMode}
                                  defaultRuntimeMode={defaultRuntimeMode}
                                  lockedProvider={modelPickerLockedProvider}
@@ -157,7 +157,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
                                  providerStatuses={providerStatuses as ServerProvider[]}
                                  providerCatalogKnown={serverConfig !== null}
                                  activeProjectDefaultModelSelection={
-@@ -4011,7 +4031,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -4036,7 +4056,7 @@ export default function ChatView(props: ChatViewProps) {
        cwd={activeWorkspaceRoot}
        checkpoints={serverProjection?.checkpoints}
      >
@@ -167,7 +167,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2
    );
  }
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf6ebc2e77 100644
+index 88295395dc7691dbeeefa4a9c767630e762f930f..45e9a3eecaa71fd3f69855574ea69375ad4eed79 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -1,6 +1,21 @@
@@ -192,7 +192,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
  import {
    dropThreadContext,
    endThreadContextDrag,
-@@ -412,6 +427,7 @@ function routeThreadOnly(
+@@ -414,6 +429,7 @@ function routeThreadOnly(
  
  // Separate hooks cache maps independently of later Sidebar hooks and preserve dnd-kit inputs.
  function useSidebarThreads(input: {
@@ -200,7 +200,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
    readonly projectScopeKey: string | null;
    readonly scopedProjectKeys: ReadonlySet<string> | null;
    readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
-@@ -426,6 +442,7 @@ function useSidebarThreads(input: {
+@@ -428,6 +444,7 @@ function useSidebarThreads(input: {
    readonly keepEmptyFolders: (group: SidebarProjectSnapshot) => boolean;
  }) {
    const {
@@ -208,7 +208,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
      projectScopeKey,
      scopedProjectKeys,
      serverConfigs,
-@@ -475,8 +492,9 @@ function useSidebarThreads(input: {
+@@ -477,8 +494,9 @@ function useSidebarThreads(input: {
    const settledVisibleCount =
      settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
  
@@ -219,7 +219,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
      scopedProjectKeys,
      delegatedUnderParent,
      serverConfigs,
-@@ -491,7 +509,7 @@ function useSidebarThreads(input: {
+@@ -493,7 +511,7 @@ function useSidebarThreads(input: {
      partition;
    // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
    const olderSettledShelf = useOlderSettledShelf({
@@ -228,7 +228,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
      expanded: settledShelfExpanded,
      visibleCount: settledVisibleCount,
    });
-@@ -1299,6 +1317,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1313,6 +1331,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      },
    );
  
@@ -237,7 +237,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
    const {
      workingShelfEnabled,
      pinnedThreads,
-@@ -1336,6 +1356,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1350,6 +1370,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      pinnedKeysById,
      activeKeysById,
    } = useSidebarThreads({
@@ -245,7 +245,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
      projectScopeKey,
      scopedProjectKeys,
      serverConfigs,
-@@ -1567,6 +1588,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1583,6 +1604,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      const isMac = isMacPlatform(navigator.platform);
      const isModClick = isMac ? event.metaKey : event.ctrlKey;
      const threadKey = scopedThreadKey(threadRef);
@@ -257,7 +257,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
      if (isModClick) {
        event.preventDefault();
        toggleThreadSelection(threadKey);
-@@ -2628,7 +2654,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2637,7 +2663,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              ),
            ) ?? null;
          const clicked = await settlePromise(() =>
@@ -270,7 +270,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
              buildThreadActionMenuItems({
                canOperate: readEnvironmentScope(
                  threadRef.environmentId,
-@@ -2667,6 +2697,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2676,6 +2706,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            ),
          );
          if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -287,7 +287,7 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
          if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
          if (clicked.value?.startsWith("snooze:")) {
            const preset =
-@@ -3202,6 +3242,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3204,6 +3244,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            </SidebarGroup>
          }
        >
@@ -298,7 +298,16 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
          <SidebarGroup className="flex-1" role="presentation">
            {isSearchingThreads ? (
              threadSearchResults.length > 0 ? (
-@@ -3343,6 +3387,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3306,6 +3350,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                     Add project
+                   </button>
+                 </>
++              ) : batonLiveOnly ? (
++                <BatonNoLiveSessions />
+               ) : scopedProjectGroups.length > 0 ? (
+                 <>
+                   <span>
+@@ -3390,6 +3436,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                optimisticDrop !== null
                              }
                              thread={thread}
@@ -306,15 +315,6 @@ index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf
                              variant={rowVariant}
                              navigationParent={
                                folderRow ??
-@@ -3639,6 +3684,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-                     Add project
-                   </button>
-                 </>
-+              ) : batonLiveOnly ? (
-+                <BatonNoLiveSessions />
-               ) : scopedProjectGroups.length > 1 ? (
-                 "No threads in these projects yet"
-               ) : scopedProjectGroups[0] ? (
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
 index a7b7da0a6b53b67eba0cd0363be218501dc80f72..2dbd8f7050d4096ab5d514824d67b6a689f0881d 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx

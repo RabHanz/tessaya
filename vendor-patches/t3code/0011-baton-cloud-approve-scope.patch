@@ -141,7 +141,7 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..0356d7a985d24e5f4732167c3e8089b5
 +    ),
    );
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
-index d8da76a4b6906168fa21be08e4e03cb51915a099..c2ff1fe4c71426a04012490976b8f2ee93e43663 100644
+index 67b4929a9b580fcf2892bc6e2e10a5b5a2b0bd0f..f0b2344a9318e6c5ad947e739ca1ca06b6e9fb6d 100644
 --- a/packages/client-runtime/src/state/commandPermissions.test.ts
 +++ b/packages/client-runtime/src/state/commandPermissions.test.ts
 @@ -132,6 +132,42 @@ describe("command permissions", () => {
@@ -449,7 +449,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..0d1cc391505ab3d72af5f293fc774de3
    };
  }
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index 8b4a7d48d279cd309b96d8ffc17d862fcf590ef2..4918212f76752d25955e0cb567ae379dac8fdf70 100644
+index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..b0baca9e2ce0fcf568528c9f2b8ca2257d287251 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
@@ -460,7 +460,7 @@ index 8b4a7d48d279cd309b96d8ffc17d862fcf590ef2..4918212f76752d25955e0cb567ae379d
    AuthEnvironmentMaintainScope,
    AuthOrchestrationOperateScope,
    AuthOrchestrationReadScope,
-@@ -83,6 +84,9 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
+@@ -84,6 +85,9 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
  const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
  const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
  
@@ -470,7 +470,7 @@ index 8b4a7d48d279cd309b96d8ffc17d862fcf590ef2..4918212f76752d25955e0cb567ae379d
  export function clientRpcRequiredScopes(
    method: string,
    input: unknown,
-@@ -100,6 +104,15 @@ export function clientRpcRequiredScopes(
+@@ -101,6 +105,15 @@ export function clientRpcRequiredScopes(
      )
        return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
    }

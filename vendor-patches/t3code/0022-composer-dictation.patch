@@ -19,7 +19,7 @@ index 717e71362a593a085cb8869b54b9a09c270ed9ff..baeb7d47fa17c240ee3181414af86f12
      </SettingsScreen>
    );
 diff --git a/apps/web/src/speech/useDictationShortcut.ts b/apps/web/src/speech/useDictationShortcut.ts
-index 6acbe5fac1ee33284943b887c3c8e8fb94a0f0c6..769b5dff4b958dcd85772d214976e6462041433d 100644
+index 278a4baa6002645f765a1bbab9406b1cf3f6b705..76c11204acc6dd24fdd44edaa90665d088464744 100644
 --- a/apps/web/src/speech/useDictationShortcut.ts
 +++ b/apps/web/src/speech/useDictationShortcut.ts
 @@ -6,6 +6,7 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
@@ -30,7 +30,7 @@ index 6acbe5fac1ee33284943b887c3c8e8fb94a0f0c6..769b5dff4b958dcd85772d214976e646
  
  const HOLD_THRESHOLD_MS = 300;
  
-@@ -87,6 +88,7 @@ export function useDictationShortcut(input: ShortcutInput) {
+@@ -112,6 +113,7 @@ export function useDictationShortcut(input: ShortcutInput) {
        const press = pressed.current;
        if (!press || (event && (event.code || event.key) !== press.code)) return;
        pressed.current = null;
@@ -38,11 +38,11 @@ index 6acbe5fac1ee33284943b887c3c8e8fb94a0f0c6..769b5dff4b958dcd85772d214976e646
        if (shouldFinishDictationOnRelease(press.mode, performance.now() - press.startedAt)) {
          void press.starting.then(() => {
            if (!disposed && generation.current === press.generation)
-@@ -144,6 +146,7 @@ export function useDictationShortcut(input: ShortcutInput) {
+@@ -170,6 +172,7 @@ export function useDictationShortcut(input: ShortcutInput) {
          mode,
          starting: speech.start(),
        };
 +      noteDictationKey(mode !== "toggle");
      };
      const onBlur = () => finish(null);
-     const unsubscribe = subscribeKeys?.({
+     const relay = (event: KeyboardEvent) => {

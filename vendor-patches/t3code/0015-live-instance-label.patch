@@ -44,10 +44,10 @@ index a04c1df8872779c19f2d2aecad2e767433365671..c253c25eb148723470e7b174ebc50bac
  }
  
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index 33088785615a4e4aad1bb6a0c944ef802a46bf77..0b571c36172f8599d044999cc9e95fe421e72f6c 100644
+index ade46685413626599747922adb18a3b2fb82d3cf..a255bd573b89e879aca1d52d7bab2a1d906e345a 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-@@ -58,6 +58,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
+@@ -61,6 +61,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
  import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
  import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
  import * as ProjectionStore from "./ProjectionStore.ts";
@@ -55,7 +55,7 @@ index 33088785615a4e4aad1bb6a0c944ef802a46bf77..0b571c36172f8599d044999cc9e95fe4
  
  const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
  const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
-@@ -103,7 +104,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
+@@ -141,7 +142,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
    },
  ) {
    override get message(): string {
@@ -64,7 +64,7 @@ index 33088785615a4e4aad1bb6a0c944ef802a46bf77..0b571c36172f8599d044999cc9e95fe4
    }
  }
  
-@@ -187,6 +188,11 @@ export interface ProviderSessionManagerV2Shape {
+@@ -225,6 +226,11 @@ export interface ProviderSessionManagerV2Shape {
      ProviderSessionManagerV2Error
    >;
    readonly isLive: (providerSessionId: ProviderSessionId) => Effect.Effect<boolean>;
@@ -76,7 +76,7 @@ index 33088785615a4e4aad1bb6a0c944ef802a46bf77..0b571c36172f8599d044999cc9e95fe4
    readonly close: (
      providerSessionId: ProviderSessionId,
    ) => Effect.Effect<void, ProviderSessionManagerV2Error>;
-@@ -2793,6 +2799,13 @@ export const layerWithOptions = (
+@@ -3005,6 +3011,13 @@ export const layerWithOptions = (
            Ref.get(sessions).pipe(
              Effect.map((current) => current.has(sessionKey(providerSessionId))),
            ),
@@ -90,7 +90,7 @@ index 33088785615a4e4aad1bb6a0c944ef802a46bf77..0b571c36172f8599d044999cc9e95fe4
          get: Effect.fn("ProviderSessionManager.get")(
            function* (providerSessionId) {
              const entry = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
-@@ -2834,7 +2847,7 @@ export const layerWithOptions = (
+@@ -3046,7 +3059,7 @@ export const layerWithOptions = (
                  releaseEntry({
                    providerSessionId: entry.runtime.providerSessionId,
                    reason: "manual_shutdown",

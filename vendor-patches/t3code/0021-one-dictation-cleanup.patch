@@ -19,7 +19,7 @@ index 4b0ca00e88666b97f6aa61fa54d8fb837155a9b7..e8ecc102a50ad521da9fe583e0fa8dee
            <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
          ) : null}
 diff --git a/apps/server/src/serverSettings.ts b/apps/server/src/serverSettings.ts
-index 251becba12f6c9e431042d08b36a465754abe69a..674cdab855d9dd3f07669198aef109ee3c639382 100644
+index 4dc30d29a6cffd394fd14d6ac4dde70e51ceb2e3..89defd31df0eb120285f6c62ff6e20e65871a508 100644
 --- a/apps/server/src/serverSettings.ts
 +++ b/apps/server/src/serverSettings.ts
 @@ -18,6 +18,7 @@ import {
@@ -48,10 +48,10 @@ index 251becba12f6c9e431042d08b36a465754abe69a..674cdab855d9dd3f07669198aef109ee
      // A file that failed to decode must stay on disk for the user to repair.
      const settingsFileTrusted = Option.isNone(parseFailure);
 diff --git a/apps/web/src/appInit.tsx b/apps/web/src/appInit.tsx
-index fa8e88e6b1a908c24dc07d6a84424fa310405f4a..5a46e151548240b7c3c38a83aa4a09d2f9b781b7 100644
+index faa71137db0493e09fcf9d3f505dab27b360cda1..6127c0d213cafa800c54be3fcdcbfcf27748019f 100644
 --- a/apps/web/src/appInit.tsx
 +++ b/apps/web/src/appInit.tsx
-@@ -43,6 +43,7 @@ import {
+@@ -44,6 +44,7 @@ import {
    startModelPreferencesMigration,
    subscribeClientSettings,
  } from "./hooks/useSettings";
@@ -59,7 +59,7 @@ index fa8e88e6b1a908c24dc07d6a84424fa310405f4a..5a46e151548240b7c3c38a83aa4a09d2
  import { syncBrowserChromeTheme } from "./hooks/useTheme";
  import { startThreadVisitedMigration } from "./hooks/useThreadVisitedMigration";
  import { installDesktopPasteAsText } from "./lib/desktopPasteAsText";
-@@ -257,6 +258,7 @@ export function startAppServices(): AppRouter {
+@@ -267,6 +268,7 @@ export function startAppServices(): AppRouter {
    startBrowserChromeThemeSync(router);
    startDefaultThemeAdoption();
    startModelPreferencesMigration();
@@ -68,10 +68,10 @@ index fa8e88e6b1a908c24dc07d6a84424fa310405f4a..5a46e151548240b7c3c38a83aa4a09d2
    if (isElectron) startElectronBrowserHost();
    startPreviewTitleRecording();
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c39463a02 100644
+index 2875a6edbe355f1b193881d34d236fa2d4f9f127..f290a631bba375899c9fa672d785614c3a46b286 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-@@ -57,6 +57,7 @@ import {
+@@ -69,6 +69,7 @@ import {
    chooseTranscriptCleanup,
    useCleanupGrant,
  } from "../../speech/voiceConsent";
@@ -79,7 +79,7 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
  import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
  import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";
  import {
-@@ -112,6 +113,7 @@ import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechMode
+@@ -126,6 +127,7 @@ import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
  import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
  import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
  import { AdvancedSettings } from "./AdvancedSettings";
@@ -87,7 +87,7 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
  import {
    SETTINGS_PICKER_TRIGGER_CLASSNAME,
    SettingsPageContainer,
-@@ -473,7 +475,6 @@ function ProjectDictionaryRow() {
+@@ -501,7 +503,6 @@ function ProjectDictionaryRow() {
  function CleanupModelRow() {
    const { environment, connectedEnvironments } = useSettingsScope();
    const settings = useScopedSettings();
@@ -95,7 +95,7 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
    const providersByEnvironment = useEnvironmentProviders();
    const providers =
      (environment?.serverConfig
-@@ -484,15 +485,13 @@ function CleanupModelRow() {
+@@ -512,15 +513,13 @@ function CleanupModelRow() {
      settings,
      providers: providers.filter((provider) => provider.supportsTextGeneration !== false),
      projectId: null,
@@ -114,7 +114,7 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
    const selection = resolveAppModelSelectionState(
      {
        ...settings,
-@@ -517,15 +516,18 @@ function CleanupModelRow() {
+@@ -545,15 +544,18 @@ function CleanupModelRow() {
        toastManager.add({ type: "error", title: "Cleanup model not saved", description: reason });
        return;
      }
@@ -137,7 +137,7 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
        control={
          connectedEnvironments.length === 0 ? (
            <span className="text-sm text-muted-foreground">Connect an environment first.</span>
-@@ -568,8 +570,8 @@ function CleanupModelRow() {
+@@ -596,8 +598,8 @@ function CleanupModelRow() {
                checked={dedicated}
                disabled={!dedicated && !hasProvider}
                onCheckedChange={(checked) =>
@@ -148,7 +148,7 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
                      ? createModelSelection(
                          settings.textGenerationModelSelection.instanceId,
                          settings.textGenerationModelSelection.model,
-@@ -1165,6 +1167,7 @@ function TranscriptionTest(props: {
+@@ -1190,6 +1192,7 @@ function TranscriptionTest(props: {
  
  export function VoiceSettingsPanel() {
    const cleanupEnabled = useCleanupGrant() !== null;
@@ -156,14 +156,12 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
    const settings = useClientSettings();
    const settingsScope = useOptionalSettingsScope();
    const destination = useVoiceTranscriptionDestination();
-@@ -1598,13 +1601,16 @@ export function VoiceSettingsPanel() {
- 
+@@ -1603,12 +1606,15 @@ export function VoiceSettingsPanel() {
        <SettingsSection id={searchableSetting("speech-post-processing").id} title="Cleanup">
          <SettingsRow
--          title="Clean up transcripts"
--          description="Fixes punctuation, numbers, and spoken corrections with the cleanup model on the draft’s environment. Sends the transcript and nearby draft text, never audio."
-+          title="Clean up transcripts with a provider"
-+          description="Sends the transcript and nearby draft text, never audio, to the draft environment’s text generation provider to fix punctuation, numbers and corrections. Off by default; one setting everywhere."
+           title="Clean up transcripts"
+-          description="Off by default. Sends the transcript and nearby draft text, never audio, to the cleanup model."
++          description="Off by default; one setting everywhere. Sends the transcript and nearby draft text, never audio, to the draft environment’s text generation provider."
            control={
              <Switch
                aria-label="Clean up transcripts"
@@ -176,7 +174,7 @@ index e2137cf24e13fe7d3039a839f2e104bc155fd7af..1038f9c54a183083be9bb410a662547c
              />
            }
          />
-@@ -1682,6 +1688,7 @@ export function VoiceSettingsPanel() {
+@@ -1692,6 +1698,7 @@ export function VoiceSettingsPanel() {
            />
          ) : null}
        </SettingsSection>
@@ -198,7 +196,7 @@ index 77dbddadb6bbbb4eede94b66bb423aacbc659326..476f2edf5a8d179817864197b0622dd3
  
  const SHARED_KEY_SET = new Set<string>(SHARED_SERVER_SETTING_KEYS);
 diff --git a/packages/shared/src/serverSettings.test.ts b/packages/shared/src/serverSettings.test.ts
-index 354260ea3cfb92018e0006d5a3582211af4e00fc..d9fcf773335ffbd1efa8e8444f5adf2fb68e48e5 100644
+index 9836fe10fc77f382cfdc37562403d44c75cc61a0..8d3251e73cda415b2c32b824c64ba9be09f32b79 100644
 --- a/packages/shared/src/serverSettings.test.ts
 +++ b/packages/shared/src/serverSettings.test.ts
 @@ -1,5 +1,7 @@
@@ -209,7 +207,7 @@ index 354260ea3cfb92018e0006d5a3582211af4e00fc..d9fcf773335ffbd1efa8e8444f5adf2f
    ProjectId,
    ProviderDriverKind,
    ProviderInstanceId,
-@@ -408,7 +410,8 @@ describe("serverSettings helpers", () => {
+@@ -444,7 +446,8 @@ describe("serverSettings helpers", () => {
        },
        sourceControlWriterModelSelection: selection,
        reviewGuideModelSelection: selection,
@@ -219,7 +217,7 @@ index 354260ea3cfb92018e0006d5a3582211af4e00fc..d9fcf773335ffbd1efa8e8444f5adf2f
      });
      // A text generator has no provider snapshot; an empty list must not read as unusable.
      const on = settings(true);
-@@ -1029,7 +1032,8 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
+@@ -1065,7 +1068,8 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
      ]);
      const base = { ...DEFAULT_SERVER_SETTINGS, textGenerationModelSelection: textGeneration };
      expect(resolveSpeechPostProcessingModelSelection(base)).toBe(textGeneration);
@@ -229,7 +227,7 @@ index 354260ea3cfb92018e0006d5a3582211af4e00fc..d9fcf773335ffbd1efa8e8444f5adf2f
      expect(resolveSpeechPostProcessingModelSelection(pinned)).toEqual(cleanup);
      expect(
        resolveSpeechPostProcessingModelSelection({
-@@ -1054,8 +1058,57 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
+@@ -1090,8 +1094,57 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
        ] as never),
      ).toBe(textGeneration);
      expect(
@@ -290,7 +288,7 @@ index 354260ea3cfb92018e0006d5a3582211af4e00fc..d9fcf773335ffbd1efa8e8444f5adf2f
 +  });
  });
 diff --git a/packages/shared/src/serverSettings.ts b/packages/shared/src/serverSettings.ts
-index 24c418decfa2922a8b571211049e632b130c54fe..4dad9b15245f44d3884ca484cea28a2c259bd662 100644
+index 023c6eb74333e5d5b73cf4900b490f81c377615a..b3a74d1994c7fd84c4c75c2bdb0117e2e07f6291 100644
 --- a/packages/shared/src/serverSettings.ts
 +++ b/packages/shared/src/serverSettings.ts
 @@ -12,6 +12,7 @@ import {
@@ -301,7 +299,7 @@ index 24c418decfa2922a8b571211049e632b130c54fe..4dad9b15245f44d3884ca484cea28a2c
    isProviderTextGenerationCapable,
    type ModelSelection,
    type ProjectId,
-@@ -158,7 +159,7 @@ export function resolveSpeechPostProcessingModelSelection(
+@@ -166,7 +167,7 @@ export function resolveSpeechPostProcessingModelSelection(
    settings: ServerSettings,
    providers?: ReadonlyArray<ServerProvider>,
  ): ModelSelection {
@@ -310,7 +308,7 @@ index 24c418decfa2922a8b571211049e632b130c54fe..4dad9b15245f44d3884ca484cea28a2c
    return selection &&
      isModelSelectionProviderEnabled(settings, selection) &&
      isTextGenerationTargetUsable(settings, providers, selection.instanceId)
-@@ -392,6 +393,8 @@ export function applyServerSettingsPatch(
+@@ -400,6 +401,8 @@ export function applyServerSettingsPatch(
      backgroundActivityProfile,
      backgroundActivity,
      worktreeCleanup: worktreeCleanupPatch,
@@ -319,7 +317,7 @@ index 24c418decfa2922a8b571211049e632b130c54fe..4dad9b15245f44d3884ca484cea28a2c
      // Merged per entry below; its `null` removals must not reach deepMerge.
      usageLimitSources: usageLimitSourcesPatch,
      textGenerators: textGeneratorsPatch,
-@@ -401,6 +404,8 @@ export function applyServerSettingsPatch(
+@@ -409,6 +412,8 @@ export function applyServerSettingsPatch(
      usageModelAliases: usageModelAliasesPatch,
      // Entry replacement: deepMerge would keep keys the client meant to clear.
      projectSettingsOverrides: projectSettingsOverridesPatch,
@@ -328,7 +326,7 @@ index 24c418decfa2922a8b571211049e632b130c54fe..4dad9b15245f44d3884ca484cea28a2c
      projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
      projectAutoPullOverrides: _legacyAutoPull,
      projectScriptOverrides: _legacyScripts,
-@@ -496,6 +501,7 @@ export function applyServerSettingsPatch(
+@@ -504,6 +509,7 @@ export function applyServerSettingsPatch(
    const next = deepMerge(current, patchForMerge);
    const nextWithReplacementsBase = {
      ...next,
@@ -336,7 +334,7 @@ index 24c418decfa2922a8b571211049e632b130c54fe..4dad9b15245f44d3884ca484cea28a2c
      favorites,
      providerModelPreferences: nextModelPreferences,
      ...(worktreeCleanupPatch === undefined
-@@ -536,6 +542,10 @@ export function applyServerSettingsPatch(
+@@ -544,6 +550,10 @@ export function applyServerSettingsPatch(
      ...(patch.providerInstances !== undefined
        ? { providerInstances: patch.providerInstances }
        : {}),

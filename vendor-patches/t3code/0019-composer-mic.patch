@@ -1,16 +1,16 @@
 diff --git a/apps/web/src/speech/useEnvironmentSpeechInput.ts b/apps/web/src/speech/useEnvironmentSpeechInput.ts
-index c569c14500be68d6be66c20bd45496bd8b102ebd..f844c6e5995c80123ed6f326643d4ffacae7cfbf 100644
+index 94dd7cfb8b4cf48fed20df7300212e6f7669faa3..adc82014797ba498b94ad47db2b4356978d51b61 100644
 --- a/apps/web/src/speech/useEnvironmentSpeechInput.ts
 +++ b/apps/web/src/speech/useEnvironmentSpeechInput.ts
-@@ -38,6 +38,7 @@ import {
- import { useEnvironment } from "../state/environments";
+@@ -39,6 +39,7 @@ import { useEnvironment } from "../state/environments";
  import { useEnvironmentScope, usePreparedConnection } from "../state/session";
+ import { chooseRecordingMicrophone } from "./browserMicrophones";
  import { createBrowserVoiceInputPlatform } from "./browserVoiceInput";
 +import { tryTessayaComposerMic } from "./tessayaComposerMic";
  import { preferredSpeechLanguages } from "./preferredSpeechLanguages";
  import { runEnvironmentSpeech } from "./runEnvironmentSpeech";
  import { bindAudioGrant, readCleanupGrant, useAudioChoice } from "./voiceConsent";
-@@ -477,6 +478,12 @@ export function useEnvironmentSpeechInput(input: HookInput) {
+@@ -451,6 +452,12 @@ export function useEnvironmentSpeechInput(input: HookInput) {
  
    const start = useStableCallback(async () => {
      if (latestRef.current.input.disabled || (setup.open && setup.downloading)) return;

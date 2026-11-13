@@ -3,7 +3,7 @@ Subject: providers: a second Claude account home shares the primary's (D52)
 One call when the Claude adapter is created; the work is in provider/Drivers/ClaudeAccountHome.ts.
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cfbd727fc2 100644
+index 95432c40e68871f1e1e36cf084486a0107cb9353..32f7207512a3741f305145c6ddd9db3f3a3f1f58 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -70,6 +70,7 @@ import * as Option from "effect/Option";
@@ -14,7 +14,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
  import * as Schema from "effect/Schema";
  import * as Scope from "effect/Scope";
  import * as Stream from "effect/Stream";
-@@ -3357,6 +3358,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3408,6 +3409,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      readonly allocateSessionId?: Effect.Effect<string>;
      readonly offer?: (message: SDKUserMessage) => Effect.Effect<void>;
      readonly promptSuggestions?: boolean;
@@ -23,7 +23,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
    }) =>
      Effect.gen(function* () {
        const fileSystem = yield* FileSystem.FileSystem;
-@@ -3412,9 +3415,13 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -3463,9 +3466,13 @@ describe("ClaudeAdapterV2 background wake turns", () => {
        let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
        const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
          instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
@@ -37,7 +37,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
          attachmentsDir,
          fileSystem,
          path: yield* Path.Path,
-@@ -6370,8 +6377,87 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -6494,8 +6501,87 @@ describe("ClaudeAdapterV2 background wake turns", () => {
      );
    });
  
@@ -126,7 +126,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
      () =>
        Effect.scoped(
          Effect.gen(function* () {
-@@ -6429,23 +6515,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -6553,23 +6639,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
            assert.strictEqual(harness.getOpenedOptions(), originalOptions);
            assert.lengthOf(harness.offeredMessages, 4);
  
@@ -154,7 +154,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
            assert.lengthOf(harness.liveSelectionChanges, 3);
            assert.isTrue(yield* harness.hasPendingBackgroundWork);
          }).pipe(
-@@ -11384,6 +11463,57 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -11595,6 +11674,57 @@ describe("ClaudeAdapterV2 background wake turns", () => {
        ),
    );
  
@@ -212,7 +212,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
    it.effect("a user turn before the wakeup fires keeps the pending wakeup's hold", () =>
      Effect.scoped(
        Effect.gen(function* () {
-@@ -18843,7 +18973,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -19330,7 +19460,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
        ),
    );
  
@@ -221,7 +221,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
      Effect.scoped(
        Effect.gen(function* () {
          const changes = yield* makeChangeSignal;
-@@ -18987,14 +19117,17 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -19475,14 +19605,17 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                modelSelection: alternateModel,
              }),
            );
@@ -246,7 +246,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
  
          yield* runtime.interruptTurn({
            providerThread,
-@@ -19011,7 +19144,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -19499,7 +19632,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
              result: "Switched model.",
            }),
          );
@@ -255,7 +255,7 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
          yield* runtime.startTurn(
            makeClaudeTestTurnInput({
              threadId,
-@@ -19299,7 +19432,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
+@@ -19789,7 +19922,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                }),
              )
              .pipe(Effect.exit);
@@ -266,10 +266,10 @@ index d5de0f85d815f9d2157bfeea85591d20c66adb44..ff68c6ab66af25ce3b140b0b6d2091cf
            assert.isTrue(yield* hasPendingBackgroundWork);
          }).pipe(
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b7fdb93ac 100644
+index 3e10e09906796a50ec34cb818089de35da679976..51697102626a56eaf50c6e578b53d765c2a175c4 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-@@ -153,6 +153,7 @@ import * as Option from "effect/Option";
+@@ -154,6 +154,7 @@ import * as Option from "effect/Option";
  import * as Path from "effect/Path";
  import * as Queue from "effect/Queue";
  import * as Ref from "effect/Ref";
@@ -277,7 +277,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
  import * as Schema from "effect/Schema";
  import * as Semaphore from "effect/Semaphore";
  import * as Stream from "effect/Stream";
-@@ -190,6 +191,11 @@ import {
+@@ -191,6 +192,11 @@ import {
    mergeClaudeProcessEnvironment,
    resolveClaudeHomePath,
  } from "../../provider/Drivers/ClaudeHome.ts";
@@ -289,7 +289,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
  import {
    BUNDLED_CLAUDE_MODEL_CATALOG,
    resolveClaudeCatalogContextWindowTokens,
-@@ -4723,6 +4729,21 @@ interface ClaudeLiveQueryContext {
+@@ -4808,6 +4814,21 @@ interface ClaudeLiveQueryContext {
    // Per process, not per session: a relative temp dir follows the cwd this CLI
    // was launched in, and a later turn's cwd can differ.
    readonly taskOutputRoot: string | undefined;
@@ -311,7 +311,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
  }
  
  interface ActiveClaudeToolCall {
-@@ -5115,6 +5136,8 @@ function claudeProposedPlan(input: unknown): string | null {
+@@ -5200,6 +5221,8 @@ function claudeProposedPlan(input: unknown): string | null {
  
  export interface ClaudeAdapterV2Options {
    readonly instanceId: ProviderInstanceId;
@@ -320,7 +320,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
    readonly settings: ClaudeSettings;
    readonly modelCatalog?: Effect.Effect<ClaudeModelCatalog>;
    readonly environment: NodeJS.ProcessEnv;
-@@ -5126,6 +5149,8 @@ export interface ClaudeAdapterV2Options {
+@@ -5211,6 +5234,8 @@ export interface ClaudeAdapterV2Options {
    readonly queryRunner: ClaudeAgentSdkQueryRunnerShape;
    readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
    readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
@@ -329,7 +329,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
    readonly continuationRequests?: {
      readonly offer: (
        request: ProviderContinuationRequests.ProviderContinuationRequest,
-@@ -5165,6 +5190,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -5250,6 +5275,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
    ).pipe(Effect.provideService(Path.Path, path));
    const hostEnvironment = yield* HostProcess.Environment;
    const hostPlatform = yield* HostProcess.Platform;
@@ -338,7 +338,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
    const customHome =
      adapterOptions.settings.homePath.trim().length > 0 ||
      adapterOptions.environment.CLAUDE_CONFIG_DIR !== hostEnvironment.CLAUDE_CONFIG_DIR;
-@@ -5369,6 +5396,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -5454,6 +5481,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
    return ProviderAdapter.ProviderAdapterV2.of({
      instanceId: adapterOptions.instanceId,
      driver: CLAUDE_PROVIDER,
@@ -356,7 +356,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
      getCapabilities: Effect.fn("ClaudeAdapterV2.getCapabilities")(function () {
        return Effect.succeed(ClaudeProviderCapabilitiesV2);
      }),
-@@ -5435,6 +5473,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -5520,6 +5558,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
          const interruptedTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
          const steeredTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
          const queryContext = yield* Ref.make<ClaudeLiveQueryContext | null>(null);
@@ -370,7 +370,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
          // Wake buffers replay result frames, so ledger growth is measured once on arrival.
          const resultLedgerUsage = new WeakMap<SDKMessage, ClaudeLedgerUsage>();
          const resultsReportingNewContextWindow = new WeakSet<SDKMessage>();
-@@ -8886,6 +8931,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -9084,6 +9129,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                        cause: cause === undefined ? undefined : Cause.squash(cause),
                        ...(cause === undefined ? {} : claudeProcessExitFailure(cause)),
                        class: "transport_error",
@@ -385,7 +385,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
                      }),
                    }),
              });
-@@ -9570,8 +9623,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -9787,8 +9840,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                : { overageIncluded: undefined };
              const update = claudeRateLimitEventToUpdate(rateLimitInfo, names);
              const now = yield* DateTime.now;
@@ -398,7 +398,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
                  ...update,
                  checkedAt: DateTime.formatIso(now),
                });
-@@ -11674,6 +11729,22 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -11993,6 +12048,22 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              return existing;
            }
  
@@ -421,7 +421,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
            // Replacing this thread's process kills its background work, even with a new native identity.
            if (
              existing !== null &&
-@@ -11735,12 +11806,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12055,13 +12126,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
              ...(launchArgSettings === undefined
                ? {}
                : { sdkSettings: claudeSdkLaunchArgSettings(launchArgSettings) }),
@@ -431,6 +431,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
 -              turnInput.appThread.lineage.relationshipToParent === "subagent"
 -                ? yield* resolveSubagentPromptCacheTtl(turnInput.runtimePolicy.cwd)
 -                : undefined,
+-              shouldResume,
 +            environment: yield* (sessionLogin === null ? Effect.succeed : sessionLogin.prepare)(
 +              claudeQueryEnvironment(
 +                adapterOptions.environment,
@@ -438,11 +439,12 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
 +                turnInput.appThread.lineage.relationshipToParent === "subagent"
 +                  ? yield* resolveSubagentPromptCacheTtl(turnInput.runtimePolicy.cwd)
 +                  : undefined,
++                shouldResume,
 +              ),
              ),
              tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
              ...(mcpOverrides.allowedTools === undefined
-@@ -11831,6 +11904,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12152,6 +12225,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                resolvedTurnCwd,
                hostPlatform,
              ),
@@ -452,7 +454,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
            };
            // One step, so the replaced process cannot exit between the install and the handoff.
            yield* Ref.update(queryContext, (replaced) => {
-@@ -11865,6 +11941,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12194,6 +12270,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                    ) {
                      context.permissionMode = message.permissionMode;
                    }
@@ -463,7 +465,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
                    if (message.type === "result") {
                      const ledger = claudeModelLedger(message.modelUsage);
                      const growth = claudeLedgerDelta(context.modelLedger, ledger);
-@@ -11897,6 +11977,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12226,6 +12306,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                  ) {
                    yield* releaseHeldRootFrames(heldContext);
                  }
@@ -471,23 +473,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
                  const ownsLiveQuery = yield* Ref.modify(queryContext, (current) =>
                    current?.query === querySession ? [true, null] : [false, current],
                  );
-@@ -12068,7 +12149,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
-                 yield* Ref.update(activeTurn, (current) => (current === context ? null : current));
-                 return yield* new ProviderAdapter.ProviderAdapterProtocolError({
-                   driver: CLAUDE_PROVIDER,
--                  detail: "Claude provider query ended before the turn could start.",
-+                  // Tessaya: a --resume Claude could not load names the account and Claude's reason.
-+                  detail:
-+                    querySession.exitedBeforeTurn === undefined
-+                      ? "Claude provider query ended before the turn could start."
-+                      : claudeExitedBeforeTurnMessage(
-+                          querySession,
-+                          adapterOptions.displayName ?? adapterOptions.instanceId,
-+                        ),
-                 });
-               }
-               if (
-@@ -12127,7 +12215,29 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -12477,7 +12558,29 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                });
              });
              if (userMessage !== null) {
@@ -518,7 +504,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
                yield* startUserTurnForWakeReports(nativeThreadId);
                yield* Effect.uninterruptibleMask((restore) =>
                  restore(
-@@ -12662,6 +12772,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
+@@ -13016,6 +13119,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
            getModelContextWindow: (selection) => claudeContextWindow(selection) ?? undefined,
            events: Stream.fromEffectRepeat(Queue.take(events)),
            backgroundTasksEndWithProcess: true,
@@ -526,7 +512,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
            hasPendingBackgroundWork: Effect.gen(function* () {
              // A wakeup can be up to an hour out, past the idle timeout, and dies with the process.
              if (scheduledWakeupsByNativeThread.size > 0) {
-@@ -13263,7 +13374,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -13617,7 +13721,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      input: ProviderAdapterDriverCreateInput<ClaudeSettings>,
      hooks: Pick<ClaudeAdapterV2Options, "scopedLimitNames" | "onUsageLimits" | "modelCatalog"> = {},
    ) {
@@ -535,7 +521,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
      const fileSystem = yield* FileSystem.FileSystem;
      const hostEnvironment = yield* HostProcess.Environment;
      const idAllocator = yield* IdAllocator.IdAllocatorV2;
-@@ -13277,7 +13388,11 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -13631,7 +13735,11 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
        hostEnvironment,
      );
      const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
@@ -547,7 +533,7 @@ index 91f27c816cf33b62a3ac3536d6a84a6763609cee..04c06d9ef1a5a5d9dc172279440e722b
      const random = yield* SecureRandom.SecureRandom;
      const binaryPath = yield* resolveClaudeSdkExecutablePath(
        expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
-@@ -13285,9 +13400,11 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -13639,9 +13747,11 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      );
      return yield* makeClaudeAdapterV2({
        instanceId,
