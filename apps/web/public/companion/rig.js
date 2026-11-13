@@ -256,6 +256,7 @@
   // anticipation the other way, the move along an arc (lift and lean together), one overshoot, and the settle;
   // sideways scale answers vertical so her volume holds
   shift:     {g: "body", label: "Shift", dur: 1000, fn: (t, a) => { const s = Math.sign(a) || 1, m = Math.min(1.2, Math.abs(a)), h = (u, a0, b0) => bell(u, a0, b0) ** 2, L = (u) => (2 * h(u, 0, .5) - 3.6 * h(u, .22, 1)) * s * m, v = (L(t + .01) - L(t - .01)) / .02, sy = clamp(-v * .003, -.05, .05); return {d: {lift: L(t), sy, sx: -.5 * sy, lean: (-.8 * h(t, 0, .5) + 2.2 * h(t, .25, 1)) * s * m}}; }},
+  squint:    {g: "face", label: "Squint", dur: 300, fn: (t) => ({d: {lu: .5 * bell(t, 0, 1) ** .7, ll: .35 * bell(t, 0, 1), mw: .06 * bell(t, 0, 1)}})},
   squish:    {g: "body", label: "Squish", dur: 420, fn: (t) => ({d: {sy: -.1 * bell(t, 0, .5) + .04 * bell(t, .5, 1), sx: .08 * bell(t, 0, .5) - .03 * bell(t, .5, 1)}})},
   stomp:     {g: "feel", label: "Stomp", dur: 800, fn: (t, a) => ({d: {lift: -16 * a * bell(t, 0, .45), sy: -.12 * bell(t, .45, .7), sx: .1 * bell(t, .45, .7), flush: .5 * bell(t, .3, 1)}})},
   giggleOnce:{g: "feel", label: "Giggle", dur: 1000, fn: (t) => ({d: {arc: hold(t, 0, .1, .85, 1), lift: -3 * Math.abs(sw(t, 3)), tilt: -4 * bell(t, 0, 1), mc: .5 * bell(t, 0, 1)}, hands: t < .92 ? {L: ["mouth", "back"]} : null})},
@@ -667,7 +668,9 @@
   let tu = tune(T), bi = bias(T), intensity = opts.intensity ?? 1;
   const reduced = opts.reduced ?? (g.matchMedia && g.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const cur = Object.assign({}, N), vel = {}, tgt = Object.assign({}, N);
-  let oldLoop = null;
+  let oldLoop = null, brief = false;
+  // the mood's own colour and posture, kept while a brief reaction plays
+  const mood = {};
   // her soft body: one spring on how squashed (−) or stretched (+) she is, driven by her flight (stretch along her speed)
   // and kicked by an impact (a squash that recovers with one gentle overshoot); sideways answers so her volume holds
   const soft = {y: 0, v: 0, target: 0, tilt: 0, tiltTo: 0, felt: -1e9};
@@ -714,12 +717,16 @@
    tgt.sx = 1 + (tgt.sx - 1); // keep
    // posture follows the mood: up and a little back when it rises, down and forward when it falls
    // and a warm aura swells behind her as it rises (a falling mood greys through its own gloom)
+   if (brief) { for (const k of ["lift", "pitch", "glow", "warm", "cool", "gloom", "flush"]) tgt[k] = mood[k] ?? tgt[k]; return; }
    const v = VALENCE[ex.g] ?? 0; tgt.lift += -6 * v * A; tgt.pitch += -.03 * v * A; tgt.glow += Math.max(0, v) * .4 * A;
    tgt.warm = clamp(Math.max(0, v) * .9, 0, .8); tgt.cool = clamp(Math.max(0, -v) * .9, 0, .8);
+   for (const k of ["lift", "pitch", "glow", "warm", "cool", "gloom", "flush"]) mood[k] = tgt[k];
   }
   function setExpression(name, o = {}) {
    if (!E[name]) return;
    const prev = expr, t = performance.now();
+   // a brief reaction (picked up, a poke) changes the face only: colour and posture belong to moods
+   brief = !!o.brief;
    expr = name;
    // a mood's own acts (a sigh, a facepalm) end with the mood, fading out rather than cut
    for (const c of clips) if (c.loop && c.fade0 === undefined) c.fade0 = t;
@@ -966,9 +973,9 @@
     soft.tilt += (soft.tiltTo - soft.tilt) * Math.min(1, dt * 10);
     if (Math.abs(soft.y - soft.target) + Math.abs(soft.v) + Math.abs(soft.tilt - soft.tiltTo) > 1e-3 || soft.target !== 0) moving = true;
     else { soft.y = soft.target; soft.v = 0; }
-    Rv.sy += soft.y; Rv.sx += 1 / Math.sqrt(Math.max(.5, 1 + soft.y)) - 1; Rv.tilt += soft.tilt;
+    Rv.tilt += soft.tilt;
    }
-   Rv.sx = clamp(Rv.sx, .75, 1.3); Rv.sy = clamp(Rv.sy, .75, 1.3);
+   Rv.sx = clamp(Rv.sx, .7, 1.4); Rv.sy = clamp(Rv.sy, .7, 1.4);
 
    // secondary motion: appendages lag behind the body's movement on a loose spring
    const drive = Rv.tilt + Rv.lean + Rv.yaw * 22, driveY = Rv.lift;
@@ -1012,7 +1019,9 @@
    // it fades out inside her own window, so the desktop never shows its edge
    const aura = (id, o) => o > .01 ? `<ellipse cx="0" cy="${f1(GROUND + B.cy)}" rx="${f1(B.hw * 1.5)}" ry="${f1(B.h * .75)}" fill="url(#${id}${uid})" opacity="${(clamp(o, 0, 1)).toFixed(3)}"/>` : "";
    put(L.glow, aura("aw", Rv.warm * 1.15) + aura("ac", Rv.cool * 1.15) + (Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : ""));
-   L.w.setAttribute("transform", `translate(0 ${f1(GROUND + lift)}) rotate(${f1(Rv.lean)}) translate(0 ${f1(B.cy)}) rotate(${f1(Rv.tilt)}) scale(${f1(Rv.zoom * 1000) / 1000}) translate(0 ${f1(-B.cy)})`);
+   // her soft body squashes and stretches as a whole, feet on the ground, her volume held (sideways = 1 / √(height))
+   const sq = clamp(1 + soft.y, .72, 1.3), squash = Math.abs(sq - 1) > 1e-3 ? ` scale(${(1 / Math.sqrt(sq)).toFixed(4)} ${sq.toFixed(4)})` : "";
+   L.w.setAttribute("transform", `translate(0 ${f1(GROUND + lift)})${squash} rotate(${f1(Rv.lean)}) translate(0 ${f1(B.cy)}) rotate(${f1(Rv.tilt)}) scale(${f1(Rv.zoom * 1000) / 1000}) translate(0 ${f1(-B.cy)})`);
    L.fx.setAttribute("transform", `translate(0 ${f1(GROUND + lift)})`);
 
    // props and hands: a gesture's hands win over a prop's, a prop's over the expression's
@@ -1256,8 +1265,9 @@
   return {
    /** Her speed while she flies or is carried (px/s, screen axes; 0, 0 at rest): she stretches along it and leans into it. */
    motion(vx, vy) { const sp = Math.hypot(vx, vy); soft.target = clamp(sp / 2400, 0, .16) * (Math.abs(vy) >= Math.abs(vx) ? 1 : -.5); soft.tiltTo = clamp(vx / 160, -8, 8); wake(); },
-   /** She hit something at this speed (px/s): a squash that springs back with one gentle overshoot, the face a beat later. */
-   impact(speed) { const k = clamp(speed / 2600, 0, 1); soft.target = 0; soft.tiltTo = 0; soft.v -= 2.2 * k; const t = performance.now(); if (k > .25 && t - soft.felt > 700) play("blink", {delay: 90}); if (k > .25) soft.felt = t; wake(); },
+   /** She hit something at this speed (px/s): a squash that springs back with one gentle overshoot (a hard one about half as
+    * big again); landing, a quick squint as she hits, never in the air. */
+   impact(speed, landed = true) { const k = clamp(speed / 2600, 0, 1); soft.target = 0; soft.tiltTo = 0; soft.v -= 6 * k * (1 + .5 * k); const t = performance.now(); if (landed && k > .2 && t - soft.felt > 700) { play("squint"); soft.felt = t; } wake(); },
    setExpression, setPersonality, setCharacter, play, spawn, prop, use, clearProps, speak, syncSpeech, speechTime, stopSpeech, fidget,
    setIntensity(v) { intensity = v; retarget(); wake(); },
    setHandMode(m) { handMode = m === "float" ? "float" : "arms"; hands.L.vis = hands.R.vis = false; wake(); },

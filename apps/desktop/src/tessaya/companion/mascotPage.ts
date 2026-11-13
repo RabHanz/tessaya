@@ -51,7 +51,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (!rig) return;
    still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : Infinity;
    if (!speaking) fps = still;
-   rig.setExpression(c.expression, { noCut: c.expression === "neutral" });
+   rig.setExpression(c.expression, { noCut: c.expression === "neutral", brief: !!c.brief });
    if (c.clip) rig.play(c.clip);
    if (c.fx) rig.spawn(c.fx);
   },
@@ -62,6 +62,6 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   },
   play(name) { if (rig) rig.play(name); },
   motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); },
-  impact(speed) { if (rig && rig.impact) rig.impact(speed); },
+  impact(speed, landed) { if (rig && rig.impact) rig.impact(speed, landed !== false); },
  };
 })();`;

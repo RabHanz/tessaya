@@ -4,6 +4,8 @@ import { fakeTimers } from "../test/render";
 
 interface Rig {
   setExpression: (name: string) => void;
+  motion: (vx: number, vy: number) => void;
+  impact: (speed: number, landed?: boolean) => void;
   destroy: () => void;
 }
 interface Studio {
@@ -48,6 +50,8 @@ const mount = (TCS: Studio, persona: string) => {
         (a, e) => a + Number(e.getAttribute("opacity")),
         0,
       ),
+      // her body's height on screen (her whole figure squashes and stretches)
+      height: svg.querySelector("g.bd path")?.getBoundingClientRect().height ?? 0,
       lift: Number(/translate\(0 (-?[\d.]+)\)/.exec(w)?.[1] ?? 0),
       brow: Number(svg.querySelector('[data-l="brow"]')?.getAttribute("opacity") ?? 0),
       eyes,
@@ -143,4 +147,28 @@ describe("the companion's changes of expression", () => {
       }
     },
   );
+});
+
+describe("the companion's body in a throw", () => {
+  it("stretches as she falls, squashes on a hard landing and springs back, never snapping", async () => {
+    const TCS = await studio();
+    using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+    using _timers = fakeTimers();
+    using m = mount(TCS, "tessaya");
+    const rest = m.sample().height;
+    // falling at 1500 px/s, as the desktop reports her flight every frame
+    m.rig.motion(0, 1500);
+    const falling = m.frames(20).map((s) => s.height);
+    m.rig.motion(0, 0);
+    m.rig.impact(1800, true);
+    const after = m.frames(60).map((s) => s.height);
+    expect(Math.max(...falling)).toBeGreaterThan(rest * 1.03);
+    // a hard landing squashes her whole figure visibly (at least 5% shorter), volume held
+    expect(Math.min(...after.slice(0, 15))).toBeLessThan(rest * 0.95);
+    const all = [rest, ...falling, ...after];
+    expect(motionOf(all).snaps).toBe(0);
+    // the squash and its recovery move on every frame of their first 0.4 s, and she is herself again by 1 s
+    expect(after.slice(0, 24).every((h, i) => i === 0 || h !== after[i - 1])).toBe(true);
+    expect(Math.abs(after.at(-1)! - rest)).toBeLessThan(rest * 0.02);
+  });
 });
