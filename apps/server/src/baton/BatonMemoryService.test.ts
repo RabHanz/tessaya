@@ -327,6 +327,61 @@ const sync = (from: BatonMemoryService["Service"], to: BatonMemoryService["Servi
     return yield* to.applyChanges(pulled.origin, pulled.changes, pulled.upTo);
   });
 
+it.effect(
+  "a persona's own memory reaches only that persona, he sees it, 'Make household' opens it to all, and a sync keeps it so",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* server;
+      const b = yield* server;
+      const own = yield* a.add({
+        kind: "preference",
+        text: "He likes the butler dry about the weather",
+        source: "thread",
+        confidence: 0.8,
+        persona: "alfred",
+        visibility: "persona",
+      });
+      const sees = (memory: typeof a, agent?: string) =>
+        Effect.map(
+          memory.recall({
+            text: "how should the butler talk about the weather",
+            ...(agent === undefined ? {} : { agent }),
+          }),
+          (r) => r.ids.includes(own.id),
+        ).pipe(Effect.provideService(MemoryViewer, "desktop"));
+      assert.isTrue(yield* sees(a, "alfred"));
+      assert.isFalse(yield* sees(a, "freya"));
+      assert.isFalse(yield* sees(a));
+      // Another client (a browser, an agent) never names a persona, so never sees it.
+      assert.isFalse(
+        (yield* a.search({ text: "butler weather", agent: "alfred" })).some(
+          (h) => h.item.id === own.id,
+        ),
+      );
+      // His own view sees everything.
+      assert.isTrue(
+        (yield* a.list({ admin: true }).pipe(Effect.provideService(MemoryViewer, "desktop"))).some(
+          (i) => i.id === own.id,
+        ),
+      );
+      // The sync carries whose it is.
+      // As his servers sync (a sync-only credential reads as "server"): every item goes.
+      yield* sync(a, b).pipe(Effect.provideService(MemoryViewer, "server"));
+      assert.isTrue(yield* sees(b, "alfred"));
+      assert.isFalse(yield* sees(b, "freya"));
+      // "Make household": every persona now recalls it, and that too travels (a later change wins).
+      yield* TestClock.adjust("1 minute");
+      const opened = yield* a
+        .edit(own.id, { visibility: "household" })
+        .pipe(Effect.provideService(MemoryViewer, "desktop"));
+      assert.strictEqual(opened.visibility, "household");
+      assert.strictEqual(opened.text, own.text);
+      assert.isTrue(yield* sees(a, "freya"));
+      yield* sync(a, b).pipe(Effect.provideService(MemoryViewer, "server"));
+      assert.isTrue(yield* sees(b, "freya"));
+    }),
+);
+
 it.effect("two servers converge: last writer wins, a forget travels and stays forgotten", () =>
   Effect.gen(function* () {
     const a = yield* server;

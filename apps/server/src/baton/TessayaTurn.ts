@@ -325,6 +325,14 @@ export const make = Effect.gen(function* () {
       // He asked for it to be kept, so it stands in every later turn's memory (standing needs 0.6), unlike a guess.
       ...(his ? {} : { confidence: 0.7 }),
       sourceRef: origin === null ? "agent" : `vessel:${origin.kind}:${origin.id}`,
+      // Where it came from, for "Why?" and the household model: the vessel, the voice and the persona that heard it.
+      ...(origin === null
+        ? { surface: "agent" }
+        : {
+            surface: origin.kind,
+            speaker: his ? "owner" : (origin.speaker?.personId ?? null),
+            persona: origin.persona ?? null,
+          }),
       // An agent outside a turn only proposes; he says yes in Memory.
       ...(origin === null ? { tainted: true } : {}),
     });

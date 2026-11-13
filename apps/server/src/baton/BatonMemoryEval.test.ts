@@ -17,7 +17,12 @@ import {
   layerNone as noEmbedder,
 } from "./BatonMemoryEmbedder.ts";
 import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
-import { BatonMemoryService, layer as memoryLayer, textHash } from "./BatonMemoryService.ts";
+import {
+  BatonMemoryService,
+  MemoryViewer,
+  layer as memoryLayer,
+  textHash,
+} from "./BatonMemoryService.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { TessayaTurn, layer as turnLayer } from "./TessayaTurn.ts";
 import { vectorToBytes } from "./memoryVectors.ts";
@@ -254,7 +259,11 @@ const retrieval = (arm: Arm, model: Layer.Layer<BatonMemoryEmbedder>, withModel:
         "a superseded item came back",
       );
       assert.deepStrictEqual(wrong, []);
-    }).pipe(Effect.provide(withTurn(model))),
+    }).pipe(
+      // Read as the desktop's own session (and a device vessel's adapter) does: a persona's walls apply.
+      Effect.provideService(MemoryViewer, "desktop"),
+      Effect.provide(withTurn(model)),
+    ),
   );
 
 /** Old facts a reworded update leaves alive, at most; lower it when the loop improves. */

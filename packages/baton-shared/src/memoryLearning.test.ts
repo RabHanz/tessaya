@@ -67,6 +67,31 @@ describe("draftsFromProposals", () => {
     });
   });
 
+  it("marks the persona it was learned with, and keeps to it only what the model marks as theirs alone", () => {
+    const out = draftsFromProposals(
+      [
+        {
+          kind: "preference",
+          text: "He likes the butler dry about the weather",
+          personaOnly: true,
+        },
+        { kind: "fact", text: "The boiler is serviced in March" },
+      ],
+      input({ agent: "alfred" }),
+      0,
+    );
+    expect(out[0]!.draft).toMatchObject({ persona: "alfred", visibility: "persona" });
+    expect(out[1]!.draft).toMatchObject({ persona: "alfred" });
+    expect(out[1]!.draft.visibility).toBeUndefined();
+    // With no persona, nothing can be one persona's alone.
+    const none = draftsFromProposals(
+      [{ kind: "fact", text: "Bins on Tuesday", personaOnly: true }],
+      input(),
+      0,
+    );
+    expect(none[0]!.draft.visibility).toBeUndefined();
+  });
+
   it("a tainted turn keeps what he said himself and holds the rest", () => {
     const [mine, read] = draftsFromProposals(
       [

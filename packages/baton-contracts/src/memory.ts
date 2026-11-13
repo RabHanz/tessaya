@@ -63,6 +63,12 @@ export const BatonMemoryItem = Schema.Struct({
   expiresAt: Schema.NullOr(IsoDateTime),
   supersededBy: Schema.NullOr(Schema.String),
   proposed: Schema.Boolean,
+  /** The persona it was learned with; with `visibility: persona` only that persona recalls it. */
+  persona: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  visibility: Schema.optionalKey(Schema.Literals(["household", "persona"])),
+  /** The vessel kind that heard it, and the voice that told it. */
+  surface: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  speaker: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonMemoryItem = typeof BatonMemoryItem.Type;
 
@@ -108,6 +114,8 @@ export const BatonMemoryEditInput = Schema.Struct({
   id: TrimmedNonEmptyString,
   text: Schema.optionalKey(Schema.String),
   kind: Schema.optionalKey(BatonMemoryKind),
+  /** "Make household": every persona may recall it; "persona" keeps it to the persona it was learned with. */
+  visibility: Schema.optionalKey(Schema.Literals(["household", "persona"])),
 });
 /** One earlier wording of an item (KIRO-4), kept when it changed. */
 export const BatonMemoryVersion = Schema.Struct({

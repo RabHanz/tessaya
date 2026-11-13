@@ -24,6 +24,16 @@ describe("the operating-system pack", () => {
     expect(merged.roles["marketing"]).toBe(DEFAULT_OS_PACK.roles["marketing"]);
     expect(mergePack({}).executive).toBe(DEFAULT_OS_PACK.executive);
   });
+  it("reads a persona's `private: yes`, never for the lead", () => {
+    const pack = mergePack({
+      roles: {
+        research: "---\nname: Sebastian\nprivate: yes\n---\nResearch.",
+        executive: "---\nprivate: yes\n---\nLead.",
+      },
+    });
+    expect(pack.personas.find((p) => p.id === "research")?.private).toBe(true);
+    expect(pack.personas.find((p) => p.lead)?.private).toBeUndefined();
+  });
   it("frames the planning turn and stays within its cap", () => {
     expect(packPrompt(DEFAULT_OS_PACK)).toContain("job brief");
     expect(packPrompt(mergePack({ executive: "x".repeat(20_000) })).length).toBe(PACK_PROMPT_CHARS);

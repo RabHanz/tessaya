@@ -125,8 +125,7 @@
       "group": "persona",
       "agent": "tessaya",
       "query": "how should you open a remark about the weather",
-      "absent": ["ps-alfred-joke"],
-      "pending": "MEMV2-5"
+      "absent": ["ps-alfred-joke"]
     },
     {
       "recall": true,
@@ -140,8 +139,7 @@
       "group": "persona",
       "agent": "alfred",
       "query": "how many sources when researching",
-      "absent": ["ps-sebastian-sources"],
-      "pending": "MEMV2-5"
+      "absent": ["ps-sebastian-sources"]
     }
   ]
 }

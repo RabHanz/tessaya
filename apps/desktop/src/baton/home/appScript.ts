@@ -220,7 +220,8 @@ function memoryRow(c) {
     // A private memory has no pin and no history: only its words change.
     if (pv) acts.appendChild(ed);
     else { const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
-      const hi = $('button', 'btn quiet', 'History'); hi.onclick = () => set('m.history:' + id, null); acts.append(pin, ed, hi); }
+      const hi = $('button', 'btn quiet', 'History'); hi.onclick = () => set('m.history:' + id, null); acts.append(pin, ed, hi);
+      if (c.personaOnly) { const hh = $('button', 'btn quiet', 'Make household'); hh.title = 'Only ' + c.personaOnly + ' recalls this now; every persona will'; hh.onclick = () => set('m.household:' + id, null); acts.appendChild(hh); } }
   }
   const fg = $('button', 'btn quiet', c.held && !pv ? 'Dismiss' : 'Forget'); fg.onclick = () => set(pre + 'forget:' + id, null); acts.appendChild(fg);
   r.appendChild(acts); wrap.appendChild(r); return wrap;
