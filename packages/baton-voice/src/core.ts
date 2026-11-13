@@ -306,6 +306,13 @@ export const createVoiceCore = (input: {
   ) => Promise<boolean | null>;
   /** The model is sure enough of this word that her saying the name too cannot make it her echo. */
   readonly trustWake?: (word: string, score: number) => boolean;
+  /**
+   * The home server's voice arbiter (one responder per utterance across his devices), asked before a wake opens a
+   * turn. Null when it cannot be asked: this vessel answers as before. A loser stays quiet until `until` (epoch ms).
+   */
+  readonly claim?: (
+    word: string | null,
+  ) => Promise<{ readonly answer: boolean; readonly until?: number } | null>;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). Absent: only a wake or stop phrase gets through. */
   readonly echo?: EchoGuard;
   /** Headphones: the mic cannot hear the voice, so it listens all the time and his speech over it is a barge-in. */
@@ -322,6 +329,8 @@ export const createVoiceCore = (input: {
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
   const origin = input.origin ?? Date.now();
   const wallNow = input.clock ?? Date.now;
+  /** Until when another of his devices is answering (the arbiter's word): wakes here are not taken. */
+  let quietUntil = Number.NEGATIVE_INFINITY;
   let samples = 0;
   const now = () => origin + (samples * 1000) / VOICE_SAMPLE_RATE;
 
@@ -976,8 +985,15 @@ export const createVoiceCore = (input: {
           !disposed
         ) {
           stopWaiting = null;
-          acceptWake(1, startedAt, name, true);
-          enqueue(woke(name));
+          if (input.claim === undefined) {
+            acceptWake(1, startedAt, name, true);
+            enqueue(woke(name));
+          } else
+            enqueue(async () => {
+              if (!(await answersHere(name))) return;
+              acceptWake(1, startedAt, name, true);
+              await woke(name)();
+            });
           return;
         }
         // Her question is waiting on him. Over her voice a "no" is his answer (at worst nothing runs), unless she said
@@ -1304,6 +1320,19 @@ export const createVoiceCore = (input: {
     if (open) openAt(firedAt, late);
   };
   /** The machine's side of a wake, in queue order: every sentence queued after it answers to this word. */
+  /**
+   * Whether this vessel answers a wake (the home server's arbiter); asked before any cue or turn, so a device that
+   * loses stays quiet. Another device answering: her name here is him to that one, or her voice from it.
+   */
+  const answersHere = async (word: string | null): Promise<boolean> => {
+    if (wallNow() < quietUntil) return false;
+    if (input.claim === undefined) return true;
+    const verdict = await input.claim(word).catch(() => null);
+    if (verdict === null || verdict.answer) return true;
+    quietUntil = verdict.until ?? wallNow() + 20_000;
+    emit({ type: "dropped", text: "", reason: "another device answers" });
+    return false;
+  };
   const woke = (word: string | null) => async () => {
     addressee = word;
     await dispatch({ type: "wake", at: now() });
@@ -1366,7 +1395,8 @@ export const createVoiceCore = (input: {
               heardName = answer === true;
               return answer !== false;
             })
-            .catch(() => true),
+            .catch(() => true)
+            .then((ok) => ok && answersHere(wakeWord)),
           made: false,
           segment: "none",
           ok: null,
@@ -1399,16 +1429,25 @@ export const createVoiceCore = (input: {
           show();
         });
       } else {
-        acceptWake(
-          score,
-          firedAt,
-          wakeWord,
-          firedAt < samples,
-          undefined,
-          true,
-          fromSleep ? "lone" : null,
-        );
-        enqueue(woke(wakeWord));
+        const accept = () =>
+          acceptWake(
+            score,
+            firedAt,
+            wakeWord,
+            firedAt < samples,
+            undefined,
+            true,
+            fromSleep ? "lone" : null,
+          );
+        if (input.claim === undefined) {
+          accept();
+          enqueue(woke(wakeWord));
+        } else
+          enqueue(async () => {
+            if (!(await answersHere(wakeWord))) return;
+            accept();
+            await woke(wakeWord)();
+          });
       }
     } else if (machine.deadline !== null || machine.pending !== null) {
       const at = now();

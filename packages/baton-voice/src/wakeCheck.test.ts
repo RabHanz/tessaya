@@ -18,6 +18,8 @@ const rig = (
   recognised?: Promise<void>,
   /** He is recording with the dictation keys. */
   recording?: () => boolean,
+  /** Her server's arbiter (one responder per utterance). */
+  claim?: Parameters<typeof createVoiceCore>[0]["claim"],
 ) => {
   let fire = false;
   let firedAgo = 0;
@@ -33,6 +35,7 @@ const rig = (
     ...(verify === undefined ? {} : { verifyWake: verify }),
     ...(recording === undefined ? {} : { recording }),
     ...(trustWake === undefined ? {} : { trustWake }),
+    ...(claim === undefined ? {} : { claim }),
     ...(nearEnd
       ? {
           echo: {
@@ -109,6 +112,40 @@ describe("the second check before a wake from sleep", () => {
     await r.core.idle();
     expect(checks).toBe(0);
     expect(r.events.some((e) => e.type === "wake")).toBe(true);
+  });
+
+  it("stays quiet when her server's arbiter gives the wake to another of his devices, and answers when it cannot be asked", async () => {
+    const claims: Array<string | null> = [];
+    const lost = rig(
+      undefined,
+      () => true,
+      false,
+      undefined,
+      undefined,
+      async (word) => {
+        claims.push(word);
+        return { answer: false, until: 60_000 };
+      },
+    );
+    lost.push(2);
+    lost.wake();
+    lost.push(0.1);
+    await lost.core.idle();
+    expect(claims).toEqual(["Sebastian"]);
+    expect(lost.events.some((e) => e.type === "wake")).toBe(false);
+    const older = rig(
+      undefined,
+      () => true,
+      false,
+      undefined,
+      undefined,
+      async () => null,
+    );
+    older.push(2);
+    older.wake();
+    older.push(0.1);
+    await older.core.idle();
+    expect(older.events.some((e) => e.type === "wake")).toBe(true);
   });
 
   it("sends a sure fire over her voice to the check when his voice was not heard", async () => {

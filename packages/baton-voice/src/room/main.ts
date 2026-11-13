@@ -335,6 +335,45 @@ const brain = (url: string, key: string): RoomDeps["brain"] =>
     }
   };
 
+/**
+ * Her server's voice arbiter on the R1's device key. A claim waits for the 250 ms round, at most 1.5 s; any failure (an
+ * older server, the network) is null, and the R1 answers as before.
+ */
+const arbiter = (url: string, key: string): NonNullable<RoomDeps["arbiter"]> => {
+  const at = url.replace(/\/chat\/completions$/, "/voice/arbiter");
+  const call = (body: Record<string, unknown>, ms: number) =>
+    fetch(at, {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ms),
+    }).then(async (res) =>
+      res.ok ? ((await res.json()) as { ok?: boolean; value?: unknown }) : null,
+    );
+  return {
+    claim: (claim) =>
+      call({ op: "claim", ...claim }, 1_500)
+        .then((r) => {
+          const v =
+            r?.ok === true
+              ? (r.value as { answer?: unknown; winner?: unknown; until?: unknown })
+              : null;
+          if (v === null || typeof v?.answer !== "boolean") return null;
+          return {
+            answer: v.answer,
+            ...(typeof v.winner === "string" ? { winner: v.winner } : {}),
+            ...(typeof v.until === "number" ? { until: v.until } : {}),
+          };
+        })
+        .catch(() => null),
+    report: (op, deviceId, untilMs) =>
+      void call(
+        { op, deviceId, ...(untilMs === undefined ? {} : { untilMs: Math.round(untilMs) }) },
+        3_000,
+      ).catch(() => undefined),
+  };
+};
+
 /** A guess's word to the server: `confirm` (his final words matched) or `played` (he heard it). Best effort. */
 const turnSignal =
   (url: string, key: string, what: "confirm" | "played") =>
@@ -437,7 +476,7 @@ const main = async () => {
             turn.feed(pcm);
             return turn.finish();
           },
-          onWake: (id, word, level) => room?.woken(id, word, level),
+          onWake: (id, word, level, score) => room?.woken(id, word, level, score),
           log,
         });
   startCameraRelay();
@@ -476,6 +515,7 @@ const main = async () => {
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
+      arbiter: arbiter(env("R1_BRAIN_URL"), deviceKey),
       confirmed: turnSignal(env("R1_BRAIN_URL"), deviceKey, "confirm"),
       // A bench's turns for regression cases, only while it set `cmd/voice/no-reply` with `keep` (never his).
       keep: (b) => {
