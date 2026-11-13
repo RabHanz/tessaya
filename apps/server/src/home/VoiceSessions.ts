@@ -62,6 +62,8 @@ export interface SessionSpec {
   readonly effort: string | null;
   readonly system: string;
   readonly tools: ReadonlyArray<SessionTool>;
+  /** Claude Code's own tools for this session, and the folder they work in: his desktop's files on his own machine. */
+  readonly builtins?: { readonly tools: ReadonlyArray<string>; readonly cwd: string };
 }
 
 /** The turn in progress: its tool runner and what it hears back. */
@@ -114,9 +116,9 @@ const sessionArgs = (spec: SessionSpec, mcpConfig: string): ReadonlyArray<string
   "--strict-mcp-config",
   // Her own web search and fetch, on the subscription (BRAIN-DESIGN §13).
   "--tools",
-  WEB_TOOLS.join(","),
+  (spec.builtins?.tools ?? WEB_TOOLS).join(","),
   "--allowedTools",
-  [`mcp__${MCP_NAME}__*`, ...WEB_TOOLS].join(","),
+  [`mcp__${MCP_NAME}__*`, ...(spec.builtins?.tools ?? WEB_TOOLS)].join(","),
   "--disable-slash-commands",
   "--permission-mode",
   "dontAsk",
@@ -126,7 +128,13 @@ const sessionArgs = (spec: SessionSpec, mcpConfig: string): ReadonlyArray<string
 ];
 
 const specKey = (spec: SessionSpec) =>
-  JSON.stringify([spec.model, spec.effort, spec.system, spec.tools.map((t) => t.name)]);
+  JSON.stringify([
+    spec.model,
+    spec.effort,
+    spec.system,
+    spec.tools.map((t) => t.name),
+    spec.builtins ?? null,
+  ]);
 
 export const createVoiceSessions = (
   options: {
@@ -178,7 +186,7 @@ export const createVoiceSessions = (
     let child: NodeChildProcess.ChildProcess | null = null;
     for (let tries = 1; child === null; tries += 1) {
       const proc = spawn("claude", [...sessionArgs(spec, config)], {
-        cwd: dir,
+        cwd: spec.builtins?.cwd ?? dir,
         env: { ...env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
         stdio: ["pipe", "pipe", "ignore"],
         windowsHide: true,

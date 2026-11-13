@@ -93,6 +93,27 @@ describe("warm subscription sessions for spoken turns", () => {
     expect(sessionEvent("not json")).toBeNull();
   });
 
+  it("gives Claude Code's own file tools, in his folder, only to a session whose spec asks for them", async () => {
+    const started: Array<{ args: ReadonlyArray<string>; cwd: unknown }> = [];
+    const claude = fakeClaude([], { count: 0 });
+    const spawn = ((cmd: string, args: ReadonlyArray<string>, options: { cwd?: unknown }) => {
+      started.push({ args, cwd: options.cwd });
+      return claude(cmd, args as Array<string>, options as never);
+    }) as unknown as typeof NodeChildProcess.spawn;
+    const sessions = createVoiceSessions({ spawn, retryMs: 1, lean: true });
+    await sessions.warm("room", spec);
+    await sessions.warm("desktop", {
+      ...spec,
+      builtins: { tools: ["Read", "Bash"], cwd: "/home/him" },
+    });
+    await sessions.close();
+    const toolsOf = (i: number) => started[i]!.args[started[i]!.args.indexOf("--tools") + 1];
+    expect(toolsOf(0)).toBe("WebSearch,WebFetch");
+    expect(started[0]!.cwd).not.toBe("/home/him");
+    expect(toolsOf(1)).toBe("Read,Bash");
+    expect(started[1]!.cwd).toBe("/home/him");
+  });
+
   it("survives a vanished binary, and warms each turn's own session before his words", async () => {
     const heard: Array<string> = [];
     const results: Array<string> = [];

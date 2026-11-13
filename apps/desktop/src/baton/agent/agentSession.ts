@@ -21,7 +21,7 @@ import {
   greetingLine,
   sinceLine,
   type TurnPersona,
-} from "./agentPrompt.ts";
+} from "@t3tools/baton-shared/agentPrompt";
 
 /** About this many turns, and the session is replaced and re-seeded; a long one gets slow and costly. */
 export const RECYCLE_TURNS = 40;

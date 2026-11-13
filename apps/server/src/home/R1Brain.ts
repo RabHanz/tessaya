@@ -78,6 +78,7 @@ export interface SessionToolTurn extends ToolTurn {
   readonly cue: (web: boolean) => void;
   /** `deep`: a task she handed to Opus (BRAIN-DESIGN §2), in sessions of its own; else her voice row. */
   readonly role?: "voice" | "deep";
+  readonly builtins?: SessionSpec["builtins"];
 }
 
 /** A vessel's deep sessions wait apart from its voice ones: their spec differs, and one must not replace the other. */
@@ -97,7 +98,7 @@ export class R1Brain extends Context.Service<
     readonly session: (turn: SessionToolTurn) => Stream.Stream<string, R1BrainError>;
     /** Warms a session for this vessel now, so the first turn is as quick as the rest. */
     readonly warm: (
-      turn: Pick<SessionToolTurn, "vessel" | "system" | "tools" | "role">,
+      turn: Pick<SessionToolTurn, "vessel" | "system" | "tools" | "role" | "builtins">,
     ) => Effect.Effect<void>;
   }
 >()("t3/home/R1Brain") {}
@@ -389,7 +390,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   yield* Effect.addFinalizer(() => Effect.promise(() => sessions.close()));
   /** The subscription session a vessel's turns run in, from the voice row. */
   const sessionSpec = Effect.fn("R1Brain.sessionSpec")(function* (
-    turn: Pick<SessionToolTurn, "system" | "tools" | "role">,
+    turn: Pick<SessionToolTurn, "system" | "tools" | "role" | "builtins">,
   ) {
     const row = yield* (turn.role === "deep" ? deep : voice).pipe(
       Effect.mapError(() => new R1BrainError({ detail: "settings" })),
@@ -406,6 +407,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
         description: t.description,
         inputSchema: t.input_schema as Readonly<Record<string, unknown>>,
       })),
+      ...(turn.builtins === undefined ? {} : { builtins: turn.builtins }),
     } satisfies SessionSpec;
   });
 
@@ -478,7 +480,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
     );
 
   const warm = Effect.fn("R1Brain.warm")(
-    function* (turn: Pick<SessionToolTurn, "vessel" | "system" | "tools" | "role">) {
+    function* (turn: Pick<SessionToolTurn, "vessel" | "system" | "tools" | "role" | "builtins">) {
       if ((yield* route) !== "subscription") return;
       const spec = yield* sessionSpec(turn);
       yield* Effect.promise(() => sessions.warm(slotOf(turn), spec).catch(() => undefined));

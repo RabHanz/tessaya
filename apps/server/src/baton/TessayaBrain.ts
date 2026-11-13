@@ -20,6 +20,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import type { R1Brain, RoomTool, RoomToolSet, ToolOutcome, ToolTurn } from "../home/R1Brain.ts";
+import type { SessionSpec } from "../home/VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TurnOrigin, conversationKey, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { TurnPools } from "./TurnPools.ts";
@@ -194,6 +195,8 @@ export interface Gathered<R> {
 export interface VesselTurn<E, R> {
   readonly gather: Effect.Effect<Gathered<R>, E, R>;
   readonly system: string;
+  /** Claude Code's own tools for a vessel whose turn runs on its own machine (the desktop's files). */
+  readonly builtins?: SessionSpec["builtins"];
   /** The shared tools (the one registry), called for `device`. */
   readonly tools: RoomToolSet;
   readonly device: string | undefined;
@@ -286,6 +289,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   }, names);
   const vesselId = turn.vessel.id;
   const ownSpecs = own.map((t) => t.spec);
+  const builtins = vessel.builtins === undefined ? {} : { builtins: vessel.builtins };
   let failed = 0;
   /** The task Sonnet handed to Opus this turn, once the policy said go. */
   let handOff: string | null = null;
@@ -324,6 +328,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
           system: vessel.system,
           tools: [...tools.specs, ...ownSpecs],
           role: "deep",
+          ...builtins,
         })
         .pipe(Effect.forkDetach);
       return {
@@ -370,7 +375,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   const words =
     via === "api"
       ? brain.converse(toolTurn)
-      : brain.session({ ...toolTurn, vessel: vesselId, cue });
+      : brain.session({ ...toolTurn, vessel: vesselId, cue, ...builtins });
   function cue(web: boolean) {
     if (web) readTheWeb = true;
     if (said === "") {
@@ -402,6 +407,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
         vessel: vesselId,
         role: "deep",
         cue,
+        ...builtins,
       }),
     );
     sentences.flush();

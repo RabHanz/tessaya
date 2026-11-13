@@ -17,8 +17,8 @@ import {
   SELF,
   TOOL_FAILED,
   WAKE_WORD,
-} from "@t3tools/baton-shared/assistantPrompt";
-import { conversationBlock, type ConversationTurn } from "@t3tools/baton-shared/conversation";
+} from "./assistantPrompt.ts";
+import { conversationBlock, type ConversationTurn } from "./conversation.ts";
 
 export const AGENT_PROMPT = `${SELF} on his own computer. ${FOR_THE_EAR} name a file the way a person would say it ("the security policy", "the web app manifest", "the voice settings file"), never by its path, folders or extension, unless he asks for the exact name. ${NAMES} you hold the whole conversation, your memory and every tool at once and you decide what to do, using several tools in one turn when that is what it takes.
 
