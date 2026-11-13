@@ -20,16 +20,20 @@ import {
   type BatonDevicesCallInput,
   type BatonDevicesCallResult,
 } from "@t3tools/baton-contracts";
+import { itemsView, readView } from "@t3tools/baton-shared/deviceItems";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
-import { DeviceRegistry, type DeviceRefusedError } from "./DeviceRegistry.ts";
+import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);
 
-type Run = (by: DeviceActor) => Effect.Effect<unknown, DeviceRefusedError, HomeDevices>;
+type Run = (
+  by: DeviceActor,
+) => Effect.Effect<unknown, DeviceRefusedError, HomeDevices | DeviceRegistry>;
 const op =
   <S extends Schema.Decoder<unknown>>(
     schema: S,
@@ -37,7 +41,7 @@ const op =
       args: S["Type"],
       devices: HomeDevices["Service"],
       by: DeviceActor,
-    ) => Effect.Effect<unknown, DeviceRefusedError>,
+    ) => Effect.Effect<unknown, DeviceRefusedError, DeviceRegistry>,
   ) =>
   (args: unknown): Run | null => {
     const decoded = Schema.decodeUnknownOption(schema)(args);
@@ -52,6 +56,44 @@ const plain = (command: DeviceCommand) =>
 
 const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   list: op(Schema.Struct({}), (_, devices) => devices.overview),
+  items: op(Schema.Struct({}), () =>
+    Effect.map(
+      Effect.flatMap(DeviceRegistry, (r) => r.list),
+      (all) => ({ devices: itemsView(all) }),
+    ),
+  ),
+  read: op(
+    Schema.Struct({
+      id: Id,
+      items: Schema.optionalKey(Schema.Array(Text(80)).check(Schema.isMaxLength(50))),
+    }),
+    (a) =>
+      Effect.gen(function* () {
+        const d = yield* Effect.flatMap(DeviceRegistry, (r) => r.get(a.id));
+        if (d === null)
+          return yield* new DeviceRefusedError({ why: `No device called ${a.id} is known here.` });
+        return readView(d, a.items, yield* Clock.currentTimeMillis);
+      }),
+  ),
+  set: op(
+    Schema.Struct({
+      id: Id,
+      itemId: Text(80),
+      value: Schema.optionalKey(Schema.Unknown),
+      confirmed: Schema.optionalKey(Schema.Boolean),
+    }),
+    (a, devices, by) =>
+      devices.command(
+        a.id,
+        {
+          op: "item",
+          itemId: a.itemId,
+          value: a.value ?? null,
+          ...(a.confirmed === undefined ? {} : { confirmed: a.confirmed }),
+        },
+        by,
+      ),
+  ),
   eye: op(
     Schema.Struct({
       id: Id,

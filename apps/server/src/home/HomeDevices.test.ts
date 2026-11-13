@@ -570,3 +570,114 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect(
+  "reads the R1's battery for any vessel's turn and gates each set by its safety class, the camera on his phone",
+  () => {
+    const { sent, topics, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const inbox = yield* BatonPhoneInbox;
+      const her = { who: "Tessaya via R1", surface: "assistant" } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(
+        `${root}/state/manifest`,
+        JSON.stringify({
+          deviceId: ID,
+          kind: "r1",
+          name: "R1",
+          schema: 1,
+          items: [
+            {
+              id: "power.battery_pct",
+              label: "Battery",
+              type: "number",
+              unit: "%",
+              range: [0, 100],
+              access: "read",
+              safety: "free",
+              group: "power",
+            },
+            {
+              id: "audio.volume",
+              label: "Volume",
+              type: "number",
+              range: [0, 100],
+              access: "read,write",
+              safety: "free",
+            },
+            {
+              id: "audio.output",
+              label: "Output",
+              type: "enum",
+              values: ["speaker", "bt", "auto"],
+              access: "read,write",
+              safety: "confirm",
+            },
+            {
+              id: "camera.capture",
+              label: "Camera",
+              type: "action",
+              access: "write",
+              safety: "owner",
+              privacy: true,
+            },
+          ],
+        }),
+      );
+      yield* devices.receive(`${root}/state/power`, '{"battery_pct":14,"charging":false}');
+      const call = (kind: "read" | "act", op: string, args: Record<string, unknown>) =>
+        serveDevicesCall({ kind, op, args }, her);
+      // device_read: the battery with its words and age.
+      const read = (yield* call("read", "read", { id: ID, items: ["power.battery_pct"] })) as {
+        value: {
+          values: Array<{ item: string; value: unknown; said: string; ageSeconds: number }>;
+        };
+      };
+      assert.deepStrictEqual(read.value.values, [
+        { item: "power.battery_pct", label: "Battery", value: 14, said: "14 %", ageSeconds: 0 },
+      ] as never);
+      // free: at once, as an item write the R1 acknowledges.
+      sent.length = 0;
+      const ack = yield* devices
+        .command(ID, { op: "item", itemId: "audio.volume", value: 30 }, her)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* devices.receive(`${root}/state/item/ack`, '{"cmd":"item/audio.volume","ok":true}');
+      assert.strictEqual((yield* Fiber.join(ack)).line, "Volume on R1 is now 30.");
+      // confirm: she asks him first; his yes in the conversation lets it run.
+      const first = yield* devices.command(
+        ID,
+        { op: "item", itemId: "audio.output", value: "bt" },
+        her,
+      );
+      assert.strictEqual(first.status, "confirm");
+      assert.notInclude(topics(), "cmd/item/audio.output");
+      const yes = yield* devices
+        .command(ID, { op: "item", itemId: "audio.output", value: "bt", confirmed: true }, her)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* devices.receive(`${root}/state/item/ack`, '{"cmd":"item/audio.output","ok":true}');
+      assert.strictEqual((yield* Fiber.join(yes)).status, "done");
+      // An agent's confirm item, and anyone's camera, wait for his yes on the phone.
+      assert.strictEqual(
+        (yield* devices.command(ID, { op: "item", itemId: "audio.output", value: "auto" }, agent))
+          .status,
+        "asked",
+      );
+      const asked = yield* call("act", "set", { id: ID, itemId: "camera.capture" });
+      assert.deepStrictEqual((asked as { value: { status: string } }).value.status, "asked");
+      assert.notInclude(topics(), "cmd/camera/capture");
+      const card = (yield* inbox.pending).find((p) => p.detail.includes("camera.capture"));
+      assert.strictEqual(card?.needs, "cloud-approve");
+      assert.isTrue(yield* inbox.answerPrompt(card!.id, 0));
+      yield* devices.tick;
+      // His yes: the picture goes through the R1's own window, with the live light on.
+      assert.include(topics(), "cmd/camera/capture");
+      const r1 = (yield* devices.overview).registry!.find((d) => d.deviceId === ID)!;
+      assert.deepStrictEqual(
+        r1.live?.map((l) => l.itemId),
+        ["camera.capture"],
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);

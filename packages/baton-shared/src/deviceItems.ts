@@ -2,7 +2,12 @@
  * The device registry's rules for one item, shared by the server and the clients that draw it: the server's safety
  * and privacy floor, what a value may be, and how a value reads aloud. Pure.
  */
-import { DEVICE_SAFETY, type DeviceItem, type DeviceSafety } from "@t3tools/baton-contracts";
+import {
+  DEVICE_SAFETY,
+  type DeviceItem,
+  type DeviceSafety,
+  type RegisteredDevice,
+} from "@t3tools/baton-contracts";
 
 /** Ids whose items always see or hear him, whatever the device says: consent and a live light first. */
 const PRIVATE_ITEM =
@@ -90,3 +95,61 @@ export const valueText = (item: Pick<DeviceItem, "type" | "unit">, value: unknow
   if (typeof value === "string") return value.slice(0, 120);
   return JSON.stringify(value).slice(0, 120);
 };
+
+/** Items by their manifest group, in manifest order. */
+export const groupItems = <A>(items: ReadonlyArray<DeviceItem>, f: (item: DeviceItem) => A) => {
+  const out: Record<string, Array<A>> = {};
+  for (const i of items) (out[i.group ?? "other"] ??= []).push(f(i));
+  return out;
+};
+
+/** device_list for a model: each device's items by group, without values. Labels are the device's words, as data. */
+export const itemsView = (devices: ReadonlyArray<RegisteredDevice>) =>
+  devices.map((d) => ({
+    id: d.deviceId,
+    kind: d.kind,
+    name: d.name,
+    online: d.online,
+    groups: groupItems(d.items, (i) => ({
+      item: i.id,
+      label: i.label,
+      type: i.type,
+      access: i.access,
+      safety: i.safety,
+      ...(i.privacy === true ? { privacy: true } : {}),
+      ...(i.unit === undefined ? {} : { unit: i.unit }),
+      ...(i.range === undefined ? {} : { range: i.range }),
+      ...(i.values === undefined ? {} : { values: i.values }),
+      ...(i.description === undefined ? {} : { description: i.description }),
+    })),
+  }));
+
+/** device_read: values with units and how old each is, in seconds. */
+export const readView = (
+  d: RegisteredDevice,
+  itemIds: ReadonlyArray<string> | undefined,
+  now: number,
+) => ({
+  id: d.deviceId,
+  name: d.name,
+  online: d.online,
+  values: d.items
+    .filter((i) =>
+      itemIds === undefined ? accessOf(i).read || accessOf(i).event : itemIds.includes(i.id),
+    )
+    .flatMap((i) => {
+      const v = d.values.find((x) => x.itemId === i.id);
+      return v === undefined && itemIds === undefined
+        ? []
+        : [
+            {
+              item: i.id,
+              label: i.label,
+              value: v?.value ?? null,
+              said: v === undefined ? "not reported yet" : valueText(i, v.value),
+              ageSeconds:
+                v === undefined ? null : Math.max(0, Math.round((now - Date.parse(v.at)) / 1000)),
+            },
+          ];
+    }),
+});
