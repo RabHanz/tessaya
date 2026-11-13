@@ -119,6 +119,22 @@ export const CommsConsent = Schema.Struct({
 });
 export type CommsConsent = typeof CommsConsent.Type;
 
+/** Quiet hours, as local times in a zone: "22:00" to "07:00" spans midnight. */
+export const CommsQuietHours = Schema.Struct({
+  from: Schema.String.check(Schema.isPattern(/^([01]\d|2[0-3]):[0-5]\d$/)),
+  to: Schema.String.check(Schema.isPattern(/^([01]\d|2[0-3]):[0-5]\d$/)),
+  timeZone: Schema.String.check(Schema.isMaxLength(64)),
+});
+export type CommsQuietHours = typeof CommsQuietHours.Type;
+
+export const CommsSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  quietHours: Schema.NullOr(CommsQuietHours),
+  /** The caller's own do-not-disturb end, if on. */
+  dndUntil: Schema.NullOr(IsoDateTime),
+});
+export type CommsSettings = typeof CommsSettings.Type;
+
 const op = <const O extends string, F extends Schema.Struct.Fields>(name: O, fields: F) =>
   Schema.Struct({ op: Schema.Literal(name), ...fields });
 
@@ -150,6 +166,15 @@ export const CommsCallInput = Schema.Union([
   }),
   /** Every consent the caller set or that protects them. */
   op("consents", {}),
+  /** Plays one of the caller's notes where they are, or returns it for their screen; marks it read. */
+  op("play", { noteId: Schema.String.check(Schema.isMaxLength(64)) }),
+  /** Do not disturb for the caller until a time, or off (null). */
+  op("dnd", { until: Schema.NullOr(IsoDateTime) }),
+  /** The owner's switches: comms on or off for this home, and the household's quiet hours (null: none). */
+  op("settings", {
+    enabled: Schema.optionalKey(Schema.Boolean),
+    quietHours: Schema.optionalKey(Schema.NullOr(CommsQuietHours)),
+  }),
   /** The comms log: a member's own; the owner sees everyone's metadata, never content (Decision 5). */
   op("log", {
     limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
@@ -167,5 +192,8 @@ export const CommsCallResult = Schema.Struct({
   receipts: Schema.optionalKey(Schema.Array(CommsReceipt)),
   consents: Schema.optionalKey(Schema.Array(CommsConsent)),
   call: Schema.optionalKey(CommsCall),
+  settings: Schema.optionalKey(CommsSettings),
+  /** Where a note went, in words: "the kitchen R1", "Sara's phone". */
+  delivered: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type CommsCallResult = typeof CommsCallResult.Type;

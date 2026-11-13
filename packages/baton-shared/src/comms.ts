@@ -7,6 +7,7 @@ import type {
   CommsAddress,
   CommsForms,
   CommsNote,
+  CommsQuietHours,
   RegisteredDevice,
 } from "@t3tools/baton-contracts";
 
@@ -330,4 +331,80 @@ export const renderNote = (
     case "none":
       return { sound, eyes: null, mood: note.forms.mood, voice, push: null, card: null, held };
   }
+};
+
+const minutesOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/** Whether `at` falls in the quiet hours, read in their zone; a window past midnight wraps. A bad zone is never quiet. */
+export const inQuietHours = (at: number, quiet: CommsQuietHours | null): boolean => {
+  if (quiet === null) return false;
+  let parts: ReadonlyArray<Intl.DateTimeFormatPart>;
+  try {
+    parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: quiet.timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
+  } catch {
+    return false;
+  }
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  const now = part("hour") * 60 + part("minute");
+  const from = minutesOf(quiet.from);
+  const to = minutesOf(quiet.to);
+  return from <= to ? now >= from && now < to : now >= from || now < to;
+};
+
+/**
+ * Whether a note sounds through quiet hours or do-not-disturb: only an urgent one from an owner, admin or adult
+ * (§5.3). Everything else arrives silently on screens and waits for speakers.
+ */
+export const breaksQuiet = (urgency: CommsNote["urgency"], senderRole: string | null): boolean =>
+  urgency === "urgent" &&
+  (senderRole === "owner" || senderRole === "admin" || senderRole === "adult");
+
+/** The note a screen vessel was sent (`comms.note`), checked: what its card says and which sound plays; null if not one. */
+export const noteCardOf = (
+  value: unknown,
+): {
+  readonly id: string;
+  readonly title: string;
+  readonly body: string;
+  readonly emoji: string;
+  readonly sound: CommsSound | null;
+} | null => {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  const plan = v["plan"] as Record<string, unknown> | undefined;
+  const card = plan?.["card"] as Record<string, unknown> | undefined;
+  if (typeof v["id"] !== "string" || card === undefined || card === null) return null;
+  const text = (x: unknown, max: number) => (typeof x === "string" ? x.slice(0, max) : "");
+  const sound = plan?.["sound"];
+  return {
+    id: v["id"],
+    title: text(card["title"], 80),
+    body: text(card["body"], 240),
+    emoji: text(card["emoji"], 16),
+    sound: (COMMS_SOUNDS as ReadonlyArray<unknown>).includes(sound) ? (sound as CommsSound) : null,
+  };
+};
+
+/**
+ * What each comms sound plays until he picks his tones in the sound system (drafts/sound-system: Gather, Knock,
+ * Announce and the ringtones): today's nearest cue. Replaced by the sound settings' choice when that lands.
+ */
+export const COMMS_SOUND_PLACEHOLDER: Readonly<
+  Record<CommsSound, "start" | "stepDone" | "waiting" | "error" | "finished">
+> = {
+  message: "waiting",
+  announce: "start",
+  ring_intercom: "start",
+  ring_call: "start",
+  ring_group: "finished",
+  ring_urgent: "error",
+  live_start: "start",
+  live_end: "finished",
+  live_tick: "stepDone",
+  call_waiting: "waiting",
 };

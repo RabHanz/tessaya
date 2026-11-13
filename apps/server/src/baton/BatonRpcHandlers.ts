@@ -71,6 +71,7 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BrainUsage, brainUsageReport } from "./BrainUsage.ts";
 import { VesselHands } from "./VesselHands.ts";
+import { TessayaComms } from "./TessayaComms.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
@@ -166,6 +167,7 @@ export type BatonServices =
   | BrainUsage
   | VesselHands
   | TessayaHousehold
+  | TessayaComms
   | ServerConfig.ServerConfig
   | ScheduledTaskService
   | ThreadAccountMoves

@@ -87,7 +87,7 @@ button.act.danger{border-color:var(--bad);color:var(--bad)}
 
 export const SCRIPT = `"use strict";
 (function () {
-  var TABS = [["needs", "Needs me"], ["approvals", "Approvals"], ["now", "Now"], ["jobs", "Jobs"], ["weave", "Weave"], ["asked", "Asked"], ["mem", "Memories"]];
+  var TABS = [["needs", "Needs me"], ["approvals", "Approvals"], ["now", "Now"], ["jobs", "Jobs"], ["weave", "Weave"], ["asked", "Asked"], ["msg", "Messages"], ["mem", "Memories"]];
   var tab = "needs", state = null, said = "", denied = false;
   var view = document.getElementById("view"), tabs = document.getElementById("tabs");
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
@@ -112,6 +112,7 @@ export const SCRIPT = `"use strict";
         if (tab === "mem" && t[0] !== "mem") { mem.sel = null; dropItems(); }
         tab = t[0]; draw();
         if (tab === "mem") { mem.said = ""; refresh(); }
+        if (tab === "msg") loadMsg();
       };
       tabs.appendChild(b);
     });
@@ -138,12 +139,13 @@ export const SCRIPT = `"use strict";
       var you = j && j.value && j.value.members ? j.value.members.filter(function (m) { return m.you; })[0] : null;
       member = you && you.role !== "owner" ? you : null;
       // The ask bar reaches the owner's work, which a member's phone can't: it goes rather than fail.
-      if (member) { TABS = [["mem", "Your memory"]]; tab = "mem"; denied = false; document.querySelector(".bar").hidden = true; refresh(); }
+      if (member) { TABS = [["msg", "Messages"], ["mem", "Your memory"]]; tab = "mem"; denied = false; document.querySelector(".bar").hidden = true; refresh(); }
     }).catch(function () {});
   }
   function act(label, cls, fn) { var b = el("button", "act " + (cls || ""), label); b.type = "button"; b.onclick = function () { b.disabled = true; fn().then(function (j) { if (j && j.message) said = j.message; load(); }); }; return b; }
   function draw() {
     if (tab === "mem") return drawMem();
+    if (tab === "msg") return drawMsg();
     drawTabs(); view.textContent = "";
     if (denied) { var c = el("div", "card"); c.appendChild(el("h2", "", "This phone is not paired")); c.appendChild(el("p", "soft", "Have an invite code from Tessaya? Type it here. Otherwise open this server's normal address on this phone and pair it there first, then come back to /tessaya.")); joinRow(c); view.appendChild(c); return; }
     if (state && !state.desktop.connected) view.appendChild(el("p", "soft", "Your computer is not connected. Asks wait for it."));
@@ -255,6 +257,54 @@ export const SCRIPT = `"use strict";
     return el("p", "soft", "Locked");
   }
   function card(title, note) { var c = el("div", "card"); if (title) c.appendChild(el("h2", "", title)); if (note) c.appendChild(el("p", "soft", note)); view.appendChild(c); return c; }
+  // Messages between the people of this home (COMMS-DESIGN C-1): their own inbox, and a note to someone or everyone.
+  var msg = { notes: null, people: [], said: "", on: true };
+  function cm(body) {
+    return fetch("/tessaya/comms", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (r.status !== 200) throw new Error(j.message || "That did not work.");
+        return j.value;
+      });
+    });
+  }
+  function loadMsg() {
+    return Promise.all([cm({ op: "inbox" }), cm({ op: "settings" }), hh({ op: "list" }).catch(function () { return { members: [] }; })]).then(function (r) {
+      msg.notes = r[0].notes || []; msg.on = !!(r[1].settings && r[1].settings.enabled);
+      msg.people = (r[2].members || []).filter(function (m) { return !m.you && m.state === "active" && m.role !== "guest"; });
+    }).catch(function (e) { msg.said = e.message; }).then(drawMsg);
+  }
+  function drawMsg() {
+    if (tab !== "msg") return;
+    drawTabs(); view.textContent = "";
+    if (msg.said) view.appendChild(el("p", "card warn", msg.said));
+    // The owner's switch; a member sees why nothing goes.
+    if (!member) {
+      var sw = card("Messages in this home", msg.on ? "On: people here can message and announce to each other." : "Off: nothing is sent or played.");
+      sw.appendChild(plain(msg.on ? "Turn off" : "Turn on", function () { cm({ op: "settings", enabled: !msg.on }).then(function () {}, function (e) { msg.said = e.message; }).then(loadMsg); }));
+    } else if (!msg.on) view.appendChild(el("p", "soft", "Messages are off in this home. The owner turns them on."));
+    var c = card("Send a message", "");
+    var to = el("select", "field"); to.setAttribute("aria-label", "To");
+    [["all", "Everyone"]].concat(msg.people.map(function (m) { return ["person:" + m.id, m.name]; })).forEach(function (o) { var op = el("option", "", o[1]); op.value = o[0]; to.appendChild(op); });
+    var text = field("Message"); var send = el("button", "act primary", "Send"); send.type = "button";
+    send.onclick = function () {
+      if (!text.value.trim()) return;
+      send.disabled = true;
+      cm({ op: "send", to: [to.value], kind: "text", text: text.value.trim() }).then(function (v) { msg.said = v.line; text.value = ""; }, function (e) { msg.said = e.message; }).then(loadMsg);
+    };
+    onEnter(text, send);
+    var row = el("div", "row"); row.appendChild(to); row.appendChild(text); row.appendChild(send); c.appendChild(row);
+    if (msg.notes === null) return void view.appendChild(el("p", "soft", "Loading"));
+    var mine = msg.notes.filter(function (n) { return n.kind !== "reaction"; });
+    if (!mine.length) view.appendChild(el("p", "soft", "No messages."));
+    mine.forEach(function (n) {
+      var k = card(n.forms.glance.emoji + " " + n.fromLabel, hm(n.createdAt));
+      k.appendChild(el("p", "", n.text || n.forms.spoken));
+      var r = el("div", "row");
+      r.appendChild(plain("❤️", function () { cm({ op: "react", noteId: n.id, emoji: "❤️" }).then(function (v) { msg.said = v.line; }, function (e) { msg.said = e.message; }).then(loadMsg); }));
+      r.appendChild(plain("Mark read", function () { cm({ op: "play", noteId: n.id }).then(function () {}, function (e) { msg.said = e.message; }).then(loadMsg); }));
+      k.appendChild(r);
+    });
+  }
   function drawMem() {
     if (tab !== "mem") return;
     drawTabs(); view.textContent = ""; ticks = [];

@@ -10,6 +10,7 @@ import {
   BATON_METHOD_OF,
   BatonPrivateCallInput,
   BatonHouseholdCallInput,
+  CommsCallInput,
   BatonPrivateCallResult,
   BatonRpcGroup,
 } from "@t3tools/baton-contracts";
@@ -52,6 +53,7 @@ import { peerTurnHands, PeerTurnBody, relayDeskTurn, servePeerTurn } from "./Des
 import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
+import { TessayaComms } from "./TessayaComms.ts";
 import { approvalRefusal } from "@t3tools/baton-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
@@ -544,45 +546,51 @@ export const routes = HttpRouter.use((router) =>
         ),
       ),
     );
-    // The household's members (ACCOUNTS-IDENTITY-DESIGN I-1): the rules are TessayaHousehold's, by the caller's member.
-    const decodeHousehold = Schema.decodeUnknownEffect(BatonHouseholdCallInput);
-    const householdCall = Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
-      if (session._tag === "None")
-        return HttpServerResponse.jsonUnsafe(
-          { message: "Not paired." },
-          { status: 401, headers: PAGE_HEADERS },
-        );
-      const refusedHere = householdRefusal(session.value);
-      if (refusedHere !== null)
-        return HttpServerResponse.jsonUnsafe(
-          { message: refusedHere },
-          { status: 403, headers: PAGE_HEADERS },
-        );
-      const input = yield* decodeHousehold(
-        yield* request.json.pipe(Effect.orElseSucceed(() => ({}))),
-      ).pipe(Effect.option);
-      if (input._tag === "None")
-        return HttpServerResponse.jsonUnsafe(
-          { message: "That request is not valid." },
-          { status: 400, headers: PAGE_HEADERS },
-        );
-      const result = yield* Effect.promise(() =>
-        run(
-          Effect.flatMap(TessayaHousehold, (h) => h.call(input.value)).pipe(
-            Effect.provideService(HouseholdCaller, {
-              ...householdCallerOf(session.value),
-              // A passkey is for the site the page is on.
-              ...(typeof request.headers["origin"] === "string"
-                ? { origin: request.headers["origin"] }
-                : {}),
-            }),
+    /**
+     * A member's request: the household's members (ACCOUNTS-IDENTITY-DESIGN I-1) or comms (COMMS-DESIGN). The rules are
+     * the service's, by the caller's member; this only pairs, decodes and answers.
+     */
+    const memberRoute = Effect.fn("BatonTessayaRoutes.memberRoute")(
+      function* <I>(
+        decode: (u: unknown) => Effect.Effect<I, Schema.SchemaError>,
+        serve: (input: I) => Effect.Effect<unknown, never, TessayaHousehold | TessayaComms>,
+      ) {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
+        if (session._tag === "None")
+          return HttpServerResponse.jsonUnsafe(
+            { message: "Not paired." },
+            { status: 401, headers: PAGE_HEADERS },
+          );
+        const refusedHere = householdRefusal(session.value);
+        if (refusedHere !== null)
+          return HttpServerResponse.jsonUnsafe(
+            { message: refusedHere },
+            { status: 403, headers: PAGE_HEADERS },
+          );
+        const input = yield* decode(
+          yield* request.json.pipe(Effect.orElseSucceed(() => ({}))),
+        ).pipe(Effect.option);
+        if (input._tag === "None")
+          return HttpServerResponse.jsonUnsafe(
+            { message: "That request is not valid." },
+            { status: 400, headers: PAGE_HEADERS },
+          );
+        const result = yield* Effect.promise(() =>
+          run(
+            serve(input.value).pipe(
+              Effect.provideService(HouseholdCaller, {
+                ...householdCallerOf(session.value),
+                // A passkey is for the site the page is on.
+                ...(typeof request.headers["origin"] === "string"
+                  ? { origin: request.headers["origin"] }
+                  : {}),
+              }),
+            ),
           ),
-        ),
-      );
-      return HttpServerResponse.jsonUnsafe({ value: result }, { headers: PAGE_HEADERS });
-    }).pipe(
+        );
+        return HttpServerResponse.jsonUnsafe({ value: result }, { headers: PAGE_HEADERS });
+      },
       Effect.catchCause(() =>
         Effect.succeed(
           HttpServerResponse.jsonUnsafe(
@@ -592,7 +600,15 @@ export const routes = HttpRouter.use((router) =>
         ),
       ),
     );
+    const householdCall = memberRoute(
+      Schema.decodeUnknownEffect(BatonHouseholdCallInput),
+      (input) => Effect.flatMap(TessayaHousehold, (h) => h.call(input)),
+    );
+    const commsCall = memberRoute(Schema.decodeUnknownEffect(CommsCallInput), (input) =>
+      Effect.flatMap(TessayaComms, (c) => c.call(input)),
+    );
     yield* router.add("POST", "/tessaya/household", householdCall);
+    yield* router.add("POST", "/tessaya/comms", commsCall);
     yield* router.add("POST", "/tessaya/private", privateCall);
     // Placement (b): another of his servers sends his desk turn here, and runs this turn's calls to its desktop.
     const peer = Effect.gen(function* () {

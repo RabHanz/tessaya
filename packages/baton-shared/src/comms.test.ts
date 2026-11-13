@@ -2,7 +2,16 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { CommsNote } from "@t3tools/baton-contracts";
 
-import { commsCaps, fallbackForms, parseAddress, renderNote, trimForms } from "./comms.ts";
+import {
+  breaksQuiet,
+  commsCaps,
+  fallbackForms,
+  inQuietHours,
+  noteCardOf,
+  parseAddress,
+  renderNote,
+  trimForms,
+} from "./comms.ts";
 
 const note = (over: Partial<CommsNote> = {}): CommsNote => ({
   id: "n1",
@@ -162,5 +171,45 @@ describe("renderNote", () => {
     expect(renderNote(long, r1, shared).voice).toEqual({
       say: "From Sara: The car is outside. Want the rest?",
     });
+  });
+});
+
+describe("quiet hours", () => {
+  // 2026-11-14 17:30 UTC is 22:30 in Karachi (GMT+5) and 17:30 in London.
+  const at = Date.UTC(2026, 10, 14, 17, 30);
+  it("reads the window in its own zone and wraps past midnight", () => {
+    expect(inQuietHours(at, { from: "22:00", to: "07:00", timeZone: "Asia/Karachi" })).toBe(true);
+    expect(inQuietHours(at, { from: "22:00", to: "07:00", timeZone: "Europe/London" })).toBe(false);
+    expect(inQuietHours(at, { from: "13:00", to: "18:00", timeZone: "Europe/London" })).toBe(true);
+    expect(inQuietHours(at, null)).toBe(false);
+    expect(inQuietHours(at, { from: "22:00", to: "07:00", timeZone: "Nowhere/Else" })).toBe(false);
+  });
+  it("lets only an adult's urgent note through", () => {
+    expect(breaksQuiet("urgent", "adult")).toBe(true);
+    expect(breaksQuiet("urgent", "owner")).toBe(true);
+    expect(breaksQuiet("urgent", "child")).toBe(false);
+    expect(breaksQuiet("soon", "owner")).toBe(false);
+  });
+});
+
+describe("noteCardOf", () => {
+  it("reads a rendered note's card and sound, and refuses anything else", () => {
+    const plan = renderNote(note(), commsCaps(device("desktop")), own);
+    expect(noteCardOf({ id: "n1", plan })).toEqual({
+      id: "n1",
+      title: "Sara",
+      body: "I'm running late",
+      emoji: "⏰",
+      sound: "message",
+    });
+    expect(noteCardOf({ id: "n1", plan: { ...plan, sound: "boom" } })?.sound).toBeNull();
+    for (const bad of [
+      null,
+      "x",
+      { id: 1, plan },
+      { id: "n1" },
+      { id: "n1", plan: { card: null } },
+    ])
+      expect(noteCardOf(bad)).toBeNull();
   });
 });

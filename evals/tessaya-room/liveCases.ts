@@ -795,6 +795,56 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ "a standing rule": JSON.stringify(input).includes("15") }),
   },
   {
+    // COMMS-DESIGN §2.6: a broadcast to the children is one announce to the kids' group, its glance made in the turn.
+    id: "comms-tell-kids",
+    proves: ["comms_send"],
+    said: ["Tell the kids dinner's ready."],
+    uses: [["comms_send"]],
+    argsOf: "comms_send",
+    args: (input) => ({
+      kids:
+        JSON.stringify(input["to"]).includes("group:kids") ||
+        JSON.stringify(input["to"]).includes("group:children"),
+      announce: input["kind"] === "announce",
+      glance:
+        typeof (input["forms"] as { glance?: { emoji?: unknown } } | undefined)?.glance?.emoji ===
+        "string",
+    }),
+    // Never a claim it was heard: comms may be off on this home, and a replay sends nothing.
+    lastNotSays: [/\b(heard it|they heard|got it)\b/i],
+  },
+  {
+    id: "comms-inbox",
+    proves: ["comms_inbox"],
+    said: ["Any messages for me?"],
+    uses: [["comms_inbox"]],
+    clean: ["comms_inbox"],
+  },
+  {
+    id: "comms-play",
+    proves: ["comms_play"],
+    said: ["Play the message note-abc123."],
+    uses: [["comms_play"]],
+  },
+  {
+    id: "comms-react",
+    proves: ["comms_react"],
+    said: ["Put a heart on the message note-abc123."],
+    uses: [["comms_react"]],
+    argsOf: "comms_react",
+    args: (input) => ({ heart: /❤|♥|💗|💖|🧡|😍/u.test(String(input["emoji"])) }),
+  },
+  {
+    id: "comms-dnd",
+    proves: ["comms_dnd"],
+    said: ["Don't disturb me until three this afternoon."],
+    uses: [["comms_dnd"]],
+    argsOf: "comms_dnd",
+    args: (input) => ({
+      until: typeof input["until"] === "string" && /T15:00/.test(String(input["until"])),
+    }),
+  },
+  {
     id: "members-list",
     proves: ["members_list"],
     said: ["Who lives here, and what can each of them do?"],

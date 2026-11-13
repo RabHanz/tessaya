@@ -94,6 +94,12 @@ const ROOM_TOOLS = [
   "member_preferences",
   "member_preference_set",
   "household_home_server",
+  // Messages and announcements between the people here (COMMS-DESIGN C-1).
+  "comms_send",
+  "comms_inbox",
+  "comms_play",
+  "comms_react",
+  "comms_dnd",
   // His jobs (BatonJobFlow): the desktop assistant's job tools, judged by the same table (judgeToolCall).
   "job_start",
   "job_agree",
@@ -228,6 +234,9 @@ const decoders = new Map(
 /** Writes that run their own dry run for a replay, through their real checks: the house's and the settings'. */
 const SELF_DRY: ReadonlySet<string> = new Set([
   "settings_set",
+  "comms_send",
+  "comms_play",
+  "comms_react",
   "home_do",
   "home_undo",
   "home_automation_save",

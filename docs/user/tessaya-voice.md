@@ -34,6 +34,18 @@ Tessaya serves everyone who lives with you. In Tessaya's window, open **Memory**
 - **Preferences for** shows how Tessaya talks to each person: what to call them, who answers, her voice, units, times, news and music. Everyone changes their own; the owner can change anyone's. Spell an unusual name ("Zaid, Z-A-Y-D") and she keeps the spelling.
 - Adding people, changing roles and giving **this computer** need you to be sure it's you. On Windows, choose yourself under **Windows Hello confirms** once (your phone says yes to that), and from then on Windows Hello covers the next 5 minutes. Without it, type your PIN under **Confirm it's you with your PIN**, or say yes on your phone.
 
+## Messages and announcements
+
+People who live with you can message each other and make announcements through Tessaya. Messages are off until you turn them on: open Tessaya on your phone (`/tessaya` on your server), go to **Messages** and press **Turn on**.
+
+- Say it to her on any device: "tell the kids dinner's ready", "message Sara I'm running late", "tell everyone the car's here", "any messages?", "play it", "heart Sara's message".
+- A message follows the person. It plays where Tessaya last recognised their voice in the past 10 minutes, and it shows on their own devices. If she can't reach them, it waits and she tells them the next time she hears them.
+- An announcement plays aloud at once. If she doesn't know where they are, it plays in every room.
+- **Private** messages show only that they exist on a shared speaker, until Tessaya is sure it's that person.
+- **Do not disturb**: "don't disturb me till three" and "I'm free". While it's on, messages wait quietly. Only an adult's urgent message sounds.
+- A child's "urgent" never breaks anyone's quiet. Guests can't send messages.
+- Everything sent shows in Tessaya's activity log with who sent it and to whom. You see when others messaged, never what they wrote.
+
 ## Brain and usage
 
 **Settings → Brain** in Tessaya's window is one table: for each kind of her work (talking, dictation cleanup, hard tasks, background learning and the rest) choose the login that pays, your Claude subscription or the Anthropic API key, the model and the effort, and optionally a login to use if the first one fails before she says a word. The spend guard on the same page lists what the API key may pay for; anything else is refused, never quietly moved to the key. **Hard tasks** sets when she moves a task to Opus: she asks, goes on her own up to a daily cap, or never, plus your own rules ("coding questions → Opus"). The **Usage** page shows what each kind of work used, on which login, by day: tokens on the subscription, dollars at list price on the key. Set a daily or monthly **API spend alert** there or by voice ("tell me if the API passes a dollar a day"); when one is reached, the desktop shows a notice. Ask "how much did the API cost this week?" to hear it.
