@@ -25,12 +25,15 @@ import { onPeer } from "../peer/PeerVessels.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
+import { conversationKey } from "../baton/TessayaTurn.ts";
 
 export type VoiceVerdict =
-  | { readonly answer: true; readonly round: string }
+  | { readonly answer: true; readonly round: string; readonly conversation: string }
   | {
       readonly answer: false;
       readonly round: string;
+      /** The conversation the winner continues: "person:<member>" for a verified voice, else the household's. */
+      readonly conversation: string;
       readonly winner: string;
       /** Stay quiet, and take speech as her echo, until then (epoch ms). Claim again after it. */
       readonly until: number;
@@ -38,7 +41,11 @@ export type VoiceVerdict =
 
 export interface ArbiterState {
   readonly primary: string | null;
-  readonly quiet: { readonly winner: string; readonly until: number } | null;
+  readonly quiet: {
+    readonly winner: string;
+    readonly until: number;
+    readonly conversation: string;
+  } | null;
   readonly recent: ReadonlyArray<{
     readonly round: string;
     readonly at: number;
@@ -58,6 +65,22 @@ const decodeSaved = Schema.decodeUnknownOption(
     Schema.Struct({ primary: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
   ),
 );
+
+/** The memory lane's rule (TessayaTurn.conversationKey): a verified member's own, else the household's. */
+const conversationOf = (c: VoiceClaim): string =>
+  conversationKey({
+    vessel: { kind: "device", id: c.deviceId },
+    text: "",
+    speaker:
+      c.speaker == null
+        ? null
+        : {
+            kind: c.speaker.verified ? "saved" : "unverified",
+            personId: c.speaker.personId,
+            verified: c.speaker.verified,
+            inherited: false,
+          },
+  });
 
 export class VoiceArbiter extends Context.Service<
   VoiceArbiter,
@@ -80,7 +103,7 @@ export class VoiceArbiter extends Context.Service<
 interface Round {
   readonly id: string;
   readonly claims: Array<VoiceClaim>;
-  readonly decided: Deferred.Deferred<string>;
+  readonly decided: Deferred.Deferred<{ readonly winner: string; readonly conversation: string }>;
 }
 
 const make = Effect.gen(function* () {
@@ -94,7 +117,7 @@ const make = Effect.gen(function* () {
   const lastAnswered = new Map<string, number>();
   const recent: Array<ArbiterState["recent"][number]> = [];
   let open: Round | null = null;
-  let quiet: { winner: string; until: number } | null = null;
+  let quiet: { winner: string; until: number; conversation: string } | null = null;
   let counter = 0;
 
   const saved = yield* sql<{ value: string }>`
@@ -109,7 +132,8 @@ const make = Effect.gen(function* () {
     open = null;
     const winner = pickResponder(round.claims, { primary, lastAnswered, now })!;
     lastAnswered.set(winner.deviceId, now);
-    quiet = { winner: winner.deviceId, until: now + PROVISIONAL_MS };
+    const conversation = conversationOf(winner);
+    quiet = { winner: winner.deviceId, until: now + PROVISIONAL_MS, conversation };
     const claimants = [...new Set(round.claims.map((c) => c.deviceId))];
     recent.push({ round: round.id, at: now, winner: winner.deviceId, claimants });
     if (recent.length > RECENT_KEEP) recent.shift();
@@ -124,7 +148,7 @@ const make = Effect.gen(function* () {
           detail: `heard on ${claimants.join(", ")}${winner.answerHere === true ? " (answer here)" : ""}`,
         })
         .pipe(Effect.ignore);
-    yield* Deferred.succeed(round.decided, winner.deviceId);
+    yield* Deferred.succeed(round.decided, { winner: winner.deviceId, conversation });
   });
 
   const claim = Effect.fn("VoiceArbiter.claim")(function* (c: VoiceClaim) {
@@ -134,13 +158,16 @@ const make = Effect.gen(function* () {
     if (quiet !== null && c.answerHere !== true && open === null) {
       if (quiet.winner === c.deviceId) {
         lastAnswered.set(c.deviceId, now);
-        return { answer: true, round: "follow" } satisfies VoiceVerdict;
+        const conversation = conversationOf(c);
+        quiet = { ...quiet, conversation };
+        return { answer: true, round: "follow", conversation } satisfies VoiceVerdict;
       }
       return {
         answer: false,
         round: "quiet",
         winner: quiet.winner,
         until: quiet.until,
+        conversation: quiet.conversation,
       } satisfies VoiceVerdict;
     }
     let round = open;
@@ -148,20 +175,21 @@ const make = Effect.gen(function* () {
       round = {
         id: `v${now.toString(36)}${(counter++ % 1296).toString(36)}`,
         claims: [],
-        decided: yield* Deferred.make<string>(),
+        decided: yield* Deferred.make<{ winner: string; conversation: string }>(),
       };
       open = round;
       yield* decide(round).pipe(Effect.forkIn(scope));
     }
     round.claims.push(c);
-    const winner = yield* Deferred.await(round.decided);
+    const { winner, conversation } = yield* Deferred.await(round.decided);
     return winner === c.deviceId
-      ? ({ answer: true, round: round.id } satisfies VoiceVerdict)
+      ? ({ answer: true, round: round.id, conversation } satisfies VoiceVerdict)
       : ({
           answer: false,
           round: round.id,
           winner,
           until: quiet?.until ?? now + PROVISIONAL_MS,
+          conversation,
         } satisfies VoiceVerdict);
   });
 
@@ -170,11 +198,11 @@ const make = Effect.gen(function* () {
     speaking: Effect.fn("VoiceArbiter.speaking")(function* (deviceId: string, untilMs: number) {
       const now = yield* Clock.currentTimeMillis;
       if (quiet?.winner !== deviceId) return;
-      quiet = { winner: deviceId, until: Math.min(untilMs, now + MAX_QUIET_MS) + QUIET_AFTER_MS };
+      quiet = { ...quiet, until: Math.min(untilMs, now + MAX_QUIET_MS) + QUIET_AFTER_MS };
     }),
     ended: Effect.fn("VoiceArbiter.ended")(function* (deviceId: string) {
       const now = yield* Clock.currentTimeMillis;
-      if (quiet?.winner === deviceId) quiet = { winner: deviceId, until: now + QUIET_AFTER_MS };
+      if (quiet?.winner === deviceId) quiet = { ...quiet, until: now + QUIET_AFTER_MS };
     }),
     setPrimary: Effect.fn("VoiceArbiter.setPrimary")(function* (deviceId: string | null) {
       primary = deviceId;
