@@ -1,5 +1,5 @@
 /**
- * A vessel on another of his servers: a setting of the desktop beside onnyx, or the R1 beside his home server, asked
+ * A vessel on another of his servers: a setting of the desktop beside his studio server, or the R1 beside his home server, asked
  * from a turn here. The same tool is called on that server over the peer link, as laptop_ask does, carrying the vessel
  * the turn came through and whether his own voice was verified on it (the target reads them only from a linked
  * caller). A linked caller is never forwarded again, so two servers cannot bounce a call between them.

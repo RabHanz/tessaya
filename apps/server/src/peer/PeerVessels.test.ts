@@ -16,12 +16,12 @@ const link = (id: string, label: string) => ({
   status: "reachable",
 });
 
-/** His two other servers; the laptop holds the setting, onnyx does not. */
+/** His two other servers; the laptop holds the setting, the studio does not. */
 const peers = (sent: Array<[string, string, unknown]>) =>
   Layer.mergeAll(
     Layer.mock(PeerLinks.PeerLinks)({
       enabled: Effect.succeed(true),
-      list: Effect.succeed([link("env-onnyx", "onnyx"), link("env-laptop", "laptop")] as never),
+      list: Effect.succeed([link("env-studio", "studio"), link("env-laptop", "laptop")] as never),
     }),
     Layer.mock(PeerMcpClient.PeerMcpClient)({
       call: (input) =>
@@ -36,7 +36,7 @@ const peers = (sent: Array<[string, string, unknown]>) =>
 
 const as = (client: McpInvocationContext.McpClientCaller | undefined) =>
   Effect.provideService(McpInvocationContext.McpInvocationContext, {
-    environmentId: EnvironmentId.make("env-hetzner"),
+    environmentId: EnvironmentId.make("env-home"),
     requestNamespace: "x",
     thread: undefined,
     client,
@@ -68,7 +68,7 @@ it.effect(
         value: { status: "done", line: "Changed the chime." },
       });
       expect(sent.map(([env, , a]) => [env, a])).toEqual(
-        ["env-onnyx", "env-laptop"].map((env) => [
+        ["env-studio", "env-laptop"].map((env) => [
           env,
           { key: "desktop:chime", value: false, why: "no chime", origin: "R1", hisVoice: true },
         ]),
@@ -82,7 +82,7 @@ it.effect(
         ),
       ).toMatchObject({ on: "laptop" });
       expect(
-        yield* onPeer("settings_get", { key: "x" }, { on: "hetzner", takes }).pipe(
+        yield* onPeer("settings_get", { key: "x" }, { on: "home", takes }).pipe(
           as(ROOM_CLIENT),
           Effect.provide(peers(sent)),
         ),
@@ -100,7 +100,7 @@ it.effect(
         as(ROOM_CLIENT),
         Effect.provide(peers(sent)),
       );
-      expect(all.map((a) => a.on)).toEqual(["onnyx", "laptop"]);
+      expect(all.map((a) => a.on)).toEqual(["studio", "laptop"]);
       expect(sent[0]![2]).toEqual({ text: "chime", origin: "R1" });
     }),
 );
@@ -110,7 +110,7 @@ it.effect("never forwards a call that came over a link, or a rehearsal's", () =>
     const sent: Array<[string, string, unknown]> = [];
     const linked = {
       sessionId: "peer",
-      label: "T3 Code · hetzner",
+      label: "T3 Code · home",
       access: "approval-required" as const,
       linked: true,
     };
@@ -134,7 +134,7 @@ it.effect(
       const input = { origin: "R1", hisVoice: true };
       const linked = {
         sessionId: "peer",
-        label: "T3 Code · hetzner",
+        label: "T3 Code · home",
         access: "approval-required" as const,
         linked: true,
       };
