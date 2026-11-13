@@ -1503,9 +1503,9 @@ const sharedTools = (host: ToolHost, own: ReadonlyArray<BatonTool>): ReadonlyArr
   const shared = host.shared;
   if (shared === undefined) return [];
   const mine = new Set(own.map((t) => t.name));
-  return shared.specs
+  const listed = shared.specs
     .filter((s) => !mine.has(s.name) && COVERED_BY_OWN[s.name] === undefined)
-    .map((s) => ({
+    .map((s): BatonTool => ({
       name: s.name,
       description: s.description,
       inputSchema: s.input_schema as Readonly<Record<string, unknown>>,
@@ -1513,4 +1513,32 @@ const sharedTools = (host: ToolHost, own: ReadonlyArray<BatonTool>): ReadonlyArr
       ...(s.core === true ? { core: true } : {}),
       run: async (a: Args) => ({ text: await shared.call(s.name, a) }),
     }));
+  // A server older than this desktop has no work tools: she says so instead of finding no way to start a job.
+  const older =
+    shared.specs.length > 0 && !shared.specs.some((s) => s.name === SERVER_WORK_TOOLS[0]);
+  return older
+    ? [
+        ...listed,
+        ...SERVER_WORK_TOOLS.map((name): BatonTool => ({
+          name,
+          description: `${name.replace(/_/g, " ")} (his jobs).`,
+          inputSchema: object({}),
+          shared: "read",
+          run: async () => ({ text: SERVER_TOO_OLD }),
+        })),
+      ]
+    : listed;
 };
+
+/** His work tools, which his server serves (SPINE-UNIFY S2). */
+const SERVER_WORK_TOOLS = [
+  "job_start",
+  "job_agree",
+  "job_refine",
+  "job_split",
+  "job_retry",
+  "job_stop",
+  "job_schedule",
+] as const;
+const SERVER_TOO_OLD =
+  "Jobs need his server updated: it is older than this desktop. Tell him in one sentence; nothing was started.";

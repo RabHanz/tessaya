@@ -73,6 +73,20 @@ describe("the assistant's tool table", () => {
     expect(buildBatonTools(host([])).some((t) => t.name === "home_do")).toBe(false);
   });
 
+  it("says his server is too old for jobs when it serves no work tools, rather than having no way to start one", async () => {
+    const older = buildBatonTools({
+      ...host([]),
+      shared: {
+        specs: [{ name: "home_find", description: "", input_schema: {}, readonly: true }],
+        call: async () => "done",
+      },
+    });
+    const start = older.find((t) => t.name === "job_start");
+    expect((await start!.run({})).text).toContain("server updated");
+    // Not offline: with no list at all, nothing is made up.
+    expect(buildBatonTools(host([])).some((t) => t.name === "job_start")).toBe(false);
+  });
+
   it("adds each shared tool once, with whether it reads, and never one its own tools cover", async () => {
     const own = new Set(buildBatonTools(host([])).map((t) => t.name));
     expect(Object.values(COVERED_BY_OWN).filter((name) => !own.has(name))).toEqual([]);
@@ -92,6 +106,7 @@ describe("the assistant's tool table", () => {
           spec("settings_set", false),
           spec("tessaya_memory_search", true),
           spec("memory_search", true),
+          spec("job_start", false),
         ],
         call: async (name, args) => (called.push([name, args]), "changed"),
       },
@@ -100,6 +115,7 @@ describe("the assistant's tool table", () => {
     expect(shared.map((t) => [t.name, t.shared, t.core])).toEqual([
       ["settings_find", "read", true],
       ["settings_set", "write", undefined],
+      ["job_start", "write", undefined],
     ]);
     expect(await shared[1]!.run({ key: "desktop:chime", value: false })).toEqual({
       text: "changed",
