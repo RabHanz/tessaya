@@ -1,5 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
+import type { VoiceClaimInput } from "@t3tools/baton-contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -12,7 +13,12 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { VoiceArbiter, layer as arbiterLayer, serveArbiter } from "./VoiceArbiter.ts";
 
 const layer = arbiterLayer.pipe(Layer.provideMerge(BatonDatabaseMemory));
-const claim = (deviceId: string, loudnessDb: number, wakeScore = 0.9, answerHere = false) => ({
+const claim = (
+  deviceId: string,
+  loudnessDb: number,
+  wakeScore = 0.9,
+  answerHere = false,
+): VoiceClaimInput => ({
   deviceId,
   loudnessDb,
   wakeScore,
@@ -20,7 +26,7 @@ const claim = (deviceId: string, loudnessDb: number, wakeScore = 0.9, answerHere
 });
 
 /** Several pretend vessels claim at once; the window closes; each gets its verdict. */
-const round = (claims: ReadonlyArray<ReturnType<typeof claim>>) =>
+const round = (claims: ReadonlyArray<VoiceClaimInput>) =>
   Effect.gen(function* () {
     const arbiter = yield* VoiceArbiter;
     const fibers = yield* Effect.forEach(claims, (c) =>
@@ -144,4 +150,34 @@ it.effect(
       yield* TestClock.adjust("250 millis");
       assert.deepInclude((yield* Fiber.join(fiber))?.value as object, { answer: true });
     }),
+);
+
+it.effect(
+  "names the conversation the winner continues: his own for a verified member, else the household's",
+  () =>
+    Effect.gen(function* () {
+      const arbiter = yield* VoiceArbiter;
+      const him = { personId: "owner", verified: true };
+      const first = yield* round([
+        { ...claim("r1-office", -20), speaker: him },
+        claim("desktop-laptop", -40),
+      ]);
+      // Every claimant hears which conversation goes on, so the loser can continue it later.
+      assert.deepStrictEqual(
+        first.map((v) => v.conversation),
+        ["person:owner", "person:owner"],
+      );
+      // Her voice on the loser while she speaks: still his conversation.
+      assert.strictEqual(
+        (yield* arbiter.claim(claim("desktop-laptop", -10))).conversation,
+        "person:owner",
+      );
+      yield* arbiter.ended("r1-office");
+      yield* TestClock.adjust("3 seconds");
+      // An unknown or unverified voice is the household's.
+      const next = yield* round([
+        { ...claim("r1-office", -20), speaker: { personId: "owner", verified: false } },
+      ]);
+      assert.strictEqual(next[0]!.conversation, "household");
+    }).pipe(Effect.provide(layer)),
 );

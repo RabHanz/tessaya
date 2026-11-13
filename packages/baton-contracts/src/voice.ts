@@ -27,6 +27,15 @@ export const VoiceClaimInput = Schema.Struct({
   /** dBFS of the wake segment after the device's own gain; null when it cannot say. */
   loudnessDb: Schema.NullOr(Schema.Number),
   speakerScore: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  /** Who Voice ID heard, when it checked: a verified member continues his own conversation. */
+  speaker: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        personId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(80))),
+        verified: Schema.Boolean,
+      }),
+    ),
+  ),
   answerHere: Schema.optionalKey(Schema.Boolean),
 });
 export type VoiceClaimInput = typeof VoiceClaimInput.Type;
