@@ -1514,15 +1514,28 @@ describe("one responder per utterance (the server's voice arbiter, R1-P7)", () =
     expect(claims).toHaveLength(2);
   });
 
-  it("sends the conversation the arbiter names on the turns that follow (#886)", async () => {
+  it("claims with who Voice ID heard, and sends the conversation the arbiter names on the turns that follow", async () => {
+    const claimed: Array<{ personId: string | null; verified: boolean } | null> = [];
     const t = setup({
+      speaker: async () => ({
+        kind: "owner",
+        personId: "owner",
+        name: null,
+        confidence: 0.8,
+        verified: true,
+        inherited: false,
+        at: 0,
+      }),
       recognise: () => ({
         feed: () => undefined,
         finish: async () => "Tessaya, what time is it?",
         cancel: () => undefined,
       }),
       arbiter: {
-        claim: async () => ({ answer: true, conversation: "person:owner" }),
+        claim: async (c) => {
+          claimed.push(c.speaker ?? null);
+          return { answer: true, conversation: "person:owner" };
+        },
         report: () => undefined,
       },
     });
@@ -1533,20 +1546,27 @@ describe("one responder per utterance (the server's voice arbiter, R1-P7)", () =
       publish(topic, payload);
       if (topic.endsWith("/cmd/voice/start")) opened();
     };
-    t.room.woken(DEV, "Tessaya", -20, 1);
+    t.room.woken(DEV, "Tessaya", -20, 1, new Int16Array(16_000));
     await open;
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     await t.feed(true, 20);
     await t.feed(false, 40);
+    expect(claimed).toEqual([{ personId: "owner", verified: true }]);
     expect(t.brainCalls[0]!.tessaya.conversation).toBe("person:owner");
   });
 
   it("answers as before when the arbiter cannot be asked (an older server)", async () => {
-    const t = setup({ arbiter: { claim: async () => null, report: () => undefined } });
+    let opened: () => void = () => undefined;
+    const open = new Promise<void>((r) => (opened = r));
+    const t = setup({
+      arbiter: { claim: async () => null, report: () => undefined },
+      publish: (topic) => {
+        if (topic === `freya/r1/${DEV}/cmd/voice/start`) opened();
+      },
+    });
     t.room.woken(DEV, "Tessaya", -20, 1);
-    await t.deps.sleep(0);
-    await t.deps.sleep(0);
-    expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/cmd/voice/start`)).toBe(true);
+    // Resolves only if the R1 is told to start: an arbiter that cannot be asked never holds her back.
+    await open;
   });
 
   it("tells the arbiter where her reply stands, then that it ended", async () => {
@@ -1559,5 +1579,74 @@ describe("one responder per utterance (the server's voice arbiter, R1-P7)", () =
     await t.feed(false, 40);
     expect(reports[0]).toBe("speaking");
     expect(reports.at(-1)).toBe("ended");
+  });
+});
+
+describe("an early start on his stable words (B6)", () => {
+  /** A recogniser whose partial words he sets, and whose final text waits until released. */
+  const live = (final: string) => {
+    const listeners: Array<(t: string) => void> = [];
+    let release: () => void = () => undefined;
+    const done = new Promise<void>((r) => (release = r));
+    return {
+      partial: (t: string) => listeners.forEach((l) => l(t)),
+      release,
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => {
+          await done;
+          return final;
+        },
+        cancel: () => undefined,
+        onPartial: (l: (t: string) => void) => void listeners.push(l),
+      }),
+    };
+  };
+
+  it("starts her brain at his pause on words that held still and end a sentence, and keeps it when the final says the same", async () => {
+    const r = live("What time is it?");
+    const t = setup({ recognise: r.recognise, smartTurn: async () => 0.2 });
+    t.s2();
+    await t.feed(true, 10);
+    r.partial("What time is it?");
+    await t.feed(true, 6);
+    // His pause: Smart Turn is asked, and the words have held still for over 300 ms.
+    await t.feed(false, 5);
+    expect(t.brainCalls).toHaveLength(1);
+    expect(t.brainCalls[0]!.tessaya).toMatchObject({
+      speculative: true,
+      words: "What time is it?",
+    });
+    await t.feed(false, 30);
+    r.release();
+    await t.metrics;
+    expect(t.brainCalls).toHaveLength(1);
+  });
+
+  it("never starts on words still changing or not ending a sentence, and drops a start the final words disagree with", async () => {
+    const changing = live("Turn on the office fan");
+    const a = setup({ recognise: changing.recognise, smartTurn: async () => 0.2 });
+    a.s2();
+    await a.feed(true, 10);
+    changing.partial("Turn on the office fan");
+    await a.feed(true, 6);
+    await a.feed(false, 5);
+    expect(a.brainCalls).toHaveLength(0);
+
+    const r = live("What time is it in London?");
+    const t = setup({ recognise: r.recognise, smartTurn: async () => 0.2 });
+    t.s2();
+    await t.feed(true, 10);
+    r.partial("What time is it?");
+    await t.feed(true, 6);
+    await t.feed(false, 5);
+    expect(t.brainCalls).toHaveLength(1);
+    await t.feed(false, 30);
+    r.release();
+    await t.metrics;
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "What time is it?",
+      "What time is it in London?",
+    ]);
   });
 });
