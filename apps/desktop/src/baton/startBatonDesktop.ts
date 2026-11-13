@@ -596,6 +596,11 @@ export const startBatonDesktop = Effect.gen(function* () {
     markPhase("screen-companion:begin");
     try {
       screen = startScreenCompanion({
+        memberGrants: async (member) => {
+          const listed = await household("list");
+          const m = listed.members?.find((x) => x.id === member && x.state !== "leaving");
+          return m === undefined ? null : { role: m.role, machine: m.machine };
+        },
         remoteOps,
         catalog: () => catalogStore?.tools,
         stateDir: environment.stateDir,
