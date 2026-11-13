@@ -12,6 +12,7 @@ import {
   voiceAssurance,
 } from "@t3tools/baton-shared/household";
 import { memoryBlock } from "@t3tools/baton-shared/memory";
+import { foldSpelling, spellOut } from "@t3tools/baton-shared/spelling";
 import {
   privatePersonOf,
   type PrivateTurn,
@@ -29,6 +30,7 @@ import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts"
 import { MemberPreferences } from "./MemberPreferences.ts";
 import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { TurnPools } from "./TurnPools.ts";
 
@@ -166,6 +168,10 @@ export const originOf = (turn: TurnEnvelope) => ({
 export const NOT_HIS_VOICE_TO_FORGET =
   "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
 
+/** She spells each name back once: " Zayd, Z-A-Y-D." (empty when nothing was spelled). */
+const spellBack = (names: ReadonlyArray<{ readonly word: string }>): string =>
+  names.map((n) => ` ${n.word}, ${spellOut(n.word)}.`).join("");
+
 /** A member asked to keep something and has no store of their own yet. */
 export const NO_STORE_FOR_MEMBER =
   "Set up your own memory first: choose your PIN in Tessaya on your phone. Until then I can't keep that for you.";
@@ -287,7 +293,13 @@ export class TessayaTurn extends Context.Service<
       key: string,
       value: string | null,
     ) => Effect.Effect<
-      { readonly member: string; readonly key: string; readonly value: string | null },
+      {
+        readonly member: string;
+        readonly key: string;
+        readonly value: string | null;
+        /** What she says back: "Kept. Zayd, Z-A-Y-D." for a spelled name. */
+        readonly line: string;
+      },
       BatonMemoryRefusedError
     >;
     readonly end: (
@@ -303,6 +315,26 @@ export const make = Effect.gen(function* () {
   const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
   const preferences = yield* Effect.serviceOption(MemberPreferences);
   const sql = yield* SqlClient.SqlClient;
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+
+  /** A spelled name's pronunciation, when it was heard said differently ("Zayd" sounds like "Zaid"), for her voice. */
+  const teachVoice = Effect.fn("TessayaTurn.teachVoice")(function* (
+    names: ReadonlyArray<{ readonly word: string; readonly heardAs: string | null }>,
+  ) {
+    const heard = names.filter((n) => n.heardAs !== null);
+    if (heard.length === 0 || Option.isNone(settings)) return;
+    yield* settings.value.getSettings.pipe(
+      Effect.flatMap((current) =>
+        settings.value.updateSettings({
+          voicePronounce: {
+            ...current.voicePronounce,
+            ...Object.fromEntries(heard.map((n) => [n.word, n.heardAs!])),
+          },
+        }),
+      ),
+      Effect.ignore,
+    );
+  });
 
   /** A member's name in the household (the identity lane's members table); null for a guest or no row. */
   const memberName = Effect.fn("TessayaTurn.memberName")(function* (member: string | null) {
@@ -339,8 +371,11 @@ export const make = Effect.gen(function* () {
       return yield* new BatonMemoryRefusedError({
         reason: "I can keep preferences only for people in this household.",
       });
-    if (origin?.rehearsal === true) return { member, key, value };
-    const clean = value?.trim().replace(/\s+/g, " ").slice(0, PREFERENCE_MAX) ?? "";
+    if (origin?.rehearsal === true)
+      return { member, key, value, line: value === null ? "Cleared." : "Kept." };
+    const folded = foldSpelling(value?.trim() ?? "");
+    const clean = folded.text.replace(/\s+/g, " ").slice(0, PREFERENCE_MAX);
+    yield* teachVoice(folded.names);
     if (clean === "")
       yield* sql`DELETE FROM tessaya_member_preferences WHERE member_id = ${member} AND key = ${key}`.pipe(
         Effect.orDie,
@@ -352,7 +387,12 @@ export const make = Effect.gen(function* () {
         ON CONFLICT (member_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
       `.pipe(Effect.orDie);
     if (Option.isSome(preferences)) yield* preferences.value.changed(member);
-    return { member, key, value: clean === "" ? null : clean };
+    return {
+      member,
+      key,
+      value: clean === "" ? null : clean,
+      line: clean === "" ? "Cleared." : `Kept.${spellBack(folded.names)}`,
+    };
   });
   const pools = yield* Effect.serviceOption(TurnPools);
 
@@ -479,13 +519,18 @@ export const make = Effect.gen(function* () {
       : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, learn);
   });
 
-  const remember = Effect.fn("TessayaTurn.remember")(function* (text: string) {
+  const remember = Effect.fn("TessayaTurn.remember")(function* (said: string) {
     const origin = yield* TurnOrigin;
+    // "Dr Qadri, Q-A-D-R-I": the name kept as spelled, said back once, and taught to the voice.
+    const folded = foldSpelling(said.trim());
+    const text = folded.text;
+    const spelledBack = spellBack(folded.names);
+    if (origin?.rehearsal !== true) yield* teachVoice(folded.names);
     if (origin?.rehearsal === true)
       return {
         kept: "rehearsal" as const,
         id: null,
-        line: "Kept.",
+        line: `Kept.${spelledBack}`,
       };
     if (origin?.speaker?.kind === "guest")
       return yield* new BatonMemoryRefusedError({
@@ -497,7 +542,10 @@ export const make = Effect.gen(function* () {
       (origin.speaker?.kind === "saved" ||
         (origin.member !== undefined && origin.member !== OWNER_MEMBER_ID))
     )
-      return yield* rememberForMember(origin, text);
+      return yield* Effect.map(rememberForMember(origin, text), (r) => ({
+        ...r,
+        line: `${r.line}${spelledBack}`,
+      }));
     const his = origin?.hisVoice === true;
     const item = yield* memory.add({
       kind: "note",
@@ -520,11 +568,11 @@ export const make = Effect.gen(function* () {
     return item.proposed
       ? { kept: "held" as const, id: item.id, line: "Noted; it waits for his yes in Memory." }
       : his
-        ? { kept: "his" as const, id: item.id, line: "Kept." }
+        ? { kept: "his" as const, id: item.id, line: `Kept.${spelledBack}` }
         : {
             kept: "noted" as const,
             id: item.id,
-            line: "Kept.",
+            line: `Kept.${spelledBack}`,
           };
   });
 
