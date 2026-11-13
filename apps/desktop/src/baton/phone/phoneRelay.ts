@@ -16,8 +16,12 @@ const POLL_MS = 1_500;
  * How long to wait before looking at the inbox again: quick while things are happening, slower the longer nothing does. A phone ask
  * after a quiet hour waits at most the longest delay, still inside the server's 45 s "connected" window.
  */
-export const nextPollMs = (quietTicks: number): number =>
-  quietTicks < 12 ? 5_000 : quietTicks < 60 ? 15_000 : 30_000;
+export const nextPollMs = (quietTicks: number, heldMs = 0): number =>
+  // A server that held the take open has already waited; look again at once (13 Nov: the R1's ask sat up to 30 s).
+  heldMs >= TAKE_WAIT_MS / 2 ? 0 : quietTicks < 12 ? 5_000 : quietTicks < 60 ? 15_000 : 30_000;
+
+/** How long the server holds an empty take open for the next ask; an older server answers at once. */
+export const TAKE_WAIT_MS = 10_000;
 
 /** A relay call that has not answered by then is a failed one: the loop goes on and the main thread is never held. */
 export const PHONE_CALL_TIMEOUT_MS = 20_000;
@@ -118,7 +122,7 @@ export const createPhoneRelay = (input: {
     try {
       let item: { id?: unknown; text?: unknown; source?: unknown; origin?: unknown } | null;
       try {
-        item = (await input.call("take", {})) as typeof item;
+        item = (await input.call("take", { waitMs: TAKE_WAIT_MS })) as typeof item;
       } catch {
         return "away";
       }

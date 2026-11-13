@@ -28,6 +28,7 @@ import {
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -104,6 +105,8 @@ export class BatonPhoneInbox extends Context.Service<
     readonly recent: (limit: number) => Effect.Effect<ReadonlyArray<PhoneAsk>>;
     /** The desktop takes the oldest waiting ask (null when none), and is counted as connected. */
     readonly take: Effect.Effect<PhoneAsk | null>;
+    /** Until the next ask is posted, or `ms` pass: the desktop waits here rather than polling every few seconds. */
+    readonly waitForAsk: (ms: number) => Effect.Effect<void>;
     readonly renew: (id: string) => Effect.Effect<void>;
     readonly answer: (id: string, spoken: string, card: string) => Effect.Effect<boolean>;
     readonly fail: (id: string, message: string) => Effect.Effect<boolean>;
@@ -141,6 +144,7 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   let lastSeen: number | null = null;
 
+  let arrived = yield* Deferred.make<void>();
   const sweep = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     yield* sql`
@@ -194,8 +198,16 @@ export const make = Effect.gen(function* () {
       INSERT INTO fabric_phone_asks (id, text, source, origin, status, created_at, expires_at)
       VALUES (${input.id}, ${trimmed}, ${source}, ${input.origin?.slice(0, 40) ?? null}, 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
     `.pipe(Effect.orDie);
+    const was = arrived;
+    arrived = yield* Deferred.make<void>();
+    yield* Deferred.succeed(was, undefined);
     return { ok: true as const, ask: (yield* read(input.id))! };
   });
+  const waitForAsk = (ms: number) =>
+    Effect.suspend(() => Deferred.await(arrived)).pipe(
+      Effect.timeoutOption(`${Math.max(0, Math.min(15_000, ms))} millis`),
+      Effect.asVoid,
+    );
 
   const take = Effect.gen(function* () {
     yield* sweep;
@@ -319,6 +331,7 @@ export const make = Effect.gen(function* () {
     get,
     recent,
     take,
+    waitForAsk,
     renew,
     answer,
     fail,
@@ -432,7 +445,14 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
       return { value: null };
     }
     case "take": {
-      const ask = yield* inbox.take;
+      const waitMs = typeof a["waitMs"] === "number" ? a["waitMs"] : 0;
+      let ask = yield* inbox.take;
+      // A desktop that says it will wait is answered the moment an ask arrives (13 Nov: the R1's laptop ask sat up to
+      // 30 s in the queue between polls).
+      if (ask === null && waitMs > 0) {
+        yield* inbox.waitForAsk(waitMs);
+        ask = yield* inbox.take;
+      }
       return {
         value:
           ask === null

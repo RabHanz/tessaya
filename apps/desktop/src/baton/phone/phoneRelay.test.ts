@@ -120,10 +120,13 @@ describe("the desktop's phone relay", () => {
   });
 
   it("polls often while active and backs off when nothing happens, but never past the server's connected window", () => {
-    expect([0, 11, 12, 59, 60, 5_000].map(nextPollMs)).toEqual([
+    expect([0, 11, 12, 59, 60, 5_000].map((n) => nextPollMs(n))).toEqual([
       5_000, 5_000, 15_000, 15_000, 30_000, 30_000,
     ]);
-    expect(Math.max(...[0, 12, 60].map(nextPollMs))).toBeLessThan(45_000);
+    expect(Math.max(...[0, 12, 60].map((n) => nextPollMs(n)))).toBeLessThan(45_000);
+    // A server that held the take open for the next ask: look again at once, however quiet it has been.
+    expect(nextPollMs(60, 10_000)).toBe(0);
+    expect(nextPollMs(60, 200)).toBe(30_000);
   });
 });
 
