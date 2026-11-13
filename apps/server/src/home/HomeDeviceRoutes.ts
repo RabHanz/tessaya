@@ -16,18 +16,26 @@ import { requestUrl } from "../requestUrl.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
-import { BatonVoiceProfile } from "@t3tools/baton-contracts";
 import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
 
-/** What the room loop sends: a profile as the home keeps it, less what the home sets. */
-const VoiceUpload = Schema.Struct({
-  profile: BatonVoiceProfile.mapFields((f) => {
-    const { version: _v, updatedAt: _u, ...rest } = f;
-    return rest;
+/**
+ * What the room loop sends after enrolling: the profile less what the server decides (the member, the version). A post
+ * with no `fresh` is a new enrolment; the loop's copy from before sharing is sent with `fresh: false`.
+ */
+export const VoiceUpload = Schema.Struct({
+  profile: Schema.Struct({
+    name: Schema.String.check(Schema.isMaxLength(60)),
+    kind: Schema.Literals(["owner", "saved"]),
+    model: Schema.String.check(Schema.isMaxLength(120)),
+    centroid: Schema.String.check(Schema.isMaxLength(16_384)),
+    samples: Schema.Int,
+    sources: Schema.optionalKey(Schema.Array(Schema.Literals(["wispr", "spoken", "adapted"]))),
+    enrolledAt: Schema.String.check(Schema.isMaxLength(40)),
+    consentNote: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(400))),
   }),
-  fresh: Schema.Boolean,
+  fresh: Schema.optionalKey(Schema.Boolean),
 });
 
 const digest = (s: string) => NodeCrypto.createHash("sha256").update(s).digest();
@@ -110,8 +118,12 @@ export const routes = HttpRouter.use((router) =>
       const result = yield* Effect.flatMap(TessayaHousehold, (h) =>
         h.call({
           op: "saveVoice",
-          profile: { ...body.value.profile, id: OWNER_MEMBER_ID },
-          fresh: body.value.fresh,
+          profile: {
+            ...body.value.profile,
+            id: OWNER_MEMBER_ID,
+            sources: body.value.profile.sources ?? ["spoken"],
+          },
+          fresh: body.value.fresh ?? true,
         }),
       ).pipe(
         Effect.provideService(HouseholdCaller, {
