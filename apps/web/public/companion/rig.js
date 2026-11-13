@@ -75,6 +75,8 @@
   sx: 1, sy: 1, lift: 0, lean: 0, tilt: 0, yaw: 0, pitch: 0, zoom: 1, app: 0,
   // body tint: anger flush, a cold gloom, a warm glow behind
   flush: 0, gloom: 0, glow: 0,
+  // the mood's colour through the whole body: warmer and brighter as it rises, cooler blue-grey as it falls
+  warm: 0, cool: 0,
   // eyes: size, spacing, height, gaze; upper lid close and slant (+ inner down = cross, − outer down = sad); lower lid push
   ew: 1, eh: 1, gap: 1, ey: 0, gx: 0, gy: 0, lu: 0, la: 0, ll: .12,
   // eye styles, crossfaded: happy arcs, sleeping arcs, squeezed > <, stars, hearts, spirals, loading dots, wink, one eye bigger
@@ -88,14 +90,19 @@
  };
  const KEYS = Object.keys(N);
  const SPRING = new Set(["sx", "sy", "lift", "lean", "tilt", "yaw", "pitch", "zoom", "app"]);
- // A change of expression is a timed move of about a second, moving on every frame, slow in and slow out (the motion
- // bar: the reference's changes run 0.85 to 1.5 s and never snap). Every value travels on a smootherstep from wherever it
- // is, in overlapping waves: posture, brows and tints first, the eyes 120 ms later, the mouth 220 ms later, each over
- // 800 ms (a calm personality takes a little longer); the "shift" clip adds the anticipation and the stretch of the move.
+ // A change of mood is a timed move of about a second and a half that moves on every frame (the motion bar: the
+ // reference recolours the whole character from about 0.3 s to 1.1 s and is halfway near 0.55 s). The body's colour,
+ // aura and posture travel the whole way; the brows, eyes and mouth arrive spread from 0.5 to 0.9 s. Each value leaves
+ // wherever it is on a slow-in, slow-out curve whose long tail keeps it moving to the end.
+ const GROUP = (k) => /^(warm|cool|gloom|flush|glow|lift|lean|pitch|tilt)$/.test(k) ? "body" : /^(bo|by|ba|bc|bas)$/.test(k) ? "brow" : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush)$/.test(k) ? "mouth" : "eye";
+ const TIMING = {body: [0, 2000], brow: [40, 520], eye: [130, 600], mouth: [220, 640]};
+ const LAG = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][0]]));
+ const DUR = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][1]]));
  const TWEEN_MS = 800;
  const smoother = (x) => x * x * x * (x * (x * 6 - 15) + 10);
- const LAG = Object.fromEntries(Object.keys(N).map((k) => [k, /^(ew|eh|gap|ey|gx|gy|lu|la|ll|arc|sarc|chev|star|heart|spiral|dots|wink|big|wet|tear)$/.test(k) ? 120 : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush)$/.test(k) ? 220 : 0]));
- // how a mood sits: up and open (joy) or down and closed (sadness); a change moves her body by the difference
+ // the body's curve: a slow start, halfway near 0.6 s, then a long arrival that keeps moving to the end (a sine ease on
+ // t^0.55 over 2 s: the reference's change is visible on 40 of its 47 frames)
+ const longTail = (x) => .5 - .5 * Math.cos(PI * Math.pow(x, .55));
  const VALENCE = {Joy: 1, Love: .9, Surprise: .8, Curious: .4, Angry: .3, Calm: 0, Sulky: -.6, Sad: -1, Sleepy: -.8};
  const STYLE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots", "wink"]);
  TCS.NEUTRAL = N;
@@ -682,7 +689,7 @@
     + `<radialGradient id="ck${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.cheek}" stop-opacity=".95"/><stop offset="1" stop-color="${p.cheek}" stop-opacity="0"/></radialGradient>`
     + `<radialGradient id="fl${uid}" cx=".5" cy=".15" r=".8"><stop offset="0" stop-color="#e2403f" stop-opacity=".75"/><stop offset="1" stop-color="#e2403f" stop-opacity="0"/></radialGradient>`
     + `<linearGradient id="gl${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4a7a" stop-opacity=".7"/><stop offset=".6" stop-color="#3b4a7a" stop-opacity="0"/></linearGradient>`
-    + `<radialGradient id="gw${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.glow || p.light}" stop-opacity=".55"/><stop offset="1" stop-color="${p.glow || p.light}" stop-opacity="0"/></radialGradient>`
+    + `<radialGradient id="gw${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.glow || p.light}" stop-opacity=".55"/><stop offset="1" stop-color="${p.glow || p.light}" stop-opacity="0"/></radialGradient><radialGradient id="aw${uid}" cx=".5" cy=".5" r=".5"><stop offset=".35" stop-color="#FFC85C" stop-opacity=".5"/><stop offset="1" stop-color="#FFC85C" stop-opacity="0"/></radialGradient><radialGradient id="ac${uid}" cx=".5" cy=".5" r=".5"><stop offset=".35" stop-color="#7F9CC8" stop-opacity=".5"/><stop offset="1" stop-color="#7F9CC8" stop-opacity="0"/></radialGradient>`
     + `<clipPath id="cl${uid}"><path/></clipPath>` + (ch.defs ? ch.defs(uid, p) : "");
 
    L.defs.insertAdjacentHTML("beforeend", `<mask id="re${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><path fill="none" stroke="#fff" stroke-width="16"/></mask><mask id="rc${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><g mask="url(#re${uid})"></g></mask>`);
@@ -704,7 +711,8 @@
    tgt.sx = 1 + (tgt.sx - 1); // keep
    // posture follows the mood: up and a little back when it rises, down and forward when it falls
    // and a warm aura swells behind her as it rises (a falling mood greys through its own gloom)
-   const v = VALENCE[ex.g] ?? 0; tgt.lift += -4 * v * A; tgt.pitch += -.03 * v * A; tgt.glow += Math.max(0, v) * .35 * A;
+   const v = VALENCE[ex.g] ?? 0; tgt.lift += -6 * v * A; tgt.pitch += -.03 * v * A; tgt.glow += Math.max(0, v) * .4 * A;
+   tgt.warm = clamp(Math.max(0, v) * .9, 0, .8); tgt.cool = clamp(Math.max(0, -v) * .9, 0, .8);
   }
   function setExpression(name, o = {}) {
    if (!E[name]) return;
@@ -716,8 +724,8 @@
    if (prev !== name && E[prev] && E[prev].loop && LOOPS[E[prev].loop] && LOOPS[E[prev].loop].fn) oldLoop = {lp: LOOPS[E[prev].loop], t0: loopT0, fade0: t};
    if (o.intensity !== undefined) intensity = o.intensity;
    retarget();
-   if (!reduced) for (const k of KEYS) if (Math.abs(tgt[k] - cur[k]) > 1e-3) tw[k] = {from: cur[k], to: tgt[k], t0: t + LAG[k] * pace(), dur: TWEEN_MS * pace()};
-   if (prev !== name && !reduced && !opts.static) { const d = (VALENCE[(E[name] || {}).g] ?? 0) - (VALENCE[(E[prev] || {}).g] ?? 0); play("shift", {amp: Math.abs(d) < .25 ? .35 : clamp(d, -1, 1), raw: true}); }
+   if (!reduced) for (const k of KEYS) if (Math.abs(tgt[k] - cur[k]) > 1e-3) tw[k] = GROUP(k) === "body" ? {from: cur[k], to: tgt[k], t0: t, dur: DUR[k], curve: longTail} : {from: cur[k], to: tgt[k], t0: t + LAG[k] * pace(), dur: DUR[k] * pace(), curve: smoother};
+   // the pose rises or sinks with the colour, slowly (no anticipation bob: the motion bar asks for a soft move)
    const ex = E[name];
    loopT0 = performance.now(); nextLoopAct = loopT0 + 1500;
    // every change morphs: the face's shape keys blend through in-betweens (the motion bar, 13 Nov, replaced the old
@@ -817,7 +825,7 @@
     if (w && w.to === target) {
      // a change: slow in, slow out, from wherever it was
      const p = clamp((now - w.t0) / w.dur, 0, 1);
-     cur[key] = w.from + (w.to - w.from) * smoother(p); vel[key] = 0;
+     cur[key] = w.from + (w.to - w.from) * (w.curve || smoother)(p); vel[key] = 0;
      if (p < 1) moving = true; else delete tw[key];
     } else if (!SPRING.has(key)) {
      // any other new target (a personality, an intensity) travels the same way
@@ -850,7 +858,8 @@
    const dt = Math.min(.05, (now - last) / 1000);
    const ex = E[expr], lp = ex.loop && LOOPS[ex.loop];
    // throttled loops: skip frames to hold their fps, unless something else needs full rate
-   const fullRate = clips.length || speech || Object.values(props).some((p) => now - p.t0 < 900 || p.out || (p.use && now - p.use < p.useDur));
+   // a change of mood in progress runs at the display's rate even when the new mood's own loop is a throttled one
+   const fullRate = clips.length || speech || Object.keys(tw).length || Object.values(props).some((p) => now - p.t0 < 900 || p.out || (p.use && now - p.use < p.useDur));
    const busy = fullRate || fxs.length;
    // a throttled loop (breathing, thinking) keeps its low rate even while its own effects (zzz, …) float by
    if (lp && lp.fps && !fullRate && !reduced) { const step = 1000 / lp.fps; if (now - loopFrame < step - 2) { raf = requestAnimationFrame(frame); return; } loopFrame = now; }
@@ -960,8 +969,10 @@
    }
 
    // body
-   const pal = ch.palette ? ch.palette(Rv, expr) : ch.pal;
-   if (ch.palette) { const key = pal.base + pal.light + pal.dark; if (key !== dyn) { dyn = key; L.stops[0].setAttribute("stop-color", pal.light); L.stops[1].setAttribute("stop-color", pal.base); L.stops[2].setAttribute("stop-color", pal.dark); } }
+   const pal0 = ch.palette ? ch.palette(Rv, expr) : ch.pal, wm = clamp(Rv.warm, 0, 1), co = clamp(Rv.cool, 0, 1);
+   const tone = (c, w, k) => mixHex(mixHex(c, w, wm), k, co);
+   const pal = wm + co < .002 ? pal0 : {...pal0, light: tone(pal0.light, "#FFE7A3", "#C9D6EA"), base: tone(pal0.base, "#FFC85C", "#93A9CC"), dark: tone(pal0.dark, "#E8A23C", "#5F7397")};
+   { const key = pal.base + pal.light + pal.dark; if (key !== dyn) { dyn = key; L.stops[0].setAttribute("stop-color", pal.light); L.stops[1].setAttribute("stop-color", pal.base); L.stops[2].setAttribute("stop-color", pal.dark); } }
    const ctx = {t: now / 1000, uid, sec, pal, R: Rv, expr, proj: projector(ch.face.R, ch.face.curv ?? 1, clamp(Rv.yaw, -(ch.face.yawMax ?? 2), ch.face.yawMax ?? 2), Rv.pitch)};
    B = ch.body(Rv, ctx);
    const f = ch.face, sxF = Rv.sx, syF = Rv.sy;
@@ -975,7 +986,8 @@
    const tint = (Rv.flush > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#fl${uid})" opacity="${f1(clamp(Rv.flush, 0, 1))}"/>` : "")
     + (Rv.gloom > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#gl${uid})" opacity="${f1(clamp(Rv.gloom, 0, 1) * .45)}"/>` : "");
    // where a sleeve passes behind the edge, the plain body fill covers the rim highlight (no light seam beside the sleeve)
-   put(L.bd, rim + `<g mask="url(#rc${uid})"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint);
+   // the body's colours are in its gradient's stops; naming them here rebuilds the layer when they change, so it repaints
+   put(L.bd, rim + `<g mask="url(#rc${uid})" data-tone="${dyn}"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint);
    if (L.rcEdge) L.rcEdge.setAttribute("d", B.d);
    const back = B.back || "";
    const face = ch.noFace ? {svg: "", eyes: drawFace(Rv, F, pal, now / 1000, spinT).eyes} : drawFace(Rv, F, pal, now / 1000, spinT);
@@ -985,7 +997,10 @@
    // contact shadow and the glow behind her
    const lift = Rv.lift, ls = clamp(1 + lift / 90, .45, 1.1);
    put(L.sh, `<ellipse cx="${f1(Rv.lean * 1.2)}" cy="${GROUND + 2}" rx="${f1(B.hw * 1.02 * ls)}" ry="${f1(10 * ls)}" fill="url(#gs${uid})" opacity="${f1(.9 * ls)}"/>`);
-   put(L.glow, Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : "");
+   // the mood's aura: a soft warm or cool light round her that colours with the body (the reference's background shifts);
+   // it fades out inside her own window, so the desktop never shows its edge
+   const aura = (id, o) => o > .01 ? `<ellipse cx="0" cy="${f1(GROUND + B.cy)}" rx="${f1(B.hw * 1.5)}" ry="${f1(B.h * .75)}" fill="url(#${id}${uid})" opacity="${(clamp(o, 0, 1)).toFixed(3)}"/>` : "";
+   put(L.glow, aura("aw", Rv.warm * 1.15) + aura("ac", Rv.cool * 1.15) + (Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : ""));
    L.w.setAttribute("transform", `translate(0 ${f1(GROUND + lift)}) rotate(${f1(Rv.lean)}) translate(0 ${f1(B.cy)}) rotate(${f1(Rv.tilt)}) scale(${f1(Rv.zoom * 1000) / 1000}) translate(0 ${f1(-B.cy)})`);
    L.fx.setAttribute("transform", `translate(0 ${f1(GROUND + lift)})`);
 
