@@ -77,7 +77,7 @@ import {
   requestAttach,
 } from "./batonWindows";
 
-type ChatViewElement = ReactElement<{ reserveTitleBarControlInset?: boolean }>;
+type ChatViewElement = ReactElement<{ reserveTitleBarControlInset?: boolean; splitPane?: boolean }>;
 
 const KEYBOARD_RESIZE_STEP = 0.02;
 const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "Shift"]);
@@ -348,12 +348,13 @@ function BatonPane(props: {
     environments.find((environment) => environment.environmentId === environmentId)?.label ?? null;
   // Only the pane under the window controls keeps ChatView's inset for them.
   const reserveTitleBarControlInset = box.top === 0 && box.left + box.width > 0.999;
+  const splitPane = split && !background;
 
   let view: ReactNode = null;
   if (elsewhere) {
     view = <PaneElsewhere onBringHere={() => onBringHere(target)} />;
   } else if (focused) {
-    view = props.view ? cloneElement(props.view, { reserveTitleBarControlInset }) : null;
+    view = props.view ? cloneElement(props.view, { reserveTitleBarControlInset, splitPane }) : null;
   } else if (target.kind === "server" && shell !== null) {
     view = (
       <ChatView
@@ -361,6 +362,7 @@ function BatonPane(props: {
         threadId={target.threadRef.threadId}
         routeKind="server"
         reserveTitleBarControlInset={reserveTitleBarControlInset}
+        splitPane={splitPane}
       />
     );
   } else if (target.kind === "draft" && draftSession) {
@@ -372,6 +374,7 @@ function BatonPane(props: {
         threadId={draftSession.threadId}
         routeKind="draft"
         reserveTitleBarControlInset={reserveTitleBarControlInset}
+        splitPane={splitPane}
       />
     );
   } else if (draftRedirect) {
@@ -381,6 +384,7 @@ function BatonPane(props: {
         threadId={draftRedirect.threadId}
         routeKind="server"
         reserveTitleBarControlInset={reserveTitleBarControlInset}
+        splitPane={splitPane}
       />
     );
   }

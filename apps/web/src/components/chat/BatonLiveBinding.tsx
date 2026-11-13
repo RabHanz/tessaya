@@ -152,8 +152,8 @@ export function BatonLiveBinding({
         <span
           className={
             binding.kind === "pane"
-              ? "min-w-0 truncate text-2xs text-muted-foreground"
-              : "min-w-0 truncate text-2xs text-warning-foreground"
+              ? "min-w-0 truncate text-2xs text-muted-foreground @max-xl/thread-header:hidden"
+              : "min-w-0 truncate text-2xs text-warning-foreground @max-xl/thread-header:hidden"
           }
         >
           {banner === null ? binding.text : `${banner.text} ${binding.text}`}
