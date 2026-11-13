@@ -1,9 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Where the R1 posts a camera picture (`POST /camera/upload?device=<id>`, the firmware's fixed path, no auth of its
- * own). The service keeps it only when he opened a window for that device moments ago, and only in memory. And where
- * the room loop claims a wake for an R1 (`POST /api/devices/r1/v1/voice/arbiter`, the R1's device key), so one
- * device answers him. And the R1's own MQTT hub (`/api/r1/mqtt`, R1Hub.ts).
+ * The R1's own routes: its camera upload (`POST /camera/upload?device=<id>`, kept only inside a window he opened), the
+ * room loop's wake claims, step-ups and enrolments (the device key), and its MQTT hub (`/api/r1/mqtt`, R1Hub.ts).
  */
 import * as NodeCrypto from "node:crypto";
 
@@ -45,6 +43,19 @@ const digest = (s: string) => NodeCrypto.createHash("sha256").update(s).digest()
 const sameKey = (given: string, expected: string) =>
   given !== "" && NodeCrypto.timingSafeEqual(digest(given), digest(expected));
 
+/**
+ * Whether a camera upload may be taken. Over the T3 Connect tunnel (Cloudflare adds `cf-connecting-ip`) anyone on the
+ * internet can reach the path, so it needs the device key as a bearer; on the LAN it stays open, as older firmware
+ * sends no key.
+ */
+export const uploadAuthorized = (
+  headers: Readonly<Record<string, string | undefined>>,
+  deviceKey: string | null,
+): boolean =>
+  headers["cf-connecting-ip"] === undefined ||
+  (deviceKey !== null &&
+    sameKey((headers["authorization"] ?? "").replace(/^Bearer\s+/i, ""), deviceKey));
+
 const LOOP_OPS: ReadonlySet<string> = new Set(["claim", "speaking", "ended", "arbiter"]);
 
 export const routes = HttpRouter.use((router) =>
@@ -64,6 +75,11 @@ export const routes = HttpRouter.use((router) =>
         !(length > 0 && length <= MAX_SHOT_BYTES)
       )
         return HttpServerResponse.text("No.", { status: 400 });
+      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+        Effect.provideContext(context),
+      );
+      if (!uploadAuthorized(request.headers, device?.deviceKey ?? null))
+        return HttpServerResponse.text("Wrong device key.", { status: 401 });
       const bytes = new Uint8Array(yield* request.arrayBuffer);
       const kept = yield* Effect.flatMap(HomeDevices, (d) => d.acceptShot(id.value, bytes)).pipe(
         Effect.provideContext(context),
