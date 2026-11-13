@@ -74,19 +74,23 @@ if [ "$tests" -eq 1 ]; then
     fi
     # --retry reruns a failed test, not a browser file Chromium failed to import under load. Only when every failure
     # is such a file, and nothing else went wrong, do those files get one rerun; any other failure fails the gate.
-    web_log="$(mktemp)"
-    if ! (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test "${extra[@]}") 2>&1 | tee "$web_log"; then
-      plain="$(sed 's/\x1b\[[0-9;]*m//g' "$web_log")"
+    # One Chromium for all ~600 files drops its connection about six minutes in (14 Nov, a different file each
+    # run); a fresh browser per quarter does not.
+    for shard in 1/4 2/4 3/4 4/4; do
+      web_log="$(mktemp)"
+      if ! (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test "${extra[@]}" --shard "$shard") 2>&1 | tee "$web_log"; then
+        plain="$(sed 's/\x1b\[[0-9;]*m//g' "$web_log")"
+        rm -f "$web_log"
+        fails="$(grep -E '^ *FAIL ' <<< "$plain" | sort -u || true)"
+        mapfile -t again < <(sed -n 's/^ *FAIL  *|browser ([a-z]*)| \(src\/[^ ]*\.test\.tsx\{0,1\}\) \[ .*/\1/p' <<< "$fails" | sort -u)
+        only_imports=$([ -n "$fails" ] && [ "${#again[@]}" -gt 0 ] && [ "${#again[@]}" -le 10 ] && [ "$(grep -c . <<< "$fails")" -eq "${#again[@]}" ] && ! grep -q 'Unhandled' <<< "$plain" && echo 1 || echo 0)
+        for f in "${again[@]}"; do grep -qF "Failed to import test file $PWD/$pkg/$f" <<< "$plain" || only_imports=0; done
+        [ "$only_imports" -eq 1 ] || { echo "gates: apps/web failed"; exit 1; }
+        echo "gates: rerunning ${#again[@]} web file(s) Chromium failed to import: ${again[*]}"
+        (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test --maxWorkers 1 "${again[@]}")
+      fi
       rm -f "$web_log"
-      fails="$(grep -E '^ *FAIL ' <<< "$plain" | sort -u || true)"
-      mapfile -t again < <(sed -n 's/^ *FAIL  *|browser ([a-z]*)| \(src\/[^ ]*\.test\.tsx\{0,1\}\) \[ .*/\1/p' <<< "$fails" | sort -u)
-      only_imports=$([ -n "$fails" ] && [ "${#again[@]}" -gt 0 ] && [ "${#again[@]}" -le 10 ] && [ "$(grep -c . <<< "$fails")" -eq "${#again[@]}" ] && ! grep -q 'Unhandled' <<< "$plain" && echo 1 || echo 0)
-      for f in "${again[@]}"; do grep -qF "Failed to import test file $PWD/$pkg/$f" <<< "$plain" || only_imports=0; done
-      [ "$only_imports" -eq 1 ] || { echo "gates: apps/web failed"; exit 1; }
-      echo "gates: rerunning ${#again[@]} web file(s) Chromium failed to import: ${again[*]}"
-      (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test --maxWorkers 1 "${again[@]}")
-    fi
-    rm -f "$web_log"
+    done
   done
 fi
 
