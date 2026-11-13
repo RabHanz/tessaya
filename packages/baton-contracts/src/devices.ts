@@ -12,7 +12,7 @@ export const BATON_DEVICES_WS_METHODS = { call: "baton.devices.call" } as const;
 export const BATON_DEVICES_CALL_KINDS = ["read", "act", "owner", "vessel"] as const;
 
 /** `items` and `read` are the registry's: every device's items, and their values. */
-export const BATON_DEVICES_READ_OPS = ["list", "items", "read", "reach"] as const;
+export const BATON_DEVICES_READ_OPS = ["list", "items", "read", "reach", "updates"] as const;
 export const BATON_DEVICES_ACT_OPS = [
   "eye",
   "led",

@@ -161,6 +161,8 @@ function HardwareSections({
     null,
   );
   // Read once and after each change, not on every refresh: it asks the tunnel for its address.
+  // Firmware updates from this server (R1Updates): each R1's line, including why one stopped.
+  const [updates, setUpdates] = useState<ReadonlyArray<{ id: string; line: string }>>([]);
   const readReach = async () => {
     const result = await devicesCall({
       environmentId,
@@ -168,6 +170,14 @@ function HardwareSections({
     });
     if (result._tag === "Success" && result.value.ok)
       setReach(result.value.value as { away: boolean; offered: boolean; line: string });
+    const upd = await devicesCall({
+      environmentId,
+      input: { kind: "read", op: "updates", args: {} },
+    });
+    if (upd._tag === "Success" && upd.value.ok)
+      setUpdates(
+        (upd.value.value as { devices: ReadonlyArray<{ id: string; line: string }> }).devices,
+      );
   };
 
   const refresh = async () => {
@@ -253,6 +263,9 @@ function HardwareSections({
             }
           />
         )}
+        {updates.map((u) => (
+          <SettingsRow key={`fw-${u.id}`} title={`Firmware · ${u.id}`} description={u.line} />
+        ))}
         {devices.map((d) => (
           <SettingsRow
             key={d.id}
