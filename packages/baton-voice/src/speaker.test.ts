@@ -256,6 +256,24 @@ describe("the speaker identity", () => {
     expect(cosine(moved!.centroid, at(0.8))).toBeGreaterThan(cosine(owner.centroid, at(0.8)));
     expect(adaptProfile(owner, { vector: at(0.45), ms: 4_000 }, policy)).toBeNull();
     expect(adaptProfile(owner, { vector: at(0.8), ms: 2_000 }, policy)).toBeNull();
-    expect(adaptProfile(sarah, { vector: v(0, 1, 0), ms: 4_000 }, policy)).toBeNull();
+    // Every member's copy refines on the device that hears them, not only his.
+    expect(adaptProfile(sarah, { vector: v(0, 1, 0), ms: 4_000 }, policy)?.base).toEqual(
+      sarah.centroid,
+    );
+  });
+
+  it("never lets a device's refinements take a profile far from the shared one", () => {
+    let mine: SpeakerProfile | null = owner;
+    let steps = 0;
+    // The same confident clip over and over walks the copy towards it, until the cap stops it.
+    while (mine !== null && steps < 1_000) {
+      const next = adaptProfile(mine, { vector: at(0.8), ms: 4_000 }, policy);
+      if (next === null) break;
+      mine = next;
+      steps++;
+    }
+    expect(steps).toBeGreaterThan(0);
+    expect(cosine(mine!.centroid, owner.centroid)).toBeGreaterThanOrEqual(0.92);
+    expect(mine!.base).toEqual(owner.centroid);
   });
 });

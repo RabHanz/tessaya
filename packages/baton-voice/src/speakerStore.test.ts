@@ -5,7 +5,12 @@ import * as NodePath from "node:path";
 
 import { expect, it } from "vite-plus/test";
 
-import { createSpeakerStore, speakersPath } from "./speakerStore.ts";
+import {
+  createSpeakerStore,
+  profileFromWire,
+  profileToWire,
+  speakersPath,
+} from "./speakerStore.ts";
 
 const profile = (
   id: string,
@@ -60,4 +65,24 @@ it("sets an unreadable file aside instead of writing over it, and never loads a 
     ).toBe(true);
     store.save(profile("broken", "owner", Float32Array.from([Number.NaN, 1])));
     expect(store.list()).toEqual([]);
+  }));
+
+it("keeps a device's copy over the shared profile, and sends only the shared part home", () =>
+  inTemp((dir) => {
+    const store = createSpeakerStore(dir);
+    const shared = Float32Array.from([0.6, 0.8]);
+    const refined = {
+      ...profile("owner", "owner", Float32Array.from([0.8, 0.6])),
+      base: shared,
+      version: 3,
+    };
+    store.save({ ...refined, sources: ["spoken", "adapted"] });
+    const kept = store.list()[0]!;
+    expect([Array.from(kept.base!), kept.version]).toEqual([Array.from(shared), 3]);
+    const wire = profileToWire(kept);
+    expect(wire.sources).toEqual(["spoken"]);
+    expect(Array.from(profileFromWire({ ...wire, version: 3 })!.centroid)).toEqual(
+      Array.from(shared),
+    );
+    expect(profileFromWire({ ...wire, centroid: "!!", version: 1 })).toBeNull();
   }));

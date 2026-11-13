@@ -19,6 +19,10 @@ export interface SpeakerProfile {
   readonly enrolledAt: string;
   /** Saved people: what they said when they agreed, and when. */
   readonly consentNote?: string;
+  /** The home server's version of this person's profile this copy was made from; absent: never synced. */
+  readonly version?: number;
+  /** That shared profile's centroid: this device's own refinements stay within reach of it. */
+  readonly base?: Float32Array;
 }
 
 /** What the verdict is for: each use has its own cut-off, because a wrong "yes" costs more for some. */
@@ -284,21 +288,22 @@ export const spokenYesStands = (
 
 /** How far one confident turn moves his centroid (D6). */
 const ADAPT_WEIGHT = 0.02;
+/** How far a device's refinements may take a profile from the shared one (cosine): a bad mic can't drift a person away. */
+const ADAPT_MIN_LIKENESS = 0.92;
 /** Only a turn this far above the act cut-off teaches: a doubtful one could pull him towards someone else. */
 const ADAPT_ABOVE_ACT = 0.1;
 
 /**
- * His profile nudged towards one confident clip of this turn, or null when the clip should not teach. Only his own
- * profile, only from a 4 s clip, only well above the act cut-off.
+ * A member's profile on this device nudged towards one confident clip of this turn, or null when the clip should not
+ * teach: only from a 4 s clip, only well above the act cut-off, and never further from the shared profile than
+ * `ADAPT_MIN_LIKENESS`. The nudge stays on this device; the shared profile changes only by enrolling.
  */
-// shortcut: no cap on total drift from the enrolment beyond the per-turn weight; add one if the eval shows creep.
 export const adaptProfile = (
   profile: SpeakerProfile,
   clip: SpeakerClip,
   policy: SpeakerPolicy,
 ): SpeakerProfile | null => {
-  if (profile.kind !== "owner" || profile.model !== policy.model || clip.ms < ACT_SINGLE_MS)
-    return null;
+  if (profile.model !== policy.model || clip.ms < ACT_SINGLE_MS) return null;
   const score = cosine(clip.vector, profile.centroid);
   if (!Number.isFinite(score) || score < policy.single.act + ADAPT_ABOVE_ACT) return null;
   const v = unitOrNull(clip.vector);
@@ -306,10 +311,12 @@ export const adaptProfile = (
   const moved = unitOrNull(
     profile.centroid.map((c, i) => (1 - ADAPT_WEIGHT) * c + ADAPT_WEIGHT * v[i]!),
   );
-  return moved === null
+  const base = profile.base ?? profile.centroid;
+  return moved === null || cosine(moved, base) < ADAPT_MIN_LIKENESS
     ? null
     : {
         ...profile,
+        base,
         centroid: moved,
         sources: profile.sources.includes("adapted")
           ? profile.sources

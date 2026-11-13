@@ -16,10 +16,24 @@ import { requestUrl } from "../requestUrl.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
+import { BatonVoiceProfile } from "@t3tools/baton-contracts";
+import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
+import * as Schema from "effect/Schema";
+import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
+
+/** What the room loop sends: a profile as the home keeps it, less what the home sets. */
+const VoiceUpload = Schema.Struct({
+  profile: BatonVoiceProfile.mapFields((f) => {
+    const { version: _v, updatedAt: _u, ...rest } = f;
+    return rest;
+  }),
+  fresh: Schema.Boolean,
+});
 
 const digest = (s: string) => NodeCrypto.createHash("sha256").update(s).digest();
 const sameKey = (given: string, expected: string) =>
   given !== "" && NodeCrypto.timingSafeEqual(digest(given), digest(expected));
+
 const LOOP_OPS: ReadonlySet<string> = new Set(["claim", "speaking", "ended", "arbiter"]);
 
 export const routes = HttpRouter.use((router) =>
@@ -73,5 +87,49 @@ export const routes = HttpRouter.use((router) =>
       ),
     );
     yield* router.add("POST", "/api/devices/r1/v1/voice/arbiter", arbiter);
+    // The room loop's enrolment, or a profile it already had (moving to one profile per member): saved on the home
+    // as the owner's, never a member the loop names; it re-enrols only the owner today.
+    const decodeVoice = Schema.decodeUnknownOption(VoiceUpload);
+    const voice = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (device === null || !sameKey(bearer, device.deviceKey))
+        return HttpServerResponse.jsonUnsafe(
+          { ok: false, error: "Wrong device key." },
+          { status: 401 },
+        );
+      const body = decodeVoice(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+      if (Option.isNone(body) || body.value.profile.kind !== "owner")
+        return HttpServerResponse.jsonUnsafe(
+          { ok: false, error: "Send the owner's profile and whether it is a new enrolment." },
+          { status: 400 },
+        );
+      const result = yield* Effect.flatMap(TessayaHousehold, (h) =>
+        h.call({
+          op: "saveVoice",
+          profile: { ...body.value.profile, id: OWNER_MEMBER_ID },
+          fresh: body.value.fresh,
+        }),
+      ).pipe(
+        Effect.provideService(HouseholdCaller, {
+          member: OWNER_MEMBER_ID,
+          assurance: 2,
+          via: "the R1's enrolment",
+        }),
+        Effect.provideContext(context),
+      );
+      return HttpServerResponse.jsonUnsafe(
+        { ok: result.status === "done", line: result.line },
+        { status: result.status === "done" ? 200 : 409 },
+      );
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(HttpServerResponse.jsonUnsafe({ ok: false }, { status: 500 })),
+      ),
+    );
+    yield* router.add("POST", "/api/devices/r1/v1/voice/profile", voice);
   }),
 );

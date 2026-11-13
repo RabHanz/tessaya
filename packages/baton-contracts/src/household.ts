@@ -35,6 +35,25 @@ export const BatonHouseholdMember = Schema.Struct({
 });
 export type BatonHouseholdMember = typeof BatonHouseholdMember.Type;
 
+/**
+ * One member's shared voice profile (one per member and voice model, kept on the home server): numbers, never audio.
+ * `centroid` is base64 float32. `version` rises each time they enrol again.
+ */
+export const BatonVoiceProfile = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: Schema.String,
+  kind: Schema.Literals(["owner", "saved"]),
+  model: TrimmedNonEmptyString,
+  centroid: Schema.String.check(Schema.isMaxLength(16_384)),
+  samples: Schema.Int,
+  sources: Schema.Array(Schema.Literals(["wispr", "spoken", "adapted"])),
+  enrolledAt: Schema.String,
+  consentNote: Schema.optionalKey(Schema.String),
+  version: Schema.Int,
+  updatedAt: Schema.String,
+});
+export type BatonVoiceProfile = typeof BatonVoiceProfile.Type;
+
 const Ref = { id: TrimmedNonEmptyString };
 const op = <const O extends string, F extends Schema.Struct.Fields>(name: O, fields: F) =>
   Schema.Struct({ op: Schema.Literal(name), ...fields });
@@ -67,6 +86,19 @@ export const BatonHouseholdCallInput = Schema.Union([
    * so a home has one members table however many servers it has.
    */
   op("setHome", { on: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))) }),
+  /** Every member's shared voice profile, for a vessel to recognise them. */
+  op("voices", {}),
+  /**
+   * A member's voice, enrolled on any vessel. `fresh`: a new enrolment, which replaces theirs everywhere; otherwise a
+   * copy found on a device (moving to one profile), kept only when it has more samples than the home's.
+   */
+  op("saveVoice", {
+    profile: BatonVoiceProfile.mapFields((f) => {
+      const { version: _v, updatedAt: _u, ...rest } = f;
+      return rest;
+    }),
+    fresh: Schema.Boolean,
+  }),
 ]);
 export type BatonHouseholdCallInput = typeof BatonHouseholdCallInput.Type;
 
@@ -84,5 +116,6 @@ export const BatonHouseholdCallResult = Schema.Struct({
   /** With `list`: the linked server the members live on (null: this one), and the linked servers it could be. */
   homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
   peers: Schema.optionalKey(Schema.Array(Schema.String)),
+  voices: Schema.optionalKey(Schema.Array(BatonVoiceProfile)),
 });
 export type BatonHouseholdCallResult = typeof BatonHouseholdCallResult.Type;

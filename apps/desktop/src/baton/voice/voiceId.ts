@@ -47,6 +47,8 @@ export const createVoiceId = (input: {
   readonly onChange: () => void;
   /** A saved person was removed: their own memory goes with them. */
   readonly onPersonDeleted?: (id: string) => void;
+  /** A new enrolment here: the home server keeps it as that member's one profile, for every device. */
+  readonly onEnrolled?: (profile: SpeakerProfile) => void;
   /** The local recogniser, so the card can follow his words; without it the card follows his pauses alone. */
   readonly transcribe?: (pcm: Int16Array) => Promise<string>;
   /** The microphone he is reading into, in his words. */
@@ -126,7 +128,10 @@ export const createVoiceId = (input: {
           useWispr: input.settings().wisprSeed,
           appData: input.appData,
           spoken: pcm,
-          save: store.save,
+          save: (p: SpeakerProfile) => {
+            store.save(p);
+            input.onEnrolled?.(p);
+          },
           now: new Date(),
         });
         saved = result.saved;
@@ -155,7 +160,10 @@ export const createVoiceId = (input: {
               embedder: model,
               spoken: pcm,
               consentNote: `${name} agreed aloud in Settings and read the lines, ${new Date().toISOString()}.`,
-              save: store.save,
+              save: (p: SpeakerProfile) => {
+                store.save(p);
+                input.onEnrolled?.(p);
+              },
               now: new Date(),
             });
         saved = made !== null;
@@ -295,6 +303,24 @@ export const createVoiceId = (input: {
         changed();
       }
       return gone;
+    },
+    /**
+     * Takes the home's shared profiles: a newer one replaces this device's copy and its refinements start again from it.
+     * Returns the ids it took.
+     */
+    adoptShared: (shared: ReadonlyArray<SpeakerProfile>): ReadonlyArray<string> => {
+      const taken: Array<string> = [];
+      for (const p of shared) {
+        const mine = profiles.find((x) => x.id === p.id && x.model === p.model);
+        if (mine !== undefined && (mine.version ?? 0) >= (p.version ?? 0)) continue;
+        store.save({ ...p, base: p.centroid });
+        taken.push(p.id);
+      }
+      if (taken.length > 0) {
+        reread();
+        changed();
+      }
+      return taken;
     },
     /** A profile that changed elsewhere (adaptation). */
     save: (profile: SpeakerProfile) => {

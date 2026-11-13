@@ -35,8 +35,8 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Stream from "effect/Stream";
 import { VoiceForgets } from "../baton/VoiceForgets.ts";
+import type { BatonVoiceProfile } from "@t3tools/baton-contracts";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -650,15 +650,41 @@ const make = Effect.gen(function* () {
   // A member's data was destroyed (household removal): every device's voice loop forgets their voice print. The loop
   // keeps its own profiles; this topic is its forget, beside `voice/enrol`.
   const voices = yield* Effect.serviceOption(VoiceForgets);
+  // One shared profile per member for every device's voice loop, retained so a loop that starts later has them all.
+  // An empty retained message clears a member who is gone.
+  let sharedVoices: ReadonlyArray<BatonVoiceProfile> =
+    voices._tag === "Some" ? yield* voices.value.current : [];
+  const sendVoices = (
+    ids: ReadonlyArray<string>,
+    now: ReadonlyArray<BatonVoiceProfile>,
+    gone: ReadonlyArray<string>,
+  ) =>
+    Effect.forEach(
+      ids,
+      (id) =>
+        Effect.andThen(
+          Effect.forEach(now, (p) => publish(id, `voice/profile/${p.id}`, p, true), {
+            discard: true,
+          }),
+          Effect.forEach(gone, (member) => publish(id, `voice/profile/${member}`, "", true), {
+            discard: true,
+          }),
+        ),
+      { discard: true },
+    );
   if (voices._tag === "Some")
-    yield* voices.value.forgotten.pipe(
-      Stream.runForEach((personId) =>
+    yield* voices.value.listen({
+      profiles: (now) => {
+        const kept = new Set(now.map((p) => p.id));
+        const gone = sharedVoices.filter((p) => !kept.has(p.id)).map((p) => p.id);
+        sharedVoices = now;
+        return sendVoices([...heard.keys()], now, gone);
+      },
+      forgotten: (personId) =>
         Effect.forEach([...heard.keys()], (id) => publish(id, "voice/forget", { personId }), {
           discard: true,
         }),
-      ),
-      Effect.forkIn(scope),
-    );
+    });
 
   const live = (id: string) =>
     Effect.suspend(() => {
@@ -818,6 +844,7 @@ const make = Effect.gen(function* () {
     if (result.items.length > 0) yield* registry.report("mqtt", result.id, result.items);
     if (result.ack !== null) yield* registry.acked(result.id, result.ack.itemId, result.ack);
     if (result.cameOnline) yield* rearm(result.id).pipe(Effect.forkIn(scope));
+    if (result.cameOnline) yield* sendVoices([result.id], sharedVoices, []);
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
     if (tail === "event/key") yield* runKey(result.id, json(payload));

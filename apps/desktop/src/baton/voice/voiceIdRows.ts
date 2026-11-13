@@ -251,8 +251,8 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
     ),
     toggle(
       "vid.adapt",
-      "Keep learning your voice",
-      "When Tessaya is sure it is you, your profile moves a little towards how you sound now (a new mic, a cold). Re-enrol starts again from scratch.",
+      "Keep learning voices on this computer",
+      "When Tessaya is sure who is speaking, this computer's copy of their voice moves a little towards how they sound on its mic. It stays here; every device keeps its own. Enrolling again starts from the new voice everywhere.",
       settings.adapt,
       true,
     ),
