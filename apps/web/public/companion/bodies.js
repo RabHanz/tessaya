@@ -314,6 +314,9 @@
    }
   }
   for (const p of P) e += Math.abs(p.x - p.px) + Math.abs(p.y - p.py);
+  // Asleep below what shows (a hundredth of a pixel a point): the solver's own jitter never reaches zero, so without
+  // this the rope, and the whole rig with it, would redraw forever at rest.
+  if (e < .01 * P.length) { for (const p of P) { p.px = p.x; p.py = p.y; } return 0; }
   return e;
  }
 
