@@ -42,6 +42,8 @@ export const make = Effect.gen(function* () {
         ),
       ),
     );
+  type Reply = { readonly id: string | null; readonly line: string };
+  const noTask: Reply = { id: null, line: "There is no scheduled task by that id." };
   const noJob = { id: null, line: "There is no job by that id." };
   const act = McpToolAccess.writes;
 
@@ -128,38 +130,32 @@ export const make = Effect.gen(function* () {
       ),
     ),
     schedule_run_now: act((input: JobInput<"schedule_run_now">) =>
-      Effect.flatMap(tasks, (listed) =>
-        listed.tasks.some((task) => task.id === input.id)
-          ? Effect.map(
-              run(
-                Effect.flatMap(ScheduledTaskService, (scheduler) =>
-                  scheduler.runNow({ id: ScheduledTaskId.make(input.id) }),
-                ),
-              ),
-              (ran) => ({
-                id: input.id,
-                line:
-                  ran.threadId === null
-                    ? "It did not start."
-                    : "Started its run; it does not wait for it to finish.",
-              }),
-            )
-          : Effect.succeed({ id: null, line: "There is no scheduled task by that id." }),
-      ),
+      Effect.gen(function* () {
+        if (!(yield* tasks).tasks.some((task) => task.id === input.id)) return noTask;
+        const ran = yield* run(
+          Effect.flatMap(ScheduledTaskService, (scheduler) =>
+            scheduler.runNow({ id: ScheduledTaskId.make(input.id) }),
+          ),
+        );
+        return {
+          id: input.id,
+          line:
+            ran.threadId === null
+              ? "It did not start."
+              : "Started its run; it does not wait for it to finish.",
+        } satisfies Reply;
+      }),
     ),
     schedule_delete: act((input: JobInput<"schedule_delete">) =>
-      Effect.flatMap(tasks, (listed) =>
-        listed.tasks.some((task) => task.id === input.id)
-          ? Effect.as(
-              run(
-                Effect.flatMap(ScheduledTaskService, (scheduler) =>
-                  scheduler.delete({ id: ScheduledTaskId.make(input.id) }),
-                ),
-              ),
-              { id: input.id, line: "Deleted; it will not run again." },
-            )
-          : Effect.succeed({ id: null, line: "There is no scheduled task by that id." }),
-      ),
+      Effect.gen(function* () {
+        if (!(yield* tasks).tasks.some((task) => task.id === input.id)) return noTask;
+        yield* run(
+          Effect.flatMap(ScheduledTaskService, (scheduler) =>
+            scheduler.delete({ id: ScheduledTaskId.make(input.id) }),
+          ),
+        );
+        return { id: input.id, line: "Deleted; it will not run again." } satisfies Reply;
+      }),
     ),
     job_start: act((input: JobInput<"job_start">) =>
       Effect.gen(function* () {

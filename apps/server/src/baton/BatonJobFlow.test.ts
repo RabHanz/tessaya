@@ -590,7 +590,11 @@ layer("BatonJobFlow", (it) => {
       assert.deepEqual(spoken, [
         { device: "r1-desk", text: "The plan for Fix login is ready in its thread." },
       ]);
-    }).pipe(Effect.provide(Layer.mergeAll(recordLayer, homeDevices, house))),
+    }).pipe(
+      // The layer's clock is shared, and the other tests count turns from time zero.
+      Effect.ensuring(TestClock.setTime(0)),
+      Effect.provide(Layer.mergeAll(recordLayer, homeDevices, house)),
+    ),
   );
 
   it.effect("keeps a Codex job and its routine parts on Codex's own model", () =>
