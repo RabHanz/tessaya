@@ -9,6 +9,7 @@ import { toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
   createRoomVoice,
+  firstClause,
   ROOM_CONFIG,
   splitSentences,
   type RoomDeps,
@@ -918,6 +919,19 @@ describe("how her reply sounds and looks on the R1", () => {
 });
 
 describe("splitting her reply into sentences as it streams", () => {
+  it("gives her voice the first clause as soon as it is whole, three words or more", () => {
+    expect(firstClause("The office fan is on, and the lamp")).toEqual({
+      head: "The office fan is on,",
+      rest: "and the lamp",
+    });
+    expect(firstClause("Yes, it's on")).toBeNull();
+    expect(firstClause("It's twenty to six")).toBeNull();
+    expect(firstClause("Twenty-six minutes to eleven, in the")).toEqual({
+      head: "Twenty-six minutes to eleven,",
+      rest: "in the",
+    });
+  });
+
   it("releases a sentence only once what follows it has started", () => {
     expect(splitSentences("Done. The study")).toEqual({ done: ["Done."], rest: "The study" });
     expect(splitSentences("It is 3.5 degrees.")).toEqual({ done: [], rest: "It is 3.5 degrees." });
@@ -1756,5 +1770,34 @@ describe("a member's data destroyed (identity lane)", () => {
     t.room.message(`freya/r1/${DEV}/voice/forget`, Buffer.from('{"personId":"member-7"}'));
     t.room.message(`freya/r1/${DEV}/voice/forget`, Buffer.from("{}"));
     expect(forgotten).toEqual(["member-7"]);
+  });
+});
+
+describe("her brain starts alongside the speaker check (13 Nov, Sonnet)", () => {
+  it("asks her brain before Voice ID has answered, and a voice the gate keeps out is still never heard", async () => {
+    let tell: (who: SpeakerIdentity) => void = () => undefined;
+    const t = setup({
+      speaker: () => new Promise<SpeakerIdentity>((r) => (tell = r)),
+      speak: async function* (_text, signal) {
+        yield new Int16Array(3_200);
+        await abortedBy(signal);
+      },
+    });
+    t.room.message(`freya/r1/${DEV}/cmd/voice/earcons`, Buffer.from('{"on":false}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    expect(t.brainCalls).toHaveLength(1);
+    tell({
+      kind: "guest",
+      personId: null,
+      name: null,
+      confidence: 0.1,
+      verified: false,
+      inherited: false,
+      at: 0,
+    });
+    await t.feed(false, 20);
+    expect(t.published.filter((p) => p.topic.endsWith("/voice/down"))).toEqual([]);
   });
 });

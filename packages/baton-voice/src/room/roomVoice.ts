@@ -354,6 +354,14 @@ export interface TurnMetrics {
   readonly speculative?: boolean;
 }
 
+/** The first clause of a reply still being written ("Yes, it's on…"): three words or more, then , ; : or a dash. */
+export const firstClause = (
+  text: string,
+): { readonly head: string; readonly rest: string } | null => {
+  const m = /^(\S+(?:\s+\S+){2,}?[,;:\u2014])\s+(?=\S)/.exec(text);
+  return m === null ? null : { head: m[1]!, rest: text.slice(m[0].length) };
+};
+
 /** Whole sentences out of a growing reply, keeping the unfinished tail. */
 export const splitSentences = (
   text: string,
@@ -1168,11 +1176,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       sentAway = false;
       lastActivity = deps.now();
       const dismissed = isDismissal(text) || stopIntent(text, config.stopPhrases) === "dismiss";
-      const [speaker, affect] = await Promise.race([
-        sides,
-        deps.sleep(config.sideMs).then(() => [undefined, undefined] as const),
-      ]);
+      // Her brain starts now, not after the speaker and mood readers: what they already know goes with it, and a voice
+      // the gate keeps out is still never heard (her first sound waits for it, at most `sideMs`).
+      const known = await Promise.race([sides, Promise.resolve(null)]);
+      const [speaker, affect] = known ?? [undefined, affectNow];
       const identity = speaker ?? UNVERIFIED(deps.now());
+      const admitted: Promise<boolean> =
+        known !== null
+          ? Promise.resolve(true)
+          : Promise.race([
+              sides.then(([late]) => late === undefined || admits(late, config.gate, "turn")),
+              deps.sleep(config.sideMs).then(() => true),
+            ]);
       if (!admits(identity, config.gate, "turn")) {
         kept?.control.abort();
         dropped(turn, `a ${identity.kind} voice`, text);
@@ -1220,7 +1235,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speakingChain = speakingChain.then(async () =>
             // The arbiter is asked alongside, never before (13 Nov: a 1.3-1.7 s claim round in front of every wake);
             // only her voice waits for its answer, and a lost claim is never heard.
-            !(await gateOf(id)) || control.signal.aborted
+            !(await gateOf(id)) || !(await admitted) || control.signal.aborted
               ? control.abort()
               : play(
                   audio,
@@ -1253,6 +1268,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const { done, rest } = splitSentences(buffer);
           buffer = rest;
           done.forEach(enqueue);
+          // Her first words go to her voice at the first clause, not the first full stop: the brain sends a word, then
+          // the rest about half a second later (13 Nov, Sonnet).
+          if (firstSentenceAt === null) {
+            const clause = firstClause(buffer);
+            if (clause !== null) {
+              enqueue(clause.head);
+              buffer = clause.rest;
+            }
+          }
         }
         if (buffer.trim() !== "") enqueue(buffer.trim());
         // Sent away, she always says so before she rests, even when her brain had nothing to add.
