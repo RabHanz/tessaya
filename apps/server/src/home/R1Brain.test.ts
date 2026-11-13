@@ -8,6 +8,7 @@ import {
   converseReader,
   type ConversePart,
   type ConverseRequest,
+  type StreamUsage,
 } from "../speech/DictationCleanupApi.ts";
 import { MAX_ROUNDS, readLine, toolLoop, type ToolTurn } from "./R1Brain.ts";
 
@@ -18,12 +19,14 @@ it("takes text deltas and the end of the turn from Claude Code's stream-json, an
       event: { type: "content_block_delta", delta: { type: "text_delta", text } },
     });
   expect(readLine(delta("Hello"))).toEqual({ delta: "Hello" });
-  expect(readLine(JSON.stringify({ type: "result", is_error: false, result: "Hello" }))).toEqual({
+  expect(
+    readLine(JSON.stringify({ type: "result", is_error: false, result: "Hello" })),
+  ).toMatchObject({
     done: true,
   });
   expect(
     readLine(JSON.stringify({ type: "result", is_error: true, result: "rate limited" })),
-  ).toEqual({
+  ).toMatchObject({
     error: "rate limited",
   });
   expect(readLine(JSON.stringify({ type: "system", subtype: "init" }))).toEqual({});
@@ -32,9 +35,13 @@ it("takes text deltas and the end of the turn from Claude Code's stream-json, an
 
 it("reads a Messages API turn: words as they come, each tool call once its input is whole", () => {
   const data = (event: object) => `data: ${JSON.stringify(event)}`;
-  const read = converseReader();
+  const seen: StreamUsage = {};
+  const read = converseReader(seen);
   const lines = [
-    data({ type: "message_start", message: {} }),
+    data({
+      type: "message_start",
+      message: { model: "claude-haiku-5-5", usage: { input_tokens: 40, output_tokens: 1 } },
+    }),
     data({
       type: "content_block_delta",
       index: 0,
@@ -58,11 +65,17 @@ it("reads a Messages API turn: words as they come, each tool call once its input
     data({ type: "content_block_stop", index: 1 }),
     "event: content_block_delta",
     "data: {broken",
+    data({ type: "message_delta", usage: { output_tokens: 22 } }),
   ];
   expect(lines.flatMap(read)).toEqual([
     { type: "text", text: "Let me check." },
     { type: "tool", id: "t1", name: "home_state", input: { entityId: "light.study" } },
   ]);
+  // Its usage row's counts: the start's input, the last delta's output.
+  expect(seen).toEqual({
+    model: "claude-haiku-5-5",
+    usage: { input_tokens: 40, output_tokens: 22 },
+  });
 });
 
 /** A model that plays its rounds in order and records every request it was sent. */

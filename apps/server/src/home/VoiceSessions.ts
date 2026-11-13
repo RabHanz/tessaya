@@ -11,6 +11,7 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
 import { startBatonMcp, type BatonMcp, type ToolOutput } from "@t3tools/baton-shared/sessionMcp";
+import type { BrainRole } from "@t3tools/contracts";
 
 /** What one line of the session's stream-json says, as far as a spoken turn cares. */
 export type SessionEvent =
@@ -56,6 +57,7 @@ export interface SessionTool {
 
 /** What a session runs on; sessions with different settings never share a slot. */
 export interface SessionSpec {
+  readonly role: BrainRole;
   readonly model: string;
   readonly effort: string | null;
   readonly system: string;
@@ -134,6 +136,8 @@ export const createVoiceSessions = (
     readonly retryMs?: number;
     /** One warm session per vessel and no background renewal: a test harness's server (the room suite), not his. */
     readonly lean?: boolean;
+    /** Every turn's `result` event, warm-ups included: each one is paid for (BrainUsage). */
+    readonly onResult?: (spec: SessionSpec, result: Readonly<Record<string, unknown>>) => void;
   } = {},
 ) => {
   const spawn = options.spawn ?? NodeChildProcess.spawn;
@@ -230,6 +234,14 @@ export const createVoiceSessions = (
     proc.on("error", died);
     proc.stdin?.on("error", died);
     NodeReadline.createInterface({ input: proc.stdout! }).on("line", (line) => {
+      if (options.onResult !== undefined && line.includes('"type":"result"')) {
+        try {
+          const parsed = JSON.parse(line) as Readonly<Record<string, unknown>>;
+          if (parsed["type"] === "result") options.onResult(spec, parsed);
+        } catch {
+          // Not a whole JSON line: sessionEvent ignores it too.
+        }
+      }
       const event = sessionEvent(line);
       if (event !== null) waiting?.(event);
     });

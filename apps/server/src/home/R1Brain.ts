@@ -20,6 +20,8 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { onSubscription } from "../baton/BrainRoutes.ts";
+import { BrainUsage, cliTokens, layer as brainUsageLayer } from "../baton/BrainUsage.ts";
+import type { BrainRole } from "@t3tools/contracts";
 import { createVoiceSessions, type SessionSpec } from "./VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
@@ -196,7 +198,13 @@ const MAX_IDLE_MS = 10 * 60_000;
 /** One stream-json line from Claude Code: a text delta, the end of the turn, or nothing we use. */
 export const readLine = (
   line: string,
-): { readonly delta?: string; readonly done?: true; readonly error?: string } => {
+): {
+  readonly delta?: string;
+  readonly done?: true;
+  readonly error?: string;
+  /** The `result` event itself, for its usage. */
+  readonly result?: unknown;
+} => {
   let m: {
     type?: string;
     is_error?: boolean;
@@ -215,7 +223,9 @@ export const readLine = (
   )
     return m.event.delta.text ? { delta: m.event.delta.text } : {};
   if (m.type === "result")
-    return m.is_error === true ? { error: String(m.result ?? "failed") } : { done: true };
+    return m.is_error === true
+      ? { error: String(m.result ?? "failed"), result: m }
+      : { done: true, result: m };
   return {};
 };
 
@@ -231,6 +241,13 @@ interface Warm {
 export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   const settings = yield* ServerSettingsService;
   const api = yield* DictationCleanupApi;
+  const usage = yield* BrainUsage;
+  const context = yield* Effect.context<never>();
+  /** A subscription turn's `result` event, as usage rows: the plan pays, so tokens and no dollars. */
+  const used = (role: BrainRole, model: string, result: unknown) => {
+    for (const tokens of cliTokens(result, model))
+      Effect.runForkWith(context)(usage.record({ ...tokens, role, credential: "subscription" }));
+  };
   let ready: Warm | null = null;
   /** The routing table's row for spoken turns; voice never reads the cheap model. */
   const voice = settings.getSettings.pipe(
@@ -330,6 +347,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
         const failed = yield* Effect.callback<string | null>((resume) => {
           warm.onLine = (line) => {
             const r = readLine(line);
+            if (r.result !== undefined) used("voice", model, r.result);
             if (r.delta !== undefined) Queue.offerUnsafe(queue, r.delta);
             if (r.done) resume(Effect.succeed(null));
             if (r.error !== undefined) resume(Effect.succeed(r.error));
@@ -364,7 +382,10 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
 
   // The room suite's scratch server sets this: a full pool per pretend vessel loaded the box (13 Nov, load 43).
   const pool = yield* Config.String("TESSAYA_VOICE_POOL").pipe(Config.withDefault(""));
-  const sessions = createVoiceSessions({ lean: pool === "lean" });
+  const sessions = createVoiceSessions({
+    lean: pool === "lean",
+    onResult: (spec, result) => used(spec.role, spec.model, result),
+  });
   yield* Effect.addFinalizer(() => Effect.promise(() => sessions.close()));
   /** The subscription session a vessel's turns run in, from the voice row. */
   const sessionSpec = Effect.fn("R1Brain.sessionSpec")(function* (
@@ -376,6 +397,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
     const path = onSubscription(row);
     if ("refused" in path) return yield* new R1BrainError({ detail: path.refused });
     return {
+      role: turn.role ?? "voice",
       model: path.model,
       effort: row.effort,
       system: turn.system,
@@ -472,4 +494,5 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   } satisfies R1Brain["Service"];
 });
 
-export const layer = (system: string) => Layer.effect(R1Brain, make(system));
+export const layer = (system: string) =>
+  Layer.effect(R1Brain, make(system)).pipe(Layer.provide(brainUsageLayer));

@@ -63,7 +63,13 @@ const fakeClaude = (
   }) as unknown as typeof NodeChildProcess.spawn;
 };
 
-const spec = { model: "sonnet", effort: "low", system: "Be brief.", tools: [] };
+const spec = {
+  role: "voice" as const,
+  model: "sonnet",
+  effort: "low",
+  system: "Be brief.",
+  tools: [],
+};
 
 describe("warm subscription sessions for spoken turns", () => {
   it("reads what a turn says: words, a tool starting (web or not), the end, a failure", () => {
@@ -89,7 +95,12 @@ describe("warm subscription sessions for spoken turns", () => {
 
   it("survives a vanished binary, and warms each turn's own session before his words", async () => {
     const heard: Array<string> = [];
-    const sessions = createVoiceSessions({ spawn: fakeClaude(heard, { count: 2 }), retryMs: 1 });
+    const results: Array<string> = [];
+    const sessions = createVoiceSessions({
+      spawn: fakeClaude(heard, { count: 2 }),
+      retryMs: 1,
+      onResult: (s, result) => void results.push(`${s.role}:${String(result["type"])}`),
+    });
     const events: Array<SessionEvent> = [];
     const turn = {
       run: async () => ({ text: "" }),
@@ -107,6 +118,9 @@ describe("warm subscription sessions for spoken turns", () => {
     expect(warmedBefore("search the news")).toBeGreaterThanOrEqual(2);
     expect(events).toContainEqual({ type: "tool", name: "WebSearch", web: true });
     expect(events.filter((e) => e.type === "text").length).toBe(2);
+    // Every answered message is paid for, the warm-ups before each turn included.
+    expect(results.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(results)).toEqual(new Set(["voice:result"]));
   });
 
   it("closes a session he cut off, and the next turn runs in a session warmed before the cut", async () => {

@@ -18,6 +18,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import * as BrainUsage from "../baton/BrainUsage.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
 
@@ -29,14 +30,22 @@ export type ConversePart =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "tool"; readonly id: string; readonly name: string; readonly input: unknown };
 
+/** What a streamed turn used: `message_start`'s model and usage, with each `message_delta`'s counts on top. */
+export interface StreamUsage {
+  model?: string;
+  usage?: Record<string, unknown>;
+}
+
 /** Reads one turn's stream lines in order; holds a tool call's input until its block stops. */
-export const converseReader = () => {
+export const converseReader = (seen: StreamUsage = {}) => {
   const open = new Map<number, { id: string; name: string; json: string }>();
   return (line: string): ReadonlyArray<ConversePart> => {
     if (!line.startsWith("data:")) return [];
     let event: {
       type?: string;
       index?: number;
+      message?: { model?: string; usage?: Record<string, unknown> };
+      usage?: Record<string, unknown>;
       content_block?: { type?: string; id?: string; name?: string };
       delta?: { type?: string; text?: string; partial_json?: string };
     };
@@ -45,6 +54,11 @@ export const converseReader = () => {
     } catch {
       return [];
     }
+    if (event.type === "message_start") {
+      if (event.message?.model !== undefined) seen.model = event.message.model;
+      seen.usage = { ...event.message?.usage };
+    }
+    if (event.type === "message_delta") seen.usage = { ...seen.usage, ...event.usage };
     const index = event.index ?? -1;
     if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
       open.set(index, {
@@ -78,6 +92,8 @@ export const converseReader = () => {
   };
 };
 const MessagesResponse = Schema.Struct({
+  model: Schema.optionalKey(Schema.String),
+  usage: Schema.optionalKey(Schema.Unknown),
   content: Schema.Array(
     Schema.Struct({ type: Schema.String, text: Schema.optionalKey(Schema.String) }),
   ),
@@ -151,181 +167,195 @@ export class DictationCleanupApi extends Context.Service<
   }
 >()("t3/speech/DictationCleanupApi") {}
 
-export const layer = Layer.effect(
-  DictationCleanupApi,
-  Effect.gen(function* () {
-    const settings = yield* ServerSettings.ServerSettingsService;
-    const resolver = yield* SecretResolver.SecretResolver;
-    const http = yield* HttpClient.HttpClient;
-    const source = settings.getSettings.pipe(
-      Effect.map((value) => value.dictationCleanupCredentials.anthropic),
+/** The one place the key is spent, so every call writes its usage row (BrainUsage). */
+const KEY_CREDENTIAL = "apiKey:anthropic";
+
+/** @public Built without its usage table, for tests that bring their own. */
+export const make = Effect.gen(function* () {
+  const settings = yield* ServerSettings.ServerSettingsService;
+  const usage = yield* BrainUsage.BrainUsage;
+  const resolver = yield* SecretResolver.SecretResolver;
+  const http = yield* HttpClient.HttpClient;
+  const source = settings.getSettings.pipe(
+    Effect.map((value) => value.dictationCleanupCredentials.anthropic),
+  );
+  const configured = Effect.map(source, Boolean);
+  // The key goes only into this request's header: never an environment variable, a log or a reply.
+  const authorized = Effect.fn("DictationCleanupApi.authorized")(function* (
+    request: HttpClientRequest.HttpClientRequest,
+  ) {
+    const saved = yield* source;
+    if (!saved) return null;
+    const unreadable = () => new DictationCleanupError({ reason: "unreadable-key" });
+    const key = yield* requireSettingsSecret(resolver, saved).pipe(Effect.mapError(unreadable));
+    if (!isApiKey(key)) return yield* unreadable();
+    return request.pipe(
+      HttpClientRequest.setHeaders({
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      }),
     );
-    const configured = Effect.map(source, Boolean);
-    // The key goes only into this request's header: never an environment variable, a log or a reply.
-    const authorized = Effect.fn("DictationCleanupApi.authorized")(function* (
-      request: HttpClientRequest.HttpClientRequest,
-    ) {
-      const saved = yield* source;
-      if (!saved) return null;
-      const unreadable = () => new DictationCleanupError({ reason: "unreadable-key" });
-      const key = yield* requireSettingsSecret(resolver, saved).pipe(Effect.mapError(unreadable));
-      if (!isApiKey(key)) return yield* unreadable();
-      return request.pipe(
-        HttpClientRequest.setHeaders({
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
+  });
+  const execute = (request: HttpClientRequest.HttpClientRequest) =>
+    http.execute(request).pipe(
+      Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }),
+      Effect.provideService(HttpClient.TracerPropagationEnabled, false),
+      Effect.mapError(() => new DictationCleanupError({ reason: "unreachable" })),
+    );
+  const rejected = (status: number) =>
+    new DictationCleanupError({
+      reason: [401, 403].includes(status)
+        ? "invalid-key"
+        : status === 429
+          ? "rate-limit"
+          : "unreachable",
+    });
+
+  // Off the key's roles: logged, and the call fails with BrainRefused. Nothing falls back from here.
+  const allow = Effect.fn("DictationCleanupApi.allow")(function* (role: BrainRole) {
+    const why = keyRefusal(yield* settings.getSettings, "anthropic", role);
+    if (why === null) return;
+    yield* Effect.logWarning("brain: an API call was refused", { role, why });
+    return yield* new BrainRefused({ role, why });
+  });
+
+  const setKey = Effect.fn("DictationCleanupApi.setKey")(function* (
+    key: Redacted.Redacted<string> | SecretReference | null,
+  ) {
+    yield* settings.updateSettings({
+      dictationCleanupCredentials: {
+        anthropic: Redacted.isRedacted(key) ? Redacted.value(key) : (key ?? ""),
+      },
+    });
+  });
+
+  const test = Effect.gen(function* () {
+    const request = yield* authorized(HttpClientRequest.get(`${API}/models?limit=1`));
+    if (request === null) return "missing-key" as const;
+    const response = yield* execute(request);
+    if (response.status >= 200 && response.status < 300) return "ok" as const;
+    return yield* rejected(response.status);
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: "10 seconds",
+      orElse: () => Effect.succeed("unreachable" as const),
+    }),
+    Effect.catchTags({
+      DictationCleanupError: (error) =>
+        Effect.succeed(
+          error.reason === "invalid-key" ? ("invalid-key" as const) : ("unreachable" as const),
+        ),
+    }),
+    Effect.withSpan("DictationCleanupApi.test"),
+  );
+
+  const cleanup = Effect.fn("DictationCleanupApi.cleanup")(
+    function* (input: DictationCleanupRequest) {
+      yield* allow("cleanup");
+      // Cleanup never reads the cheap model: any value does here.
+      const route = brainRoute(yield* settings.getSettings, "cleanup", DEFAULT_ROUTING.cheap);
+      const request = yield* authorized(
+        HttpClientRequest.post(`${API}/messages`).pipe(
+          HttpClientRequest.bodyJsonUnsafe({
+            model: route.model,
+            max_tokens: input.maxTokens,
+            system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
+            messages: [{ role: "user", content: input.message }],
+            // As measured in the cleanup A/B: no thinking at low effort, the fastest Haiku answer.
+            ...quickThinking(route.model),
+            output_config: { effort: route.effort ?? "low" },
+          }),
+        ),
+      );
+      if (request === null) return { configured: false } as const;
+      const started = yield* Clock.currentTimeMillis;
+      const response = yield* execute(request).pipe(
+        Effect.tap((r) =>
+          r.status >= 200 && r.status < 300
+            ? Effect.void
+            : // The status says which: 529 is a busy API, not a dead network.
+              Effect.logWarning("dictation clean-up: the API said no", { status: r.status }),
+        ),
+        Effect.filterOrFail(
+          (r) => r.status >= 200 && r.status < 300,
+          (r) => rejected(r.status),
+        ),
+        // One quick second try when the API is busy or failing (429, 5xx, 529), inside the same 2.5 s budget.
+        Effect.retry({
+          times: 1,
+          schedule: Schedule.spaced("200 millis"),
+          while: (error) => error.reason !== "invalid-key",
         }),
       );
-    });
-    const execute = (request: HttpClientRequest.HttpClientRequest) =>
-      http.execute(request).pipe(
-        Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }),
-        Effect.provideService(HttpClient.TracerPropagationEnabled, false),
+      const body = yield* HttpClientResponse.schemaBodyJson(MessagesResponse)(response).pipe(
         Effect.mapError(() => new DictationCleanupError({ reason: "unreachable" })),
       );
-    const rejected = (status: number) =>
-      new DictationCleanupError({
-        reason: [401, 403].includes(status)
-          ? "invalid-key"
-          : status === 429
-            ? "rate-limit"
-            : "unreachable",
-      });
+      const tokens = BrainUsage.apiTokens(body.model ?? route.model, body.usage);
+      if (tokens !== null)
+        yield* usage.record({ ...tokens, role: "cleanup", credential: KEY_CREDENTIAL });
+      const { content } = body;
+      const text = content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : []));
+      const ms = (yield* Clock.currentTimeMillis) - started;
+      return { configured: true, text: text.join("").trim(), ms } as const;
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.timeoutOrElse({
+          // His p90 on 0.1.107 with a cold connection (2026-11-12); 1.2 s cut three of four answers at 1.05-1.3 s.
+          duration: "2500 millis",
+          orElse: () => Effect.fail(new DictationCleanupError({ reason: "timeout" })),
+        }),
+      ),
+  );
 
-    // Off the key's roles: logged, and the call fails with BrainRefused. Nothing falls back from here.
-    const allow = Effect.fn("DictationCleanupApi.allow")(function* (role: BrainRole) {
-      const why = keyRefusal(yield* settings.getSettings, "anthropic", role);
-      if (why === null) return;
-      yield* Effect.logWarning("brain: an API call was refused", { role, why });
-      return yield* new BrainRefused({ role, why });
-    });
-
-    const setKey = Effect.fn("DictationCleanupApi.setKey")(function* (
-      key: Redacted.Redacted<string> | SecretReference | null,
-    ) {
-      yield* settings.updateSettings({
-        dictationCleanupCredentials: {
-          anthropic: Redacted.isRedacted(key) ? Redacted.value(key) : (key ?? ""),
-        },
-      });
-    });
-
-    const test = Effect.gen(function* () {
-      const request = yield* authorized(HttpClientRequest.get(`${API}/models?limit=1`));
-      if (request === null) return "missing-key" as const;
-      const response = yield* execute(request);
-      if (response.status >= 200 && response.status < 300) return "ok" as const;
-      return yield* rejected(response.status);
-    }).pipe(
-      Effect.timeoutOrElse({
-        duration: "10 seconds",
-        orElse: () => Effect.succeed("unreachable" as const),
-      }),
-      Effect.catchTags({
-        DictationCleanupError: (error) =>
-          Effect.succeed(
-            error.reason === "invalid-key" ? ("invalid-key" as const) : ("unreachable" as const),
-          ),
-      }),
-      Effect.withSpan("DictationCleanupApi.test"),
-    );
-
-    const cleanup = Effect.fn("DictationCleanupApi.cleanup")(
-      function* (input: DictationCleanupRequest) {
-        yield* allow("cleanup");
-        // Cleanup never reads the cheap model: any value does here.
-        const route = brainRoute(yield* settings.getSettings, "cleanup", DEFAULT_ROUTING.cheap);
+  const converse = (route: ConverseRoute, input: ConverseRequest) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        yield* allow(route.role);
+        const tools = input.tools.map((tool, i) =>
+          // The tools are the same every turn: cached with the system prompt.
+          i === input.tools.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : tool,
+        );
         const request = yield* authorized(
           HttpClientRequest.post(`${API}/messages`).pipe(
             HttpClientRequest.bodyJsonUnsafe({
               model: route.model,
               max_tokens: input.maxTokens,
+              stream: true,
               system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
-              messages: [{ role: "user", content: input.message }],
-              // As measured in the cleanup A/B: no thinking at low effort, the fastest Haiku answer.
+              messages: input.messages,
+              ...(tools.length === 0
+                ? {}
+                : { tools, tool_choice: { type: input.toolChoice ?? "auto" } }),
               ...quickThinking(route.model),
-              output_config: { effort: route.effort ?? "low" },
+              ...(route.effort === null ? {} : { output_config: { effort: route.effort } }),
             }),
           ),
         );
-        if (request === null) return { configured: false } as const;
-        const started = yield* Clock.currentTimeMillis;
-        const response = yield* execute(request).pipe(
-          Effect.tap((r) =>
-            r.status >= 200 && r.status < 300
-              ? Effect.void
-              : // The status says which: 529 is a busy API, not a dead network.
-                Effect.logWarning("dictation clean-up: the API said no", { status: r.status }),
-          ),
-          Effect.filterOrFail(
-            (r) => r.status >= 200 && r.status < 300,
-            (r) => rejected(r.status),
-          ),
-          // One quick second try when the API is busy or failing (429, 5xx, 529), inside the same 2.5 s budget.
-          Effect.retry({
-            times: 1,
-            schedule: Schedule.spaced("200 millis"),
-            while: (error) => error.reason !== "invalid-key",
-          }),
+        if (request === null) return yield* new DictationCleanupError({ reason: "unreadable-key" });
+        const response = yield* execute(request);
+        if (response.status < 200 || response.status >= 300)
+          return yield* rejected(response.status);
+        const seen: StreamUsage = {};
+        const read = converseReader(seen);
+        // Cut off mid-answer, what was streamed so far was still paid for.
+        const recorded = Effect.suspend(() => {
+          const tokens = BrainUsage.apiTokens(seen.model ?? route.model, seen.usage);
+          return tokens === null
+            ? Effect.void
+            : usage.record({ ...tokens, role: route.role, credential: KEY_CREDENTIAL });
+        });
+        return response.stream.pipe(
+          Stream.mapError(() => new DictationCleanupError({ reason: "unreachable" })),
+          Stream.decodeText,
+          Stream.splitLines,
+          Stream.flatMap((line) => Stream.fromIterable(read(line))),
+          Stream.ensuring(recorded),
         );
-        const { content } = yield* HttpClientResponse.schemaBodyJson(MessagesResponse)(
-          response,
-        ).pipe(Effect.mapError(() => new DictationCleanupError({ reason: "unreachable" })));
-        const text = content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : []));
-        const ms = (yield* Clock.currentTimeMillis) - started;
-        return { configured: true, text: text.join("").trim(), ms } as const;
-      },
-      (effect) =>
-        effect.pipe(
-          Effect.timeoutOrElse({
-            // His p90 on 0.1.107 with a cold connection (2026-11-12); 1.2 s cut three of four answers at 1.05-1.3 s.
-            duration: "2500 millis",
-            orElse: () => Effect.fail(new DictationCleanupError({ reason: "timeout" })),
-          }),
-        ),
+      }),
     );
 
-    const converse = (route: ConverseRoute, input: ConverseRequest) =>
-      Stream.unwrap(
-        Effect.gen(function* () {
-          yield* allow(route.role);
-          const tools = input.tools.map((tool, i) =>
-            // The tools are the same every turn: cached with the system prompt.
-            i === input.tools.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : tool,
-          );
-          const request = yield* authorized(
-            HttpClientRequest.post(`${API}/messages`).pipe(
-              HttpClientRequest.bodyJsonUnsafe({
-                model: route.model,
-                max_tokens: input.maxTokens,
-                stream: true,
-                system: [
-                  { type: "text", text: input.system, cache_control: { type: "ephemeral" } },
-                ],
-                messages: input.messages,
-                ...(tools.length === 0
-                  ? {}
-                  : { tools, tool_choice: { type: input.toolChoice ?? "auto" } }),
-                ...quickThinking(route.model),
-                ...(route.effort === null ? {} : { output_config: { effort: route.effort } }),
-              }),
-            ),
-          );
-          if (request === null)
-            return yield* new DictationCleanupError({ reason: "unreadable-key" });
-          const response = yield* execute(request);
-          if (response.status < 200 || response.status >= 300)
-            return yield* rejected(response.status);
-          const read = converseReader();
-          return response.stream.pipe(
-            Stream.mapError(() => new DictationCleanupError({ reason: "unreachable" })),
-            Stream.decodeText,
-            Stream.splitLines,
-            Stream.flatMap((line) => Stream.fromIterable(read(line))),
-          );
-        }),
-      );
+  return DictationCleanupApi.of({ configured, setKey, test, cleanup, converse });
+});
 
-    return DictationCleanupApi.of({ configured, setKey, test, cleanup, converse });
-  }),
-);
+export const layer = Layer.effect(DictationCleanupApi, make).pipe(Layer.provide(BrainUsage.layer));
