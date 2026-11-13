@@ -139,6 +139,21 @@ const inWords = (n: number): string =>
  */
 export const clockLine = (now: Date, timeZone?: string): string => {
   const zone = timeZone === undefined ? {} : { timeZone };
+  return `(his clock, for your reference: ${new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+    ...zone,
+  }).format(now)}; said as ${spokenTime(now, timeZone)})`;
+};
+
+/** The time as it is said ("twenty-four minutes to eleven"), so no model ever does the arithmetic. */
+export const spokenTime = (now: Date | number, timeZone?: string): string => {
+  const zone = timeZone === undefined ? {} : { timeZone };
   const parts = new Intl.DateTimeFormat("en-GB", {
     hour: "numeric",
     minute: "numeric",
@@ -151,20 +166,9 @@ export const clockLine = (now: Date, timeZone?: string): string => {
   const minutes = (m: number) =>
     m === 15 ? "quarter" : m === 30 ? "half" : `${inWords(m)} minute${m === 1 ? "" : "s"}`;
   // One form only: given both, the model read both aloud ("five past one, or fifty-five to two").
-  const spoken =
-    minute === 0
-      ? `${twelve(hour)} o'clock`
-      : minute <= 30
-        ? `${minutes(minute)} past ${twelve(hour)}`
-        : `${minutes(60 - minute)} to ${twelve(hour + 1)}`;
-  return `(his clock, for your reference: ${new Intl.DateTimeFormat("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-    ...zone,
-  }).format(now)}; said as ${spoken})`;
+  return minute === 0
+    ? `${twelve(hour)} o'clock`
+    : minute <= 30
+      ? `${minutes(minute)} past ${twelve(hour)}`
+      : `${minutes(60 - minute)} to ${twelve(hour + 1)}`;
 };
