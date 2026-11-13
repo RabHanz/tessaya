@@ -22,6 +22,7 @@ import {
   enrol,
   identityOf,
   UNVERIFIED,
+  type SpeakerProfile,
 } from "../speaker.ts";
 import { createSpeakerStore } from "../speakerStore.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
@@ -424,6 +425,35 @@ const main = async () => {
   log("starting: models loaded");
   const speak = await startPocket();
   const deviceKey = secret("R1_DEVICE_KEY_FILE");
+  /** A voice profile made here, to her server's door on the device key; the home keeps the copy with more samples. */
+  const uploadProfile = (p: SpeakerProfile, fresh: boolean) =>
+    void fetch(env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/voice/profile"), {
+      method: "POST",
+      headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        profile: {
+          name: p.name,
+          kind: p.kind,
+          model: p.model,
+          centroid: Buffer.from(
+            p.centroid.buffer,
+            p.centroid.byteOffset,
+            p.centroid.byteLength,
+          ).toString("base64"),
+          samples: p.samples,
+          enrolledAt: p.enrolledAt,
+          sources: p.sources,
+          fresh,
+        },
+      }),
+      signal: AbortSignal.timeout(10_000),
+    })
+      .then((res) =>
+        log(`voice profile ${p.id} sent to her server (${fresh ? "new" : "held"}): ${res.status}`),
+      )
+      .catch((e: unknown) => log(`voice profile ${p.id} not sent to her server: ${String(e)}`));
+  // An enrolment made here before the home could take it (an older server) reaches it now.
+  for (const p of sharedProfiles.localOnly()) uploadProfile(p, false);
   const metricsFile = NodePath.join(state, "metrics.ndjson");
 
   let room: ReturnType<typeof createRoomVoice> | null = null;
@@ -627,27 +657,8 @@ const main = async () => {
           consentNote: "Enrolled through the R1 at his request; numbers only, no audio kept.",
         });
         // To her server, which decides the member and shares it with his other devices (never the refinement).
-        void fetch(env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/voice/profile"), {
-          method: "POST",
-          headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
-          body: JSON.stringify({
-            profile: {
-              name: "Owner",
-              kind: "owner",
-              model: SPEAKER_MODEL_ID,
-              centroid: Buffer.from(
-                made.centroid.buffer,
-                made.centroid.byteOffset,
-                made.centroid.byteLength,
-              ).toString("base64"),
-              samples: made.kept,
-              enrolledAt: new Date().toISOString(),
-            },
-          }),
-          signal: AbortSignal.timeout(10_000),
-        })
-          .then((res) => log(`voice profile sent to her server: ${res.status}`))
-          .catch((e: unknown) => log(`voice profile not sent to her server: ${String(e)}`));
+        const saved = store.list().find((p) => p.id === "owner");
+        if (saved !== undefined) uploadProfile(saved, true);
         return { saved: true, said: "Thanks. I know your voice now." };
       },
       embed: (pcm) => embedder.embed(pcm),
