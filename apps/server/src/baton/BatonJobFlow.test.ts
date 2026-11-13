@@ -35,6 +35,8 @@ import {
   summarizeParts,
 } from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { HomeDevices } from "../home/HomeDevices.ts";
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
@@ -100,6 +102,17 @@ const providerInstances = Layer.succeed(ProviderInstanceRegistry, {
   getInstance: (id: string) =>
     Effect.succeed({ driverKind: id === "codex" ? "codex" : "claudeAgent" }),
 } as never);
+
+/** What was said on an R1 (HomeDevices' say), and the house's zone. */
+const spoken: Array<{ device: string; text: string }> = [];
+const homeDevices = Layer.succeed(HomeDevices, {
+  command: (device: string, command: { text: string }) =>
+    Effect.sync(() => {
+      spoken.push({ device, text: command.text });
+      return { status: "done", line: "said" };
+    }),
+} as never);
+const house = Layer.succeed(HomeAssistantService, { timeZone: Effect.succeed("UTC") } as never);
 
 const layer = it.layer(
   Layer.mergeAll(
@@ -526,6 +539,58 @@ layer("BatonJobFlow", (it) => {
           NodeFS.rmSync(dir, { recursive: true, force: true });
         }
       }).pipe(Effect.provide(recordLayer)),
+  );
+
+  it.effect("says a job's ready plan on the R1 it was asked on, and holds it in quiet hours", () =>
+    Effect.gen(function* () {
+      const id = WorkSessionId.make("job-flow-origin");
+      yield* startJob(
+        {
+          id,
+          projectId: ProjectId.make("project-site"),
+          title: "Fix login",
+          goal: "fix the login bug",
+          permissions: { folders: [], projects: [], tools: ["read" as const] },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "m" },
+          runtimeMode: "approval-required",
+        },
+        { origin: "r1-desk" },
+      );
+      const entry = (phase: string) =>
+        [
+          {
+            workSessionId: id,
+            title: "Fix login",
+            lifecycle: "active",
+            state: phase,
+            updatedAt: "2026-11-13T10:00:00.000Z",
+            threads: [],
+            synopsis: null,
+          },
+        ] as never;
+      const jobs = yield* BatonJobService;
+      const seen = new Map<string, string>();
+      const said: Array<number> = [];
+      // 23:00 on the house's clock (UTC here): quiet, so the change is only recorded.
+      yield* TestClock.setTime(Date.UTC(2026, 10, 13, 23));
+      yield* recordJobChanges(entry("working"), seen, said);
+      yield* jobs.planReady(id);
+      yield* recordJobChanges(entry("working"), seen, said);
+      assert.deepEqual(spoken, []);
+      // Agreed (nothing to say), then his change sends the plan back for his OK at noon: said there, once.
+      yield* jobs.agree(id);
+      yield* recordJobChanges(entry("working"), seen, said);
+      yield* TestClock.setTime(Date.UTC(2026, 10, 14, 12));
+      yield* jobs.refine(
+        id,
+        { by: "him", at: "2026-11-14T12:00:00Z", via: "voice", text: "x" },
+        true,
+      );
+      yield* recordJobChanges(entry("working"), seen, said);
+      assert.deepEqual(spoken, [
+        { device: "r1-desk", text: "The plan for Fix login is ready in its thread." },
+      ]);
+    }).pipe(Effect.provide(Layer.mergeAll(recordLayer, homeDevices, house))),
   );
 
   it.effect("keeps a Codex job and its routine parts on Codex's own model", () =>
