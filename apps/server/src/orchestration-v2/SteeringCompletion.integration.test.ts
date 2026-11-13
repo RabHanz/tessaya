@@ -1231,7 +1231,7 @@ it.effect(
               text: id,
               attachments: [],
               modelSelection: selection,
-                providerChangeApproved: true,
+              providerChangeApproved: true,
               dispatchMode: { type: "steer_active", targetRunId: started[0]!.runId },
               createdBy: "user",
               creationSource: "web",
@@ -2276,6 +2276,7 @@ const scheduledDeliveryAfterClaudeSwitch = (name: string, text: string) =>
         commandId: CommandId.make("select-claude"),
         threadId,
         modelSelection: claudeSelection,
+        providerChangeApproved: true,
       });
       return { threadId, queuedRun };
     });

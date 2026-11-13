@@ -810,7 +810,7 @@ index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70
        expect(live?.groupId).toBe("work-group:work-entry-0");
        const details = rows.filter((row) => row.kind === "work");
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..e3c7cbb3e29bc7f56a21d9b6a2367a0d8d7e6cc4 100644
+index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e39f4f0048 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -25,6 +25,11 @@ import {
@@ -986,7 +986,30 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..e3c7cbb3e29bc7f56a21d9b6a2367a0d
  });
  
  describe("v2 run and attempt history", () => {
-@@ -4833,6 +4964,7 @@ describe("live subagents after their parent turn settles", () => {
+@@ -3947,6 +4078,9 @@ describe("streaming v2 row projection", () => {
+         for (const [index, row] of previous.rows.entries()) {
+           const holdsItem =
+             row.id === source.streamingItemId ||
++            // Tessaya lifts the latest thought into its own row; the live row keeps it as its entry.
++            row.id === `thought:${source.streamingItemId}` ||
++            (row.kind === "work-live" && row.entry.id === source.streamingItemId) ||
+             ((row.kind === "work" || row.kind === "work-live") &&
+               row.groupedEntries.some((entry) => entry.id === source.streamingItemId));
+           if (!holdsItem) expect(projection.rows[index]).toBe(row);
+@@ -4103,8 +4237,10 @@ describe("streaming v2 row projection", () => {
+       if (!running) continue;
+       for (const [index, row] of previous.rows.entries()) {
+         const holdsItem =
+-          (row.kind === "work" || row.kind === "work-live") &&
+-          row.groupedEntries.some((entry) => entry.id === source.streamingItemId);
++          row.id === `thought:${source.streamingItemId}` ||
++          (row.kind === "work-live" && row.entry.id === source.streamingItemId) ||
++          ((row.kind === "work" || row.kind === "work-live") &&
++            row.groupedEntries.some((entry) => entry.id === source.streamingItemId));
+         if (!holdsItem) expect(projection.rows[index]).toBe(row);
+       }
+     }
+@@ -4833,6 +4969,7 @@ describe("live subagents after their parent turn settles", () => {
        expect(rows.map((row) => row.id)).toEqual([
          "user",
          `turn-fold:${runId}`,
@@ -994,7 +1017,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..e3c7cbb3e29bc7f56a21d9b6a2367a0d
          "child",
          "assistant",
        ]);
-@@ -4841,7 +4973,13 @@ describe("live subagents after their parent turn settles", () => {
+@@ -4841,7 +4978,13 @@ describe("live subagents after their parent turn settles", () => {
  
    it("keeps a launch batch visible while any member is still running", () => {
      const rows = rowsFor([child("done", 3, "completed"), child("live", 4, "running")]);
@@ -1009,7 +1032,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..e3c7cbb3e29bc7f56a21d9b6a2367a0d
      expect(rows.find((row) => row.id === "done")).toMatchObject({
        subagents: [{ item: { id: "done" } }, { item: { id: "live" } }],
      });
-@@ -4991,7 +5129,52 @@ describe("subagent continued by a later turn", () => {
+@@ -4991,7 +5134,52 @@ describe("subagent continued by a later turn", () => {
        "answer-1",
        "prompt-2",
        `turn-fold:${run2}`,
@@ -1063,7 +1086,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..e3c7cbb3e29bc7f56a21d9b6a2367a0d
 +  });
 +});
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..eb3853ed2772fbbe114e24ff0f0d9f3410b21e61 100644
+index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9ac58d5d2 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -526,6 +526,14 @@ type MessagesTimelineRowContent =
@@ -1207,7 +1230,37 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..eb3853ed2772fbbe114e24ff0f0d9f34
            });
            if (expanded) {
              nextRows.push(
-@@ -2658,6 +2716,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+@@ -2558,7 +2616,13 @@ function replaceStreamingMessageRows(
+     }
+     if (row.kind === "work-live") {
+       const groupedEntries = patchGroup(row.groupedEntries);
+-      if (groupedEntries === row.groupedEntries) return row;
++      // Tessaya lifts the latest thought out of the group, so the live row's own entry may still hold it.
++      if (
++        groupedEntries === row.groupedEntries &&
++        !thoughts.has(row.entry.id) &&
++        !(row.thought && thoughts.has(row.thought.id))
++      )
++        return row;
+       for (const entry of groupedEntries) {
+         if (thoughts.has(entry.id)) patchedLiveThoughtIds.add(entry.id);
+       }
+@@ -2573,6 +2637,14 @@ function replaceStreamingMessageRows(
+       const groupedEntries = patchGroup(row.groupedEntries);
+       return groupedEntries === row.groupedEntries ? row : { ...row, groupedEntries };
+     }
++    // Tessaya: the latest thinking summary is its own row, which shows its text directly.
++    if (row.kind === "thought") {
++      const entryId = row.id.slice("thought:".length);
++      const thought = thoughts.get(entryId);
++      if (!thought) return row;
++      patchedLiveThoughtIds.add(entryId);
++      return { ...row, text: thought.detail?.trim() ?? "" };
++    }
+     if (row.kind !== "message" && row.kind !== "assistant-meta") return row;
+     const entry = replacements.get(row.message);
+     return entry
+@@ -2658,6 +2730,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
        return (
          a.createdAt === (b as typeof a).createdAt && a.compacting === (b as typeof a).compacting
        );
@@ -1218,7 +1271,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..eb3853ed2772fbbe114e24ff0f0d9f34
      case "thinking": {
        const bt = b as typeof a;
        return a.createdAt === bt.createdAt && a.groupId === bt.groupId && a.expanded === bt.expanded;
-@@ -2769,7 +2831,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+@@ -2769,7 +2845,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
          a.summaryKind === bw.summaryKind &&
          a.toolSurface === bw.toolSurface &&
          Equal.equals(a.toolIcon, bw.toolIcon) &&
@@ -1228,7 +1281,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..eb3853ed2772fbbe114e24ff0f0d9f34
        );
      }
  
-@@ -2816,3 +2879,37 @@ export function sameRowsInput(
+@@ -2816,3 +2893,37 @@ export function sameRowsInput(
    }
    return Object.keys(left).length === Object.keys(right).length;
  }

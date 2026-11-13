@@ -2616,7 +2616,13 @@ function replaceStreamingMessageRows(
     }
     if (row.kind === "work-live") {
       const groupedEntries = patchGroup(row.groupedEntries);
-      if (groupedEntries === row.groupedEntries) return row;
+      // Tessaya lifts the latest thought out of the group, so the live row's own entry may still hold it.
+      if (
+        groupedEntries === row.groupedEntries &&
+        !thoughts.has(row.entry.id) &&
+        !(row.thought && thoughts.has(row.thought.id))
+      )
+        return row;
       for (const entry of groupedEntries) {
         if (thoughts.has(entry.id)) patchedLiveThoughtIds.add(entry.id);
       }
@@ -2630,6 +2636,14 @@ function replaceStreamingMessageRows(
     if (row.kind === "work") {
       const groupedEntries = patchGroup(row.groupedEntries);
       return groupedEntries === row.groupedEntries ? row : { ...row, groupedEntries };
+    }
+    // Tessaya: the latest thinking summary is its own row, which shows its text directly.
+    if (row.kind === "thought") {
+      const entryId = row.id.slice("thought:".length);
+      const thought = thoughts.get(entryId);
+      if (!thought) return row;
+      patchedLiveThoughtIds.add(entryId);
+      return { ...row, text: thought.detail?.trim() ?? "" };
     }
     if (row.kind !== "message" && row.kind !== "assistant-meta") return row;
     const entry = replacements.get(row.message);

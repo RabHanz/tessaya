@@ -4078,6 +4078,9 @@ describe("streaming v2 row projection", () => {
         for (const [index, row] of previous.rows.entries()) {
           const holdsItem =
             row.id === source.streamingItemId ||
+            // Tessaya lifts the latest thought into its own row; the live row keeps it as its entry.
+            row.id === `thought:${source.streamingItemId}` ||
+            (row.kind === "work-live" && row.entry.id === source.streamingItemId) ||
             ((row.kind === "work" || row.kind === "work-live") &&
               row.groupedEntries.some((entry) => entry.id === source.streamingItemId));
           if (!holdsItem) expect(projection.rows[index]).toBe(row);
@@ -4234,8 +4237,10 @@ describe("streaming v2 row projection", () => {
       if (!running) continue;
       for (const [index, row] of previous.rows.entries()) {
         const holdsItem =
-          (row.kind === "work" || row.kind === "work-live") &&
-          row.groupedEntries.some((entry) => entry.id === source.streamingItemId);
+          row.id === `thought:${source.streamingItemId}` ||
+          (row.kind === "work-live" && row.entry.id === source.streamingItemId) ||
+          ((row.kind === "work" || row.kind === "work-live") &&
+            row.groupedEntries.some((entry) => entry.id === source.streamingItemId));
         if (!holdsItem) expect(projection.rows[index]).toBe(row);
       }
     }
