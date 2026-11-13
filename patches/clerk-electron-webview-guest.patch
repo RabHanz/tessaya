@@ -1,0 +1,30 @@
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+index f5f8a83..8ad870b 100644
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -6,7 +6,9 @@ let node_crypto = require("node:crypto");
+ //#region src/main/validate-sender.ts
+ function isMainFrameEvent(event) {
+ 	const { sender, senderFrame } = event;
+-	return sender.getType() === "window" && Boolean(senderFrame) && senderFrame === sender.mainFrame;
++	// t3code patch: a <webview> guest counts only when the host registered it as trusted (its id and main frame).
++	const trustedGuest = sender.getType() === "webview" && globalThis[Symbol.for("t3code.clerk.isTrustedGuest")]?.(event) === true;
++	return (sender.getType() === "window" || trustedGuest) && Boolean(senderFrame) && senderFrame === sender.mainFrame;
+ }
+ 
+ //#endregion
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 92c2cee..edef5d8 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -5,7 +5,9 @@ import { randomUUID } from "node:crypto";
+ //#region src/main/validate-sender.ts
+ function isMainFrameEvent(event) {
+ 	const { sender, senderFrame } = event;
+-	return sender.getType() === "window" && Boolean(senderFrame) && senderFrame === sender.mainFrame;
++	// t3code patch: a <webview> guest counts only when the host registered it as trusted (its id and main frame).
++	const trustedGuest = sender.getType() === "webview" && globalThis[Symbol.for("t3code.clerk.isTrustedGuest")]?.(event) === true;
++	return (sender.getType() === "window" || trustedGuest) && Boolean(senderFrame) && senderFrame === sender.mainFrame;
+ }
+ 
+ //#endregion
