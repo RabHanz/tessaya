@@ -28,6 +28,7 @@ import {
   r1Data,
   r1Gather,
   peopleLines,
+  namedIn,
   r1Confirmed,
   r1Played,
   r1TurnStream,
@@ -786,5 +787,25 @@ describe("several people in one turn", () => {
     expect(lines[0]).toContain('"prefers":{"units":"metric"}');
     expect(lines[1]).toContain("one at a time");
     expect(peopleLines([{ name: "Sara", said: "hi", preferences: {} }])).toEqual([]);
+  });
+});
+
+describe("the house read before a turn", () => {
+  it("keeps only devices his words name, so a sentence about him puts no device in view", () => {
+    const ai = {
+      entityId: "conversation.google_generative_ai",
+      name: "Google Generative AI",
+      area: null,
+    };
+    const ramadan = {
+      entityId: "binary_sensor.nahaj_ramadan",
+      name: "Nahaj Ramadan month",
+      area: null,
+    };
+    const lamp = { entityId: "light.desk_lamp", name: "Desk Lamp", area: "Study" };
+    for (const d of [ai, ramadan, lamp]) expect(namedIn(d, "Call me Rab from now on.")).toBe(false);
+    expect(namedIn(lamp, "Turn on the study lamp")).toBe(true);
+    expect(namedIn(lamp, "Turn the lights off")).toBe(true);
+    expect(namedIn(ramadan, "Is it Ramadan yet?")).toBe(true);
   });
 });

@@ -401,7 +401,7 @@ export const r1Data = (input: R1Context) => [
 export const ROOM_SYSTEM = [
   `${SELF}. this turn reaches you through a speaker in a room of his home: you are heard, not read, so answer in one or two short spoken sentences, plain words, no lists or markdown.`,
   NAMES,
-  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state. the lines in his message marked "live as of this turn" were read from the house and his work just now: answer from them and use their ids with home_do; call home_find or home_state only for what they do not cover, and never answer the house from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_memory_remember to keep what he asks you to remember or how he wants something done from now on (never promise "from now on" without it), tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
+  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state. the lines in his message marked "live as of this turn" were read from the house and his work just now: answer from them and use their ids with home_do; call home_find or home_state only for what they do not cover, and never answer the house from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_preference_set for how the person speaking wants to be addressed or spoken to from now on (what to call them, 12- or 24-hour times, units, her voice, the persona, their news or music), tessaya_memory_remember for a fact or anything else they ask you to keep (never promise "from now on" without one of the two), tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
   `${TOOL_FAILED}. ${NEVER_MISSING}`,
   ANSWER_ONLY,
   LIKE_A_PERSON,
@@ -512,6 +512,39 @@ export const peopleLines = (people: NonNullable<R1Context["people"]>): ReadonlyA
         "Answer each of them by name, in that order, in one reply, each only from their own words and preferences. The room hears it all, so say nothing private about anyone. If you cannot tell who asked what, ask them to speak one at a time.",
       ];
 
+const SAID_WORD = /[a-z0-9]{3,}/g;
+const GENERIC = new Set([
+  "the",
+  "and",
+  "for",
+  "you",
+  "now",
+  "from",
+  "with",
+  "this",
+  "that",
+  "sensor",
+  "switch",
+]);
+/** A found device his sentence names: a word of its name, area, id or kind (light, fan) is in what he said. */
+export const namedIn = (
+  device: {
+    readonly entityId: string;
+    readonly name?: string | null;
+    readonly area?: string | null;
+  },
+  heard: string,
+): boolean => {
+  const said = new Set(heard.toLowerCase().match(SAID_WORD) ?? []);
+  const words =
+    `${device.name ?? ""} ${device.area ?? ""} ${device.entityId.replace(/[._]/g, " ")}`
+      .toLowerCase()
+      .match(SAID_WORD) ?? [];
+  return words.some(
+    (w) => !GENERIC.has(w) && (said.has(w) || said.has(`${w}s`) || said.has(w.replace(/s$/, ""))),
+  );
+};
+
 /** The loop's echo taint: the turn began while her own voice could still be heard in the room. */
 const taintedOf = (voice: unknown): boolean =>
   typeof voice === "object" && voice !== null && "tainted" in voice && voice.tainted === true;
@@ -618,8 +651,11 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   const status = yield* home.status;
   const lastAction = (yield* home.actions(1))[0] ?? null;
   // What in the house matches his words, in view before the model starts: a simple ask then needs no tool round.
+  // Only devices his words actually name: "call me Rab" must not put random devices "live as of this turn" in view.
   const found = withHouse
-    ? yield* home.find({ text: input.heard, limit: 8 }).pipe(Effect.orElseSucceed(() => []))
+    ? (yield* home
+        .find({ text: input.heard, limit: 8 })
+        .pipe(Effect.orElseSucceed(() => []))).filter((d) => namedIn(d, input.heard))
     : [];
   // "Turn it back off" names no device: the one she last acted on stays in view, with its live state.
   const followed = yield* Effect.forEach(
