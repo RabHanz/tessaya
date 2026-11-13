@@ -101,7 +101,9 @@ const sessionArgs = (spec: SessionSpec, mcpConfig: string): ReadonlyArray<string
   spec.model,
   ...(spec.effort === null ? [] : ["--effort", spec.effort]),
   "--system-prompt",
-  spec.system,
+  // Live (13 Nov), a first call by the short name the prompt uses failed with "No such tool available" in about half
+  // of the suite's runs; naming the server's prefix took that to 0 of 6. The API route's tools have no prefix.
+  `${spec.system}\n\nthe tools named here are short names: each one's full name starts with mcp__${MCP_NAME}__ (home_find is mcp__${MCP_NAME}__home_find); always call the full name.`,
   // Thinking off before the first word (B0: on, p95 10.8 s); no hooks of his.
   "--settings",
   JSON.stringify({ disableAllHooks: true, alwaysThinkingEnabled: false }),
