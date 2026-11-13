@@ -9,7 +9,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { layerMemory as BatonDatabaseMemory } from "./BatonDatabase.ts";
 import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
 import { BatonPhoneInbox, layer as inboxLayer } from "./BatonPhoneInbox.ts";
-import { allSettings, findSettings, setSetting, SETTINGS } from "./SettingsVoice.ts";
+import { allSettings, choicesOf, findSettings, setSetting, SETTINGS } from "./SettingsVoice.ts";
 
 it("every setting has a voice path and a safety class; a never one says why", () => {
   const keys = SETTINGS.map((s) => `${s.store}.${s.key}`).toSorted();
@@ -33,6 +33,13 @@ it("finds a setting by his words", () => {
     findSettings("change the speech model").map((s) => s.key),
     "speechModelId",
   );
+});
+
+it("the model a kind of her work runs on lists the models he can name", () => {
+  // Without a list she would not guess one: "talk to me on Opus" failed 1 of 3 (13 Nov suite).
+  const models = SETTINGS.find((s) => s.store === "server" && s.key === "brainModels")!;
+  const choices = choicesOf(models) ?? [];
+  for (const name of ["haiku", "sonnet", "opus"]) assert.include(choices, name);
 });
 
 const setup = () => {
