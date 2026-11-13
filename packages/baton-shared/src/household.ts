@@ -12,6 +12,8 @@ import {
   type AuthEnvironmentScope,
 } from "@t3tools/contracts";
 
+import type { BatonPreferenceKey } from "@t3tools/baton-contracts";
+
 import { OWNER_PERSON_ID, type SpeakerLike } from "./privateMemory.ts";
 
 export const OWNER_MEMBER_ID = OWNER_PERSON_ID;
@@ -150,3 +152,16 @@ export const voiceAssurance = (speaker: SpeakerLike | null): Assurance =>
     : speaker.verified && !speaker.inherited
       ? 2
       : 1;
+
+/** What a member can set for themselves (HOUSEHOLD-DESIGN §4), with what each means to her. */
+export const PREFERENCE_KEYS: Readonly<Record<BatonPreferenceKey, string>> = {
+  name: "what to call them",
+  persona: "which persona answers them by default",
+  voice: "the voice she speaks to them in",
+  units: "metric or imperial",
+  timeFormat: "how to say times (12-hour with AM/PM, or 24-hour)",
+  news: "where their news comes from",
+  music: "their music service or taste",
+};
+export type PreferenceKey = BatonPreferenceKey;
+export const isPreferenceKey = (key: string): key is PreferenceKey => key in PREFERENCE_KEYS;

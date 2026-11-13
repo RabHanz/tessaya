@@ -9,6 +9,17 @@ import { IsoDateTime, TrimmedNonEmptyString } from "@t3tools/contracts";
 
 export const BatonMemberRole = Schema.Literals(["owner", "admin", "adult", "child", "guest"]);
 const InviteRole = Schema.Literals(["admin", "adult", "child", "guest"]);
+/** What a member can set for themselves (HOUSEHOLD-DESIGN §4); baton-shared's PREFERENCE_KEYS says what each means. */
+export const BatonPreferenceKey = Schema.Literals([
+  "name",
+  "persona",
+  "voice",
+  "units",
+  "timeFormat",
+  "news",
+  "music",
+]);
+export type BatonPreferenceKey = typeof BatonPreferenceKey.Type;
 
 export const BatonHouseholdMember = Schema.Struct({
   /** The same id as their Voice ID profile and their private store. */
@@ -63,7 +74,7 @@ export const BatonHouseholdCallInput = Schema.Union([
   /** Who is around now: a member's device connected, or recently. */
   op("home", {}),
   op("invite", {
-    name: TrimmedNonEmptyString.check(Schema.isMaxLength(60)),
+    name: TrimmedNonEmptyString.check(Schema.isMaxLength(120)),
     role: InviteRole,
     /** A child's birth date (YYYY-MM-DD), for growing up. */
     born: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(10))),
@@ -86,6 +97,16 @@ export const BatonHouseholdCallInput = Schema.Union([
    * so a home has one members table however many servers it has.
    */
   op("setHome", { on: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))) }),
+  /** A name said or typed; spelled out ("Zayd, Z-A-Y-D") it is kept as spelled. Themselves, or an admin. */
+  op("rename", { ...Ref, name: TrimmedNonEmptyString.check(Schema.isMaxLength(120)) }),
+  /** A member's own preferences: theirs, or the owner's view of anyone's. */
+  op("preferences", Ref),
+  /** One of a member's preferences, set or (null) cleared: by themselves, or the owner. */
+  op("setPreference", {
+    ...Ref,
+    key: BatonPreferenceKey,
+    value: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+  }),
   /** Every member's shared voice profile, for a vessel to recognise them. */
   op("voices", {}),
   /**
@@ -117,5 +138,7 @@ export const BatonHouseholdCallResult = Schema.Struct({
   homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
   peers: Schema.optionalKey(Schema.Array(Schema.String)),
   voices: Schema.optionalKey(Schema.Array(BatonVoiceProfile)),
+  /** With `preferences`: that member's, by key. */
+  preferences: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 export type BatonHouseholdCallResult = typeof BatonHouseholdCallResult.Type;

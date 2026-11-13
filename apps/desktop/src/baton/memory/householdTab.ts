@@ -37,6 +37,96 @@ const noteOf = (m: BatonHouseholdMember): string =>
     .filter((x): x is string => x !== null)
     .join(" · ");
 
+/** Choices with a fixed set of answers; the rest are said in their own words. */
+const PREF_CHOICES: Readonly<Record<string, ReadonlyArray<readonly [string, string]>>> = {
+  units: [
+    ["metric", "hh.prefs.units.metric"],
+    ["imperial", "hh.prefs.units.imperial"],
+  ],
+  timeFormat: [
+    ["12-hour with AM/PM", "hh.prefs.timeFormat.12"],
+    ["24-hour", "hh.prefs.timeFormat.24"],
+  ],
+};
+const PREF_KEYS = ["name", "persona", "voice", "units", "timeFormat", "news", "music"] as const;
+
+/**
+ * One person's preferences (HOUSEHOLD-DESIGN §4): yours, and, for the owner, anyone's picked above them. A worded one
+ * is a one-line list (its text, Remove, and a line to set it); units and times are choices.
+ */
+const preferenceControls = (
+  s: {
+    readonly members: ReadonlyArray<BatonHouseholdMember>;
+    readonly prefsFor: string | null;
+    readonly prefs: Readonly<Record<string, string>>;
+  },
+  section: string,
+): ReadonlyArray<HomeControl> => {
+  const you = s.members.find((m) => m.you);
+  const whose = s.members.find((m) => m.id === s.prefsFor);
+  if (you === undefined || whose === undefined) return [];
+  const others =
+    you.role === "owner" ? s.members.filter((m) => m.state !== "leaving" && m.id !== you.id) : [];
+  const rows: Array<HomeControl> = [];
+  if (others.length > 0)
+    rows.push({
+      id: "m.hh.prefsFor",
+      section,
+      label: text("hh.prefs.for"),
+      hint: text("hh.prefs.for.hint"),
+      kind: "choice",
+      value: whose.id,
+      options: [you, ...others].map((m) => ({
+        value: m.id,
+        label: m.you ? text("hh.you") : m.name,
+      })),
+    });
+  // Their own name is theirs to change; someone else's is the owner's (the server asks for a yes where it must).
+  if (whose.you || you.role === "owner")
+    rows.push({
+      id: "m.hh.rename",
+      section,
+      label: text("hh.prefs.member"),
+      hint: text("hh.prefs.member.hint"),
+      kind: "list",
+      items: [whose.name],
+      required: true,
+      placeholder: text("hh.prefs.name.placeholder"),
+      addLabel: text("hh.prefs.rename"),
+    });
+  for (const key of PREF_KEYS) {
+    const now = s.prefs[key];
+    const choices = PREF_CHOICES[key];
+    rows.push(
+      choices !== undefined
+        ? {
+            id: `m.hh.pref:${key}`,
+            section,
+            label: text(`hh.prefs.${key}`),
+            kind: "choice",
+            value: now ?? "",
+            options: [
+              { value: "", label: text("hh.prefs.unset") },
+              ...choices.map(([value, label]) => ({ value, label: text(label) })),
+            ],
+          }
+        : {
+            id: `m.hh.pref:${key}`,
+            section,
+            label: text(`hh.prefs.${key}`),
+            ...(key === "name" ? { hint: text("hh.prefs.name.hint") } : {}),
+            kind: "list",
+            items: now === undefined ? [] : [now],
+            placeholder: text(
+              key === "name" ? "hh.prefs.name.placeholder" : "hh.prefs.text.placeholder",
+            ),
+            addLabel: text("hh.prefs.set"),
+          },
+    );
+  }
+  return rows;
+};
+
 export const householdControls = (s: {
   readonly members: ReadonlyArray<BatonHouseholdMember>;
   readonly inviteRole: InviteRole;
@@ -45,6 +135,9 @@ export const householdControls = (s: {
   readonly canEnrol: boolean;
   readonly homeOn: string | null;
   readonly peers: ReadonlyArray<string>;
+  /** Whose preferences are shown (a member id), and theirs. */
+  readonly prefsFor: string | null;
+  readonly prefs: Readonly<Record<string, string>>;
 }): ReadonlyArray<HomeControl> => {
   const section = text("hh.section");
   const rows: Array<HomeControl> = [];
@@ -102,6 +195,7 @@ export const householdControls = (s: {
           },
     );
   }
+  rows.push(...preferenceControls(s, section));
   // Only where there is another server to keep them on.
   if (s.peers.length > 0 || s.homeOn !== null)
     rows.push({
@@ -173,6 +267,8 @@ export const createHouseholdTab = (input: {
   let code: { name: string; code: string; until: string } | null = null;
   let status: string | null = null;
   let confirmNow: string | null = null;
+  let prefsFor: string | null = null;
+  let prefs: Readonly<Record<string, string>> = {};
 
   const load = async () => {
     try {
@@ -180,6 +276,12 @@ export const createHouseholdTab = (input: {
       members = listed.members ?? [];
       homeOn = listed.homeOn ?? null;
       peers = listed.peers ?? [];
+      if (!members.some((m) => m.id === prefsFor && m.state !== "leaving"))
+        prefsFor = members.find((m) => m.you)?.id ?? null;
+      prefs =
+        prefsFor === null
+          ? {}
+          : ((await input.call("preferences", { id: prefsFor })).preferences ?? {});
     } catch (e) {
       status = e instanceof Error ? e.message : text("hh.failed");
     }
@@ -215,6 +317,8 @@ export const createHouseholdTab = (input: {
         canEnrol: input.enrol !== null,
         homeOn,
         peers,
+        prefsFor,
+        prefs,
       }),
     /** Handles a click on one of its controls; false when the id is not its own. */
     act: (id: string, value: unknown): boolean => {
@@ -224,7 +328,27 @@ export const createHouseholdTab = (input: {
       const kind = at < 0 ? body : body.slice(0, at);
       const rest = at < 0 ? "" : body.slice(at + 1);
       const target = memberOf(rest.replace(/:later$/, ""));
-      if (kind === "homeOn" && typeof value === "string")
+      if (kind === "prefsFor" && typeof value === "string") {
+        prefsFor = value;
+        void load();
+      } else if (
+        kind === "rename" &&
+        prefsFor !== null &&
+        typeof value === "string" &&
+        value.trim() !== ""
+      ) {
+        run("rename", { id: prefsFor, name: value.trim().slice(0, 120) });
+      } else if (kind === "pref" && prefsFor !== null) {
+        // A list's ids end in :add (the text) or :rm (its one item); a choice sends its value, "" for not set.
+        const [key, edit] = rest.split(":");
+        const set =
+          edit === "rm"
+            ? null
+            : typeof value === "string" && value.trim() !== ""
+              ? value.trim()
+              : null;
+        run("setPreference", { id: prefsFor, key, value: set });
+      } else if (kind === "homeOn" && typeof value === "string")
         run("setHome", { on: value === "" ? null : value });
       else if (kind === "inviteRole" && ROLES.includes(value as InviteRole))
         inviteRole = value as InviteRole;
@@ -234,7 +358,7 @@ export const createHouseholdTab = (input: {
         typeof value === "string" &&
         value.trim() !== ""
       )
-        run("invite", { name: value.trim().slice(0, 60), role: inviteRole }, value.trim());
+        run("invite", { name: value.trim().slice(0, 120), role: inviteRole }, value.trim());
       else if (kind === "machine" && target !== undefined)
         run("machine", { id: target.id, on: value === true }, target.name);
       else if (kind === "role" && target !== undefined && ROLES.includes(value as InviteRole))

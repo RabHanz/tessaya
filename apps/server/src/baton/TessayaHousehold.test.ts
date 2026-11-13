@@ -27,6 +27,7 @@ import {
 } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold, layer as householdLayer } from "./TessayaHousehold.ts";
 import { VoiceForgets } from "./VoiceForgets.ts";
+import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 
 const authLayer = EnvironmentAuth.layer.pipe(
   Layer.provide(ManagedPolicy.layerTest()),
@@ -48,6 +49,7 @@ const stackWith = (answer: number | null) =>
   householdLayer.pipe(
     Layer.provideMerge(privateLayer),
     Layer.provideMerge(approver(answer)),
+    Layer.provideMerge(MemberPreferencesLayer),
     Layer.provide(secrets),
     Layer.provideMerge(Layer.succeed(PrivateKdf, { N: 2 ** 10, r: 8, p: 1 })),
     Layer.provideMerge(BatonDatabaseMemory),
@@ -475,4 +477,48 @@ describe("one voice profile per member, on the home", () => {
         ),
       );
     }));
+
+  test("a spelled name is kept as spelled; each member edits their own preferences, the owner anyone's", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const invited = yield* as(owner)(
+          call({ op: "invite", name: "Zaid, Z-A-Y-D", role: "adult" }),
+        );
+        assert.include(invited.line, "Added Zayd. Zayd, Z-A-Y-D.");
+        const zayd = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.name === "Zayd",
+        )!;
+        const self = { member: zayd.id, assurance: 2, via: "his phone" } as const;
+        // His own: read and set on his phone; a spelled value comes back spelled.
+        const set = yield* as(self)(
+          call({ op: "setPreference", id: zayd.id, key: "name", value: "Zaki, Z-A-K-Y" }),
+        );
+        assert.strictEqual(set.line, "Kept. Zaky, Z-A-K-Y.");
+        assert.deepStrictEqual(
+          (yield* as(self)(call({ op: "preferences", id: zayd.id }))).preferences,
+          { name: "Zaky" },
+        );
+        // Not anyone else's, and not from a voice that only might be his.
+        assert.strictEqual(
+          (yield* as(self)(call({ op: "preferences", id: "owner" }))).status,
+          "refused",
+        );
+        assert.strictEqual(
+          (yield* as({ ...self, assurance: 1 })(
+            call({ op: "setPreference", id: zayd.id, key: "units", value: "metric" }),
+          )).status,
+          "refused",
+        );
+        // The owner edits anyone's, and clearing takes it away.
+        const cleared = yield* as(owner)(
+          call({ op: "setPreference", id: zayd.id, key: "name", value: null }),
+        );
+        assert.strictEqual(cleared.line, "Cleared. (for Zayd)");
+        assert.deepStrictEqual(cleared.preferences, {});
+        // His own name is his to change.
+        const renamed = yield* as(self)(call({ op: "rename", id: zayd.id, name: "Zayd Khan" }));
+        assert.strictEqual(renamed.line, "Zayd is now Zayd Khan.");
+      }),
+    ));
 });

@@ -25,6 +25,7 @@ import {
 } from "./BatonMemoryService.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { TessayaTurn, layer as turnLayer } from "./TessayaTurn.ts";
+import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import { vectorToBytes } from "./memoryVectors.ts";
 
 /** docs/baton/evals-memory/*.json: what is remembered, then what a question should bring back first. */
@@ -148,6 +149,7 @@ type Arm = "keyword" | "fused" | "device";
 /** The memory service with the turn pipeline over it; begin never learns, so learning is a stand-in. */
 const withTurn = <E, R>(model: Layer.Layer<BatonMemoryEmbedder, E, R>) =>
   turnLayer.pipe(
+    Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(Layer.mock(BatonMemoryLearning)({})),
     Layer.provideMerge(memoryLayer),
     Layer.provideMerge(model),

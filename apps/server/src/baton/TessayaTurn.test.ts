@@ -11,6 +11,7 @@ import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
   SessionMember,
@@ -63,6 +64,7 @@ const stores = Layer.mock(BatonPrivateMemoryService)({
 
 const layer = it.layer(
   turnLayer.pipe(
+    Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(memoryLayer),
     Layer.provideMerge(learning),
@@ -476,6 +478,7 @@ layer("TessayaTurn", (it) => {
 /** A server with its own database and turn pipeline; it lives as long as the test's scope. */
 const home = Layer.build(
   turnLayer.pipe(
+    Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(memoryLayer),
     Layer.provideMerge(learning),
     Layer.provideMerge(stores),
