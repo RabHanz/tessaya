@@ -4,7 +4,6 @@
  * (the pairing cookie, or a bearer token), with the rules in BatonTessayaApi. Mounted by BatonServerLayer.routes.
  */
 import * as NodeCrypto from "node:crypto";
-import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import {
@@ -18,6 +17,7 @@ import { buildPhoneState } from "@t3tools/baton-shared/phone";
 import { AuthBatonHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -50,8 +50,8 @@ import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { approvalRefusal } from "@t3tools/baton-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
-import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
 import { handleHands } from "./BatonHandsApi.ts";
+import { VesselHands } from "./VesselHands.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./BatonTessayaApi.ts";
 import { transcribeWav } from "./BatonPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";
@@ -83,7 +83,6 @@ const PAGE_HEADERS = {
     "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; media-src blob:; manifest-src 'self'; frame-ancestors 'none'",
 } as const;
 
-const AUDIT_MAX_BYTES = 5 * 1024 * 1024;
 const page = (body: string, contentType: string) =>
   HttpServerResponse.text(body, { contentType, headers: PAGE_HEADERS });
 
@@ -268,25 +267,6 @@ export const routes = HttpRouter.use((router) =>
       Effect.sync(() => page(MANIFEST, "application/manifest+json")),
     );
     // Remote hands: a remote session asks, the desktop takes and answers (docs/baton/REMOTE_HANDS.md).
-    let audited: Promise<void> = Promise.resolve();
-    const hands = createHandsBroker({
-      now: () => Date.now(),
-      newId: () => globalThis.crypto.randomUUID(),
-      // In order, and rolled to one `.1` file past AUDIT_MAX_BYTES, so the record never grows without end.
-      onAudit: (entry) =>
-        void (audited = audited.then(async () => {
-          const file = NodePath.join(NodePath.dirname(config.dbPath), "baton-hands-audit.ndjson");
-          try {
-            if ((await NodeFS.promises.stat(file)).size > AUDIT_MAX_BYTES)
-              await NodeFS.promises.rename(file, `${file}.1`);
-          } catch {
-            // No file yet.
-          }
-          await NodeFS.promises
-            .appendFile(file, `${JSON.stringify(entry)}\n`)
-            .catch(() => undefined);
-        })),
-    });
     const handsApi = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
@@ -301,8 +281,14 @@ export const routes = HttpRouter.use((router) =>
         request.method === "POST"
           ? yield* request.json.pipe(Effect.orElseSucceed(() => ({})))
           : undefined;
+      const hands = Context.getOption(context, VesselHands);
+      if (hands._tag === "None")
+        return HttpServerResponse.jsonUnsafe(
+          { message: "Remote hands are not running on this server." },
+          { status: 503, headers: PAGE_HEADERS },
+        );
       const answer = yield* Effect.promise(() =>
-        handleHands(hands, {
+        handleHands(hands.value, {
           method: request.method,
           path: url.pathname.replace(/^\/tessaya\/hands\//, ""),
           scopes: new Set(session.value.scopes),

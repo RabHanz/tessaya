@@ -5,6 +5,7 @@ import {
   createHandleRegistry,
   createHandsBroker,
   HOST_LISTENING_MS,
+  publishedSpecs,
 } from "./remoteHands.ts";
 
 const make = () => {
@@ -70,6 +71,38 @@ describe("remote hands broker", () => {
     );
     expect(broker.reply("nope", { ok: true })).toBe(false);
     expect(log).toEqual(["click:refused", "type_text:refused"]);
+  });
+
+  it("gives a brain turn only the tools the desktop offers, with the turn named, and a remote session only the hands", async () => {
+    const { broker, advance } = make();
+    const screen = { name: "screen_capture", description: "d", input_schema: { type: "object" } };
+    const origin = { label: "R1", hisVoice: true, member: "owner", assurance: 2, tainted: false };
+    await broker.take(1, [screen]);
+    expect(broker.published()).toEqual([screen]);
+    expect((await broker.call("s", "screen_capture", {})).error).toContain(
+      "not a remote hands tool",
+    );
+    expect((await broker.call("turn:R1", "ui_tree", {}, origin)).error).toContain("does not offer");
+    const answer = broker.call("turn:R1", "screen_capture", {}, origin);
+    const call = (await broker.take(1))!;
+    expect(call).toMatchObject({ tool: "screen_capture", origin });
+    broker.reply(call.id, { ok: true, text: "Notepad" });
+    expect((await answer).text).toBe("Notepad");
+    // A take without tools keeps the offer; a desktop that stopped listening offers nothing.
+    expect(broker.published()).toEqual([screen]);
+    advance(HOST_LISTENING_MS);
+    expect(broker.published()).toEqual([]);
+  });
+
+  it("keeps only well-formed published tools", () => {
+    expect(publishedSpecs("no")).toBeNull();
+    expect(
+      publishedSpecs([
+        { name: "screen_capture", description: "d", input_schema: {} },
+        { name: "Bad Name", description: "d", input_schema: {} },
+        { name: "no_schema", description: "d" },
+      ])?.map((s) => s.name),
+    ).toEqual(["screen_capture"]);
   });
 
   it("keeps typed text out of the audit and stops only handles it issued", () => {

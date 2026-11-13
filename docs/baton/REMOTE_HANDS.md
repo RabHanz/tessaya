@@ -13,6 +13,9 @@ hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool
 - The **server only brokers** (`packages/baton-shared/src/remoteHands.ts`, `apps/server/src/baton/BatonHandsApi.ts`): it allows a fixed list
   of tools, holds a call until the desktop takes it (a long poll, so a call arrives at once), and writes an audit line
   (`baton-hands-audit.ndjson` beside the database; typed text is logged as its length, never its content).
+- **The same channel serves the one brain** (`apps/server/src/baton/VesselHands.ts`, SPINE-UNIFY): the desktop publishes the tools it offers
+  a brain turn with its `take`, and a turn's call reaches only those, carrying the turn's origin (which vessel heard it, whose voice) for the
+  gate. A remote session still reaches only the fixed list; it can neither set an origin nor reach a published tool.
 - The **desktop owns the gate and the mouse guard**. Every call goes through the same `judgeToolCall` and `createAgentGate` as the assistant's
   own tools; an "ask" goes to the Director as a normal question, and with the **Director-away flag** on it is a refusal, because nobody can answer.
 - **Scope `baton:hands`** is never in the standard scopes. The Director issues it to one session's token on his own computer

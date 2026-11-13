@@ -1,8 +1,8 @@
 // @effect-diagnostics globalTimers:off
 /**
- * Remote hands (docs/baton/REMOTE_HANDS.md): a remote session asks, the desktop does. The server only brokers: it checks the
- * call is one of the allowed tools, holds it until the desktop (which owns the gate and the mouse guard) takes it, and passes
- * back the answer. Holding is a long poll, so a call reaches the desktop the moment it is made.
+ * Remote hands (docs/baton/REMOTE_HANDS.md): a remote session asks, the desktop does, and the server only brokers: it
+ * checks the tool, holds the call for the desktop's long poll (the desktop owns the gate), and passes back the answer. A
+ * brain turn's call reaches only the tools the desktop published, and names its turn for the gate.
  */
 
 /** What a remote session may ask for: the hands, a window picture, and a few operations on the app. */
@@ -28,12 +28,52 @@ export const CALL_TIMEOUT_MS = 60_000;
 export const HOST_LISTENING_MS = 45_000;
 const AUDIT_KEEP = 200;
 
+/** A tool the desktop offers a brain turn, as it publishes it. */
+export interface HandsToolSpec {
+  readonly name: string;
+  readonly description: string;
+  readonly input_schema: Readonly<Record<string, unknown>>;
+}
+
+/** The turn a brain call came from: the vessel that heard it and whose words they were. */
+export interface HandsOrigin {
+  readonly label: string;
+  readonly hisVoice: boolean;
+  readonly member: string | null;
+  readonly assurance: number;
+  readonly tainted: boolean;
+}
+
 export interface HandsCall {
   readonly id: string;
   readonly tool: string;
   readonly args: Readonly<Record<string, unknown>>;
   readonly session: string;
+  /** Set for a brain turn's call; absent for a remote session's. */
+  readonly origin?: HandsOrigin;
 }
+
+const SPECS_MAX = 64;
+const SPEC_MAX_BYTES = 8_000;
+
+/** What a desktop published, kept only where each spec has a name, a description and a schema of sane size. */
+export const publishedSpecs = (raw: unknown): ReadonlyArray<HandsToolSpec> | null => {
+  if (!Array.isArray(raw)) return null;
+  return raw.slice(0, SPECS_MAX).flatMap((s: unknown): ReadonlyArray<HandsToolSpec> => {
+    if (typeof s !== "object" || s === null) return [];
+    const { name, description, input_schema } = s as Record<string, unknown>;
+    if (
+      typeof name !== "string" ||
+      !/^[a-z][a-z0-9_]{0,63}$/.test(name) ||
+      typeof description !== "string" ||
+      typeof input_schema !== "object" ||
+      input_schema === null ||
+      JSON.stringify(s).length > SPEC_MAX_BYTES
+    )
+      return [];
+    return [{ name, description, input_schema: input_schema as Record<string, unknown> }];
+  });
+};
 
 export interface HandsResult {
   readonly ok: boolean;
@@ -76,6 +116,7 @@ export const createHandsBroker = (input: {
   let taker: ((c: HandsCall | null) => void) | null = null;
   let lastTake = Number.NEGATIVE_INFINITY;
   const audit: HandsAudit[] = [];
+  let published: ReadonlyArray<HandsToolSpec> = [];
 
   const record = (entry: HandsAudit) => {
     audit.push(entry);
@@ -84,9 +125,13 @@ export const createHandsBroker = (input: {
   };
   const connected = () => input.now() - lastTake < HOST_LISTENING_MS;
 
-  /** The desktop's long poll: resolves with the next call, or null after `waitMs`. */
-  const take = (waitMs: number): Promise<HandsCall | null> => {
+  /** The desktop's long poll: resolves with the next call, or null after `waitMs`. `tools` replaces what it offers. */
+  const take = (
+    waitMs: number,
+    tools?: ReadonlyArray<HandsToolSpec>,
+  ): Promise<HandsCall | null> => {
     lastTake = input.now();
+    if (tools !== undefined) published = tools;
     const next = queue.shift();
     if (next !== undefined) return Promise.resolve(next);
     return new Promise((resolve) => {
@@ -108,6 +153,7 @@ export const createHandsBroker = (input: {
     session: string,
     tool: string,
     args: Readonly<Record<string, unknown>>,
+    origin?: HandsOrigin,
   ): Promise<HandsResult> => {
     const started = input.now();
     const what = auditWhat(tool, args);
@@ -115,9 +161,20 @@ export const createHandsBroker = (input: {
       record({ at: started, session, tool, what, outcome, ms: input.now() - started });
       return result;
     };
-    if (!REMOTE_HANDS_TOOLS.has(tool)) {
+    // A remote session reaches only the hands; a brain turn, only what the desktop offers.
+    if (
+      origin === undefined
+        ? !REMOTE_HANDS_TOOLS.has(tool)
+        : !published.some((spec) => spec.name === tool)
+    ) {
       return Promise.resolve(
-        finish("refused", { ok: false, error: `${tool} is not a remote hands tool.` }),
+        finish("refused", {
+          ok: false,
+          error:
+            origin === undefined
+              ? `${tool} is not a remote hands tool.`
+              : `The desktop does not offer ${tool}.`,
+        }),
       );
     }
     if (JSON.stringify(args).length > ARGS_MAX_BYTES) {
@@ -134,7 +191,13 @@ export const createHandsBroker = (input: {
       );
     }
     const id = input.newId();
-    const item: HandsCall = { id, tool, args, session };
+    const item: HandsCall = {
+      id,
+      tool,
+      args,
+      session,
+      ...(origin === undefined ? {} : { origin }),
+    };
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         waiting.delete(id);
@@ -160,7 +223,15 @@ export const createHandsBroker = (input: {
     return true;
   };
 
-  return { call, take, reply, connected, audit: () => [...audit] };
+  return {
+    call,
+    take,
+    reply,
+    connected,
+    /** What the desktop offers a brain turn now; nothing while it is not listening. */
+    published: (): ReadonlyArray<HandsToolSpec> => (connected() ? published : []),
+    audit: () => [...audit],
+  };
 };
 
 export type HandsBroker = ReturnType<typeof createHandsBroker>;
