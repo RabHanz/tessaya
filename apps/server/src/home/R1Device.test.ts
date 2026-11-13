@@ -199,7 +199,7 @@ describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
   ];
 
   it("drops the sentences that think about him and keeps what she says to him", () => {
-    expect(lines.map(withoutNarration)).toEqual([
+    expect(lines.map((line) => withoutNarration(line))).toEqual([
       "Different what?",
       "Hm, I'm not sure what you mean.",
       "Got it, nothing else is waiting on you.",
@@ -212,6 +212,25 @@ describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
     for (const chunk of lines[2]!.match(/.{1,7}/gs)!) s.push(chunk);
     s.flush();
     expect(said.join("")).toBe("Got it, nothing else is waiting on you.");
+  });
+
+  it("never speaks, records or learns her own name as an opener", () => {
+    // His 13 Nov R1 session: every Alfred turn began "Alfred here." and a role pitch.
+    const names = ["Tessaya", "Alfred", "Freya"];
+    expect(withoutNarration("Alfred here. The study fan is on.", names)).toBe(
+      "The study fan is on.",
+    );
+    expect(withoutNarration("Freya here: done.", names)).toBe("done.");
+    expect(withoutNarration("Alfred here.", names)).toBe("");
+    // Only her own names, and only as the opener.
+    expect(withoutNarration("Bob here. Alfred here is on it.", names)).toBe(
+      "Bob here. Alfred here is on it.",
+    );
+    const said: Array<string> = [];
+    const s = speakableSentences((sentence) => said.push(sentence), names);
+    for (const chunk of "Alfred here. Nothing needs you.".match(/.{1,4}/gs)!) s.push(chunk);
+    s.flush();
+    expect(said.join("")).toBe("Nothing needs you.");
   });
 });
 

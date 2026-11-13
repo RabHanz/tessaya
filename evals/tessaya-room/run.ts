@@ -290,7 +290,10 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
           dir,
         );
         calls.push(...ran.lines.flatMap(toolUsesOf).map((u) => u.tool.replace(PREFIX, "")));
-        reply = withoutNarration(resultOf(ran.lines));
+        reply = withoutNarration(
+          resultOf(ran.lines),
+          DEFAULT_OS_PACK.personas.map((p) => p.name),
+        );
         firstMs.push(ran.firstMs);
       } else {
         const ran = await claude(
@@ -317,7 +320,13 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
             line: r.ok ? (r.value?.line ?? "") : (r.error ?? ""),
           };
         });
-        reply = spokenReply(withoutNarration(final.rest), outcomes);
+        reply = spokenReply(
+          withoutNarration(
+            final.rest,
+            DEFAULT_OS_PACK.personas.map((p) => p.name),
+          ),
+          outcomes,
+        );
         firstMs.push(ran.firstMs);
       }
       replies.push(reply);

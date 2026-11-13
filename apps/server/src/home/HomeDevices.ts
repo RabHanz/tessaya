@@ -751,10 +751,12 @@ const make = Effect.gen(function* () {
     const done = (line: string): DeviceOutcome => ({ status: "done", line });
     switch (c.op) {
       case "eye":
-        yield* publish(id, "cmd/eye/set", {
+        // Through the room loop, the device's one writer for the eyes; it holds a server mood for 30 s at most.
+        yield* publish(id, "voice/intent/eye", {
+          vessel: id,
           mood: c.mood,
-          priority: "sensor",
-          hold_ms: Math.min(Math.max(c.holdMs ?? 6000, 500), 60_000),
+          holdMs: Math.min(Math.max(c.holdMs ?? 6000, 500), 30_000),
+          reason: `${by.who} asked`,
         });
         return done(`The eyes show ${c.mood}.`);
       case "led":
