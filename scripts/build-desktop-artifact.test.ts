@@ -58,6 +58,7 @@ import {
   stageCursorSdkPlatformPackages,
   BATON_VOICE_PAYLOAD_FILES,
   TESSAYA_ART_PAYLOAD_FILES,
+  COMPANION_PAYLOAD_FILES,
   MEMORY_MODEL_PAYLOAD_FILES,
   batonSidecarBuild,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
@@ -169,6 +170,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
   yield* fs.makeDirectory(path.join(resourcesDir, "tessaya"), { recursive: true });
   for (const file of TESSAYA_ART_PAYLOAD_FILES) {
     yield* fs.writeFileString(path.join(resourcesDir, "tessaya", file), "art");
+  }
+  yield* fs.makeDirectory(path.join(resourcesDir, "companion"), { recursive: true });
+  for (const file of COMPANION_PAYLOAD_FILES) {
+    yield* fs.writeFileString(path.join(resourcesDir, "companion", file), "companion");
   }
   yield* fs.makeDirectory(path.join(resourcesDir, "memory-model"), { recursive: true });
   for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
@@ -1384,10 +1389,26 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.equal(artError.reason, "tessaya-art-missing");
         assert.deepStrictEqual(artError.missingFiles, ["tessaya/sting-madder-dark.webp"]);
 
-        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
+        // 0.1.118 shipped without her characters: the mascot window opened onto a missing stage.html.
         yield* fs.writeFileString(
           path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"),
           "art",
+        );
+        yield* fs.remove(path.join(fixture.packagedAppDir, "resources/companion/stage.html"));
+        const companionError = yield* validateWindowsPackagedPayload({
+          stageDistDir: fixture.stageDistDir,
+          appExecutableName: fixture.appExecutableName,
+          targetArch: "x64",
+          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+        }).pipe(Effect.flip);
+        assert.instanceOf(companionError, WindowsPackagedPayloadValidationError);
+        assert.equal(companionError.reason, "companion-missing");
+        assert.deepStrictEqual(companionError.missingFiles, ["companion/stage.html"]);
+
+        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
+        yield* fs.writeFileString(
+          path.join(fixture.packagedAppDir, "resources/companion/stage.html"),
+          "companion",
         );
         yield* fs.remove(
           path.join(fixture.packagedAppDir, "resources/memory-model/model_quantized.onnx"),
