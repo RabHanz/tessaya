@@ -263,8 +263,10 @@ const SCAN_RETICLE_SIZE = 150;
 const SCAN_RETICLE_TOP = 36;
 const SCAN_RETICLE_RADIUS = 28;
 
-function PairingScanCard(props: {
+export function PairingScanCard(props: {
   readonly cameraActive: boolean;
+  /** What to scan; Tessaya's Add an R1 names the R1's pairing code. */
+  readonly hint?: string;
   readonly onScan: (result: { readonly data: string }) => void;
   readonly onScanPress: () => void;
 }) {
@@ -343,7 +345,7 @@ function PairingScanCard(props: {
           )}
         </View>
         <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>
-          Scan the code from t3 pair or desktop Connections settings
+          {props.hint ?? "Scan the code from t3 pair or desktop Connections settings"}
         </Text>
       </View>
     </Pressable>
