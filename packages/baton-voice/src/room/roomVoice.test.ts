@@ -119,6 +119,10 @@ describe("the room voice loop", () => {
       t.published
         .filter((p) => p.topic === `freya/r1/${DEV}/event/enrol`)
         .map((p) => JSON.parse(String(p.payload)) as EnrolCard);
+    // The R1 is asked to open its mic first; a session opened only here hears nothing (13 Nov).
+    expect(t.published.map((p) => p.topic)).toContain(`freya/r1/${DEV}/cmd/voice/start`);
+    expect(cards()).toEqual([]);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     expect(cards()[0]!.lines[0]!.text).toContain("it's me,");
     expect(cards()[0]!.lines.map((l) => l.state)).toEqual([
       "now",

@@ -1765,6 +1765,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const cue = (id: string, name: PillSound) => {
     if (!noCues.has(id)) sessions.get(id)?.cue(name);
   };
+  /** R1s asked to enrol, until the session that hears his read starts. */
+  const enrolAsked = new Set<string>();
   /** Who woke an R1 by name, until its session starts. */
   const calledBy = new Map<
     string,
@@ -1965,6 +1967,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           void called.heard?.then((who) => who !== undefined && s.heardName(who, called.ms));
         } else s.present();
         cue(id, "wake");
+        if (enrolAsked.delete(id)) s.enrol();
       } else if (tail === "voice/wake") {
         // The R1 sends its wake stream only between sessions (SMP 0.3.35): a session still open here is a stale one,
         // left by a reboot or a stop we missed, and must not keep her name from being heard.
@@ -2004,8 +2007,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (json()["on"] === false) noCues.add(id);
         else noCues.delete(id);
       } else if (tail === "voice/enrol") {
-        if (json()["cancel"] === true) sessions.get(id)?.cancelEnrol();
-        else (sessions.get(id) ?? start(id)).enrol();
+        if (json()["cancel"] === true) {
+          enrolAsked.delete(id);
+          sessions.get(id)?.cancelEnrol();
+        } else {
+          // His read needs the R1's mic, which only its own session opens: a session opened here alone hears nothing,
+          // and the R1's wake stream closes it as stale (13 Nov). The session its start opens runs the guide.
+          enrolAsked.add(id);
+          deps.publish(topic(id, "cmd/voice/start"), "{}");
+        }
       } else if (tail === "state/online" && String(payload).trim() === "1") {
         // Back on the link mid-session: he was talking to her, so the window opens again rather than lapsing (00:43, 13 Nov).
         sessions.get(id)?.wake();
