@@ -7,6 +7,7 @@ import {
   followFocus,
   followWindow,
   landing,
+  pathBetween,
   standAt,
   wanderTo,
   type DisplayArea,
@@ -208,5 +209,19 @@ describe("dropAt", () => {
     const drop = dropAt(edges, { x: 3400, y: 400 }, 190);
     expect(drop.edge.kind).toBe("window");
     expect(drop.spot.y + 190 * FOOT_SHARE).toBeCloseTo(700, 0);
+  });
+});
+
+describe("pathBetween", () => {
+  it("leaves gently, lands exactly, never passes the target, and eases out", () => {
+    const steps = pathBetween({ x: 0, y: 0 }, { x: 600, y: -300 }, 24);
+    expect(steps).toHaveLength(24);
+    expect(steps.at(-1)).toEqual({ x: 600, y: -300 });
+    const xs = [0, ...steps.map((s) => s.x)];
+    const moves = xs.slice(1).map((x, i) => x - xs[i]!);
+    expect(moves.every((m) => m >= 0)).toBe(true);
+    const fastest = Math.max(...moves);
+    expect(moves[0]!).toBeLessThan(fastest / 2);
+    expect(moves.at(-1)!).toBeLessThan(fastest / 10);
   });
 });

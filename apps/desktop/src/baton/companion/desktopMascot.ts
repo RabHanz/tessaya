@@ -99,7 +99,7 @@ interface Saved {
 const HIT_NEAR_MS = 80;
 const HIT_FAR_MS = 400;
 const NEAR_PX = 60;
-const FRAME_MS = 33;
+const FRAME_MS = 16;
 const DRAG_MS = 16;
 /** A landing at least this fast squashes her. */
 const HARD_LANDING = 900;
@@ -226,7 +226,8 @@ export const createDesktopMascot = (input: {
     const target = win;
     if (target === null || target.isDestroyed()) return;
     stopMoving();
-    const steps = pathBetween(target.getBounds(), to, Math.max(1, frames));
+    // Frames are counted at 30 a second; she moves at 60, so the same move takes the same time, twice as smoothly.
+    const steps = pathBetween(target.getBounds(), to, Math.max(1, frames) * 2);
     let i = 0;
     moving = setInterval(() => {
       const step = steps[i++];

@@ -180,15 +180,21 @@ export const followFocus = (input: {
   return { edge: landing(input.edges, input.x, input.current.y + 1), x: input.x, how: "drop" };
 };
 
-/** Positions along an eased path from one point to another, one per frame. */
+/** How far a critically damped spring has gone by the end of a move (ωt), scaled so the last frame lands exactly. */
+const SPRING_W = 7;
+const springAt = (t: number) => 1 - (1 + SPRING_W * t) * Math.exp(-SPRING_W * t);
+
+/**
+ * Positions from one point to another, one per frame, along a critically damped spring: it leaves without a jolt and
+ * settles in a long ease-out, the way the motion bar's references move (tessaya-ops/research/motion-bar-b3-2026-11-13).
+ */
 export const pathBetween = (
   from: { readonly x: number; readonly y: number },
   to: { readonly x: number; readonly y: number },
   frames: number,
 ): ReadonlyArray<{ readonly x: number; readonly y: number }> =>
   Array.from({ length: frames }, (_, i) => {
-    const t = (i + 1) / frames;
-    const e = t * t * (3 - 2 * t);
+    const e = springAt((i + 1) / frames) / springAt(1);
     return {
       x: Math.round(from.x + (to.x - from.x) * e),
       y: Math.round(from.y + (to.y - from.y) * e),

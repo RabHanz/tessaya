@@ -1,13 +1,12 @@
 /**
- * What runs in the mascot's page (resources/tessaya/companion/stage.html) once the studio's scripts have loaded: one rig,
- * driven by cues from the main process. The rig draws only while something moves; on top of that every frame waits for a
- * ceiling: 30 a second while she speaks, 24 for an act, 15 while she thinks and 6 for her sleeping breath, so nothing
- * here can run the GPU at the display's rate, and a night asleep costs next to nothing.
+ * What runs in the mascot's page (resources/tessaya/companion/stage.html): one rig, driven by cues from the main process.
+ * The rig draws only while something moves, so a change runs at the display's own rate, as in the Character Studio.
+ * Only long-running states keep a ceiling: speaking 30 a second, thinking 15, her sleeping breath 6.
  */
 export const MASCOT_SCRIPT = String.raw`(() => {
  if (window.mascot) return;
  const raf = window.requestAnimationFrame.bind(window);
- let fps = 24, still = 24, lastT = 0;
+ let fps = Infinity, still = Infinity, lastT = 0;
  // Every callback asked for before the next frame runs in that one frame, so two loops never double the rate.
  let queued = [], timer = 0;
  window.requestAnimationFrame = (cb) => {
@@ -46,7 +45,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   },
   cue(c) {
    if (!rig) return;
-   still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : 24;
+   still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : Infinity;
    if (!speaking) fps = still;
    rig.setExpression(c.expression, { noCut: c.expression === "neutral" });
    if (c.clip) rig.play(c.clip);
