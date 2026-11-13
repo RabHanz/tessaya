@@ -21,8 +21,8 @@ import type { TurnPhase } from "@t3tools/baton-shared/voiceTurn";
 import { protectFromCapture } from "../captureProtection.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import {
-  FOOT_SHARE,
   bodyRect,
+  dropAt,
   edgesFor,
   followFocus,
   landing,
@@ -159,7 +159,12 @@ export const createDesktopMascot = (input: {
   let sleeping = false;
   let phase: TurnPhase = "idle";
   let edge: Edge | null = null;
-  let x = saved.x ?? -1;
+  // A place saved on a screen no longer there (or off every work area) starts her afresh.
+  let x =
+    saved.x !== undefined &&
+    displays().some((d) => saved.x! >= d.workArea.x && saved.x! <= d.workArea.x + d.workArea.width)
+      ? saved.x
+      : -1;
   let dragging: { readonly timer: ReturnType<typeof setInterval> } | null = null;
   let moving: ReturnType<typeof setInterval> | null = null;
   let hitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -167,6 +172,13 @@ export const createDesktopMascot = (input: {
   let wakeTimer: ReturnType<typeof setTimeout> | null = null;
 
   const size = () => MASCOT_SIZES[options.size];
+  // Every move sets her size too: setPosition alone lets Windows grow her across screens of different scale.
+  const box = (at: { readonly x: number; readonly y: number }) => ({
+    x: Math.round(at.x),
+    y: Math.round(at.y),
+    width: size(),
+    height: size(),
+  });
   const snoozed = () => (saved.snoozeUntil ?? 0) > Date.now();
   const hidden = () => (saved.hiddenUntil ?? 0) > Date.now();
   const wanted = () => options.on && !hidden() && !fullscreen;
@@ -209,7 +221,7 @@ export const createDesktopMascot = (input: {
         done?.();
         return;
       }
-      target.setPosition(step.x, step.y);
+      target.setBounds(box(step));
     }, FRAME_MS);
   };
   const standOn = (next: Edge, at: number, frames = 0) => {
@@ -217,7 +229,7 @@ export const createDesktopMascot = (input: {
     x = at;
     const spot = standAt(next, at, size(), snoozed() && next.kind === "floor");
     save({ x: at });
-    if (frames === 0) win?.setBounds({ ...spot, width: size(), height: size() });
+    if (frames === 0) win?.setBounds(box(spot));
     else glide(spot, frames);
   };
   /** Back to where she belongs: the window he is in, else the floor under where she was. */
@@ -409,14 +421,13 @@ export const createDesktopMascot = (input: {
     if (dragging === null || target === null || target.isDestroyed()) return;
     clearInterval(dragging.timer);
     dragging = null;
-    const b = target.getBounds();
-    const cx = b.x + b.width / 2;
-    const next = landing(edges(), cx, b.y + b.height * FOOT_SHARE);
-    edge = next;
-    x = cx;
-    save({ x: cx, placed: next.kind === "floor" });
-    glide(standAt(next, cx, size()), 10, () => {
-      call(`window.mascot.play("squish")`);
+    const drop = dropAt(edges(), target.getBounds(), size());
+    edge = drop.edge;
+    x = drop.x;
+    save({ x: drop.x, placed: drop.edge.kind === "floor" });
+    // Picked up she squished; landing, a little bounce.
+    glide(drop.spot, 10, () => {
+      call(`window.mascot.play("hop")`);
       cue(momentOf(phase) ?? "rest");
     });
   };
@@ -429,10 +440,11 @@ export const createDesktopMascot = (input: {
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
     call(`window.mascot.cue({expression:"surprised"})`);
+    call(`window.mascot.play("squish")`);
     const timer = setInterval(() => {
       if (target.isDestroyed()) return clearInterval(timer);
       const at = Electron.screen.getCursorScreenPoint();
-      target.setPosition(at.x - (cursor.x - b.x), at.y - (cursor.y - b.y));
+      target.setBounds(box({ x: at.x - (cursor.x - b.x), y: at.y - (cursor.y - b.y) }));
     }, DRAG_MS);
     dragging = { timer };
   };

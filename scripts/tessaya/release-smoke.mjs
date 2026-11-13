@@ -198,6 +198,53 @@ if (tessaya) {
     `${stage ? stage.url().slice(-40) : "no stage page"} ${JSON.stringify(drawn)} ${failures.join(" ")}`,
   );
   if (stage) await shot("desktop-mascot", stage);
+  // Picked up, carried up the screen and let go: she keeps her size and lands with her feet inside the work area
+  // (0.1.120 grew on Windows while dragged and sank through the taskbar by the growth).
+  if (stage) {
+    const where = () =>
+      stage.evaluate(() => ({
+        x: window.screenX,
+        y: window.screenY,
+        w: window.outerWidth,
+        h: window.outerHeight,
+        top: screen.availTop,
+        bottom: screen.availTop + screen.availHeight,
+        left: screen.availLeft,
+        right: screen.availLeft + screen.availWidth,
+      }));
+    const cursor = (x, y) =>
+      execFileSync("powershell", [
+        "-NoProfile",
+        "-Command",
+        `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${Math.round(x)},${Math.round(y)})`,
+      ]);
+    try {
+      const before = await where();
+      cursor(before.x + before.w / 2, before.y + before.h * 0.6);
+      await stage.evaluate(() => window.mascotIpc.send("baton-mascot:press"));
+      for (let i = 1; i <= 10; i++) {
+        cursor(before.x + before.w / 2 - i * 30, before.y + before.h * 0.6 - i * 40);
+        await sleep(50);
+      }
+      await stage.evaluate(() => window.mascotIpc.send("baton-mascot:release"));
+      await sleep(2000);
+      const after = await where();
+      const feet = after.y + after.h * ((112 + 168) / 320);
+      row(
+        "the mascot keeps her size and lands inside the work area after a drag",
+        after.w === before.w &&
+          after.h === before.h &&
+          // On the floor, or on the top of a window inside the work area: never below it.
+          feet >= after.top &&
+          feet <= after.bottom + 3 &&
+          after.x + after.w / 2 >= after.left &&
+          after.x + after.w / 2 <= after.right,
+        `before ${JSON.stringify(before)} after ${JSON.stringify(after)} feet ${feet}`,
+      );
+    } catch (error) {
+      row("drag the mascot", false, error.message);
+    }
+  }
 }
 
 // T3's window opens only when asked: the moved settings pages there answer with a card that opens Tessaya.

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   FOOT_SHARE,
+  dropAt,
   edgesFor,
   followFocus,
   followWindow,
@@ -156,5 +157,56 @@ describe("followFocus", () => {
     const other = { ...top, x1: 100, x2: 700 };
     expect(go(top, [other, floor])).toMatchObject({ edge: other, how: "hop" });
     expect(go(top, [other, floor], false, true)).toMatchObject({ edge: floor, how: "drop" });
+  });
+});
+
+describe("dropAt", () => {
+  // His layout (13 Nov): a landscape screen with a 48 px taskbar, and a portrait one to its right, lower down.
+  const HIS: ReadonlyArray<DisplayArea> = [
+    {
+      id: 1,
+      bounds: { x: 0, y: 0, width: 2194, height: 1234 },
+      workArea: { x: 0, y: 0, width: 2194, height: 1186 },
+    },
+    {
+      id: 2,
+      bounds: { x: 3072, y: 188, width: 864, height: 1536 },
+      workArea: { x: 3072, y: 188, width: 864, height: 1488 },
+    },
+  ];
+  const floors = edgesFor({ displays: HIS, window: null, size: 190 });
+
+  it.each([1, 1.25, 1.5])(
+    "lands her feet on the floor above the taskbar however much Windows grew her window (scale %s)",
+    (scale) => {
+      for (const display of HIS) {
+        const work = display.workArea;
+        // Dropped low over the taskbar, the window reported at her size times the screen's scale.
+        const held = {
+          x: work.x + 300,
+          y: work.y + work.height - 120,
+          width: 190 * scale,
+          height: 190 * scale,
+        };
+        const drop = dropAt(floors, held, 190);
+        expect(drop.edge).toMatchObject({ kind: "floor", display: display.id });
+        expect(drop.spot.width).toBe(190);
+        expect(drop.spot.height).toBe(190);
+        expect(drop.spot.y + 190 * FOOT_SHARE).toBeCloseTo(work.y + work.height, 0);
+        expect(drop.spot.x).toBeGreaterThanOrEqual(work.x - 190 / 4);
+        expect(drop.spot.x + 190).toBeLessThanOrEqual(work.x + work.width + 190 / 4);
+      }
+    },
+  );
+
+  it("lands on the top of his window when dropped above it", () => {
+    const edges = edgesFor({
+      displays: HIS,
+      window: { x: 3200, y: 700, width: 600, height: 500 },
+      size: 190,
+    });
+    const drop = dropAt(edges, { x: 3400, y: 400 }, 190);
+    expect(drop.edge.kind).toBe("window");
+    expect(drop.spot.y + 190 * FOOT_SHARE).toBeCloseTo(700, 0);
   });
 });
