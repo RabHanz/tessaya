@@ -673,6 +673,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       const hands = createRemoteHandsLoop({
         post,
         enabled: () => companion.remoteHands.enabled(),
+        offered: () => companion.remoteHands.offered(),
         run: (call) => companion.remoteHands.run(call),
       });
       hands.start();

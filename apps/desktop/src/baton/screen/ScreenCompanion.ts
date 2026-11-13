@@ -128,7 +128,12 @@ import { createTurnLock, deviceMayLook, headless, INTERRUPTED, labelPrompt } fro
 import type { DesktopStateInput } from "../phone/desktopState.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
-import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
+import {
+  HIS_YES,
+  type HandsOrigin,
+  type HandsResult,
+  type HandsToolSpec,
+} from "@t3tools/baton-shared/remoteHands";
 import {
   sessionWithOwnMcp,
   startBatonMcp,
@@ -138,6 +143,7 @@ import {
 import {
   buildBatonTools,
   clickTargetsField,
+  COVERED_BY_OWN,
   focusIsOn,
   treeText,
   typeByValue,
@@ -235,6 +241,8 @@ interface ScreenSettings {
   readonly remoteHands: boolean;
   /** He is away: a remote call that would ask him is refused instead, since nobody can answer. */
   readonly remoteHandsAway: boolean;
+  /** His turns run on the one brain on his server (SPINE-UNIFY S4); off, this desktop runs its own sessions. */
+  readonly serverBrain: boolean;
   /** Her own cursor glides to where she acts, with a word or two; his pointer never moves. On until he turns it off. */
   readonly actCursor: boolean;
   /** Who does the work behind Baton. Both answer to the same gate. */
@@ -268,6 +276,7 @@ const DEFAULTS: ScreenSettings = {
   alwaysAllowed: [],
   remoteHands: false,
   remoteHandsAway: false,
+  serverBrain: false,
   actCursor: true,
   operator: "claude",
   codexBinary: "codex",
@@ -511,9 +520,12 @@ export interface ScreenCompanion {
   /** Runs one remote hands call behind the same gate and mouse guard as the assistant's own tools. */
   readonly remoteHands: {
     readonly enabled: () => boolean;
+    /** What this desktop offers a brain turn on its server: its own hands, published with each take. */
+    readonly offered: () => ReadonlyArray<HandsToolSpec>;
     readonly run: (call: {
       readonly tool: string;
       readonly args: Readonly<Record<string, unknown>>;
+      readonly origin?: HandsOrigin;
     }) => Promise<HandsResult>;
   };
   /** Decide what was said and carry it out; a refusal comes back for the caller to say. */
@@ -2835,6 +2847,56 @@ export const startScreenCompanion = (input: {
       return volumeLine(before, after);
     },
   };
+  /**
+   * This desktop's own hands for a brain turn on its server (SPINE-UNIFY S4): its own tools, not what the server
+   * already serves, each behind his gate; and his yes for a server act, asked in this desktop's own box.
+   */
+  /** Its own twins of tools the server serves: a brain turn uses the server's (SPINE-UNIFY S5 deletes these). */
+  const OWN_TWINS: ReadonlySet<string> = new Set(Object.values(COVERED_BY_OWN));
+  const brainHands = {
+    offered: (): ReadonlyArray<HandsToolSpec> => [
+      ...buildBatonTools(hisHost)
+        .filter((t) => t.shared === undefined && !OWN_TWINS.has(t.name))
+        .map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
+      {
+        name: HIS_YES,
+        description: "his yes in this desktop's box",
+        input_schema: { type: "object" },
+      },
+    ],
+    run: async (name: string, args: Readonly<Record<string, unknown>>): Promise<HandsResult> => {
+      if (!settings.serverBrain)
+        return { ok: false, error: "The server brain is off on this computer." };
+      if (name === HIS_YES) {
+        const what = typeof args["what"] === "string" ? args["what"] : "this";
+        const answer = await askHandsFree(
+          {
+            title: "Tessaya asks",
+            detail: what,
+            buttons: ["Go ahead", "Not now"],
+            cancel: 1,
+            scoped: true,
+          },
+          `Shall I ${what}?`,
+        );
+        return { ok: true, text: answer === 0 ? "yes" : "no" };
+      }
+      const tool = buildBatonTools(hisHost).find((t) => t.name === name && t.shared === undefined);
+      if (tool === undefined) return { ok: false, error: `${name} is not a tool of this desktop.` };
+      try {
+        const verdict = await agentGate({ tool: `${BATON_TOOL_PREFIX}${name}`, input: args });
+        if (!verdict.allow) return { ok: false, error: `Refused: ${verdict.reason}` };
+        const out = await tool.run(args);
+        return {
+          ok: true,
+          ...(out.text === undefined ? {} : { text: vaultHost?.scrub(out.text) ?? out.text }),
+          ...(out.images === undefined ? {} : { images: out.images }),
+        };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  };
   const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
     sessionWithOwnMcp(
       () =>
@@ -3769,8 +3831,10 @@ export const startScreenCompanion = (input: {
     },
     writtenOnly: () => settings.output === "written",
     remoteHands: {
-      enabled: () => settings.remoteHands,
+      enabled: () => settings.remoteHands || settings.serverBrain,
+      offered: () => (settings.serverBrain ? brainHands.offered() : []),
       run: async (call) => {
+        if (call.origin !== undefined) return brainHands.run(call.tool, call.args);
         if (!settings.remoteHands)
           return { ok: false, error: "Remote hands are off on this computer." };
         remoteTaint.reset();
@@ -3997,6 +4061,14 @@ export const startScreenCompanion = (input: {
         on: settings.remoteHands,
       },
       {
+        id: "s.serverBrain",
+        section: "Working for you",
+        label: "Run my turns on the one brain on my server",
+        hint: "Her answers come from your server's brain, the same one the R1 and your phone use, and she uses this computer's screen and keys through this app, behind the same checks. Off, this computer runs its own.",
+        kind: "toggle",
+        on: settings.serverBrain,
+      },
+      {
         id: "s.handsAway",
         section: "Working for you",
         label: "I'm away: remote hands never ask me",
@@ -4112,6 +4184,7 @@ export const startScreenCompanion = (input: {
       else if (id === "s.hands") save({ remoteHands: value === true });
       else if (id === "s.cursor") save({ actCursor: value === true });
       else if (id === "s.handsAway") save({ remoteHandsAway: value === true });
+      else if (id === "s.serverBrain") save({ serverBrain: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
       else if (id === "s.learn") void learnFromLast();
       else if (learnedAction(id) !== null) {

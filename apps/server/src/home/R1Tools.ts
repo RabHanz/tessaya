@@ -46,6 +46,7 @@ import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices } from "./HomeDevices.ts";
 import { StepUps } from "./StepUps.ts";
 import { VoiceForgets } from "../baton/VoiceForgets.ts";
+import { askHisYes, VesselHands } from "../baton/VesselHands.ts";
 
 /** What the room may call from Tessaya's /mcp toolkit. */
 const ROOM_TOOLS = [
@@ -520,18 +521,37 @@ const makeRunners = Effect.gen(function* () {
         (origin !== null || vessel.holds) &&
         (origin?.assurance ?? 0) < CARD_YES
       ) {
-        if (!vessel.holds || device === undefined || origin === null || Option.isNone(stepUps))
+        const what = `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`;
+        // A desk turn on the brain asks in his desktop's own approval box; his phone is asked only when it can't be.
+        if (!vessel.holds && origin !== null) {
+          const hands = yield* Effect.serviceOption(VesselHands);
+          const yes = Option.isNone(hands)
+            ? "unreachable"
+            : yield* askHisYes(hands.value, origin, what);
+          if (yes === "yes")
+            return yield* run(name, raw, device).pipe(
+              Effect.provideService(TurnOrigin, { ...origin, assurance: CARD_YES }),
+            );
+          if (yes === "no")
+            return {
+              text: "He said no on his desktop. Nothing was done.",
+              isError: false,
+              status: "refused",
+            } as ToolOutcome;
+        }
+        const at = device ?? (vessel.holds ? undefined : "desktop");
+        if (at === undefined || origin === null || Option.isNone(stepUps))
           return {
             text: "That needs his yes on his phone, and it can't be asked from here.",
             isError: true,
           } as ToolOutcome;
         const act = yield* stepUps.value.hold({
-          device,
-          what: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
+          device: at,
+          what,
           member: origin.member ?? null,
           needs: CARD_YES,
           card: true,
-          phone: !device.startsWith("replay-"),
+          phone: !at.startsWith("replay-"),
           run: (raised) =>
             run(name, raw, device).pipe(
               Effect.provideService(TurnOrigin, { ...origin, ...raised }),
