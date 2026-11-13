@@ -357,6 +357,7 @@ pnpmfileChecksum: sha256-h8NLkl2dhhbQKbAHnoo4rQ3tYV96igLQxJ7la6dsbSc=
 
 patchedDependencies:
   '@alchemy.run/test@2.0.0-beta.85': 29c0539ea71d9cc372f0b16558640599beb9bc609605feb2a493da268d72713e
+  '@clerk/electron@0.1.10': 23425429b495eb15e9416f5062b106799b12c22510b534b1e08f85d3e7b2d4a6
   '@clerk/expo-native-components@0.4.4': 7a808b92da8460750b85818552e13be3fb73d111691c7db76965970351e124e4
   '@cursor/sdk@1.2.0': b9966f50182358ded9d1a72f39d9cd850f2e7471e7b8224d3d618bdbbe00e055
   '@effect/vitest@4.1.2': 299510b71c36537a832a67e9d160a5f112a5f326a29e95c41cb45fc8234e47c7
@@ -417,7 +418,7 @@ importers:
     dependencies:
       '@clerk/electron':
         specifier: 0.1.10
-        version: 0.1.10(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@44.10.1(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 0.1.10(patch_hash=23425429b495eb15e9416f5062b106799b12c22510b534b1e08f85d3e7b2d4a6)(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@44.10.1(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@clerk/electron-passkeys':
         specifier: 0.0.3
         version: 0.0.3
@@ -1078,7 +1079,7 @@ importers:
         version: 6.42.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@clerk/electron':
         specifier: 0.1.10
-        version: 0.1.10(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@44.10.1(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 0.1.10(patch_hash=23425429b495eb15e9416f5062b106799b12c22510b534b1e08f85d3e7b2d4a6)(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@44.10.1(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@clerk/react':
         specifier: 6.18.6
         version: 6.18.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -14108,7 +14109,7 @@ snapshots:
       '@clerk/electron-passkeys-win32-arm64-msvc': 0.0.3
       '@clerk/electron-passkeys-win32-x64-msvc': 0.0.3
 
-  '@clerk/electron@0.1.10(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@44.10.1(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@clerk/electron@0.1.10(patch_hash=23425429b495eb15e9416f5062b106799b12c22510b534b1e08f85d3e7b2d4a6)(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@44.10.1(supports-color@8.1.1))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@clerk/clerk-js': 6.42.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@clerk/react': 6.18.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

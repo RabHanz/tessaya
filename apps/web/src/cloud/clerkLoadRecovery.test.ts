@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { recoverFailedClerkLoad, type ClerkStatusSource } from "./clerkLoadRecovery";
 
-function setup(initialStatus: string, stored: Record<string, string> = {}) {
+function setup(
+  initialStatus: string,
+  stored: Record<string, string> = {},
+  senderRefused: () => Promise<boolean> = async () => false,
+) {
   const listeners = new Set<(status: string) => void>();
   const clerk: ClerkStatusSource & { emit: (status: string) => void } = {
     status: initialStatus,
@@ -22,8 +26,11 @@ function setup(initialStatus: string, stored: Record<string, string> = {}) {
   };
   const scheduled: Array<{ run: () => void; delayMs: number; cancelled: boolean }> = [];
   const reload = vi.fn();
+  const onSenderRefused = vi.fn();
   const stop = recoverFailedClerkLoad(clerk, {
     reload,
+    senderRefused,
+    onSenderRefused,
     getStorage: () => storage,
     schedule: (run, delayMs) => {
       const entry = { run, delayMs, cancelled: false };
@@ -33,24 +40,38 @@ function setup(initialStatus: string, stored: Record<string, string> = {}) {
       };
     },
   });
-  return { clerk, values, scheduled, reload, stop };
+  return { clerk, values, scheduled, reload, onSenderRefused, stop };
 }
 
 describe("recoverFailedClerkLoad", () => {
-  it("reloads with backoff after a failed load and stops after three reloads", () => {
+  it("reloads with backoff after a failed load and stops after three reloads", async () => {
     const first = setup("loading");
     first.clerk.emit("error");
-    expect(first.scheduled.map((entry) => entry.delayMs)).toEqual([15_000]);
+    await vi.waitFor(() => expect(first.scheduled.map((entry) => entry.delayMs)).toEqual([15_000]));
     first.scheduled[0]!.run();
     expect(first.reload).toHaveBeenCalledOnce();
     expect(first.values.get("t3code:clerk-load-reloads")).toBe("1");
 
-    expect(setup("error", { "t3code:clerk-load-reloads": "2" }).scheduled[0]!.delayMs).toBe(60_000);
-    expect(setup("error", { "t3code:clerk-load-reloads": "3" }).scheduled).toEqual([]);
+    const third = setup("error", { "t3code:clerk-load-reloads": "2" });
+    await vi.waitFor(() => expect(third.scheduled[0]!.delayMs).toBe(60_000));
+    const exhausted = setup("error", { "t3code:clerk-load-reloads": "3" });
+    await Promise.resolve();
+    expect(exhausted.scheduled).toEqual([]);
   });
 
-  it("leaves a loading or ready Clerk alone and forgets past reloads once ready", () => {
+  it("never reloads a renderer the desktop refuses Clerk's token store to, and says so once", async () => {
+    const refused = setup("error", {}, async () => true);
+    await vi.waitFor(() => expect(refused.onSenderRefused).toHaveBeenCalledOnce());
+    refused.clerk.emit("error");
+    await Promise.resolve();
+    expect(refused.scheduled).toEqual([]);
+    expect(refused.reload).not.toHaveBeenCalled();
+    expect(refused.onSenderRefused).toHaveBeenCalledOnce();
+  });
+
+  it("leaves a loading or ready Clerk alone and forgets past reloads once ready", async () => {
     const pending = setup("error", { "t3code:clerk-load-reloads": "1" });
+    await vi.waitFor(() => expect(pending.scheduled).toHaveLength(1));
     pending.clerk.emit("ready");
     expect(pending.scheduled[0]!.cancelled).toBe(true);
     expect(pending.values.has("t3code:clerk-load-reloads")).toBe(false);

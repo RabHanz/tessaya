@@ -17,7 +17,7 @@ import { BatonLearnCallInput, type EnrolCard } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 
 import { isEmbedSrc } from "./links.ts";
-import { trustRenderer } from "../trustedRenderers.ts";
+import { admitTrustedGuestsToClerk, trustRenderer } from "../trustedRenderers.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
@@ -514,6 +514,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     ),
   );
   Electron.ipcMain.handle(EMBED, () => input.embed?.url ?? null);
+  // The T3 pages shown inline sign in to T3 Connect too, or their remote environments stay offline.
+  if (input.embed !== undefined) admitTrustedGuestsToClerk();
   Electron.ipcMain.handle(LEARN, (_event, call: unknown) => {
     const decoded = decodeLearnCall(call);
     return decoded._tag === "Some" && input.learn !== undefined

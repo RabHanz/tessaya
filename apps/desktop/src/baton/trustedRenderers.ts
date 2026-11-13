@@ -30,3 +30,9 @@ export const isTrustedBatonRenderer = (event: {
       return true;
   return false;
 };
+
+/** Clerk's sender check (patches/@clerk__electron@0.1.10.patch) admits a <webview> guest only when this says it is ours. */
+export const admitTrustedGuestsToClerk = (): void => {
+  (globalThis as Record<symbol, unknown>)[Symbol.for("t3code.clerk.isTrustedGuest")] =
+    isTrustedBatonRenderer;
+};

@@ -232,6 +232,7 @@ patchedDependencies:
   expo-video@58.0.13: patches/expo-video@58.0.13.patch
   expo-network@58.0.4: patches/expo-network@58.0.4.patch
   "@clerk/expo-native-components@0.4.4": patches/@clerk__expo-native-components@0.4.4.patch
+  "@clerk/electron@0.1.10": patches/@clerk__electron@0.1.10.patch
   "@alchemy.run/test@2.0.0-beta.85": patches/@alchemy.run__test@2.0.0-beta.85.patch
   "@effect/vitest@4.1.2": patches/@effect__vitest@4.1.2.patch
   expo-sharing@58.0.22: patches/expo-sharing@58.0.22.patch
