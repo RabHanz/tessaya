@@ -180,6 +180,8 @@ export interface RoomDeps {
   readonly embed?: (pcm: Int16Array) => Promise<Float32Array | null>;
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
+  /** His final words matched a guess that is now answered: the house changes it held may now be made. */
+  readonly confirmed?: (callId: string) => void;
   /** A guess's reply was played to him in full: the server may now record it and learn from it. */
   readonly played?: (callId: string) => void;
   readonly log: (line: string) => void;
@@ -1038,6 +1040,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speakingChain.catch(() => undefined);
         };
         const tessaya = envelope(text, persona, switched, via, identity, affect);
+        // His final words matched the guess and it is the one answered: the changes it held may now be made.
+        if (kept !== null) deps.confirmed?.(kept.callId);
         const source =
           kept?.stream ??
           deps.brain(

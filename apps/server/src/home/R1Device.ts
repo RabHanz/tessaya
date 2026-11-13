@@ -36,6 +36,7 @@ import { biasTranscript, type VocabularyEntry } from "@t3tools/baton-shared/voca
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -53,6 +54,7 @@ import { MemoryViewer } from "../baton/BatonMemoryService.ts";
 import { readPack } from "../baton/OperatingSystemPack.ts";
 import { TessayaTurn, TurnOrigin, originOf, type TurnEnvelope } from "../baton/TessayaTurn.ts";
 import { TurnPools } from "../baton/TurnPools.ts";
+import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
@@ -610,6 +612,45 @@ const speculativeCall = (voice: unknown): string | null => {
     : null;
 };
 
+/** Guesses waiting for the loop's word that his final words matched them (`/turns/confirm`). */
+const confirmations = new Map<string, Deferred.Deferred<void>>();
+/** Longer than recognition takes to finish after a guess starts; a guess never confirmed acts on nothing. */
+const CONFIRM_WAIT = "15 seconds";
+
+const confirmationOf = Effect.fn("R1Device.confirmation")(function* (callId: string) {
+  const known = confirmations.get(callId);
+  if (known !== undefined) return known;
+  const made = yield* Deferred.make<void>();
+  // shortcut: entries are dropped only when the map fills; fine at a handful of guesses a minute.
+  if (confirmations.size >= UNPLAYED_MAX) confirmations.clear();
+  confirmations.set(callId, made);
+  return made;
+});
+
+/** His final words matched this guess: its held writes go ahead. False when no such guess is waiting. */
+export const r1Confirmed = Effect.fn("R1Device.confirmed")(function* (callId: string) {
+  const gate = yield* confirmationOf(callId);
+  return yield* Deferred.succeed(gate, undefined);
+});
+
+/**
+ * On a turn started from his partial words, a tool that changes something waits until the loop confirms his final
+ * words matched (13 Nov): a guess that heard different words is aborted by the loop, so its writes never run.
+ */
+const heldForGuess =
+  (voice: unknown, name: string) =>
+  <A, E, R>(call: Effect.Effect<A, E, R>): Effect.Effect<A | ToolOutcome, E, R> => {
+    const callId = speculativeCall(voice);
+    if (callId === null || (name !== LOOK.name && !changesSomething(name))) return call;
+    return Effect.gen(function* () {
+      const gate = yield* confirmationOf(callId);
+      const confirmed = yield* Deferred.await(gate).pipe(Effect.timeoutOption(CONFIRM_WAIT));
+      if (Option.isNone(confirmed))
+        return { text: "Not done: his final words were not confirmed.", isError: true } as const;
+      return yield* call;
+    });
+  };
+
 /** The loop played this guess's reply: its Record line and learning go in now. False when there is no such guess. */
 export const r1Played = Effect.fn("R1Device.played")(function* (callId: string) {
   const held = unplayed.get(callId);
@@ -799,6 +840,8 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
           ? roomLook(device, input.voice)
           : tools.run(name, args, input.device)
         ).pipe(
+          // On a guess, anything that changes something waits for the loop to confirm his final words.
+          heldForGuess(input.voice, name),
           // Every tool the turn calls knows which vessel heard it.
           Effect.provideService(TurnOrigin, originOf(turn)),
           Effect.catchCause(() =>
@@ -1100,5 +1143,19 @@ export const routes = HttpRouter.use((router) =>
       return HttpServerResponse.jsonUnsafe({ committed: found });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     yield* router.add("POST", "/api/devices/r1/v1/turns/played", played);
+    // His final words matched a guess: the writes it held go ahead.
+    const confirm = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (device === null) return error(503, "This server has no R1 set up.");
+      if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
+      if (body._tag === "None") return error(400, "That is not a confirmed turn.");
+      return HttpServerResponse.jsonUnsafe({ confirmed: yield* r1Confirmed(body.value.callId) });
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    yield* router.add("POST", "/api/devices/r1/v1/turns/confirm", confirm);
   }),
 );
