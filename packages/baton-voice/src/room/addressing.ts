@@ -26,7 +26,7 @@ export const calledName = (text: string, names: ReadonlyArray<string>): string |
 
 /** He is done with her for now: no follow-up window after her reply, only her name or S2 wakes her. */
 export const isDismissal = (text: string): boolean =>
-  /\b(?:dismissed|that'?s all|that will be all|that'?ll be all|go to sleep|goodbye|good night|stop listening)\b/i.test(
+  /\b(?:dismiss(?:ed)?|that'?s all|that will be all|that'?ll be all|go to sleep|goodbye|good night|stop listening)\b/i.test(
     text,
   );
 

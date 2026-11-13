@@ -6,6 +6,9 @@
  */
 import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 
+import { heldBack } from "./addressing.ts";
+import { speechLevel } from "./audio.ts";
+
 const RATE = 16_000;
 /** The R1 caps a wake segment at 6 s; a little more never needs keeping. */
 const KEEP_SAMPLES = 7 * RATE;
@@ -32,7 +35,8 @@ export interface WakeStreamDeps {
   readonly scorer: () => Promise<WakeScorer>;
   /** The recogniser on the confirm clip only. */
   readonly confirm: (pcm: Int16Array) => Promise<string>;
-  readonly onWake: (deviceId: string, word: string) => void;
+  /** `level`: how loud his name was (dBFS), so the session can tell his voice from a far-off room. */
+  readonly onWake: (deviceId: string, word: string, level: number) => void;
   readonly log: (line: string) => void;
 }
 
@@ -95,8 +99,8 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
     if (trusted || wakeWordHeard(text, word, ratio)) {
       deps.log(`[${id}] woken by ${word} (${at})`);
-      deps.onWake(id, word);
-    } else deps.log(`[${id}] ${word} fired (${at}), not confirmed`);
+      deps.onWake(id, word, speechLevel(clip));
+    } else deps.log(`[${id}] ${word} fired (${at}), not confirmed (${heldBack(text)})`);
   };
 
   const scorePending = async (id: string, d: Device, scorer: WakeScorer) => {
