@@ -264,6 +264,11 @@ export interface RoomConfig {
   readonly inhouse: ReadonlySet<string>;
   /** The house's time zone, sent with every turn. */
   readonly tz: string;
+  /**
+   * The languages the household speaks to her (BCP 47, "en", "ur"): until a speaker can be told apart, a line in
+   * another language is the room only when this is English alone. Changed per R1 by `voice/languages` (retained).
+   */
+  readonly languages: ReadonlyArray<string>;
 }
 
 export const ROOM_CONFIG: RoomConfig = {
@@ -299,9 +304,12 @@ export const ROOM_CONFIG: RoomConfig = {
   historyTurns: 6,
   inhouse: new Set(),
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  languages: ["en"],
 };
 
 const REARM_AT_MS = [2_000, 8_000, 18_000];
+const onlyEnglish = (languages: ReadonlyArray<string>) =>
+  languages.length > 0 && languages.every((l) => l.toLowerCase().split("-")[0] === "en");
 /** A voice this much quieter than his name reached the R1 is the room, not him. */
 const FAR_DB = 18;
 /** A session that has had no mic audio for this long while wake audio arrives is one the R1 has already left. */
@@ -1128,10 +1136,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         );
       }
       if (given === undefined && called === null) {
-        // Another language from the room (a TV), or a voice far quieter than his name was: not him (10:35, 13 Nov).
+        // A voice far quieter than his name was is the room, not him. A language only counts against a line when the
+        // household speaks English alone: an English recogniser writes Urdu as half-words of other languages (13 Nov).
         const level = speechLevel(pcm);
         const far = Number.isFinite(hisLevel) && level < hisLevel - FAR_DB;
-        if (mostlyForeign(text) || far) {
+        const spoken = languagesOf.get(id) ?? config.languages;
+        if ((onlyEnglish(spoken) && mostlyForeign(text)) || far) {
           kept?.control.abort();
           dropped(
             turn,
@@ -1593,6 +1603,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.log(`${who}: ${verdict.winner ?? "another device"} answers; this R1 stays quiet`);
         return false;
       });
+  /** The household's languages per R1, from her server (`voice/languages`, retained). */
+  const languagesOf = new Map<string, ReadonlyArray<string>>();
   /** The conversation the arbiter last named for each R1 (sent on its turns). */
   const conversationOf = new Map<string, string>();
   /** Until when another device of his answers (the arbiter's `until`, epoch ms): this R1 stays quiet. */
@@ -1692,6 +1704,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           );
           deps.publish(topic(id, "cmd/eye/set"), JSON.stringify({ mood }));
         }
+        return;
+      }
+      if (tail === "voice/languages") {
+        const list = json()["languages"];
+        if (
+          Array.isArray(list) &&
+          list.every((l) => typeof l === "string" && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(l))
+        )
+          languagesOf.set(id, list as ReadonlyArray<string>);
+        else languagesOf.delete(id);
+        deps.log(`[${id}] languages: ${(languagesOf.get(id) ?? config.languages).join(", ")}`);
         return;
       }
       if (tail === "voice/forget") {
