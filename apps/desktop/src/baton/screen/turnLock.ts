@@ -81,12 +81,15 @@ export const createTurnLock = () => {
 export const labelPrompt = <B extends { readonly detail: string }>(
   box: B,
   spoken: string,
-  from: { readonly device: boolean; readonly phone: boolean },
+  from: { readonly device: boolean; readonly phone: boolean; readonly origin?: string | null },
 ): { readonly box: B; readonly spoken: string } =>
   from.device
     ? {
-        box: { ...box, detail: `${box.detail}\n\n(A paired device asked this, not you.)` },
-        spoken: `A paired device asks. ${spoken}`,
+        box: {
+          ...box,
+          detail: `${box.detail}\n\n(${from.origin == null ? "A paired device asked this" : `Requested from ${from.origin}`}, not you.)`,
+        },
+        spoken: `${from.origin == null ? "A paired device asks" : `Requested from ${from.origin}`}. ${spoken}`,
       }
     : from.phone
       ? { box: { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` }, spoken }

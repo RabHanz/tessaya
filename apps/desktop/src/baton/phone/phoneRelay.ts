@@ -65,6 +65,8 @@ export const createPhoneRelay = (input: {
   readonly run: (
     text: string,
     source: AskSource,
+    /** The device he said it to ("R1"), when it came through one. */
+    origin: string | null,
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   readonly wait?: (ms: number) => Promise<void>;
   readonly newId?: () => string;
@@ -80,13 +82,18 @@ export const createPhoneRelay = (input: {
     });
   const working = new Set<Promise<unknown>>();
   /** Runs one taken ask to its answer, keeping its lease while it runs so it is never taken twice. */
-  const handle = async (item: { id: string; text: string; source: AskSource }) => {
+  const handle = async (item: {
+    id: string;
+    text: string;
+    source: AskSource;
+    origin: string | null;
+  }) => {
     const stop = every(
       RENEW_MS,
       () => void input.call("renew", { id: item.id }).catch(() => undefined),
     );
     try {
-      const reply = await input.run(item.text, item.source);
+      const reply = await input.run(item.text, item.source, item.origin);
       await input.call("answer", { id: item.id, spoken: reply.spoken, card: reply.card });
       return "answered" as const;
     } catch {
@@ -109,7 +116,7 @@ export const createPhoneRelay = (input: {
     if (working.size >= MAX_WORKING) return "busy";
     busy = true;
     try {
-      let item: { id?: unknown; text?: unknown; source?: unknown } | null;
+      let item: { id?: unknown; text?: unknown; source?: unknown; origin?: unknown } | null;
       try {
         item = (await input.call("take", {})) as typeof item;
       } catch {
@@ -119,7 +126,12 @@ export const createPhoneRelay = (input: {
         return "idle";
       // Only the server's "phone" is his; anything else, or an older server's silence, is a device's.
       const source: AskSource = item.source === "phone" ? "phone" : "device";
-      const ask = { id: item.id, text: item.text, source };
+      const ask = {
+        id: item.id,
+        text: item.text,
+        source,
+        origin: typeof item.origin === "string" ? item.origin.slice(0, 40) : null,
+      };
       if (source === "phone") return await handle(ask);
       // A device's ask waits its turn behind him (turnLock.ts); his next phone ask is not held behind it.
       const running = handle(ask);

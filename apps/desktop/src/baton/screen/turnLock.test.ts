@@ -98,6 +98,10 @@ describe("a confirm asked during a device's turn", () => {
     expect(phone.box.detail).toContain("You asked this from your phone.");
     expect(phone.spoken).toBe("Is that all right?");
     expect(labelPrompt(box, "x", { device: false, phone: false }).box).toBe(box);
+    // The device he said it to, when it came through one (his R1 asking his laptop, 13 Nov).
+    const r1 = labelPrompt(box, "Is that all right?", { device: true, phone: false, origin: "R1" });
+    expect(r1.box.detail).toContain("(Requested from R1, not you.)");
+    expect(r1.spoken).toBe("Requested from R1. Is that all right?");
   });
 });
 

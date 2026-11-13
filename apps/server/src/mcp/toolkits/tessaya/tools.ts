@@ -192,7 +192,15 @@ const AskTool = Tool.make("tessaya_ask", {
   ...shared,
   description:
     "Ask Tessaya, the Director's assistant on his computer, to do something for you: start, stop or steer a job, message one of his sessions, change one of her settings. Write it as one plain request. She asks the Director before she acts, every time, so the outcome can take minutes, and he may say no. Returns an id for `tessaya_ask_status`; you can have one request open at a time. Nothing is asked when no Tessaya desktop is connected. For looking things up, use the other tessaya_ tools instead.",
-  parameters: Schema.Struct({ text: Schema.String.check(Schema.isMaxLength(2000)) }),
+  parameters: Schema.Struct({
+    text: Schema.String.check(Schema.isMaxLength(2000)),
+    origin: Schema.optionalKey(
+      Schema.String.check(Schema.isMaxLength(40)).annotate({
+        description:
+          "The device he said it to (e.g. R1), when it came through one; his approvals name it.",
+      }),
+    ),
+  }),
   success: AskResult,
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)

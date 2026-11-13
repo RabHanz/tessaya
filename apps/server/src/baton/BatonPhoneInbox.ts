@@ -39,6 +39,7 @@ interface AskRow {
   readonly id: string;
   readonly text: string;
   readonly source: string;
+  readonly origin: string | null;
   readonly status: string;
   readonly created_at: number;
   readonly expires_at: number;
@@ -63,6 +64,7 @@ const fromAsk = (r: AskRow): PhoneAsk => ({
   id: r.id,
   text: r.text,
   source: r.source === "phone" ? "phone" : "device",
+  origin: r.origin ?? (r.source === "phone" ? "phone" : null),
   status: r.status as AskStatus,
   createdAt: r.created_at,
   expiresAt: r.expires_at,
@@ -95,6 +97,8 @@ export class BatonPhoneInbox extends Context.Service<
       readonly text: string;
       /** How long it may wait for the desktop; the phone page's 24 hours when absent. */
       readonly ttlMs?: number;
+      /** The device he said it to, when it came through one (his R1 asking his laptop). */
+      readonly origin?: string;
     }) => Effect.Effect<PostResult>;
     readonly get: (id: string) => Effect.Effect<PhoneAsk | null>;
     readonly recent: (limit: number) => Effect.Effect<ReadonlyArray<PhoneAsk>>;
@@ -165,6 +169,7 @@ export const make = Effect.gen(function* () {
     readonly id: string;
     readonly text: string;
     readonly ttlMs?: number;
+    readonly origin?: string;
   }) {
     const trimmed = input.text.trim();
     if (!CLIENT_ID.test(input.id))
@@ -186,8 +191,8 @@ export const make = Effect.gen(function* () {
       return { ok: false as const, why: "Too many asks are waiting. Let your computer catch up." };
     }
     yield* sql`
-      INSERT INTO fabric_phone_asks (id, text, source, status, created_at, expires_at)
-      VALUES (${input.id}, ${trimmed}, ${source}, 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
+      INSERT INTO fabric_phone_asks (id, text, source, origin, status, created_at, expires_at)
+      VALUES (${input.id}, ${trimmed}, ${source}, ${input.origin?.slice(0, 40) ?? null}, 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
     `.pipe(Effect.orDie);
     return { ok: true as const, ask: (yield* read(input.id))! };
   });
@@ -365,6 +370,9 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
         id: id ?? "",
         text: typeof a["text"] === "string" ? a["text"] : "",
         ttlMs: BAR_ASK_TTL_MS,
+        ...(typeof a["origin"] === "string" && a["origin"].trim() !== ""
+          ? { origin: a["origin"].trim() }
+          : {}),
       });
       const made =
         owner === null
@@ -425,7 +433,12 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
     }
     case "take": {
       const ask = yield* inbox.take;
-      return { value: ask === null ? null : { id: ask.id, text: ask.text, source: ask.source } };
+      return {
+        value:
+          ask === null
+            ? null
+            : { id: ask.id, text: ask.text, source: ask.source, origin: ask.origin },
+      };
     }
     case "answer":
     case "fail": {

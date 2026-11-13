@@ -120,7 +120,12 @@ describe("asking his laptop", () => {
     status: "reachable",
   };
   /** A linked laptop whose Tessaya answers `tessaya_ask` with `asked` and its status with `answer`. */
-  const linked = (links: ReadonlyArray<PeerLinkSummary>, asked: object, answer: object) => {
+  const linked = (
+    links: ReadonlyArray<PeerLinkSummary>,
+    asked: object,
+    answer: object,
+    beforeOrigin = false,
+  ) => {
     const calls: Array<string> = [];
     const provide = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
@@ -137,7 +142,11 @@ describe("asking his laptop", () => {
           PeerMcpClient.PeerMcpClient,
           PeerMcpClient.PeerMcpClient.of({
             call: (input) => {
-              calls.push(input.tool);
+              const origin = (input.arguments as { origin?: string }).origin;
+              calls.push(origin === undefined ? input.tool : `${input.tool} from ${origin}`);
+              // A laptop before the origin field refuses an argument it does not list.
+              if (beforeOrigin && origin !== undefined)
+                return Effect.fail({ message: 'Unknown argument "origin".' } as never);
               return Effect.succeed((input.tool === "tessaya_ask" ? asked : answer) as never);
             },
           }),
@@ -157,8 +166,19 @@ describe("asking his laptop", () => {
         { id: "mcp-x-1", status: "answered", line: "VS Code and Chrome are open." },
       );
       const outcomes = yield* fake.provide(runActs(look));
-      expect(fake.calls).toEqual(["tessaya_ask", "tessaya_ask_status"]);
+      // Asked as from his R1, so the laptop's approval names it (13 Nov).
+      expect(fake.calls).toEqual(["tessaya_ask from R1", "tessaya_ask_status"]);
       expect(spokenReply("Let me look.", outcomes)).toBe("VS Code and Chrome are open.");
+      const older = linked(
+        [laptop],
+        { id: "mcp-x-1", status: "queued", line: "Waiting." },
+        { id: "mcp-x-1", status: "answered", line: "VS Code is open." },
+        true,
+      );
+      expect(spokenReply("Let me look.", yield* older.provide(runActs(look)))).toBe(
+        "VS Code is open.",
+      );
+      expect(older.calls).toEqual(["tessaya_ask from R1", "tessaya_ask", "tessaya_ask_status"]);
     }),
   );
 
