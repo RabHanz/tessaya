@@ -42,6 +42,7 @@ import * as ThreadManagementService from "../../../orchestration-v2/ThreadManage
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
+import { SettingsTools } from "../settings/tools.ts";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -377,6 +378,7 @@ const SessionDefaultsTool = Tool.make("tessaya_session_defaults", {
 export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
   ...DeviceTools,
+  ...SettingsTools,
   JobsTool,
   WatchTool,
   RecordTool,

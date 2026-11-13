@@ -2,16 +2,14 @@
 #
 # The room's tool suite against a build, before it is deployed (evals/tessaya-room/README.md, "Live suite"):
 #
-#   scripts/tessaya/room-suite.sh <t3 binary of the build> [userdata dir, default ~/.t3/userdata] [--laptop]
+#   scripts/tessaya/room-suite.sh <t3 binary of the build> [userdata dir, default ~/.t3/userdata] [live.ts flags: --laptop, --case <id>]
 #
 # Starts the build on a scratch copy of what the room needs from the userdata (Home Assistant's address and token,
 # the R1's device key without its MQTT login, the brain's key): his house is read live, its writes and his phone asks
 # are dry runs, his R1 and his live database are never touched. Exit 0 when every case passes or does not apply.
 set -euo pipefail
-t3="${1:?usage: room-suite.sh <t3 binary> [userdata dir] [--laptop]}"
+t3="${1:?usage: room-suite.sh <t3 binary> [userdata dir] [--laptop] [--case <id>]...}"
 from="${2:-$HOME/.t3/userdata}"
-laptop=()
-[ "${3:-}" = "--laptop" ] && laptop=(--laptop)
 here="$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)"
 [ -f "$from/secrets/r1-device.bin" ] || { echo "room-suite: no R1 set up in $from" >&2; exit 1; }
 home="$(mktemp -d "${TMPDIR:-/tmp}/room-suite.XXXXXX")"
@@ -48,4 +46,4 @@ for _ in $(seq 1 60); do
 done
 [ "${code:-}" = 401 ] || { echo "room-suite: the build did not come up (http ${code:-none})" >&2; tail -20 "$home/server.log" >&2; exit 1; }
 node "$here/evals/tessaya-room/live.ts" --server "http://127.0.0.1:$port" \
-  --key-file "$home/userdata/secrets/r1-device.bin" --out "${ROOM_SUITE_OUT:-$home/results}" "${laptop[@]}"
+  --key-file "$home/userdata/secrets/r1-device.bin" --out "${ROOM_SUITE_OUT:-$home/results}" "${@:3}"

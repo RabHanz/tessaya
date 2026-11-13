@@ -53,6 +53,10 @@ const ROOM_TOOLS = [
   "tessaya_ask",
   "tessaya_ask_status",
   "tessaya_pronounce",
+  "settings_find",
+  "settings_get",
+  "settings_explain",
+  "settings_set",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
 const LAPTOP: RoomTool = {
@@ -127,8 +131,9 @@ const decoders = new Map(
   ]),
 );
 
-/** The house's own writes: for a replay they run through the house's checks as a dry run (HomeActor.dryRun). */
-const HOME_WRITES: ReadonlySet<string> = new Set([
+/** Writes that run their own dry run for a replay, through their real checks: the house's and the settings'. */
+const SELF_DRY: ReadonlySet<string> = new Set([
+  "settings_set",
   "home_do",
   "home_undo",
   "home_automation_save",
@@ -140,7 +145,7 @@ const HOME_WRITES: ReadonlySet<string> = new Set([
  * replay of "turn on the office fan" flipped his real fan). Null when the call is not one.
  */
 export const replayDryRun = (name: string, input: unknown, device?: string): ToolOutcome | null => {
-  if (device?.startsWith("replay-") !== true || HOME_WRITES.has(name) || !allowed.has(name))
+  if (device?.startsWith("replay-") !== true || SELF_DRY.has(name) || !allowed.has(name))
     return null;
   if (
     Context.get(
