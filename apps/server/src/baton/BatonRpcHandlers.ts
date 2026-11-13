@@ -112,6 +112,7 @@ import { homeActorOf, serveHomeCall } from "../home/HomeCalls.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { VoiceArbiter } from "../home/VoiceArbiter.ts";
+import { DeviceTriggers } from "../home/DeviceTriggers.ts";
 import { devicesActorOf, serveDevicesCall } from "../home/HomeDeviceCalls.ts";
 import { BatonVoiceLibrary, serveVoiceCall } from "./BatonVoiceLibrary.ts";
 import { serveLearnCall } from "./BatonLearn.ts";
@@ -146,6 +147,7 @@ export type BatonServices =
   | HomeDevices
   | DeviceRegistry
   | VoiceArbiter
+  | DeviceTriggers
   | R1Brain
   | BatonVoiceLibrary
   | BatonOneShot

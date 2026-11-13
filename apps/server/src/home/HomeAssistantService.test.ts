@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
@@ -579,6 +580,35 @@ it.effect(
       assert.strictEqual(house.states.get("fan.fan")?.s, "on");
       assert.deepStrictEqual(yield* inbox.pending, []);
       assert.deepStrictEqual(yield* home.actions(10), []);
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "pauses, resumes, deletes and undoes a rule on device state with no Home Assistant behind it",
+  () => {
+    const { layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* HomeAssistantService.HomeAssistantService;
+      const sql = yield* SqlClient.SqlClient;
+      const id = "tessaya_device_rule1";
+      const rule = { name: "Phone battery low", deviceId: "phone-x", itemId: "power.battery_pct" };
+      yield* sql`
+        INSERT INTO fabric_home_automations (id, kind, expires_at, once, actor, surface, request, config, previous, last_op, status, created_at, updated_at)
+        VALUES (${id}, 'permanent', NULL, 0, 'Tessaya', 'assistant', 'warn me', ${JSON.stringify(rule)}, NULL, 'create', 'active', 1, 1)
+      `;
+      const listed = () =>
+        home.automations({}).pipe(Effect.map((rows) => rows.find((r) => r.id === id) ?? null));
+      assert.deepStrictEqual((yield* listed())?.alias, "Phone battery low");
+      yield* home.setAutomation({ id, op: "pause" }, assistant);
+      assert.isTrue((yield* listed())?.paused);
+      yield* home.setAutomation({ id, op: "resume" }, assistant);
+      assert.isFalse((yield* listed())?.paused);
+      const deleted = yield* home.setAutomation({ id, op: "delete" }, assistant);
+      assert.strictEqual(deleted.undoId, id);
+      assert.isNull(yield* listed());
+      yield* home.undo(id, assistant);
+      assert.isFalse((yield* listed())?.paused);
     }).pipe(Effect.provide(layer));
   },
 );

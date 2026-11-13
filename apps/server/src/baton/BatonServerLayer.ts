@@ -44,6 +44,7 @@ import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
 import * as VoiceArbiter from "../home/VoiceArbiter.ts";
+import * as DeviceTriggers from "../home/DeviceTriggers.ts";
 import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
 import * as BatonSessionsAcross from "./BatonSessionsAcross.ts";
@@ -117,6 +118,30 @@ const homeLayer = HomeAssistantService.layer.pipe(
   Layer.provide(BatonPhoneInbox.layer),
 );
 
+// The R1 and later devices: one instance, shared by the rules that drive them.
+const homeDevicesLayer = HomeDevices.layer.pipe(
+  Layer.provide(HomeDevices.brokerLayer),
+  Layer.provide(DeviceRegistry.layer),
+  Layer.provide(homeLayer),
+  // A button bound to a thread continues or stops it through the engine's own door.
+  Layer.provide(
+    Layer.effect(
+      HomeDevices.HomeDeviceThreads,
+      Effect.map(BatonEngine.BatonEngine, (engine) =>
+        HomeDevices.HomeDeviceThreads.of({
+          run: Effect.fn("HomeDevices.HomeDeviceThreads.run")(function* (threadId, what) {
+            const input = { tag: "r1-key", threadId: ThreadId.make(threadId) };
+            return what === "stop"
+              ? yield* engine.interruptThread(input)
+              : yield* engine.sendMessage({ ...input, text: "Continue." });
+          }),
+        }),
+      ),
+    ).pipe(Layer.provide(BatonEngine.layer)),
+  ),
+  Layer.provide(BatonPhoneInbox.layer),
+);
+
 const servicesInner = IntentService.layer.pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
@@ -147,28 +172,14 @@ const servicesInner = IntentService.layer.pipe(
       DeviceRegistry.layer,
       // One responder per utterance across every vessel that heard him (R1-P7).
       VoiceArbiter.layer,
-      HomeDevices.layer.pipe(
-        Layer.provide(HomeDevices.brokerLayer),
+      // Rules on device state, fired on each registry change; their actions go through the devices and the house.
+      DeviceTriggers.layer.pipe(
+        Layer.provide(homeDevicesLayer),
         Layer.provide(DeviceRegistry.layer),
         Layer.provide(homeLayer),
-        // A button bound to a thread continues or stops it through the engine's own door.
-        Layer.provide(
-          Layer.effect(
-            HomeDevices.HomeDeviceThreads,
-            Effect.map(BatonEngine.BatonEngine, (engine) =>
-              HomeDevices.HomeDeviceThreads.of({
-                run: Effect.fn("HomeDevices.HomeDeviceThreads.run")(function* (threadId, what) {
-                  const input = { tag: "r1-key", threadId: ThreadId.make(threadId) };
-                  return what === "stop"
-                    ? yield* engine.interruptThread(input)
-                    : yield* engine.sendMessage({ ...input, text: "Continue." });
-                }),
-              }),
-            ),
-          ).pipe(Layer.provide(BatonEngine.layer)),
-        ),
-        Layer.provide(BatonPhoneInbox.layer),
+        Layer.provide(BatonOneShot.layer),
       ),
+      homeDevicesLayer,
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
       // on a machine with no Herdr found no way to start a thread.
       BatonSessionCatalogService.layer.pipe(
