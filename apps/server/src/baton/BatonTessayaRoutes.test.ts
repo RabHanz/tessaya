@@ -186,7 +186,7 @@ it.effect("serves private memory only to his own sessions, as that session, with
     const ok = yield* post(phone, { op: "people" });
     expect(ok.status).toBe(200);
     expect(ok.headers.get("cache-control")).toBe("no-store");
-    expect(callers).toEqual([{ session: "phone-1", desktop: false }]);
+    expect(callers).toEqual([{ session: "phone-1", desktop: false, member: "owner" }]);
     expect(
       (yield* post({ ...phone, method: "bearer-access-token", subject: "x" }, { op: "people" }))
         .status,
