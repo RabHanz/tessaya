@@ -42,6 +42,7 @@ import {
   type ContextBusState,
 } from "@t3tools/baton-shared/contextBus";
 import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
+import { wakeModelFile } from "@t3tools/baton-shared/wakeWords";
 
 const VOICE_FEATURE_FILES = ["melspectrogram.onnx", "embedding_model.onnx", "silero_vad.onnx"];
 
@@ -85,7 +86,7 @@ export const resolveWakeModels = (
   const missing: string[] = [];
   for (const { word, enabled, threshold } of words) {
     if (!enabled) continue;
-    const file = `${word.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.onnx`;
+    const file = wakeModelFile(word);
     const path = [assets.userModelsDir, assets.modelsDir]
       .map((dir) => NodePath.join(dir, file))
       .find(exists);
