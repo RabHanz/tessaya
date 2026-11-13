@@ -44,7 +44,7 @@ const facts: DesktopFacts = {
         FriendlyName: "Intel(R) Wireless Bluetooth(R)",
         InstanceId: "USB\\VID_8087",
       },
-      { Class: "Bluetooth", FriendlyName: "WH-1000XM4", InstanceId: "BTHENUM\\DEV_14C6" },
+      { Class: "Bluetooth", FriendlyName: "WH-1000XM4", InstanceId: "BTHENUM\\DEV_14C600000001" },
       {
         Class: "SmartCardReader",
         FriendlyName: "Realtek Card Reader",
@@ -79,6 +79,7 @@ describe("the desktop's manifest", () => {
       "peripherals.usb": "DJI MIC MINI",
       "peripherals.bluetooth": "WH-1000XM4",
       "peripherals.cardreader": "Realtek Card Reader",
+      "bt.paired": [{ name: "WH-1000XM4", mac: "14:C6:00:00:00:01" }],
       "power.battery_pct": 14,
       "power.charging": false,
       "presence.idle": 120,
