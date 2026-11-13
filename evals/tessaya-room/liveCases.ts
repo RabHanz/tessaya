@@ -367,6 +367,18 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ name: input["key"] === "name" }),
   },
   {
+    // 13 Nov: a unique name spelled out loud is kept as spelled and said back once.
+    id: "spelled-name",
+    proves: ["tessaya_preference_set"],
+    said: ["Call me Zayd, Z-A-Y-D, from now on."],
+    uses: [["tessaya_preference_set"]],
+    clean: ["tessaya_preference_set"],
+    argsOf: "tessaya_preference_set",
+    args: (input) => ({ zayd: /zayd|z-a-y-d|z a y d/i.test(String(input["value"] ?? "")) }),
+    // Spelled back with the letters apart ("Z-A-Y-D", "Z, A, Y, D"), not just the name said.
+    lastSays: [/Z[-.,\s]+A[-.,\s]+Y[-.,\s]+D/i],
+  },
+  {
     id: "memory-about",
     proves: ["tessaya_memory_about"],
     said: ["What do you know about my dentist?"],

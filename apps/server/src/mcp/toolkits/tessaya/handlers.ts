@@ -256,7 +256,15 @@ export const layer = McpToolAccess.toLayer(
       ),
       // The one turn pipeline: who spoke on which vessel (TurnOrigin) decides whose words these are.
       tessaya_memory_remember: McpToolAccess.writes((input) =>
-        call(withTurn((turn) => turn.remember(input.text))),
+        call(
+          withTurn((turn) =>
+            Effect.map(turn.remember(input.text), (r) => ({
+              kept: r.kept,
+              id: r.id,
+              line: r.line,
+            })),
+          ),
+        ),
       ),
       tessaya_memory_forget: McpToolAccess.writes((input) =>
         call(withTurn((turn) => Effect.map(turn.forget(input.id), (line) => ({ line })))),
@@ -266,7 +274,7 @@ export const layer = McpToolAccess.toLayer(
         call(
           withTurn((turn) =>
             Effect.map(turn.setPreference(input.key, input.value ?? null), (set) => ({
-              line: set.value === null ? "Cleared." : "Kept.",
+              line: set.line,
             })),
           ),
         ),

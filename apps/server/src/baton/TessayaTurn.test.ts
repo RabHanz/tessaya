@@ -10,6 +10,7 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
   SessionMember,
@@ -62,6 +63,7 @@ const stores = Layer.mock(BatonPrivateMemoryService)({
 
 const layer = it.layer(
   turnLayer.pipe(
+    Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(memoryLayer),
     Layer.provideMerge(learning),
     Layer.provideMerge(stores),
@@ -115,6 +117,34 @@ it.effect("a turn's tools know which vessel heard it", () =>
 );
 
 layer("TessayaTurn", (it) => {
+  it.effect("a spelled name is kept as spelled, said back once, and taught to her voice", () =>
+    Effect.gen(function* () {
+      const turn = yield* TessayaTurn;
+      const settings = yield* ServerSettingsService;
+      // His voice for the memory; a member of her own for the name, so other cases' preferences stay as they were.
+      const origin = originOf({ vessel: device, text: "", speaker: owner() });
+      const zayd = originOf({
+        vessel: device,
+        text: "",
+        speaker: { kind: "saved", personId: "zayd", verified: true, inherited: false },
+      });
+      const named = yield* turn
+        .setPreference("name", "Zaid, Z-A-Y-D")
+        .pipe(Effect.provideService(TurnOrigin, zayd));
+      assert.deepStrictEqual([named.value, named.line], ["Zayd", "Kept. Zayd, Z-A-Y-D."]);
+      const kept = yield* turn
+        .remember("My dentist is Dr Qadri, Q-A-D-R-I")
+        .pipe(Effect.provideService(TurnOrigin, origin));
+      assert.strictEqual(kept.line, "Kept. Qadri, Q-A-D-R-I.");
+      const memory = yield* BatonMemoryService;
+      assert.isTrue(
+        (yield* memory.list({ limit: 500 })).some((i) => i.text === "My dentist is Dr Qadri"),
+      );
+      // Heard as "Zaid", written "Zayd": her voice learns to say it as heard; "Qadri" was heard right.
+      assert.deepStrictEqual((yield* settings.getSettings).voicePronounce, { Zayd: "Zaid" });
+    }),
+  );
+
   it.effect(
     "several people in one turn: each answered from their own, nothing private, no leak between them",
     () =>

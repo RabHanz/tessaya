@@ -6,6 +6,7 @@
  */
 import { BatonHomeCallResult } from "@t3tools/baton-contracts";
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
+import { foldSpelling, spellOut } from "@t3tools/baton-shared/spelling";
 import { type Assurance, type MemberRole, OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import { principalRefusal, reachAssurance, toolReach } from "@t3tools/baton-shared/trust";
 import { recordText } from "@t3tools/baton-shared/audit";
@@ -209,6 +210,17 @@ const SELF_DRY: ReadonlySet<string> = new Set([
   "home_automation_set",
 ]);
 
+/** What the real memory and preference tools say for this input: "Kept." and a spelled name said back. */
+const replayKept = (input: unknown, field: "text" | "value"): string => {
+  const said =
+    typeof input === "object" && input !== null && field in input
+      ? String((input as Record<string, unknown>)[field] ?? "")
+      : "";
+  return `Kept.${foldSpelling(said)
+    .names.map((n) => ` ${n.word}, ${spellOut(n.word)}.`)
+    .join("")}`;
+};
+
 /**
  * A replay's other writes (an ask to his phone), checked against the tool's schema and then not sent (13 Nov 01:29: a
  * replay of "turn on the office fan" flipped his real fan). Null when the call is not one.
@@ -224,9 +236,9 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
           name === "tessaya_pronounce"
             ? "Saved (a replay: nothing was kept)."
             : name === "tessaya_memory_remember"
-              ? JSON.stringify({ kept: "noted", id: null, line: "Kept." })
+              ? JSON.stringify({ kept: "noted", id: null, line: replayKept(input, "text") })
               : name === "tessaya_preference_set"
-                ? JSON.stringify({ line: "Kept." })
+                ? JSON.stringify({ line: replayKept(input, "value") })
                 : name === "tessaya_memory_forget"
                   ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
                   : name === "device_watch"

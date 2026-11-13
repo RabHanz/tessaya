@@ -293,7 +293,7 @@ const MemoryHistoryTool = Tool.make("tessaya_memory_history", {
 const MemoryRememberTool = Tool.make("tessaya_memory_remember", {
   ...shared,
   description:
-    'Keep something he asked Tessaya to remember, on every device that reads this server. Use it for a fact or anything he asks to keep ("remember that", "keep in mind"); how the person speaking wants to be addressed or spoken to ("call me", "say times in", "use metric") is tessaya_preference_set. Never promise to remember without one of them. One short statement in his words. A guest\'s words are refused. Returns what was kept and a line to say.',
+    'Keep something he asked Tessaya to remember, on every device that reads this server. Use it for a fact or anything he asks to keep ("remember that", "keep in mind"); how the person speaking wants to be addressed or spoken to ("call me", "say times in", "use metric") is tessaya_preference_set. Never promise to remember without one of them. When they spell a name, pass it with its letters as said (\"Zaid, Z-A-Y-D\"): the spelling is kept and taught to the voice, and the line spells it back; say that spelling to them once, letter by letter. One short statement in his words. A guest\'s words are refused. Returns what was kept and a line to say.',
   parameters: Schema.Struct({
     text: Schema.String.check(Schema.isMinLength(3), Schema.isMaxLength(500)),
   }),
@@ -325,7 +325,7 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
 const PreferenceSetTool = Tool.make("tessaya_preference_set", {
   ...shared,
   description:
-    'Keep how the person speaking likes something, for every later turn with them on any device: `key` is name (what to call them), persona, voice, units, timeFormat ("12-hour with AM/PM" or "24-hour"), news or music; `value` in their words, or empty to clear it. Only their own preference; a guest has none. Use it whenever they say what to call them (\"call me Rab from now on\") or how they want to be spoken to; a fact to keep is tessaya_memory_remember.',
+    'Keep how the person speaking likes something, for every later turn with them on any device: `key` is name (what to call them), persona, voice, units, timeFormat ("12-hour with AM/PM" or "24-hour"), news or music; `value` in their words, or empty to clear it. Only their own preference; a guest has none. Use it whenever they say what to call them (\"call me Rab from now on\") or how they want to be spoken to; a fact to keep is tessaya_memory_remember. When they spell a name, pass it with its letters as said (\"Zaid, Z-A-Y-D\"): the spelling is kept and taught to the voice, and the line spells it back; say that spelling to them once, letter by letter.',
   parameters: Schema.Struct({
     key: Schema.Literals(["name", "persona", "voice", "units", "timeFormat", "news", "music"]),
     value: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
