@@ -25,6 +25,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { brainTurn, type ActOutcome } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
+import type { HandsBroker } from "@t3tools/baton-shared/remoteHands";
 
 const Speaker = Schema.Struct({
   kind: Schema.Literals(["owner", "saved", "guest", "unverified"]),
@@ -45,6 +46,8 @@ export const DeskTurnBody = Schema.Struct({
   /** This desktop's id in the device registry. */
   vessel: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   timeZone: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+  /** Where his turn runs: this machine's server, or the household's home server (SPINE-UNIFY §3). */
+  placement: Schema.optional(Schema.Literals(["here", "home"])),
   /** The Claude Code binary his desktop is set to use, honoured only on his own machine. */
   claudeBinary: Schema.optional(Schema.String.check(Schema.isMaxLength(500))),
 });
@@ -91,7 +94,13 @@ const deskData = (input: {
  * His sentence at the desk through the one brain, as her words stream. `ownMachine`: the caller is the desktop app on
  * this same machine, so Claude Code's file and command tools act on his files; from anywhere else they stay off.
  */
-export const deskTurnStream = (body: DeskTurnBody, tools: RoomToolSet, ownMachine: boolean) =>
+export const deskTurnStream = (
+  body: DeskTurnBody,
+  tools: RoomToolSet,
+  ownMachine: boolean,
+  /** The desktop's hands for this turn: this server's own, or the relay of the server it came through. */
+  hands: HandsBroker | null,
+) =>
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
       const brain = yield* R1Brain;
@@ -121,7 +130,6 @@ export const deskTurnStream = (body: DeskTurnBody, tools: RoomToolSet, ownMachin
         // Each turn is a fresh session, as on the room: standing memory comes with the turn.
         sessionless: true,
       };
-      const hands = yield* Effect.serviceOption(VesselHands);
       const said = yield* brainTurn(
         {
           system: `${AGENT_PROMPT}\n\n${assistantFrame(pack)}`,
@@ -157,7 +165,7 @@ export const deskTurnStream = (body: DeskTurnBody, tools: RoomToolSet, ownMachin
                   notes,
                 }),
               readBefore: [],
-              own: Option.isNone(hands) ? [] : vesselTools(hands.value, originOf(turn)),
+              own: hands === null ? [] : vesselTools(hands, originOf(turn)),
               finish: Effect.fn("DeskTurn.finish")(function* (
                 reply: string,
                 outcomes: ReadonlyArray<ActOutcome>,
@@ -182,7 +190,12 @@ export const deskTurnStream = (body: DeskTurnBody, tools: RoomToolSet, ownMachin
         brain,
         (words) => Queue.offerUnsafe(queue, words),
         "session",
-      ).pipe(Effect.orElseSucceed(() => null));
+      ).pipe(
+        // His yes for an act is asked through the same hands (R1Tools' card path).
+        (turnEffect) =>
+          hands === null ? turnEffect : Effect.provideService(turnEffect, VesselHands, hands),
+        Effect.orElseSucceed(() => null),
+      );
       if (said === null) Queue.offerUnsafe(queue, "Sorry, something went wrong on my side.");
       yield* Queue.end(queue);
     }),

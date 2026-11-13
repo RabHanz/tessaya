@@ -18,6 +18,7 @@ import { AuthBatonHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -46,6 +47,7 @@ import {
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
+import { peerTurnHands, PeerTurnBody, relayDeskTurn, servePeerTurn } from "./DeskRelay.ts";
 import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
@@ -315,6 +317,7 @@ export const routes = HttpRouter.use((router) =>
     const deskTools = yield* DeskTools;
     const decodeToolCall = Schema.decodeUnknownOption(DeskToolCall);
     const decodeDeskTurn = Schema.decodeUnknownOption(DeskTurnBody);
+    const decodePeerTurn = Schema.decodeUnknownOption(PeerTurnBody);
     const deskToolsAnswer = Effect.fn("BatonTessayaRoutes.deskTools")(function* (
       calledAs: string,
       request: HttpServerRequest.HttpServerRequest,
@@ -393,8 +396,22 @@ export const routes = HttpRouter.use((router) =>
             { message: "That request is not valid." },
             { status: 400 },
           );
+        const hands = Option.getOrNull(Context.getOption(context, VesselHands));
+        const here = deskTurnStream(body.value, deskTools, true, hands);
+        // Placement (b): the household's home server answers; with none to reach, or none taking it, this one does.
+        const turn =
+          body.value.placement === "home"
+            ? Stream.unwrap(
+                relayDeskTurn(body.value, hands).pipe(
+                  Effect.map((relayed) =>
+                    relayed === null ? here : Stream.catchCause(relayed, () => here),
+                  ),
+                  Effect.orElseSucceed(() => here),
+                ),
+              )
+            : here;
         return HttpServerResponse.stream(
-          deskTurnStream(body.value, deskTools, true).pipe(
+          turn.pipe(
             Stream.provideService(SessionMember, memberOfSubject(session.value.subject)),
             Stream.provideContext(context),
             Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
@@ -564,6 +581,44 @@ export const routes = HttpRouter.use((router) =>
     );
     yield* router.add("POST", "/tessaya/household", householdCall);
     yield* router.add("POST", "/tessaya/private", privateCall);
+    // Placement (b): another of his servers sends his desk turn here, and runs this turn's calls to its desktop.
+    const peer = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const client = yield* auth.authenticateMcpClient(request).pipe(Effect.option);
+      if (client._tag === "None" || !client.value.peerLink || deskTools === null)
+        return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+      const path = new URL(request.url, "http://local").pathname.replace(/^\/tessaya\/peer\//, "");
+      const json = yield* request.json.pipe(Effect.orElseSucceed(() => ({})));
+      if (path === "turn") {
+        const body = decodePeerTurn(json);
+        if (body._tag === "None")
+          return HttpServerResponse.jsonUnsafe(
+            { message: "That request is not valid." },
+            { status: 400 },
+          );
+        return HttpServerResponse.stream(
+          servePeerTurn(body.value, client.value.sessionId, deskTools).pipe(
+            Stream.provideContext(context),
+            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.concat(Stream.make("data: [DONE]\n\n")),
+            Stream.encodeText,
+          ),
+          { contentType: "text/event-stream", headers: { "cache-control": "no-store" } },
+        );
+      }
+      const hands = path.replace(/^turn-hands\//, "");
+      const answer = yield* Effect.promise(() =>
+        peerTurnHands(client.value.sessionId, hands, json as Record<string, unknown>),
+      );
+      return HttpServerResponse.jsonUnsafe(answer.json, { status: answer.status });
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe({ message: "That did not work." }, { status: 500 }),
+        ),
+      ),
+    );
+    yield* router.add("POST", "/tessaya/peer/*", peer);
     yield* router.add("POST", "/tessaya/desk/*", desk);
     yield* router.add("POST", "/tessaya/rehearse/*", rehearse);
     yield* router.add("GET", "/tessaya/hands/*", handsApi);

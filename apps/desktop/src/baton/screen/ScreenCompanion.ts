@@ -246,6 +246,8 @@ interface ScreenSettings {
   readonly remoteHandsAway: boolean;
   /** His turns run on the one brain on his server (SPINE-UNIFY S4); off, this desktop runs its own sessions. */
   readonly serverBrain: boolean;
+  /** With it on, his turns run on the household's home server (placement b); off, on this machine's (a). */
+  readonly serverBrainHome: boolean;
   /** Her own cursor glides to where she acts, with a word or two; his pointer never moves. On until he turns it off. */
   readonly actCursor: boolean;
   /** Who does the work behind Baton. Both answer to the same gate. */
@@ -280,6 +282,7 @@ const DEFAULTS: ScreenSettings = {
   remoteHands: false,
   remoteHandsAway: false,
   serverBrain: false,
+  serverBrainHome: false,
   actCursor: true,
   operator: "claude",
   codexBinary: "codex",
@@ -3310,6 +3313,7 @@ export const startScreenCompanion = (input: {
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           // Found on his PATH here, as his own sessions find it; a server spawns it without a shell.
           claudeBinary: spawnable(resolveBinary(settings.claudeBinary, input.platform, input.env)),
+          placement: settings.serverBrainHome ? "home" : "here",
         },
         (words) => {
           reply += words;
@@ -4138,6 +4142,14 @@ export const startScreenCompanion = (input: {
         on: settings.serverBrain,
       },
       {
+        id: "s.serverBrainHome",
+        section: "Working for you",
+        label: "Use my home server's brain for those turns",
+        hint: "With the one brain on, your turns run on the server that holds your household, on its own login, and reach this computer's screen and keys from there. Its file tools stay off: they only work on this computer's own server.",
+        kind: "toggle",
+        on: settings.serverBrainHome,
+      },
+      {
         id: "s.handsAway",
         section: "Working for you",
         label: "I'm away: remote hands never ask me",
@@ -4254,6 +4266,7 @@ export const startScreenCompanion = (input: {
       else if (id === "s.cursor") save({ actCursor: value === true });
       else if (id === "s.handsAway") save({ remoteHandsAway: value === true });
       else if (id === "s.serverBrain") save({ serverBrain: value === true });
+      else if (id === "s.serverBrainHome") save({ serverBrainHome: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
       else if (id === "s.learn") void learnFromLast();
       else if (learnedAction(id) !== null) {
