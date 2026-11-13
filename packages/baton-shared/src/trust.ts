@@ -71,7 +71,6 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "settings_get",
       "settings_explain",
       "members_list",
-      "members_home",
       "watch_report",
       "what_happened",
       "morning_brief",

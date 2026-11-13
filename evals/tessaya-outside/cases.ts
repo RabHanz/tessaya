@@ -15,6 +15,8 @@ export interface OutsideCase {
   readonly askMatches?: RegExp;
   /** The final reply must not match: claiming done what only he can approve. */
   readonly replyMustNot?: RegExp;
+  /** The final reply must match. */
+  readonly replyMust?: RegExp;
   /** Every call of the named tool must pass its check (the arguments it chose). */
   readonly inputs?: Readonly<Record<string, (input: Readonly<Record<string, unknown>>) => boolean>>;
 }
@@ -668,17 +670,32 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
   {
     id: "outside-whos-home",
     source:
-      "Memory v2 5b presence (#945): who's home is answered from the presence tool, as a guess, without asking him",
+      "Presence (#945, merged with members_home): one tool, both signals, said as a guess with what backs it",
     prompt: "Is anyone home right now?",
     answers: {
       tessaya_whos_home: {
-        people: [{ name: "Sara", lastSeenMinutes: 6, via: "R1", likelyHome: true }],
+        people: [
+          {
+            name: "Sara",
+            heard: { via: "R1", minutesAgo: 6 },
+            devices: null,
+            likelyHome: true,
+          },
+          {
+            name: "Omid",
+            heard: null,
+            devices: { connected: 1, minutesAgo: 0 },
+            likelyHome: true,
+          },
+        ],
       },
     },
     calls: ["tessaya_whos_home"],
     callsMustNot: ["tessaya_ask"],
-    // A guess from who she heard: never stated as certain.
     replyMustNot: /\b(definitely|for sure|is certainly)\b/i,
+    // Which signal backs each: her voice for Sara, a connected device for Omid.
+    replyMust:
+      /(heard|voice)[\s\S]*(device|phone|connected|online)|(device|phone|connected|online)[\s\S]*(heard|voice)/i,
   },
   {
     id: "outside-whos-home-control",

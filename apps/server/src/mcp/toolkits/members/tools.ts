@@ -32,15 +32,6 @@ const ListTool = Tool.make("members_list", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
-const HomeTool = Tool.make("members_home", {
-  ...shared,
-  description:
-    "Who is around now, by their devices being connected. Say it is by their devices, not that you saw them.",
-})
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false)
-  .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
 const InviteTool = Tool.make("member_invite", {
   ...shared,
   description:
@@ -187,7 +178,6 @@ const VoiceForgetTool = Tool.make("household_voice_forget", {
 /** Spread into Tessaya's toolkit, so every vessel gets them through its one registration. */
 export const MembersTools = [
   ListTool,
-  HomeTool,
   InviteTool,
   SetRoleTool,
   RemoveTool,

@@ -341,14 +341,16 @@ const PreferenceSetTool = Tool.make("tessaya_preference_set", {
 const WhosHomeTool = Tool.make("tessaya_whos_home", {
   ...shared,
   description:
-    "Who in the household Tessaya has lately heard by voice or seen active on their own device, most recent first, with where and how many minutes ago; likelyHome is within the last half hour. A guess from what she heard, never a tracker: say it that way. Only for the household's own members, never a guest.",
+    "Who's home or around now, most recent first. Two signals per member: heard (their verified voice: where and minutes ago) and devices (their own devices: how many connected now, minutes since one was). likelyHome: heard in the last half hour or a device connected now. It's a guess, never a tracker: say it as one and say which signal backs it (\"I heard Sara in the kitchen 5 minutes ago\", \"Omid's phone is connected\"). Only for the household's own members, never a guest.",
   // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
   success: Schema.Struct({
     people: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        lastSeenMinutes: Schema.Number,
-        via: Schema.String,
+        heard: Schema.NullOr(Schema.Struct({ via: Schema.String, minutesAgo: Schema.Number })),
+        devices: Schema.NullOr(
+          Schema.Struct({ connected: Schema.Number, minutesAgo: Schema.Number }),
+        ),
         likelyHome: Schema.Boolean,
       }),
     ),

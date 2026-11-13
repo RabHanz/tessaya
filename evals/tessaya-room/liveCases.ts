@@ -633,13 +633,6 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["members_list"],
   },
   {
-    id: "members-home",
-    proves: ["members_home"],
-    said: ["Who's home right now?"],
-    uses: [["members_home"]],
-    clean: ["members_home"],
-  },
-  {
     id: "member-invite",
     proves: ["member_invite"],
     said: ["Add my sister Maya to the house as an adult."],
