@@ -11,6 +11,7 @@ import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
 
 import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
+import { WAKE_WORDS, wakeModelFile } from "@t3tools/baton-shared/wakeWords";
 
 import { integratedLufs, loudnessGain, withGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
@@ -537,12 +538,15 @@ const main = async () => {
       .map((s) => s.trim())
       .filter(Boolean),
   );
-  // His wake words as the desktop ships them (wakeDefaults.ts); a word whose model is not on this host is skipped.
-  const words = [
-    { word: "Tessaya", file: "tessaya.onnx", threshold: 0.99 },
-    { word: "Alfred", file: "alfred.onnx", threshold: 0.95 },
-    { word: "Freya", file: "freya.onnx", threshold: 0.95 },
-  ].filter((w) => NodeFS.existsSync(model(w.file)));
+  // The words a fresh desktop wakes to, from the one table; a word whose model is not in R1_MODELS is skipped, and said.
+  const words = WAKE_WORDS.filter((w) => w.onByDefault)
+    .map((w) => ({ word: w.word, file: wakeModelFile(w.word), threshold: w.threshold }))
+    .filter((w) => {
+      const there = NodeFS.existsSync(model(w.file));
+      if (!there)
+        log(`wake: no ${w.file} in R1_MODELS (copy it from native/baton-dictation/models)`);
+      return there;
+    });
   const confirmWith = recognisers();
   const wake =
     words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))

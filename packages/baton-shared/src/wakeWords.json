@@ -1,0 +1,10 @@
+{
+  "words": [
+    { "word": "Tessaya", "threshold": 0.99, "onByDefault": true },
+    { "word": "Sebastian", "threshold": 0.97, "onByDefault": false },
+    { "word": "Alfred", "threshold": 0.95, "measured": 0.9, "onByDefault": true },
+    { "word": "Freya", "threshold": 0.95, "onByDefault": true },
+    { "word": "Onyx", "threshold": 0.95, "measured": 0.9, "onByDefault": false }
+  ],
+  "measuredNote": "measured: the threshold D98 measured on 6.6 hours of real speech and held-out en-GB voices. The app ships threshold, which stays until a tuning decision moves it (14 Nov)."
+}
