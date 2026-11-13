@@ -31,6 +31,7 @@ import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDe
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { DeviceTriggers } from "./DeviceTriggers.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { R1Pairing } from "./R1Pairing.ts";
 import { R1Reach } from "./R1Reach.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
@@ -201,6 +202,20 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
       Option.isNone(reach)
         ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
         : reach.value.status,
+    ),
+  ),
+  claim: op(Schema.Struct({ deviceId: Id, oneTimeKey: Text(80) }), (a) =>
+    Effect.flatMap(Effect.serviceOption(R1Pairing), (pairing) =>
+      Option.isNone(pairing)
+        ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+        : pairing.value.claim(a),
+    ),
+  ),
+  rotate: op(Schema.Struct({ id: Id, confirmed: Schema.optionalKey(Schema.Boolean) }), (a) =>
+    Effect.flatMap(Effect.serviceOption(R1Pairing), (pairing) =>
+      Option.isNone(pairing)
+        ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+        : pairing.value.rotate(a.id, a.confirmed === true),
     ),
   ),
   busLogin: op(Schema.Struct({}), () =>

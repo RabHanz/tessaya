@@ -159,6 +159,8 @@ export interface R1Device {
   readonly deviceId: string | null;
   /** The password the R1 already logs in with, when it is not the device key (an R1 moved from a broker of its own). */
   readonly devicePass?: string | null;
+  /** The key before a rotation, accepted until the R1 first logs in with the new one. */
+  readonly previousKey?: string | null;
 }
 
 export class HomeAssistantService extends Context.Service<

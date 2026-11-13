@@ -16,7 +16,7 @@ import { StepUps } from "./StepUps.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
-import { R1_HUB_PATH, R1Hub, runHubSocket } from "./R1Hub.ts";
+import { noteDeviceKeyUse, R1_HUB_PATH, R1Hub, runHubSocket } from "./R1Hub.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
@@ -111,6 +111,7 @@ export const routes = HttpRouter.use((router) =>
           { ok: false, error: "Wrong device key." },
           { status: 401 },
         );
+      yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = (yield* request.json.pipe(Effect.orElseSucceed(() => ({})))) as {
         readonly op?: unknown;
       };
@@ -137,6 +138,7 @@ export const routes = HttpRouter.use((router) =>
           { ok: false, error: "Wrong device key." },
           { status: 401 },
         );
+      yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = (yield* request.json.pipe(Effect.orElseSucceed(() => ({})))) as Record<
         string,
         unknown
@@ -182,6 +184,7 @@ export const routes = HttpRouter.use((router) =>
           { ok: false, error: "Wrong device key." },
           { status: 401 },
         );
+      yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodeVoice(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
       if (Option.isNone(body) || body.value.profile.kind !== "owner")
         return HttpServerResponse.jsonUnsafe(

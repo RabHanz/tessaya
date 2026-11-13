@@ -75,7 +75,7 @@ import {
   type ToolOutcome,
 } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
-import { publishToDevice } from "./R1Hub.ts";
+import { noteDeviceKeyUse, publishToDevice } from "./R1Hub.ts";
 import { HomeAssistantService, type HomeActor, type R1Device } from "./HomeAssistantService.ts";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
@@ -1082,6 +1082,7 @@ export const routes = HttpRouter.use((router) =>
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
       if (device === null) return error(503, "This server has no R1 set up.");
       if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodeChat(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a chat request.");
       const turns = body.value.messages
@@ -1176,6 +1177,7 @@ export const routes = HttpRouter.use((router) =>
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
       if (device === null) return error(503, "This server has no R1 set up.");
       if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a played turn.");
       const found = yield* r1Played(body.value.callId).pipe(Effect.provideContext(context));
@@ -1191,6 +1193,7 @@ export const routes = HttpRouter.use((router) =>
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
       if (device === null) return error(503, "This server has no R1 set up.");
       if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a confirmed turn.");
       return HttpServerResponse.jsonUnsafe({ confirmed: yield* r1Confirmed(body.value.callId) });
