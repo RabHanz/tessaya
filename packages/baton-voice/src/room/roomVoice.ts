@@ -40,6 +40,7 @@ import {
 import { DOWN_FRAME_BYTES, fromBytes, speechLevel, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
 import type { Affect } from "./senseVoice.ts";
+import { segmentsOf, type TurnVoices } from "./segments.ts";
 import {
   createTurnTaking,
   ROOM_TURN,
@@ -176,6 +177,8 @@ export interface Tessaya {
   /** A guess on his partial words: the server records and learns from it only once `played` says it was heard. */
   readonly speculative?: true;
   readonly callId?: string;
+  /** Several people this turn, in speaking order: each one's words with their own voice (absent for one voice). */
+  readonly segments?: ReadonlyArray<{ readonly speaker: SpeakerIdentity; readonly words: string }>;
 }
 
 export interface RoomDeps {
@@ -191,6 +194,8 @@ export interface RoomDeps {
   /** A throwaway decode as a session opens: the first clip after a quiet spell is otherwise about 1.5 s slower. */
   readonly warm?: () => void;
   readonly speaker?: (pcm: Int16Array) => Promise<SpeakerIdentity>;
+  /** Who spoke when in the turn (`segments.ts`); "one" at once when fewer than two voices are enrolled. */
+  readonly voices?: (pcm: Int16Array) => Promise<TurnVoices>;
   readonly affect?: (pcm: Int16Array) => Promise<Affect>;
   /** Tessaya's turn on her server: the reply as text deltas. */
   readonly brain: (
@@ -588,6 +593,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       via: Tessaya["via"],
       speaker: SpeakerIdentity,
       affect: Affect | undefined,
+      segments?: Tessaya["segments"],
     ): Tessaya => ({
       vessel: { kind: "device", id },
       origin: given === undefined ? "voice" : "button",
@@ -605,6 +611,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ...(affect === undefined
         ? {}
         : { emotion: { label: affect.emotion, events: affect.events } }),
+      ...(segments === undefined ? {} : { segments }),
     });
 
     /**
@@ -917,12 +924,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         via: Tessaya["via"],
         speaker: SpeakerIdentity,
         affect: Affect | undefined,
-      ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect);
+        segments?: Tessaya["segments"],
+      ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect, segments);
       const current = given === undefined ? rec : null;
       if (given === undefined) rec = null;
       const speakerP =
         given === undefined ? deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now())) : undefined;
       const affectP = given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined;
+      const voicesP = given === undefined ? deps.voices?.(pcm).catch(() => undefined) : undefined;
       let affectNow: Awaited<typeof affectP>;
       void affectP?.then((a) => (affectNow = a));
       const sides = Promise.all([speakerP, affectP]);
@@ -1244,17 +1253,43 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const known = await Promise.race([sides, Promise.resolve(null)]);
       const [speaker, affect] = known ?? [undefined, affectNow];
       const identity = speaker ?? UNVERIFIED(deps.now());
+      const voicesAt = deps.now();
+      const voices = (await voicesP) ?? { kind: "one" };
+      if (voices.kind === "one-at-a-time") {
+        kept?.control.abort();
+        deps.log(
+          `[${id}] turn ${turn}: several voices at once (${voices.why}); one at a time (${heldBack(text)})`,
+        );
+        speakNow("One at a time, please.");
+        return;
+      }
+      // Several people: the turn is heard when any one of them would be on their own.
+      const someoneAdmitted =
+        voices.kind === "many" && voices.spans.some((s) => admits(s.identity, config.gate, "turn"));
       const admitted: Promise<boolean> =
-        known !== null
+        known !== null || someoneAdmitted
           ? Promise.resolve(true)
           : Promise.race([
               sides.then(([late]) => late === undefined || admits(late, config.gate, "turn")),
               deps.sleep(config.sideMs).then(() => true),
             ]);
-      if (!admits(identity, config.gate, "turn")) {
+      if (!admits(identity, config.gate, "turn") && !someoneAdmitted) {
         kept?.control.abort();
         dropped(turn, `a ${identity.kind} voice`, text);
         return;
+      }
+      // Each person's words recognised from their own span alone: no one's words carry another's voice.
+      const segments =
+        voices.kind === "many" && deps.preview !== undefined
+          ? await segmentsOf(voices.spans, pcm, deps.preview)
+          : undefined;
+      if (segments !== undefined) {
+        // A guess heard the room as one voice.
+        kept?.control.abort();
+        kept = null;
+        deps.log(
+          `[${id}] turn ${turn}: ${segments.length} people (${Math.round(deps.now() - voicesAt)} ms)`,
+        );
       }
       if (closed) {
         kept?.control.abort();
@@ -1345,7 +1380,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           // If the brain's stream fails first, the catch below skips `await speakingChain`: an abort must not crash us.
           speakingChain.catch(() => undefined);
         };
-        const tessaya = envelope(text, persona, switched, via, identity, affect);
+        const tessaya = envelope(text, persona, switched, via, identity, affect, segments);
         nameOnce = null;
         // His final words matched the guess and it is the one answered: the changes it held may now be made.
         if (kept !== null) deps.confirmed?.(kept.callId);

@@ -164,6 +164,52 @@ describe("the room voice loop", () => {
     expect(t.brainCalls).toEqual([]);
   });
 
+  it("sends each person's words with their own voice when several spoke, heard if any one of them would be", async () => {
+    const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.2 };
+    const sara: SpeakerIdentity = { ...guest, kind: "saved", personId: "sara", name: "Sara" };
+    const owner: SpeakerIdentity = { ...guest, kind: "owner", personId: "owner" };
+    const heard: number[] = [];
+    const t = setup({
+      speaker: async () => guest,
+      voices: async () => ({
+        kind: "many",
+        spans: [
+          { startMs: 0, endMs: 500, identity: sara },
+          { startMs: 500, endMs: 1_200, identity: owner },
+        ],
+      }),
+      preview: async (pcm) => (
+        heard.push(pcm.length),
+        pcm.length === 8_000 ? "what time is it" : "set a timer"
+      ),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 30);
+    // After the early preview of the whole turn, each span alone.
+    expect(heard.slice(-2)).toEqual([8_000, 11_200]);
+    expect(t.brainCalls.at(-1)!.tessaya.segments).toEqual([
+      { speaker: sara, words: "what time is it" },
+      { speaker: owner, words: "set a timer" },
+    ]);
+  });
+
+  it("asks for one at a time, without her brain, when too many voices meet", async () => {
+    const spoken: string[] = [];
+    const t = setup({
+      voices: async () => ({ kind: "one-at-a-time", why: "three-voices" }),
+      speak: async function* (text) {
+        spoken.push(text);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 30);
+    expect(t.brainCalls).toEqual([]);
+    expect(spoken).toEqual(["One at a time, please."]);
+  });
+
   it("stops talking and flushes the R1's buffer when what he cut in with is his", async () => {
     let release: () => void = () => undefined;
     const hold = new Promise<void>((r) => (release = r));
