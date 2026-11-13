@@ -233,7 +233,7 @@ describe("answering only when he is talking to her", () => {
       "Can you see my laptop?",
       "My laptop itself.",
       "Casea, can you hear me?",
-      "No, dismissed.",
+      // "No, dismissed." rests the session on the R1 itself, with no brain call.
       "Say yeah.",
     ]);
     // Asleep between them: sleepy eyes, and no attentive look or nod for speech that was not for her.
@@ -445,13 +445,13 @@ describe("answering only when he is talking to her", () => {
     ).toEqual([]);
   });
 
-  it("drops her own words while she plays even when the echo is mostly cancelled, her persona names too (09:00 sweep, 13 Nov)", async () => {
+  it("drops her echo by how it sounds, partly cancelled and with her persona's name in it (09:00 sweep, 13 Nov)", async () => {
     const t = setup(
       {
-        recognise: said(["Can I talk to someone else?", "Freya here, I can take that over."]),
+        recognise: said(["Can I talk to someone else?", "Freya, I can take that over."]),
         brain: async function* (input) {
           t.brainCalls.push(input);
-          yield "Freya here, I can take that over. Tell me what you need.";
+          yield "Freya, I can take that over. Tell me what you need.";
         },
         speak: async function* () {
           for (let i = 0; i < 10; i += 1) yield voice(3_200, 210, 3.1, i * 3_200);
@@ -459,14 +459,39 @@ describe("answering only when he is talking to her", () => {
       },
       { ...ROOM_CONFIG, leadMs: 60_000, prerollMs: 0 },
     );
+    const played: Array<{ at: number; pcm: Int16Array }> = [];
+    const publish = t.deps.publish;
+    (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
+      if (topic.endsWith("/voice/down"))
+        played.push({
+          at: t.deps.now(),
+          pcm: new Int16Array(Uint8Array.from(payload as Uint8Array).buffer),
+        });
+      publish(topic, payload);
+    };
     t.s2();
     await t.feed(true, 20);
     await t.feed(false, 8);
-    // What the mic hears while she plays: a residual that no longer moves like her voice, but is her words.
-    const residual = voice(960 * 30, 333, 5.3);
-    for (let i = 0; i < 30; i += 1) {
-      t.room.message(`freya/r1/${DEV}/voice/up`, toBytes(residual.slice(i * 960, (i + 1) * 960)));
-      await t.deps.sleep(60);
+    // What the mic hears while she plays: her voice, mostly cancelled, under a little of the room.
+    const room = voice(960 * 80, 333, 5.3);
+    let sounds = 0;
+    let k = 0;
+    for (let idle = 0; idle < 20;) {
+      const f = played[k];
+      if (f === undefined) {
+        idle += 1;
+        await t.feed(false, 1);
+        continue;
+      }
+      idle = 0;
+      sounds = Math.max(f.at + ROOM_CONFIG.downDelayMs, sounds + 60);
+      await t.deps.sleep(Math.max(0, sounds + 180 - t.deps.now()));
+      const noise = room.subarray((k % 80) * 960, (k % 80) * 960 + 960);
+      t.room.message(
+        `freya/r1/${DEV}/voice/up`,
+        toBytes(f.pcm.map((v, i) => Math.round(v * 0.25 + noise[i]! * 0.03))),
+      );
+      k += 1;
       await t.room.session(DEV)!.drained();
     }
     await t.feed(false, 60);
@@ -689,11 +714,10 @@ describe("answering only when he is talking to her", () => {
     ]);
   });
 
-  it("acknowledges being sent away even when her brain says nothing, then rests", async () => {
+  it("rests at once when sent away, without asking her brain", async () => {
     const spoken: string[] = [];
     const t = setup({
       recognise: said(["I said dismissed."]),
-      brain: async function* () {},
       speak: async function* (text) {
         spoken.push(text);
         yield new Int16Array(3_200);
@@ -701,8 +725,10 @@ describe("answering only when he is talking to her", () => {
     });
     t.s2();
     await turn(t);
-    expect(spoken).toEqual(["Okay."]);
-    expect(t.published.at(-1)).toMatchObject({ payload: '{"mood":"sleepy"}' });
+    expect(t.brainCalls).toEqual([]);
+    // At once and on the R1 alone (10:36:40, 13 Nov: 6.5 s and a full sentence): sleepy eyes, no brain, no words.
+    expect(spoken).toEqual([]);
+    expect(t.published.some((p) => p.payload === '{"mood":"sleepy"}')).toBe(true);
   });
 });
 
@@ -1299,5 +1325,122 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     // The loop's own: an R1 button switches to Alfred.
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"alfred"}'));
     expect(logs).toContain(`[${DEV}] eye sent cmd/eye/persona {"name":"alfred"}`);
+  });
+});
+
+describe("his 10:35 to 10:37 session, 13 Nov", () => {
+  const heard = (texts: ReadonlyArray<string>) => {
+    let n = 0;
+    return () => {
+      const text = texts[n++] ?? "";
+      return { feed: () => undefined, finish: async () => text, cancel: () => undefined };
+    };
+  };
+  const loud = (amp: number) => toBytes(new Int16Array(960).fill(amp));
+  const speakTurn = async (t: ReturnType<typeof setup>, amp = 3000, frames = 20) => {
+    for (let i = 0; i < frames; i += 1) {
+      t.room.message(`freya/r1/${DEV}/voice/up`, loud(amp));
+      await t.deps.sleep(60);
+      await t.room.session(DEV)!.drained();
+    }
+    await t.feed(false, 40);
+  };
+
+  it("keeps the room's TV out after her name: another language, or a voice far quieter than his", async () => {
+    const t = setup({
+      recognise: heard([
+        "Ik heb minekin, for nie bata. Foi já gente. Quem quer essa trilha?",
+        "And so the match goes on in the other room tonight.",
+        "What time is it?",
+      ]),
+    });
+    t.room.woken(DEV, "Tessaya", -20);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await speakTurn(t);
+    await speakTurn(t, 200);
+    await speakTurn(t);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["What time is it?"]);
+  });
+
+  it("answers the same question once when the transcript grows by 'Oh.' (10:36:11)", async () => {
+    const t = setup({ recognise: heard(["I think. Tessaya, what time is it?", "Oh."]) });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.feed(true, 6);
+    await t.feed(false, 40);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "I think. Tessaya, what time is it?",
+    ]);
+  });
+
+  it("rests at once on 'Dismiss.', never joined to what follows (10:37:43)", async () => {
+    const logs: string[] = [];
+    const t = setup({
+      recognise: heard(["Dismiss.", "So do you know? But yeah, and he checked."]),
+      log: (l) => logs.push(l),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(t.brainCalls).toEqual([]);
+    expect(logs.some((l) => l.includes("dismissed; she rests"))).toBe(true);
+  });
+
+  it("never holds a room that keeps talking for more than 2.5 s (10:35:22 to 10:35:46: 24 s)", async () => {
+    const logs: string[] = [];
+    const t = setup({
+      recognise: heard([
+        "So the thing is that",
+        "and then the",
+        "we went to the",
+        "and after that the",
+      ]),
+      log: (l) => logs.push(l),
+    });
+    t.s2();
+    for (let i = 0; i < 4; i += 1) {
+      await t.feed(true, 15);
+      await t.feed(false, 6);
+    }
+    await t.feed(false, 60);
+    expect(logs.filter((l) => l.includes("held for the rest")).length).toBeLessThanOrEqual(2);
+    expect(t.brainCalls.length).toBeGreaterThan(0);
+  });
+
+  it("never says 'Alfred here.' or his role pitch (10:36:57)", async () => {
+    const spoken: string[] = [];
+    const t = setup({
+      recognise: heard(["Alfred."]),
+      brain: async function* () {
+        yield "Alfred here, ready when you are. Sessions, builds and releases are mine, so tell me what you need checked or shipped.";
+      },
+      speak: async function* (text) {
+        spoken.push(text);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(spoken).toEqual(["ready when you are."]);
+  });
+
+  it("applies her server's eye mood as the one writer, and its own moods wait while it holds", async () => {
+    const logs: string[] = [];
+    const t = setup({ log: (l) => logs.push(l) });
+    t.s2();
+    t.room.message(
+      `freya/r1/${DEV}/voice/intent/eye`,
+      Buffer.from('{"vessel":"r1","mood":"thinking","holdMs":15000,"reason":"brain"}'),
+    );
+    await t.feed(true, 20);
+    const moods = t.published
+      .filter((p) => p.topic.endsWith("/cmd/eye/set"))
+      .map((p) => JSON.parse(String(p.payload)).mood as string);
+    expect(moods).toEqual(["thinking"]);
+    expect(logs).toContain(`[${DEV}] eye intent thinking for 15000 ms (brain)`);
   });
 });

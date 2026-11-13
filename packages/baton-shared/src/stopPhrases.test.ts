@@ -13,7 +13,7 @@ describe("stopIntent", () => {
       "Never mind.",
     ])
       expect(stopIntent(t), t).toBe("stop");
-    for (const t of ["Dismissed.", "Okay, dismissed.", "That's all.", "Goodbye."])
+    for (const t of ["Dismissed.", "Dismiss.", "Okay, dismissed.", "That's all.", "Goodbye."])
       expect(stopIntent(t), t).toBe("dismiss");
     for (const t of [
       "What time is it?",

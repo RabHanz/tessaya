@@ -69,3 +69,17 @@ export const toBytes = (pcm: Int16Array): Buffer =>
 /** A fresh, aligned copy: a pooled Buffer can sit at an odd offset, which an Int16Array view refuses. */
 export const fromBytes = (bytes: Uint8Array): Int16Array =>
   new Int16Array(Uint8Array.from(bytes.subarray(0, bytes.length - (bytes.length % 2))).buffer);
+
+/** How loud speech is in a clip, in dBFS: the 90th percentile of its 30 ms frames (pauses do not pull it down). */
+export const speechLevel = (pcm: Int16Array): number => {
+  const n = 480;
+  const levels: number[] = [];
+  for (let s = 0; s + n <= pcm.length; s += n) {
+    let sum = 0;
+    for (let i = s; i < s + n; i += 1) sum += pcm[i]! * pcm[i]!;
+    levels.push(Math.sqrt(sum / n));
+  }
+  if (levels.length === 0) return Number.NEGATIVE_INFINITY;
+  const at = levels.toSorted((a, b) => a - b)[Math.floor(levels.length * 0.9)]!;
+  return at <= 0 ? Number.NEGATIVE_INFINITY : 20 * Math.log10(at / 32768);
+};

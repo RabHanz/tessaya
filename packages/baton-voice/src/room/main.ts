@@ -384,6 +384,7 @@ const main = async () => {
       "freya/r1/+/cmd/eye/#",
       "freya/r1/+/state/eye/#",
       "freya/r1/+/voice/pronounce",
+      "freya/r1/+/voice/intent/eye",
       "freya/r1/+/state/caps",
       "freya/r1/+/cmd/voice/no-reply",
       "freya/r1/+/voice/up/tainted",
@@ -426,7 +427,7 @@ const main = async () => {
             turn.feed(pcm);
             return turn.finish();
           },
-          onWake: (id, word) => room?.woken(id, word),
+          onWake: (id, word, level) => room?.woken(id, word, level),
           log,
         });
   startCameraRelay();

@@ -5,6 +5,7 @@
  */
 const DISMISS = [
   "dismissed",
+  "dismiss",
   "that's all",
   "that will be all",
   "that'll be all",
