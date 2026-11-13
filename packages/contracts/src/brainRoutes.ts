@@ -1,8 +1,8 @@
 /**
  * Tessaya: the one table that says which login pays for each kind of work her brain does, and on which model
  * (tessaya-ops research/BRAIN-DESIGN.md §13). Every model call asks it; nothing hard-codes a model or a credential.
- * A role left out of the table keeps the behaviour the older settings chose (`roomBrain`, the cleanup model,
- * `routing.json`), so an existing install changes nothing until he edits a row.
+ * A role left out of the table uses what it used before the table (the cleanup model, `routing.json`), except his
+ * 13 Nov choices: spoken turns on his subscription, and the API key for cleanup only.
  */
 import * as Schema from "effect/Schema";
 
@@ -35,7 +35,8 @@ export type BrainCredential = typeof BrainCredential.Type;
 /** `fallback` is used only when `use` fails before a word is said, and only because this row names it. */
 export const BrainCredentialRoute = Schema.Struct({
   use: BrainCredential,
-  fallback: Schema.optionalKey(BrainCredential),
+  /** "none" says so outright: a settings patch merges rows, so leaving the key out can't take a fallback away. */
+  fallback: Schema.optionalKey(Schema.Union([BrainCredential, Schema.Literal("none")])),
 });
 export type BrainCredentialRoute = typeof BrainCredentialRoute.Type;
 

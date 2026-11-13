@@ -393,10 +393,11 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "setting-confirm",
     proves: ["settings_set"],
-    said: ["Switch the desk device's brain to my subscription."],
+    // The model she talks on is the brain's routing table's voice row (brainModels, a confirm setting).
+    said: ["From now on, talk to me on Opus."],
     uses: [["settings_set"]],
     argsOf: "settings_set",
-    args: (input) => ({ roomBrain: input["key"] === "roomBrain" }),
+    args: (input) => ({ brainModels: input["key"] === "brainModels" }),
     // A confirm setting waits for his yes: she says it is with him.
     lastSays: [/\b(yes|phone|approv\w*|confirm\w*)\b/i],
   },

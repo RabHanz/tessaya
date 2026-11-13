@@ -38,6 +38,12 @@ const SITES: Readonly<Record<string, Site>> = {
   },
   // Callers.
   "apps/server/src/home/R1Brain.ts": { routed: "spoken turns: the voice row" },
+  "apps/server/src/home/VoiceSessions.ts": {
+    wiring: "the warm subscription sessions run the model R1Brain reads from the voice row",
+  },
+  "apps/server/src/home/DeviceTriggers.ts": {
+    routed: "judging a natural-language device rule: the intent row",
+  },
   "apps/server/src/home/R1Device.ts": { routed: "the Agora path's one-shot: the voice row" },
   "apps/server/src/baton/BatonMemoryLearning.ts": {
     routed: "learning and episodes: the background row",

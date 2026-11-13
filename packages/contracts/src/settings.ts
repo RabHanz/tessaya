@@ -1389,7 +1389,7 @@ export const ServerSettings = Schema.Struct({
   dictationCleanupCredentials: DictationCleanupCredentials.pipe(
     Schema.withDecodingDefault(Effect.succeed({ anthropic: "" })),
   ),
-  // Tessaya: how the room device's turn reaches Claude. "auto" tries the Anthropic key above first, then the subscription.
+  // Tessaya: read by nothing since the brain's routing table (brainCredentials.voice); kept so older files decode.
   roomBrain: RoomBrain.pipe(Schema.withDecodingDefault(Effect.succeed("auto" as const))),
   // Tessaya: the brain's routing table (brainRoutes.ts). An empty row keeps what the older settings chose.
   brainCredentials: BrainCredentials.pipe(Schema.withDecodingDefault(Effect.succeed({}))),

@@ -2081,7 +2081,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..bcc4cea5f1d85302a06dc8ebbc35d99baf826032 100644
+index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..7b399f4969295fba4abadbc796cd532efc9ff2e8 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,8 @@ import {
@@ -2129,7 +2129,7 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..bcc4cea5f1d85302a06dc8ebbc35d99b
 +  dictationCleanupCredentials: DictationCleanupCredentials.pipe(
 +    Schema.withDecodingDefault(Effect.succeed({ anthropic: "" })),
 +  ),
-+  // Tessaya: how the room device's turn reaches Claude. "auto" tries the Anthropic key above first, then the subscription.
++  // Tessaya: read by nothing since the brain's routing table (brainCredentials.voice); kept so older files decode.
 +  roomBrain: RoomBrain.pipe(Schema.withDecodingDefault(Effect.succeed("auto" as const))),
 +  // Tessaya: the brain's routing table (brainRoutes.ts). An empty row keeps what the older settings chose.
 +  brainCredentials: BrainCredentials.pipe(Schema.withDecodingDefault(Effect.succeed({}))),

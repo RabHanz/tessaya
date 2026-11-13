@@ -1184,41 +1184,68 @@ function SetupSection({
 }
 
 const ROOM_BRAIN_LABELS = {
-  auto: "Automatic",
-  api: "Anthropic API key",
   subscription: "Claude subscription",
+  auto: "API key, subscription if it fails",
+  api: "Anthropic API key",
 } as const;
+type RoomBrainWay = keyof typeof ROOM_BRAIN_LABELS;
 
-/** How the R1's turns reach Claude; it applies from the next turn, with no restart. */
+/**
+ * How her spoken turns reach Claude: the voice row of the brain's routing table (BRAIN-DESIGN §13). Choosing the key
+ * also lets the key pay for talking; choosing the subscription takes that back. Applies from the next turn.
+ */
 function RoomBrainSection({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const roomBrain = useEnvironmentSettings(environmentId, (settings) => settings.roomBrain);
+  const voice = useEnvironmentSettings(
+    environmentId,
+    (settings) => settings.brainCredentials?.voice,
+  );
+  const keyRoles = useEnvironmentSettings(
+    environmentId,
+    (settings) => settings.brainKeyRoles?.anthropic,
+  );
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const way: RoomBrainWay =
+    voice === undefined || !voice.use.startsWith("apiKey:")
+      ? "subscription"
+      : voice.fallback === "subscription"
+        ? "auto"
+        : "api";
+  const choose = (next: RoomBrainWay) => {
+    const others = (keyRoles ?? ["cleanup"]).filter((role) => role !== "voice");
+    updateSettings({
+      brainCredentials: {
+        voice:
+          next === "subscription"
+            ? { use: "subscription", fallback: "none" }
+            : { use: "apiKey:anthropic", fallback: next === "auto" ? "subscription" : "none" },
+      },
+      brainKeyRoles: { anthropic: next === "subscription" ? others : [...others, "voice"] },
+    });
+  };
   return (
     <SettingsSection title="Room brain">
       <SettingsRow
         {...searchableSetting("room-brain")}
         title="Room brain"
-        description="Automatic uses your Anthropic key (Settings → APIs) for the quickest answers, and your Claude subscription if the key fails. Applies from the next thing you say."
+        description="Her spoken turns run on your Claude subscription (Sonnet). Choose the API key (Settings → APIs) to have it pay for talking instead. Applies from the next thing you say."
         control={
           <Select
-            value={roomBrain ?? "auto"}
+            value={way}
             onValueChange={(value) =>
-              updateSettings({
-                roomBrain: value === "api" || value === "subscription" ? value : "auto",
-              })
+              choose(value === "api" || value === "auto" ? value : "subscription")
             }
           >
             <SelectTrigger size="sm" aria-label="Room brain">
               <SelectValue>
                 {(value: string | null) =>
-                  ROOM_BRAIN_LABELS[(value ?? "auto") as keyof typeof ROOM_BRAIN_LABELS]
+                  ROOM_BRAIN_LABELS[(value ?? "subscription") as RoomBrainWay]
                 }
               </SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
-              {(["auto", "api", "subscription"] as const).map((way) => (
-                <SelectItem key={way} value={way}>
-                  {ROOM_BRAIN_LABELS[way]}
+              {(["subscription", "auto", "api"] as const).map((option) => (
+                <SelectItem key={option} value={option}>
+                  {ROOM_BRAIN_LABELS[option]}
                 </SelectItem>
               ))}
             </SelectPopup>

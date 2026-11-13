@@ -246,7 +246,8 @@ effectIt.effect(
       const brain = R1Brain.of({
         route: Effect.succeed("api"),
         subscription: () => Stream.empty,
-        warm: Effect.void,
+        warm: () => Effect.void,
+        session: () => Stream.empty,
         // Round one asks the house, round two would act on it.
         converse: (turn) =>
           toolLoop(
@@ -303,6 +304,47 @@ effectIt.effect(
 );
 
 effectIt.effect(
+  "on the subscription, a web search before her first word is cued aloud, kept out of the Record, and taints the turn",
+  () =>
+    Effect.gen(function* () {
+      const details: Array<string> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.suspend(() => {
+            turn.cue(true);
+            return Stream.make("It is 23 degrees and hazy.");
+          }),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(BatonRecordService)({
+        append: (entry) =>
+          Effect.sync(() => {
+            details.push(entry.detail ?? "");
+          }) as never,
+      });
+      const said: Array<string> = [];
+      yield* r1TurnStream({ heard: "what's the weather in Lahore?", history: [] }, brain, {
+        specs: [],
+        run: () => Effect.succeed({ text: "", isError: false }),
+      }).pipe(
+        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+      );
+      expect(said.join("")).toBe("Let me look that up. It is 23 degrees and hazy.");
+      expect(details).toEqual(["It is 23 degrees and hazy."]);
+    }),
+);
+
+effectIt.effect(
   "a guess on his partial words reaches the Record only once the loop says it played; an unplayed one never does",
   () =>
     Effect.gen(function* () {
@@ -310,7 +352,8 @@ effectIt.effect(
       const brain = R1Brain.of({
         route: Effect.succeed("api"),
         subscription: () => Stream.empty,
-        warm: Effect.void,
+        warm: () => Effect.void,
+        session: () => Stream.empty,
         converse: (turn) =>
           toolLoop(
             () => Stream.make<Array<ConversePart>>({ type: "text", text: "It's four PM." }),
@@ -362,7 +405,8 @@ effectIt.effect(
       const brain = R1Brain.of({
         route: Effect.succeed("api"),
         subscription: () => Stream.empty,
-        warm: Effect.void,
+        warm: () => Effect.void,
+        session: () => Stream.empty,
         converse: (turn) =>
           toolLoop(
             (request: ConverseRequest) =>

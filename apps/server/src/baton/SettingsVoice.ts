@@ -53,7 +53,10 @@ export const SERVER_SETTINGS_VOICE: {
     "the dictation clean-up key",
     "a key is a secret: never read aloud or set from a room",
   ),
-  roomBrain: confirm("which brain the desk device uses: his key, his subscription, or auto"),
+  roomBrain: never(
+    "the desk device's old brain choice",
+    "replaced by the brain's routing table: ask which login or model she talks on instead",
+  ),
   brainCredentials: owner(
     "which login pays for each kind of her work: his subscription or an API key, and any fallback",
   ),
