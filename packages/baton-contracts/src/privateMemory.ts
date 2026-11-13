@@ -7,7 +7,7 @@ import * as Schema from "effect/Schema";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "@t3tools/contracts";
 
-import { BatonMemoryItem, BatonMemoryKind } from "./memory.ts";
+import { BatonMemoryItem, BatonMemoryKind, BatonTurnSpeaker } from "./memory.ts";
 
 /**
  * Every request is one `op` posted to the server's `/tessaya/private` route: a read (read scope), a change (operate), or
@@ -140,12 +140,7 @@ export const BatonPrivateAuditResult = Schema.Struct({
   intact: Schema.Boolean,
 });
 
-export const BatonPrivateSpeaker = Schema.Struct({
-  kind: Schema.Literals(["owner", "saved", "guest", "unverified"]),
-  personId: Schema.NullOr(Schema.String),
-  verified: Schema.Boolean,
-  inherited: Schema.Boolean,
-});
+export const BatonPrivateSpeaker = BatonTurnSpeaker;
 export const BatonPrivateTurn = Schema.Struct({
   route: Schema.Literals(["assistant", "outside", "standing", "phone", "agent"]),
   typed: Schema.Boolean,

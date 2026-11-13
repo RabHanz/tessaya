@@ -22,3 +22,16 @@ pnpm tessaya-room --out runs/room-look --case look --samples 1
 ## Add a case
 
 Add an entry to `cases.ts` with an `id`, its `source`, and the sentences `said` in order. `lastSays` are patterns the last reply must match, `calls` tools that must be used, `callsAtMost` a cap per tool (0 for never), `lampAfter` the study lamp after each sentence, `namesAtLeast` how many of the default pack's specialists the last reply names, and `verified` makes his voice verified for the turn.
+
+## Live suite
+
+`live.ts` drives every room tool on a running server as a pretend R1 (`replay-suite`): the server's real brain, tools and Home Assistant. Reads are live; the house's writes and asks to his phone are dry runs on the server (checked and judged as for real, then not sent), and a replay never moves his R1. The reply's `tessaya.trace` chunk carries the tool calls, so a case checks the tool, its arguments, its result and whether her words match the result.
+
+```sh
+scripts/tessaya/room-suite.sh <t3 binary of the build> [userdata dir] [--laptop]
+```
+
+- The script starts the build on a scratch copy of what the room needs (the house's address and token, the R1's key without its MQTT login, the brain's key), runs the suite and removes the copy. It exits non-zero on any failure, so a deploy can gate on it.
+- Sentences name devices by slot (`{fan}`, `{fan.flip}` for the opposite of its state), filled from the server's own house through home_find, so it runs on any install. A slot the house has no device for is reported as not applicable.
+- `--laptop` adds the case that asks your real laptop what is on its screen (read-only).
+- Every room tool needs a case in `liveCases.ts` (`proves`): `run.test.ts` fails otherwise.

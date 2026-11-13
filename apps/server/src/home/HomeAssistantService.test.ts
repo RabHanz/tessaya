@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
@@ -69,11 +70,21 @@ const makeHouse = () => {
         case "auth/current_user":
           return Effect.succeed({ is_admin: true });
         case "config/area_registry/list":
-          return Effect.succeed([{ area_id: "study", name: "Study" }]);
+          return Effect.succeed([
+            { area_id: "study", name: "Study" },
+            { area_id: "office", name: "Office" },
+            { area_id: "bedroom", name: "Bedroom" },
+          ]);
         case "config/device_registry/list":
           return Effect.succeed([]);
         case "config/entity_registry/list":
-          return Effect.succeed([{ entity_id: "light.study", area_id: "study" }]);
+          return Effect.succeed([
+            { entity_id: "light.study", area_id: "study" },
+            // HA knows it, but its integration has given it no state: off the network.
+            { entity_id: "fan.office_fan", area_id: "office", name: "Office Fan" },
+            { entity_id: "light.desk_lamp", area_id: "office" },
+            { entity_id: "light.bedside_lamp", area_id: "bedroom" },
+          ]);
         case "validate_config": {
           const empty = Array.isArray(m["triggers"]) && m["triggers"].length === 0;
           return Effect.succeed({
@@ -99,6 +110,7 @@ const makeHouse = () => {
               a: { entity_id: [...snap.keys()] },
             });
           }
+          if (name === "scene.delete") for (const e of ids(m["target"])) remove(e);
           if (name === "scene.turn_on")
             for (const [e, v] of scenes.get(ids(m["target"])[0]!) ?? []) put(e, structuredClone(v));
           if (name === "fan.turn_on")
@@ -246,6 +258,16 @@ it.effect("finds by words and room, toggles a light, and undoes it from the snap
     const undone = yield* home.undo(done.undoId!, assistant);
     assert.strictEqual(undone.status, "undone");
     assert.strictEqual(house.states.get("light.study")?.s, "on");
+    // Its snapshot goes once used, and any left past its day goes too; a newer one stays (13 Nov: 6 of his 6 scenes).
+    assert.isFalse([...house.states.keys()].some((e) => e.startsWith("scene.tessaya_undo_")));
+    house.put("scene.tessaya_undo_100", { s: "scening", a: { entity_id: [] } });
+    yield* TestClock.adjust("25 hours");
+    house.put(`scene.tessaya_undo_${(25 * 3_600_000).toString(36)}00`, { s: "scening", a: {} });
+    yield* home.tick;
+    assert.deepStrictEqual(
+      [...house.states.keys()].filter((e) => e.startsWith("scene.")),
+      [`scene.tessaya_undo_${(25 * 3_600_000).toString(36)}00`],
+    );
     // 12 Nov: the R1 turned off "light.lamp" (no such entity), HA said ok, and she said it was off.
     const calls = house.calls.length;
     const ghost = yield* home
@@ -468,6 +490,95 @@ it.effect(
       );
       assert.strictEqual(flipped.status, "done");
       assert.include(house.calls, "script.toggle");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "tells offline from missing, never flips blind, checks the device after acting, and names two Lamps by room (13 Nov)",
+  () => {
+    const { house, layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      // 07:19: his office fan was offline, dropped out of search, and was called missing.
+      const fan = (yield* home.find({ text: "office fan" })).find(
+        (e) => e.entityId === "fan.office_fan",
+      );
+      assert.strictEqual(fan?.state, "unavailable");
+      const calls = house.calls.length;
+      const away = yield* home
+        .call(
+          { domain: "fan", service: "turn_on", target: { entity_id: "fan.office_fan" }, why: "x" },
+          assistant,
+        )
+        .pipe(Effect.flip);
+      assert.include(away.why, "Office Fan is offline");
+      // A toggle flips an on fan off; the state is known, so it is refused with it.
+      const flip = yield* home
+        .call(
+          { domain: "fan", service: "toggle", target: { entity_id: "fan.fan" }, why: "on please" },
+          assistant,
+        )
+        .pipe(Effect.flip);
+      assert.include(flip.why, "Fan is on");
+      assert.strictEqual(house.calls.length, calls);
+
+      // 07:39: HA took turn_on, the fan stayed off, and she said done. Sent once more, then said as it is.
+      house.put("light.stuck", { s: "off", a: { friendly_name: "Stuck light" } });
+      const stuck = yield* home
+        .call(
+          { domain: "light", service: "turn_on", target: { entity_id: "light.stuck" }, why: "x" },
+          assistant,
+        )
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("7 seconds");
+      const told = yield* Fiber.join(stuck);
+      assert.strictEqual(told.status, "failed");
+      assert.include(told.line, "Stuck light is still off");
+      assert.strictEqual(house.calls.filter((c) => c === "light.turn_on").length, 2);
+
+      house.put("light.desk_lamp", { s: "off", a: { friendly_name: "Lamp" } });
+      house.put("light.bedside_lamp", { s: "on", a: { friendly_name: "Lamp" } });
+      const lamps = yield* home.find({ text: "lamp" });
+      assert.deepStrictEqual(lamps.map((e) => e.name).toSorted(), [
+        "Lamp (Bedroom)",
+        "Lamp (Office)",
+      ]);
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "a dry run is checked and judged as for real, and changes, sends and keeps nothing",
+  () => {
+    const { house, layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const inbox = yield* BatonPhoneInbox;
+      const dry: HomeAssistantService.HomeActor = { who: "Tessaya", surface: "r1", dryRun: true };
+      const on = yield* home.call(
+        { domain: "fan", service: "turn_off", target: { entity_id: "fan.fan" }, why: "x" },
+        dry,
+      );
+      assert.strictEqual(on.status, "done");
+      assert.include(on.line, "Done: fan.turn_off");
+      const unlock = yield* home.call(
+        { domain: "lock", service: "unlock", target: { entity_id: "lock.front" }, why: "x" },
+        dry,
+      );
+      assert.strictEqual(unlock.status, "asked");
+      // 13 Nov: a replay's made-up entity came back "done"; checked for real, it is refused.
+      const ghost = yield* home
+        .call(
+          { domain: "fan", service: "turn_on", target: { entity_id: "fan.ghost" }, why: "x" },
+          dry,
+        )
+        .pipe(Effect.flip);
+      assert.include(ghost.why, "no fan.ghost");
+      assert.deepStrictEqual(house.calls, []);
+      assert.strictEqual(house.states.get("fan.fan")?.s, "on");
+      assert.deepStrictEqual(yield* inbox.pending, []);
+      assert.deepStrictEqual(yield* home.actions(10), []);
     }).pipe(Effect.provide(layer));
   },
 );

@@ -25,11 +25,7 @@ import {
 } from "@t3tools/baton-shared/assistantPrompt";
 import { recordText } from "@t3tools/baton-shared/audit";
 import { isNarration } from "@t3tools/baton-shared/narration";
-import {
-  privatePersonOf,
-  type PrivateTurn,
-  type SpeakerLike,
-} from "@t3tools/baton-shared/privateMemory";
+import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import {
   DEFAULT_OS_PACK,
   rosterLine,
@@ -51,11 +47,11 @@ import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { BatonOneShot } from "../baton/BatonOneShot.ts";
-import { BatonMemoryService, MemoryViewer } from "../baton/BatonMemoryService.ts";
-import { BatonPrivateMemoryService, PrivateCaller } from "../baton/BatonPrivateMemoryService.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
+import { MemoryViewer } from "../baton/BatonMemoryService.ts";
 import { readPack } from "../baton/OperatingSystemPack.ts";
+import { TessayaTurn, TurnOrigin, originOf, type TurnEnvelope } from "../baton/TessayaTurn.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
@@ -233,13 +229,14 @@ export const houseTime = (ms: number, timeZone: string) =>
 
 export interface R1Context {
   readonly heard: string;
-  /** The private-memory block, only on a turn whose voice was verified as his (`roomPrivate`). */
+  /** The speaker's private-memory block when the pipeline's gate allows it (`TessayaTurn.begin`); else "". */
   readonly privateBlock: string;
   readonly history: ReadonlyArray<{ readonly role: string; readonly content: string }>;
   readonly devices: unknown;
   readonly lastAction: unknown;
   readonly automations: unknown;
-  readonly memories: ReadonlyArray<string>;
+  /** The memory block every vessel gets for these words and this persona (`TessayaTurn.begin`). */
+  readonly memory: string;
   readonly voice: unknown;
   readonly now: string;
   readonly persona: Persona | null;
@@ -357,7 +354,7 @@ export const r1Data = (input: R1Context) => [
   `Devices that may match: ${quoted(input.devices)}`,
   `Last action: ${quoted(input.lastAction)}`,
   ...(input.automations === null ? [] : [`Tessaya's automations: ${quoted(input.automations)}`]),
-  ...(input.memories.length === 0 ? [] : [`What you remember: ${quoted(input.memories)}`]),
+  ...(input.memory === "" ? [] : [`What you remember: ${quoted(input.memory)}`]),
   ...(input.voice === undefined
     ? []
     : [
@@ -374,7 +371,7 @@ export const r1Data = (input: R1Context) => [
 export const ROOM_SYSTEM = [
   `${SELF}. this turn reaches you through a speaker in a room of his home: you are heard, not read, so answer in one or two short spoken sentences, plain words, no lists or markdown.`,
   NAMES,
-  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state, so "is the lamp on?" is answered from home_state, never from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
+  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state, so "is the lamp on?" is answered from home_state, never from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search (when he asks what you remember and the memory lines you were given do not answer it, search before saying you don't know). tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
   `${TOOL_FAILED}. ${NEVER_MISSING}`,
   ANSWER_ONLY,
   LIKE_A_PERSON,
@@ -396,7 +393,11 @@ export const roomData = (input: R1Context) =>
     ...(input.lastAction === null
       ? []
       : [`The last thing done in the house: ${quoted(input.lastAction)}`]),
-    ...(input.memories.length === 0 ? [] : [`What you remember: ${quoted(input.memories)}`]),
+    ...(input.memory === ""
+      ? []
+      : [
+          `What you remember (only the closest few; tessaya_memory_search finds anything not here): ${quoted(input.memory)}`,
+        ]),
     ...(input.privateBlock === "" ? [] : [input.privateBlock]),
     ...(input.voice === undefined
       ? []
@@ -407,7 +408,20 @@ export const roomData = (input: R1Context) =>
     `He just said: ${quoted(input.heard)}`,
   ].join("\n");
 
-const withAgent = (agent: string | undefined) => (agent === undefined ? {} : { agent });
+/** The loop's word on whether this was said to her (§2.0's envelope); absent until the loop sends it. */
+const addressedOf = (voice: unknown): boolean | undefined =>
+  typeof voice === "object" &&
+  voice !== null &&
+  "addressed" in voice &&
+  typeof voice.addressed === "boolean"
+    ? voice.addressed
+    : undefined;
+
+/** The exchange before this one, so "yes, from now on" has a referent when it is learned from. */
+const previousOf = (history: R1Heard["history"]): string | null => {
+  const last = history.slice(-2).map((t) => `${t.role}: ${t.content}`);
+  return last.length === 0 ? null : last.join("\n");
+};
 
 const speakerOf = (voice: unknown): SpeakerLike | null => {
   const s =
@@ -416,30 +430,6 @@ const speakerOf = (voice: unknown): SpeakerLike | null => {
     ? (s as SpeakerLike)
     : null;
 };
-
-/** The room's own caller to the private stores: it reads only a store opened for this session. */
-const ROOM_PRIVATE = { session: "r1-room", desktop: true } as const;
-
-/**
- * His private memories, only when this turn's own voice was verified as his (`privatePersonOf`, as the desktop
- * gates it); anyone else in the room, an inherited verdict or an unverified voice never reads them.
- * shortcut: nothing opens a store for the room's session yet, so this reads nothing until an R1 unlock exists.
- */
-export const roomPrivate = Effect.fn("R1Device.private")(function* (voice: unknown, heard: string) {
-  const turn: PrivateTurn = {
-    route: "assistant",
-    typed: false,
-    tainted: false,
-    speaker: speakerOf(voice),
-  };
-  if ("refused" in privatePersonOf(turn)) return "";
-  const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
-  if (Option.isNone(stores)) return "";
-  const recalled = yield* stores.value
-    .recall({ turn, text: heard })
-    .pipe(Effect.provideService(PrivateCaller, ROOM_PRIVATE), Effect.option);
-  return Option.isSome(recalled) ? recalled.value.block : "";
-});
 
 const r1Prompt = (input: R1Context) =>
   [...R1_RULES, ...r1Data(input), "Return JSON: {say, acts}."].join("\n");
@@ -527,23 +517,30 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
     ? DEFAULT_OS_PACK
     : readPack(NodePath.dirname(config.value.dbPath));
   const persona = calledPersona(pack, input.voice);
-  const memory = yield* Effect.serviceOption(BatonMemoryService);
-  const memories =
-    memory._tag === "None"
-      ? []
-      : (yield* memory.value
-          .search({
-            text: input.heard,
-            limit: 3,
-            ...withAgent(persona?.id ?? pack.personas.find((p) => p.lead)?.id),
-          })
-          // Tessaya's own surface, so the persona's walls hold as on the desktop; never his own view.
-          .pipe(Effect.provideService(MemoryViewer, "desktop"))).map((h) =>
-          recordText(h.item.text, 200),
-        );
+  const timeZone = yield* home.timeZone;
+  // One pipeline for every vessel: this device is a thin adapter over TessayaTurn (MEMORY-V2-DESIGN.md §2.0).
+  const turn: TurnEnvelope = {
+    vessel: { kind: "device", id: input.device ?? "room" },
+    origin: "R1",
+    text: input.heard,
+    persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
+    speaker: speakerOf(input.voice),
+    addressed: addressedOf(input.voice),
+    timeZone,
+    // Each turn is a fresh call, with no session holding standing memory.
+    sessionless: true,
+    rehearsal: isReplay(input),
+  };
+  const pipeline = yield* Effect.serviceOption(TessayaTurn);
+  const begun = Option.isNone(pipeline)
+    ? { block: "", ids: [], privateBlock: "" }
+    : yield* pipeline.value
+        .begin(turn)
+        // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
+        .pipe(Effect.provideService(MemoryViewer, "desktop"));
   const context: R1Context = {
     heard: input.heard,
-    privateBlock: withHouse ? "" : yield* roomPrivate(input.voice, input.heard),
+    privateBlock: withHouse ? "" : begun.privateBlock,
     history: withoutSelfIntros(
       input.history,
       pack.personas.map((p) => p.name),
@@ -551,14 +548,14 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
     devices: status.state === "connected" ? devices : `Home is ${status.state}: ${status.line}`,
     lastAction,
     automations,
-    memories,
+    memory: begun.block,
     voice: input.voice,
     persona,
     switched: switchedPersona(input.voice),
     roster: rosterLine(pack.personas, persona?.id ?? ""),
-    now: houseTime(yield* Clock.currentTimeMillis, yield* home.timeZone),
+    now: houseTime(yield* Clock.currentTimeMillis, timeZone),
   };
-  return { device, context };
+  return { device, context, turn };
 });
 
 export const runActs = Effect.fn("R1Device.runActs")(function* (
@@ -587,7 +584,14 @@ const r1Finish = Effect.fn("R1Device.finish")(function* (
   input: R1Heard,
   said: string,
   outcomes: ReadonlyArray<ActOutcome>,
+  turn: TurnEnvelope,
 ) {
+  // Learning waits on a model call, so the turn never waits for it.
+  const pipeline = yield* Effect.serviceOption(TessayaTurn);
+  if (Option.isSome(pipeline))
+    yield* pipeline.value
+      .end(turn, { reply: said, previous: previousOf(input.history) })
+      .pipe(Effect.ignore, Effect.forkDetach);
   const mood: R1Mood = outcomes.some((o) => o.status === "asked")
     ? "curious"
     : outcomes.some((o) => !o.ok || o.status === "failed")
@@ -607,7 +611,7 @@ const r1Finish = Effect.fn("R1Device.finish")(function* (
 
 /** One turn, whatever carried his words: the Agora bridge, or the room voice loop. */
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
-  const { device, context } = yield* r1Gather(input);
+  const { device, context, turn } = yield* r1Gather(input);
   const oneShot = yield* BatonOneShot;
   const plan = yield* oneShot
     .run({ prompt: r1Prompt(context), outputSchema: R1Plan, model: MODEL })
@@ -619,7 +623,7 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   }
   const outcomes = yield* runActs(plan.value.acts);
   const said = spokenReply(withoutNarration(plan.value.say), outcomes);
-  yield* r1Finish(device, input, said, outcomes);
+  yield* r1Finish(device, input, said, outcomes, turn);
   return said;
 });
 
@@ -696,6 +700,15 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
 
 type RoomRunner = RoomToolSet;
 
+/** One tool call of a turn, as the tool suite reads it back (a replay's `trace`). */
+export interface RoomCall {
+  readonly name: string;
+  readonly input: unknown;
+  readonly isError: boolean;
+  readonly status?: string;
+  readonly text: string;
+}
+
 /**
  * The key route's turn: the one assistant with the room's tools. Null when it did not answer before a word was said,
  * so the caller can fall back; once she has spoken, a failure ends the turn with an apology.
@@ -705,9 +718,10 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   brain: R1Brain["Service"],
   tools: RoomRunner,
   say: (words: string) => void,
+  calls?: Array<RoomCall>,
 ) {
   const startedAt = yield* Clock.currentTimeMillis;
-  const { device, context } = yield* r1Gather(input, false);
+  const { device, context, turn } = yield* r1Gather(input, false);
   yield* Effect.logInfo("R1 turn timing", {
     route: "tools",
     gatherMs: (yield* Clock.currentTimeMillis) - startedAt,
@@ -728,11 +742,20 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
           ? roomLook(device, input.voice)
           : tools.run(name, args, input.device)
         ).pipe(
+          // Every tool the turn calls knows which vessel heard it.
+          Effect.provideService(TurnOrigin, originOf(turn)),
           Effect.catchCause(() =>
             Effect.succeed<ToolOutcome>({ text: "it did not work", isError: true }),
           ),
           Effect.tap((o: ToolOutcome) =>
             Effect.sync(() => {
+              calls?.push({
+                name,
+                input: args,
+                isError: o.isError,
+                ...(o.status === undefined ? {} : { status: o.status }),
+                text: o.text.slice(0, 4000),
+              });
               if (o.status !== undefined)
                 outcomes.push({ ok: !o.isError, status: o.status, line: o.text });
             }),
@@ -750,12 +773,17 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
     said += sorry;
     say(sorry);
   }
-  yield* r1Finish(device, input, said.trim(), outcomes);
+  yield* r1Finish(device, input, said.trim(), outcomes, turn);
   return said;
 });
 
 /** @public The barge-in test drives it. */
-export const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"], tools: RoomRunner | null) =>
+export const r1TurnStream = (
+  input: R1Heard,
+  brain: R1Brain["Service"],
+  tools: RoomRunner | null,
+  calls?: Array<RoomCall>,
+) =>
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
       let offered = false;
@@ -770,7 +798,7 @@ export const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"], tools: R
       );
       const way = yield* brain.route;
       if (way !== "subscription" && tools !== null) {
-        const done = yield* r1ToolTurn(input, brain, tools, say).pipe(
+        const done = yield* r1ToolTurn(input, brain, tools, say, calls).pipe(
           Effect.orElseSucceed(() => null),
         );
         if (done !== null) return yield* Queue.end(queue);
@@ -786,7 +814,7 @@ export const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"], tools: R
       }
       // The subscription, or the key's fallback: the acts form, no tools.
       const startedAt = yield* Clock.currentTimeMillis;
-      const { device, context } = yield* r1Gather(input);
+      const { device, context, turn } = yield* r1Gather(input);
       const gatheredAt = yield* Clock.currentTimeMillis;
       let firstAt: number | null = null;
       let text = "";
@@ -825,7 +853,7 @@ export const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"], tools: R
       const outcomes = yield* runActs(final.acts);
       const said = spokenReply(withoutNarration(final.rest), outcomes);
       if (final.acts.length > 0) say(said);
-      yield* r1Finish(device, input, said, outcomes);
+      yield* r1Finish(device, input, said, outcomes, turn);
       yield* Queue.end(queue);
     }),
   );
@@ -839,6 +867,8 @@ const ChatBody = Schema.Struct({
   /** From an in-house voice pipeline: who seems to be speaking and how they sound. Shown to the model as data. */
   tessaya: Schema.optional(Schema.Unknown),
   device: Schema.optional(Schema.String),
+  /** A replay's (the tool suite's): its tool calls come back after the reply, as a `tessaya.trace` chunk. */
+  trace: Schema.optional(Schema.Boolean),
 });
 const decodeChat = Schema.decodeUnknownOption(Schema.fromJsonString(ChatBody));
 const textOf = (content: unknown): string =>
@@ -919,6 +949,10 @@ export const routes = HttpRouter.use((router) =>
       const model = body.value.model ?? "tessaya-r1";
       const created = Math.floor((yield* Clock.currentTimeMillis) / 1000);
       const brain = Context.getOption(context, R1Brain);
+      const calls =
+        body.value.trace === true && body.value.device?.startsWith("replay-") === true
+          ? new Array<RoomCall>()
+          : undefined;
       if (Option.isSome(brain) && body.value.stream !== false)
         return HttpServerResponse.stream(
           r1TurnStream(
@@ -930,9 +964,17 @@ export const routes = HttpRouter.use((router) =>
             },
             brain.value,
             tools,
+            calls,
           ).pipe(
             Stream.provideContext(context),
             Stream.map((words) => sseChunk(id, model, created, words)),
+            Stream.concat(
+              Stream.suspend(() =>
+                calls === undefined
+                  ? Stream.empty
+                  : Stream.make(`data: ${JSON.stringify({ object: "tessaya.trace", calls })}\n\n`),
+              ),
+            ),
             Stream.concat(Stream.make(`${sseChunk(id, model, created, null)}data: [DONE]\n\n`)),
             Stream.encodeText,
           ),

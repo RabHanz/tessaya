@@ -38,6 +38,7 @@ import * as BatonCloudService from "./BatonCloudService.ts";
 import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
 import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as R1Brain from "../home/R1Brain.ts";
+import * as TessayaTurn from "./TessayaTurn.ts";
 import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
 import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
@@ -122,6 +123,8 @@ const servicesInner = IntentService.layer.pipe(
   Layer.provideMerge(OrchestrationReactor.layer),
   Layer.provideMerge(OrchestrationEffects.layer),
   Layer.provideMerge(OrchestrationRuleService.layer),
+  // One turn pipeline for every vessel; it reads the memory, learning and private stores provided below it.
+  Layer.provideMerge(TessayaTurn.layer),
   Layer.provideMerge(
     Layer.mergeAll(
       // One work-session service for the whole server, so a mutation arriving on one client's

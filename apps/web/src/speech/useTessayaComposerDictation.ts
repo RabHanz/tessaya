@@ -33,34 +33,66 @@ const ACTIVE = new Set<VoiceInputState["phase"]>([
   "post-processing",
 ]);
 
-/** The chat boxes on this page that can take the desktop's dictation; the one with the keyboard claims it. */
+/** The chat boxes on this page that can take the desktop's dictation; `target` claims it. */
 interface Composer {
   readonly take: (message: ComposerDictationMessage) => boolean | null;
-  /** Its form, while it can take a dictation (not disabled). */
   readonly root: () => HTMLElement | null;
+  /** Not disabled: it can take a dictation. */
+  readonly ready: () => boolean;
 }
 const composers = new Set<Composer>();
+/**
+ * The chat box a dictation starts in: the one he last focused or clicked (its microphone keeps the keyboard where it
+ * was), or the one in the pane he last clicked. Another text field taking the keyboard clears it, so the desktop pastes.
+ */
+let target: Composer | null = null;
 let unsubscribeBridge: (() => void) | null = null;
 let reportedFocus: boolean | null = null;
 
-/** Tells the desktop whether a chat box here has the keyboard, so it can claim a dictation before any pill shows. */
-const reportFocus = (focused: Element | null) => {
-  const now = focused !== null && [...composers].some((c) => c.root()?.contains(focused) === true);
+const holding = (node: Node | null) =>
+  node === null ? null : ([...composers].find((c) => c.root()?.contains(node) === true) ?? null);
+/** The only chat box inside the closest ancestor of `node` that holds any; null on a tie (outside every pane). */
+const nearest = (node: Node | null): Composer | null => {
+  for (let at = node; at !== null; at = at.parentNode) {
+    const box = at;
+    const inside = [...composers].filter((c) => {
+      const root = c.root();
+      return root !== null && box.contains(root);
+    });
+    if (inside.length > 0) return inside.length === 1 ? (inside[0] ?? null) : null;
+  }
+  return null;
+};
+const TEXT_FIELD =
+  "textarea, [contenteditable]:not([contenteditable='false']), input:not([type=button], [type=submit], [type=checkbox], [type=radio], [type=range])";
+
+/** Tells the desktop whether a chat box here takes the next dictation, so it can claim it before any pill shows. */
+const reportFocus = () => {
+  const now = target?.ready() === true;
   if (now === reportedFocus) return;
   reportedFocus = now;
   batonDesktopBridge()?.setComposerFocus?.(now);
 };
-// On focusout the element taking the keyboard is the event's relatedTarget; activeElement is not updated yet.
-const onFocusIn = (event: FocusEvent) => reportFocus(event.target as Element | null);
-const onFocusOut = (event: FocusEvent) => reportFocus(event.relatedTarget as Element | null);
+const onPointerDown = (event: PointerEvent) => {
+  target = nearest(event.target as Node | null) ?? target;
+  reportFocus();
+};
+const onFocusIn = (event: FocusEvent) => {
+  const element = event.target as Element | null;
+  const composer = holding(element);
+  if (composer !== null) target = composer;
+  else if (element?.matches(TEXT_FIELD) === true) target = null;
+  reportFocus();
+};
 
 const listen = (composer: Composer) => {
   composers.add(composer);
   const bridge = batonDesktopBridge();
   if (unsubscribeBridge === null && bridge?.onComposerDictation !== undefined) {
     const off = bridge.onComposerDictation((message) => {
-      // The first composer that answers owns this dictation; the rest ignore its id.
-      for (const { take } of composers) {
+      // A start goes to the target alone; after that its id routes every message, wherever focus went since.
+      const asked = message.type === "start" ? (target === null ? [] : [target]) : composers;
+      for (const { take } of asked) {
         const ok = take(message);
         if (ok === null) continue;
         if (message.type === "start") return { type: "claimed", id: message.id, ok };
@@ -71,21 +103,25 @@ const listen = (composer: Composer) => {
         ? { type: message.type === "start" ? "claimed" : "took", id: message.id, ok: false }
         : null;
     });
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("focusout", onFocusOut);
     unsubscribeBridge = () => {
       off();
+      document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("focusout", onFocusOut);
     };
   }
-  reportFocus(document.activeElement);
+  // A chat box that took the keyboard as it mounted did so before this listened.
+  target ??= holding(document.activeElement);
+  reportFocus();
   return () => {
     composers.delete(composer);
-    reportFocus(document.activeElement);
+    if (target === composer) target = holding(document.activeElement);
+    reportFocus();
     if (composers.size === 0) {
       unsubscribeBridge?.();
       unsubscribeBridge = null;
+      target = null;
       reportedFocus = null;
     }
   };
@@ -187,15 +223,15 @@ export function useTessayaComposerDictation(input: {
     return () => clearTimeout(timer);
   }, [state.phase, heard, paused, step]);
 
-  // Tessaya's dictation on the desktop: the composer with the keyboard claims it and takes its words.
+  // Tessaya's dictation on the desktop: the target composer (`listen`) claims it and takes its words.
   const onDesktop = useStableCallback((message: ComposerDictationMessage): boolean | null => {
     if (message.type === "start") {
-      const root = input.rootRef.current;
       const mine =
         !input.disabled &&
-        root !== null &&
-        root.contains(document.activeElement) &&
-        latest.current.phase === "idle" &&
+        input.rootRef.current !== null &&
+        // A press right after the last one lands here too, cutting its settle or fade short.
+        latest.current.phase !== "listening" &&
+        latest.current.phase !== "working" &&
         !ACTIVE.has(input.speech.state.phase);
       if (!mine) return null;
       desktopId.current = message.id;
@@ -228,9 +264,10 @@ export function useTessayaComposerDictation(input: {
     }
     return true;
   });
-  const root = useStableCallback(() => (input.disabled ? null : input.rootRef.current));
+  const root = useStableCallback(() => input.rootRef.current);
+  const ready = useStableCallback(() => !input.disabled);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes this composer to the desktop's dictation channel and focus reports
-  useEffect(() => listen({ take: onDesktop, root }), [onDesktop, root]);
+  useEffect(() => listen({ take: onDesktop, root, ready }), [onDesktop, root, ready]);
 
   const confirm = useStableCallback(() => {
     const id = desktopId.current;

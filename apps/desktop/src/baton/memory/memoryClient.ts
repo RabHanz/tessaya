@@ -4,6 +4,7 @@
  * plain notes folder (D146) when it does not, so "remember that" never silently does nothing. The
  * server owns the rules (what is never kept, decay, conflicts); this only asks and phrases.
  */
+import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import {
   MEMORY_TEXT_MAX,
   detectSecret,
@@ -177,11 +178,24 @@ export const createDesktopMemory = (input: {
       tainted: boolean,
       project: string | null = null,
       previous = "",
+      /** Who spoke by voice; null for a typed turn in his window, which is his. */
+      speaker: SpeakerLike | null = null,
     ): void => {
       void ask("learn", {
         said,
         reply,
         tainted,
+        // The desktop answers only what was said to her (core.ts drops the rest).
+        addressed: true,
+        speaker:
+          speaker === null
+            ? null
+            : {
+                kind: speaker.kind,
+                personId: speaker.personId,
+                verified: speaker.verified,
+                inherited: speaker.inherited,
+              },
         timeZone: timeZone(),
         ...agent(),
         ...(project === null ? {} : { project }),

@@ -1,0 +1,22 @@
+The desktop and web T3 Connect sign-in retries a failed Clerk load (renderer reload with backoff, at most three) instead of waiting forever.
+
+diff --git a/apps/web/src/cloud/managedAuth.tsx b/apps/web/src/cloud/managedAuth.tsx
+index 59bc69f7640d2a61db4a02ade09c48baca2c827a..4cda2bc2740eb912b11473a78339d59e597f7bb4 100644
+--- a/apps/web/src/cloud/managedAuth.tsx
++++ b/apps/web/src/cloud/managedAuth.tsx
+@@ -13,6 +13,7 @@ import * as Effect from "effect/Effect";
+ import { useEffect, type ReactNode } from "react";
+ 
+ import { environmentCatalog } from "../connection/catalog";
++import { recoverFailedClerkLoad } from "./clerkLoadRecovery";
+ import { runtime } from "../lib/runtime";
+ import { appAtomRegistry } from "../rpc/atomRegistry";
+ import { resolveRelayClerkTokenOptions } from "./publicConfig";
+@@ -67,5 +68,7 @@ export function ManagedRelayAuthProvider({ children }: { readonly children: Reac
+   const clerk = useClerk();
+   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- attaches the Clerk instance to the managed relay account service for the provider's lifetime
+   useEffect(() => managedRelayAccountService.attach(clerk), [clerk]);
++  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- watches the Clerk instance's load status, which lives outside React
++  useEffect(() => recoverFailedClerkLoad(clerk), [clerk]);
+   return children;
+ }

@@ -16,6 +16,12 @@ const isJsonStringSchema = (value: Json) =>
   value.type === "string" &&
   value.contentMediaType === "application/json";
 
+// `Schema.Number`'s non-finite branch. Advertised, it invites a number sent as a string ("1", 13 Nov).
+const isNonFiniteSchema = (value: Json) =>
+  Predicate.isObject(value) &&
+  value.type === "string" &&
+  JSON.stringify(value.enum) === JSON.stringify(["Infinity", "-Infinity", "NaN"]);
+
 const SAFE_INTEGER_BOUNDS: Record<string, number> = {
   maximum: Number.MAX_SAFE_INTEGER,
   minimum: Number.MIN_SAFE_INTEGER,
@@ -88,7 +94,12 @@ const compact = (schema: Json, optional: boolean): Json => {
   if (Array.isArray(result.anyOf)) {
     const branches = result.anyOf
       .flatMap((branch) => (isBareAnyOf(branch) ? branch.anyOf : [branch]))
-      .filter((branch) => !(optional && isNullSchema(branch)) && !isJsonStringSchema(branch));
+      .filter(
+        (branch) =>
+          !(optional && isNullSchema(branch)) &&
+          !isJsonStringSchema(branch) &&
+          !isNonFiniteSchema(branch),
+      );
     const { anyOf: _anyOf, ...rest } = result;
     const only = branches.length === 1 ? branches[0] : mergeTaggedObjects(branches);
     result = Predicate.isObject(only) ? { ...only, ...rest } : { ...rest, anyOf: branches };
@@ -98,7 +109,7 @@ const compact = (schema: Json, optional: boolean): Json => {
 
 /**
  * The input schema T3 advertises for a tool. Drops JSON noise that every thread pays for:
- * `additionalProperties: true`, safe-integer bounds, nested `anyOf`, JSON-string fallbacks, and
+ * `additionalProperties: true`, safe-integer bounds, nested `anyOf`, JSON-string and non-finite fallbacks, and
  * the `null` branch of optional properties. A tagged union of objects becomes one object.
  * Decoding still uses the full schema, so each tag's own required fields still apply.
  */

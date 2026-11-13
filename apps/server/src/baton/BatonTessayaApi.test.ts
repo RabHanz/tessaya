@@ -81,6 +81,7 @@ const make = (connected = true) => {
         id,
         text: text.trim(),
         source: "phone",
+        origin: "phone",
         status: "queued",
         createdAt: 0,
         expiresAt: 1,

@@ -1,3 +1,5 @@
+import type { PointerOverlay } from "./pointerOverlay.ts";
+
 /**
  * Turns never overlap a paired device's. His turn stops a device turn that is running and then goes ahead; a device
  * turn waits until he is done and runs after the device turns before it. His own turns may still overlap each other.
@@ -79,13 +81,30 @@ export const createTurnLock = () => {
 export const labelPrompt = <B extends { readonly detail: string }>(
   box: B,
   spoken: string,
-  from: { readonly device: boolean; readonly phone: boolean },
+  from: { readonly device: boolean; readonly phone: boolean; readonly origin?: string | null },
 ): { readonly box: B; readonly spoken: string } =>
   from.device
     ? {
-        box: { ...box, detail: `${box.detail}\n\n(A paired device asked this, not you.)` },
-        spoken: `A paired device asks. ${spoken}`,
+        box: {
+          ...box,
+          detail: `${box.detail}\n\n(${from.origin == null ? "A paired device asked this" : `Requested from ${from.origin}`}, not you.)`,
+        },
+        spoken: `${from.origin == null ? "A paired device asks" : `Requested from ${from.origin}`}. ${spoken}`,
       }
     : from.phone
       ? { box: { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` }, spoken }
       : { box, spoken };
+
+/**
+ * The overlay while a request from another device runs (his R1 through a link, his phone): it answers on that device
+ * only, so nothing is drawn, moved or cleared here (13 Nov: the R1's laptop ask showed on the laptop).
+ */
+export const headless = (drawn: PointerOverlay, elsewhere: () => boolean): PointerOverlay => ({
+  ...drawn,
+  point: (to, label) => (elsewhere() ? Promise.resolve(false) : drawn.point(to, label)),
+  bubble: (text) => (elsewhere() ? Promise.resolve() : drawn.bubble(text)),
+  card: (card) => (elsewhere() ? Promise.resolve() : drawn.card(card)),
+  glide: (to, label) => (elsewhere() ? Promise.resolve(0) : drawn.glide(to, label)),
+  clear: () => (elsewhere() ? Promise.resolve() : drawn.clear()),
+  retreat: () => (elsewhere() ? Promise.resolve() : drawn.retreat()),
+});

@@ -170,10 +170,10 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..229cfdb89f950785400b81f12abd0959
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..ee494f15b7914758ee7c4a94a292c89d27618e03 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..45cc20c552efea072866b3f933558883eb406e2c 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,11 @@
+@@ -10,8 +10,12 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -182,7 +182,8 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..ee494f15b7914758ee7c4a94a292c89d
      "typecheck": "effect-tsgo tsrs --noEmit",
 -    "test": "vp test run --config ../vite.config.ts --dir ."
 +    "test": "vp test run --config ../vite.config.ts --dir .",
-+    "tessaya-room": "node tessaya-room/run.ts"
++    "tessaya-room": "node tessaya-room/run.ts",
++    "tessaya-room:live": "node tessaya-room/live.ts"
    },
    "dependencies": {
      "@effect/platform-node": "catalog:",

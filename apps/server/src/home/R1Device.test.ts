@@ -12,7 +12,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { BatonPrivateMemoryService } from "../baton/BatonPrivateMemoryService.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
@@ -29,7 +28,6 @@ import {
   r1TurnStream,
   roomData,
   roomLook,
-  roomPrivate,
   runActs,
   speakableSentences,
   splitActs,
@@ -143,7 +141,7 @@ describe('who answers in the room (13 Nov audit: every reply opened with "Sebast
       devices: [],
       lastAction: null,
       automations: null,
-      memories: [],
+      memory: "",
       voice: undefined,
       now: "now",
       persona: calledPersona(DEFAULT_OS_PACK, { persona: "research" }),
@@ -291,7 +289,12 @@ describe("asking his laptop", () => {
     status: "reachable",
   };
   /** A linked laptop whose Tessaya answers `tessaya_ask` with `asked` and its status with `answer`. */
-  const linked = (links: ReadonlyArray<PeerLinkSummary>, asked: object, answer: object) => {
+  const linked = (
+    links: ReadonlyArray<PeerLinkSummary>,
+    asked: object,
+    answer: object,
+    beforeOrigin = false,
+  ) => {
     const calls: Array<string> = [];
     const provide = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
@@ -308,7 +311,11 @@ describe("asking his laptop", () => {
           PeerMcpClient.PeerMcpClient,
           PeerMcpClient.PeerMcpClient.of({
             call: (input) => {
-              calls.push(input.tool);
+              const origin = (input.arguments as { origin?: string }).origin;
+              calls.push(origin === undefined ? input.tool : `${input.tool} from ${origin}`);
+              // A laptop before the origin field refuses an argument it does not list.
+              if (beforeOrigin && origin !== undefined)
+                return Effect.fail({ message: 'Unknown argument "origin".' } as never);
               return Effect.succeed((input.tool === "tessaya_ask" ? asked : answer) as never);
             },
           }),
@@ -328,8 +335,19 @@ describe("asking his laptop", () => {
         { id: "mcp-x-1", status: "answered", line: "VS Code and Chrome are open." },
       );
       const outcomes = yield* fake.provide(runActs(look));
-      expect(fake.calls).toEqual(["tessaya_ask", "tessaya_ask_status"]);
+      // Asked as from his R1, so the laptop's approval names it (13 Nov).
+      expect(fake.calls).toEqual(["tessaya_ask from R1", "tessaya_ask_status"]);
       expect(spokenReply("Let me look.", outcomes)).toBe("VS Code and Chrome are open.");
+      const older = linked(
+        [laptop],
+        { id: "mcp-x-1", status: "queued", line: "Waiting." },
+        { id: "mcp-x-1", status: "answered", line: "VS Code is open." },
+        true,
+      );
+      expect(spokenReply("Let me look.", yield* older.provide(runActs(look)))).toBe(
+        "VS Code is open.",
+      );
+      expect(older.calls).toEqual(["tessaya_ask from R1", "tessaya_ask", "tessaya_ask_status"]);
     }),
   );
 
@@ -355,32 +373,6 @@ describe("asking his laptop", () => {
 const voiceOf = (speaker: Partial<SpeakerLike>) => ({
   speaker: { kind: "owner", personId: "owner", verified: true, inherited: false, ...speaker },
 });
-
-effectIt.effect("reads his private memories only when this turn's voice was verified as his", () =>
-  Effect.gen(function* () {
-    const recalled: Array<unknown> = [];
-    const stores = Layer.mock(BatonPrivateMemoryService)({
-      recall: (input) =>
-        Effect.sync(() => {
-          recalled.push(input.turn.speaker);
-          return { block: "private memories (yours): he prays at dawn", count: 1, whose: "yours" };
-        }),
-    });
-    const read = (voice: unknown) =>
-      roomPrivate(voice, "when do I pray").pipe(Effect.provide(stores));
-    for (const voice of [
-      undefined,
-      voiceOf({ verified: false }),
-      voiceOf({ inherited: true }),
-      voiceOf({ kind: "guest", personId: null }),
-      voiceOf({ kind: "saved", personId: "p1" }),
-    ])
-      expect(yield* read(voice)).toBe("");
-    expect(recalled).toHaveLength(0);
-    expect(yield* read(voiceOf({}))).toContain("he prays at dawn");
-    expect(recalled).toHaveLength(1);
-  }),
-);
 
 effectIt.effect(
   "takes a picture at once for his verified voice, and sends anyone else's to his phone",

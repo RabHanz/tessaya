@@ -312,6 +312,66 @@ index e03e0209f6812a9e3280cd16d3baf31f42fc63b0..e59bc5c99b552b293b48b1e1f4b4b93c
            attachments: [],
            mode,
            ...(input.freshContext ? { freshContext: true } : {}),
+diff --git a/apps/server/src/mcp/advertisedJsonSchema.test.ts b/apps/server/src/mcp/advertisedJsonSchema.test.ts
+index 09a90556a9dd0b47b8712b779c063ab8d20ded97..703a944cc4462d369cd4d101053acb1a3d96738d 100644
+--- a/apps/server/src/mcp/advertisedJsonSchema.test.ts
++++ b/apps/server/src/mcp/advertisedJsonSchema.test.ts
+@@ -11,6 +11,7 @@ it("drops JSON noise, merges tagged unions, and keeps null where it is required"
+       threadId: Schema.optional(Schema.NullOr(Schema.String)),
+       beforeRunId: Schema.NullOr(Schema.String),
+       limit: Schema.optional(Schema.Int),
++      minutes: Schema.optional(Schema.Number),
+       every: Schema.Union([Every, Schema.fromJsonString(Every)]),
+       target: Schema.optional(
+         Schema.NullOr(
+@@ -29,6 +30,7 @@ it("drops JSON noise, merges tagged unions, and keeps null where it is required"
+       threadId: { type: "string" },
+       beforeRunId: { anyOf: [{ type: "string" }, { type: "null" }] },
+       limit: { type: "integer" },
++      minutes: { type: "number" },
+       every: { type: "object", properties: { ms: { type: "integer" } }, required: ["ms"] },
+       target: {
+         type: "object",
+diff --git a/apps/server/src/mcp/advertisedJsonSchema.ts b/apps/server/src/mcp/advertisedJsonSchema.ts
+index 10001307f2d6cedef1468cb0341441b01496b2cf..bee0064e99f92c635dc788f880133e569635caed 100644
+--- a/apps/server/src/mcp/advertisedJsonSchema.ts
++++ b/apps/server/src/mcp/advertisedJsonSchema.ts
+@@ -16,6 +16,12 @@ const isJsonStringSchema = (value: Json) =>
+   value.type === "string" &&
+   value.contentMediaType === "application/json";
+ 
++// `Schema.Number`'s non-finite branch. Advertised, it invites a number sent as a string ("1", 13 Nov).
++const isNonFiniteSchema = (value: Json) =>
++  Predicate.isObject(value) &&
++  value.type === "string" &&
++  JSON.stringify(value.enum) === JSON.stringify(["Infinity", "-Infinity", "NaN"]);
++
+ const SAFE_INTEGER_BOUNDS: Record<string, number> = {
+   maximum: Number.MAX_SAFE_INTEGER,
+   minimum: Number.MIN_SAFE_INTEGER,
+@@ -88,7 +94,12 @@ const compact = (schema: Json, optional: boolean): Json => {
+   if (Array.isArray(result.anyOf)) {
+     const branches = result.anyOf
+       .flatMap((branch) => (isBareAnyOf(branch) ? branch.anyOf : [branch]))
+-      .filter((branch) => !(optional && isNullSchema(branch)) && !isJsonStringSchema(branch));
++      .filter(
++        (branch) =>
++          !(optional && isNullSchema(branch)) &&
++          !isJsonStringSchema(branch) &&
++          !isNonFiniteSchema(branch),
++      );
+     const { anyOf: _anyOf, ...rest } = result;
+     const only = branches.length === 1 ? branches[0] : mergeTaggedObjects(branches);
+     result = Predicate.isObject(only) ? { ...only, ...rest } : { ...rest, anyOf: branches };
+@@ -98,7 +109,7 @@ const compact = (schema: Json, optional: boolean): Json => {
+ 
+ /**
+  * The input schema T3 advertises for a tool. Drops JSON noise that every thread pays for:
+- * `additionalProperties: true`, safe-integer bounds, nested `anyOf`, JSON-string fallbacks, and
++ * `additionalProperties: true`, safe-integer bounds, nested `anyOf`, JSON-string and non-finite fallbacks, and
+  * the `null` branch of optional properties. A tagged union of objects becomes one object.
+  * Decoding still uses the full schema, so each tag's own required fields still apply.
+  */
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 index 1f4ee4a57a6f5acd94befbe312a198870386470c..4cef32a7616a8623b6467468f528f0fff3b483d7 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts

@@ -35,11 +35,15 @@ layer("BatonPhoneInbox", (it) => {
       assert.isTrue((yield* inbox.post({ id: "client-aaaa-0001", text: "something else" })).ok);
       assert.strictEqual((yield* inbox.get("client-aaaa-0001"))?.text, "what needs me");
       // Nobody said whose words these are: a device's, never his.
-      yield* inbox.post({ id: "client-aaaa-0002", text: "second" });
-      assert.strictEqual((yield* inbox.take)?.id, "client-aaaa-0001");
+      yield* inbox.post({ id: "client-aaaa-0002", text: "second", origin: "R1" });
+      const firstTaken = yield* inbox.take;
+      assert.strictEqual(firstTaken?.id, "client-aaaa-0001");
+      assert.strictEqual(firstTaken?.origin, "phone");
       const second = yield* inbox.take;
       assert.strictEqual(second?.id, "client-aaaa-0002");
       assert.strictEqual(second?.source, "device");
+      // The device he said it to travels with it (his R1 asking his laptop, 13 Nov).
+      assert.strictEqual(second?.origin, "R1");
       assert.isNull(yield* inbox.get("web-dddd-0001"));
       // Earlier cases leave asks in the shared queue; taking them counts the desktop as connected.
       while ((yield* inbox.take) !== null);

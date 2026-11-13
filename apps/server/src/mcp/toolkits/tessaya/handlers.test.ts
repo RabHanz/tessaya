@@ -575,3 +575,33 @@ it.effect(
       ]);
     }),
 );
+
+it("reads the Record on the house's clock with each row's age, never bare UTC (13 Nov)", () => {
+  const row = {
+    id: 1,
+    kind: "device",
+    actor: "r1",
+    project: null,
+    ref: null,
+    subject: "heard",
+    outcome: "answered",
+    detail: "",
+  };
+  const now = Date.parse("2026-11-13T03:27:31.262Z");
+  const read = TessayaHandlers.onHouseClock(
+    [
+      { ...row, at: "2026-11-13T03:26:31.262Z" },
+      { ...row, id: 2, at: "2026-11-13T00:12:00.000Z" },
+    ],
+    now,
+    "Asia/Karachi",
+  );
+  expect(read.now).toBe("2026-11-13T08:27:31+05:00");
+  expect(read.entries.map((e) => [e.at, e.ago])).toEqual([
+    ["2026-11-13T08:26:31+05:00", "1 min ago"],
+    ["2026-11-13T05:12:00+05:00", "3 h 15 min ago"],
+  ]);
+  expect(TessayaHandlers.onHouseClock([row as never], now, "UTC").now).toBe(
+    "2026-11-13T03:27:31+00:00",
+  );
+});

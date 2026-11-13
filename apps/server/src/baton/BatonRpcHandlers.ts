@@ -73,6 +73,7 @@ import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
 import { pullAction, searchHistory } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
+import { TessayaTurn, type TurnEnvelope } from "./TessayaTurn.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonCloudService } from "./BatonCloudService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
@@ -81,7 +82,7 @@ import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
 import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
@@ -147,11 +148,16 @@ export type BatonServices =
   | BatonSessionCatalogService
   | BatonSessionsAcross
   | BatonMemoryLearning
+  | TessayaTurn
   | ServerConfig.ServerConfig
   | ScheduledTaskService
   | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry;
+
+/** The vessel a memory call comes from: the desktop app's own session, or another client (a browser, the phone page). */
+const vesselOf = (viewer: "server" | "desktop" | "client"): TurnEnvelope["vessel"] =>
+  viewer === "desktop" ? { kind: "desktop", id: "desktop" } : { kind: "web", id: "client" };
 
 /** Baton's services, or null on a server built without `BatonServerLayer.services`. */
 export const BatonRuntime = Context.Reference<Context.Context<BatonServices> | null>(
@@ -688,7 +694,25 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_MEMORY_WS_METHODS.recall]: (input) =>
-      run(Effect.flatMap(BatonMemoryService, (memory) => memory.recall(input))),
+      run(
+        input.text === undefined
+          ? // Standing memory for a session's first prompt; a sentence goes through the turn pipeline.
+            Effect.flatMap(BatonMemoryService, (memory) => memory.recall(input))
+          : Effect.flatMap(Effect.all([TessayaTurn, MemoryViewer]), ([turn, viewer]) =>
+              Effect.map(
+                turn.begin({
+                  vessel: vesselOf(viewer),
+                  origin: viewer === "desktop" ? "desktop" : "a browser",
+                  text: input.text!,
+                  persona: input.agent,
+                  project: input.scopeRef,
+                  timeZone: input.timeZone,
+                  turnRef: input.turnRef,
+                }),
+                (c) => ({ block: c.block, ids: c.ids }),
+              ),
+            ),
+      ),
     [BATON_MEMORY_WS_METHODS.used]: (input) =>
       run(
         Effect.flatMap(BatonMemoryService, (memory) =>
@@ -697,20 +721,42 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [BATON_MEMORY_WS_METHODS.learn]: (input) =>
       run(
-        Effect.flatMap(BatonMemoryLearning, (learning) =>
-          learning.learn({
-            origin: input.origin ?? "turn",
-            said: input.said,
-            reply: input.reply,
-            sourceRef: input.turnRef ?? null,
-            tainted: input.tainted,
-            project: input.project ?? null,
-            previous: input.previous ?? null,
-            ...(input.agent === undefined ? {} : { agent: input.agent }),
-            ...(input.at === undefined ? {} : { at: input.at }),
-            ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
-          }),
-        ),
+        input.origin === undefined
+          ? // A turn: the same pipeline, and the same rules on what may teach, as every vessel.
+            Effect.flatMap(Effect.all([TessayaTurn, MemoryViewer]), ([turn, viewer]) =>
+              Effect.map(
+                turn.end(
+                  {
+                    vessel: vesselOf(viewer),
+                    origin: viewer === "desktop" ? "desktop" : "a browser",
+                    text: input.said,
+                    persona: input.agent,
+                    project: input.project ?? null,
+                    timeZone: input.timeZone,
+                    turnRef: input.turnRef,
+                    tainted: input.tainted,
+                    addressed: input.addressed,
+                    speaker: input.speaker,
+                  },
+                  { reply: input.reply, previous: input.previous ?? null },
+                ),
+                (learned) => learned ?? { stored: 0, held: 0 },
+              ),
+            )
+          : Effect.flatMap(BatonMemoryLearning, (learning) =>
+              learning.learn({
+                origin: input.origin ?? "turn",
+                said: input.said,
+                reply: input.reply,
+                sourceRef: input.turnRef ?? null,
+                tainted: input.tainted,
+                project: input.project ?? null,
+                previous: input.previous ?? null,
+                ...(input.agent === undefined ? {} : { agent: input.agent }),
+                ...(input.at === undefined ? {} : { at: input.at }),
+                ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+              }),
+            ),
       ),
     [BATON_MEMORY_WS_METHODS.import]: (input) => run(importFolder(input.folder)),
     [BATON_MEMORY_WS_METHODS.pull]: (input) => run(pullAction(input.action)),
