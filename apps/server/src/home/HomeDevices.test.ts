@@ -13,6 +13,9 @@ import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import * as HomeDevices from "./HomeDevices.ts";
 
 import { VoiceForgets, layer as VoiceForgetsLayer } from "../baton/VoiceForgets.ts";
+import { MemberPreferences, layer as MemberPreferencesLayer } from "../baton/MemberPreferences.ts";
+import { StepUps, layer as StepUpsLayer } from "./StepUps.ts";
+import * as SqlClient from "effect/sql/SqlClient";
 
 const ID = "r1-3d57b3";
 const root = `freya/r1/${ID}`;
@@ -723,5 +726,102 @@ it.effect(
         ],
       );
     }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(VoiceForgetsLayer))));
+  },
+);
+
+it.effect(
+  "asks the R1 that held an act, runs it on its verified answer or the phone's yes, and never on a press elsewhere",
+  () => {
+    const { sent, layer } = setup();
+    const ran: Array<unknown> = [];
+    const held = (member: string | null) => ({
+      device: ID,
+      what: "settings set",
+      member,
+      needs: 2 as const,
+      run: (raised: unknown) => Effect.sync(() => void ran.push(raised)),
+    });
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const stepUps = yield* StepUps;
+      const inbox = yield* BatonPhoneInbox;
+      yield* devices.tick;
+      const act = yield* stepUps.hold(held("owner"));
+      assert.deepStrictEqual(
+        sent.filter((s) => s.topic === "voice/stepup").map((s) => s.payload),
+        [{ act, shared: true }],
+      );
+      // The act waits as a card on the phone too, so nothing is lost.
+      assert.deepStrictEqual(
+        (yield* inbox.pending).map((p) => p.id),
+        [act],
+      );
+      const done = (from: string, how: string, ok = true) =>
+        devices.receive(
+          `freya/r1/${from}/voice/stepup/done`,
+          JSON.stringify({ act, ok, how, member: "maya" }),
+        );
+      // S2 on another R1, S2 on this one (presence is only A1), and a reply that didn't verify: still held.
+      yield* done("r1-other", "voice");
+      yield* done(ID, "button");
+      yield* done(ID, "voice", false);
+      assert.deepStrictEqual(ran, []);
+      yield* done(ID, "voice");
+      assert.deepStrictEqual(ran, [{ member: "maya", assurance: 2 }]);
+      assert.deepStrictEqual(yield* inbox.pending, []);
+      // Answered once: a later answer finds nothing.
+      yield* done(ID, "session");
+      assert.strictEqual(ran.length, 1);
+      // With no voice answer, the phone's yes runs it.
+      const second = yield* stepUps.hold(held("owner"));
+      assert.isTrue(yield* inbox.answerPrompt(second, 0));
+      yield* TestClock.adjust("2 seconds");
+      assert.deepStrictEqual(ran.at(-1), { member: "owner", assurance: 2 });
+    }).pipe(
+      Effect.provide(
+        layer.pipe(
+          Layer.provideMerge(
+            StepUpsLayer.pipe(Layer.provide(inboxLayer), Layer.provide(BatonDatabaseMemory)),
+          ),
+        ),
+      ),
+    );
+  },
+);
+
+it.effect(
+  "gives every device each member's own persona and voice, retained, and clears them when they go",
+  () => {
+    const { sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const prefs = yield* MemberPreferences;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO tessaya_member_preferences (member_id, key, value, updated_at)
+        VALUES ('maya', 'persona', 'Freya', 'x'), ('maya', 'units', 'metric', 'x'), ('omar', 'voice', 'eve', 'x')`;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      const prefSends = () => sent.filter((s) => s.topic.startsWith("voice/prefs/"));
+      assert.deepStrictEqual(
+        prefSends().map((s) => [s.topic, s.payload, s.retain]),
+        [
+          ["voice/prefs/maya", { persona: "Freya" }, true],
+          ["voice/prefs/omar", { voice: "eve" }, true],
+        ],
+      );
+      sent.length = 0;
+      yield* sql`DELETE FROM tessaya_member_preferences WHERE member_id = 'maya' AND key = 'persona'`;
+      yield* prefs.changed("maya");
+      assert.deepStrictEqual(
+        prefSends().map((s) => [s.topic, s.payload, s.retain]),
+        [["voice/prefs/maya", "", true]],
+      );
+    }).pipe(
+      Effect.provide(
+        layer.pipe(
+          Layer.provideMerge(MemberPreferencesLayer.pipe(Layer.provideMerge(BatonDatabaseMemory))),
+        ),
+      ),
+    );
   },
 );

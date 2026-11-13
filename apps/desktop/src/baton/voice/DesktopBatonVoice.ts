@@ -51,6 +51,7 @@ import {
   type EchoGuard,
   CAMPLUS_POLICY,
   spokenYesStands,
+  stepUpLine,
   scriptName,
   type SpeakerEmbedder,
   type SttProvider,
@@ -445,7 +446,12 @@ import {
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createVoiceId } from "./voiceId.ts";
-import { createSpeakerIdentity, pillWho, type SpeakerIdentityService } from "./speakerIdentity.ts";
+import {
+  createSpeakerIdentity,
+  pillWho,
+  realName,
+  type SpeakerIdentityService,
+} from "./speakerIdentity.ts";
 import {
   parseVoiceIdSettings,
   VOICE_ID_DEFAULTS,
@@ -3379,7 +3385,29 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // too short to judge, so it is the voice of the turn it answers; one judged as someone else's still is not his.
     spokenYes: (risk, turnSpeaker) =>
       !speakerIdentity.running() ||
-      spokenYesStands(speakerIdentity.current(), turnSpeaker, risk, settings.voiceId.voiceYes),
+      spokenYesStands(speakerIdentity.current(), turnSpeaker, risk, settings.voiceId.voiceYes) ||
+      // His session is verified (recognition.ts): a yes too short to judge is his for an ordinary ask.
+      (risk === "ordinary" &&
+        settings.voiceId.voiceYes &&
+        speakerIdentity.current().kind === "unverified" &&
+        speakerIdentity.session()?.verified === true &&
+        speakerIdentity.session()?.member === "owner"),
+    stepUp: () => {
+      const member = speakerIdentity.session()?.member ?? null;
+      const step = speakerIdentity.stepUp(
+        member === null ? null : realName(memberNames.get(member)),
+      );
+      const line = stepUpLine(step);
+      if (line === null) return null;
+      return {
+        line,
+        // Her "is that you?" passes on a yes that leaves the session verified: their reply's voice added to it.
+        passes:
+          step.kind === "confirm"
+            ? (said) => said === "yes" && speakerIdentity.session()?.verified === true
+            : null,
+      };
+    },
     savedMessages: () => settings.voiceId.savedMessages,
     folder: (window) => focusedFolder(window, input.platform),
     grammarPlaces: async (said) => {

@@ -138,6 +138,9 @@ const REACH_ASSURANCE: Readonly<Record<ToolReach, Assurance>> = {
   machine: 2,
 };
 
+/** The least assurance this tool needs before it is done without a yes. */
+export const reachAssurance = (tool: string): Assurance => REACH_ASSURANCE[toolReach(tool)];
+
 /**
  * Why this principal may not use this tool at all, or null: outside their role's reach, this computer without the
  * owner's grant, or their own things below A2. The room's tool runner checks it at execution; Trust below adds asks.

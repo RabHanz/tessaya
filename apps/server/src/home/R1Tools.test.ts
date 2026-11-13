@@ -10,6 +10,7 @@ import {
   replayDryRun,
   roomRefusal,
   ROOM_TOOL_SPECS,
+  stepUpNeeds,
 } from "./R1Tools.ts";
 
 const decodes = (name: keyof typeof TessayaToolkit.tools, input: unknown) => {
@@ -100,5 +101,14 @@ describe("the room's tools for a replay", () => {
     expect(roomRefusal({ ...sara, assurance: 1 }, adult, "tessaya_memory_search")).toContain(
       "sure it's you",
     );
+  });
+  it("holds for a step-up only a change that needs more than the voice gave, never a read or their own memory", () => {
+    expect(stepUpNeeds("settings_set", 1)).toBe(2);
+    expect(stepUpNeeds("home_automation_save", 0)).toBe(2);
+    expect(stepUpNeeds("settings_set", 2)).toBeNull();
+    // A lamp needs A1, a read nothing, and their own memory has its rule in the turn.
+    expect(stepUpNeeds("home_do", 0)).toBeNull();
+    expect(stepUpNeeds("settings_get", 0)).toBeNull();
+    expect(stepUpNeeds("tessaya_memory_remember", 0)).toBeNull();
   });
 });
