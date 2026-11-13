@@ -6,15 +6,45 @@ import { expect } from "vite-plus/test";
 
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { deviceGrant, makeHub, R1Hub } from "./R1Hub.ts";
-import { openClaim, R1Pairing, sealClaim } from "./R1Pairing.ts";
+import { claimKey, claimPlaintext, openClaim, R1Pairing, sealClaim } from "./R1Pairing.ts";
 import * as R1PairingModule from "./R1Pairing.ts";
 import { R1Reach } from "./R1Reach.ts";
 
+const OTK = "000102030405060708090A0B0C0D0E0F";
+
 it("seals the claim so only the R1 with the code on its eye opens it", () => {
-  const blob = sealClaim("482913", "r1-a", '{"key":"k"}');
-  expect(openClaim("482913", "r1-a", blob)).toBe('{"key":"k"}');
-  expect(openClaim("482914", "r1-a", blob)).toBeNull();
-  expect(openClaim("482913", "r1-b", blob)).toBeNull();
+  const blob = sealClaim(OTK, "r1-a", '{"key":"k"}');
+  expect(openClaim(OTK, "r1-a", blob)).toBe('{"key":"k"}');
+  expect(openClaim(OTK.replace("0F", "0E"), "r1-a", blob)).toBeNull();
+  expect(openClaim(OTK, "r1-b", blob)).toBeNull();
+});
+
+// The firmware lane tests its opener against this vector (checked with Python's hmac and cryptography as well).
+it("matches the firmware's known-answer vector", () => {
+  const id = "R1-A1B2C3";
+  expect(claimKey(OTK, id).toString("hex")).toBe(
+    "ecb26ced8f6dbc055fb49419e21a484bda66800182fdd947e93a1cf64928a7c2",
+  );
+  const plain = JSON.stringify(
+    claimPlaintext({
+      deviceId: id,
+      key: "11".repeat(32),
+      endpoints: {
+        broker: ["ws://192.168.1.20:3773/api/r1/mqtt", "wss://t-1.example.net/api/r1/mqtt"],
+        proxy: "http://192.168.1.20:3773",
+      },
+    }),
+  );
+  expect(plain).toBe(
+    '{"v":1,"device":"r1-a1b2c3","key":"1111111111111111111111111111111111111111111111111111111111111111","broker":["ws://192.168.1.20:3773/api/r1/mqtt","wss://t-1.example.net/api/r1/mqtt"],"proxy":"http://192.168.1.20:3773"}',
+  );
+  expect(sealClaim(OTK, id, plain, Buffer.from("000102030405060708090a0b", "hex"))).toBe(
+    "AAECAwQFBgcICQoLbbFNePy/XPPgEvl7My+qzDBUOBpg8lTJ89EoN7EZbJJI4uM5CVSQFdh1foxyGKCgIAQUhztZmybA2YiSZobo9gcBRnSVQMltww6mWmMX9d8AU0TBqI9KuEsIvp56U5IPlYJRWjPHBp3Y2bgR0u8snIUuB5BJ+8V9EVVpUCgULYxj7gf/XSZFFvwY66OQcjtYHatNVuqs5ewHN+UIeUAT2RwQ7pEF12fyGN+ZWZ9syKfnWaNbiou1iJGRv1agpKp0k1W6Pl2T+aytzMB7fX3HR/s40MTAw/NiJcEQ2VUiyERQp4XjyXvyOfDzCy0=",
+  );
+  // No proxy, no field.
+  expect(
+    claimPlaintext({ deviceId: id, key: "k", endpoints: { broker: [], proxy: "" } }),
+  ).not.toHaveProperty("proxy");
 });
 
 const setup = () => {
@@ -74,15 +104,22 @@ it.effect("claims a new R1 with a fresh key in a sealed blob, and keeps to one R
   const t = setup();
   return Effect.gen(function* () {
     const pairing = yield* R1Pairing;
-    const claimed = yield* pairing.claim({ deviceId: "r1-a", oneTimeKey: "482913" });
-    const opened = JSON.parse(openClaim("482913", "r1-a", claimed.blob)!);
+    const claimed = yield* pairing.claim({ deviceId: "r1-a", oneTimeKey: OTK });
+    const opened = JSON.parse(openClaim(OTK, "r1-a", claimed.blob)!);
     expect(opened.key).toBe(t.record()!.deviceKey);
     expect(opened.key).toHaveLength(64);
-    expect(opened.broker).toEqual(["ws://192.168.1.20:3773/api/r1/mqtt"]);
-    expect(JSON.stringify(claimed)).not.toContain(opened.key);
-    const other = yield* pairing
-      .claim({ deviceId: "r1-b", oneTimeKey: "111111" })
+    expect(opened).toMatchObject({
+      v: 1,
+      device: "r1-a",
+      broker: ["ws://192.168.1.20:3773/api/r1/mqtt"],
+    });
+    expect(opened).not.toHaveProperty("proxy");
+    const short = yield* pairing
+      .claim({ deviceId: "r1-a", oneTimeKey: "482913" })
       .pipe(Effect.flip);
+    expect(short.why).toContain("pairing picture");
+    expect(JSON.stringify(claimed)).not.toContain(opened.key);
+    const other = yield* pairing.claim({ deviceId: "r1-b", oneTimeKey: OTK }).pipe(Effect.flip);
     expect(other.why).toContain("already has r1-a");
   }).pipe(Effect.provide(t.layer));
 });
@@ -93,7 +130,7 @@ it.effect(
     const t = setup();
     return Effect.gen(function* () {
       const pairing = yield* R1Pairing;
-      yield* pairing.claim({ deviceId: "r1-a", oneTimeKey: "482913" });
+      yield* pairing.claim({ deviceId: "r1-a", oneTimeKey: OTK });
       const first = t.record()!.deviceKey;
       // Offline: nothing to send it over.
       expect((yield* pairing.rotate("r1-a", false).pipe(Effect.flip)).why).toContain("online");
