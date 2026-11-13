@@ -230,6 +230,8 @@ export const make = Effect.gen(function* () {
       kind: "note",
       text: text.trim(),
       source: his ? "user" : "thread",
+      // He asked for it to be kept, so it stands in every later turn's memory (standing needs 0.6), unlike a guess.
+      ...(his ? {} : { confidence: 0.7 }),
       sourceRef: origin === null ? "agent" : `vessel:${origin.kind}:${origin.id}`,
       // An agent outside a turn only proposes; he says yes in Memory.
       ...(origin === null ? { tainted: true } : {}),

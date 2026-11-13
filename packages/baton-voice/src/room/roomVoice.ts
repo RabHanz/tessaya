@@ -141,6 +141,9 @@ export interface Tessaya {
   readonly capabilities: ReadonlyArray<string>;
   readonly speaker: SpeakerIdentity;
   readonly emotion?: { readonly label: string; readonly events: ReadonlyArray<string> };
+  /** A guess on his partial words: the server records and learns from it only once `played` says it was heard. */
+  readonly speculative?: true;
+  readonly callId?: string;
 }
 
 export interface RoomDeps {
@@ -175,6 +178,8 @@ export interface RoomDeps {
   readonly embed?: (pcm: Int16Array) => Promise<Float32Array | null>;
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
+  /** A guess's reply was played to him in full: the server may now record it and learn from it. */
+  readonly played?: (callId: string) => void;
   readonly log: (line: string) => void;
   /** A bench turn kept for a regression case (`cmd/voice/no-reply` with `keep`): never his, only while the bench asks. */
   readonly keep?: (turn: BenchTurn) => void;
@@ -713,6 +718,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         words: string;
         control: AbortController;
         stream: AsyncIterable<string> | null;
+        callId: string;
       };
       let guess: Guess | null = null;
       let guesses = 0;
@@ -724,12 +730,25 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         guesses += 1;
         guess?.control.abort();
         const control = new AbortController();
-        const mine: Guess = { words, control, stream: null };
+        const mine: Guess = {
+          words,
+          control,
+          stream: null,
+          callId: `guess-${id}-${turn}-${guesses}`,
+        };
         guess = mine;
         void ask(words).then((request) => {
           // Too late once the final text is in: that path calls the brain itself.
           if (request === null || settled || control.signal.aborted || guess !== mine) return;
-          mine.stream = buffered(deps.brain(request, control.signal));
+          mine.stream = buffered(
+            deps.brain(
+              {
+                ...request,
+                tessaya: { ...request.tessaya, speculative: true, callId: mine.callId },
+              },
+              control.signal,
+            ),
+          );
         });
       };
       let latest = "";
@@ -953,6 +972,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // Sent away, she always says so before she rests, even when her brain had nothing to add.
         if (dismissed && said === "") enqueue("Okay.");
         await speakingChain;
+        // A kept guess was only a guess until he heard it: now the server records it and learns from it.
+        if (kept !== null && !control.signal.aborted) deps.played?.(kept.callId);
         // Back to rest once the R1 has played the last of it (the server's own mood may still hold until then).
         if (!control.signal.aborted)
           void deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())).then(() => {

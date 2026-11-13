@@ -26,6 +26,7 @@ import {
   mqttPublishBytes,
   r1Data,
   r1Gather,
+  r1Played,
   r1TurnStream,
   roomData,
   roomLook,
@@ -273,6 +274,57 @@ effectIt.effect(
       expect(ran).toEqual(["home_find"]);
       expect(recorded).toBe(0);
       expect(said).toEqual([]);
+    }),
+);
+
+effectIt.effect(
+  "a guess on his partial words reaches the Record only once the loop says it played; an unplayed one never does",
+  () =>
+    Effect.gen(function* () {
+      let recorded: Array<string> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("api"),
+        subscription: () => Stream.empty,
+        warm: Effect.void,
+        converse: (turn) =>
+          toolLoop(
+            () => Stream.make<Array<ConversePart>>({ type: "text", text: "It's four PM." }),
+            turn,
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(BatonRecordService)({
+        append: (entry: { readonly detail?: string }) =>
+          Effect.sync(() => {
+            recorded = [...recorded, entry.detail ?? ""];
+          }) as never,
+      });
+      const services = Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}));
+      const guess = (callId: string) =>
+        r1TurnStream(
+          { heard: "what time is it", history: [], voice: { speculative: true, callId } },
+          brain,
+          { specs: [], run: () => Effect.die("no tools") },
+        ).pipe(Stream.runDrain, Effect.provide(services));
+      yield* guess("kept");
+      yield* guess("dropped");
+      expect(recorded).toEqual([]);
+      expect(yield* r1Played("kept").pipe(Effect.provide(services))).toBe(true);
+      expect(recorded).toEqual(["It's four PM."]);
+      // Played once only; the guess the loop threw away is never written.
+      expect(yield* r1Played("kept").pipe(Effect.provide(services))).toBe(false);
+      expect(recorded).toEqual(["It's four PM."]);
+      // His final turn (no guess) is written as it ends, as before.
+      yield* r1TurnStream({ heard: "what time is it", history: [] }, brain, {
+        specs: [],
+        run: () => Effect.die("no tools"),
+      }).pipe(Stream.runDrain, Effect.provide(services));
+      expect(recorded).toHaveLength(2);
     }),
 );
 
