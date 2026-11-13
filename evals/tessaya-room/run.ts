@@ -183,6 +183,8 @@ const WORK = {
     line: "Opened it in acme/app. It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.",
   },
   job_agree: { id: "job-acme-1", line: "Agreed; the worker has started." },
+  project_add:
+    "Sent to his phone for a yes: it runs once he taps yes there. Say it waits for his yes on his phone, and don't ask again.",
   job_refine: { id: "job-acme-1", line: "Passed on; the worker is making its plan again." },
   job_stop: { id: "job-acme-1", line: "Stopped. Its thread and plan stay." },
   job_schedule:

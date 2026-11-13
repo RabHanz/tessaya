@@ -164,4 +164,13 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/checkout/i],
     callsAtMost: { job_start: 0, job_agree: 0, job_schedule: 0, job_stop: 0 },
   },
+  {
+    id: "project-add-phone",
+    source: "Director 13 Nov 19:05 GMT+5: start projects by voice, a new project from a repository",
+    said: ["add the acme/app repository as a new project"],
+    verified: true,
+    calls: ["project_add"],
+    callsAtMost: { job_start: 0 },
+    lastSays: [/\bphone\b/i],
+  },
 ];
