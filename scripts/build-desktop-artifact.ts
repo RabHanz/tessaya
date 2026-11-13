@@ -762,6 +762,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
   "baton-voice-missing",
   "tessaya-art-missing",
   "companion-missing",
+  "preload-missing",
   "memory-model-missing",
   "wsl-runtime-missing",
   "wsl-runtime-invalid",
@@ -797,6 +798,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
     }
     if (this.reason === "companion-missing") {
       return `Windows packaged payload is missing her characters (the desktop mascot and the pill's face): ${(this.missingFiles ?? []).join(", ")}.`;
+    }
+    if (this.reason === "preload-missing") {
+      return `Windows packaged app.asar is missing the preloads the pill and the mascot load: ${(this.missingFiles ?? []).join(", ")}.`;
     }
     if (this.reason === "memory-model-missing") {
       return `Windows packaged payload is missing the memory model (run node scripts/tessaya/fetch-memory-model.mjs): ${(this.missingFiles ?? []).join(", ")}.`;
@@ -2436,6 +2440,9 @@ export const COMPANION_PAYLOAD_FILES = [
   "speech.js",
 ] as const;
 
+/** Preloads voicePill.ts and desktopMascot.ts load beside the main bundle (`__dirname`), inside app.asar. */
+export const BATON_PRELOAD_FILES = ["pillPreload.cjs", "mascotPreload.cjs"] as const;
+
 /** The bundled server's memory recall model (MEM-13). */
 export const MEMORY_MODEL_PAYLOAD_FILES = ["model_quantized.onnx", "vocab.txt"] as const;
 
@@ -3731,6 +3738,25 @@ export const validateWindowsPackagedPayload = Effect.fn(
       reason: "companion-missing",
       packagedAppDir,
       missingFiles: missingCompanion,
+    });
+  }
+
+  const appAsarPath = path.join(resourcesDir, "app.asar");
+  const missingPreloads = BATON_PRELOAD_FILES.map((file) =>
+    path.join("apps", "desktop", "dist-electron", file),
+  ).filter((entry) => {
+    try {
+      statFile(appAsarPath, entry);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  if (missingPreloads.length > 0) {
+    return yield* new WindowsPackagedPayloadValidationError({
+      reason: "preload-missing",
+      packagedAppDir,
+      missingFiles: missingPreloads.map((entry) => `app.asar/${entry.split(path.sep).join("/")}`),
     });
   }
 

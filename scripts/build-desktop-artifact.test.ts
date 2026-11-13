@@ -3,7 +3,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { createPackageWithOptions, extractFile } from "@electron/asar";
+import { createPackageWithOptions, extractFile, uncache } from "@electron/asar";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Deferred from "effect/Deferred";
@@ -59,6 +59,7 @@ import {
   BATON_VOICE_PAYLOAD_FILES,
   TESSAYA_ART_PAYLOAD_FILES,
   COMPANION_PAYLOAD_FILES,
+  BATON_PRELOAD_FILES,
   MEMORY_MODEL_PAYLOAD_FILES,
   batonSidecarBuild,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
@@ -175,6 +176,19 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
   for (const file of COMPANION_PAYLOAD_FILES) {
     yield* fs.writeFileString(path.join(resourcesDir, "companion", file), "companion");
   }
+  const appSourceDir = path.join(tempDir, "app-source");
+  yield* fs.makeDirectory(path.join(appSourceDir, "apps/desktop/dist-electron"), {
+    recursive: true,
+  });
+  for (const file of BATON_PRELOAD_FILES) {
+    yield* fs.writeFileString(
+      path.join(appSourceDir, "apps/desktop/dist-electron", file),
+      "preload",
+    );
+  }
+  yield* Effect.promise(() =>
+    createPackageWithOptions(appSourceDir, path.join(resourcesDir, "app.asar"), {}),
+  );
   yield* fs.makeDirectory(path.join(resourcesDir, "memory-model"), { recursive: true });
   for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
     yield* fs.writeFileString(path.join(resourcesDir, "memory-model", file), "model");
@@ -1405,11 +1419,44 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.equal(companionError.reason, "companion-missing");
         assert.deepStrictEqual(companionError.missingFiles, ["companion/stage.html"]);
 
-        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
+        // 0.1.119 built the mascot's preload into dist-electron/companion/, where nothing loads it.
         yield* fs.writeFileString(
           path.join(fixture.packagedAppDir, "resources/companion/stage.html"),
           "companion",
         );
+        const nestedSource = path.join(fixture.stageDistDir, "nested-app");
+        yield* fs.makeDirectory(path.join(nestedSource, "apps/desktop/dist-electron/companion"), {
+          recursive: true,
+        });
+        yield* fs.writeFileString(
+          path.join(nestedSource, "apps/desktop/dist-electron/pillPreload.cjs"),
+          "preload",
+        );
+        yield* fs.writeFileString(
+          path.join(nestedSource, "apps/desktop/dist-electron/companion/mascotPreload.cjs"),
+          "preload",
+        );
+        const appAsar = path.join(fixture.packagedAppDir, "resources/app.asar");
+        yield* fs.rename(appAsar, `${appAsar}.good`);
+        yield* Effect.promise(() => createPackageWithOptions(nestedSource, appAsar, {}));
+        // @electron/asar caches each archive's header by path.
+        uncache(appAsar);
+        const preloadError = yield* validateWindowsPackagedPayload({
+          stageDistDir: fixture.stageDistDir,
+          appExecutableName: fixture.appExecutableName,
+          targetArch: "x64",
+          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+        }).pipe(Effect.flip);
+        assert.instanceOf(preloadError, WindowsPackagedPayloadValidationError);
+        assert.equal(preloadError.reason, "preload-missing");
+        assert.deepStrictEqual(preloadError.missingFiles, [
+          "app.asar/apps/desktop/dist-electron/mascotPreload.cjs",
+        ]);
+
+        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
+        yield* fs.remove(appAsar);
+        yield* fs.rename(`${appAsar}.good`, appAsar);
+        uncache(appAsar);
         yield* fs.remove(
           path.join(fixture.packagedAppDir, "resources/memory-model/model_quantized.onnx"),
         );

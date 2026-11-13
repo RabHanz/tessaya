@@ -4,7 +4,8 @@
 // capture per step (webviews included). Run with the app started with --remote-debugging-port=9229:
 // node release-smoke.mjs <path to Tessaya.exe>
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 
@@ -151,6 +152,52 @@ if (
         ? "skipped: voice is off, there is no microphone on this machine"
         : "skipped: no enrol button (voice model not ready)",
     });
+}
+
+// The pill and the desktop mascot run isolated pages whose one bridge is their preload: without it the pill's clicks and
+// waveform go nowhere and the mascot's page script throws (0.1.118 lacked her page, 0.1.119 her preload).
+const pill = pages().find(
+  (p) => p.url().startsWith("data:text/html") && p.url().includes("data-design"),
+);
+// The pill's window is built when it is first raised or shown at rest, so a runner may have none yet.
+if (pill === undefined)
+  rows.push({ step: "the pill's page has its preload", ok: null, detail: "skipped: no pill page" });
+else {
+  const bridge = await pill.evaluate(() => typeof window.pillIpc).catch((e) => e.message);
+  row("the pill's page has its preload (window.pillIpc)", bridge === "object", bridge);
+}
+if (tessaya) {
+  const turnsLog = join(homedir(), ".t3", "userdata", "logs", "voice-turns.ndjson");
+  const logged = () => (existsSync(turnsLog) ? readFileSync(turnsLog, "utf8").length : 0);
+  const from = logged();
+  // The page's own setter, as its "Show her on the desktop" switch calls it.
+  await tessaya
+    .evaluate(() => require("electron").ipcRenderer.invoke("baton-home:set", "v.mascot", true))
+    .catch((e) => row("turn the desktop companion on", false, e.message));
+  const stage = await waitFor((p) => p.url().endsWith("/companion/stage.html"), 20_000);
+  await sleep(3000);
+  const drawn = stage
+    ? await stage
+        .evaluate(() => ({
+          ipc: typeof window.mascotIpc,
+          mascot: typeof window.mascot,
+          rig: document.querySelectorAll("#c *").length,
+        }))
+        .catch((e) => ({ error: e.message }))
+    : null;
+  const failures = (existsSync(turnsLog) ? readFileSync(turnsLog, "utf8").slice(from) : "")
+    .split("\n")
+    .filter((line) => line.includes("mascot_load_failed"));
+  row(
+    "the desktop mascot loads and draws",
+    drawn !== null &&
+      drawn.ipc === "object" &&
+      drawn.mascot === "object" &&
+      drawn.rig > 0 &&
+      failures.length === 0,
+    `${stage ? stage.url().slice(-40) : "no stage page"} ${JSON.stringify(drawn)} ${failures.join(" ")}`,
+  );
+  if (stage) await shot("desktop-mascot", stage);
 }
 
 // T3's window opens only when asked: the moved settings pages there answer with a card that opens Tessaya.
