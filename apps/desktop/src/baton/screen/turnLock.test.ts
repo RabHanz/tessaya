@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
+import { createTurnLock, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 
 const deferred = () => {
   let resolve = () => {};
@@ -98,5 +98,37 @@ describe("a confirm asked during a device's turn", () => {
     expect(phone.box.detail).toContain("You asked this from your phone.");
     expect(phone.spoken).toBe("Is that all right?");
     expect(labelPrompt(box, "x", { device: false, phone: false }).box).toBe(box);
+  });
+});
+
+describe("a request from another device", () => {
+  it("draws nothing on this screen while it runs, and draws again after (13 Nov: the R1's laptop ask)", async () => {
+    const drew: Array<string> = [];
+    const mark = (what: string) => async () => void drew.push(what);
+    let away = true;
+    const overlay = headless(
+      {
+        point: async () => (drew.push("point"), true),
+        bubble: mark("bubble"),
+        card: mark("card"),
+        glide: async () => (drew.push("glide"), 1),
+        clear: mark("clear"),
+        retreat: mark("retreat"),
+        timer: async () => undefined,
+        hiddenFor: (fn) => fn(),
+        dispose: () => undefined,
+      },
+      () => away,
+    );
+    await overlay.card(null);
+    await overlay.bubble("hi");
+    expect(await overlay.point({ x: 0, y: 0 }, null)).toBe(false);
+    await overlay.glide({ x: 0, y: 0 }, "x");
+    await overlay.clear();
+    await overlay.retreat();
+    expect(drew).toEqual([]);
+    away = false;
+    await overlay.card(null);
+    expect(drew).toEqual(["card"]);
   });
 });

@@ -122,7 +122,7 @@ import {
   type TurnTaint,
 } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
-import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
+import { createTurnLock, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import type { DesktopStateInput } from "../phone/desktopState.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
@@ -739,7 +739,19 @@ export const startScreenCompanion = (input: {
     return picked.env;
   };
 
-  const overlay = createPointerOverlay(input.platform, (id) => cardAction(id));
+  const drawn = createPointerOverlay(input.platform, (id) => cardAction(id));
+  /**
+   * A request from another device (his R1 through a link, his phone) answers on that device only: here it runs headless,
+   * nothing drawn, said or cued (13 Nov: the R1's laptop ask spoke and showed on the laptop). Its approvals still ask.
+   */
+  const elsewhere = () => phoneCapture !== null;
+  const overlay = headless(drawn, elsewhere);
+  const activity: NonNullable<typeof input.onActivity> = (label, caption) => {
+    if (!elsewhere()) input.onActivity?.(label, caption);
+  };
+  const cue: NonNullable<typeof input.onCue> = (name) => {
+    if (!elsewhere()) input.onCue?.(name);
+  };
   const speech = queueSpeech(input.speak);
   /** Bumped when he silences it, so what an answer is still streaming stays unsaid. */
   let hushes = 0;
@@ -763,7 +775,7 @@ export const startScreenCompanion = (input: {
   /** False when nothing goes to the voice (written answers, nothing to say). */
   const say = (text: string, onStart?: () => void): boolean => {
     if (phoneCapture !== null && text.trim().length > 0) phoneCapture.spoken.push(text.trim());
-    if (settings.output === "written" || text.trim().length === 0) return false;
+    if (elsewhere() || settings.output === "written" || text.trim().length === 0) return false;
     spokenFrom ??= Date.now();
     speech.add(text, onStart);
     return true;
@@ -891,7 +903,7 @@ export const startScreenCompanion = (input: {
   const refuse = (kind: string, reason: string, said: string, where = "Tessaya") => {
     say(reason);
     linger(where, reason);
-    input.onActivity?.(null);
+    activity(null);
     conversation.add({ route: "refusal", said, reply: reason, note: kind });
     input.onNote?.("refusal", { kind, reason, said });
   };
@@ -949,7 +961,7 @@ export const startScreenCompanion = (input: {
     more: ReadonlyArray<{ id: string; label: string }> = [],
   ) => {
     const mine = ++showing;
-    input.onCue?.("finished");
+    cue("finished");
     await overlay.card({
       kicker,
       text,
@@ -1382,7 +1394,7 @@ export const startScreenCompanion = (input: {
     const found = point.label === null ? null : await actions?.locate?.(point.label, guess);
     input.onTrace?.({ pointedAt: found ?? guess, snapped: found != null });
     const here = await overlay.point(found ?? guess, found?.name ?? point.label);
-    if (!here) input.onActivity?.("Pointing", "on your other screen");
+    if (!here) activity("Pointing", "on your other screen");
   };
 
   const fail = (error: unknown) => {
@@ -1400,7 +1412,7 @@ export const startScreenCompanion = (input: {
     const plain = plainError(message);
     say(plain);
     linger("Tessaya", plain);
-    input.onActivity?.(null);
+    activity(null);
     end();
   };
 
@@ -1490,7 +1502,7 @@ export const startScreenCompanion = (input: {
     answering += 1;
     try {
       const voice = streamSpeech(firstSentence);
-      input.onActivity?.("Working");
+      activity("Working");
       void show("Working", goal);
       const title = titlesAllowed() ? focus : null;
       const raw = await current.session.ask(
@@ -1507,7 +1519,7 @@ export const startScreenCompanion = (input: {
       current.lastAt = Date.now();
       const reply = voice.finish(raw);
       converse("operate", goal, reply);
-      input.onActivity?.(null);
+      activity(null);
       voice.linger(reply);
     } finally {
       answering -= 1;
@@ -1596,7 +1608,7 @@ export const startScreenCompanion = (input: {
       if (screen && !(await approveCapture(question, null))) {
         return { raw: "", shots: [] };
       }
-      input.onActivity?.(screen ? "Looking" : "Thinking");
+      activity(screen ? "Looking" : "Thinking");
       void show(screen ? "Looking" : "Thinking", question);
       const captured = screen ? await capture() : [];
       const title = screen || titlesAllowed() ? focus : null;
@@ -1613,7 +1625,7 @@ export const startScreenCompanion = (input: {
     current.lastAt = Date.now();
     if (turn.raw.length === 0) {
       say("All right, I won't look.");
-      input.onActivity?.(null);
+      activity(null);
       return void (await wipe());
     }
     const reply = parseReply(turn.raw);
@@ -1625,7 +1637,7 @@ export const startScreenCompanion = (input: {
     converse(turn.shots.length > 0 ? "look" : "answer", question, reply.spoken);
     // A retry after [LOOK] streamed nothing, so the whole answer is spoken here.
     voice.finish(reply.spoken);
-    input.onActivity?.(null);
+    activity(null);
     await pointAt(reply.point, turn.shots);
     voice.linger(reply.spoken);
   };
@@ -1646,10 +1658,10 @@ export const startScreenCompanion = (input: {
       lesson.step += 1;
       // The step on screen stays readable while the next one is worked out.
       if (lesson.step === 1) {
-        input.onCue?.("start");
+        cue("start");
         void show("Lesson", "Looking at your screen");
-      } else if (note !== undefined && note !== LOOK_AGAIN) input.onCue?.("stepDone");
-      input.onActivity?.("Checking", `Step ${lesson.step}`);
+      } else if (note !== undefined && note !== LOOK_AGAIN) cue("stepDone");
+      activity("Checking", `Step ${lesson.step}`);
       const captured = await capture();
       // What this step was judged against: any change from here on is his doing.
       const baseline = await fingerprint();
@@ -1662,7 +1674,7 @@ export const startScreenCompanion = (input: {
           ),
         ),
       );
-      input.onActivity?.(null);
+      activity(null);
       if (run !== lesson) return;
       // The words said and the words on the card are the same short sentence; the model's longer text stays in the log.
       const line = stepLine(reply.spoken) || reply.spoken;
@@ -1693,7 +1705,7 @@ export const startScreenCompanion = (input: {
           : "I couldn't point at it on your screen. Look again, or do it your way and I'll notice.",
         { state: found ? "waiting" : "error", actions: found ? STEP_ACTIONS : LOOK_ACTIONS },
       );
-      input.onCue?.("waiting");
+      cue("waiting");
       watch(lesson, baseline, line);
     } finally {
       lesson.busy = false;
@@ -1992,7 +2004,7 @@ export const startScreenCompanion = (input: {
           .current()
           .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
         // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
-        input.onActivity?.("Working");
+        activity("Working");
       }
       input.onAction?.({ by: "assistant", persona: face.name, ...entry });
     },
@@ -2068,8 +2080,8 @@ export const startScreenCompanion = (input: {
   const remoteActivity = (tool: string | null) => {
     if (remoteQuiet !== null) clearTimeout(remoteQuiet);
     remoteQuiet = null;
-    if (tool !== null) input.onActivity?.("Remote session", tool);
-    else remoteQuiet = setTimeout(() => input.onActivity?.(null), REMOTE_QUIET_MS);
+    if (tool !== null) activity("Remote session", tool);
+    else remoteQuiet = setTimeout(() => activity(null), REMOTE_QUIET_MS);
   };
   let remoteTools: ReadonlyMap<string, BatonToolType> | null = null;
   const remoteToolsOf = (): ReadonlyMap<string, BatonToolType> => {
@@ -3177,7 +3189,7 @@ export const startScreenCompanion = (input: {
       };
       input.onNote?.("agent_turn_start", { said: text, ...who });
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
-      input.onActivity?.("Thinking");
+      activity("Thinking");
       const reply = await sayFor(outside, turn.onCancel)(
         direct ? `(to the focused session) ${text}` : text,
         {
@@ -3210,7 +3222,7 @@ export const startScreenCompanion = (input: {
         },
       );
       voice.finish(reply);
-      input.onActivity?.(null);
+      activity(null);
       if (runningMode() === null) voice.linger(reply);
       keepTurn(null);
       input.onNote?.("agent_turn", {
