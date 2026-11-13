@@ -209,6 +209,12 @@ const AskTool = Tool.make("tessaya_ask", {
           "The device he said it to (e.g. R1), when it came through one; his approvals name it.",
       }),
     ),
+    hisVoice: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Only from his own linked servers: he said it in his verified voice on that device, which is his yes for a look.",
+      }),
+    ),
   }),
   success: AskResult,
 })

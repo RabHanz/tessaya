@@ -246,11 +246,18 @@ export const layer = McpToolAccess.toLayer(
               const owner = yield* ownerOf;
               const id = `mcp-${owner}-${yield* random.uuidV4()}`;
               // The vessel the turn came through (TurnOrigin), else what the caller says it came from.
-              const origin = (yield* TurnOrigin)?.label ?? input.origin;
+              const turn = yield* TurnOrigin;
+              const origin = turn?.label ?? input.origin;
+              const scope = yield* McpInvocationContext.McpInvocationContext;
+              // His voice is his yes only as this server's own turn heard it, or as one of his linked servers says.
+              const hisVoice =
+                turn?.hisVoice === true ||
+                (scope.client?.linked === true && input.hisVoice === true);
               const asked = yield* phone("ask", {
                 id,
                 text: input.text,
                 ...(origin === undefined ? {} : { origin }),
+                ...(hisVoice ? { hisVoice: true } : {}),
               }).pipe(Effect.provideService(AskOwner, owner));
               return {
                 id: asked?.ok === false ? null : id,
@@ -288,7 +295,12 @@ export const layer = McpToolAccess.toLayer(
             call(
               input.set === undefined
                 ? handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.get]()
-                : handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.set]({ patch: input.set }).pipe(
+                : // Letting devices look at his screen is his (settings_set asks him); an agent's change leaves it.
+                  handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.set]({
+                    patch: Object.fromEntries(
+                      Object.entries(input.set).filter(([key]) => key !== "devicesMayLook"),
+                    ),
+                  }).pipe(
                     Effect.provideService(DesktopSettingsCaller, {
                       actor: `outside:${quoted(scope.client?.label ?? "unknown")}`,
                       scope: `mcp ${scope.client?.access ?? "unknown"}: ${[...scope.capabilities].join(",")}`,

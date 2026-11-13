@@ -19,6 +19,7 @@ const saved: DesktopVoiceSettings = {
   gpuRecognition: "auto",
   openTessayaOnStart: false,
   openSessionsOnStart: true,
+  devicesMayLook: false,
 };
 
 describe("createRemoteSettings", () => {

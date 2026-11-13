@@ -21,6 +21,9 @@ const NOT_LINKED = "your laptop isn't linked to this server, so I can't see it."
 const OFFLINE = "your laptop isn't answering right now.";
 const NOT_OPEN = "Tessaya isn't open on your laptop, so I can't see it.";
 const STILL_WAITING = "I've asked your laptop. It's still on it, or waiting for your yes there.";
+/** Said when his yes could not come from his voice here (no voice profile on this device yet, or another voice). */
+const NOT_HIS_VOICE =
+  "I couldn't take your voice as your yes here, since it isn't verified on this device, so your laptop asks you on its screen.";
 /** The R1 turn is spoken: past this the room hears where it stands rather than silence. */
 const WAIT_MS = 30_000;
 // Its answer is said aloud the moment it lands; each look is one small call over the link.
@@ -44,6 +47,8 @@ export const askLaptop = Effect.fn("R1Laptop.ask")(function* (question: string) 
     (l) => l.status !== "expired",
   );
   if (linked.length === 0) return failed(NOT_LINKED);
+  const turn = yield* TurnOrigin;
+  const hisVoice = turn?.hisVoice === true;
   const text = `Asked aloud at his desk device at home; answer in one or two spoken sentences: ${question}`;
   let why = OFFLINE;
   for (const link of linked) {
@@ -57,8 +62,12 @@ export const askLaptop = Effect.fn("R1Laptop.ask")(function* (question: string) 
           success: AskResult,
         })
         .pipe(Effect.timeout("15 seconds"), Effect.result);
-    // A laptop before the origin field refuses an argument it does not list; it is asked without it.
-    const named = yield* call("tessaya_ask", { text, origin: (yield* TurnOrigin)?.label ?? "R1" });
+    // A laptop before these fields refuses an argument it does not list; it is asked without them.
+    const named = yield* call("tessaya_ask", {
+      text,
+      origin: turn?.label ?? "R1",
+      ...(hisVoice ? { hisVoice: true } : {}),
+    });
     const asked =
       named._tag === "Failure" && /unknown argument/i.test(String(named.failure.message))
         ? yield* call("tessaya_ask", { text })
@@ -82,7 +91,11 @@ export const askLaptop = Effect.fn("R1Laptop.ask")(function* (question: string) 
           return failed(now.success.line);
       }
       if (waited >= WAIT_MS)
-        return { ok: true, status: "told", line: STILL_WAITING } satisfies LaptopOutcome;
+        return {
+          ok: true,
+          status: "told",
+          line: hisVoice ? STILL_WAITING : `${STILL_WAITING} ${NOT_HIS_VOICE}`,
+        } satisfies LaptopOutcome;
       yield* Effect.sleep(POLL_MS);
     }
   }

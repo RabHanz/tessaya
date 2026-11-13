@@ -47,12 +47,21 @@ export const TurnOrigin = Context.Reference<{
   readonly kind: VesselKind;
   readonly id: string;
   readonly label: string;
+  /**
+   * His own voice, verified on this turn's audio (identity design A2): his yes for what the turn asks. False for any
+   * other voice, an unverified one, or one carried over from an earlier turn.
+   */
+  readonly hisVoice?: boolean;
 } | null>("t3/baton/TessayaTurn/TurnOrigin", { defaultValue: () => null });
 
 /** The origin a turn's tool calls run under. */
 export const originOf = (turn: TurnEnvelope) => ({
   ...turn.vessel,
   label: turn.origin ?? turn.vessel.kind,
+  hisVoice:
+    turn.speaker?.kind === "owner" &&
+    turn.speaker.verified === true &&
+    turn.speaker.inherited !== true,
 });
 
 export interface TurnContext {
