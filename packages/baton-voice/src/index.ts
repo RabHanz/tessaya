@@ -10,3 +10,4 @@ export * from "./speaker.ts";
 export * from "./speakerStore.ts";
 export * from "./enrolGuide.ts";
 export * from "./cueSounds.ts";
+export * from "./recognition.ts";

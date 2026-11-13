@@ -16,6 +16,7 @@ import {
   TessayaTurn,
   TurnOrigin,
   layer as turnLayer,
+  nameOnceLine,
   originOf,
   turnIdentity,
   type TurnEnvelope,
@@ -443,4 +444,11 @@ it("carries who the turn is from and how sure, beside hisVoice and the speaker (
     false,
   ]);
   assert.strictEqual(originOf({ vessel: room, text: "hi", tainted: true }).tainted, true);
+});
+
+it("tells the brain a newly recognised speaker's name once, and nothing otherwise", () => {
+  assert.include(nameOnceLine("Maya"), "it is Maya");
+  assert.include(nameOnceLine("Maya"), "not again");
+  assert.strictEqual(nameOnceLine(undefined), "");
+  assert.strictEqual(nameOnceLine("  "), "");
 });

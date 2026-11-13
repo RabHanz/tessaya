@@ -54,6 +54,11 @@ export interface TurnEnvelope {
   readonly sessionless?: boolean | undefined;
   /** A replay or test of the vessel: it reads as a real turn and learns nothing. */
   readonly rehearsal?: boolean | undefined;
+  /**
+   * The vessel just recognised this speaker for the first time this session (its recognition cue): their name, which
+   * she uses once, naturally, and not again in the conversation.
+   */
+  readonly nameOnce?: string | undefined;
   /** The conversation it continues, when the vessel or the arbiter names one; else `conversationKey`. */
   readonly conversation?: string | undefined;
   /**
@@ -186,6 +191,12 @@ export interface Remembered {
   readonly id: string | null;
   readonly line: string;
 }
+
+/** The line the brain gets when a vessel first recognises who it is talking to this session. */
+export const nameOnceLine = (name: string | undefined): string =>
+  name === undefined || name.trim() === ""
+    ? ""
+    : `You know this voice: it is ${name.trim().slice(0, 40)}. Use their name once in this reply, naturally, and not again this conversation.`;
 
 export interface TurnContext {
   /** Standing memory (sessionless vessels only), then what matches this sentence. */
@@ -333,7 +344,9 @@ export const make = Effect.gen(function* () {
     if (turn.turnRef !== undefined && sentence.ids.length > 0)
       yield* memory.markUsed(turn.turnRef, sentence.ids);
     return {
-      block: [standing.block, extra].filter((b) => b !== "").join("\n\n"),
+      block: [standing.block, extra, nameOnceLine(turn.nameOnce)]
+        .filter((b) => b !== "")
+        .join("\n\n"),
       ids: sentence.ids,
       privateBlock: yield* privateFor(turn),
       conversation: yield* conversationOf(turn),
