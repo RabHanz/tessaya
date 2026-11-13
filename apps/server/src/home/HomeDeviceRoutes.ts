@@ -17,6 +17,7 @@ import { HomeAssistantService, r1ById, r1ByKey } from "./HomeAssistantService.ts
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
 import { noteDeviceKeyUse, R1_HUB_PATH, R1Hub, runHubSocket } from "./R1Hub.ts";
+import { R1_FIRMWARE_PATH, R1Updates } from "./R1Updates.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
@@ -92,6 +93,23 @@ export const routes = HttpRouter.use((router) =>
       Effect.catchCause(() => Effect.succeed(HttpServerResponse.text("No.", { status: 400 }))),
     );
     yield* router.add("POST", "/camera/upload", upload);
+    // The R1's firmware image, on the short-lived link this server gave it (R1Updates).
+    const updates = Context.getOption(context, R1Updates);
+    yield* router.add(
+      "GET",
+      `${R1_FIRMWARE_PATH}*`,
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const url = Option.getOrNull(requestUrl(request));
+        const file = url?.pathname.slice(R1_FIRMWARE_PATH.length) ?? "";
+        const bytes = Option.isNone(updates)
+          ? null
+          : yield* updates.value.image(file, url?.searchParams.get("t") ?? "");
+        return bytes === null
+          ? HttpServerResponse.text("No.", { status: 404 })
+          : HttpServerResponse.uint8Array(bytes, { contentType: "application/octet-stream" });
+      }),
+    );
     // The R1's own MQTT hub. No auth here: the firmware cannot add headers, so the CONNECT's login is the auth.
     const hub = Context.get(context, R1Hub);
     yield* router.add(

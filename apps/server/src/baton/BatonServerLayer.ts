@@ -52,6 +52,7 @@ import * as HomeDevices from "../home/HomeDevices.ts";
 import * as R1Hub from "../home/R1Hub.ts";
 import * as R1Pairing from "../home/R1Pairing.ts";
 import * as R1Reach from "../home/R1Reach.ts";
+import * as R1Updates from "../home/R1Updates.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
 import * as VoiceArbiter from "../home/VoiceArbiter.ts";
 import * as DeviceTriggers from "../home/DeviceTriggers.ts";
@@ -132,6 +133,12 @@ const homeLayer = HomeAssistantService.layer.pipe(
 const hubLayer = R1Hub.layer.pipe(Layer.provide(homeLayer));
 // Where the R1 should connect (LAN, then T3 Connect when away is on), kept current on it.
 const reachLayer = R1Reach.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
+// Firmware for the R1s on the hub, served by this server and installed when they are idle.
+const updatesLayer = R1Updates.layer.pipe(
+  Layer.provide(reachLayer),
+  Layer.provide(hubLayer),
+  Layer.provide(homeLayer),
+);
 const pairingLayer = R1Pairing.layer.pipe(
   Layer.provide(reachLayer),
   Layer.provide(hubLayer),
@@ -272,7 +279,7 @@ const servicesInner = IntentService.layer.pipe(
   Layer.provideMerge(VesselHands.layer),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(BatonRecordService.layer),
-  Layer.provideMerge(Layer.mergeAll(pairingLayer, reachLayer, hubLayer)),
+  Layer.provideMerge(Layer.mergeAll(updatesLayer, pairingLayer, reachLayer, hubLayer)),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.
   Layer.provide(BatonDatabase.layer),
 );
