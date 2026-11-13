@@ -2,14 +2,16 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 const SRC = import.meta.dirname;
-const STATIC = /(?:\bfrom\s*|\bimport\s+)["'](\.{1,2}\/[^"']+)["']/g;
-const ANY = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'](\.{1,2}\/[^"']+)["']/g;
+const STATIC = /(?:\bfrom\s*|\bimport\s+)["']((?:\.{1,2}|~)\/[^"']+)["']/g;
+const ANY = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["']((?:\.{1,2}|~)\/[^"']+)["']/g;
 
 const resolveModule = (from: string, specifier: string): string | null => {
-  const base = NodePath.resolve(NodePath.dirname(from), specifier);
+  const base = specifier.startsWith("~/")
+    ? NodePath.join(SRC, specifier.slice(2))
+    : NodePath.resolve(NodePath.dirname(from), specifier);
   const candidates = [
     base,
     ...["ts", "tsx"].flatMap((ext) => [`${base}.${ext}`, `${base}/index.${ext}`]),
@@ -45,7 +47,6 @@ describe("Tessaya's guest page", () => {
     const graph = moduleGraph(NodePath.join(SRC, "tessayaGuest.tsx"));
     expect(graph.has("components/settings/HardwareSettings.tsx")).toBe(true);
     for (const owned of [
-      "composerDraftStore.ts",
       "components/panes/batonPanesStore.ts",
       "uiStateStore.ts",
       "appInit.tsx",
@@ -60,5 +61,33 @@ describe("Tessaya's guest page", () => {
     expect(isTessayaGuest("?tessayaGuest=1")).toBe(true);
     expect(isTessayaGuest("")).toBe(false);
     expect(isTessayaGuest("?batonWindow=abc")).toBe(false);
+  });
+
+  // Toasts reach the drafts store, so the guest loads it; it must hold none of T3's drafts and write none back.
+  it.each([
+    ["", true],
+    ["?tessayaGuest=1", false],
+  ])("the drafts store at %j writes to storage: %s", async (search, writes) => {
+    const written: string[] = [];
+    vi.stubGlobal("location", { search });
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem: (key: string) => written.push(key),
+      removeItem: (key: string) => written.push(key),
+    });
+    vi.useFakeTimers();
+    vi.resetModules();
+    try {
+      const { useComposerDraftStore } = await import("./composerDraftStore");
+      const { scopeThreadRef } = await import("@t3tools/client-runtime/environment");
+      const { EnvironmentId, ThreadId } = await import("@t3tools/contracts");
+      const thread = scopeThreadRef(EnvironmentId.make("env"), ThreadId.make("thread"));
+      useComposerDraftStore.getState().setPrompt(thread, "typed in T3's window");
+      vi.advanceTimersByTime(1000);
+      expect(written.includes("t3code:composer-drafts:v1")).toBe(writes);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });
