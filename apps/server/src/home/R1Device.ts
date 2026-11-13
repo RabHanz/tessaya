@@ -250,6 +250,8 @@ export interface R1Context {
   readonly automations: unknown;
   /** The memory block every vessel gets for these words and this persona (`TessayaTurn.begin`). */
   readonly memory: string;
+  /** How the person speaking likes things (their own preferences; empty for a guest). */
+  readonly preferences: Readonly<Record<string, string>>;
   readonly voice: unknown;
   readonly now: string;
   /** His work read just now (what needs him, what is in flight), for the tool turn; "" when not read. */
@@ -430,6 +432,11 @@ export const roomData = (input: R1Context) =>
           `What you remember (only the closest few; tessaya_memory_search finds anything not here): ${quoted(input.memory)}`,
         ]),
     ...(input.privateBlock === "" ? [] : [input.privateBlock]),
+    ...(Object.keys(input.preferences).length === 0
+      ? []
+      : [
+          `How the person speaking likes things (follow these; tessaya_preference_set changes one when they ask): ${quoted(input.preferences)}`,
+        ]),
     ...(input.voice === undefined
       ? []
       : [
@@ -599,7 +606,13 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   };
   const pipeline = yield* Effect.serviceOption(TessayaTurn);
   const begun = Option.isNone(pipeline)
-    ? { block: "", ids: [], privateBlock: "", conversation: { key: "household", turns: [] } }
+    ? {
+        block: "",
+        ids: [],
+        privateBlock: "",
+        conversation: { key: "household", turns: [] },
+        preferences: {},
+      }
     : yield* pipeline.value
         .begin(turn)
         // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
@@ -616,6 +629,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     lastAction,
     automations,
     memory: begun.block,
+    preferences: begun.preferences,
     voice: input.voice,
     persona,
     switched: switchedPersona(input.voice),

@@ -27,6 +27,7 @@ export const roomUser = (
     lastAction: null,
     automations: null,
     memory: MEMORY,
+    preferences: {},
     voice: { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } },
     now: "Friday, 13 November 2026 at 10:15 (Asia/Karachi)",
     persona: null,
