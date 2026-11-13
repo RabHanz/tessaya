@@ -59,10 +59,10 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index 455901299edc31b4c958e7c523eb3faf31563f44..951bffb3190e252a5933aced2930d2a233ed33b0 100644
+index 455901299edc31b4c958e7c523eb3faf31563f44..99414dd8ac4b6c84b124e12d79ccc3461ee59c71 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
-@@ -159,6 +159,31 @@ export default defineConfig({
+@@ -159,6 +159,35 @@ export default defineConfig({
        outExtensions: () => ({ js: ".cjs" }),
        entry: ["src/mac-permission-preload.ts"],
      },
@@ -73,7 +73,11 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..951bffb3190e252a5933aced2930d2a2
 +      dts: false,
 +      sourcemap: true,
 +      outExtensions: () => ({ js: ".cjs" }),
-+      entry: ["src/baton/voice/pillPreload.ts", "src/baton/companion/mascotPreload.ts"],
++      // Named, so both land flat beside main.cjs where voicePill.ts and desktopMascot.ts load them; a list keeps folders.
++      entry: {
++        pillPreload: "src/baton/voice/pillPreload.ts",
++        mascotPreload: "src/baton/companion/mascotPreload.ts",
++      },
 +    },
 +    {
 +      // Baton's voice worker; its own block so upstream's worker list and its bundle test stay upstream's.
@@ -387,22 +391,32 @@ index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa
      repoRoot,
      stageDir: contentDir,
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549915b4321 100644
+index c1c92449fdc3cce0516ff959f0d68dfa280e5987..886830aebe9ea7b78291cee7a589d5c25bb489ea 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -56,6 +56,11 @@ import {
+@@ -3,7 +3,7 @@ import * as NodeCrypto from "node:crypto";
+ import * as NodePath from "node:path";
+ 
+ import * as NodeServices from "@effect/platform-node/NodeServices";
+-import { createPackageWithOptions, extractFile } from "@electron/asar";
++import { createPackageWithOptions, extractFile, uncache } from "@electron/asar";
+ import { assert, it } from "@effect/vitest";
+ import * as ConfigProvider from "effect/ConfigProvider";
+ import * as Deferred from "effect/Deferred";
+@@ -56,6 +56,12 @@ import {
    WindowsDesktopBuildPrerequisitesMissingError,
    WindowsPackagedPayloadValidationError,
    stageCursorSdkPlatformPackages,
 +  BATON_VOICE_PAYLOAD_FILES,
 +  TESSAYA_ART_PAYLOAD_FILES,
 +  COMPANION_PAYLOAD_FILES,
++  BATON_PRELOAD_FILES,
 +  MEMORY_MODEL_PAYLOAD_FILES,
 +  batonSidecarBuild,
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
-@@ -158,6 +163,22 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
+@@ -158,6 +164,35 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
    const stageDistDir = path.join(tempDir, "dist");
    const packagedAppDir = path.join(stageDistDir, "win-unpacked");
    const resourcesDir = path.join(packagedAppDir, "resources");
@@ -418,6 +432,19 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549
 +  for (const file of COMPANION_PAYLOAD_FILES) {
 +    yield* fs.writeFileString(path.join(resourcesDir, "companion", file), "companion");
 +  }
++  const appSourceDir = path.join(tempDir, "app-source");
++  yield* fs.makeDirectory(path.join(appSourceDir, "apps/desktop/dist-electron"), {
++    recursive: true,
++  });
++  for (const file of BATON_PRELOAD_FILES) {
++    yield* fs.writeFileString(
++      path.join(appSourceDir, "apps/desktop/dist-electron", file),
++      "preload",
++    );
++  }
++  yield* Effect.promise(() =>
++    createPackageWithOptions(appSourceDir, path.join(resourcesDir, "app.asar"), {}),
++  );
 +  yield* fs.makeDirectory(path.join(resourcesDir, "memory-model"), { recursive: true });
 +  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
 +    yield* fs.writeFileString(path.join(resourcesDir, "memory-model", file), "model");
@@ -425,7 +452,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1335,6 +1356,72 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1335,6 +1370,105 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -478,11 +505,44 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549
 +        assert.equal(companionError.reason, "companion-missing");
 +        assert.deepStrictEqual(companionError.missingFiles, ["companion/stage.html"]);
 +
-+        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
++        // 0.1.119 built the mascot's preload into dist-electron/companion/, where nothing loads it.
 +        yield* fs.writeFileString(
 +          path.join(fixture.packagedAppDir, "resources/companion/stage.html"),
 +          "companion",
 +        );
++        const nestedSource = path.join(fixture.stageDistDir, "nested-app");
++        yield* fs.makeDirectory(path.join(nestedSource, "apps/desktop/dist-electron/companion"), {
++          recursive: true,
++        });
++        yield* fs.writeFileString(
++          path.join(nestedSource, "apps/desktop/dist-electron/pillPreload.cjs"),
++          "preload",
++        );
++        yield* fs.writeFileString(
++          path.join(nestedSource, "apps/desktop/dist-electron/companion/mascotPreload.cjs"),
++          "preload",
++        );
++        const appAsar = path.join(fixture.packagedAppDir, "resources/app.asar");
++        yield* fs.rename(appAsar, `${appAsar}.good`);
++        yield* Effect.promise(() => createPackageWithOptions(nestedSource, appAsar, {}));
++        // @electron/asar caches each archive's header by path.
++        uncache(appAsar);
++        const preloadError = yield* validateWindowsPackagedPayload({
++          stageDistDir: fixture.stageDistDir,
++          appExecutableName: fixture.appExecutableName,
++          targetArch: "x64",
++          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
++        }).pipe(Effect.flip);
++        assert.instanceOf(preloadError, WindowsPackagedPayloadValidationError);
++        assert.equal(preloadError.reason, "preload-missing");
++        assert.deepStrictEqual(preloadError.missingFiles, [
++          "app.asar/apps/desktop/dist-electron/mascotPreload.cjs",
++        ]);
++
++        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
++        yield* fs.remove(appAsar);
++        yield* fs.rename(`${appAsar}.good`, appAsar);
++        uncache(appAsar);
 +        yield* fs.remove(
 +          path.join(fixture.packagedAppDir, "resources/memory-model/model_quantized.onnx"),
 +        );
@@ -498,7 +558,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549
        }),
      ),
    );
-@@ -1871,3 +1958,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1871,3 +2005,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -526,7 +586,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549
 +  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943c6333da2 100644
+index 92c0974b546da1018262308d8a608c0f82163873..0626d65d6b8f7cfdcc242535555759a29516a0d1 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -553,18 +613,19 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
  export class ClerkPasskeyNativePackageMissingError extends Schema.TaggedError<ClerkPasskeyNativePackageMissingError>()(
    "ClerkPasskeyNativePackageMissingError",
    {
-@@ -749,6 +759,10 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
+@@ -749,6 +759,11 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
    "sidecar-invalid",
    "unpacked-native-missing",
    "resource-monitor-missing",
 +  "baton-voice-missing",
 +  "tessaya-art-missing",
 +  "companion-missing",
++  "preload-missing",
 +  "memory-model-missing",
    "wsl-runtime-missing",
    "wsl-runtime-invalid",
    "file-limit-exceeded",
-@@ -775,6 +789,18 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
+@@ -775,6 +790,21 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
      if (this.reason === "resource-monitor-missing") {
        return "Windows packaged payload is missing the resource monitor executable.";
      }
@@ -577,13 +638,16 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
 +    if (this.reason === "companion-missing") {
 +      return `Windows packaged payload is missing her characters (the desktop mascot and the pill's face): ${(this.missingFiles ?? []).join(", ")}.`;
 +    }
++    if (this.reason === "preload-missing") {
++      return `Windows packaged app.asar is missing the preloads the pill and the mascot load: ${(this.missingFiles ?? []).join(", ")}.`;
++    }
 +    if (this.reason === "memory-model-missing") {
 +      return `Windows packaged payload is missing the memory model (run node scripts/tessaya/fetch-memory-model.mjs): ${(this.missingFiles ?? []).join(", ")}.`;
 +    }
      if (this.reason === "wsl-runtime-missing") {
        return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
      }
-@@ -994,6 +1020,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
+@@ -994,6 +1024,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
    "!**/*.d.cts",
    "!apps/desktop/resources/browser-secret",
    "!apps/desktop/resources/browser-secret/**/*",
@@ -592,7 +656,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
    "!apps/desktop/prod-resources/browser-secret",
    "!apps/desktop/prod-resources/browser-secret/**/*",
    "!apps/desktop/prod-resources/windows-server",
-@@ -1024,6 +1052,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+@@ -1024,6 +1056,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
    const unusedArch = arch === "arm64" ? "x64" : "arm64";
    return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/**/prebuilds/darwin-${unusedArch}/**/*`];
  }
@@ -614,7 +678,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1061,7 +1104,10 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1061,7 +1108,10 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
@@ -626,7 +690,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1090,6 +1136,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1090,6 +1140,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
@@ -635,7 +699,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
  export const DESKTOP_EXTRA_RESOURCES = [
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
-@@ -1099,6 +1147,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1099,6 +1151,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -666,7 +730,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2419,196 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2423,199 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -686,6 +750,9 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
 +  "props.js",
 +  "speech.js",
 +] as const;
++
++/** Preloads voicePill.ts and desktopMascot.ts load beside the main bundle (`__dirname`), inside app.asar. */
++export const BATON_PRELOAD_FILES = ["pillPreload.cjs", "mascotPreload.cjs"] as const;
 +
 +/** The bundled server's memory recall model (MEM-13). */
 +export const MEMORY_MODEL_PAYLOAD_FILES = ["model_quantized.onnx", "vocab.txt"] as const;
@@ -863,7 +930,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +3054,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +3061,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -871,7 +938,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3155,6 +3418,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3155,6 +3425,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -891,7 +958,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3418,6 +3694,59 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3418,6 +3701,78 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -935,6 +1002,25 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
 +    });
 +  }
 +
++  const appAsarPath = path.join(resourcesDir, "app.asar");
++  const missingPreloads = BATON_PRELOAD_FILES.map((file) =>
++    path.join("apps", "desktop", "dist-electron", file),
++  ).filter((entry) => {
++    try {
++      statFile(appAsarPath, entry);
++      return false;
++    } catch {
++      return true;
++    }
++  });
++  if (missingPreloads.length > 0) {
++    return yield* new WindowsPackagedPayloadValidationError({
++      reason: "preload-missing",
++      packagedAppDir,
++      missingFiles: missingPreloads.map((entry) => `app.asar/${entry.split(path.sep).join("/")}`),
++    });
++  }
++
 +  const missingModel: string[] = [];
 +  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
 +    if (!(yield* isFile(path.join(resourcesDir, "memory-model", file))))
@@ -951,7 +1037,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3779,6 +4108,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3779,6 +4134,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -965,7 +1051,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3811,6 +4147,22 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3811,6 +4173,22 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);

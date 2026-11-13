@@ -166,7 +166,11 @@ export default defineConfig({
       dts: false,
       sourcemap: true,
       outExtensions: () => ({ js: ".cjs" }),
-      entry: ["src/baton/voice/pillPreload.ts", "src/baton/companion/mascotPreload.ts"],
+      // Named, so both land flat beside main.cjs where voicePill.ts and desktopMascot.ts load them; a list keeps folders.
+      entry: {
+        pillPreload: "src/baton/voice/pillPreload.ts",
+        mascotPreload: "src/baton/companion/mascotPreload.ts",
+      },
     },
     {
       // Baton's voice worker; its own block so upstream's worker list and its bundle test stay upstream's.
