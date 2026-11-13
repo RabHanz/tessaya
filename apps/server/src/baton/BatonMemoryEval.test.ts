@@ -19,7 +19,7 @@ import {
 import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer, textHash } from "./BatonMemoryService.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
-import { roomMemories } from "../home/R1Device.ts";
+import { TessayaTurn, layer as turnLayer } from "./TessayaTurn.ts";
 import { vectorToBytes } from "./memoryVectors.ts";
 
 /** docs/baton/evals-memory/*.json: what is remembered, then what a question should bring back first. */
@@ -137,16 +137,32 @@ const embedAll = Effect.gen(function* () {
 
 const corpusOf = new Map(corpora);
 
-/** Which path a case is asked through: the desktop's search or block, or what a device vessel (today the R1) gets for a sentence. */
+/** Which path a case is asked through: the desktop's search or block, or what a device vessel gets for a sentence. */
 type Arm = "keyword" | "fused" | "device";
-/**
- * The device arm is scored, not held to each case: it must not fall under what it reached when it was last measured
- * (06-corpus, every case). Raise these when the device's recall improves; one pipeline for every vessel makes it the fused arm.
- */
-const DEVICE_AT_LEAST = {
-  keyword: { recallAtK: 0.49, mrr: 0.48 },
-  fused: { recallAtK: 0.49, mrr: 0.48 },
-} as const;
+
+/** The memory service with the turn pipeline over it; begin never learns, so learning is a stand-in. */
+const withTurn = <E, R>(model: Layer.Layer<BatonMemoryEmbedder, E, R>) =>
+  turnLayer.pipe(
+    Layer.provideMerge(Layer.mock(BatonMemoryLearning)({})),
+    Layer.provideMerge(memoryLayer),
+    Layer.provideMerge(model),
+    Layer.provideMerge(SqlitePersistenceMemory),
+  );
+
+/** A device vessel's turn, through the one pipeline every vessel uses (`TessayaTurn.begin`). */
+const deviceIds = (text: string, persona?: string, project?: string) =>
+  Effect.map(
+    Effect.flatMap(TessayaTurn, (turn) =>
+      turn.begin({
+        vessel: { kind: "device", id: "eval" },
+        text,
+        sessionless: true,
+        ...(persona === undefined ? {} : { persona }),
+        ...(project === undefined ? {} : { project }),
+      }),
+    ),
+    (c) => c.ids,
+  );
 
 // it.effect runs on the test clock, so the 300 ms query-embed budget never cuts a slow embed: the scores are a best case.
 const retrieval = (arm: Arm, model: Layer.Layer<BatonMemoryEmbedder>, withModel: boolean) =>
@@ -171,13 +187,15 @@ const retrieval = (arm: Arm, model: Layer.Layer<BatonMemoryEmbedder>, withModel:
       const runs: Array<Run> = [];
       const wrong: Array<string> = [];
       for (const c of corpus.cases) {
+        // A vessel's turn is a block, never a search: the device arm asks only the block's cases.
+        if (arm === "device" && c.recall !== true) continue;
         const scope = {
           ...(c.scopeRef === undefined ? {} : { scopeRef: c.scopeRef }),
           ...(c.agent === undefined ? {} : { agent: c.agent }),
         };
         const ids =
           arm === "device"
-            ? (yield* roomMemories(c.query, c.agent)).map((i) => i.id)
+            ? yield* deviceIds(c.query, c.agent, c.scopeRef)
             : c.recall
               ? (yield* memory.recall({ text: c.query, budgetTokens: 300, ...scope })).ids
               : (yield* memory.search({ text: c.query, ...scope })).map((h) => h.item.id);
@@ -235,17 +253,8 @@ const retrieval = (arm: Arm, model: Layer.Layer<BatonMemoryEmbedder>, withModel:
         runs.some((r) => r.stale),
         "a superseded item came back",
       );
-      if (arm !== "device") return assert.deepStrictEqual(wrong, []);
-      if (file !== "06-corpus.json") return;
-      const floor = DEVICE_AT_LEAST[withModel ? "fused" : "keyword"];
-      const all = score(runs);
-      assert.isAtLeast(all.recallAtK, floor.recallAtK);
-      assert.isAtLeast(all.mrr, floor.mrr);
-    }).pipe(
-      Effect.provide(
-        memoryLayer.pipe(Layer.provideMerge(model), Layer.provideMerge(SqlitePersistenceMemory)),
-      ),
-    ),
+      assert.deepStrictEqual(wrong, []);
+    }).pipe(Effect.provide(withTurn(model))),
   );
 
 /** Old facts a reworded update leaves alive, at most; lower it when the loop improves. */
@@ -337,6 +346,7 @@ describe.runIf(hasModel && process.env["MEMORY_EVAL_LATENCY"] === "1")("latency"
   it.live("p50 and p95 per path over 06-corpus", () =>
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;
+      const turn = yield* TessayaTurn;
       const { items, cases } = corpusOf.get("06-corpus.json")!;
       const idOf = new Map<string, string>();
       for (const { key, supersedes, ...draft } of items) {
@@ -350,8 +360,7 @@ describe.runIf(hasModel && process.env["MEMORY_EVAL_LATENCY"] === "1")("latency"
       const paths: Record<string, (text: string) => Effect.Effect<unknown>> = {
         keyword: (text) => memory.search({ text }),
         fused: (text) => memory.recall({ text, budgetTokens: 300 }),
-        device: (text) =>
-          roomMemories(text, undefined).pipe(Effect.provideService(BatonMemoryService, memory)),
+        device: (text) => deviceIds(text).pipe(Effect.provideService(TessayaTurn, turn)),
       };
       for (const [arm, ask] of Object.entries(paths)) {
         const ms: Array<number> = [];
@@ -363,13 +372,6 @@ describe.runIf(hasModel && process.env["MEMORY_EVAL_LATENCY"] === "1")("latency"
           `memory eval latency ${arm}: p50 ${at(0.5)} ms, p95 ${at(0.95)} ms over ${ms.length}`,
         );
       }
-    }).pipe(
-      Effect.provide(
-        memoryLayer.pipe(
-          Layer.provideMerge(strictModel),
-          Layer.provideMerge(SqlitePersistenceMemory),
-        ),
-      ),
-    ),
+    }).pipe(Effect.provide(withTurn(strictModel))),
   );
 });
