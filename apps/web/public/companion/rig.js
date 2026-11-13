@@ -181,9 +181,12 @@
   tilt:      {g: "question", label: "Question tilt", dur: 1000, fn: (t, a) => ({d: {tilt: -11 * a * hold(t, 0, .25, .75, 1), bas: 1 * hold(t, 0, .2, .8, 1), bo: .9 * hold(t, 0, .2, .8, 1), gy: -.15 * bell(t, 0, 1), eh: .06 * bell(t, 0, 1)}})},
   tiltOther: {g: "question", label: "Question tilt, other way", dur: 1000, fn: (t, a) => ({d: {tilt: 10 * a * hold(t, 0, .25, .75, 1), bas: -.6 * hold(t, 0, .2, .8, 1), bo: .9 * hold(t, 0, .2, .8, 1), by: -4 * bell(t, 0, 1), mr: .3 * bell(t, 0, 1)}})},
   shrug:     {g: "shrug", label: "Shrug", dur: 1100, fn: (t, a) => { const h = hold(t, 0, .2, .75, 1); return {d: {sy: .05 * h * a, lift: -5 * h * a, tilt: 6 * h * a, mx: .25 * h, mc: -.1 * h, bo: h, by: -7 * h, bas: .4 * h, eh: .05 * h}, hands: t < .95 ? {L: ["shrug", "open", 0, -4 * h], R: ["shrug", "open", 0, -4 * h]} : null}; }},
-  leanIn:    {g: "explain", label: "Lean in", dur: 1300, fn: (t, a) => { const h = hold(t, 0, .2, .8, 1); return {d: {zoom: .07 * h * a, lift: 3 * h, pitch: -.08 * h, eh: .06 * h, bo: .6 * h, by: -3 * h}, hands: t < .9 ? {R: ["present", "open", 0, 0, -10 * h]} : null}; }},
+  leanIn:    {g: "explain", label: "Lean in", dur: 1300, fn: (t, a) => { const h = hold(t, 0, .2, .8, 1); return {d: {zoom: .07 * h * a, lift: 3 * h, pitch: -.08 * h, eh: .06 * h, bo: .6 * h, by: -3 * h}, hands: t < .9 ? {R: ["chest", "back", 0, 0, -10 * h]} : null}; }},
   present:   {g: "explain", label: "Open palm", dur: 900, fn: (t, a) => ({d: {tilt: -3 * bell(t, 0, 1) * a}, hands: t < .9 ? {R: ["present", "open", 0, 0, -18 + 10 * bell(t, .2, .6)]} : null})},
-  count:     {g: "explain", label: "Point up (one thing)", dur: 1000, fn: (t, a) => ({d: {bo: .8 * bell(t, 0, 1), by: -5 * bell(t, 0, 1), pitch: -.08 * bell(t, 0, 1)}, hands: t < .92 ? {R: ["raise", "point", 0, -6 * bell(t, .1, .4)]} : null})},
+  count:     {g: "explain", label: "Count to three", dur: 1500, fn: (t, a) => ({d: {bo: .8 * bell(t, 0, 1), by: -5 * bell(t, 0, 1), pitch: -.08 * bell(t, 0, 1)}, hands: t < .94 ? {R: ["raise", t < .36 ? "point" : t < .64 ? "count2" : "count3", 0, -7 * bell(t, .08, .2) - 7 * bell(t, .34, .46) - 7 * bell(t, .62, .74), 0, 0, 1, 0, 0, t < .36 ? 1 : t < .64 ? 2 : 3]} : null})}, // a beat and a number as each finger goes up
+  // short arms' facepalm: dismay, hands against the lower cheeks, head tilted, eyes closed
+  dismay:    {g: "feel", label: "Dismay", dur: 1500, fn: (t, a) => { const h = hold(t, .05, .22, .78, .95); return {d: {tilt: -7 * h, pitch: .12 * h, lu: 1.05 * h, mc: -.35 * h, sy: -.04 * h, lift: 3 * h}, hands: t > .03 && t < .95 ? {L: ["cheekSide", "back"], R: ["cheekSide", "back"]} : null}; }},
+  pointAt:   {g: "explain", label: "Point at something", dur: 1200, fn: (t, a) => { const h = hold(t, .05, .25, .8, .95), hit = bell(t, .2, .42); return {d: {gx: .6 * h, yaw: .14 * h, bo: .6 * h, pitch: .1 * h + .06 * hit, tilt: 6 * h, lift: -3 * hit}, hands: t > .03 && t < .95 ? {R: ["aim", "point", 4 * hit - 10 * (1 - ease(ramp(t, .03, .3))), 22 * (1 - ease(ramp(t, .03, .3))), -6 * hit + 40 * (1 - ease(ramp(t, .03, .3)))]} : null}; }}, // it rises out of the hanging hand on a curve
   lookAway:  {g: "recall", label: "Look away to recall", dur: 1300, fn: (t, a) => { const h = hold(t, 0, .18, .78, 1); return {d: {gx: -.75 * h, gy: -.65 * h, yaw: -.32 * h * a, tilt: 4 * h, mx: .25 * h, mr: .3 * h, bo: .8 * h, bas: .7 * h}, hands: t > .15 && t < .85 ? {R: ["chin", "point", 0, 3 * Math.abs(sw(t, 2.5))]} : null}; }},
   beat:      {g: "beat", label: "Emphasis beat", dur: 360, fn: (t, a) => ({d: {pitch: .22 * a * bell(t, 0, 1), sy: -.03 * bell(t, 0, .5), bo: .6 * bell(t, 0, 1), by: 3 * bell(t, 0, 1)}, hands: {R: ["beat", "fist", 0, 12 * a * bell(t, .1, .8)]}})},
   beatPalm:  {g: "beat", label: "Palm beat", dur: 420, fn: (t, a) => ({d: {pitch: .16 * a * bell(t, 0, 1), lift: 2 * bell(t, 0, 1)}, hands: {L: ["beat", "open", 0, 10 * a * bell(t, .1, .8), 12]}})},
@@ -191,7 +194,7 @@
   // hands and feelings
   wave:      {g: "social", label: "Wave", dur: 1300, fn: (t, a) => ({d: {tilt: -4 * bell(t, 0, 1), mc: .2 * bell(t, 0, 1)}, hands: t < .94 ? {R: ["up", "open", 0, 0, 22 * sw(t, 2.5) * a]} : null})},
   thumbsUp:  {g: "social", label: "Thumbs up", dur: 1100, fn: (t, a) => ({d: {wink: hold(t, .15, .3, .7, .85), mc: .4 * bell(t, 0, 1), mx: .15 * bell(t, 0, 1)}, hands: t > .05 && t < .92 ? {R: ["chestFront", "thumb", 0, -3 * bell(t, .1, .35)]} : null})},
-  facepalm:  {g: "feel", label: "Facepalm", dur: 1500, fn: (t, a) => { const h = hold(t, .05, .25, .75, 1); return {d: {pitch: .3 * h, sy: -.03 * h, lift: 4 * h, mc: -.3 * h, sarc: .8 * h}, hands: t > .05 && t < .95 ? {R: ["face", "back"]} : null}; }},
+  facepalm:  {g: "feel", label: "Facepalm", dur: 1500, fn: (t, a) => { const h = hold(t, .05, .25, .75, 1); return {d: {pitch: .38 * h, tilt: -5 * h, sy: -.03 * h, lift: 4 * h, mc: -.3 * h, sarc: .8 * h}, hands: t > .05 && t < .95 ? {R: ["face", "back"]} : null}; }},
   cheeks:    {g: "feel", label: "Hands to cheeks", dur: 1500, fn: (t) => { const h = hold(t, 0, .2, .8, 1); return {d: {blush: h, arc: h, mc: .5 * h, mw: -.3 * h, tilt: 5 * sw(t, 1) * h}, hands: t < .95 ? {L: ["cheek", "back"], R: ["cheek", "back"]} : null}; }},
   fistPump:  {g: "feel", label: "Fist pump", dur: 900, fn: (t, a) => ({d: {lift: -10 * a * Math.abs(sw(t, 1)), chev: hold(t, .05, .15, .8, .95), mo: .5 * bell(t, 0, 1), mc: .5 * bell(t, 0, 1)}, hands: {L: ["up", "fist", 0, -6 * Math.abs(sw(t, 1))], R: ["up", "fist", 0, -6 * Math.abs(sw(t, 1))]}})},
   sigh:      {g: "feel", label: "Sigh", dur: 1700, fn: (t, a) => { const c = hold(t, .05, .2, .55, .7); return {d: {sarc: c, mo: .3 * c, mr: .7 * c, lift: 8 * ease(ramp(t, .5, .95)) * a, sy: -.04 * ease(ramp(t, .5, .95)), pitch: .2 * ease(ramp(t, .5, .95)), bo: .7 * c, ba: -.4 * c}}; }},
@@ -206,21 +209,26 @@
   bow:       {g: "social", label: "Slight bow", dur: 1700, fn: (t, a) => { const h = hold(t, .1, .35, .65, .9); return {d: {pitch: .38 * h, lean: -5 * h, sarc: hold(t, .25, .35, .6, .7), mc: .2 * h, lift: 2 * h}, hands: t > .03 && t < .97 ? {R: ["chest", "back", 0, -4, -10], L: ["behind", "back"]} : null}; }},
   raisedBrow:{g: "sass", label: "One raised eyebrow", dur: 1500, fn: (t) => { const h = hold(t, .05, .2, .75, .95); return {d: {bas: 1.5 * h, bo: h, by: -2 * h, lu: .12 * h, mx: .2 * h, mc: .12 * h, tilt: 3 * h, gx: .15 * h}}; }},
   composed:  {g: "social", label: "Hands behind the back", dur: 2600, fn: (t) => { const h = hold(t, .05, .2, .8, .95); return {d: {pitch: -.08 * h, sy: .02 * h, lift: -2 * h, mc: .1 * h}, hands: t > .03 && t < .97 ? {L: ["behind", "back"], R: ["behind", "back"]} : null}; }},
-  raiseHand: {needs: "gentleman", g: "gentleman", label: "Measured hand raise", dur: 1300, fn: (t) => { const h = hold(t, .1, .3, .7, .9); return {d: {mc: .2 * h, pitch: -.05 * h}, hands: t > .03 && t < .97 ? {R: ["raise", "open", -6, 6, -6]} : null}; }},
+  raiseHand: {needs: "gentleman", g: "gentleman", label: "Measured hand raise", dur: 1300, fn: (t) => { const h = hold(t, .1, .3, .7, .9); return {d: {mc: .2 * h, pitch: -.05 * h}, hands: t > .03 && t < .97 ? {R: ["raise", "open", -6, 6, -6 + 32 * sw(t, 2) * h]} : null}; }}, // a measured wave: the wrist rocks, the arm stays still
   rise:      {needs: "gentleman", g: "gentleman", label: "Rise on the toes", dur: 900, fn: (t) => ({d: {lift: -6 * bell(t, .1, .9), sy: .03 * bell(t, .1, .9), pitch: -.06 * bell(t, 0, 1), mc: .15 * bell(t, 0, 1)}})},
-  adjustTie: {needs: "gentleman", g: "gentleman", label: "Adjust the bow tie", dur: 1500, fn: (t) => { const h = hold(t, .05, .25, .75, .95); return {d: {pitch: -.1 * h, gy: .35 * h, mc: .1 * h}, hands: t > .03 && t < .97 ? {R: ["tie", "grip", 0, 0, 6 * Math.sin(t * TAU * 2) * h], L: ["tie", "grip", 0, 0, -6 * Math.sin(t * TAU * 2) * h]} : null}; }},
-  adjustCuff:{needs: "gentleman", g: "gentleman", label: "Adjust a cuff", dur: 1600, fn: (t) => { const h = hold(t, .05, .25, .75, .95); return {d: {gy: .45 * h, gx: .35 * h, pitch: .08 * h}, hands: t > .03 && t < .97 ? {R: ["cuffR", "back", 0, 0, 0], L: ["cuffL", "pinch", 2 * Math.sin(t * TAU * 2), 0, 0]} : null}; }},
+  adjustTie: {needs: "gentleman", g: "gentleman", label: "Adjust the bow tie", dur: 1500, fn: (t) => { const h = hold(t, .05, .25, .75, .95); return {d: {pitch: -.1 * h, gy: .35 * h, mc: .1 * h}, hands: t > .03 && t < .97 ? {R: ["tie", "pinch", 0, 0, 6 * Math.sin(t * TAU * 2) * h], L: ["tie", "pinch", 0, 0, -6 * Math.sin(t * TAU * 2) * h]} : null}; }},
+  adjustCuff:{needs: "gentleman", g: "gentleman", label: "Adjust a cuff", dur: 1600, fn: (t) => { const h = hold(t, .05, .25, .75, .95); return {d: {gy: .45 * h, gx: .35 * h, pitch: .08 * h}, hands: t > .03 && t < .97 ? {R: ["cuffR", "fist", 0, 0, 0], L: ["cuffL", "pinch", 2 * Math.sin(t * TAU * 2), 0, 0]} : null}; }},
   chuckle:   {needs: "gentleman", g: "gentleman", label: "Quiet chuckle", dur: 1300, fn: (t) => { const h = hold(t, .05, .2, .8, .95); return {d: {arc: h, mc: .5 * h, lift: -1.5 * Math.abs(sw(t, 2.5)) * h, pitch: -.05 * h}, hands: t > .03 && t < .97 ? {R: ["heart", "back"]} : null}; }},
   // Alfred's pocket: the hand fetches the monocle (or the watch) from the waistcoat pocket; the chain is a rope sim
-  monocleOut:{g: "gentleman", needs: "attach", label: "Monocle on", dur: 3000, fn: (t) => {
+  monocleOut:{g: "gentleman", needs: "attach", label: "Monocle on", dur: 3400, fn: (t) => {
    const brow = ease(ramp(t, .45, .6)) * (1 - ease(ramp(t, .66, .8)));
-   return {d: {bas: .8 * brow + .4 * ease(ramp(t, .66, .8)) * (1 - ramp(t, .9, 1)), bo: Math.max(brow, .5 * bell(t, .6, 1)), by: -3 * brow, gy: .35 * (t < .22 ? 1 : 0), pitch: .06 * (t < .22 ? 1 : 0), mx: .12 * brow},
+   return {d: {bas: .8 * brow, by: -3 * brow, gy: .35 * ease(ramp(t, 0, .08)) * (1 - ease(ramp(t, .18, .3))), pitch: .06 * ease(ramp(t, 0, .08)) * (1 - ease(ramp(t, .18, .3))), mx: .12 * brow},
     // authored: the hand grows in at the monocle, carries it up an outward arc, seats it, eases off and shrinks away
-    hands: t < .86 ? {R: ["monoKey", "pinch", 0, 0, 0, 1, ease(ramp(t, 0, .1)) * (1 - ease(ramp(t, .74, .84))), ease(ramp(t, .17, .62)), ease(ramp(t, .68, .76))]} : null}; }},
-  monocleDrop:{g: "gentleman", needs: "attach", label: "Monocle off", dur: 2400, fn: (t) => { const b = bell(t, 0, .25); return {d: {bas: .8 * b, by: -6 * b, eh: .1 * b, mo: .12 * b, mr: .8 * b}}; }},
+    hands: t < .86 ? {R: ["monoKey", "pinch", 0, 0, 0, 1, ease(ramp(t, 0, .1)) * (1 - ease(ramp(t, .7, .76))), ease(ramp(t, .14, .64)), ease(ramp(t, .68, .76))]} : null}; }},
+  // taken off by hand: the hand comes to the rim, grips it, lowers it on the outward arc and leaves it on its hook
+  monocleDrop:{g: "gentleman", needs: "attach", label: "Monocle off", dur: 3000, fn: (t) => { const b = bell(t, .05, .35); return {d: {bas: .6 * b, by: -4 * b, mx: .1 * b},
+   hands: t < .92 ? {R: ["monoKey", "pinch", 0, 0, 0, 1, ease(ramp(t, 0, .1)) * (1 - ease(ramp(t, .84, .92))), 1 - ease(ramp(t, .36, .76)), 1 - ease(ramp(t, .08, .26))]} : null}; }},
+  // Alfred's own versions of a finger wag and a fist pump: a raised "not so fast" finger, and a quiet thumbs-up with a nod
+  fingerRaise:{needs: "gentleman", g: "gentleman", label: "Not so fast (raised finger)", dur: 1300, fn: (t) => { const h = hold(t, .05, .2, .8, .95); return {d: {bas: .6 * h, bo: .5 * h, mx: .15 * h, pitch: -.04 * h}, hands: t > .03 && t < .97 ? {R: ["raise", "point", -4, 4, -4 + 10 * sw(t, 1.5) * h]} : null}; }},
+  approve:   {needs: "gentleman", g: "gentleman", label: "Quiet approval", dur: 1200, fn: (t) => { const h = hold(t, .05, .2, .8, .95); return {d: {pitch: .2 * bell(t, .15, .55), mc: .35 * h, mx: .1 * h}, hands: t > .03 && t < .95 ? {R: ["chestFront", "thumb", 0, -2 * bell(t, .1, .35)]} : null}; }},
   pocketWatch:{g: "gentleman", needs: "attach", label: "Check the pocket watch", dur: 3900, fn: (t) => {
    const look = ease(ramp(t, .4, .5)) * (1 - ease(ramp(t, .74, .84)));
-   return {d: {gy: .75 * look, gx: .2 * look, pitch: .14 * look, lu: .1 * look, bas: .5 * look, bo: .5 * look}, hands: t < .98 ? {R: ["watchKey", "cradle", 0, 0, 0, 1, ease(ramp(t, 0, .08)) * (1 - ease(ramp(t, .9, .97))), ease(ramp(t, .14, .36)) * (1 - ease(ramp(t, .76, .88)))]} : null}; }},
+   return {d: {gy: .55 * look, gx: .2 * look, pitch: .05 * look, lu: .1 * look, bas: .5 * look, bo: .5 * look}, hands: t < .98 ? {R: ["watchKey", "cradle", 0, 0, 0, 1, ease(ramp(t, 0, .08)) * (1 - ease(ramp(t, .9, .97))), ease(ramp(t, .1, .36)) * (1 - ease(ramp(t, .76, .9)))]} : null}; }},
   steepleHold:{needs: "gentleman", g: "gentleman", label: "Steepled fingers", dur: 2200, fn: (t) => { const h = hold(t, .05, .2, .8, .95); return {d: {lu: .12 * h, gy: -.1 * h, mc: .08 * h, pitch: -.04 * h}, hands: t > .03 && t < .97 ? {L: ["steeple", "steeple"], R: ["steeple", "steeple"]} : null}; }},
   shrugSmall:{needs: "gentleman", g: "gentleman", label: "A small, dry shrug", dur: 1000, fn: (t) => { const h = hold(t, 0, .25, .7, 1); return {d: {sy: .02 * h, bas: 1 * h, bo: h, mx: .2 * h}, hands: t < .95 ? {R: ["present", "open", -6, 6, 40]} : null}; }},
   glance:    {g: "idle", label: "Glance", dur: 1100, fn: (t) => ({d: {gx: .6 * hold(t, 0, .06, .7, .8), yaw: .12 * hold(t, .05, .3, .7, .9)}})},
@@ -291,17 +299,17 @@
    // the fingertip rests on the chin; if the chin is near her base, the hand comes from the side instead of below
    case "chin": { const chinY = mY + F.mw * .32 + 8, y = chinY + 38 * 1.15; return y < -12 ? [side * 5, chinY + 32, 0, 1] : [side * (F.mw * .5 + 34), chinY + 20, side * -15, 1]; }
    case "chestFront": return [side * hw * .3, -h * .4, side * -4, 1];
-   case "mouth": return [side * 3, mY + 3, side * -6, 1];
+   case "mouth": return [0, mY + 6, side * -6, 1];
    // a cup held by its handle with the rim at her mouth: the cup is drawn in front, so it covers the mouth
    // a snack held beside the mouth: the top of the box stays below the eyes, however short the face
    case "snack": { const eb = eL && eR ? Math.max(eL.cy + eL.H / 2, eR.cy + eR.H / 2) : eyY + F.eh / 2; return [side * (F.mw * .55 + 20), Math.max(mY + 24, eb + 64), side * -6, 1]; }
-   case "sip": return [side * 19, mY + 23, side * -14, 1];
+   case "sip": return [side * 19, mY + 14, side * -14, 1]; // the cup's rim reaches the lips
    case "cheek": return [side * (Math.abs((eSide && eSide.cx) || ex) + (eSide ? eSide.W * .5 : F.ew * .5) + 10 * hz + 3), eMid + F.eh * .75, side * 22, 1];
    // a phone at the side of the head, outside the eye
    case "ear": return [side * (Math.abs((eSide && eSide.cx) || ex) + F.ew * 1.25 + 8), eMid + F.eh * .9, side * -10, 1];
    case "temple": return [side * (Math.abs((eSide && eSide.cx) || ex) + (eSide ? eSide.W * .5 : F.ew * .6) + 30), eTop - 6, side * 50, 1];
    case "eye": return [eSide ? eSide.cx : side * ex, eMid + 4, 0, 1];
-   case "face": return [side * ex * .7, eMid + 4, side * -12, 1.05];
+   case "face": return [side * ex * 1.05, eMid - F.eh * .45, side * -84, 1.05]; // the palm across the forehead, fingers pointing in
    // the fingertip rests on the bridge between the eyes, the hand below it, the arm from the side
    // fingers pinch the monocle's rim at its lower outer edge; nothing crosses the eye
    case "monocleRim": { const e = eR || {cx: ex, cy: eyY, H: F.eh}; return [e.cx + e.H * .62 + 9, e.cy + e.H * .6 + 13, -40, .95]; }
@@ -320,100 +328,122 @@
    case "hips": return [side * B.hw * .97, cy + h * .24, side * -35, 1];
    case "heart": return [side * hw * .34, cy + h * .32, side * -20, 1];
    case "hug": return [-side * hw * .46, cy + h * .26, -side * 35, 1];
-   case "underChin": return [side * 9 * hz, mY + F.mw * .35 + 12 * hz + 6, side * -12, 1];
-   case "steeple": return [0, Math.max(cy + h * .1, mY + F.mw * .35 + 40), side * -18, 1];
-   case "cuffR": return [hw * .55, cy + h * .1, 10, 1];
+   case "underChin": { const y = mY + F.mw * .45 + 15 * hz + 4; return y < -16 * hz ? [side * 9 * hz, y, side * -12, 1] : [side * Math.max(F.mw * .5 + 14 * hz, (eSide ? Math.abs(eSide.cx) + eSide.W * .5 : Math.abs(ex) + F.ew * .5) + 12 * hz), mY + 6, side * -12, 1]; }
+   // a finger tent: the backs of the hands tilted in so only the fingertips meet, the wrists well apart
+   case "steeple": { const k = F.handS || hz; return [side * 15.5 * k, Math.max(cy + h * .06, mY + F.mw * .35 + 28 + 14 * k), side * -50, 1]; }
+   // adjusting a cuff: the hands meet low on the right of the chest, within reach of the far arm and below the tie
+   case "cuffR": return [hw * .32, cy + h * .3, 10, 1];
    // the other hand pinches the cuff at the base of the raised one
-   case "cuffL": return [hw * .55 - 3 * hz, cy + h * .1 + 17 * hz, 70, 1];
+   case "cuffL": { const k = F.handS || hz; return [hw * .32 + 9 * k, cy + h * .3 + 12 * k, -20, 1]; }
    case "behind": return [side * hw * .92, cy + h * .2, side * 30, 1];
    case "overhead": return [side * 30, B.top - 30, side * -12, 1];
    // two-handed props are held low and in front, below the mouth, even if that means below her base line
    case "both": { const mb = mY + F.mw * .35, sc = clamp((30 - (mb + 14)) / 56, .7, 1.12); F.bothScale = sc; return [side * 30, Math.max(cy + h * .3, mb + 14 + 48 * sc - 14), side * -12, 1]; }
    case "toL": return [-hw * .42, cy + h * .16, -14, 1];
+   // a short arm's stand-in for the face: the hand up against the side of the face, at the body's edge
+   case "cheekSide": return [side * (hw * .82 + 2), F.cy + F.mY + 6, side * -30, 1];
+   // pointing at something off to the side, the index along the forearm
+   case "aim": return [side * (hw + 20), cy + h * .08, side * 90, 1];
    case "keysL": return [-30, -26, -8, 1];
    case "keysR": return [30, -26, 8, 1];
    default: return [side * hw * .96, cy + h * .2, 0, 1];
   }
  }
- /** A hand in the body's own material, drawn for the right-hand side of the screen with the palm centre at the origin,
-  * fingers up and the wrist at (0, 11). The left hand is the mirror. Palm orientation is part of the pose:
-  * `open` palm to the viewer (wave, stop, shrug, present), `back` palm to her own face (yawn, facepalm, cheeks, temple),
-  * `pushup` back of the hand with the index up (glasses, the bridge), `fist` knuckles to the viewer, and the side-on
-  * `grip`, `point` and `thumb`. Thumb: inner side when the palm faces out, outer side when it faces her. */
- const FING = [[-6.3, 10, -9], [-2.1, 11.6, -3], [2.1, 10.6, 3], [6.3, 8.2, 10]];
- const cap = (x, y, w, len, ang, cls = "") => `<rect x="${f1(x - w / 2)}" y="${f1(y - len)}" width="${w}" height="${f1(len + w)}" rx="${w / 2}" transform="rotate(${ang} ${x} ${y})"${cls}/>`;
- // Hand illustrations, drawn for a right hand (screen right) with the palm centre at the origin, fingers up and the
- // wrist at (0, 12); the left hand is the mirror. Each shape is a set of solid parts plus detail lines. They are
- // drawn in two passes, outline then fill (so the outline is one clean contour round the whole hand, with no seams
- // between parts), then finger creases, a soft shade and a highlight.
+ /** Hands: flat cartoon hands in the character's own style (Taby, and the Studio's first version), three fingers and a
+  * thumb. Drawn for the hand on the right of the screen with the palm centre at the origin, fingers up and the wrist
+  * at (0, 12); the left hand is the mirror. Palm view puts the thumb toward the body (-x), back view away from it.
+  * Each pose is a set of solid parts drawn as one figure: outline pass, then a shade pass, then the lit fill offset
+  * toward the key light (upper left) and clipped to the hand, which leaves one soft shade on the lower-right edges.
+  * Pinch: thumb and index meet at (-1.7, -14.5), where the monocle rim and the watch crown are held (bodies.js). */
  const R_ = (x, y, w, h, r, a = 0, cx = x + w / 2, cy = y + h / 2) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"${a ? ` transform="rotate(${a} ${cx} ${cy})"` : ""}/>`;
  const E_ = (cx, cy, rx, ry, a = 0) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"${a ? ` transform="rotate(${a} ${cx} ${cy})"` : ""}/>`;
- // a finger: a capsule from its base (x, y) along angle a (degrees from up), length l, width w
+ // a finger: a capsule from its base (x, y) along angle a (degrees from up, + toward +x), length l, width w
  const FG = (x, y, l, w, a = 0) => R_(f1(x - w / 2), f1(y - l), w, f1(l + w / 2), w / 2, a, x, y);
- const L_ = (d, o = .6) => `<path d="${d}" fill="none" stroke-width="1.15" stroke-linecap="round" class="hl" opacity="${o}"/>`;
+ const PALM = R_(-10, -7, 20, 19, 8.5);
+ // knuckle bumps along the top of the back of the hand: the back reads by its silhouette, not by texture
+ const KN = E_(-6, -6.6, 3.6, 3.2, -15) + E_(0, -7.8, 3.6, 3.2) + E_(6, -6.6, 3.6, 3.2, 15);
+ // fingers fanned for an open hand; together and a little curled at rest
+ const FAN = FG(-6.2, -4, 10.5, 6.8, -15) + FG(0, -5.5, 12, 6.8, 0) + FG(6.2, -4, 10.5, 6.8, 15);
  const HANDS = {
-  // palm to the viewer, fingers together and gently fanned, thumb out to the side
-  open: {base: R_(-9.5, -8, 19, 19, 8) + FG(-6.6, -5, 9.5, 5.2, -10) + FG(-2.2, -6, 11.5, 5.2, -3) + FG(2.2, -6, 11, 5.2, 3) + FG(6.4, -5, 8.6, 5, 10) + FG(-7, 3, 8, 6.4, -42),
-   detail: L_("M-4.4 -6.5v-4M0 -7v-4.6M4.3 -6.5v-4") + L_("M-5 4q5 3.4 10 0", .45)},
-  // the back of the hand toward the viewer (palm to her face): knuckle dimples, thumb on the far side
-  back: {base: R_(-9.5, -8, 19, 19, 8) + FG(-6.4, -5, 8.6, 5, -10) + FG(-2.2, -6, 11, 5.2, -3) + FG(2.2, -6, 11.5, 5.2, 3) + FG(6.6, -5, 9.5, 5.2, 10) + FG(6.5, 2, 7, 6.4, 30),
-   detail: L_("M-4.3 -6.5v-4M0 -7v-4.6M4.4 -6.5v-4") + L_("M-6.6 -6q1.2 -1 2.4 0M-2.2 -6.8q1.2 -1 2.4 0M2.2 -6.8q1.2 -1 2.4 0M6.4 -6q1.2 -1 2.4 0", .5)},
-  // relaxed at the side: fingers together, softly curled, thumb lying along the front
-  relax: {base: R_(-8.5, -7, 17, 18, 7) + FG(-5.4, -4, 11, 4.8, -4) + FG(-1.8, -5, 12.5, 4.8, -1) + FG(1.8, -5, 12, 4.8, 1) + FG(5.4, -4, 10, 4.6, 4) + FG(-7.5, 3, 8, 5.4, -20),
-   detail: L_("M-3.6 -6v-4M0 -6.5v-4M3.6 -6v-4", .4)},
-  // index straight up (1.6 × the fist height), the other three curled, thumb across them
-  point: {base: R_(-9, -8, 18, 18, 7) + FG(-3.8, -5, 26, 6.2, 0) + E_(1.4, -6.6, 3, 2.6) + E_(4.8, -6.4, 2.8, 2.6) + E_(7.6, -5.2, 2.4, 2.4) + R_(-9.5, 0, 12.5, 5.8, 2.9, -12),
-   detail: L_("M-5.8 -16h4M-5.8 -24h4") + L_("M1.2 -4v3M4.6 -4v3", .45)},
-  // a side-on fist with the thumb straight up
-  thumb: {base: R_(-8.5, -6, 17.5, 17.5, 6.5) + R_(-1.5, -6, 12, 4.6, 2.3) + R_(-1.5, -1.6, 12, 4.6, 2.3) + R_(-1.5, 2.8, 12, 4.6, 2.3) + R_(-1.5, 7.2, 11, 4.4, 2.2) + FG(-4.2, -4, 13, 8.8, -8),
-   detail: L_("M-8.6 -14q3 -2.6 6 0", .7) + L_("M-1 -1.7h10M-1 2.7h10M-1 7.1h9", .45)},
-  // a closed fist, knuckles to the viewer, thumb folded across the front
-  fist: {base: R_(-9.5, -8.5, 19, 18.5, 8.5) + E_(-5.8, -8, 2.6, 2) + E_(-1.9, -8.6, 2.6, 2) + E_(1.9, -8.6, 2.6, 2) + E_(5.8, -8, 2.6, 2) + R_(-10, 1, 13, 5.6, 2.8, -10),
-   detail: L_("M-3.9 -7v3.6M0 -7.4v3.6M3.9 -7v3.6", .45)},
+  // palm to the viewer (wave, stop, shrug, present): fingers fanned, thumb out toward the body
+  open: {base: PALM + FAN + FG(-8, 4, 9, 7, -62), side: "palm", line: "M-4.6 9q-1.8 -4 .8 -8M-7.6 -4.6h3M-1.5 -5.6h3M4.6 -4.6h3", gl: ""},
+  // the back of the hand (palm to her own face or to what she holds): thumb on the far side
+  back: {base: PALM + FAN + FG(8, 4, 8, 7, 58) + KN, side: "back", line: "", gl: "M-4.5 -1v8M0 -2v9M4.5 -1v8"},
+  // relaxed at her side: fingers together, softly curled, thumb along the front
+  relax: {base: R_(-9.5, -6, 19, 18, 8) + FG(-5.2, -3, 9, 6.8, -2) + FG(0, -4, 10, 6.8, 0) + FG(5.2, -3, 9, 6.8, 2) + FG(-7.6, 4, 7.5, 6.8, -20), side: "palm", line: "M-2.6 -4v-4.5M2.6 -4v-4.5", gl: ""},
+  // counting: two and three fingers raised (count raises them one by one: point, count2, count3)
+  count2: {base: R_(-10, -7, 20, 18, 8.5) + FG(-3.6, -5, 14, 7, -2) + FG(3.6, -5, 14, 7, 2) + E_(7.6, -5.4, 3.2, 3) + R_(-11.5, .5, 15, 6.8, 3.4, -12), side: "palm", line: "M0 -5v-9", gl: ""},
+  count3: {base: R_(-10, -7, 20, 18, 8.5) + FG(-6.2, -5, 13.5, 6.4, -3) + FG(0, -5.5, 14.5, 6.4, 0) + FG(6.2, -5, 13.5, 6.4, 3) + R_(-11.5, .5, 15, 6.8, 3.4, -12), side: "palm", line: "M-3.1 -5v-9M3.1 -5v-9", gl: ""},
+  // index straight up, the other two curled, the thumb folded across them
+  point: {base: R_(-10, -7, 20, 18, 8.5) + FG(-4.6, -5, 14.5, 7, 0) + E_(1.6, -7, 3.6, 3.2) + E_(6.6, -6, 3.4, 3.1) + R_(-11.5, 0.5, 15, 6.8, 3.4, -12), side: "palm", line: "M-1 -5v4M4 -4v3", gl: ""},
+  // pointing at things, the back of the hand toward the viewer: index up, knuckles, thumb on the far side
+  pushup: {base: R_(-10, -7, 20, 18, 8.5) + FG(-4.6, -5, 14.5, 7, 0) + E_(1.6, -7, 3.6, 3.2) + E_(6.6, -6, 3.4, 3.1) + FG(8.5, 3, 7, 7, 52), side: "back", line: "M-1 -5v4M4 -4v3", gl: "M-2 0v7M3 0v7"},
+  // a thumbs-up, side on: rolled fingers stacked, the thumb straight up
+  thumb: {base: R_(-9.5, -5, 18, 17, 7.5) + R_(-0.5, -5, 11.5, 6, 3) + R_(-0.5, 0.4, 11.5, 6, 3) + R_(-0.5, 5.8, 10.5, 5.8, 2.9) + FG(-4.4, -3, 12, 7.6, -6), side: "edge", line: "M1 0.7h8.5M1 6.1h8", gl: ""},
+  // a closed fist, knuckles to the viewer, the thumb folded across the front
+  fist: {base: R_(-10, -8, 20, 19, 8.5) + E_(-5.6, -7.6, 3.8, 3) + E_(0.4, -8.4, 3.8, 3) + E_(6.2, -7.4, 3.6, 2.9) + R_(-11, 1.2, 14, 6.6, 3.3, -10), side: "palm", line: "M-2.6 -6.6v3.4M3.3 -6.4v3.4", gl: ""},
   // fingers wrapped round a handle, the thumb resting on top
-  grip: {base: R_(-9, -9, 17, 19, 7) + R_(2.5, -8.8, 10, 4.6, 2.3) + R_(2.5, -4.2, 10, 4.6, 2.3) + R_(2.5, 0.4, 10, 4.6, 2.3) + R_(2.5, 5, 9, 4.4, 2.2) + R_(-6, -13, 13.5, 5.6, 2.8, -8),
-   detail: L_("M3 -4.2h8M3 .4h8M3 5h7", .45)},
-  // thumb and index tips meet in a ring (a monocle rim, a watch crown), the other fingers curled
-  // thumb and index tips meet at one point above the palm; the other fingers curl in
-  pinch: {base: R_(-9, -1, 18, 13, 6) + E_(6, -.6, 2.7, 2.5) + E_(8.4, 1.8, 2.4, 2.3) + FG(4, -1, 13, 6, -35) + FG(-9, 2, 14.5, 6.6, 18),
-   detail: L_("M5 2v3M7.6 4v2.6", .4) + L_("M-6.4 -9.4q1.4 -1.6 3 -.8", .5)},
-  // an open palm cupped upward, fingers curled up at the tips (a watch resting in it)
-  cradle: {base: R_(-11, -6, 22, 15, 7) + R_(-10.5, -10, 5, 7.5, 2.5, -8) + R_(-5.2, -11.5, 5, 8, 2.5, -2) + R_(0.2, -11.5, 5, 8, 2.5, 2) + R_(5.4, -10.5, 5, 7.5, 2.5, 8) + FG(-9, 2, 7, 6.2, -32),
-   detail: L_("M-5.4 -5v-3M-.2 -5.4v-3M5 -5v-3", .45) + L_("M-7 3q7 3 14 0", .4)},
-  // the back of the hand with the index straight up (pushing glasses up by the bridge)
-  pushup: {base: R_(-8.5, -6, 17, 16, 6.5) + FG(-1.4, -4, 24, 6, 0) + E_(4.4, -5.4, 2.7, 2.5) + E_(7.4, -4, 2.5, 2.4) + FG(6.5, 2, 7, 6, 40),
-   detail: L_("M-3.4 -14h4M-3.4 -21h4") + L_("M4 -3v3M7 -2v3", .4)},
-  // fingertips together (steepled), seen from the side
-  steeple: {base: R_(-7, -6, 14, 18, 6.5) + FG(-4.2, -4, 13, 4.6, -2) + FG(-1.4, -5, 15, 4.6, 0) + FG(1.4, -5, 14.5, 4.6, 0) + FG(4.2, -4, 12.5, 4.4, 2) + FG(5.5, 3, 7, 5.8, 30),
-   detail: L_("M-2.8 -6v-6M0 -6.5v-7M2.8 -6v-6", .45)},
+  grip: {base: R_(-9.5, -8, 17.5, 19, 7.5) + R_(1.5, -7.5, 11, 6, 3) + R_(1.5, -1.9, 11, 6, 3) + R_(1.5, 3.7, 10, 5.8, 2.9) + R_(-6.5, -12.5, 14, 6.4, 3.2, -8), side: "back", line: "M2.5 -1.7h8.5M2.5 3.9h8", gl: ""},
+  // a pinch: thumb and index tips meet at the pinch point, the other two fingers up behind (the monocle, the crown)
+  pinch: {base: R_(-9, -5, 18.5, 17, 7.5) + E_(-2.4, -8, 4, 4.4) + FG(2, -5, 10, 6.4, -20) + FG(-6, -1, 14, 7, 18) + FG(5.6, -3.5, 9.5, 6.2, 12) + FG(9.4, -1.5, 8, 6, 28), over: FG(-6, -1, 14, 7, 18), side: "back", line: "M7.6 -4v-3.5", gl: "M2 3v5M-1.5 3.5v4.5"},
+  // an open palm cupped upward, the fingertips curled up (a watch resting in it)
+  cradle: {base: R_(-11, -6, 22, 15, 7) + R_(-9.6, -11, 6.2, 8, 3.1, -8) + R_(-3.1, -12, 6.2, 8.5, 3.1, 0) + R_(3.4, -11, 6.2, 8, 3.1, 8), over: R_(3.4, -11, 6.2, 8, 3.1, 8) + FG(-9, 4, 12, 7, 38), side: "palm", line: "M-6 -4.6v-2.6M.2 -5v-3M6.4 -4.6v-2.6", gl: ""},
+  // edge-on views: a chop (the open hand seen side on) and a pointing hand seen side on
+  chop: {base: R_(-6.5, -6, 13, 18, 6.5) + FG(.6, -3, 14, 11.5, 3) + FG(-5.8, 4, 8.5, 6.2, -26), side: "edge", line: "M-2.6 -9.5h6.5M-2.6 -5.5h6.8M-2.6 -1.5h6.5", gl: ""},
+  pointEdge: {base: R_(-9.5, -5, 18, 17, 7.5) + R_(-.5, 0.4, 11.5, 6, 3) + R_(-.5, 5.8, 10.5, 5.8, 2.9) + FG(1.2, -3, 14, 6.6, 0) + R_(-10, 1, 11, 5.6, 2.8, -12), side: "edge", line: "M1 6.1h8.5M-8.6 3.2L.4 1.4", gl: ""},
+  // back views of the closed and resting hands: knuckles up, the thumb on the far side
+  fistBack: {base: R_(-10, -8, 20, 19, 8.5) + E_(-5.6, -7.6, 3.8, 3) + E_(0.4, -8.4, 3.8, 3) + E_(6.2, -7.4, 3.6, 2.9) + FG(9.2, 3, 6, 6.4, 50), side: "back", line: "M-5.6 -4.4v2.4M.4 -5.2v2.4M6.2 -4.2v2.4", gl: "M-3.5 0v7M1 -.5v7.5M5.5 0v7"},
+  relaxBack: {base: R_(-9.5, -6, 19, 18, 8) + FG(-5.6, -3, 9.5, 6.6, -5) + FG(0, -4, 10.5, 6.6, 0) + FG(5.6, -3, 9.5, 6.6, 5) + FG(8, 4, 7.5, 6.8, 30) + KN, side: "back", line: "M-2.8 -4v-5M2.8 -4v-5", gl: "M-3.5 0v8M0 -.5v8.5M3.5 0v8"},
+  // palm views of the pinch and the grip: the thumb crosses in front
+  pinchPalm: {base: R_(-9, -5, 18.5, 17, 7.5) + E_(-2.4, -8, 4, 4.4) + FG(2, -5, 10, 6.4, -20) + FG(-6, -1, 14, 7, 18) + FG(5.6, -3.5, 9.5, 6.2, 12) + FG(9.4, -1.5, 8, 6, 28), side: "palm", line: "M-6.8 -2.2L-2.6 -13M7.6 -4v-3.5M-4.6 9q-1.8 -4 .8 -8", gl: ""},
+  gripPalm: {base: R_(-9, -8, 18, 19, 7.5) + R_(-9.6, -7, 19.2, 5.8, 2.9) + R_(-9.6, -1.4, 19.2, 5.8, 2.9) + R_(-9, 4.2, 18, 5.6, 2.8) + R_(-6.5, -12.5, 14, 6.4, 3.2, -8), side: "palm", line: "M-8 -1.4h16M-8 4.2h15", gl: ""},
+  // a teacup held by its handle: thumb and index pinch the handle, middle finger curled, the little finger out
+  teacup: {base: R_(-9, -5, 18.5, 17, 7.5) + E_(-2.4, -8, 4, 4.4) + FG(2, -5, 10, 6.4, -20) + FG(-6, -1, 14, 7, 18) + E_(5.8, -4.6, 3.6, 3.3) + FG(8, 0, 10, 5.4, 52), over: FG(-6, -1, 14, 7, 18), side: "back", line: "M5.6 -2.2v-3", gl: "M2 3v5M-1.5 3.5v4.5"},
+  // fingertips together (steepled), the hand seen from the side
+  steeple: {base: R_(-7.5, -6, 15, 18, 6.5) + FG(-3.4, -4, 12.5, 6, -3) + FG(1.2, -5, 13.5, 6, 0) + FG(5.2, -3.5, 11.5, 5.8, 4) + FG(6, 3, 7, 6.4, 34), side: "edge", line: "M-1 -5v-6M3.4 -5v-5", gl: ""},
  };
  HANDS.wave = HANDS.open;
- function handPath(pose) { const h = HANDS[pose] || HANDS.fist; return h.base + h.detail; }
- // the drawn width of each hand, so the size cap holds for wide hands too
- function handW(pose) { return artBox(pose)[2]; }
- // The hands are Microsoft Fluent Emoji 3D renders (MIT, hands/LICENSE-fluentui-emoji.txt), cropped and scaled, not
- // drawn here. Each is placed in the rig's hand space (palm near the origin, fingers up, about 30 units tall).
- const HAND_BASE = (() => { try { return new URL("hands/", document.currentScript.src).href; } catch { return "hands/"; } })();
- const ART = {open: [93, 112], back: [92, 112], relax: [105, 112], point: [80, 112], pushup: [102, 112], thumb: [88, 112], fist: [101, 112], steeple: [84, 93], grip: [112, 100], cradle: [112, 72], pinch: [112, 104]};
- const artBox = (pose) => {
-  const [pw, ph] = ART[pose] || ART.fist;
-  if (pose === "grip") { const h = 22, w = h * pw / ph; return [-w / 2, -14, w, h]; }
-  if (pose === "cradle") { const w = 30, h = w * ph / pw; return [-w / 2, -2 - h / 2, w, h]; }
-  // the pinch art is mirrored so the fingertips sit at its left: they land on the rig's pinch point (-1.7, -14.5)
-  if (pose === "pinch") { const w = 28, h = w * ph / pw; return [-1.7 - .08 * w, -14.5 - .29 * h, w, h]; }
-  const h = 30, w = h * pw / ph; return [-w / 2, -19, w, h];
- };
- function renderHand(pose, tone, filter, side) {
-  // folded hands are one picture for both hands: the right hand carries it, centred, and the left is not drawn
-  if (pose === "steeple" && side < 0) return "";
-  const [x, y, w, h] = artBox(pose), dx = 0;
-  return `<image data-l="hand-${pose}" href="${HAND_BASE}${HANDS[pose] ? pose : "fist"}-${tone}.png" x="${f1(x + dx)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}"${filter ? ` filter="url(#${filter})"` : ""}/>`;
+ // a glove's flared cuff, behind the wrist
+ const CUFF = R_(-8.6, 7.5, 17.2, 7, 3);
+ // the open hand's width sets every hand's scale, so a character's hands keep one size in every pose
+ const HAND_REF = 27;
+ const HAND_W = {open: 27, back: 27, chop: 17, count2: 23, count3: 25, relax: 22, relaxBack: 22, point: 23, pushup: 22, pointEdge: 21, thumb: 21, fist: 22, fistBack: 22, grip: 22, gripPalm: 22, pinch: 22, pinchPalm: 22, teacup: 26, cradle: 25, steeple: 19};
+ // closed poses are drawn a little larger, so a fist reads with the same weight as an open hand at one character scale
+ const MASS = {fist: 1.15, fistBack: 1.15, grip: 1.1, gripPalm: 1.1, thumb: 1.12, point: 1.08, pushup: 1.08, pointEdge: 1.28}; // not pinch: its tips hold the monocle exactly
+ function handW(pose) { return (HAND_W[pose] || 22) * (MASS[pose] || 1); }
+ function handPath(pose) { return (HANDS[pose] || HANDS.fist).base; }
+ /** look: {stops: [light, base, dark], edge, glove, float}. A hand is shaded like the body it belongs to: one radial
+  * light-base-dark fill over the whole hand, key light upper left on screen (mirrored for the left hand), a thin
+  * softened outline and faint creases. No drop shadow (it read as a ghost copy). */
+ function renderHand(pose, look, side, uid, over = false) {
+  const h = HANDS[pose] || HANDS.fist;
+  if (over && !h.over) return "";
+  const base = over ? h.over : (look.glove ? CUFF : "") + h.base, mass = MASS[pose] || 1, gid = `hg${uid}${side > 0 ? "r" : "l"}`;
+  const ln = (d, o, w = 1.1) => d ? `<path d="${d}" fill="none" stroke="${look.edge}" stroke-width="${w}" stroke-linecap="round" opacity="${o}"/>` : "";
+  // palm views a touch lighter (with their creases), back views a touch darker (with their knuckles): readable when small
+  const tone = h.side === "palm" ? (c) => mixHex(c, "#ffffff", .1) : h.side === "back" ? (c) => mixHex(c, "#000000", .08) : (c) => c, [l, m, d] = look.stops.map(tone);
+  return `<g data-l="hand-${pose}" data-side="${h.side}"${mass !== 1 ? ` transform="scale(${mass})"` : ""}><defs><radialGradient id="${gid}" gradientUnits="userSpaceOnUse" cx="${f1(-6 * side)}" cy="-11" r="27"><stop offset="0" stop-color="${l}"/><stop offset=".5" stop-color="${m}"/><stop offset="1" stop-color="${d}"/></radialGradient></defs>`
+   + `<g fill="url(#${gid})" stroke="${look.edge}" stroke-width="1.2" stroke-linejoin="round">${base}</g><g fill="url(#${gid})">${base}</g>`
+   + (over ? "" : ln(h.line, h.side === "palm" ? .45 : .3) + (look.glove ? ln(h.gl, .28, 1) + ln("M-7 9.6h14", .25, .9) : "")) + `</g>`;
  }
- TCS.renderHand = renderHand;
- TCS.HAND_CLIPS = (uid) => Object.keys(HANDS).map((k) => `<clipPath id="hc${uid}-${k}">${HANDS[k].base}</clipPath>`).join("");
- TCS.renderHand = renderHand;
+ TCS.renderHand = renderHand; TCS.HAND_REF = HAND_REF;
+ TCS.HAND_SIDE_OF = (pose) => (HANDS[pose] || HANDS.fist).side;
+ // which side each gesture shows (Director, 2026-11-12): the palm only when the hand shows something to the viewer;
+ // the back whenever the palm faces the character or what it holds; the edge for pointing at things and chops.
+ // Spots not listed keep the pose their gesture asked for.
+ const SIDE = {up: "palm", raise: "palm", present: "palm", shrug: "palm", wag: "back", subHigh: "palm",
+  chin: "back", cheek: "back", mouth: "back", eye: "back", face: "back", temple: "back", head: "back", ear: "back", bridge: "back", underChin: "back",
+  heart: "back", hug: "back", chest: "back", clasp: "back", hold: "back", sip: "back", snack: "back", both: "back", keysL: "back", keysR: "back",
+  tie: "back", cuffR: "back", cuffL: "back", hips: "back", fistlow: "back", side: "back", overhead: "back", monocleRim: "back",
+  steeple: "back", monoKey: "back", watchKey: "palm", beat: "back", toL: "edge", aim: "edge", cheekSide: "back", chestFront: "edge"};
+ // the pose that shows the wanted side for the pose the gesture asked for
+ const SWAP = {palm: {back: "open", chop: "open", pushup: "point", pointEdge: "point", fistBack: "fist", relaxBack: "relax", pinch: "pinchPalm", grip: "gripPalm"},
+  back: {open: "back", chop: "back", steeple: "back", relax: "relaxBack", point: "pushup", pointEdge: "pushup", fist: "fistBack", pinchPalm: "pinch", gripPalm: "grip"},
+  edge: {open: "chop", back: "chop", point: "pointEdge", pushup: "pointEdge"}};
+ const sidePose = (pose, want) => (want && SWAP[want][pose]) || pose;
+ TCS.HAND_SIDE = SIDE;
  TCS.handPath = handPath;
- TCS.HAND_SHAPES = ["open", "back", "relax", "point", "thumb", "fist", "grip", "pinch", "cradle", "pushup", "steeple"];
+ TCS.HAND_SHAPES = ["open", "back", "chop", "count2", "count3", "relax", "relaxBack", "point", "pushup", "pointEdge", "fist", "fistBack", "thumb", "grip", "gripPalm", "pinch", "pinchPalm", "teacup", "cradle", "steeple"];
 
  // ── Drawing the face ───────────────────────────────────────────────────────────────────────────────────────────
  function eyeShape(cx, cy, W, H, side, p, close) {
@@ -569,7 +599,7 @@
   let expr = "neutral", clips = [], fxs = [], props = {}, propT = {}, speech = null, loopT0 = 0, loopFrame = 0, nextLoopAct = 0;
   const hands = {L: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}, R: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}};
   const sec = {x: 0, y: 0, vx: 0, vy: 0, px: 0, py: 0};
-  let handMode = opts.hands || "float"; // floating hands by default; the arms rig is behind the toggle
+  let handMode = opts.hands || "arms"; // arms by default (Director, 13 Nov); floating hands are a hidden option
   let raf = 0, last = 0, frames = 0, running = false, destroyed = false, blinkTimer = 0, idleTimer = 0, lastVariant = {}, dyn = "";
   const stats = {frames: 0, since: performance.now()};
   let B = null, F = null;
@@ -585,7 +615,9 @@
     + `<linearGradient id="gl${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4a7a" stop-opacity=".7"/><stop offset=".6" stop-color="#3b4a7a" stop-opacity="0"/></linearGradient>`
     + `<radialGradient id="gw${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.glow || p.light}" stop-opacity=".55"/><stop offset="1" stop-color="${p.glow || p.light}" stop-opacity="0"/></radialGradient>`
     + `<clipPath id="cl${uid}"><path/></clipPath>` + (ch.defs ? ch.defs(uid, p) : "");
-   L.defs.insertAdjacentHTML("beforeend", TCS.HAND_CLIPS(uid)); L.tintDefs = new Set();
+
+   L.defs.insertAdjacentHTML("beforeend", `<mask id="re${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><path fill="none" stroke="#fff" stroke-width="16"/></mask><mask id="rc${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><g mask="url(#re${uid})"></g></mask>`);
+   L.rc = L.defs.querySelector(`#rc${uid} g`); L.rcEdge = L.defs.querySelector(`#re${uid} path`);
    L.clip = L.defs.querySelector(`#cl${uid} path`);
    L.stops = [...L.defs.querySelectorAll(`#bg${uid} stop`)];
    L.bd.setAttribute("clip-path", `url(#cl${uid})`); L.fc.setAttribute("clip-path", `url(#cl${uid})`);
@@ -719,11 +751,15 @@
    return moving;
   }
   function stepHand(h, tx, ty, tr, ts, dt) {
-   // critically damped: a hand eases into its pose and settles, never overshoots, wobbles or swings back
-   const k = clamp(tu.k * .8, 60, 150), c = 2 * Math.sqrt(k);
-   let m = false;
+   // a new pose starts with a small anticipation away from it (90 ms), then an under-damped spring (ζ 0.78) carries the
+   // hand there with a touch of overshoot and lets it settle; size eases critically damped (it never pulses)
+   if (Math.hypot(tx - (h.gx ?? tx), ty - (h.gy ?? ty)) > 18) { const d = Math.hypot(tx - h.x, ty - h.y) || 1, mg = Math.min(6, d * .07); h.ant = .09; h.ax = h.x - (tx - h.x) / d * mg; h.ay = h.y - (ty - h.y) / d * mg; }
+   h.gx = tx; h.gy = ty;
+   if (h.ant > 0) { h.ant -= dt; tx = h.ax; ty = h.ay; }
+   const k = clamp(tu.k * .8, 60, 150), cc = 2 * Math.sqrt(k), cu = 2 * .78 * Math.sqrt(k);
+   let m = h.ant > 0;
    for (const [p, v, t] of [["x", "vx", tx], ["y", "vy", ty], ["r", "vr", tr], ["s", "vs", ts]]) {
-    const acc = k * (t - h[p]) - c * h[v]; h[v] += acc * dt; h[p] += h[v] * dt;
+    const acc = k * (t - h[p]) - (p === "s" ? cc : cu) * h[v]; h[v] += acc * dt; h[p] += h[v] * dt;
     if (Math.abs(t - h[p]) > .05 || Math.abs(h[v]) > .05) m = true; else { h[p] = t; h[v] = 0; }
    }
    return m;
@@ -848,7 +884,9 @@
    const core = `<ellipse cx="${f1(B.hw * .5 - yawS)}" cy="${f1(B.cy + B.h * .3)}" rx="${f1(B.hw * .85)}" ry="${f1(B.h * .45)}" fill="url(#cs${uid})" opacity=".55"/>`;
    const tint = (Rv.flush > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#fl${uid})" opacity="${f1(clamp(Rv.flush, 0, 1))}"/>` : "")
     + (Rv.gloom > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#gl${uid})" opacity="${f1(clamp(Rv.gloom, 0, 1) * .45)}"/>` : "");
-   L.bd.innerHTML = rim + (B.body || "") + core + hi + tint;
+   // where a sleeve passes behind the edge, the plain body fill covers the rim highlight (no light seam beside the sleeve)
+   L.bd.innerHTML = rim + `<g mask="url(#rc${uid})"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint;
+   if (L.rcEdge) L.rcEdge.setAttribute("d", B.d);
    L.bk.innerHTML = B.back || "";
    const face = ch.noFace ? {svg: "", eyes: drawFace(Rv, F, pal, now / 1000, spinT).eyes} : drawFace(Rv, F, pal, now / 1000, spinT);
    F.lastEyes = face.eyes;
@@ -868,7 +906,7 @@
    for (const s of ["L", "R"]) if (pre.hands[s] && (!handReq[s] || pr.held[s] || pr.held.both)) handReq[s] = pre.hands[s];
    const ed = (ch.exprHands && ch.exprHands[expr]) || E[expr].hands; if (ed) for (const s of ["L", "R"]) if (!handReq[s] && ed[s]) handReq[s] = ed[s];
    for (const id in props) { const st = props[id]; if (st.k && st.k.flash && !st.flashed) { st.flashed = true; spawn("flash"); } if (!st.use) st.flashed = false; }
-   let hs = "", both = "", backHands = "";
+   let hs = "", both = "", backHands = "", overs = "", rimCut = "";
    const LS = ch.limbs || {limb: "arms", shoulderY: .58, armLen: .38, hand: 1.2, reach: ["chest", "face", "head"]};
    // stub arms cannot reach round to hold a two-handed object below the mouth, so for that the hands float free
    // a body whose mouth sits too low to hold a two-handed object below it carries the object beside it instead
@@ -878,10 +916,11 @@
    const floatMode = handMode === "float" || LS.limb === "float" || LS.limb === "none" || (!!(pr.held.both && pr.held.both.grip) && (LS.limb === "stub" || besideBody));
    const prof = profileOf(ch), hScale = B.h / prof.h, wScale = B.hw / prof.hw;
    const edgeAt = (side, y) => { const f = clamp(-y / B.h, 0, 1) * (prof.n - 1), i = Math.floor(f), t = f - i, xs = side > 0 ? prof.R : prof.L; return side * lerp(xs[i], xs[Math.min(prof.n - 1, i + 1)], t) * wScale; };
-   const E0 = F.lastEyes || [], eyeSpan = E0.length === 2 ? Math.abs(E0[0].cx - E0[1].cx) : Math.abs(2 * F.ex) || 60;
+   // the character's own eye spacing at rest, not this frame's (a head turn or squint must not resize her hands)
+   const eyeSpan = 2 * Math.abs((ch.face && ch.face.ex) || 30);
    // a hand is never wider than 0.6 × her eye spacing (an open hand is about 30 units across at scale 1)
    // a hand is never wider than 0.6 × her eye spacing (a fist is 19 units wide at scale 1); floating hands sit at that size
-   const handS = floatMode ? .53 * eyeSpan / 19 : Math.min(LS.hand || 1.2, .57 * eyeSpan / 19), Lfull = Math.max(30, B.h * (LS.armLen || .36));
+   const handS = F.handS = floatMode ? .6 * eyeSpan / HAND_REF : Math.min((LS.hand || 1.2) * 1.25, .72 * eyeSpan / HAND_REF), Lfull = Math.max(30, B.h * (LS.armLen || .36));
    // two-handed props: the object sits at the "both" spot; each hand goes to its own grip point on it
    const bothG = pr.held.both && pr.held.both.grip;
    let bothPos = null;
@@ -891,7 +930,7 @@
     // short arms (a stub, a low face): the object stays below the mouth and the hands hold it as low as they can reach
     if (bothPos.s < .65) { bothPos[1] = Math.min(-6, mb + top * .65); bothPos.s = .65; }
     if (besideBody) { bothPos[0] = B.hw + top * .45; bothPos[1] = Math.min(-8, B.cy + B.h * .35); bothPos.s = .75; } }
-   const zoneOf = (n) => /^(chin|mouth|sip|snack|cheek|ear|eye|face|bridge|temple|monocleRim|underChin|wag)$/.test(n) ? "face" : /^(head|up|overhead|raise)$/.test(n) ? "head" : "chest";
+   const zoneOf = (n) => /^(chin|mouth|sip|snack|cheek|ear|eye|face|bridge|temple|monocleRim|monoKey|underChin|wag)$/.test(n) ? "face" : /^(head|up|overhead|raise)$/.test(n) ? "head" : "chest";
    const lean = {v: 0};
    for (const s of ["L", "R"]) {
     const side = s === "L" ? -1 : 1, h = hands[s], hp = pr.held[s] || (pr.held.both && bothG ? pr.held.both : null);
@@ -900,14 +939,15 @@
     // a floating hand has no arm to put behind the back: it simply goes away
     if (floatMode && q && /^(behind|cross)$/.test(q[0])) q = null;
     // the shoulder sits on this character's silhouette edge at its own height (limb spec); nowhere else
-    const shY = -B.h * (LS.shoulderY || .58), shX = edgeAt(side, shY) - side * 4;
+    // the shoulder sits inside the silhouette edge by most of a sleeve width, so the sleeve root never shows on the edge
+    const shIn = 18.8 * (LS.thick || 1) * handS, shY = -B.h * (LS.shoulderY || .58), shX = edgeAt(side, shY) - side * shIn;
     // a gesture this body cannot reach becomes its substitute: a small raised hand at the upper chest, and a lean
     let zone = q ? zoneOf(q[0]) : "rest", sub = false;
-    if (q && !floatMode && LS.reach && !LS.reach.includes(zone)) { sub = true; q = ["subHigh", q[1] === "thumb" ? "thumb" : q[1] === "point" ? "point" : "open"]; lean.v += side * -3; }
+    if (q && !floatMode && LS.reach && !LS.reach.includes(zone)) { sub = true; q = zone === "face" ? ["cheekSide", "back"] : ["subHigh", /^(thumb|point|count2|count3)$/.test(q[1]) ? q[1] : "open", 0, q[3] || 0, 0, 0, 1, 0, 0, q[9]]; lean.v += side * -3; zone = "chest"; }
     // at rest the arm hangs from the shoulder along her side, nearly straight, the hand against the hip
     // at rest: the upper arm hangs down along her side, the forearm bends a little forward and the hand rests on the
     // hip, inside the outline (elbow always below the shoulder)
-    const restY = Math.min(-B.h * .24, shY + Lfull * .66), rest = floatMode ? [side * B.hw * .7, 80] : [edgeAt(side, restY) - side * 9 * handS, restY]; // resting: hand against her side, above the hem
+    const restY = Math.min(-B.h * .2, shY + Lfull * .75), rest = floatMode ? [side * B.hw * .7, 80] : [side * (Math.max(Math.abs(edgeAt(side, restY)), Math.abs(edgeAt(side, restY + 14 * handS))) + 13 * handS), restY]; // resting: the hand hangs just outside her side, above the hem
     let tx, ty, tr, ts = handS * (floatMode ? 1 : 1), pose;
     if (pr.held.both && bothG) {
      const g = bothG[s], k = bothPos.s || 1.12; tx = bothPos[0] + g[0] * k; ty = bothPos[1] + g[1] * k + 6; tr = side * 6; pose = bothG.shape; zone = "chest";
@@ -919,86 +959,125 @@
      // floating hands stay close to the body: just outside its edge at the gesture's height, never off in the corners
      if (floatMode && rel) { const yy = clamp(shY + rel[1] * B.h * .5, -B.h * .92, -14); sp = [edgeAt(side, yy) + side * (14 + Math.max(0, rel[0]) * 10) * handS, yy, side * rel[2], 1]; }
      // a thumbs-up sits below the mouth, in front of the chest; with floating hands, beside the body
-     if (q[0] === "chestFront") { const below = F.cy + F.mY + F.mw * .35 + 30; sp = floatMode ? [side * (B.hw + 14), Math.min(-14, F.cy + F.mY + 6), side * -4, 1] : [side * B.hw * .3, Math.min(-12, below), side * -4, 1]; }
+     if (q[0] === "chestFront") { const below = F.cy + F.mY + F.mw * .35 + 30; sp = floatMode ? [side * (B.hw + 14), Math.min(-14, F.cy + F.mY + 6), side * -4, 1] : [side * (Math.abs(edgeAt(side, F.cy + F.mY)) + 12 * handS), F.cy + F.mY, side * -4, 1]; } // on an arm: beside the body at mouth height, in clear space
      tx = sp[0] + (q[2] || 0) * side; ty = sp[1] + (q[3] || 0); tr = sp[2] + (q[4] || 0) * side; pose = q[1] || "open";
-    } else if (floatMode) { tx = h.x; ty = h.y; tr = h.r; pose = h.pose || "open"; ts = 0; }
+    } else if (floatMode) { tx = h.x; ty = h.y + 8; tr = h.r; pose = h.pose || "open"; ts = handS * .55; } // leaving: it pops out where it is (shrinks fast, then is gone)
     else { [tx, ty] = rest; tr = side * 168; pose = "relax"; }
     // floating fists over the head clear ears, flanges and needles: well above the top, not on it
     // a floating hand at the head sits against the side of the head (clear of ears, flanges and needles on top)
-    if (floatMode && q && q[0] === "head") { if ((q[3] || 0) < -10) { const yy = B.top + B.h * .1; tx = edgeAt(side, yy) + side * 18 * handS; ty = yy - 4; } else { const yy = B.top + B.h * .28 + (q[3] || 0); tx = edgeAt(side, yy) + side * 13 * handS; ty = yy; } }
+    if (floatMode && q && q[0] === "head") { if ((q[3] || 0) < -10) { const yy = B.top + B.h * .1; tx = edgeAt(side, yy) + side * 18 * handS; ty = yy - 4; } else { const yy = B.top + B.h * .28 + (q[3] || 0); tx = edgeAt(side, yy) + side * 4 * handS; ty = yy; } }
     // floating hands stay inside the character's own space, never out past its sides
     if (floatMode && q) {
-     tx = clamp(tx, -Math.min(B.hw + 26 * handS, 136), Math.min(B.hw + 26 * handS, 136)); if (!q[5]) ty = Math.min(ty, -16 * handS);
+     tx = clamp(tx, -Math.min(B.hw + 26 * handS, 136), Math.min(B.hw + 26 * handS, 136)); if (!q[5] && !hp) ty = Math.min(ty, -16 * handS);
     }
     // chest gestures stay below the face: a hand in front of the face area drops below the mouth, or, on a body
     // whose face sits low (a loaf, a stone), moves out beside the face instead
-    if (zone === "chest" && !(pr.held.both && bothG) && q && !/^(behind|cheek|heart|hug|tie|steeple|underChin|mono[A-Z]\w*|watchKey)$/.test(q[0]) || (q && /^(heart|hug)$/.test(q[0]))) {
-     const faceHalf = Math.abs(F.ex) + F.ew * .8, mouthBot = F.cy + F.mY + F.mw * .35 + 16 + 10 * handS;
+    if (zone === "chest" && !(pr.held.both && bothG) && q && !/^(behind|cheek|heart|hug|tie|steeple|underChin|cuff[LR]|mono[A-Z]\w*|watchKey)$/.test(q[0]) || (q && /^(heart|hug)$/.test(q[0]))) {
+     // margins from the hand's own size (fingers reach about 18 × scale above the palm centre), so no part of it covers the face
+     const faceHalf = Math.abs(F.ex) + F.ew * .8, mouthBot = F.cy + F.mY + F.mw * .35 + 6 + 20 * handS;
      const eyeTop = F.cy + F.eyY - F.eh * .8;
-     if (Math.abs(tx) < faceHalf + 14 && ty > eyeTop - 12 && ty < mouthBot) { if (mouthBot < -B.h * .12) ty = mouthBot; else { const E2 = F.lastEyes || [], out = Math.max(faceHalf, ...E2.map((e) => Math.abs(e.cx) + e.W * .5)); tx = side * (out + 16 * handS + 6); } }
+     if (Math.abs(tx) < faceHalf + 12 * handS && ty > eyeTop - 12 && ty < mouthBot) { if (mouthBot < -B.h * .12) ty = mouthBot; else if (!floatMode) tx = side * (Math.abs(edgeAt(side, ty)) + 6 * handS); else { const E2 = F.lastEyes || [], out = Math.max(faceHalf, ...E2.map((e) => Math.abs(e.cx) + e.W * .5)); tx = side * (out + 16 * handS + 6); } } // on an arm, beside the body (a short arm can reach that)
     }
-    // floating hands keep off the character's own badges and trims (its keep-out circles)
-    if (floatMode && q) for (const [kx, ky, kr] of ch.keep ? ch.keep(B) : []) { const dx = tx - kx, dy = ty - ky, d = Math.hypot(dx, dy), m = kr + 13 * handS; if (d < m) { const ux = d > .5 ? dx / d : Math.sign(kx) || 1, uy = d > .5 ? dy / d : 0; tx = kx + ux * m; ty = ky + uy * m; } }
-    if (hp && hp.grip && !(pr.held.both && bothG)) { pose = hp.grip.shape; if (hp.grip.weight === "heavy") { ty += 10; lean.v += side * -2; } }
-    h.pose = pose; if (ts) ts = Math.min(ts, .57 * eyeSpan / Math.max(19, handW(pose)));
+    // floating hands keep off the character's own badges and trims (its keep-out circles); so do arm hands where the
+    // character asks (Alfred's resting monocle), except on an authored path that has to reach it
+    // two passes over the keep-out circles, so neighbouring ones settle instead of pushing the hand back and forth
+    if (q && !q[5] && (floatMode || ch.keepArms)) for (const [kx, ky, kr, ok] of ch.keep ? [...ch.keep(B), ...ch.keep(B)] : []) { if (ok && new RegExp(`^(${ok})$`).test(q[0])) continue; const dx = tx - kx, dy = ty - ky, d = Math.hypot(dx, dy), m = kr + 13 * handS; if (d < m) { const ux = d > .5 ? dx / d : Math.sign(kx) || 1, uy = d > .5 ? dy / d : 0; tx = kx + ux * m; ty = ky + uy * m; } }
+    if (pr.held.both && bothG) pose = sidePose(pose, "back"); else if (q && pose) pose = sidePose(pose, SIDE[q[0]]);
+    if (hp && hp.grip && !(pr.held.both && bothG)) { pose = sidePose(hp.grip.shape, "back"); if (ch.gentleman && hp.id === "tea") pose = "teacup"; if (hp.grip.weight === "heavy") { ty += 10; lean.v += side * -2; } }
+    h.pose = pose;
     // a whole floating hand stays inside the frame (the view is 320 wide), with room for lean and zoom
     if (floatMode && q && ts) { const half = handW(pose) * ts / 2 + 10; tx = clamp(tx, -160 + half, 160 - half); }
     // a prop arrives with the wrist already turned to hold it, so it never swings upside down on the way in
     if (pr.held[s] && pr.held[s].enter > .85) { h.r = tr; h.vr = 0; }
-    if (!h.vis) { if (floatMode && !q && !hp) continue; h.vis = true; Object.assign(h, floatMode ? {x: tx, y: ty, r: tr, s: 0} : {x: rest[0], y: rest[1], r: side * 172, s: ts}); h.vx = h.vy = h.vr = h.vs = 0; }
-    if (q && q[5]) { h.vis = true; h.x = tx; h.y = ty; h.r = tr; h.s = ts * (q[6] ?? 1); h.vx = h.vy = h.vr = h.vs = 0; }
+    if (!h.vis) { if (floatMode && !q && !hp) continue; h.vis = true; Object.assign(h, floatMode ? {x: tx, y: ty + 8, r: tr - side * 12, s: ts * .6} : {x: rest[0], y: rest[1], r: side * 172, s: ts}); h.vx = h.vy = h.vr = h.vs = 0; } // a floating hand pops in at its pose (60 % to full size, opaque, about 0.12 s), never fades
+    // on an arm, a target out of reach (or too close to the shoulder) is moved to the edge of reach before the spring,
+    // so the hand eases there instead of the arm snapping it back
+    if (!floatMode && !(q && q[5]) && ts) { const a1 = tr * PI / 180, ox = Math.sin(a1) * 11 * ts, oy = -Math.cos(a1) * 11 * ts, vx = tx - ox - shX, vy = ty - oy - shY, dv = Math.hypot(vx, vy) || 1, k3 = clamp(dv, Lfull * .32, Lfull * .97) / dv; if (k3 !== 1) { tx = shX + vx * k3 + ox; ty = shY + vy * k3 + oy; } }
+    if (!floatMode && zone === "chest" && q && !q[5] && !/^(behind|tie|steeple|underChin|cuff[LR]|mono[A-Z]\w*|watchKey)$/.test(q[0])) {
+     const faceHalf = Math.abs(F.ex) + F.ew * .8, eyeTop = F.cy + F.eyY - F.eh * .8, mouthLow = F.cy + F.mY + F.mw * .35 + 6 + 18 * handS;
+     if (Math.abs(tx) < faceHalf + 20 * handS && ty > eyeTop - 12 && ty < mouthLow + 12 * handS) { ty = shY + Lfull * .45; tx = side * (Math.abs(edgeAt(side, ty)) + 5 * handS); } // a short arm cannot get below a low face: beside the body
+    }
+    const px0 = h.x, py0 = h.y;
+    // an authored path: a floating hand grows in on it; a hand on an arm keeps its size, blends from its spring onto the
+    // path as the path fades in (q[6]); its speed is capped below (what it carries rides it)
+    if (q && q[5] && !floatMode) {
+     h.vis = true; const w = q[6] ?? 1; h.capUntil = now + 1200;
+     if (stepHand(h, tx, ty, tr, ts, dt)) moving = true;
+     h.x = lerp(h.x, tx, w); h.y = lerp(h.y, ty, w); h.r = lerp(h.r, tr, w); h.s = ts;
+    }
+    else if (q && q[5]) { h.vis = true; h.capUntil = now + 1200; h.x = tx; h.y = ty; h.r = tr; const g = q[6] ?? 1; h.s = ts * (.6 + .4 * g); h.vx = h.vy = h.vr = h.vs = 0; } // on its path it pops in (60 % to full size) where it is needed, never fades
     else if (snap || ch.noHands) { h.x = tx; h.y = ty; h.r = tr; h.s = ts; }
-    else if (stepHand(h, tx, ty, tr, ts, dt * (hp && hp.grip && hp.grip.weight === "heavy" ? .6 : 1))) moving = true;
-    // a floating hand appears by growing where it is needed and leaves by shrinking where it was
-    if (floatMode && !q && !hp && h.s < .2) { h.vis = false; continue; }
-    if (q && q[5] && h.s < .05) continue;
-    // a human gentleman gets the light skin tone as drawn; every other character's hands take its own material tint
-    const fill = ch.handFill ? ch.handFill(pal) : `url(#bg${uid})`, edge = pal.edge || pal.dark;
-    const tone = ch.gentleman ? "light" : "default", tint = ch.gentleman ? null : (ch.handFill ? ch.handFill(pal) : pal.light);
-    const filter = tint && /^#[0-9a-f]{6}$/i.test(tint) ? `ht${uid}${tint.slice(1)}` : null;
-    if (filter && !L.tintDefs.has(filter)) { L.tintDefs.add(filter); const c = [1, 3, 5].map((k) => parseInt(tint.slice(k, k + 2), 16) / 255), g = 1.3; L.defs.insertAdjacentHTML("beforeend", `<filter id="${filter}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${c.map((v) => `${f1(v * .3 * g * 100) / 100} ${f1(v * .59 * g * 100) / 100} ${f1(v * .11 * g * 100) / 100} 0 .02`).join(" ")} 0 0 0 1 0"/></filter>`); }
-    let hr = h.r, hx = h.x, hy = h.y, arm = "", meta = "";
+    else if (stepHand(h, tx, ty, tr, ts, dt * (hp && hp.grip && hp.grip.weight === "heavy" ? .6 : !q && !hp ? .6 : 1))) moving = true; // heavy props and returns to rest are slower (slow out)
+    // a hand on (or just off) an authored path, or carrying a prop on an arm, is speed-capped by the wall clock, 3.7 units
+    // per 30 fps frame: what it carries rides it (a teacup never swings), and it leaves slowly (slow out)
+    if (!(floatMode && q && q[5]) && (h.capUntil > now || (hp && !floatMode))) { const m = Math.hypot(h.x - px0, h.y - py0), cap = 110 * clamp((now - (h.capT || now)) / 1000, 1 / 240, 1 / 30); if (m > cap) { h.x = px0 + (h.x - px0) * cap / m; h.y = py0 + (h.y - py0) * cap / m; moving = true; } }
+    h.capT = now;
+    if (floatMode && !q && !hp && h.s < handS * .62) { h.vis = false; continue; }
+    if (q && q[5] && floatMode && (q[6] ?? 1) < .05) continue;
+    // hands in the character's own material and outline; a gentleman wears white gloves
+    const edge = pal.edge || pal.dark, flat = ch.gentleman ? "#fbfaf6" : ch.handFill ? ch.handFill(pal) : null;
+    const look = ch.gentleman ? {stops: ["#ffffff", "#f3efe7", "#cfc8ba"], edge: "#9a8e7b", glove: true}
+     : {stops: flat ? [mixHex(flat, "#ffffff", .3), flat, mixHex(flat, pal.dark, .35)] : [pal.light, pal.base, pal.dark], edge};
+    let hr = h.r, hx = h.x, hy = h.y, arm = "", armBack = "", meta = "";
     if (!floatMode) {
      // two-bone reach from the fixed shoulder; the elbow bends out and down (pole), bend 0–150°, and never pokes more
      // than a quarter of the body's width beyond its silhouette; a hand asked to go further stops where it can reach
      const a0 = hr * PI / 180;
      let wx = hx - Math.sin(a0) * 11 * h.s, wy = hy + Math.cos(a0) * 11 * h.s;
-     // near rest the arm is just long enough to hang with a slight bend, so the elbow stays below the shoulder and the
-     // limb never loops outward; it reaches full length as the hand travels out
-     const dRest = Math.hypot(h.x - rest[0], h.y - rest[1]), d0 = Math.hypot(wx - shX, wy - shY);
-     const Leff = lerp(Math.min(Lfull, d0 * 1.08), Lfull, clamp(dRest / (B.h * .2), 0, 1));
+     // one arm length per character, always (targets are clamped to its reach before the spring, below)
+     const Leff = Lfull;
      const ua = Leff * .5, fa = Leff * .5, dMin = Math.sqrt(ua * ua + fa * fa - 2 * ua * fa * Math.cos(30 * PI / 180));
-     let elbow = null, bend = 0, d = 0;
-     for (let tries = 0; tries < 6; tries++) {
-      let dx = wx - shX, dy = wy - shY; d = Math.hypot(dx, dy) || 1;
-      if (d > Leff * .98) { const k = Leff * .98 / d; wx = shX + dx * k; wy = shY + dy * k; dx *= k; dy *= k; d = Leff * .98; }
-      if (d < dMin) { const k = dMin / d; wx = shX + dx * k; wy = shY + dy * k; dx *= k; dy *= k; d = dMin; }
-      const th = Math.atan2(dy, dx), al = Math.acos(clamp((ua * ua + d * d - fa * fa) / (2 * ua * d), -1, 1));
-      const e1 = [shX + ua * Math.cos(th + al), shY + ua * Math.sin(th + al)], e2 = [shX + ua * Math.cos(th - al), shY + ua * Math.sin(th - al)];
-      const score = (e) => side * e[0] + .6 * e[1];
-      const cand = score(e1) >= score(e2) ? [e1, e2] : [e2, e1];
-      const lim = (e) => Math.abs(e[0]) <= Math.abs(edgeAt(side, clamp(e[1], -B.h, 0))) + B.hw * (LS.elbowOut ?? .25); // a composed character keeps his elbows in
-      elbow = lim(cand[0]) ? cand[0] : lim(cand[1]) ? cand[1] : null;
-      if (elbow) { bend = 180 - (Math.acos(clamp((ua * ua + fa * fa - d * d) / (2 * ua * fa), -1, 1)) * 180 / PI); break; }
-      wx = lerp(wx, shX, .2); wy = lerp(wy, shY, .2);
-     }
-     if (!elbow) elbow = [shX + side * ua * .5, shY + ua * .85];
+     // the hand is the target and never moves for the arm (moving it made the hand, and what it carries, jump): out of
+     // reach the arm stretches a little; too close, the bend stops at 150° and the curve simply ends at the wrist; an
+     // elbow past its limit is pulled in to the limit rather than swapped for the other solution
+     const dx = wx - shX, dy = wy - shY, d = Math.hypot(dx, dy) || 1, dk = clamp(d, dMin, Leff * .98), k2 = clamp(d / (Leff * .98), 1, 1.08);
+     const ua2 = ua * k2, fa2 = fa * k2, th = Math.atan2(dy, dx), al = Math.acos(clamp((ua2 * ua2 + dk * dk - fa2 * fa2) / (2 * ua2 * dk), -1, 1));
+     const e1 = [shX + ua2 * Math.cos(th + al), shY + ua2 * Math.sin(th + al)], e2 = [shX + ua2 * Math.cos(th - al), shY + ua2 * Math.sin(th - al)];
+     // the elbow bends out and down: for the face and head out first (the forearm comes in from the side, never a strap
+     // across the face); in front of the chest, and to bring something to the mouth, down first (the forearm rises in front)
+     const toMouth = !!hp || (q && /^(sip|snack|mouth|chin|underChin)$/.test(q[0])), face = (zone === "face" || zone === "head") && !toMouth, score = face ? (e) => side * e[0] + .3 * e[1] : (e) => .6 * side * e[0] + e[1];
+     let elbow = score(e1) >= score(e2) ? e1 : e2;
+     // a composed character keeps his elbows in, except to reach the face or head (else the arm straps across the face)
+     const eOut = face ? Math.max(LS.elbowOut ?? .25, .45) : LS.elbowOut ?? .25, elim = Math.abs(edgeAt(side, clamp(elbow[1], -B.h, 0))) + B.hw * eOut;
+     if (Math.abs(elbow[0]) > elim) elbow = [Math.sign(elbow[0]) * elim, elbow[1]];
+     let bend = 180 - (Math.acos(clamp((ua2 * ua2 + fa2 * fa2 - dk * dk) / (2 * ua2 * fa2), -1, 1)) * 180 / PI);
      // at rest the upper arm hangs DOWN along her side from the shoulder: the elbow is placed on the outline, below the
      // shoulder near the waist, and the forearm comes slightly forward to the hand at the hip
-     if (!q && !hp) { const ey = shY + Math.max(8, (wy - shY) * .55); elbow = [edgeAt(side, ey) + side * 1.5, ey]; bend = 20; }
+     if (!q && !hp) { const ey = shY + Math.max(8, (wy - shY) * .5); elbow = [side * (Math.max(Math.abs(edgeAt(side, ey)), Math.abs(edgeAt(side, wy))) + 13 * handS), ey]; bend = 25; } // it hangs clear of the body: the elbow outside the widest point below the shoulder // a slight outward bend: it hangs, it is not a bracket
+     // follow-through: the elbow trails the solution on its own spring, so a pose change or an elbow switching sides
+     // never snaps, and the forearm leads the upper arm
+     if (!h.el || snap) h.el = {x: elbow[0], y: elbow[1], vx: 0, vy: 0};
+     else { const ke = 260, ce = 2 * .9 * Math.sqrt(ke); for (const [p, v, t] of [["x", "vx", elbow[0]], ["y", "vy", elbow[1]]]) { h.el[v] += (ke * (t - h.el[p]) - ce * h.el[v]) * dt; h.el[p] += h.el[v] * dt; } if (Math.hypot(elbow[0] - h.el.x, elbow[1] - h.el.y) > .2) moving = true; }
+     elbow = [Math.sign(h.el.x) * Math.min(Math.abs(h.el.x), Math.abs(edgeAt(side, clamp(h.el.y, -B.h, 0))) + B.hw * eOut), h.el.y]; // the trailing elbow keeps the same limit
      hx += wx - (h.x - Math.sin(a0) * 11 * h.s); hy += wy - (h.y + Math.cos(a0) * 11 * h.s);
      // a pointing finger lines up with the forearm (except resting on the chin or the glasses bridge)
-     if (pose === "point" && q && /^(toL|aim)$/.test(q[0])) { hr = Math.atan2(wx - elbow[0], -(wy - elbow[1])) * 180 / PI; hx = wx + Math.sin(hr * PI / 180) * 11 * h.s; hy = wy - Math.cos(hr * PI / 180) * 11 * h.s; }
-     const k1 = LS.thick || 1, ws = 12.5 * k1, ww = 8.2 * k1, Lp = [], Rp = [];
-     for (let i = 0; i <= 14; i++) {
-      const t = i / 14, mt = 1 - t, px = mt * mt * shX + 2 * t * mt * elbow[0] + t * t * wx, py = mt * mt * shY + 2 * t * mt * elbow[1] + t * t * wy;
-      const tx2 = 2 * mt * (elbow[0] - shX) + 2 * t * (wx - elbow[0]), ty2 = 2 * mt * (elbow[1] - shY) + 2 * t * (wy - elbow[1]), tl = Math.hypot(tx2, ty2) || 1, w = lerp(ws, ww, t) / 2;
-      Lp.push([px - ty2 / tl * w, py + tx2 / tl * w]); Rp.push([px + ty2 / tl * w, py - tx2 / tl * w]);
-     }
-     const lim = poly(Lp.concat(Rp.slice().reverse())), root = `M${f1(shX - ws * .58)} ${f1(shY)}a${f1(ws * .58)} ${f1(ws * .58)} 0 1 0 ${f1(ws * 1.16)} 0a${f1(ws * .58)} ${f1(ws * .58)} 0 1 0 ${f1(-ws * 1.16)} 0Z`;
-     meta = ` data-ox="${f1(shX)}" data-oy="${f1(shY)}" data-ax="${f1(edgeAt(side, shY) - side * 4)}" data-ay="${f1(-B.h * (LS.shoulderY || .58))}" data-bend="${f1(bend)}" data-ex="${f1(elbow[0])}" data-elim="${f1(Math.abs(edgeAt(side, clamp(elbow[1], -B.h, 0))) + B.hw * (LS.elbowOut ?? .25))}" data-hy="${f1(hy)}" data-hem="0" data-bh="${f1(B.h)}" data-zone="${zone}" data-ey="${f1(elbow[1])}" data-sub="${sub ? 1 : 0}" data-pose="${pose}" data-hr="${f1(hr)}" data-side="${side}"`;
-     arm = `<g data-l="arm"${meta}><path d="${lim + root}" fill="${edge}" stroke="${edge}" stroke-width="2.6" stroke-linejoin="round"/><path d="${lim + root}" fill="${pal.base}"/><path d="${smoothOpen(Lp.slice(1, 12))}" stroke="#fff" stroke-width="${f1(ws * .16)}" fill="none" stroke-linecap="round" opacity=".16"/></g>`;
-    } else { meta = ` data-zone="${zone}" data-pose="${pose}" data-hr="${f1(hr)}" data-hy="${f1(hy)}" data-bh="${f1(B.h)}" data-side="${side}"`; }
+     if (/^point(Edge)?$/.test(pose) && q && q[0] === "toL") { hr = Math.atan2(wx - elbow[0], -(wy - elbow[1])) * 180 / PI; hx = wx + Math.sin(hr * PI / 180) * 11 * h.s; hy = wy - Math.cos(hr * PI / 180) * 11 * h.s; }
+     // (the front copy is hidden over the body only along the first fifth of the arm, never by a circle round the
+     // shoulder: a forearm coming back over the head near the shoulder must stay whole)
+     // a sleeve: one round-joined stroke along the shoulder-elbow-wrist curve (never kinks or spikes at any bend), its
+     // width set by the hand (about 0.55 of an open hand), drawn in front; near the shoulder it is hidden where it overlaps
+     // the body, so it grows out from under the silhouette edge. With the elbow outside the body the whole upper arm is
+     // hidden over the body (it comes from behind the edge); with the elbow inside, the arm crosses in front
+     const ws = 14.5 * (LS.thick || 1) * h.s, W0 = ws * 1.8, Cp = [], N = 20;
+     for (let i = 0; i <= N; i++) { const t = i / N, mt = 1 - t; Cp.push([mt * mt * shX + 2 * t * mt * elbow[0] + t * t * wx, mt * mt * shY + 2 * t * mt * elbow[1] + t * t * wy]); }
+     const elbowOut = !!(q || hp) && !toMouth && !(q && /^(watchKey|face)$/.test(q[0])) && Math.abs(elbow[0]) > Math.abs(edgeAt(side, clamp(elbow[1], -B.h, 0))); // at rest the sleeve hangs visibly
+     const cd = "M" + Cp.map((p) => `${f1(p[0])} ${f1(p[1])}`).join("L"), sc = ch.sleeve || pal.base, se = ch.sleeveEdge || edge, mk = `am${uid}${s}`;
+     // a soft sleeve, tapered from 1.8 × a hand-scaled width at the shoulder to about 1 × at the cuff, as ten overlapping
+     // stroke segments (all outlines first, then all fills, so it reads as one figure), one soft shade along its length
+     const K = 10, seg = (k) => "M" + Cp.slice(k * N / K, (k + 1) * N / K + 1).map((p) => `${f1(p[0])} ${f1(p[1])}`).join("L"), wk = (k) => W0 * (k === 0 ? .86 : lerp(1, .58, k / (K - 1)));
+     const st = (c, dw, o = "", kw = 1) => Array.from({length: K}, (_, k) => `<path d="${seg(k)}" fill="none" stroke="${c}" stroke-width="${f1(wk(k) * kw + dw)}" stroke-linecap="${k ? "round" : "butt"}" stroke-linejoin="round"${o}/>`).join(""); // the root segment ends flat: no lobe past the shoulder
+     const ms = `as${uid}${s}`, tube = `<mask id="${ms}" maskUnits="userSpaceOnUse" x="-200" y="-260" width="400" height="360">${st("#fff", -2.2)}</mask>`
+      + `<g mask="url(#${ms})">${st(mixHex(sc, "#000000", .3), 0, ` opacity=".4" transform="translate(${f1(W0 * .28)} ${f1(W0 * .26)})"`, .75)}${ch.sleeveHi ? st(mixHex(sc, "#ffffff", .5), 0, ` opacity="${ch.sleeveHi}" transform="translate(${f1(-W0 * .3)} ${f1(-W0 * .32)})"`, .3) : ""}</g>`;
+     // a shirt cuff at the wrist (and a cuff link), where the style has one
+     const core = st(mixHex(sc, "#ffffff", .12), 0, "", .55), cf = ch.cuff || {fill: pal.rim || mixHex(pal.base, "#ffffff", .6), edge}, cuffSvg = cf ? (() => { const band = "M" + Cp.slice(N - 2).map((p) => `${f1(p[0])} ${f1(p[1])}`).join("L"), w = wk(K - 1) + 1.5, e = Cp[N - 1]; return `<path d="${band}" fill="none" stroke="${cf.edge}" stroke-width="${f1(w + 1.8)}" stroke-linecap="butt"/><path d="${band}" fill="none" stroke="${cf.fill}" stroke-width="${f1(w)}" stroke-linecap="butt"/>${cf.link ? `<circle cx="${f1(e[0])}" cy="${f1(e[1])}" r="${f1(1.6 * h.s)}" fill="${cf.link}" stroke="#a86f2a" stroke-width=".6"/>` : ""}`; })() : "";
+     meta = ` data-ox="${f1(shX)}" data-oy="${f1(shY)}" data-ax="${f1(edgeAt(side, shY) - side * shIn)}" data-ay="${f1(-B.h * (LS.shoulderY || .58))}" data-bend="${f1(bend)}" data-ex="${f1(elbow[0])}" data-elim="${f1(Math.abs(edgeAt(side, clamp(elbow[1], -B.h, 0))) + B.hw * eOut)}" data-hy="${f1(hy)}" data-hem="0" data-bh="${f1(B.h)}" data-zone="${zone}" data-spot="${q ? q[0] : ""}" data-ey="${f1(elbow[1])}" data-sub="${sub ? 1 : 0}" data-pose="${pose}" data-hr="${f1(hr)}" data-side="${side}"`;
+     arm = `<mask id="${mk}" maskUnits="userSpaceOnUse" x="-200" y="-260" width="400" height="360"><rect x="-200" y="-260" width="400" height="360" fill="#fff"/><g clip-path="url(#cl${uid})"><path d="M${Cp.slice(0, Math.round(N * .2) + 1).map((p) => `${f1(p[0])} ${f1(p[1])}`).join("L")}" fill="none" stroke="#000" stroke-width="${f1(W0 + 6)}" stroke-linecap="round"/>${elbowOut ? `<path d="M${Cp.slice(0, N / 2 + 1).map((p) => `${f1(p[0])} ${f1(p[1])}`).join("L")}" fill="none" stroke="#000" stroke-width="${f1(W0 + 6)}" stroke-linecap="round"/>` : ""}</g></mask>`
+      + `<g data-l="arm"${meta} mask="url(#${mk})">${st(se, 2)}${st(mixHex(sc, "#ffffff", .42), -1)}${st(sc, -3)}${core}${tube}${cuffSvg}</g>`;
+     // the same sleeve behind the body: near the shoulder only this copy shows, so the sleeve comes out from under the
+     // body's own edge (no glued-on tube, no gap), with a soft shade where it tucks under
+     rimCut += st("#fff", 4);
+     armBack = `<g data-l="arm-back"><radialGradient id="rs${uid}${s}" gradientUnits="userSpaceOnUse" cx="${f1(shX)}" cy="${f1(shY)}" r="${f1(W0 * 1.3)}"><stop offset="0" stop-color="#000" stop-opacity=".38"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>${st(se, 1.6)}${st(sc, -1.6)}${core}<g mask="url(#${ms})"><circle cx="${f1(shX)}" cy="${f1(shY)}" r="${f1(W0 * 1.3)}" fill="url(#rs${uid}${s})"/></g></g>`;
+    } else { meta = ` data-zone="${zone}" data-spot="${q ? q[0] : ""}" data-pose="${pose}" data-hr="${f1(hr)}" data-hy="${f1(hy)}" data-bh="${f1(B.h)}" data-side="${side}"`; }
     h.dx = hx - h.x; h.dy = hy - h.y;
     // the held prop sits on the hand exactly at its grip point; it rises from below the frame (or out of a pocket)
     // on the way in and is lowered back out of frame on the way out, so it never pops in or out
@@ -1012,9 +1091,13 @@
      propSvg = `<g data-l="prop" data-p="${own.id}" data-u="${own.use || ""}" data-phase="${own.enter > .02 ? "enter" : own.exit > .02 ? "exit" : "held"}" data-gx="${f1(hx + ox)}" data-gy="${f1(hy + oy)}" data-hx="${f1(hx)}" data-hy="${f1(hy)}" data-rot="${f1(pRot)}" data-rmin="${g.rot ? g.rot[0] : -180}" data-rmax="${g.rot ? g.rot[1] : 180}" transform="translate(${f1(hx + ox)} ${f1(hy + oy)}) rotate(${f1(pRot)}) scale(${f1(h.s * 100) / 100})"><g transform="scale(${side} 1) translate(${-g.pt[0]} ${-g.pt[1]})">${own.svg}</g></g>`;
     }
     let one = arm + propSvg;
-    if (!ch.noHands) one += `<g data-hs="${f1(h.s)}"${floatMode && (!q && !hp || h.y > 20) ? " data-leaving" : ""}${meta} transform="translate(${f1(hx)} ${f1(hy)}) rotate(${f1(hr)}) scale(${f1(h.s * 100) / 100})"><g transform="scale(${side} 1)">`
-     + renderHand(pose, tone, filter, side) + `</g></g>`;
-    if (q && q[0] === "behind") backHands += one; else hs += one;
+    if (!ch.noHands) one += `<g data-hand="${s}" data-hs="${Math.round(h.s * 100) / 100}"${Math.abs(h.s - ts) > .01 ? " data-settling" : ""}${floatMode && (!q && !hp || h.y > 20) ? " data-leaving" : ""}${meta} transform="translate(${f1(hx)} ${f1(hy)}) rotate(${f1(hr)}) scale(${f1(h.s * 100) / 100})"><g transform="scale(${side} 1)">`
+     + renderHand(pose, look, side, uid) + `</g></g>`;
+    // parts drawn over what the hand holds (the thumb over a watch in the palm) go above everything carried
+    if (!ch.noHands && HANDS[pose] && HANDS[pose].over) overs += `<g transform="translate(${f1(hx)} ${f1(hy)}) rotate(${f1(hr)}) scale(${f1(h.s * 100) / 100})"><g transform="scale(${side} 1)">${renderHand(pose, look, side, uid, true)}</g></g>`;
+    // a counting hand shows its number in a small bubble above it
+    if (q && q[9]) one += `<g data-l="count" transform="translate(${f1(hx + side * 18 * h.s)} ${f1(hy - 26 * h.s)})"><circle r="${f1(8 * h.s)}" fill="#fffdf7" stroke="${edge}" stroke-width="1.2"/><text text-anchor="middle" dy="${f1(3.6 * h.s)}" font-size="${f1(10 * h.s)}" font-weight="700" font-family="system-ui, sans-serif" fill="${edge}">${q[9]}</text></g>`;
+    if (q && q[0] === "behind") backHands += armBack + one; else { hs += one; backHands += armBack; }
     const a = hr * PI / 180, hsC = h.s;
     // a lens held up to her face shows that part of her face magnified (TABY-BREAKDOWN §1.7)
     if (own && own.lens && own.lens.k > .3) {
@@ -1037,7 +1120,8 @@
    }
    L.wn.innerHTML = pr.worn + pr.float;
    if (backHands) L.bk.innerHTML += backHands;
-   L.hd.innerHTML = pr.front + both + hs;
+   L.hd.innerHTML = pr.front + both + hs + overs;
+   if (L.rc) L.rc.innerHTML = rimCut;
    if (pr.moving) moving = true;
    // effects
    fxs = fxs.filter((x) => now - x.t0 < x.dur);

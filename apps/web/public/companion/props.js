@@ -15,8 +15,9 @@
  const USE = {
   // the sip: the cup rises on an eased path to her lips, tilts a little toward them while her head dips to meet it,
   // holds, then levels and comes down. The rim stays at the mouth; the wrist only tilts, it never spins.
-  sip:    {dur: 2200, fn: (t) => { const up = ease(ramp(t, .05, .3)) * (1 - ease(ramp(t, .74, .95))), tip = ease(ramp(t, .3, .42)) * (1 - ease(ramp(t, .62, .74)));
-   return {hands: {R: up > .01 ? ["sip", "grip", 0, 14 * (1 - up), -12 * tip] : ["hold", "grip"]}, d: {pitch: .1 * tip, sarc: .95 * ramp(tip, .5, 1), cheek: .4 * up, mc: .15 * up, mw: -.35 * up, mo: .25 * bell(t, .78, .95), mr: .8 * bell(t, .78, .95)}, using: up > .02}; }},
+  // the cup is at the lips for under 0.4 s, then clears the mouth
+  sip:    {dur: 2200, fn: (t) => { const up = ease(ramp(t, .05, .22)) * (1 - ease(ramp(t, .38, .52))), tip = ease(ramp(t, .2, .26)) * (1 - ease(ramp(t, .32, .38)));
+   return {hands: {R: up > .01 ? ["sip", "grip", 0, 14 * (1 - up), -12 * tip] : ["hold", "grip"]}, d: {pitch: .1 * tip, sarc: .95 * ramp(tip, .5, 1), cheek: .4 * up, mc: .15 * up, mw: -.35 * up, mo: .25 * bell(t, .5, .7), mr: .8 * bell(t, .5, .7)}, using: up > .02}; }},
   peer:   {dur: 2200, fn: (t) => { const h = hold(t, .08, .25, .78, .95); return {hands: {R: ["eye", "grip", 2, 30 * h + 4 * (1 - h)]}, d: {lu: .35 * h, tongue: 1 * h, mo: 0, mx: .35 * h, mc: .2 * h, tilt: -4 * h}, lens: h}; }},
   adjust: {dur: 1100, fn: (t) => { const h = hold(t, .05, .3, .65, .9); return {hands: {R: ["bridge", "pushup", 0, 2 * bell(t, .35, .7)]}, d: {by: -3 * bell(t, .3, .7), bo: .5 * h, mc: .1 * h}, wornDy: -3 * bell(t, .35, .7)}; }},
   monocle: {dur: 1400, fn: (t) => { const h = hold(t, .05, .3, .7, .92); return {hands: h > .02 ? {R: ["monocleRim", "grip", 0, -3 * bell(t, .35, .65)]} : null, d: {bas: 1.3 * h, bo: h, by: -2 * h, mx: .15 * h, mc: .1 * h}, wornDy: -2.5 * bell(t, .35, .65)}; }},
@@ -64,7 +65,7 @@
  // held: drawn with the grip at the origin, the hand closes over it
  add("monocle", "Monocle", "Signature", "Alfred's own: reading, or a dry raised brow", "face", "monocle", null, {worn: "monocle"});
  add("coffee", "Coffee", "Daily", "The morning brief", "R", "sip", (k) => `<g transform="translate(-16 6)"><path d="M10 -18a8.5 8.5 0 0 1 0 17" fill="none" stroke="${INK}" stroke-opacity=".55" stroke-width="7"/><path d="M10 -18a8.5 8.5 0 0 1 0 17" fill="none" stroke="${IV}" stroke-width="4.5"/><path d="M-13 -24h23v26a6 6 0 0 1 -6 6h-11a6 6 0 0 1 -6 -6z" fill="${IV}" ${O}/><rect x="-13" y="-15" width="23" height="7" fill="${WOAD}"/>${shine(-10, -21, 3, 18)}${k.warm && !k.using ? steam(k.t, -7, -28) : ""}</g>`, {warm: true});
- add("tea", "Tea", "Daily", "The evening wind-down", "R", "sip", (k) => `<g transform="translate(-17 4)"><path d="M12 -11a6.5 6.5 0 0 1 0 11" fill="none" stroke="${INK}" stroke-opacity=".55" stroke-width="6"/><path d="M12 -11a6.5 6.5 0 0 1 0 11" fill="none" stroke="${PAPER}" stroke-width="3.6"/><path d="M-15 -14h28q0 18 -14 18q-14 0 -14 -18z" fill="${PAPER}" ${O}/><ellipse cx="-1" cy="-14" rx="14" ry="3" fill="#b07a3c"/><path d="M-12 -9q11 4 22 0" stroke="${MAD}" stroke-width="2" fill="none" opacity=".7"/>${k.warm && !k.using ? steam(k.t, -8, -18) : ""}</g>`, {warm: true});
+ add("tea", "Tea", "Daily", "The evening wind-down", "R", "sip", (k) => `<g transform="translate(-17 4)"><path d="M12 -13a8.5 8.5 0 0 1 0 15" fill="none" stroke="${INK}" stroke-opacity=".6" stroke-width="6.4"/><path d="M12 -13a8.5 8.5 0 0 1 0 15" fill="none" stroke="${PAPER}" stroke-width="3.8"/><path d="M-15 -14h28q0 18 -14 18q-14 0 -14 -18z" fill="${PAPER}" ${O}/><ellipse cx="-1" cy="-14" rx="14" ry="3" fill="#b07a3c"/><path d="M-12 -9q11 4 22 0" stroke="${MAD}" stroke-width="2" fill="none" opacity=".7"/>${k.warm && !k.using ? steam(k.t, -8, -18) : ""}</g>`, {warm: true});
  add("water", "Glass of water", "Daily", "Time to drink some water", "R", "sip", () => `<g transform="translate(-12 6)"><path d="M-11 -30h22l-3 34h-16z" fill="${SKY}" fill-opacity=".45" ${O}/><path d="M-10 -16h20l-2 20h-16z" fill="${SKY}"/><path d="M-10 -16q5 -3 10 0t10 0" fill="none" stroke="#fff" stroke-width="1.5"/>${shine(-7, -27, 2.5, 26)}</g>`);
  add("magnifier", "Magnifier", "Work", "Researching: a web search or a Sebastian job", "R", "peer", () => `<rect x="-3.5" y="-8" width="7" height="26" rx="3.5" fill="${WOODD}" ${O}/><circle cy="-30" r="20" fill="${SKY}" fill-opacity=".22" stroke="${GOLD}" stroke-width="5"/><circle cy="-30" r="20" fill="none" stroke="${INK}" stroke-opacity=".4" stroke-width="1"/><path d="M-11 -40q4 -6 11 -6" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity=".8"/>`, {lens: {x: 0, y: -30, r: 18}, at: ["hold", "grip", 0, 14]});
  add("wrench", "Wrench", "Work", "Fixing: CI went red and a fix job runs", "R", "turn", () => `<g transform="rotate(-20)"><rect x="-4.5" y="-30" width="9" height="44" rx="4.5" fill="${STEEL}" ${O}/><path d="M-13 -38a14 14 0 1 0 26 0l-7 7h-12z" fill="${STEEL}" ${O}/>${shine(-2, -26, 2.5, 30)}</g>`);
@@ -146,7 +147,8 @@
  // "viewer": shown to you (a trophy raised, a gift offered). "up": upright and level (cups, glasses)
  const G = (shape, pt, rot = [-25, 25], weight = "light", from = "below", faces = "up") => ({shape, pt, rot, weight, from, faces});
  TCS.GRIPS = {
-  coffee: G("grip", [-6, -3]), tea: G("pinch", [-2, -2]), water: G("grip", [-1, -6]),
+  // tea: the outer curve of its (large) handle loop sits at the pinch tips (-1.7, -14.5)
+  coffee: G("grip", [-6, -3]), tea: G("pinch", [5.2, 13.5]), water: G("grip", [-1, -6]),
   magnifier: G("grip", [0, 6], [-35, 35]), wrench: G("grip", [0, -4], [-60, 60]), hammer: G("grip", [0, 2], [-60, 60]),
   pencil: G("pinch", [2, -10], [-40, 40]), phone: G("grip", [0, -22], [-30, 30], "light", "pocket", "her"), envelope: G("pinch", [-18, -6]),
   stamp: G("grip", [0, -22], [-30, 30], "medium"), stopwatch: G("open", [0, -7], [-20, 20], "light", "pocket"), alarmclock: G("open", [0, -6], [-25, 25], "medium"),

@@ -317,7 +317,12 @@
   return e;
  }
 
- C.tweed = {id: "tweed", gentleman: true, name: "Tweed", idea: "A seasoned gentleman in linen and tweed: silver hair combed neat, distinguished brows, a trim moustache, a waistcoat, a watch chain and a bow tie. Composed, charming, a little dry.",
+ // Alfred's sleeve styles: A waistcoat purple a step darker with a soft edge; B a charcoal tailcoat with a subtle
+ // highlight and a white shirt cuff; C cream shirt sleeves with a cuff and a gold cuff link. A, picked 13 Nov
+ TCS.SLEEVES = {A: {sleeve: "#6f5f8c", sleeveEdge: "#2a2238", sleeveHi: 0, cuff: {fill: "#f6f3ec", edge: "#9a8e7b"}},
+  B: {sleeve: "#2f2d35", sleeveEdge: "#18171c", sleeveHi: .2, cuff: {fill: "#f6f3ec", edge: "#9a8e7b"}},
+  C: {sleeve: "#efe6d4", sleeveEdge: "#a8977c", sleeveHi: 0, cuff: {fill: "#f9f5ec", edge: "#a8977c", link: "#E8A75A"}}};
+ C.tweed = {id: "tweed", gentleman: true, keepArms: true, keep: (B) => [[B.hw * .64, -B.h * .2, 26, "monoKey|monocleRim"], [0, -B.h * .385, 18, "tie|underChin"]], name: "Tweed", idea: "A seasoned gentleman in linen and tweed: silver hair combed neat, distinguished brows, a trim moustache, a waistcoat, a watch chain and a bow tie. Composed, charming, a little dry.",
    pal: Object.assign({}, common, {base: "#E6DAC6", light: "#fff8ec", dark: "#a8977c", rim: "#ffffff", rimO: .5, eye: "#231d1a", edge: "#7e6e55", gloss: .4, brow: "#c9ccd1", browEdge: "#8d939b", zzz: "#8d939b"}),
    face: {R: 84, curv: .95, y: -31, ex: 30, eyY: -8, ew: 23, eh: 34, mY: 22, mw: 22, bg: 9, bw: 1.35},
    bias: {bo: .55, lu: .03, pitch: -.04, by: 1},
@@ -325,28 +330,32 @@
    shoulder: .74,
    idle: [["raisedBrow", 1.2], ["bow", .5], ["composed", .8], ["steepleHold", .7], ["adjustCuff", .4], ["adjustTie", .4], ["pocketWatch", .5]],
    // a dignified gesture set: he never hops, twirls, pumps a fist or squeals into his cheeks
-   remap: {wave: "raiseHand", fistPump: "nodFirm", hop: "rise", spin: "bow", cheeks: "adjustTie", giggleOnce: "chuckle", squish: "adjustCuff", stomp: "nodFirm", shrug: "shrugSmall", fingerWag: "shakeSmall", eyeRoll: "raisedBrow", stretch: "rise"},
+   remap: {wave: "raiseHand", fistPump: "approve", hop: "rise", spin: "bow", cheeks: "adjustTie", giggleOnce: "chuckle", squish: "adjustCuff", stomp: "nodFirm", shrug: "shrugSmall", fingerWag: "fingerRaise", eyeRoll: "raisedBrow", stretch: "rise"},
    exprHands: {excited: {L: ["steeple", "steeple"], R: ["steeple", "steeple"]}, thinking: {L: ["steeple", "steeple"], R: ["steeple", "steeple"]}, proud: {R: ["heart", "back"]},
-    shy: {R: ["heart", "back"]}, embarrassed: {R: ["tie", "grip", -9]}, giggle: {R: ["heart", "back"]}, frustrated: {R: ["temple", "back"]}, angry: {L: ["behind", "back"], R: ["behind", "back"]},
-    lonely: {R: ["heart", "back"]}, worried: {L: ["steeple", "steeple"], R: ["steeple", "steeple"]}, sulky: {L: ["behind", "back"], R: ["behind", "back"]}, determined: {R: ["cuffR", "back"], L: ["cuffL", "pinch"]}},
-   spots: {monoKey: (B, F, side, q) => {
+    shy: {R: ["heart", "back"]}, embarrassed: {R: ["tie", "pinch", -9]}, giggle: {R: ["heart", "back"]}, frustrated: {R: ["temple", "back"]}, angry: {L: ["behind", "back"], R: ["behind", "back"]},
+    lonely: {R: ["heart", "back"]}, worried: {L: ["steeple", "steeple"], R: ["steeple", "steeple"]}, sulky: {L: ["behind", "back"], R: ["behind", "back"]}, determined: {R: ["cuffR", "fist"], L: ["cuffL", "pinch"]}},
+   // steeple (Alfred): the finger tent rests low on his waistcoat, below the watch chain
+   // tie: the pinch tips (-1.7, -14.5) hold the bow tie's wing tips from below and outside, so the tie stays visible
+   // watchKey: the watch is viewed low and central, so the arm curves rather than folding into a wedge
+   spots: {steeple: (B, F, side) => { const k = F.handS || 1; return [side * 15.5 * k, -B.h * .13, side * -50, 1]; }, monoKey: (B, F, side, q) => {
      // the hand is placed so that its pinch holds the monocle's lower-right rim: rest (p 0) → eye (p 1) on an outward arc
-     const t = ROPES.get(F.uid), m = t && t.mono, E = F.lastEyes || [], s = .53 * (E.length === 2 ? Math.abs(E[0].cx - E[1].cx) : 70) / 19;
+     const t = ROPES.get(F.uid), m = t && t.mono, s = F.handS || 1;
      if (!m || !m.restPt || !m.eye) return [B.hw * .3, -B.h * .2, -10, 1];
-     const p = q[7] || 0, off = q[8] || 0, rot = -10 - 16 * p, a = rot * Math.PI / 180, px = -1.7 * s, py = -14.5 * s, k = m.r * .55;
+     const p = q[7] || 0, off = q[8] || 0, rot = -10 - 16 * p, a = rot * Math.PI / 180, px = -1.7 * s, py = -14.5 * s, k = m.r * .58;
      const pin = [px * Math.cos(a) - py * Math.sin(a), px * Math.sin(a) + py * Math.cos(a)], from = [m.restPt[0] + k - pin[0], m.restPt[1] + k - pin[1]], to = [m.eye[0] + k - pin[0], m.eye[1] + k - pin[1]];
      return [from[0] + (to[0] - from[0]) * p + Math.sin(p * Math.PI) * 38 + off * 12, from[1] + (to[1] - from[1]) * p + off * 10, rot, 1];
-    }, watchKey: (B, F, side, q) => { const p = q[7] || 0, a = [B.hw * .62, -B.h * .35 + 6], z = [B.hw * .38, -B.h * .27]; return [a[0] + (z[0] - a[0]) * p, a[1] + (z[1] - a[1]) * p - Math.sin(p * Math.PI) * 10, -12 + 8 * p, 1]; },
-    chin: (B, F, side) => [side * (F.mw * .5 + 30), F.cy + F.mY + F.mw * .32 + 10, side * -15, 1], tie: (B, F, side) => [side * 13, -B.h * .385 + 14, side * -20, .95], pocket: (B, F, side) => [B.hw * .62, -B.h * .35 + 4, -12, .95], watchView: (B, F, side) => [B.hw * .38, -B.h * .27, -4, 1]},
+    }, watchKey: (B, F, side, q) => { const p = q[7] || 0, a = [B.hw * .62, -B.h * .35 + 6], z = [B.hw * .12, -B.h * .2]; return [a[0] + (z[0] - a[0]) * p, a[1] + (z[1] - a[1]) * p - Math.sin(p * Math.PI) * 10, -12 + 8 * p, 1]; },
+    chin: (B, F, side) => [side * (F.mw * .5 + 30), F.cy + F.mY + F.mw * .32 + 10, side * -15, 1], tie: (B, F, side) => { const s = F.handS || 1, r = side * -14, a = r * Math.PI / 180, px = side * -1.7 * s, py = -14.5 * s; return [side * 12.5 - (px * Math.cos(a) - py * Math.sin(a)), -B.h * .385 + 1 + side * 3 - (px * Math.sin(a) + py * Math.cos(a)), r, .95]; }, pocket: (B, F, side) => [B.hw * .62, -B.h * .35 + 4, -12, .95], watchView: (B, F, side) => [B.hw * .38, -B.h * .27, -4, 1]},
    body(R, ctx) {
     const b = geo(blob(o, R.sx, R.sy), R, o), hw = o.w / 2 * R.sx, h = b.h, P = ctx.proj;
     // the waistcoat: the lower part of him, a V opening with the shirt, two gold buttons and a watch chain
     const wy = -h * .385, vx = 24 * R.sx, vy = -h * .18, sh = R.yaw * hw * .3;
-    let body = `<g data-l="attire"><path data-l="attire-coat" d="M${f1(-hw * 1.2)} ${f1(wy + 6)}Q${f1(-hw * .5)} ${f1(wy - 2)} ${f1(sh - vx)} ${f1(wy - 4)}L${f1(sh)} ${f1(vy)}L${f1(sh + vx)} ${f1(wy - 4)}Q${f1(hw * .5)} ${f1(wy - 2)} ${f1(hw * 1.2)} ${f1(wy + 6)}V2H${f1(-hw * 1.2)}Z" fill="#3a3350"/>`;
+    // the waistcoat rises to its edges (like the shoulders of a jacket), so a sleeve always comes out of cloth
+    let body = `<g data-l="attire"><path data-l="attire-coat" d="M${f1(-hw * 1.2)} ${f1(wy - 10)}Q${f1(-hw * .5)} ${f1(wy - 4)} ${f1(sh - vx)} ${f1(wy - 4)}L${f1(sh)} ${f1(vy)}L${f1(sh + vx)} ${f1(wy - 4)}Q${f1(hw * .5)} ${f1(wy - 4)} ${f1(hw * 1.2)} ${f1(wy - 10)}V2H${f1(-hw * 1.2)}Z" fill="#3a3350"/>`;
     for (const [u, v] of hb) { const x = u * hw * .95, y = wy + 8 + (v * .5 + .5) * (h * .4); body += `<path d="M${f1(x)} ${f1(y)}l3 3l3 -3" stroke="#fff" stroke-width=".9" fill="none" opacity=".09"/>`; }
     body += `<path d="M${f1(sh - vx + 3)} ${f1(wy - 3)}L${f1(sh)} ${f1(vy - 4)}L${f1(sh + vx - 3)} ${f1(wy - 3)}Z" fill="#fbf8f1"/><path d="M${f1(sh)} ${f1(vy - 4)}V${f1(-6)}" stroke="#2a243b" stroke-width="1.4" opacity=".6"/>`
      + [0, 1].map((i) => `<circle cx="${f1(sh + 1)}" cy="${f1(vy + 12 + i * 18)}" r="3.4" fill="#E8A75A" stroke="#a86f2a" stroke-width="1"/>`).join("")
-     + `<rect x="${f1(sh + hw * .51)}" y="${f1(-h * .35 - 4)}" width="15" height="3.4" rx="1.5" fill="#2a243b"/>`
+
      + `<path d="M${f1(-hw * 1.2)} ${f1(wy + 6)}Q${f1(-hw * .5)} ${f1(wy - 2)} ${f1(sh - vx)} ${f1(wy - 4)}L${f1(sh)} ${f1(vy)}L${f1(sh + vx)} ${f1(wy - 4)}Q${f1(hw * .5)} ${f1(wy - 2)} ${f1(hw * 1.2)} ${f1(wy + 6)}" stroke="#fff" stroke-width="1.2" fill="none" opacity=".25"/>`;
     // the bow tie at the collar
     const bx = sh, by = wy - 1, k = .74;
@@ -383,30 +392,33 @@
    // waistcoat at chest height. Both are ropes. The monocle's lens is 1.1 × his eye's width, one size in every frame.
    attach(c) {
     const B = c.B, hw = B.hw, h = B.h, sh = c.R.yaw * hw * .3, dt = Math.min(c.dt || 0, 1 / 30);
-    const lapel = [sh + 22, -h * .4], button = [sh + 3, -h * .3], pocket = [sh + hw * .58, -h * .35], chest = -h * .2;
+    const lapel = [sh + 22, -h * .4], button = [sh + 1, -h * .18 + 12], pocket = [sh + hw * .58, -h * .35], chest = -h * .2;
     let T = ROPES.get(c.uid);
     if (!T) { T = {mono: Object.assign(makeRope(lapel, h * .34), {state: "rest"}), watch: Object.assign(makeRope(button, h * .4), {state: "pocket", open: 0})}; ROPES.set(c.uid, T);
-     for (let i = 0; i < 40; i++) { stepRope(T.watch, button, pocket, .1, -2); stepRope(T.mono, lapel, [sh + 20, -h * .19 - (c.eyes && c.eyes[1] ? c.eyes[1].W * .55 : 12)], .1); } }
+     for (let i = 0; i < 40; i++) { stepRope(T.watch, button, pocket, .1, -2); stepRope(T.mono, lapel, [sh + hw * .64, -h * .2 - (c.eyes && c.eyes[1] ? c.eyes[1].W * .74 : 15)], .1); } }
     const M = T.mono, W = T.watch, eyeR = c.eyes && c.eyes[1], hand = c.hands.R;
-    const r = eyeR ? eyeR.W * .55 : 12, now = c.now; M.r = r;
+    const r = eyeR ? eyeR.W * .74 : 15, now = c.now; M.r = r; // the rim frames the whole eye: a blink stays inside the lens
     const act = c.acts.find((a) => /^(monocleOut|monocleDrop|pocketWatch)$/.test(a.name));
-    // where the monocle rests: hooked over the waistcoat front at chest height, below the lapel
-    const rest = [sh + 20, -h * .19];
+    // where the monocle rests: hooked over the waistcoat front below the lapel, off the centre line where hands gesture
+    const rest = [sh + hw * .64, -h * .2];
     M.restPt = rest; M.eye = eyeR ? [eyeR.cx, eyeR.cy] : null;
     const pinchAt = hand ? (() => { const a2 = (hand.r || 0) * PI / 180, s2 = hand.s || 1, px = -1.7 * s2, py = -14.5 * s2; return [hand.x + px * Math.cos(a2) - py * Math.sin(a2), hand.y + px * Math.sin(a2) + py * Math.cos(a2)]; })() : null;
-    const held = pinchAt ? [pinchAt[0] - r * .55, pinchAt[1] - r * .55] : rest, eye = eyeR ? [eyeR.cx, eyeR.cy] : rest;
+    const held = pinchAt ? [pinchAt[0] - r * .58, pinchAt[1] - r * .58] : rest, eye = eyeR ? [eyeR.cx, eyeR.cy] : rest;
     const mix = (p, q, u) => [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u];
     // the monocle's position is authored against the clip's clock: picked up, carried by the pinch, seated, dropped
     let want, f;
     if (act && act.name === "monocleOut") {
-     const t = act.t, u1 = ease(ramp(t, .08, .2)), u2 = ease(ramp(t, .62, .7));
-     want = t < .62 ? mix(rest, held, u1) : mix(held, eye, u2); f = .6 + .3 * u1 + .1 * u2;
-     M.state = t >= .68 ? "seated" : "held";
+     const t = act.t, u1 = ease(ramp(t, .06, .16)), u2 = ease(ramp(t, .64, .72));
+     want = t < .64 ? mix(rest, held, u1) : mix(held, eye, u2); f = .6 + .3 * u1 + .1 * u2;
+     M.state = t >= .72 ? "seated" : "held";
     } else if (act && act.name === "monocleDrop" && M.state !== "rest") {
-     // it falls from the eye on an outward arc as the cord takes it, then settles with a small damped swing
-     const t = act.t, u = ease(ramp(t, 0, .55)), c1 = [eye[0] + 22, (eye[1] + rest[1]) / 2], sw = t > .55 ? (t - .55) * 2.4 : 0;
-     want = [(1 - u) * (1 - u) * eye[0] + 2 * u * (1 - u) * c1[0] + u * u * rest[0] + 6 * Math.exp(-4 * sw) * Math.sin(sw * TAU * 1.8), (1 - u) * (1 - u) * eye[1] + 2 * u * (1 - u) * c1[1] + u * u * rest[1]];
-     f = 1 - .4 * u; M.state = t > .97 ? "rest" : "drop";
+     // taken off by hand: gripped at the rim on the eye, lowered on an arc and hooked back on the waistcoat
+     // the hand needs about a third of the clip to arrive at the rim; only then does the monocle leave the eye
+     // the grip only closes while the pinch is at the rim, and once closed it stays closed (latched)
+     const t = act.t, near = clamp(1 - Math.hypot(held[0] - eye[0], held[1] - eye[1]) / (r * 1.5), 0, 1), back = ease(ramp(t, .76, .84));
+     M.grip = t < .28 ? 0 : Math.max(M.grip || 0, ease(ramp(t, .28, .36)) * near); const g = M.grip;
+     want = t < .76 ? mix(eye, held, g) : mix(held, rest, back); f = 1 - .4 * ease(ramp(t, .36, .84));
+     M.state = t < .32 ? "seated" : t < .84 ? "held" : "rest";
     } else {
      if (M.state === "held" || M.state === "drop") M.state = "rest";
      want = M.state === "seated" ? eye : rest; f = M.state === "seated" ? 1 : .6;
@@ -419,32 +431,37 @@
     // let go, it falls and swings freely on its cord (a pendulum from the lapel) until it settles, then is tucked back
     // the cord is verlet between two authored ends: the lapel and the rim point facing it
     { const dx = lapel[0] - M.m.x, dy = lapel[1] - M.m.y, d = Math.hypot(dx, dy) || 1; mEnd = [M.m.x + dx / d * r * M.m.f, M.m.y + dy / d * r]; }
-    { const reach = Math.hypot(mEnd[0] - lapel[0], mEnd[1] - lapel[1]), want = Math.max(h * .2, reach * 1.05) / (M.pts.length - 1); M.seg = want > M.seg ? want : M.seg + (want - M.seg) * Math.min(1, dt * 3); }
+    { const reach = Math.hypot(mEnd[0] - lapel[0], mEnd[1] - lapel[1]), want = Math.max(h * .12, reach * (M.state === "drop" ? 1.5 : 1.15)) / (M.pts.length - 1); M.seg += (want - M.seg) * Math.min(1, dt * (want > M.seg ? 6 : 3)); }
     let e = c.reduced ? 0 : stepRope(M, lapel, mEnd, dt, floor);
     // the watch is authored against the clip: it rises out of the slit in the palm, opens, closes and goes back in
     const wa = act && act.name === "pocketWatch" ? act.t : -1;
     W.open = wa < 0 ? 0 : ease(ramp(wa, .4, .52)) * (1 - ease(ramp(wa, .72, .8)));
     // it always exists: at rest its crown peeks out of the pocket; the hand takes it there and puts it back there
-    const peek = [pocket[0], pocket[1] - 4], wu = wa < 0 || !hand ? 0 : ease(ramp(wa, .08, .14)) * (1 - ease(ramp(wa, .86, .92)));
+    const peek = [pocket[0], pocket[1] - 4], wu = wa < 0 || !hand ? 0 : ease(ramp(wa, .1, .2)) * (1 - ease(ramp(wa, .84, .94)));
     W.k = .8; W.state = wu > .5 ? "held" : "pocket";
-    const wT = hand && wu > 0 ? [hand.x, hand.y - 6 * (hand.s || 1)] : peek;
+    const wT = hand && wu > 0 ? [hand.x - (hand.s || 1), hand.y - 8 + 6 * (hand.s || 1)] : peek; // its centre in the cupped palm
     W.m = {x: peek[0] + (wT[0] - peek[0]) * wu, y: peek[1] + (wT[1] - peek[1]) * wu};
     e += c.reduced ? 0 : stepRope(W, button, [W.m.x, W.m.y], dt, -2);
     const line = (R, col, w) => { const d = smoothOpen(R.pts.map((p) => [p.x, p.y])); return `<path d="${d}" stroke="${col}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`; };
-    let s = line(W, "#a86f2a", 2.2) + `<path d="${smoothOpen(W.pts.map((p) => [p.x, p.y]))}" stroke="#E8A75A" stroke-width="1.3" fill="none" stroke-dasharray="2 1.5"/>`;
-    s += `<circle cx="${f1(button[0])}" cy="${f1(button[1])}" r="2.2" fill="#E8A75A"/><path d="M${f1(pocket[0] - 8)} ${f1(pocket[1] + 2)}h16" stroke="#15122a" stroke-width="2.4" stroke-linecap="round"/><path d="M${f1(pocket[0] - 8)} ${f1(pocket[1] + 4)}h16" stroke="#fff" stroke-opacity=".18" stroke-width="1" stroke-linecap="round"/>`;
+    let s = `<g data-l="chain">` + line(W, "#a86f2a", 2.2) + `<path d="${smoothOpen(W.pts.map((p) => [p.x, p.y]))}" stroke="#E8A75A" stroke-width="1.3" fill="none" stroke-dasharray="2 1.5"/></g>`;
+    s += `<circle cx="${f1(button[0])}" cy="${f1(button[1])}" r="2.2" fill="#E8A75A"/>`;
     s += line(M, "#4a4460", 2.4) + line(M, "#e4dff0", 1.1) + `<circle cx="${f1(lapel[0])}" cy="${f1(lapel[1])}" r="1.8" fill="#E8A75A"/>`;
     // the monocle: a thin gold rim round a faint lens, the same size whether hanging, held or worn
     const tip = M.pts[M.pts.length - 1], prev = M.pts[M.pts.length - 2];
     const mx = M.m.x, my = M.m.y, rx = r * M.m.f;
-    s += `<g data-l="monocle" data-r="${f1(r)}" data-mx="${f1(mx)}" data-my="${f1(my)}" data-st="${M.state}"><ellipse cx="${f1(mx)}" cy="${f1(my)}" rx="${f1(rx)}" ry="${f1(r)}" fill="#fff" fill-opacity=".12" stroke="#5d5872" stroke-width="2.8"/><ellipse cx="${f1(mx)}" cy="${f1(my)}" rx="${f1(rx)}" ry="${f1(r)}" fill="none" stroke="#e9e6f2" stroke-width="1.3"/><path d="M${f1(mx - rx * .5)} ${f1(my - r * .45)}q${f1(rx * .25)} ${f1(-r * .25)} ${f1(rx * .55)} ${f1(-r * .3)}" stroke="#fff" stroke-width="1.4" fill="none" opacity=".75" stroke-linecap="round"/></g>`;
+    const tilt = M.state === "rest" ? 16 : 0, mono = `<g data-l="monocle" data-r="${f1(r)}" data-mx="${f1(mx)}" data-my="${f1(my)}" data-st="${M.state}" transform="rotate(${tilt} ${f1(mx)} ${f1(my)})"><ellipse cx="${f1(mx)}" cy="${f1(my)}" rx="${f1(rx)}" ry="${f1(r)}" fill="#dfe6f2" fill-opacity="${M.state === "rest" ? .38 : .12}" stroke="#5d5872" stroke-width="2.8"/><ellipse cx="${f1(mx)}" cy="${f1(my)}" rx="${f1(rx)}" ry="${f1(r)}" fill="none" stroke="#e9e6f2" stroke-width="1.3"/><path d="M${f1(mx - rx * .5)} ${f1(my - r * .45)}q${f1(rx * .25)} ${f1(-r * .25)} ${f1(rx * .55)} ${f1(-r * .3)}" stroke="#fff" stroke-width="1.4" fill="none" opacity=".75" stroke-linecap="round"/>${M.state === "rest" ? `<circle cx="${f1(mx + rx * .35)}" cy="${f1(my + r * .3)}" r="1.4" fill="#fff" opacity=".85"/>` : ""}</g>`;
+    // held, it sits in front of the hand and behind the thumb (drawn over it by the rig): between finger and thumb
+    let top = "";
+    if (M.state === "held") top += mono; else s += mono;
     // the watch, when out
-    let top = ""; // the watch in his palm is drawn over the hand, face up
+    // the watch in his palm is drawn over the hand, face up
     // it comes out of the pocket and goes back in growing and shrinking at the slit, never popping
     const wd = Math.hypot(W.m.x - pocket[0], W.m.y - pocket[1]);
-    if (W.k > .02) { const w = W.m, o = W.open, k = W.k; let wsvg = `<g transform="translate(${f1(w.x)} ${f1(w.y + 8)}) scale(${f1(k * 100) / 100})"><circle r="10" fill="#E8A75A" stroke="#a86f2a" stroke-width="1.8"/><circle r="7.4" fill="#fbf7ee" opacity="${f1(o)}"/><path d="M0 0v-5M0 0l3.4 1.8" stroke="#2a243b" stroke-width="1.3" stroke-linecap="round" opacity="${f1(o)}"/><g transform="translate(0 -10) scale(1 ${f1(1 - 1.9 * o)}) translate(0 10)"><circle r="10" fill="#E8A75A" stroke="#a86f2a" stroke-width="1.8"/><circle r="5.5" fill="none" stroke="#c98837" stroke-width="1.1"/></g><rect x="-2.3" y="-13.5" width="4.6" height="3.6" rx="1.4" fill="#a86f2a"/></g>`.replace("<g transform", `<g data-l="watch" data-mx="${f1(w.x)}" data-my="${f1(w.y)}" transform`); // going back, it slips in under the pocket's edge; in his hand it sits on top of the fingers
+    if (W.k > .02) { const w = W.m, o = W.open, k = W.k; let wsvg = `<g transform="translate(${f1(w.x)} ${f1(w.y + 8)}) scale(${f1(k * 100) / 100})"><circle r="10" fill="#E8A75A" stroke="#a86f2a" stroke-width="1.8"/><circle r="7.4" fill="#fbf7ee" opacity="${f1(o)}"/><path d="M0 0v-5M0 0l3.4 1.8" stroke="#2a243b" stroke-width="1.3" stroke-linecap="round" opacity="${f1(o)}"/>${o < .98 ? `<g transform="translate(0 -10) scale(1 ${f1(1 - o)}) translate(0 10)"><circle r="10" fill="#E8A75A" stroke="#a86f2a" stroke-width="1.8"/><circle r="5.5" fill="none" stroke="#c98837" stroke-width="1.1"/></g>` : ""}${o > .02 ? `<g transform="translate(0 -10) scale(1 ${f1(-.9 * o)}) translate(0 10)"><circle r="10" fill="#E8A75A" stroke="#a86f2a" stroke-width="1.8"/><circle r="5.5" fill="none" stroke="#c98837" stroke-width="1.1"/></g>` : ""}<rect x="-2.3" y="-13.5" width="4.6" height="3.6" rx="1.4" fill="#a86f2a"/></g>`.replace("<g transform", `<g data-l="watch" data-mx="${f1(w.x)}" data-my="${f1(w.y)}" transform`); // going back, it slips in under the pocket's edge; in his hand it sits on top of the fingers
      // near the pocket only the part above the slit shows, so it rises out of the pocket and sinks back in
-     if (W.m.y > pocket[1] - 14) s += `<clipPath id="wc${c.uid}"><rect x="${f1(pocket[0] - 40)}" y="-400" width="80" height="${f1(400 + pocket[1] + 2)}"/></clipPath><g clip-path="url(#wc${c.uid})">${wsvg}</g><path d="M${f1(pocket[0] - 8)} ${f1(pocket[1] + 2)}h16" stroke="#15122a" stroke-width="2.4" stroke-linecap="round"/>`; else top += wsvg; }
+     // at rest (crown in the pocket) it sits under the hands; only during the watch action is it drawn over them
+     const wv = Math.hypot(W.m.x - peek[0], W.m.y - peek[1]) < 16 ? `<clipPath id="wc${c.uid}"><rect x="${f1(pocket[0] - 40)}" y="-400" width="80" height="${f1(400 + pocket[1] + 2)}"/></clipPath><g clip-path="url(#wc${c.uid})">${wsvg}</g>` : wsvg;
+     if (wa < 0) s += wv; else top += wv; }
     return {svg: s, top, moving: e > .05 || !!act || Math.hypot(want[0] - M.m.x, want[1] - M.m.y) > .3};
    },
   };
@@ -506,10 +523,15 @@
   swatch:   {shape: "flat square of cloth; asymmetric (curled corner)", limb: "float", hand: 1, note: "A flat cloth square has no shoulders: floating hands."},
   thimble:  {shape: "tall dome; symmetric", limb: "arms", shoulderY: .4, armLen: .4, thick: 1, hand: .92, reach: ["chest", "face", "head"], note: "A tall dome: full arms from the middle of its side, long enough for its chin and brow."},
   purl:     {shape: "round ball with needles; symmetric", limb: "stub", shoulderY: .44, armLen: .27, thick: 1.2, hand: .88, reach: ["chest"], note: "A round ball of yarn: stub arms; face gestures become a lean and a small hand. Two-handed objects are held with floating hands, since stubs cannot reach round them."},
-  tweed:    {shape: "tall egg in a waistcoat; asymmetric (watch pocket on the right)", limb: "arms", shoulderY: .37, armLen: .4, thick: 1, elbowOut: .1, hand: .9, reach: ["chest", "face", "head"], note: "A tall gentleman: full arms from the shoulders of his waistcoat, composed reach to his chin, brow and pocket."},
+  tweed:    {shape: "tall egg in a waistcoat; asymmetric (watch pocket on the right)", limb: "arms", shoulderY: .375, armLen: .52, thick: 1, elbowOut: .22, hand: .9, reach: ["chest", "face", "head"], note: "A tall gentleman: full arms from the shoulders of his waistcoat, composed reach to his chin, brow and pocket."},
   mark:     {shape: "the logo mark, no body outline", limb: "none", hand: 1.15, note: "The mark has no hands; anything it holds floats beside it."},
  };
  for (const id in LIMBS) if (C[id]) C[id].limbs = LIMBS[id];
+ // short arms cannot reach the face: their facepalm is dismay (hands against the lower cheeks, head tilted, eyes shut)
+ for (const id of ["felt", "purl", "loom"]) if (C[id]) C[id].remap = Object.assign({facepalm: "dismay"}, C[id].remap || {});
+ Object.assign(C.tweed, TCS.SLEEVES.A);
+ // Loom is purple on purple: the same rule as Alfred, a lighter sleeve with a dark outline
+ Object.assign(C.loom, {sleeve: "#8a5fa3", sleeveEdge: "#22092b"}); // the Director's pick (13 Nov)
 
  // persona → character, personality, voice style (the owner can change every one)
  TCS.PERSONAS = {

@@ -5,8 +5,8 @@
 set -euo pipefail
 src="${1:?usage: sync-companion-art.sh <character-studio folder>}"
 out="$(cd "$(dirname "$0")/../.." && pwd)/apps/web/public/companion"
-mkdir -p "$out/hands"
 for f in rig.js bodies.js props.js speech.js; do cp "$src/$f" "$out/$f"; done
-rm -f "$out"/hands/*.png
-cp "$src"/hands/*.png "$out/hands/"
-echo "synced $(ls "$out" "$out/hands" | grep -c .) files into $out"
+# Drawn hands replaced the hand images; a studio without the folder means none ship.
+rm -rf "$out/hands"
+if [ -d "$src/hands" ]; then mkdir -p "$out/hands" && cp "$src"/hands/*.png "$out/hands/"; fi
+echo "synced $(find "$out" -type f | grep -c .) files into $out"
