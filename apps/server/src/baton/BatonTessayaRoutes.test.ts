@@ -12,6 +12,7 @@ import { AuthBatonHandsHostScope, AuthStandardClientScopes } from "@t3tools/cont
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import type { RoomToolSet } from "../home/R1Brain.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { DeskTools } from "../home/R1Tools.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
 import { routes } from "./BatonTessayaRoutes.ts";
@@ -155,6 +156,22 @@ it.effect(
       });
       expect(ran).toEqual([["settings_get", { key: "chime" }, "replay-desktop"]]);
       expect((yield* call(desktop, "baton.tools.call", { args: {} })).status).toBe(400);
+      // The suite's pretend desktop: the R1's key, and always a rehearsal whatever device it names.
+      const rehearse = (key: string) =>
+        serve("/tessaya/rehearse/baton.tools.call", {
+          deskTools: deskTools as RoomToolSet,
+          runtime: Context.make(HomeAssistantService, {
+            device: Effect.succeed({ deviceKey: "r1-key" }),
+          } as never) as never,
+          init: {
+            method: "POST",
+            headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+            body: JSON.stringify({ ...ask, device: "r1-3d57b3" }),
+          },
+        });
+      expect((yield* rehearse("wrong-key")).status).toBe(401);
+      expect((yield* rehearse("r1-key")).status).toBe(200);
+      expect(ran.at(-1)).toEqual(["settings_get", { key: "chime" }, "replay-desktop"]);
     }),
 );
 
