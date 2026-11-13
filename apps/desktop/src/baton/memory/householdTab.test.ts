@@ -21,7 +21,10 @@ const member = (over: Partial<BatonHouseholdMember>): BatonHouseholdMember => ({
   ...over,
 });
 
-const setup = (members: ReadonlyArray<BatonHouseholdMember>) => {
+const setup = (
+  members: ReadonlyArray<BatonHouseholdMember>,
+  hello?: { readonly account: string; readonly says: "verified" | "declined" | "unavailable" },
+) => {
   const calls: Array<[string, Record<string, unknown> | undefined]> = [];
   const enrolled: Array<string> = [];
   const tab = createHouseholdTab({
@@ -44,6 +47,15 @@ const setup = (members: ReadonlyArray<BatonHouseholdMember>) => {
     },
     enrol: (m) => enrolled.push(m.id),
     refresh: () => undefined,
+    ...(hello === undefined
+      ? {}
+      : {
+          windowsAccount: hello.account,
+          hello: async () => {
+            calls.push(["hello", undefined]);
+            return hello.says;
+          },
+        }),
   });
   return { tab, calls, enrolled, settle: () => tab.settled() };
 };
@@ -103,5 +115,40 @@ describe("the Household area", () => {
     const ids = t.tab.controls().map((c) => c.id);
     expect(ids).not.toContain("m.hh.prefsFor");
     expect(t.calls).toContainEqual(["preferences", { id: "sara-1" }]);
+  });
+
+  it("asks Windows Hello once before what needs him, only where this account is his alone, and never for his own preferences", async () => {
+    const me = member({
+      id: "owner",
+      name: "Owner",
+      role: "owner",
+      you: true,
+      windowsAccount: "laptop\\rab",
+    });
+    const t = setup([me, member({})], { account: "laptop\\rab", says: "verified" });
+    await t.tab.load();
+    expect(t.tab.controls().find((c) => c.id === "m.hh.hello")).toMatchObject({ value: "owner" });
+    // Hello proves him here, so no PIN row.
+    expect(t.tab.controls().some((c) => c.id === "m.hh.pin")).toBe(false);
+    t.tab.act("m.hh.pref:units", "metric");
+    t.tab.act("m.hh.role:sara-1", "child");
+    t.tab.act("m.hh.member:sara-1", null);
+    await t.settle();
+    const ops = t.calls.map(([op]) => op).filter((op) => op !== "list" && op !== "preferences");
+    expect(ops).toEqual(["setPreference", "hello", "stepUp", "setRole", "remove"]);
+    expect(t.calls).toContainEqual(["stepUp", { hello: "laptop\\rab" }]);
+  });
+  it("without Hello for him, offers his PIN, and an admin act just goes to the server (his phone's yes)", async () => {
+    const t = setup([member({ id: "owner", name: "Owner", role: "owner", you: true })], {
+      account: "laptop\\rab",
+      says: "unavailable",
+    });
+    await t.tab.load();
+    expect(t.tab.controls().some((c) => c.id === "m.hh.pin")).toBe(true);
+    t.tab.act("m.hh.invite:add", "Adam");
+    t.tab.act("m.hh.pin:add", "27182818");
+    await t.settle();
+    expect(t.calls.some(([op]) => op === "hello")).toBe(false);
+    expect(t.calls).toContainEqual(["stepUp", { pin: "27182818" }]);
   });
 });

@@ -492,20 +492,19 @@ export const layer = (
 
 /**
  * Who a household request is from (TessayaHousehold): the member the session acts for; an agent's token is a service
- * acting for the owner. The desktop app's own session and an approving device count as A3.
+ * acting for the owner. A signed-in device is A2 (ACCOUNTS-IDENTITY-DESIGN §3.1); A3 is a step-up on that session (a
+ * PIN, or Windows Hello on a desktop mapped to one member), or the approving phone answering its card.
  */
-// shortcut: A3 is the desktop's own session or an approving device until I-3 adds a PIN or passkey step-up per act.
 export const householdCallerOf = (
-  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
+  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject" | "sessionId">,
 ) => ({
   member: memberOfSubject(session.subject),
   // An agent's token (delegated or MCP sign-in) is a service; his own app, cookie or bearer, is him.
   service: session.subject === TOKEN_DELEGATED_SUBJECT || session.subject === "mcp-client",
-  assurance: (session.scopes.includes(AuthBatonHandsHostScope) ||
-  session.scopes.includes(AuthBatonCloudApproveScope)
-    ? 3
-    : 2) as Assurance,
+  assurance: (session.scopes.includes(AuthBatonCloudApproveScope) ? 3 : 2) as Assurance,
   via: session.scopes.includes(AuthBatonHandsHostScope) ? "the desktop" : "a paired device",
+  session: String(session.sessionId),
+  desktop: session.scopes.includes(AuthBatonHandsHostScope),
 });
 
 /** Why this session may not use the household route at all, or null: a member's, a guest's or an owner's client. */

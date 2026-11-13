@@ -55,6 +55,10 @@ export const HouseholdCaller = Context.Reference<{
   readonly tainted?: boolean;
   /** How the Record and the owner's ask name who asked ("Tessaya via R1", "Sara's phone"). */
   readonly via: string;
+  /** The signed-in session it came through: a step-up (PIN, Windows Hello) raises only that session, for a while. */
+  readonly session?: string;
+  /** The desktop app's own session, the only one that may vouch for Windows Hello. */
+  readonly desktop?: boolean;
 }>("t3/baton/TessayaHousehold/HouseholdCaller", {
   defaultValue: () => ({ member: null, assurance: 0, via: "unknown" }),
 });
@@ -77,6 +81,10 @@ export const HOUSEHOLD_PEER_TOOL = "household_peer";
 /** The linked-server tool that tells a server a member's data was destroyed, so its vessels forget their voice. */
 export const VOICE_FORGET_TOOL = "household_voice_forget";
 const HOME_KEY = "household.home";
+/** Each member's Windows account (`HOST\\user`, lower case) on this server's desktops, for Windows Hello. */
+const WINDOWS_KEY = "household.windowsAccounts";
+/** A step-up's A3 lasts this long on the session that made it (ACCOUNTS-IDENTITY-DESIGN §3.1). */
+export const STEP_UP_MS = 5 * 60_000;
 /** How long a server not holding the members keeps the home's answer about who is who. */
 const GRANTS_CACHE_MS = 60_000;
 const decodeResult = Schema.decodeUnknownOption(BatonHouseholdCallResult);
@@ -96,6 +104,7 @@ const guardiansOf = (row: Row): ReadonlyArray<string> =>
   JSON.parse(row.guardians_json) as Array<string>;
 // A plain list of strings: a child's guardians, a voice profile's sources.
 const guardiansJson = (ids: ReadonlyArray<string>) => JSON.stringify(ids);
+const accountsJson = (accounts: Readonly<Record<string, string>>) => JSON.stringify(accounts);
 
 interface VoiceRow {
   readonly member_id: string;
@@ -377,11 +386,30 @@ export const make = Effect.gen(function* () {
     return n;
   });
 
+  const windowsAccounts = Effect.map(
+    sql<{ value: string }>`SELECT value FROM fabric_settings WHERE key = ${WINDOWS_KEY}`.pipe(
+      Effect.orDie,
+    ),
+    (rows): Record<string, string> => {
+      try {
+        const parsed: unknown = JSON.parse(rows[0]?.value ?? "{}");
+        return typeof parsed === "object" && parsed !== null
+          ? (Object.fromEntries(
+              Object.entries(parsed).filter(([, v]) => typeof v === "string"),
+            ) as Record<string, string>)
+          : {};
+      } catch {
+        return {};
+      }
+    },
+  );
+
   const list = Effect.gen(function* () {
     const c = yield* HouseholdCaller;
     const role = yield* callerRole;
     const manager = role === "owner" || role === "admin";
     const sessions = yield* allSessions;
+    const windows = yield* windowsAccounts;
     // A code shows only while its pairing is unspent and unexpired.
     const pending = new Set(
       (yield* auth.listPairingLinks().pipe(Effect.orDie)).map((l) => l.subject),
@@ -414,6 +442,7 @@ export const make = Effect.gen(function* () {
         inviteExpiresAt: manager && live !== undefined ? live.expiresAt : null,
         purgeAfter: row.purge_after,
         you: c.member === row.id,
+        ...(manager || c.member === row.id ? { windowsAccount: windows[row.id] ?? null } : {}),
       };
     });
   });
@@ -480,7 +509,63 @@ export const make = Effect.gen(function* () {
     return Option.isSome(row) ? row.value : null;
   });
 
+  /** Sessions a member stepped up on (PIN or Windows Hello): A3 until then, on that session only. */
+  const leases = new Map<string, { readonly member: string; readonly until: number }>();
+  const withLease = Effect.fn("TessayaHousehold.withLease")(function* <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) {
+    const c = yield* HouseholdCaller;
+    const lease = c.session === undefined ? undefined : leases.get(c.session);
+    const now = yield* Clock.currentTimeMillis;
+    if (lease === undefined || lease.member !== c.member || lease.until <= now || c.assurance >= 3)
+      return yield* effect;
+    return yield* Effect.provideService(effect, HouseholdCaller, { ...c, assurance: 3 });
+  });
+
+  /**
+   * A step-up on this session: their PIN typed on their own device, or Windows Hello on a desktop whose Windows account
+   * is mapped to exactly one member (on a shared account Hello says only that someone enrolled there is present).
+   */
+  const stepUp = Effect.fn("TessayaHousehold.stepUp")(function* (input: {
+    readonly pin?: string | undefined;
+    readonly hello?: string | undefined;
+  }) {
+    const c = yield* HouseholdCaller;
+    if (c.member === null || c.service === true || c.session === undefined)
+      return refused("Only a member's own signed-in device can confirm it's them.");
+    const now = yield* Clock.currentTimeMillis;
+    if (input.hello !== undefined) {
+      if (c.desktop !== true)
+        return refused("Only Tessaya's desktop app can vouch for Windows Hello.");
+      const account = input.hello.toLowerCase();
+      const holders = Object.entries(yield* windowsAccounts)
+        .filter(([, a]) => a === account)
+        .map(([m]) => m);
+      if (holders.length !== 1 || holders[0] !== c.member)
+        return refused(
+          holders.length > 1
+            ? "This Windows account is shared, so Windows Hello can't say which of you it is."
+            : "This Windows account isn't set as yours in Household, so Windows Hello can't confirm it's you.",
+        );
+    } else if (input.pin !== undefined) {
+      if (Option.isNone(stores)) return refused("PINs aren't kept on this server.");
+      const right = yield* stores.value
+        .checkPin(c.member, input.pin)
+        .pipe(Effect.catch((e) => Effect.succeed(e.reason)));
+      if (right !== true) return refused(right === false ? "That PIN is not right." : right);
+    } else return refused("Type your PIN, or use Windows Hello.");
+    leases.set(c.session, { member: c.member, until: now + STEP_UP_MS });
+    return done("Thanks, that's you. For the next 5 minutes this device can do what needs you.");
+  });
+
   const call = Effect.fn("TessayaHousehold.call")(function* (input: BatonHouseholdCallInput) {
+    // A step-up belongs to this server's session; everything else carries the session's lease.
+    if (input.op === "stepUp") return yield* stepUp(input);
+    return yield* withLease(callThere(input));
+  });
+  const callThere = Effect.fn("TessayaHousehold.callThere")(function* (
+    input: BatonHouseholdCallInput,
+  ) {
     const on = input.op === "setHome" ? null : yield* homeOn;
     if (on === null) return yield* callHere(input);
     const there = yield* askHome(on, input);
@@ -560,6 +645,38 @@ export const make = Effect.gen(function* () {
               `Pair a new device for ${row.name}`,
               make,
             );
+      }
+      case "stepUp":
+        return yield* stepUp(input);
+      case "setWindowsAccount": {
+        const row = yield* target(input.id);
+        if (row === null || row.removed_at !== null) return refused("No member has that id.");
+        const account = input.account?.trim().toLowerCase() ?? null;
+        const save = Effect.gen(function* () {
+          const next = { ...(yield* windowsAccounts) };
+          if (account === null) delete next[row.id];
+          else next[row.id] = account;
+          yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${WINDOWS_KEY}, ${accountsJson(next)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
+            Effect.orDie,
+          );
+          return done(
+            account === null
+              ? `Windows Hello no longer confirms ${row.name}.`
+              : `Windows Hello on ${account} now confirms it's ${row.name}.`,
+          );
+        });
+        // Choosing who Windows Hello proves is admin-class: the owner's yes on their device, or A3 already.
+        return yield* adminAct(
+          row.role === "owner"
+            ? role === "owner"
+              ? null
+              : "Only the owner chooses what confirms it's the owner."
+            : manageRefusal(role, row.role, null),
+          account === null
+            ? `Stop Windows Hello confirming ${row.name}`
+            : `Let Windows Hello on ${account} confirm it's ${row.name}`,
+          save,
+        );
       }
       case "rename": {
         const row = yield* target(input.id);

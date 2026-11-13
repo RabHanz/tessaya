@@ -16,6 +16,26 @@ export type HouseholdCall = (
 ) => Promise<BatonHouseholdCallResult>;
 
 const ROLES = ["admin", "adult", "child", "guest"] as const;
+
+/** This Windows sign-in as the household maps it: `host\\user`, lower case. */
+export const windowsAccountOf = (host: string, user: string): string =>
+  `${host}\\${user}`.toLowerCase();
+
+/** What needs them for sure (A3): the desktop asks Windows Hello first, so these don't wait on his phone. */
+const NEEDS_THEM = new Set([
+  "invite",
+  "setRole",
+  "setAdultAge",
+  "remove",
+  "restore",
+  "machine",
+  "setHome",
+  "setWindowsAccount",
+  "pair",
+  "rename",
+]);
+/** A step-up lasts 5 minutes on the server; asked again a little before. */
+const LEASE_MS = 5 * 60_000 - 15_000;
 type InviteRole = (typeof ROLES)[number];
 
 const time = (iso: string) =>
@@ -127,6 +147,53 @@ const preferenceControls = (
   return rows;
 };
 
+/**
+ * Confirming it's you (identity I-3): which member this Windows account's Hello proves, for the owner, and your PIN
+ * where Hello doesn't prove you. Either gives this device 5 minutes for what needs you.
+ */
+const stepUpControls = (
+  s: {
+    readonly members: ReadonlyArray<BatonHouseholdMember>;
+    readonly windowsAccount?: string;
+  },
+  section: string,
+): ReadonlyArray<HomeControl> => {
+  const you = s.members.find((m) => m.you);
+  if (you === undefined) return [];
+  const account = s.windowsAccount;
+  const holders =
+    account === undefined ? [] : s.members.filter((m) => m.windowsAccount === account);
+  const rows: Array<HomeControl> = [];
+  if (account !== undefined && you.role === "owner")
+    rows.push({
+      id: "m.hh.hello",
+      section,
+      label: text("hh.hello"),
+      hint: text("hh.hello.hint", { account }),
+      kind: "choice",
+      value: holders.length === 1 ? holders[0]!.id : "",
+      options: [
+        { value: "", label: text("hh.hello.nobody") },
+        ...s.members
+          .filter((m) => m.state === "active")
+          .map((m) => ({ value: m.id, label: m.you ? text("hh.prefs.you") : m.name })),
+      ],
+    });
+  if (!(holders.length === 1 && holders[0]!.id === you.id))
+    rows.push({
+      id: "m.hh.pin",
+      section,
+      label: text("hh.pin"),
+      hint: text("hh.pin.hint"),
+      kind: "list",
+      items: [],
+      secret: true,
+      placeholder: text("hh.pin.placeholder"),
+      addLabel: text("hh.pin.button"),
+    });
+  return rows;
+};
+
 export const householdControls = (s: {
   readonly members: ReadonlyArray<BatonHouseholdMember>;
   readonly inviteRole: InviteRole;
@@ -138,6 +205,8 @@ export const householdControls = (s: {
   /** Whose preferences are shown (a member id), and theirs. */
   readonly prefsFor: string | null;
   readonly prefs: Readonly<Record<string, string>>;
+  /** This computer's Windows account, on Windows. */
+  readonly windowsAccount?: string;
 }): ReadonlyArray<HomeControl> => {
   const section = text("hh.section");
   const rows: Array<HomeControl> = [];
@@ -196,6 +265,7 @@ export const householdControls = (s: {
     );
   }
   rows.push(...preferenceControls(s, section));
+  rows.push(...stepUpControls(s, section));
   // Only where there is another server to keep them on.
   if (s.peers.length > 0 || s.homeOn !== null)
     rows.push({
@@ -259,7 +329,20 @@ export const createHouseholdTab = (input: {
   /** Opens the guided Voice ID card for this member, saving their profile under their member id. */
   readonly enrol: ((member: { readonly id: string; readonly name: string }) => void) | null;
   readonly refresh: () => void;
+  /** This computer's Windows account and Windows Hello, on Windows: Hello first for what needs you. */
+  readonly windowsAccount?: string;
+  readonly hello?: () => Promise<"verified" | "declined" | "unavailable">;
 }) => {
+  let leaseUntil = 0;
+  /** Hello once for the next 5 minutes, where this account is yours alone; otherwise the server asks his phone. */
+  const confirm = async () => {
+    const mine = members.find((m) => m.you)?.windowsAccount;
+    if (input.hello === undefined || mine !== input.windowsAccount || Date.now() < leaseUntil)
+      return;
+    if ((await input.hello()) !== "verified") return;
+    const r = await input.call("stepUp", { hello: input.windowsAccount }).catch(() => null);
+    if (r?.status === "done") leaseUntil = Date.now() + LEASE_MS;
+  };
   let members: ReadonlyArray<BatonHouseholdMember> = [];
   let homeOn: string | null = null;
   let peers: ReadonlyArray<string> = [];
@@ -293,8 +376,11 @@ export const createHouseholdTab = (input: {
   };
   const request = async (op: string, args: Record<string, unknown>, name?: string) => {
     try {
+      if (NEEDS_THEM.has(op) && !(op === "rename" && args["id"] === members.find((m) => m.you)?.id))
+        await confirm();
       const r = await input.call(op, args);
       status = r.line;
+      if (op === "stepUp" && r.status === "done") leaseUntil = Date.now() + LEASE_MS;
       if (r.code !== undefined && r.codeExpiresAt !== undefined)
         code = { name: name ?? "", code: r.code, until: r.codeExpiresAt };
     } catch (e) {
@@ -319,6 +405,7 @@ export const createHouseholdTab = (input: {
         peers,
         prefsFor,
         prefs,
+        ...(input.windowsAccount === undefined ? {} : { windowsAccount: input.windowsAccount }),
       }),
     /** Handles a click on one of its controls; false when the id is not its own. */
     act: (id: string, value: unknown): boolean => {
@@ -328,7 +415,16 @@ export const createHouseholdTab = (input: {
       const kind = at < 0 ? body : body.slice(0, at);
       const rest = at < 0 ? "" : body.slice(at + 1);
       const target = memberOf(rest.replace(/:later$/, ""));
-      if (kind === "prefsFor" && typeof value === "string") {
+      if (kind === "hello" && typeof value === "string") {
+        // One member per account: whoever had it before no longer does.
+        for (const m of members)
+          if (m.windowsAccount === input.windowsAccount && m.id !== value)
+            run("setWindowsAccount", { id: m.id, account: null });
+        if (value !== "")
+          run("setWindowsAccount", { id: value, account: input.windowsAccount ?? null });
+      } else if (kind === "pin" && rest === "add" && typeof value === "string" && value !== "") {
+        run("stepUp", { pin: value });
+      } else if (kind === "prefsFor" && typeof value === "string") {
         prefsFor = value;
         void load();
       } else if (

@@ -43,6 +43,8 @@ export const BatonHouseholdMember = Schema.Struct({
   purgeAfter: Schema.NullOr(IsoDateTime),
   /** The caller. */
   you: Schema.Boolean,
+  /** The Windows account whose Hello confirms them, when one is set. */
+  windowsAccount: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonHouseholdMember = typeof BatonHouseholdMember.Type;
 
@@ -97,6 +99,19 @@ export const BatonHouseholdCallInput = Schema.Union([
    * so a home has one members table however many servers it has.
    */
   op("setHome", { on: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))) }),
+  /**
+   * Confirms it's them on this signed-in device, for 5 minutes (A3): their PIN typed here, or (the desktop app only)
+   * Windows Hello passed on this Windows account (`HOST\\user`), which must be theirs alone in `setWindowsAccount`.
+   */
+  op("stepUp", {
+    pin: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+    hello: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  }),
+  /** Which Windows account's Hello confirms this member (null: none). */
+  op("setWindowsAccount", {
+    ...Ref,
+    account: Schema.NullOr(Schema.String.check(Schema.isMaxLength(200))),
+  }),
   /** A name said or typed; spelled out ("Zayd, Z-A-Y-D") it is kept as spelled. Themselves, or an admin. */
   op("rename", { ...Ref, name: TrimmedNonEmptyString.check(Schema.isMaxLength(120)) }),
   /** A member's own preferences: theirs, or the owner's view of anyone's. */

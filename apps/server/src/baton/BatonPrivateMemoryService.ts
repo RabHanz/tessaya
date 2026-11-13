@@ -187,6 +187,14 @@ export class BatonPrivateMemoryService extends Context.Service<
       readonly pin?: string | undefined;
       readonly recoveryCode?: string | undefined;
     }) => Effect.Effect<string, BatonPrivateRefusedError>;
+    /**
+     * Whether this is the person's PIN (a step-up, ACCOUNTS-IDENTITY-DESIGN I-3), counted like opening their store: wrong
+     * ones wait and then lock to the recovery code. Opens nothing.
+     */
+    readonly checkPin: (
+      personId: string,
+      pin: string,
+    ) => Effect.Effect<boolean, BatonPrivateRefusedError>;
     readonly changePin: (input: {
       readonly storeId: string;
       readonly pin?: string | undefined;
@@ -756,6 +764,20 @@ export const make = Effect.gen(function* () {
         input.pin,
         personId === OWNER_PERSON_ID ? "owner" : "person",
       );
+    }, serial),
+
+    checkPin: Effect.fn("BatonPrivateMemoryService.checkPin")(function* (personId, pin) {
+      const row = yield* storeOfPerson(personId);
+      if (Option.isNone(row))
+        return yield* refuse("Set up your PIN first: choose it in Tessaya on your phone.");
+      const dek = yield* keyFrom(row.value, pin, undefined);
+      if (dek === null) return false;
+      dek.fill(0);
+      yield* sql`UPDATE tessaya_private_stores SET failures = 0, wait_until = 0 WHERE id = ${row.value.id}`.pipe(
+        Effect.orDie,
+      );
+      yield* audit(row.value, "step-up", "ok");
+      return true;
     }, serial),
 
     unlock: Effect.fn("BatonPrivateMemoryService.unlock")(function* (input) {

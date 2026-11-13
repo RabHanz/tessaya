@@ -521,4 +521,61 @@ describe("one voice profile per member, on the home", () => {
         assert.strictEqual(renamed.line, "Zayd is now Zayd Khan.");
       }),
     ));
+
+  test("a step-up raises only that session to A3 for 5 minutes: their PIN, or Windows Hello on an account that is theirs alone", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const stores = yield* BatonPrivateMemoryService;
+        yield* Effect.provideService(
+          stores.setup({ name: "Owner", pin: "27182818" }),
+          PrivateCaller,
+          { session: "desk", desktop: true },
+        );
+        // His desktop is A2 like any signed-in device: adding someone waits for his phone's yes.
+        const desk = {
+          member: "owner",
+          assurance: 2,
+          via: "the desktop",
+          session: "desk",
+          desktop: true,
+        } as const;
+        const invite = call({ op: "invite", name: "Adam", role: "child" });
+        assert.strictEqual((yield* as(desk)(invite)).status, "asked");
+        // A wrong PIN, then a right one: A3 on this session only, and only for 5 minutes.
+        assert.strictEqual(
+          (yield* as(desk)(call({ op: "stepUp", pin: "11111111" }))).status,
+          "refused",
+        );
+        assert.strictEqual(
+          (yield* as(desk)(call({ op: "stepUp", pin: "27182818" }))).status,
+          "done",
+        );
+        assert.strictEqual((yield* as(desk)(invite)).status, "done");
+        assert.strictEqual((yield* as({ ...desk, session: "phone" })(invite)).status, "asked");
+        yield* TestClock.adjust("301 seconds");
+        assert.strictEqual((yield* as(desk)(invite)).status, "asked");
+        // Windows Hello: not until his account is mapped to him (a phone yes here), and never on a shared account.
+        const hello = call({ op: "stepUp", hello: "LAPTOP\\rab" });
+        assert.strictEqual((yield* as(desk)(hello)).status, "refused");
+        assert.strictEqual((yield* as({ ...desk, desktop: false })(hello)).status, "refused");
+        assert.strictEqual(
+          (yield* as(owner)(call({ op: "setWindowsAccount", id: "owner", account: "laptop\\rab" })))
+            .status,
+          "done",
+        );
+        assert.strictEqual((yield* as(desk)(hello)).status, "done");
+        assert.strictEqual((yield* as(desk)(invite)).status, "done");
+        const adam = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.name === "Adam",
+        )!;
+        assert.strictEqual(
+          (yield* as(owner)(call({ op: "setWindowsAccount", id: adam.id, account: "laptop\\rab" })))
+            .status,
+          "done",
+        );
+        yield* TestClock.adjust("301 seconds");
+        assert.include((yield* as(desk)(hello)).line, "shared");
+      }),
+    ));
 });
