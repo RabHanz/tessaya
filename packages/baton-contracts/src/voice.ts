@@ -7,8 +7,29 @@
 import * as Schema from "effect/Schema";
 
 export const BATON_VOICE_WS_METHODS = { call: "baton.voice.call" } as const;
-export const BATON_VOICE_READ_OPS = ["library", "preview"] as const;
-export const BATON_VOICE_ACT_OPS = ["setPersona", "setGoogleKey", "say"] as const;
+export const BATON_VOICE_READ_OPS = ["library", "preview", "arbiter"] as const;
+/** `claim`, `speaking` and `ended` are the voice arbiter's (one responder per utterance); `answerFrom` sets the primary. */
+export const BATON_VOICE_ACT_OPS = [
+  "setPersona",
+  "setGoogleKey",
+  "say",
+  "claim",
+  "speaking",
+  "ended",
+  "answerFrom",
+] as const;
+
+/** A device heard its wake or her name and asks to answer (R1-P7). */
+export const VoiceClaimInput = Schema.Struct({
+  deviceId: Schema.String.check(Schema.isMaxLength(60)),
+  /** 0 to 1; a name heard in the text counts as 1. */
+  wakeScore: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+  /** dBFS of the wake segment after the device's own gain; null when it cannot say. */
+  loudnessDb: Schema.NullOr(Schema.Number),
+  speakerScore: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  answerHere: Schema.optionalKey(Schema.Boolean),
+});
+export type VoiceClaimInput = typeof VoiceClaimInput.Type;
 
 export const BatonVoiceCallInput = Schema.Struct({
   kind: Schema.Literals(["read", "act"]),
