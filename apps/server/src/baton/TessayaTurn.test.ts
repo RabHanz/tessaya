@@ -123,6 +123,43 @@ it.effect("a turn's tools know which vessel heard it", () =>
 
 layer("TessayaTurn", (it) => {
   it.effect(
+    "who's home: a verified voice or a member's own device, never a guess, a guest or a replay",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const heard = (over: Partial<TurnEnvelope>) =>
+          turn.begin({ vessel: device, origin: "R1", text: "hi", ...over });
+        const hana = { kind: "saved" as const, personId: "hana", verified: true, inherited: false };
+        const omid = {
+          kind: "saved" as const,
+          personId: "omid",
+          verified: false,
+          inherited: false,
+        };
+        yield* heard({ speaker: hana });
+        yield* heard({ speaker: omid });
+        yield* heard({ speaker: { ...hana, personId: "ivo" }, rehearsal: true });
+        yield* heard({ speaker: { ...hana, personId: "lev" }, addressed: false });
+        yield* turn.begin({
+          vessel: { kind: "phone", id: "rosa-phone" },
+          text: "hi",
+          member: "rosa",
+        });
+        const now = (yield* turn.whoIsHome).filter((p) =>
+          ["hana", "omid", "ivo", "lev", "rosa"].includes(p.member),
+        );
+        assert.deepStrictEqual(now.map((p) => [p.member, p.via, p.likelyHome]).toSorted(), [
+          ["hana", "R1", true],
+          ["rosa", "phone rosa-phone", true],
+        ]);
+        yield* TestClock.adjust("31 minutes");
+        assert.isFalse((yield* turn.whoIsHome).find((p) => p.member === "hana")!.likelyHome);
+        yield* TestClock.adjust("24 hours");
+        assert.isUndefined((yield* turn.whoIsHome).find((p) => p.member === "hana"));
+      }),
+  );
+
+  it.effect(
     "where the members live on another server, preferences are read and changed there",
     () =>
       Effect.gen(function* () {
