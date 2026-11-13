@@ -70,8 +70,8 @@ export const integratedLufs = (pcm: Int16Array, rate: number): number => {
   return lufs(mean(relative.length === 0 ? absolute : relative));
 };
 
-/** The gain that brings `measured` to `target` LUFS, never more than `maxGain` (12 dB) and 1 for silence. */
-export const loudnessGain = (measured: number, target: number, maxGain = 4): number =>
+/** The gain that brings `measured` to `target` LUFS, never more than `maxGain` (18 dB; Alfred needs 15) and 1 for silence. */
+export const loudnessGain = (measured: number, target: number, maxGain = 8): number =>
   Number.isFinite(measured) ? Math.min(maxGain, 10 ** ((target - measured) / 20)) : 1;
 
 /** `pcm` times `gain`, with peaks above 85% of full scale bent softly under it rather than clipped. */

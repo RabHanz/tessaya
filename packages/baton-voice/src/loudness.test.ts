@@ -26,6 +26,8 @@ describe("loudness", () => {
     expect(level(loud)).toBeCloseTo(-20, 0);
     // A gain that would clip is bent under full scale.
     expect(Math.max(...withGain(tone(0.9), 4))).toBeLessThanOrEqual(32767);
-    expect(loudnessGain(-60, -16)).toBe(4);
+    expect(loudnessGain(-60, -16)).toBe(8);
+    // Alfred's voice measured -31.1 LUFS on the voice host (13 Nov): brought all the way to the others.
+    expect(20 * Math.log10(loudnessGain(-31.1, -16))).toBeCloseTo(15.1, 1);
   });
 });

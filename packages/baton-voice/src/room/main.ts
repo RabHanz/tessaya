@@ -249,7 +249,7 @@ const startPocket = async () => {
           const gain = loudnessGain(lufs, target);
           gains.set(p.voice, gain);
           log(
-            `voice ${p.voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB to ${target}`,
+            `voice ${p.voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(withGain(pcm, gain), 16_000).toFixed(1)} LUFS (target ${target})`,
           );
         },
         (e: unknown) => log(`voice ${p.voice} not ready: ${String(e)}`),
