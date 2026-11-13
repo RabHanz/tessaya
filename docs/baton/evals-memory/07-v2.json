@@ -89,15 +89,13 @@
       "recall": true,
       "group": "people",
       "query": "what can't Maya eat",
-      "present": ["pe-sister-allergy"],
-      "pending": "MEMV2-7"
+      "present": ["pe-sister-allergy"]
     },
     {
       "recall": true,
       "group": "people",
       "query": "how much is Omar charging us",
-      "present": ["pe-builder-quote"],
-      "pending": "MEMV2-7"
+      "present": ["pe-builder-quote"]
     },
     {
       "recall": true,
@@ -109,8 +107,7 @@
       "recall": true,
       "group": "people",
       "query": "what is Lumen's price",
-      "present": ["pe-reading-pricing"],
-      "pending": "MEMV2-7"
+      "present": ["pe-reading-pricing"]
     },
     { "recall": true, "group": "people", "query": "who is Maya", "top": "pe-maya-sister" },
     {

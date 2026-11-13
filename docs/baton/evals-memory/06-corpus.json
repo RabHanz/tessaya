@@ -2786,10 +2786,10 @@
     {
       "recall": true,
       "group": "superseded",
-      "pending": "MEM-17",
       "query": "when is the mentor call",
       "present": ["s-meeting-day"],
-      "absent": ["s-meeting-day-old"]
+      "absent": ["s-meeting-day-old"],
+      "pending": "fused: MEM-17"
     },
     {
       "recall": true,
@@ -2821,16 +2821,15 @@
     {
       "recall": true,
       "group": "multi-hop",
-      "pending": "MEM-20",
       "query": "how should I contact the office landlord",
       "present": ["pp-landlord", "pp-helen-phone"]
     },
     {
       "recall": true,
       "group": "multi-hop",
-      "pending": "MEM-20",
       "query": "when can I reach my cofounder during her day",
-      "present": ["pp-cofounder", "pp-priya-tz"]
+      "present": ["pp-cofounder", "pp-priya-tz"],
+      "pending": "fused: MEM-20"
     },
     {
       "recall": true,
@@ -2853,7 +2852,6 @@
     {
       "recall": true,
       "group": "multi-hop",
-      "pending": "MEM-13",
       "query": "who runs support for the app my cofounder and I built",
       "present": ["pp-sam-role", "pp-cofounder"]
     },
