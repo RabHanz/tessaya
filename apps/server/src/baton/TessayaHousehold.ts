@@ -5,6 +5,7 @@
  */
 import {
   ADMIN_ASSURANCE,
+  OWNER_MEMBER_ID,
   type Assurance,
   HOUSEHOLD_DEFAULTS,
   manageRefusal,
@@ -15,10 +16,10 @@ import {
   roleCeiling,
   withinCeiling,
 } from "@t3tools/baton-shared/household";
-import type {
-  BatonHouseholdCallInput,
+import {
   BatonHouseholdCallResult,
-  BatonHouseholdMember,
+  type BatonHouseholdCallInput,
+  type BatonHouseholdMember,
 } from "@t3tools/baton-contracts";
 import type { AuthClientSession, AuthEnvironmentScope } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -30,9 +31,12 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Random from "effect/Random";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 
@@ -64,6 +68,13 @@ interface Row {
   readonly purge_after: string | null;
 }
 
+/** The linked-server tool a forwarded request runs on the home (`household_peer`). */
+export const HOUSEHOLD_PEER_TOOL = "household_peer";
+const HOME_KEY = "household.home";
+/** How long a server not holding the members keeps the home's answer about who is who. */
+const GRANTS_CACHE_MS = 60_000;
+const decodeResult = Schema.decodeUnknownOption(BatonHouseholdCallResult);
+
 /** "Who is around": a device connected now, or within this long. */
 const AROUND_MS = 15 * 60_000;
 /** How long the owner's approving device has to say yes. */
@@ -88,8 +99,13 @@ const done = (line: string, extra: Omit<Result, "status" | "line"> = {}): Result
 export class TessayaHousehold extends Context.Service<
   TessayaHousehold,
   {
-    /** One request from the window, the phone or a voice tool, as `HouseholdCaller`. */
+    /**
+     * One request from the window, the phone or a voice tool, as `HouseholdCaller`. On a server whose household lives
+     * on a linked server (`setHome`), it is asked there, with the caller.
+     */
     readonly call: (input: BatonHouseholdCallInput) => Effect.Effect<Result>;
+    /** The same request answered here, never forwarded: what a linked server's forwarded request runs. */
+    readonly callHere: (input: BatonHouseholdCallInput) => Effect.Effect<Result>;
     /** A member's role, or null for someone who is not (or no longer) a member. */
     readonly roleOf: (member: string) => Effect.Effect<MemberRole | null>;
     /** What Trust needs of a member: their role and whether they hold the machine grant; null when not a member. */
@@ -106,6 +122,64 @@ export const make = Effect.gen(function* () {
   const auth = yield* EnvironmentAuth;
   const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
   const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
+  const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
+  const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
+
+  /** The linked server holding the members (its label), or null: this one. */
+  const homeOn = Effect.map(
+    sql<{ value: string }>`SELECT value FROM fabric_settings WHERE key = ${HOME_KEY}`.pipe(
+      Effect.orDie,
+    ),
+    (rows) => {
+      const on = rows[0]?.value;
+      return on === undefined || on === "" ? null : on;
+    },
+  );
+  const peerLabels = Option.isNone(links)
+    ? Effect.succeed<ReadonlyArray<string>>([])
+    : links.value.list.pipe(
+        Effect.map((all) => all.filter((l) => l.status !== "expired").map((l) => l.label)),
+        Effect.orElseSucceed(() => []),
+      );
+
+  /** Asks the home server, as the caller; null when it can't be reached. */
+  const askHome = Effect.fn("TessayaHousehold.askHome")(function* (
+    on: string,
+    input: BatonHouseholdCallInput,
+  ) {
+    if (Option.isNone(links) || Option.isNone(peerMcp)) return null;
+    const c = yield* HouseholdCaller;
+    const link = (yield* links.value.list.pipe(Effect.orElseSucceed(() => []))).find(
+      (l) => l.status !== "expired" && l.label === on,
+    );
+    if (link === undefined) return null;
+    const answer = yield* peerMcp.value
+      .call({
+        environmentId: link.environmentId,
+        tool: HOUSEHOLD_PEER_TOOL,
+        arguments: {
+          input,
+          member: c.member,
+          service: c.service === true,
+          assurance: c.assurance,
+          tainted: c.tainted === true,
+          via: c.via,
+        },
+        limits: { runtimeMode: "approval-required", interactionMode: "default" },
+        success: Schema.Unknown,
+      })
+      .pipe(
+        Effect.timeout("10 seconds"),
+        Effect.option,
+        // A peer that breaks rather than answers is as gone as one that never answers.
+        Effect.catchCause(() => Effect.succeedNone),
+      );
+    return Option.isSome(answer) ? Option.getOrNull(decodeResult(answer.value)) : null;
+  });
+  let grantsCache: {
+    readonly at: number;
+    readonly members: ReadonlyArray<BatonHouseholdMember>;
+  } | null = null;
   /** Each pending invite's code, kept only in memory and shown only to the owner and admins until it expires. */
   const codes = new Map<string, { readonly code: string; readonly expiresAt: string }>();
 
@@ -128,6 +202,24 @@ export const make = Effect.gen(function* () {
   });
 
   const grantsOf = Effect.fn("TessayaHousehold.grantsOf")(function* (member: string) {
+    const on = yield* homeOn;
+    if (on !== null) {
+      const now = yield* Clock.currentTimeMillis;
+      if (grantsCache === null || now - grantsCache.at > GRANTS_CACHE_MS) {
+        const listed = yield* askHome(on, { op: "list" }).pipe(
+          Effect.provideService(HouseholdCaller, {
+            member: OWNER_MEMBER_ID,
+            service: true,
+            assurance: 0,
+            via: "another of this home's servers",
+          }),
+        );
+        // An unreachable home names nobody: identity only narrows, so they are treated as a guest until it answers.
+        grantsCache = { at: now, members: listed?.members ?? [] };
+      }
+      const m = grantsCache.members.find((x) => x.id === member && x.state !== "leaving");
+      return m === undefined ? null : { role: m.role, machine: m.machine };
+    }
     const row = yield* rowOf(member);
     return Option.isSome(row) && row.value.removed_at === null
       ? { role: row.value.role, machine: row.value.machine === 1 }
@@ -293,6 +385,16 @@ export const make = Effect.gen(function* () {
   });
 
   const call = Effect.fn("TessayaHousehold.call")(function* (input: BatonHouseholdCallInput) {
+    const on = input.op === "setHome" ? null : yield* homeOn;
+    if (on === null) return yield* callHere(input);
+    const there = yield* askHome(on, input);
+    grantsCache = null;
+    return there ?? refused(`This home's members live on ${on}, which can't be reached right now.`);
+  });
+
+  const callHere = Effect.fn("TessayaHousehold.callHere")(function* (
+    input: BatonHouseholdCallInput,
+  ) {
     const c = yield* HouseholdCaller;
     const role = yield* callerRole;
     // Guests, unknown voices and removed members see nothing of who lives here.
@@ -301,7 +403,7 @@ export const make = Effect.gen(function* () {
     yield* purgeDue;
     switch (input.op) {
       case "list":
-        return done("", { members: yield* list });
+        return done("", { members: yield* list, homeOn: yield* homeOn, peers: yield* peerLabels });
       case "home":
         return done(yield* home);
       case "invite": {
@@ -437,6 +539,26 @@ export const make = Effect.gen(function* () {
           ),
         );
       }
+      case "setHome": {
+        const on = input.on === null || input.on.trim() === "" ? null : input.on.trim();
+        if (on !== null && !(yield* peerLabels).includes(on))
+          return refused(`${on} is not a server linked to this one.`);
+        return yield* adminAct(
+          role === "owner" ? null : "Only the owner chooses where the members live.",
+          on === null ? "Keep this home's members on this server" : `Ask ${on} who lives here`,
+          Effect.gen(function* () {
+            yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, ${on ?? ""}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
+              Effect.orDie,
+            );
+            grantsCache = null;
+            return done(
+              on === null
+                ? "This server keeps its own members."
+                : `This server now asks ${on} who lives here.`,
+            );
+          }),
+        );
+      }
       case "machine": {
         const row = yield* target(input.id);
         if (row === null || row.removed_at !== null) return refused("No member has that id.");
@@ -481,7 +603,7 @@ export const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
 
-  return TessayaHousehold.of({ call, roleOf, grantsOf, purgeDue });
+  return TessayaHousehold.of({ call, callHere, roleOf, grantsOf, purgeDue });
 });
 
 export const layer = Layer.effect(TessayaHousehold, make);

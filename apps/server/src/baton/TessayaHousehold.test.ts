@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { memberSubject } from "@t3tools/baton-shared/household";
 import { AuthStandardClientScopes } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -13,6 +14,8 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as SessionStore from "../auth/SessionStore.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { layerMemory as BatonDatabaseMemory } from "./BatonDatabase.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
@@ -277,4 +280,77 @@ describe("TessayaHousehold", () => {
         );
       }),
     ));
+});
+
+describe("a home's members on one server, asked by its others", () => {
+  const link = { environmentId: "env-home", label: "home box", status: "connected" } as never;
+  /** A limb whose link reaches `home`'s household as its linked tool would, or nothing when `home` is null. */
+  const limbOf = (home: TessayaHousehold["Service"] | null, carried: Array<unknown>) =>
+    stackWith(0).pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(PeerLinks.PeerLinks)({
+            list: Effect.succeed([link]),
+            enabled: Effect.succeed(true),
+          }),
+          Layer.mock(PeerMcpClient.PeerMcpClient)({
+            call: (input) => {
+              carried.push(input.arguments);
+              const a = input.arguments as {
+                input: Parameters<TessayaHousehold["Service"]["callHere"]>[0];
+                member: string | null;
+                assurance: 0 | 1 | 2 | 3;
+                via: string;
+              };
+              return home === null
+                ? Effect.die("unreachable")
+                : (home.callHere(a.input).pipe(
+                    Effect.provideService(HouseholdCaller, {
+                      member: a.member,
+                      assurance: a.assurance,
+                      via: a.via,
+                    }),
+                  ) as never);
+            },
+          }),
+        ),
+      ),
+    );
+
+  test("forwards every request with who asked, reads roles from the home, and narrows to nobody when it is gone", () =>
+    Effect.gen(function* () {
+      const home = yield* Layer.build(stackWith(0)).pipe(
+        Effect.map((ctx) => Context.get(ctx, TessayaHousehold)),
+      );
+      yield* as(owner)(home.callHere({ op: "invite", name: "Sara", role: "child" }));
+      const carried: Array<unknown> = [];
+      const fromLimb = Effect.gen(function* () {
+        const limb = yield* TessayaHousehold;
+        assert.strictEqual(
+          (yield* as(owner)(limb.call({ op: "setHome", on: "home box" }))).status,
+          "done",
+        );
+        const listed = yield* as(owner)(limb.call({ op: "list" }));
+        const sara = listed.members!.find((m) => m.name === "Sara")!;
+        return { names: listed.members!.map((m) => m.name), grants: yield* limb.grantsOf(sara.id) };
+      }).pipe(Effect.provide(limbOf(home, carried)));
+      assert.deepStrictEqual(yield* fromLimb, {
+        names: ["Owner", "Sara"],
+        grants: { role: "child", machine: false },
+      });
+      assert.deepInclude(carried[0] as object, { member: "owner", assurance: 3 });
+      // The home unreachable: nothing is done there, and nobody is known.
+      const gone = yield* Effect.gen(function* () {
+        const limb = yield* TessayaHousehold;
+        yield* as(owner)(limb.call({ op: "setHome", on: "home box" }));
+        return [
+          (yield* as(owner)(limb.call({ op: "list" }))).status,
+          yield* limb.grantsOf("owner"),
+        ];
+      }).pipe(Effect.provide(limbOf(null, [])));
+      assert.deepStrictEqual(gone, ["refused", null]);
+      // Only a linked server it names can hold them.
+      const unknownPeer = yield* as(owner)(home.callHere({ op: "setHome", on: "nowhere" }));
+      assert.strictEqual(unknownPeer.status, "refused");
+    }).pipe(Effect.scoped));
 });

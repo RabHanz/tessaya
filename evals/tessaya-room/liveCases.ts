@@ -540,6 +540,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["member_restore"]],
   },
   {
+    id: "household-home",
+    proves: ["household_home_server"],
+    said: ["Keep the household's members on this server."],
+    uses: [["household_home_server"]],
+    argsOf: "household_home_server",
+    args: (input) => ({ thisServer: input["on"] === null || input["on"] === undefined }),
+  },
+  {
     id: "louder",
     proves: ["set_device_volume"],
     said: ["Can you speak louder?"],

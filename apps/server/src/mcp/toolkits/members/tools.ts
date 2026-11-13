@@ -97,6 +97,40 @@ const RestoreTool = Tool.make("member_restore", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const HomeServerTool = Tool.make("household_home_server", {
+  ...shared,
+  description:
+    "Choose which of his linked servers holds the household's members (its name, as members_list's `peers` gives), or null for this one. Only the owner chooses; it comes back `asked` when his yes is needed.",
+  parameters: Schema.Struct({
+    on: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))).annotate({
+      description: "The server's name, or null for this one.",
+    }),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+/** Never the model's: another of this home's servers asks the members here, carrying who asked there. */
+const PeerTool = Tool.make("household_peer", {
+  ...shared,
+  description:
+    "Used only by another of this home's linked servers to ask about its members. Never call it yourself.",
+  parameters: Schema.Struct({
+    input: Schema.Unknown,
+    member: Schema.NullOr(Schema.String.check(Schema.isMaxLength(140))),
+    service: Schema.Boolean,
+    assurance: Schema.Int,
+    tainted: Schema.Boolean,
+    via: Schema.String.check(Schema.isMaxLength(120)),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit, so every vessel gets them through its one registration. */
 export const MembersTools = [
   ListTool,
@@ -105,4 +139,6 @@ export const MembersTools = [
   SetRoleTool,
   RemoveTool,
   RestoreTool,
+  HomeServerTool,
+  PeerTool,
 ] as const;

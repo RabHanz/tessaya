@@ -27,6 +27,7 @@ import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistan
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { DESK_REPLAY_CLIENT, ROOM_CLIENT, withCounts } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
+import { HouseholdCaller, TessayaHousehold } from "../../../baton/TessayaHousehold.ts";
 import { TessayaToolkit } from "./tools.ts";
 
 const thread = ThreadId.make("thread:tessaya");
@@ -653,3 +654,33 @@ it("counts the automations she lists, so she says the numbers rather than counti
     error: "Home is not connected.",
   });
 });
+
+it.effect(
+  "only a linked server's household_peer is answered, with the caller it carries, at most A3",
+  () =>
+    Effect.gen(function* () {
+      const asked: Array<unknown> = [];
+      const household = TessayaHousehold.of({
+        callHere: (input: unknown) =>
+          Effect.gen(function* () {
+            asked.push([input, yield* HouseholdCaller]);
+            return { status: "done", line: "" };
+          }),
+      } as never);
+      const runtime = Context.make(TessayaHousehold, household) as Context.Context<never>;
+      const args = {
+        input: { op: "list" },
+        member: "sara",
+        service: false,
+        assurance: 4,
+        tainted: false,
+        via: "her phone",
+      };
+      const agent = yield* callTool("full-access", runtime, "household_peer", args);
+      expect(JSON.stringify(agent)).toContain("Only another of this home's servers");
+      yield* callTool("linked", runtime, "household_peer", args);
+      expect(asked).toMatchObject([
+        [{ op: "list" }, { member: "sara", service: false, assurance: 3 }],
+      ]);
+    }),
+);
