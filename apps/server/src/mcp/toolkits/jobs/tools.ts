@@ -14,10 +14,15 @@ import { McpSchema, Tool } from "effect/ai";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
-/** The R1's own callers (home/handlers.ts ROOM_CLIENT and its replay). */
-export const ROOM_SESSIONS: ReadonlySet<string> = new Set(["r1-room", "r1-replay"]);
+/** The vessels' own in-process runners (home/handlers.ts ROOM_CLIENT, DESK_CLIENT and their replays). */
+export const ROOM_SESSIONS: ReadonlySet<string> = new Set([
+  "r1-room",
+  "r1-replay",
+  "desktop-assistant",
+  "desktop-replay",
+]);
 
-/** Listed only to the room's own runner. */
+/** Listed only to a vessel's own runner. */
 const roomOnly = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope =

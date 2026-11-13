@@ -19,7 +19,7 @@ const refused = (message: string) =>
 
 export const make = Effect.gen(function* () {
   const context = yield* BatonRuntime;
-  /** Only the R1's own runner, which judged the voice and held what needs his yes (R1Tools). */
+  /** Only a vessel's own runner (R1Tools), which judged the turn and held what needs his yes; the desk's gate asks first. */
   const roomOnly = Effect.flatMap(McpInvocationContext.McpInvocationContext, (scope) =>
     !ROOM_SESSIONS.has(scope.client?.sessionId ?? "")
       ? Effect.fail(refused("Jobs are started by asking Tessaya: use tessaya_ask."))
