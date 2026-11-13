@@ -13,6 +13,29 @@ index b6f422c5d68f4dd5bbcd95b1cd66812745957462..21c32ea25adc4e4847a5c14256ffeaad
 +void (isTessayaGuest() ? import("./tessayaGuest") : import("./main"))
 +  .then(({ startup }) => startup)
 +  .catch(showBootError);
+diff --git a/apps/web/src/bundledDev.test.ts b/apps/web/src/bundledDev.test.ts
+index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..a3616afc6879725d000a7231bfdbcd319b66c708 100644
+--- a/apps/web/src/bundledDev.test.ts
++++ b/apps/web/src/bundledDev.test.ts
+@@ -26,7 +26,17 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
+   try {
+     await NodeFSP.mkdir(NodePath.join(root, "src/lib"), { recursive: true });
+     await NodeFSP.writeFile(NodePath.join(root, "package.json"), '{"type":"module"}');
+-    for (const file of ["index.html", "src/bootstrap.ts", "src/lib/bootError.ts"]) {
++    // Tessaya: bootstrap also picks its guest page; the stub keeps that branch resolvable.
++    await NodeFSP.writeFile(
++      NodePath.join(root, "src/tessayaGuest.tsx"),
++      "export const startup = null;",
++    );
++    for (const file of [
++      "index.html",
++      "src/bootstrap.ts",
++      "src/lib/bootError.ts",
++      "src/tessayaGuestFlag.ts",
++    ]) {
+       await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
+     }
+     await NodeFSP.writeFile(
 diff --git a/apps/web/src/connection/platform.ts b/apps/web/src/connection/platform.ts
 index dcd50342f1c91c78d4dca18286a96073e284da98..1e6d56d4450185ad622d3011c0efe5a4a7209f0f 100644
 --- a/apps/web/src/connection/platform.ts

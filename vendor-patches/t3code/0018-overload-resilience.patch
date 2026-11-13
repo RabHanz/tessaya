@@ -89,16 +89,10 @@ index ca109422c95a88ee861bd48da067a0bfc629b935..ad3f430f20b50b1d4e71c5a6e4d92e46
        : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
            launcherPid,
 diff --git a/packages/client-runtime/src/state/runtime.test.ts b/packages/client-runtime/src/state/runtime.test.ts
-index 40188b2f81c8e16234c5bd6375dc43eb775b0613..053e721d0e535b43927b600205b67759c030857e 100644
+index 63f00b28fb173403bc68daddd83435f3e69ab75c..289bcdf88d4812ddc5bb3ae300d8b7f7d73309ad 100644
 --- a/packages/client-runtime/src/state/runtime.test.ts
 +++ b/packages/client-runtime/src/state/runtime.test.ts
-@@ -1,4 +1,4 @@
--import { describe, expect, it } from "@effect/vitest";
-+import { describe, expect, it, vi } from "@effect/vitest";
- import {
-   DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
-   EnvironmentId,
-@@ -101,6 +101,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+@@ -110,6 +110,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
    execute: Effect.Effect<A, E>,
    {
      refreshTrigger,
@@ -106,7 +100,7 @@ index 40188b2f81c8e16234c5bd6375dc43eb775b0613..053e721d0e535b43927b600205b67759
      idleTtlMs,
      persistence,
      initialState,
-@@ -109,6 +110,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+@@ -118,6 +119,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
      onAnswer,
    }: {
      readonly refreshTrigger?: Atom.Atom<unknown>;
@@ -114,7 +108,7 @@ index 40188b2f81c8e16234c5bd6375dc43eb775b0613..053e721d0e535b43927b600205b67759
      readonly onAnswer?: QueryAnswerHandler<undefined, A>;
      readonly isFinal?: (value: A) => boolean;
      readonly idleTtlMs?: number;
-@@ -156,6 +158,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
+@@ -165,6 +167,7 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
      ...(persistence === undefined ? {} : { persistence }),
      execute: () => execute,
      ...(refreshTrigger === undefined ? {} : { refreshTrigger: () => refreshTrigger }),
@@ -122,8 +116,8 @@ index 40188b2f81c8e16234c5bd6375dc43eb775b0613..053e721d0e535b43927b600205b67759
      ...(idleTtlMs === undefined ? {} : { idleTtlMs }),
      ...(isFinal === undefined ? {} : { isFinal }),
      ...(onAnswer === undefined ? {} : { onAnswer }),
-@@ -1165,6 +1168,39 @@ describe("environment query lifecycle", () => {
-     ),
+@@ -1308,6 +1311,39 @@ describe("environment query lifecycle", () => {
+     }),
    );
  
 +  it.effect("waits for a slow read to answer before its interval asks again", () =>
@@ -160,13 +154,13 @@ index 40188b2f81c8e16234c5bd6375dc43eb775b0613..053e721d0e535b43927b600205b67759
 +  );
 +
    it.effect("re-checks thread titles when one of their threads leaves the shell", () =>
-     Effect.scoped(
-       Effect.gen(function* () {
+     Effect.gen(function* () {
+       const requests = yield* Queue.unbounded<Deferred.Deferred<Record<string, string>>>();
 diff --git a/packages/client-runtime/src/state/runtime.ts b/packages/client-runtime/src/state/runtime.ts
-index 5b09e48bd73fe63a20267330e6a63b6b28f991aa..742d79260b4a87b5f966931da774b2907634a1bd 100644
+index 736b10fdeeacae65f2415ee8da921237cb6e3bf6..27a9b9576e5490d71ce748d58b67a6f432c9c4a9 100644
 --- a/packages/client-runtime/src/state/runtime.ts
 +++ b/packages/client-runtime/src/state/runtime.ts
-@@ -551,13 +551,17 @@ const refreshOnSignalWhileRead =
+@@ -543,13 +543,17 @@ const refreshOnSignalWhileRead =
    };
  
  const refreshEveryUntilFinal =

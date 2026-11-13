@@ -145,7 +145,7 @@ index aaa6152e219fcaba9a8acff055eb3939408b78b1..f01d99ece1a9ba1e453a800bd06ee4b0
      Effect.orElseSucceed(() => undefined),
    );
 diff --git a/apps/server/src/speech/http.test.ts b/apps/server/src/speech/http.test.ts
-index d86f77fbdbd83233f1a4c98701bcb8ba3b4f1f69..f841add1f5680ed61a48afa1416331e45165ddcc 100644
+index 07f2fe6b99d5d76d0666c43900571a361a1623ec..ef8a7c07c0ad95ec11dcc606a1a89eeaadd2eab2 100644
 --- a/apps/server/src/speech/http.test.ts
 +++ b/apps/server/src/speech/http.test.ts
 @@ -28,6 +28,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";

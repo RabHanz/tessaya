@@ -20,7 +20,7 @@ index aca6e5eb56fc503ebcd9e065f0a4fd590ed2a97b..18fb638e12900c8082fe825c3c76370d
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index cb3b446d6d02fe3cc024567cc8de3c4f55bdb6ec..115a4034ed75998ed731f83a92a53f0e602b1cbe 100644
+index bac40332a27702521a6c08c40aa13b6dc86ced91..cef8387b7582a75c104b6f699b284062b4e3d5b9 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
 @@ -1,3 +1,4 @@
@@ -36,7 +36,7 @@ index cb3b446d6d02fe3cc024567cc8de3c4f55bdb6ec..115a4034ed75998ed731f83a92a53f0e
    SETTINGS_SEARCH_ITEMS,
    sourceControlHostSearchItems,
    sourceControlHostSettingsSearchId,
-@@ -222,6 +224,23 @@ describe("searchSettings", () => {
+@@ -229,6 +231,23 @@ describe("searchSettings", () => {
      }
    });
  
@@ -61,7 +61,7 @@ index cb3b446d6d02fe3cc024567cc8de3c4f55bdb6ec..115a4034ed75998ed731f83a92a53f0e
      const ids = SETTINGS_SEARCH_ITEMS.map((item) => item.id);
      expect(new Set(ids).size).toBe(ids.length);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 6a9ce0557ca5eed1f0dae23c2d3d35f64278d37c..a3a5225588e6ac109f087b2483b0a18e59a89a2d 100644
+index 85e4878be73dda2cf42949d067daf91a669d573c..e7f50cf36735a93915c3a91a071752d35feca8cb 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -1,3 +1,4 @@
@@ -115,7 +115,7 @@ index 6a9ce0557ca5eed1f0dae23c2d3d35f64278d37c..a3a5225588e6ac109f087b2483b0a18e
    },
  ];
  
-@@ -1342,6 +1357,45 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1354,6 +1369,45 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["new 1password vault op cli account"],
      secretsFeatureOnly: true,
    },
@@ -161,7 +161,7 @@ index 6a9ce0557ca5eed1f0dae23c2d3d35f64278d37c..a3a5225588e6ac109f087b2483b0a18e
    {
      id: "archive",
      title: "Archived threads",
-@@ -1373,6 +1427,10 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+@@ -1385,6 +1439,10 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
    "/settings/connections": "connections",
    "/settings/access": "connections",
    "/settings/secrets": null,

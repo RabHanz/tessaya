@@ -23,7 +23,7 @@ export function ThreadHeader(props: {
   readonly onOpenFilesInspector: () => void;
   readonly batonAction?: AppBarAction | null;
 }) {
-  const goBack = useWorkspaceBackNavigation("threads");
+  const goBack = useWorkspaceBackNavigation();
   const { toggleAuxiliaryPane, startNewTask } = useAdaptiveWorkspaceLayout();
   const { panes } = useWorkspacePaneState();
   const gitMenu = useThreadGitMenuDefinition(props.gitControls);

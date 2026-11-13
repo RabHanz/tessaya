@@ -3,7 +3,7 @@ Subject: client-runtime: Baton's RPC group on the client protocol
 The fabric.* group rides the same socket, and its work-session stream is a subscription tag.
 
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index 93e3f47121b2c9eba201799095951b241c22aee0..4d1d55fec2327a3b46f02fb312b87c188dfa3527 100644
+index ee70400ca47a548493f4d002e2db2ef1d4a6e498..9473f82076d3d53f8d2d2ee12fdcbb342b547e2d 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -1,3 +1,4 @@
@@ -18,8 +18,8 @@ index 93e3f47121b2c9eba201799095951b241c22aee0..4d1d55fec2327a3b46f02fb312b87c18
 +  // Baton (0005-client-rpc.patch)
 +  | typeof BATON_WS_METHODS.subscribeWorkSessions
    | typeof WS_METHODS.pullRequestsSubscribeRefreshes
+   | typeof WS_METHODS.pullRequestsSubscribeLinkedThreadRefreshes
    | typeof WS_METHODS.subscribeVcsStatus
-   | typeof WS_METHODS.subscribeVcsBranch
 diff --git a/packages/client-runtime/src/rpc/protocol.ts b/packages/client-runtime/src/rpc/protocol.ts
 index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..49490d5542856898889747cebc6a3b34c9f83342 100644
 --- a/packages/client-runtime/src/rpc/protocol.ts

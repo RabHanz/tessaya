@@ -96,5 +96,5 @@ it.effect(
         appSubframe: ["rejected", undefined],
         previewGuest: ["rejected", undefined],
       });
-    }).pipe(Effect.scoped),
+    }),
 );

@@ -294,6 +294,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
                 threadId={props.threadId}
                 workspaceRoot={props.workspaceRoot}
                 setDirection={setDirection}
+                preserveSoftBreaks
               />
               {question.details ? <QuestionDetails details={question.details} /> : null}
               <View className="gap-2">

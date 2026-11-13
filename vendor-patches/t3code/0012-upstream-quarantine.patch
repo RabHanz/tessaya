@@ -165,10 +165,10 @@ index 85634480715484a9c7acc69f906c5698af0752d9..d628b59abb2d7a4d1bf1d3496a422760
      const projections = yield* ProjectionStore.ProjectionStoreV2;
      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index efb826d8590526550ab30828f1f258ba929090f9..db2cd13c24cc13ff242152bad290298bc20da4bd 100644
+index c7cc43ee5ddea58ea3615e7bea296fd8dacd92eb..f646564e34724875bffd3dddb1e9d1b6af23e46e 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-@@ -8061,6 +8061,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -8441,6 +8441,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
            text: key,
            attachments: [],
            modelSelection: selection,
@@ -177,7 +177,7 @@ index efb826d8590526550ab30828f1f258ba929090f9..db2cd13c24cc13ff242152bad290298b
            dispatchMode: { type: key === "active" ? "start_immediately" : "queue_after_active" },
            createdBy: "user",
            creationSource: "web",
-@@ -8259,7 +8261,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -8920,7 +8922,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
      }),
    );
  
@@ -187,7 +187,7 @@ index efb826d8590526550ab30828f1f258ba929090f9..db2cd13c24cc13ff242152bad290298b
      "restarts a continuation that failed before its prompt, unless stopped (%s)",
      (stopped) =>
        Effect.gen(function* () {
-@@ -8893,6 +8896,74 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
+@@ -9554,6 +9557,74 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
        assert.isFalse(yield* effectWorker.runOnce());
      }),
    );
