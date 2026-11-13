@@ -688,4 +688,23 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     calls: [],
     callsMustNot: ["tessaya_whos_home", "tessaya_ask"],
   },
+  {
+    id: "outside-coming-up",
+    source:
+      "Memory v2 step 8: what his memories say is coming up is read from the memory, without asking him",
+    prompt: "Is there anything coming up this week I should remember?",
+    answers: {
+      tessaya_coming_up: {
+        items: [
+          {
+            text: "Maya's birthday is the sixteenth of November",
+            when: "in 3 days",
+            kind: "every year",
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_coming_up"],
+    callsMustNot: ["tessaya_ask"],
+  },
 ];
