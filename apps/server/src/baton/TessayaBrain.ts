@@ -24,6 +24,7 @@ import type { SessionSpec } from "../home/VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TurnOrigin, conversationKey, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { TurnPools } from "./TurnPools.ts";
+import { turnSkills } from "./TurnSkills.ts";
 
 /** What one thing she did came to, as the vessel reports it. */
 export interface ActOutcome {
@@ -174,13 +175,20 @@ export interface VesselTool {
   readonly run: (args: unknown) => Effect.Effect<ToolOutcome>;
 }
 
+/** What the brain adds to the vessel's turn data: Opus, his work, and his skills that fit this turn. */
+export interface TurnNotes {
+  readonly brain: string;
+  readonly work: string;
+  readonly skills: string;
+}
+
 /** What the vessel read before the model starts. */
 export interface Gathered<R> {
   readonly turn: TurnEnvelope;
   /** Persona names: an opener with one of them is never spoken. */
   readonly names: ReadonlyArray<string>;
   /** The turn's message, with the brain's notes on his work and on Opus. */
-  readonly user: (notes: { readonly brain: string; readonly work: string }) => string;
+  readonly user: (notes: TurnNotes) => string;
   /** What the vessel read on the model's behalf, for the trace. */
   readonly readBefore: ReadonlyArray<RoomCall>;
   readonly own: ReadonlyArray<VesselTool>;
@@ -241,7 +249,9 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     : {};
   const key = conversationKey(turn);
   const timeZone = turn.timeZone ?? "UTC";
+  const toolNames = [...tools.specs, ...own.map((t) => t.spec)].map((t) => t.name);
   const user = gathered.user({
+    skills: yield* turnSkills(turn, toolNames),
     brain: escalating
       ? escalationNote(
           escalationRulesLine(escalationSettings),

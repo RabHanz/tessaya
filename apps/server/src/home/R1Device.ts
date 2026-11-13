@@ -60,6 +60,7 @@ import {
   HOLD_ON,
   inBrainSlot,
   type RoomCall,
+  type TurnNotes,
   speakableSentences,
 } from "../baton/TessayaBrain.ts";
 import { changesSomething } from "./R1Tools.ts";
@@ -264,6 +265,8 @@ export interface R1Context {
   readonly work?: string;
   /** What the turn's note says about Opus: his rules, an open offer, a task Opus is on, a signal (B5). */
   readonly brain?: string;
+  /** His accepted skills that fit this turn (TurnSkills); "" when none. */
+  readonly skills?: string;
   readonly persona: Persona | null;
   /** He named this persona in this very turn (the loop's `tessaya.switched`). */
   readonly switched: boolean;
@@ -402,6 +405,7 @@ export const roomData = (input: R1Context) =>
       : [`His automations, live as of this turn: ${quoted(input.automations)}`]),
     ...(input.work === undefined || input.work === "" ? [] : [input.work]),
     ...(input.brain === undefined || input.brain === "" ? [] : [input.brain]),
+    ...(input.skills === undefined || input.skills === "" ? [] : [input.skills]),
     ...(input.memory === ""
       ? []
       : [
@@ -942,8 +946,7 @@ const r1Vessel = (input: R1Heard, tools: RoomToolSet) => ({
     Effect.map(({ device, context, turn, names }) => ({
       turn,
       names,
-      user: (notes: { readonly brain: string; readonly work: string }) =>
-        roomData({ ...context, ...notes }),
+      user: (notes: TurnNotes) => roomData({ ...context, ...notes }),
       readBefore:
         Array.isArray(context.devices) && context.devices.length > 0
           ? [

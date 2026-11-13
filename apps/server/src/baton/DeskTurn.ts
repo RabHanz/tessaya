@@ -22,7 +22,7 @@ import { R1Brain, type RoomToolSet } from "../home/R1Brain.ts";
 import { MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { readPack } from "./OperatingSystemPack.ts";
-import { brainTurn, type ActOutcome } from "./TessayaBrain.ts";
+import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
 import type { HandsBroker } from "@t3tools/baton-shared/remoteHands";
@@ -46,6 +46,8 @@ export const DeskTurnBody = Schema.Struct({
   /** This desktop's id in the device registry. */
   vessel: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   timeZone: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+  /** The app in front ("excel.exe"), for his skills. */
+  app: Schema.optional(Schema.NullOr(Schema.String.check(Schema.isMaxLength(120)))),
   /** Where his turn runs: this machine's server, or the household's home server (SPINE-UNIFY §3). */
   placement: Schema.optional(Schema.Literals(["here", "home"])),
   /** The Claude Code binary his desktop is set to use, honoured only on his own machine. */
@@ -71,12 +73,13 @@ const deskData = (input: {
   readonly privateBlock: string;
   readonly preferences: Readonly<Record<string, string>>;
   readonly conversation: ReadonlyArray<{ readonly role: string; readonly content: string }>;
-  readonly notes: { readonly brain: string; readonly work: string };
+  readonly notes: TurnNotes;
 }) =>
   [
     input.body.context ?? "",
     input.notes.work,
     input.notes.brain,
+    input.notes.skills,
     input.memory === "" ? "" : `What you remember (data): ${JSON.stringify(input.memory)}`,
     input.privateBlock,
     Object.keys(input.preferences).length === 0
@@ -126,6 +129,7 @@ export const deskTurnStream = (
                   : { confidence: body.speaker.confidence }),
               },
         project: body.project ?? null,
+        ...(body.app === undefined ? {} : { app: body.app }),
         ...(body.timeZone === undefined ? {} : { timeZone: body.timeZone }),
         // Each turn is a fresh session, as on the room: standing memory comes with the turn.
         sessionless: true,
@@ -155,7 +159,7 @@ export const deskTurnStream = (
             return {
               turn,
               names: pack.personas.map((p) => p.name),
-              user: (notes: { readonly brain: string; readonly work: string }) =>
+              user: (notes: TurnNotes) =>
                 deskData({
                   body,
                   memory: begun.block,
