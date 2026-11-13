@@ -13,7 +13,11 @@ import {
   type DeviceView,
   type DevicesOverview,
   type R1Mood,
+  type DeviceItem,
+  type DeviceSafety,
+  type RegisteredDevice,
 } from "@t3tools/baton-contracts";
+import { accessOf, groupItems, valueText } from "@t3tools/baton-shared/deviceItems";
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
@@ -52,6 +56,7 @@ import {
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { SecretInput } from "./SecretInput";
@@ -204,6 +209,17 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
           busy={busy}
           run={run}
           environmentId={environmentId}
+        />
+      ))}
+
+      {(view?.registry ?? []).map((d) => (
+        <ManifestDevice
+          key={d.deviceId}
+          device={d}
+          // The R1's own rows above already set these two.
+          skip={devices.some((r) => r.id === d.deviceId) ? HAND_BUILT : NONE}
+          busy={busy}
+          run={run}
         />
       ))}
 
@@ -1209,6 +1225,156 @@ function RoomBrainSection({ environmentId }: { readonly environmentId: Environme
           </Select>
         }
       />
+    </SettingsSection>
+  );
+}
+
+const HAND_BUILT: ReadonlySet<string> = new Set(["audio.volume", "eye.mood"]);
+const NONE: ReadonlySet<string> = new Set();
+const SAFETY_LABEL: Readonly<Record<DeviceSafety, string>> = {
+  free: "Free",
+  confirm: "Asks first",
+  owner: "Needs your yes",
+  never: "Settings only",
+};
+
+/**
+ * Any device drawn from its own manifest: a block per group, live values, a control by type, and the safety class on
+ * each. A new item needs no code here.
+ */
+function ManifestDevice({
+  device: d,
+  skip,
+  busy,
+  run,
+}: {
+  readonly device: RegisteredDevice;
+  readonly skip: ReadonlySet<string>;
+  readonly busy: boolean;
+  readonly run: Run;
+}) {
+  const values = new Map(d.values.map((v) => [v.itemId, v]));
+  const live = new Set((d.live ?? []).map((l) => l.itemId));
+  const off = busy || !d.online;
+  const set = (itemId: string, value: unknown) =>
+    void run("act", "set", { id: d.deviceId, itemId, value });
+  const groups = groupItems(
+    d.items.filter((i) => !skip.has(i.id)),
+    (i) => i,
+  );
+  const control = (item: DeviceItem) => {
+    const access = accessOf(item);
+    const v = values.get(item.id)?.value;
+    if (!access.write || item.safety === "never") return null;
+    if (item.type === "bool")
+      return (
+        <Switch
+          checked={v === true}
+          disabled={off}
+          aria-label={item.label}
+          onCheckedChange={(on) => set(item.id, on)}
+        />
+      );
+    if (item.type === "enum" && item.values !== undefined && item.values.length > 0)
+      return (
+        <Select
+          value={typeof v === "string" ? v : null}
+          disabled={off}
+          onValueChange={(next) => set(item.id, next)}
+        >
+          <SelectTrigger size="sm" aria-label={item.label}>
+            <SelectValue>{typeof v === "string" ? v : "Choose"}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {item.values.map((x) => (
+              <SelectItem key={x} value={x}>
+                {x}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      );
+    if (item.type === "number" && item.range !== undefined)
+      return (
+        <NumberField
+          value={typeof v === "number" ? v : null}
+          min={item.range[0]}
+          max={item.range[1]}
+          disabled={off}
+          size="sm"
+          className="w-24"
+          onValueCommitted={(next) => {
+            if (next !== null) set(item.id, next);
+          }}
+        >
+          <NumberFieldGroup>
+            <NumberFieldInput aria-label={item.label} />
+          </NumberFieldGroup>
+        </NumberField>
+      );
+    if (item.type === "action")
+      return (
+        <Button size="sm" variant="outline" disabled={off} onClick={() => set(item.id, null)}>
+          {item.label}
+        </Button>
+      );
+    return null;
+  };
+  return (
+    <SettingsSection title={`${d.name} (${d.kind})`}>
+      <SettingsRow
+        title={
+          <span className="flex items-center gap-2">
+            {d.name}
+            <Badge variant={d.online ? "success" : "outline"}>
+              {d.online ? "Online" : "Offline"}
+            </Badge>
+            {live.size > 0 ? <Badge variant="error">In use now</Badge> : null}
+          </span>
+        }
+        description={[
+          d.firmware,
+          d.lastSeenAt === null ? null : `last heard ${clock(d.lastSeenAt)}`,
+          d.items.length === 0 ? "it has not described itself yet" : null,
+        ]
+          .filter((part) => part !== null)
+          .join(" · ")}
+      />
+      {Object.entries(groups).map(([group, items]) =>
+        items.map((item, at) => {
+          const reported = values.get(item.id);
+          const access = accessOf(item);
+          const shown =
+            access.read || access.event
+              ? reported === undefined
+                ? "Not reported yet."
+                : `${valueText(item, reported.value)}, ${clock(reported.at)}.`
+              : null;
+          return (
+            <SettingsRow
+              key={item.id}
+              title={
+                <span className="flex items-center gap-2">
+                  {at === 0 ? (
+                    <span className="text-muted-foreground capitalize">{group} ·</span>
+                  ) : null}
+                  {item.label}
+                  {item.safety === "free" ? null : (
+                    <Badge variant="outline">{SAFETY_LABEL[item.safety]}</Badge>
+                  )}
+                  {item.privacy === true ? (
+                    <Badge variant={live.has(item.id) ? "error" : "warning"}>
+                      {live.has(item.id) ? "Private, in use" : "Private"}
+                    </Badge>
+                  ) : null}
+                </span>
+              }
+              description={[item.description, shown].filter((x) => x != null).join(". ")}
+              control={control(item)}
+            />
+          );
+        }),
+      )}
     </SettingsSection>
   );
 }
