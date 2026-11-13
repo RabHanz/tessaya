@@ -68,6 +68,24 @@ export type DesktopVoiceSettingsPatch = typeof DesktopVoiceSettingsPatch.Type;
 
 export const DesktopSettingsSetInput = Schema.Struct({ patch: DesktopVoiceSettingsPatch });
 
+/** How a desktop setting may change by voice: free at once; confirm and owner on his yes; never not at all. */
+export const SETTING_CLASSES = ["free", "confirm", "owner", "never"] as const;
+
+/** One of the desktop's own Settings controls (a toggle or a choice), as it publishes them for voice. */
+export const DesktopSettingsControl = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(120)),
+  label: Schema.String.check(Schema.isMaxLength(200)),
+  hint: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(400))),
+  section: Schema.String.check(Schema.isMaxLength(80)),
+  value: Schema.Union([Schema.String.check(Schema.isMaxLength(200)), Schema.Boolean]),
+  /** A choice's values; absent for a toggle. */
+  options: Schema.optionalKey(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(40)),
+  ),
+  voice: Schema.Literals(SETTING_CLASSES),
+});
+export type DesktopSettingsControl = typeof DesktopSettingsControl.Type;
+
 export const DesktopSettingsView = Schema.Struct({
   /** The desktop has reported in the last minute. */
   connected: Schema.Boolean,
@@ -79,6 +97,8 @@ export const DesktopSettingsView = Schema.Struct({
   pending: Schema.NullOr(DesktopVoiceSettingsPatch),
   /** On a set: the desktop applied it and `effective` is after it. */
   applied: Schema.optionalKey(Schema.Boolean),
+  /** Its own Settings controls as it last published them; absent until it does. */
+  controls: Schema.optionalKey(Schema.Array(DesktopSettingsControl)),
 });
 export type DesktopSettingsView = typeof DesktopSettingsView.Type;
 
@@ -86,7 +106,23 @@ export const DesktopSettingsSyncInput = Schema.Struct({
   effective: DesktopVoiceSettings,
   /** The last change version this desktop applied; 0 for none. */
   applied: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  /** Its Settings controls, sent when they change; absent from older desktops and when nothing changed. */
+  controls: Schema.optionalKey(Schema.Array(DesktopSettingsControl).check(Schema.isMaxLength(400))),
 });
 export const DesktopSettingsSyncResult = Schema.Struct({
-  change: Schema.NullOr(Schema.Struct({ version: Schema.Int, patch: DesktopVoiceSettingsPatch })),
+  change: Schema.NullOr(
+    Schema.Struct({
+      version: Schema.Int,
+      patch: DesktopVoiceSettingsPatch,
+      /** Settings controls to set, by id, as his click would: from a voice change of one of them. */
+      controls: Schema.optionalKey(
+        Schema.Array(
+          Schema.Struct({
+            id: Schema.String.check(Schema.isMaxLength(120)),
+            value: Schema.Union([Schema.String.check(Schema.isMaxLength(200)), Schema.Boolean]),
+          }),
+        ),
+      ),
+    }),
+  ),
 });

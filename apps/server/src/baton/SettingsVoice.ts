@@ -2,7 +2,7 @@
  * Every setting by voice, in plain words with a safety class (free: at once; confirm and owner: his yes on his phone;
  * never: refused, with why). Typed over the schemas' fields: a setting without a voice path does not compile.
  */
-import { DesktopVoiceSettingsPatch } from "@t3tools/baton-contracts";
+import { type DesktopSettingsControl, DesktopVoiceSettingsPatch } from "@t3tools/baton-contracts";
 import { ServerSettings, ServerSettingsPatch } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -154,12 +154,33 @@ export const DESKTOP_SETTINGS_VOICE: {
   ),
 };
 
-export type SettingStore = "server" | "desktop";
+export type SettingStore = "server" | "desktop" | "control";
 
 export interface SettingEntry extends SettingVoice {
   readonly key: string;
   readonly store: SettingStore;
+  /** One of the desktop's own Settings controls, as it published it ("control" store). */
+  readonly control?: DesktopSettingsControl;
 }
+
+const CONTROL_PREFIX = "desktop:";
+
+/** The fixed settings, then every Settings control the desktop beside this server has published. */
+export const allSettings = Effect.gen(function* () {
+  const desktop = yield* Effect.serviceOption(BatonDesktopSettings);
+  const published = Option.isNone(desktop) ? [] : ((yield* desktop.value.get).controls ?? []);
+  return [
+    ...SETTINGS,
+    ...published.map((c): SettingEntry => ({
+      key: `${CONTROL_PREFIX}${c.id}`,
+      store: "control",
+      say: `${c.section}: ${c.label}${c.hint === undefined ? "" : ` (${c.hint.slice(0, 160)})`}`,
+      class: c.voice,
+      ...(c.voice === "never" ? { why: "his desktop keeps it out of voice" } : {}),
+      control: c,
+    })),
+  ];
+});
 
 export const SETTINGS: ReadonlyArray<SettingEntry> = [
   ...Object.entries(SERVER_SETTINGS_VOICE).map(([key, v]) => ({
@@ -182,13 +203,18 @@ const words = (text: string): ReadonlyArray<string> =>
     .filter((w) => w.length > 2);
 
 /** The settings his words are most likely about, best first; the model picks among them by meaning. */
-export const findSettings = (text: string, limit = 5): ReadonlyArray<SettingEntry> => {
+export const findSettings = (
+  text: string,
+  entries: ReadonlyArray<SettingEntry> = SETTINGS,
+  limit = 5,
+): ReadonlyArray<SettingEntry> => {
   const asked = words(text);
-  return SETTINGS.map((s) => {
-    const hay = words(`${s.key} ${s.say}`);
-    const score = asked.filter((w) => hay.some((h) => h.startsWith(w) || w.startsWith(h))).length;
-    return { s, score };
-  })
+  return entries
+    .map((s) => {
+      const hay = words(`${s.key} ${s.say}`);
+      const score = asked.filter((w) => hay.some((h) => h.startsWith(w) || w.startsWith(h))).length;
+      return { s, score };
+    })
     .filter((x) => x.score > 0)
     .toSorted((a, b) => b.score - a.score)
     .slice(0, limit)
@@ -208,19 +234,35 @@ const shown = (value: unknown): string => {
   const text = JSON.stringify(value ?? null);
   return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 };
+/** A control's value as it takes it: true or false for a toggle, one of its options (any case) for a choice. */
+const controlValue =
+  (key: string, control: DesktopSettingsControl) =>
+  (patch: Record<string, unknown>): Option.Option<Record<string, unknown>> => {
+    const value = patch[key];
+    if (control.options === undefined)
+      return typeof value === "boolean" ? Option.some({ [key]: value }) : Option.none();
+    const picked = control.options.find(
+      (o) => typeof value === "string" && o.toLowerCase() === value.trim().toLowerCase(),
+    );
+    return picked === undefined ? Option.none() : Option.some({ [key]: picked });
+  };
 const decodeServer = Schema.decodeUnknownOption(ServerSettingsPatch);
 const decodeDesktop = Schema.decodeUnknownOption(DesktopVoiceSettingsPatch);
 /** How long his yes on a setting card is waited for. */
 const ANSWER_WAIT_MS = 10 * 60_000;
 
-export const entryOf = (key: string): SettingEntry | null =>
-  SETTINGS.find((s) => s.key === key) ??
-  SETTINGS.find((s) => s.key.toLowerCase() === key.trim().toLowerCase()) ??
+export const entryOf = (
+  key: string,
+  entries: ReadonlyArray<SettingEntry> = SETTINGS,
+): SettingEntry | null =>
+  entries.find((s) => s.key === key) ??
+  entries.find((s) => s.key.toLowerCase() === key.trim().toLowerCase()) ??
   null;
 
 /** Its value now; null for a desktop that has not reported one. A never setting is not read. */
 export const settingValue = Effect.fn("SettingsVoice.value")(function* (entry: SettingEntry) {
   if (entry.class === "never") return "(not read aloud)";
+  if (entry.control !== undefined) return entry.control.value;
   if (entry.store === "server") {
     const settings = yield* Effect.serviceOption(ServerSettingsService);
     if (Option.isNone(settings)) return null;
@@ -235,6 +277,7 @@ export const settingValue = Effect.fn("SettingsVoice.value")(function* (entry: S
 
 /** The values a setting takes, when it is a choice. */
 export const choicesOf = (entry: SettingEntry): ReadonlyArray<string> | null => {
+  if (entry.control !== undefined) return entry.control.options ?? null;
   const fields = (entry.store === "server" ? ServerSettings : DesktopVoiceSettingsPatch)
     .fields as Record<string, Schema.Top>;
   const field = fields[entry.key];
@@ -245,6 +288,14 @@ export const choicesOf = (entry: SettingEntry): ReadonlyArray<string> | null => 
 };
 
 const apply = Effect.fn("SettingsVoice.apply")(function* (entry: SettingEntry, patch: unknown) {
+  if (entry.control !== undefined) {
+    const desktop = yield* Effect.serviceOption(BatonDesktopSettings);
+    if (Option.isNone(desktop)) return false;
+    yield* desktop.value.setControls([
+      { id: entry.control.id, value: (patch as Record<string, string | boolean>)[entry.key]! },
+    ]);
+    return true;
+  }
   if (entry.store === "server") {
     const settings = yield* Effect.serviceOption(ServerSettingsService);
     if (Option.isNone(settings)) return false;
@@ -279,7 +330,7 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
   /** The tool suite's pretend R1: checked as for real, then nothing changes or is sent. */
   readonly dryRun?: boolean;
 }) {
-  const entry = entryOf(input.key);
+  const entry = entryOf(input.key, yield* allSettings);
   if (entry === null)
     return {
       status: "refused",
@@ -290,7 +341,12 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
       status: "refused",
       line: `${entry.say} is never changed by voice: ${entry.why}.`,
     } satisfies SettingSet;
-  const decode = entry.store === "server" ? decodeServer : decodeDesktop;
+  const decode =
+    entry.control !== undefined
+      ? controlValue(entry.key, entry.control)
+      : entry.store === "server"
+        ? decodeServer
+        : decodeDesktop;
   const tried = [input.value, spokenValue(input.value)].map(
     (v): Option.Option<Record<string, unknown>> => decode({ [entry.key]: v }),
   );
@@ -306,10 +362,7 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
   const was = yield* settingValue(entry);
   const changed = `${entry.say}: ${shown(was)} to ${shown(now)}`;
   const desktop = yield* Effect.serviceOption(BatonDesktopSettings);
-  if (
-    entry.store === "desktop" &&
-    (Option.isNone(desktop) || !(yield* desktop.value.get).connected)
-  )
+  if (entry.store !== "server" && (Option.isNone(desktop) || !(yield* desktop.value.get).connected))
     return {
       status: "failed",
       line: `${entry.say} is a setting of his desktop app, which is not connected to this server; it changes from the desktop itself.`,

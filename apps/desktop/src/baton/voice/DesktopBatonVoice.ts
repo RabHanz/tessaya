@@ -8450,6 +8450,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       sync: (body) => direct(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, body, 30_000),
       current: () => settings,
       apply: applyHome,
+      controls: () => homeState().controls,
     });
     const remoteLoop = () =>
       void remote

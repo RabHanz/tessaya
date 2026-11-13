@@ -5,8 +5,10 @@ import * as Effect from "effect/Effect";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
 import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import {
+  allSettings,
   choicesOf,
   entryOf,
+  SETTINGS,
   findSettings,
   setSetting,
   settingValue,
@@ -31,15 +33,18 @@ export const make = Effect.gen(function* () {
   const context = yield* BatonRuntime;
   const inRuntime = <A, E>(effect: Effect.Effect<A, E, never>) =>
     context === null ? Effect.fail(unavailable) : effect;
+  // The desktop's published controls join the fixed settings where this server has its desktop.
+  const everything =
+    context === null ? Effect.succeed(SETTINGS) : allSettings.pipe(Effect.provideContext(context));
   const described = Effect.fn("SettingsMcp.described")(function* (key: string) {
-    const entry = entryOf(key);
+    const entry = entryOf(key, yield* everything);
     if (entry === null) return yield* unknown(key);
     return { entry, value: yield* settingValue(entry).pipe(Effect.provideContext(context!)) };
   });
   return {
     settings_find: McpToolAccess.reads((input: Args) =>
-      Effect.succeed(
-        findSettings(String(input["text"] ?? "")).map((s) => ({
+      Effect.map(everything, (entries) =>
+        findSettings(String(input["text"] ?? ""), entries).map((s) => ({
           key: s.key,
           says: s.say,
           store: s.store,

@@ -622,6 +622,7 @@ it.effect("an agent's desktop settings change never lets devices look at his scr
     const desktop = BatonDesktopSettings.of({
       get: Effect.succeed(view),
       set: (patch) => Effect.sync(() => (sent.push(patch), view)),
+      setControls: () => Effect.die("unused"),
       sync: () => Effect.die("unused"),
     });
     yield* callTool(
