@@ -51,6 +51,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonMemoryEmbedder } from "./BatonMemoryEmbedder.ts";
 import { cosine, nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
+import { entityFacts, mentions } from "@t3tools/baton-shared/memoryEntities";
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -101,6 +102,9 @@ const fromRow = (row: ItemRow): MemoryItem => ({
 });
 
 const refuse = (reason: string) => new BatonMemoryRefusedError({ reason });
+const Aliases = Schema.fromJsonString(Schema.Array(Schema.String));
+const decodeAliases = Schema.decodeUnknownOption(Aliases);
+const encodeAliases = Schema.encodeSync(Aliases);
 const DAY_MS = 86_400_000;
 const DEFAULT_LIMIT = 50;
 const CANDIDATES = 200;
@@ -108,6 +112,8 @@ const CANDIDATES = 200;
 const EPISODES_UNASKED = 2;
 /** A sentence's recall leaves out hits weaker than this: one shared word in a long sentence. */
 const RECALL_FLOOR = 0.25;
+/** Items about a named person or project that recall adds beyond the sentence's own hits. */
+const NAMED_TOP = 4;
 /** Recall by meaning: the nearest items at or above this cosine join the keyword hits (bge-small: unrelated text sits below about 0.5; tuned on the recall eval). */
 const MEANING_FLOOR = 0.5;
 const MEANING_TOP = 20;
@@ -457,6 +463,7 @@ export const make = Effect.gen(function* () {
       )
     `.pipe(Effect.orDie);
     const created = yield* requireItem(id);
+    yield* noteEntities(created);
 
     if (draft.supersedes !== undefined && draft.supersedes !== id) {
       const old = yield* read(draft.supersedes);
@@ -534,6 +541,7 @@ export const make = Effect.gen(function* () {
         proposed = 0, updated_at = ${at}, received_at = ${at}, origin = ${origin}
       WHERE id = ${id}
     `.pipe(Effect.orDie);
+    yield* noteEntities(yield* requireItem(id));
     return yield* requireItem(id);
   });
 
@@ -558,6 +566,7 @@ export const make = Effect.gen(function* () {
       UPDATE fabric_memory_items SET text = ${text}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
       WHERE id = ${id}
     `.pipe(Effect.orDie);
+    yield* noteEntities(yield* requireItem(id));
     return yield* requireItem(id);
   });
 
@@ -570,6 +579,61 @@ export const make = Effect.gen(function* () {
     return yield* requireItem(id);
   });
 
+  const entities = sql<{ id: string; name: string; aliases_json: string }>`
+    SELECT id, name, aliases_json FROM fabric_memory_entities
+  `.pipe(
+    Effect.map((rows) =>
+      rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        aliases: Option.getOrElse(decodeAliases(r.aliases_json), () => [] as ReadonlyArray<string>),
+      })),
+    ),
+    Effect.orElseSucceed(() => []),
+  );
+
+  /** Links the item to every entity it names, after learning any new entity or alias its own words state. */
+  const noteEntities = Effect.fn("BatonMemoryService.noteEntities")(function* (item: MemoryItem) {
+    const at = yield* nowIso;
+    // Its words may have changed (an edit, a rewrite): its links are made afresh.
+    yield* sql`DELETE FROM fabric_memory_links WHERE item_id = ${item.id}`.pipe(Effect.orDie);
+    let grew = false;
+    for (const fact of entityFacts(item.text)) {
+      const known = (yield* entities).find((e) => e.name.toLowerCase() === fact.name.toLowerCase());
+      const aliases = [...new Set([...(known?.aliases ?? []), ...fact.aliases])];
+      if (known !== undefined && aliases.length === known.aliases.length) continue;
+      grew = true;
+      yield* sql`
+        INSERT INTO fabric_memory_entities (id, name, aliases_json, updated_at)
+        VALUES (${known?.id ?? globalThis.crypto.randomUUID()}, ${fact.name}, ${encodeAliases(aliases)}, ${at})
+        ON CONFLICT (id) DO UPDATE SET aliases_json = excluded.aliases_json, updated_at = excluded.updated_at
+      `.pipe(Effect.orDie);
+    }
+    const all = yield* entities;
+    // A new name or alias reaches back: earlier items that say "my sister" now belong to Maya too.
+    const items = grew
+      ? (yield* sql<ItemRow>`SELECT * FROM fabric_memory_items WHERE superseded_by IS NULL`.pipe(
+          Effect.orDie,
+        )).map(fromRow)
+      : [item];
+    for (const one of items)
+      for (const e of all)
+        if (mentions(one.text, e))
+          yield* sql`INSERT OR IGNORE INTO fabric_memory_links (item_id, entity_id) VALUES (${one.id}, ${e.id})`.pipe(
+            Effect.orDie,
+          );
+  });
+
+  /** Current items linked to every entity the sentence names, for recall's third arm. */
+  const namedItems = Effect.fn("BatonMemoryService.namedItems")(function* (text: string) {
+    const named = (yield* entities).filter((e) => mentions(text, e)).map((e) => e.id);
+    if (named.length === 0) return [];
+    return (yield* sql<ItemRow>`
+      SELECT DISTINCT i.* FROM fabric_memory_links l JOIN fabric_memory_items i ON i.id = l.item_id
+      WHERE l.entity_id IN ${sql.in(named)} AND i.superseded_by IS NULL AND i.proposed = 0
+    `.pipe(Effect.orDie)).map(fromRow);
+  });
+
   const remove = (id: string, at: string) =>
     sql`DELETE FROM fabric_memory_items WHERE id = ${id}`.pipe(
       Effect.andThen(
@@ -578,6 +642,7 @@ export const make = Effect.gen(function* () {
       Effect.andThen(sql`DELETE FROM fabric_memory_uses WHERE item_id = ${id}`),
       // Forgotten means forgotten: its earlier wordings go with it.
       Effect.andThen(sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`),
+      Effect.andThen(sql`DELETE FROM fabric_memory_links WHERE item_id = ${id}`),
       Effect.orDie,
     );
 
@@ -767,15 +832,35 @@ export const make = Effect.gen(function* () {
                 item.scope !== "project" ||
                 item.scopeRef === context.scopeRef),
           );
+    // Who or what the sentence names: every item about them, even ones that never repeat the name (step 7).
+    const named =
+      keyword === null || context.text === undefined
+        ? []
+        : (yield* namedItems(context.text)).filter(
+            (item) =>
+              seen(item) &&
+              (typeof context.scopeRef !== "string" ||
+                item.scope !== "project" ||
+                item.scopeRef === context.scopeRef),
+          );
     const blended =
-      keyword === null || meaning.length === 0
+      keyword === null || (meaning.length === 0 && named.length === 0)
         ? keyword
         : (() => {
             const byMeaning = meaning.map((item) => item.id);
+            // Only what the words missed, and a few: a well-known name must not crowd out the sentence's own hits.
+            const extra = named
+              .filter((item) => !keyword.some((h) => h.item.id === item.id))
+              .slice(0, NAMED_TOP);
             // Meaning counts twice: on the recall eval bge ranks better than keywords do (MEM-16).
-            const fused = rrf([keyword.map((h) => h.item.id), byMeaning, byMeaning]);
+            const fused = rrf([
+              keyword.map((h) => h.item.id),
+              ...(byMeaning.length === 0 ? [] : [byMeaning, byMeaning]),
+              extra.map((item) => item.id),
+            ]);
             const byId = new Map<string, MemoryItem>();
-            for (const item of [...keyword.map((h) => h.item), ...meaning]) byId.set(item.id, item);
+            for (const item of [...keyword.map((h) => h.item), ...meaning, ...extra])
+              byId.set(item.id, item);
             return [...byId.values()].map((item) => ({ item, score: fused.get(item.id) ?? 0 }));
           })();
     const hits =
@@ -1026,6 +1111,7 @@ export const make = Effect.gen(function* () {
             ${i.surface ?? null}, ${i.speaker ?? null}
           )
         `.pipe(Effect.orDie);
+        yield* noteEntities(i);
       }
       applied++;
     }
@@ -1083,6 +1169,21 @@ export const make = Effect.gen(function* () {
       }
     }).pipe(Effect.forkScoped);
   }
+
+  // Items kept before people and projects were noticed (step 7): once, every current item is read for them.
+  yield* Effect.gen(function* () {
+    yield* Effect.sleep(EMBED_START_DELAY);
+    if (!(yield* noteOnce("entities-v1", "1"))) return;
+    const items =
+      (yield* sql<ItemRow>`SELECT * FROM fabric_memory_items WHERE superseded_by IS NULL`.pipe(
+        Effect.orDie,
+      )).map(fromRow);
+    for (const item of items) if (entityFacts(item.text).length > 0) yield* noteEntities(item);
+    for (const item of items) yield* noteEntities(item);
+  }).pipe(
+    Effect.catchCause((cause) => Effect.logWarning("memory entities backfill failed", cause)),
+    Effect.forkScoped,
+  );
 
   // Talk notes kept before the assistant refused secrets could hold one. Once, each line is scrubbed in place; none is deleted.
   yield* Effect.gen(function* () {

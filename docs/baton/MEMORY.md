@@ -125,7 +125,7 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 - The first prompt of the one assistant gets a memory block with a token budget (default 600 tokens): pinned items first,
   then by relevance to the opening context (project, target, current words) times effective confidence, highest first,
   until the budget is spent. Items are one line each and marked as his data, not instructions.
-- Each spoken sentence then gets its own small block (300 tokens) of what matches that sentence only. A question that
+- Each spoken sentence then gets its own small block (300 tokens) of what matches that sentence only. Besides words and meaning, a third arm adds up to four items about a person, project or place the sentence names that the words missed: plain statements like "Maya is my younger sister" teach a name and its aliases ("my sister"), and every item that says either is linked to it, earlier ones included (`fabric_memory_entities`, `fabric_memory_links`, derived on each server, nothing synced). A question that
   is not about what happened gets at most two episodes, after every other match, so a stale episode never outranks the
   fact that replaced it; "yesterday" and "today" add that day's name to the search for episodes only. The standing notes
   are already in the session, so they are not repeated, weak one-word hits are left out, and when he is focused on a

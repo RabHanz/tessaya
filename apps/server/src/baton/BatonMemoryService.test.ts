@@ -23,6 +23,33 @@ const layer = it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemo
 const DAY = 86_400_000;
 
 layer("BatonMemoryService", (it) => {
+  it.effect(
+    "names reach what is said about them: 'my sister' is Maya, in any order, until forgotten",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const recall = (text: string) => Effect.map(memory.recall({ text }), (r) => r.block);
+        // Said about her before he named her: the name reaches back.
+        const allergy = yield* memory.add({
+          kind: "fact",
+          text: "My sister is allergic to peanuts, so no satay when she visits",
+          source: "user",
+        });
+        assert.notInclude(yield* recall("what can't Maya eat"), "peanuts");
+        yield* memory.add({ kind: "fact", text: "Maya is my younger sister", source: "user" });
+        assert.include(yield* recall("what can't Maya eat"), "peanuts");
+        // An edit that no longer names her unlinks it; forgetting removes it.
+        yield* memory.edit(allergy.id, { text: "The neighbour is allergic to peanuts" });
+        assert.notInclude(yield* recall("what can't Maya eat"), "peanuts");
+        yield* memory.forget(allergy.id);
+        const sql = yield* SqlClient.SqlClient;
+        assert.lengthOf(
+          yield* sql`SELECT * FROM fabric_memory_links WHERE item_id = ${allergy.id}`,
+          0,
+        );
+      }),
+  );
+
   it.effect("refuses secrets, in plain words, and keeps the rest", () =>
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;
