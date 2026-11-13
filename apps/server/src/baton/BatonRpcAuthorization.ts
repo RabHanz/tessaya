@@ -371,7 +371,8 @@ export const missingBatonScope = (
   else if (homeKind !== undefined && homeKind !== "read") return AuthOrchestrationOperateScope;
   const deviceKind =
     tag === BATON_DEVICES_WS_METHODS.call ? (fields as { kind?: unknown }).kind : undefined;
-  if (deviceKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
+  if (deviceKind === "act" || deviceKind === "vessel")
+    desktopOnly.push(AuthOrchestrationOperateScope);
   else if (deviceKind === "owner") desktopOnly.push(AuthBatonCloudApproveScope);
   else if (deviceKind !== undefined && deviceKind !== "read") return AuthOrchestrationOperateScope;
   // A voice call likewise: listing and previews are reads, changing a voice or the key is operate.

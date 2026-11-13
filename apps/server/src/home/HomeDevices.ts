@@ -41,13 +41,9 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "./Mqtt.ts";
-
-export class DeviceRefusedError extends Schema.TaggedError<DeviceRefusedError>()(
-  "DeviceRefusedError",
-  { why: Schema.String },
-) {}
 
 /** settings is him in Settings → Devices (the RPC checked his scope); anyone else asks before camera or reboot. */
 export interface DeviceActor {
@@ -115,16 +111,13 @@ const STAGES = [
   ["firstSoundMs", "Heard to first sound"],
 ] as const;
 
-/** What the broker has told us about one device. */
+/**
+ * What the broker has told us about one device beyond its items: the link, and the R1's own controls. Item values
+ * (battery, Wi-Fi, volume, firmware, mood...) live in the DeviceRegistry.
+ */
 export interface Heard {
   online: boolean | null;
   lastSeen: number | null;
-  batteryPct: number | null;
-  charging: boolean | null;
-  rssi: number | null;
-  signal: string | null;
-  firmware: string | null;
-  mood: string | null;
   ota: { phase: string; line: string } | null;
   camera: string | null;
   lastTag: { uid: string; at: number } | null;
@@ -143,19 +136,11 @@ export interface Heard {
   log: Array<{ at: number; topic: string; text: string }>;
   /** The room loop's enrolment card while he enrols, and its summary until he closes it. */
   enrol: EnrolCard | null;
-  /** The firmware's retained `state/volume`, 0-100. */
-  volume: number | null;
 }
 
 const blank = (): Heard => ({
   online: null,
   lastSeen: null,
-  batteryPct: null,
-  charging: null,
-  rssi: null,
-  signal: null,
-  firmware: null,
-  mood: null,
   ota: null,
   camera: null,
   lastTag: null,
@@ -165,7 +150,6 @@ const blank = (): Heard => ({
   samples: {},
   log: [],
   enrol: null,
-  volume: null,
 });
 
 const decodeEnrolCard = Schema.decodeUnknownOption(EnrolCard);
@@ -201,16 +185,31 @@ const median = (values: ReadonlyArray<number>): number | null => {
   return sorted.length % 2 === 1 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
 };
 
+/** What one broker message means for the registry: item values, a manifest, a write acknowledged. */
+export interface Folded {
+  readonly id: string;
+  readonly cameOnline: boolean;
+  readonly tag: string | null;
+  readonly items: ReadonlyArray<{ readonly itemId: string; readonly value: unknown }>;
+  readonly manifest: unknown;
+  readonly ack: { readonly itemId: string; readonly ok: boolean; readonly error?: string } | null;
+}
+
+/** The R1 says `onboard` on its older topics where its manifest says `speaker`. */
+const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out);
+
 /**
- * Folds one broker message into what we know of its device. Pure. Returns the device id and what the service must
- * react to: the device coming online (re-arm in-house voice) or a tag tapped. Payloads are the firmware's, so data.
+ * Folds one broker message into what we know of its device. Pure. Returns the device id, the item values it carries
+ * (the firmware's older topics map onto its manifest's items until it reports `state/item/<id>` for all of them), and
+ * what the service must react to: the device coming online (re-arm in-house voice) or a tag tapped. Payloads are the
+ * firmware's, so data.
  */
 export const applyMessage = (
   devices: Map<string, Heard>,
   topic: string,
   payload: string,
   now: number,
-): { readonly id: string; readonly cameOnline: boolean; readonly tag: string | null } | null => {
+): Folded | null => {
   const parts = topic.split("/");
   if (parts[0] !== "freya" || parts[1] !== "r1" || parts[2] === undefined || parts[2] === "")
     return null;
@@ -221,7 +220,30 @@ export const applyMessage = (
   const body = json(payload);
   let cameOnline = false;
   let tag: string | null = null;
+  let manifest: unknown = null;
+  let ack: Folded["ack"] = null;
+  const items: Array<{ itemId: string; value: unknown }> = [];
+  const item = (itemId: string, value: unknown) => {
+    if (value !== null && value !== undefined) items.push({ itemId, value });
+  };
   let line = recordText(payload, 160);
+  const done = () => ({ id, cameOnline, tag, items, manifest, ack });
+  if (rest.startsWith("state/item/") && rest !== "state/item/ack") {
+    item(rest.slice("state/item/".length), body === null ? payload.trim() : body["value"]);
+    d.lastSeen = now;
+    return done();
+  }
+  if (/^(state|event)\/(imu\/)?(posture|activity)$/.test(rest)) {
+    const which = rest.endsWith("posture") ? "imu.posture" : "imu.activity";
+    item(
+      which,
+      str(body?.["value"]) ??
+        str(body?.[which.slice(4)]) ??
+        (body === null ? str(payload.trim()) : null),
+    );
+  }
+  if (/^event\/(tap|double_tap|shake|stroke|touch)$/.test(rest))
+    item("touch.tap", str(body?.["ev"]) ?? str(body?.["gesture"]) ?? rest.slice("event/".length));
   switch (rest) {
     case "state/online": {
       const up = payload.trim() === "1";
@@ -231,18 +253,48 @@ export const applyMessage = (
     }
     case "state/battery": {
       const pct = Number.parseInt(payload, 10);
-      if (Number.isFinite(pct) && pct >= 0) d.batteryPct = pct;
+      if (Number.isFinite(pct) && pct >= 0) item("power.battery_pct", pct);
       break;
     }
-    case "state/power":
-      d.batteryPct =
-        (num(body?.["battery_pct"]) ?? -1) >= 0 ? num(body?.["battery_pct"]) : d.batteryPct;
-      if (typeof body?.["charging"] === "boolean") d.charging = body["charging"];
+    case "state/power": {
+      const pct = num(body?.["battery_pct"]);
+      if (pct !== null && pct >= 0) item("power.battery_pct", pct);
+      if (typeof body?.["charging"] === "boolean") item("power.charging", body["charging"]);
+      if (typeof body?.["stay_awake"] === "boolean") item("power.stay_awake", body["stay_awake"]);
+      const up = num(body?.["uptime_ms"]);
+      if (up !== null) item("system.uptime", Math.round(up / 1000));
       break;
+    }
     case "state/wifi":
-      d.rssi = num(body?.["rssi"]) ?? d.rssi;
-      d.signal = str(body?.["quality"]) ?? d.signal;
+      item("wifi.rssi", num(body?.["rssi"]));
+      item("wifi.quality", str(body?.["quality"]));
       break;
+    case "state/manifest":
+      manifest = body;
+      line = `manifest ${str(body?.["version"]) ?? ""}`.trim();
+      break;
+    case "state/item/ack": {
+      const cmd = str(body?.["cmd"]) ?? str(body?.["id"]) ?? str(body?.["item"]);
+      if (cmd !== null)
+        ack = {
+          itemId: cmd.replace(/^item\//, ""),
+          ok: body?.["ok"] !== false,
+          ...(str(body?.["error"]) === null
+            ? {}
+            : { error: recordText(str(body?.["error"])!, 160) }),
+        };
+      break;
+    }
+    case "state/audio/output":
+      item("audio.output", outputItem(str(body?.["out"])));
+      if (typeof body?.["device"] === "string") item("audio.device", body["device"]);
+      break;
+    case "event/key": {
+      const key = str(body?.["key"]);
+      const act = str(body?.["act"]);
+      if (key !== null && act !== null) item("key.press", `${key}.${act}`);
+      break;
+    }
     case "state/ota": {
       const phase = str(body?.["phase"]) ?? str(body?.["state"]) ?? "unknown";
       const rc = num(body?.["rc"]);
@@ -254,7 +306,7 @@ export const applyMessage = (
       break;
     }
     case "state/eye/mood":
-      d.mood = str(body?.["mood"]) ?? (recordText(payload.trim(), 20) || d.mood);
+      item("eye.mood", str(body?.["mood"]) ?? (recordText(payload.trim(), 20) || null));
       break;
     case "state/camera":
       d.camera = str(body?.["ev"]) ?? d.camera;
@@ -278,17 +330,21 @@ export const applyMessage = (
     }
     case "event/announce":
     case "event/wake/boot":
-      d.firmware = str(body?.["fw_ver"]) ?? str(body?.["fw"]) ?? d.firmware;
+      item("system.firmware", str(body?.["fw_ver"]) ?? str(body?.["fw"]));
       break;
     case "state/volume":
-      d.volume = num(body?.["pct"]) ?? d.volume;
+      item("audio.volume", num(body?.["pct"]));
       break;
     case "state/caps":
+      item("system.firmware", str(body?.["fw"]));
       if (body?.["bt_speaker"] === true)
         d.speaker ??= { state: "off", saved: null, output: "auto", found: [], scannedAt: null };
       else d.speaker = null;
       break;
     case "state/bt": {
+      item("bt.state", str(body?.["state"]));
+      if (typeof body?.["name"] === "string" && body["name"] !== "")
+        item("audio.device", body["name"]);
       if (d.speaker === null) break;
       const state = str(body?.["state"]);
       if (state !== null && SPEAKER_STATES.includes(state as never))
@@ -337,7 +393,7 @@ export const applyMessage = (
       const card = decodeEnrolCard(body);
       if (card._tag === "Some") d.enrol = card.value;
       d.lastSeen = now;
-      return { id, cameOnline, tag };
+      return done();
     }
     case "event/voice/metrics": {
       // The loop sends what was heard too; only the times are kept.
@@ -357,7 +413,7 @@ export const applyMessage = (
   if (rest !== "state/online" || d.online) d.lastSeen = now;
   d.log.push({ at: now, topic: rest, text: line });
   if (d.log.length > LOG_KEEP) d.log.shift();
-  return { id, cameOnline, tag };
+  return done();
 };
 
 export const stagesOf = (d: Heard): ReadonlyArray<DeviceStage> =>
@@ -506,6 +562,7 @@ const make = Effect.gen(function* () {
   const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
   const threads = yield* Effect.serviceOption(HomeDeviceThreads);
   const record = yield* Effect.serviceOption(BatonRecordService);
+  const registry = yield* DeviceRegistry;
   const scope = yield* Effect.scope;
   const incoming = yield* Queue.unbounded<{ topic: string; payload: string }>();
 
@@ -722,6 +779,15 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const result = applyMessage(heard, topic, payload, now);
     if (result === null) return;
+    if (topic.endsWith("/state/online"))
+      yield* registry.seen(result.id, heard.get(result.id)?.online === true);
+    if (result.manifest !== null) {
+      const refused = yield* registry.publish("mqtt", result.manifest);
+      if (refused !== null)
+        heard.get(result.id)?.log.push({ at: now, topic: "state/manifest", text: refused });
+    }
+    if (result.items.length > 0) yield* registry.report("mqtt", result.id, result.items);
+    if (result.ack !== null) yield* registry.acked(result.id, result.ack.itemId, result.ack);
     if (result.cameOnline) yield* rearm(result.id).pipe(Effect.forkIn(scope));
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
@@ -763,7 +829,11 @@ const make = Effect.gen(function* () {
         yield* publish(id, "cmd/led/set", { ...LED[c.color], mode: "solid" });
         return done(`The light is ${c.color}.`);
       case "volume": {
-        const before = heard.get(id)?.volume ?? (yield* readSaved).volume[id] ?? R1_DEFAULT_VOLUME;
+        const reported = yield* registry.value(id, "audio.volume");
+        const before =
+          typeof reported === "number"
+            ? reported
+            : ((yield* readSaved).volume[id] ?? R1_DEFAULT_VOLUME);
         const after = volumeAfter(before, c.to, R1_DEFAULT_VOLUME);
         yield* change((s) => {
           s.volume[id] = after;
@@ -876,6 +946,7 @@ const make = Effect.gen(function* () {
           delete s.keys[id];
         });
         yield* publish(id, "cmd/voice/earcons", "", true);
+        yield* registry.forget(id);
         if (device?.deviceId === id) yield* home.setDevice(null).pipe(Effect.ignore);
         return done("Forgotten. Set it up again in Settings → Home.");
       }
@@ -968,8 +1039,23 @@ const make = Effect.gen(function* () {
   const tagList = (saved: Saved): ReadonlyArray<DeviceTag> =>
     Object.entries(saved.tags).map(([uid, t]) => ({ uid, label: t.label, action: t.action }));
 
-  const viewOf = (id: string, d: Heard, saved: Saved, now: number): DeviceView => {
+  const viewOf = (
+    id: string,
+    d: Heard,
+    saved: Saved,
+    now: number,
+    values: ReadonlyMap<string, unknown>,
+  ): DeviceView => {
     const cam = cameras.get(id);
+    const n = (itemId: string) => {
+      const v = values.get(itemId);
+      return typeof v === "number" ? v : null;
+    };
+    const t = (itemId: string) => {
+      const v = values.get(itemId);
+      return typeof v === "string" ? v : null;
+    };
+    const charging = values.get("power.charging");
     return {
       id,
       name: `Agora R1 (${id})`,
@@ -977,16 +1063,16 @@ const make = Effect.gen(function* () {
       configured: id === device?.deviceId,
       online: d.online,
       lastSeenAt: iso(d.lastSeen),
-      batteryPct: d.batteryPct,
-      charging: d.charging,
-      rssi: d.rssi,
-      signal: d.signal,
-      firmware: d.firmware,
+      batteryPct: n("power.battery_pct"),
+      charging: typeof charging === "boolean" ? charging : null,
+      rssi: n("wifi.rssi"),
+      signal: t("wifi.quality"),
+      firmware: t("system.firmware"),
       mode: "satellite",
-      mood: d.mood,
+      mood: t("eye.mood"),
       muted: saved.muted[id] === true,
       earcons: saved.earconsOff[id] !== true,
-      volume: d.volume,
+      volume: n("audio.volume"),
       keys: Object.fromEntries(
         (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>)
           .filter((slot) => typeof R1_KEY_SLOTS[slot] !== "object")
@@ -1061,6 +1147,11 @@ const make = Effect.gen(function* () {
     }
   });
 
+  // Item writes go out as `cmd/item/<id>`; the R1 acknowledges each on `state/item/ack`.
+  yield* registry.attachWriter("mqtt", (id, itemId, value) =>
+    Effect.as(publish(id, `cmd/item/${itemId}`, { value }), null),
+  );
+
   yield* Queue.take(incoming).pipe(
     Effect.flatMap(({ topic, payload }) => handle(topic, payload)),
     Effect.ignoreCause({ log: true }),
@@ -1080,14 +1171,22 @@ const make = Effect.gen(function* () {
       const saved = yield* readSaved;
       const ids = new Set(heard.keys());
       if (device?.deviceId != null) ids.add(device.deviceId);
+      const registered = yield* registry.list;
+      const valuesOf = (id: string) =>
+        new Map(
+          (registered.find((r) => r.deviceId === id)?.values ?? []).map((v) => [v.itemId, v.value]),
+        );
       return {
         broker: {
           state: link === null ? "off" : link.connected() ? "connected" : "connecting",
           host: device?.mqttUrl == null ? null : new URL(device.mqttUrl).hostname,
         },
-        devices: [...ids].map((id) => viewOf(id, heard.get(id) ?? blank(), saved, now)),
+        devices: [...ids].map((id) =>
+          viewOf(id, heard.get(id) ?? blank(), saved, now, valuesOf(id)),
+        ),
         tags: tagList(saved),
         pending: [...asks.entries()].map(([id, a]) => ({ id, line: a.line })),
+        registry: registered,
       } satisfies DevicesOverview;
     }),
     command,

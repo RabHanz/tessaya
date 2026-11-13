@@ -9,6 +9,7 @@ import {
   DEVICE_SPEAKER_OUTPUTS,
   BATON_DEVICES_OWNER_OPS,
   BATON_DEVICES_READ_OPS,
+  DevicePublish,
   DEVICE_TRANSPORTS,
   DeviceTagAction,
   R1_KEY_SLOTS,
@@ -22,13 +23,8 @@ import {
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import {
-  HomeDevices,
-  MAC,
-  type DeviceActor,
-  type DeviceCommand,
-  type DeviceRefusedError,
-} from "./HomeDevices.ts";
+import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
+import { DeviceRegistry, type DeviceRefusedError } from "./DeviceRegistry.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);
@@ -145,10 +141,43 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
 
 export type DevicesCallKind = BatonDevicesCallInput["kind"];
 
+const decodePublish = Schema.decodeUnknownOption(DevicePublish);
+
+/** A desktop or phone reporting itself: its manifest and values in, the writes waiting for it out. */
+const servePublish = Effect.fn("DeviceCalls.publish")(function* (args: unknown) {
+  const decoded = decodePublish(args);
+  if (decoded._tag === "None")
+    return {
+      ok: false,
+      error: "The device report is not in the expected shape.",
+    } satisfies BatonDevicesCallResult;
+  const p = decoded.value;
+  const registry = yield* DeviceRegistry;
+  if (p.manifest !== undefined) {
+    if (p.manifest.deviceId !== p.deviceId)
+      return {
+        ok: false,
+        error: "The manifest is for another device.",
+      } satisfies BatonDevicesCallResult;
+    const refused = yield* registry.publish("client", p.manifest);
+    if (refused !== null) return { ok: false, error: refused } satisfies BatonDevicesCallResult;
+  }
+  yield* registry.report("client", p.deviceId, p.values ?? []);
+  const writes = yield* registry.take(p.deviceId, p.acks ?? [], p.waitMs ?? 0);
+  return { ok: true, value: { writes } } satisfies BatonDevicesCallResult;
+});
+
 export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
   input: BatonDevicesCallInput,
   by: DeviceActor,
 ) {
+  if (input.kind === "vessel")
+    return input.op === "publish"
+      ? yield* servePublish(input.args ?? {})
+      : ({
+          ok: false,
+          error: "That request is not allowed here.",
+        } satisfies BatonDevicesCallResult);
   const allowed: ReadonlyArray<string> =
     input.kind === "read"
       ? BATON_DEVICES_READ_OPS

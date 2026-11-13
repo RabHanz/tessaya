@@ -8,7 +8,8 @@ import * as Schema from "effect/Schema";
 import { EnrolCard } from "./enrolCard.ts";
 
 export const BATON_DEVICES_WS_METHODS = { call: "baton.devices.call" } as const;
-export const BATON_DEVICES_CALL_KINDS = ["read", "act", "owner"] as const;
+/** `vessel` is a device on a client connection reporting itself (desktop, phone); never an agent's. */
+export const BATON_DEVICES_CALL_KINDS = ["read", "act", "owner", "vessel"] as const;
 
 export const BATON_DEVICES_READ_OPS = ["list"] as const;
 export const BATON_DEVICES_ACT_OPS = [
@@ -32,6 +33,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "speaker",
 ] as const;
 export const BATON_DEVICES_OWNER_OPS = ["reboot", "camera", "cameraView", "cameraClear"] as const;
+export const BATON_DEVICES_VESSEL_OPS = ["publish"] as const;
 
 /** The nine moods the R1's eye clips cover. */
 export const R1_MOODS = [
@@ -248,6 +250,98 @@ export const DeviceView = Schema.Struct({
 });
 export type DeviceView = typeof DeviceView.Type;
 
+/**
+ * The device registry (R1-P13): every vessel describes itself with a manifest of items, and its values travel apart
+ * as `{itemId, value, at}`. Manifests are data from a device, never instructions; labels reach a model quoted.
+ */
+export const DEVICE_ITEM_TYPES = ["number", "bool", "enum", "string", "action", "event"] as const;
+/** free runs at once; confirm needs his yes; owner needs his verified voice or a phone card; never is Settings only. */
+export const DEVICE_SAFETY = ["free", "confirm", "owner", "never"] as const;
+export type DeviceSafety = (typeof DEVICE_SAFETY)[number];
+
+const Short = (max: number) => Schema.String.check(Schema.isMaxLength(max));
+
+export const DeviceItem = Schema.Struct({
+  id: Short(80),
+  label: Short(80),
+  /** An unknown type is kept and shown read-only. */
+  type: Short(20),
+  unit: Schema.optionalKey(Short(16)),
+  range: Schema.optionalKey(Schema.Tuple([Schema.Number, Schema.Number])),
+  values: Schema.optionalKey(Schema.Array(Short(80))),
+  /** Comma-separated: read, write, event. */
+  access: Short(40),
+  safety: Schema.Literals(DEVICE_SAFETY),
+  report: Schema.optionalKey(Short(40)),
+  group: Schema.optionalKey(Short(40)),
+  description: Schema.optionalKey(Short(300)),
+  /** Camera, microphone, biometrics, location: his consent and a visible live light before any use. */
+  privacy: Schema.optionalKey(Schema.Boolean),
+});
+export type DeviceItem = typeof DeviceItem.Type;
+
+export const DeviceManifest = Schema.Struct({
+  deviceId: Short(60),
+  kind: Short(30),
+  name: Short(80),
+  firmware: Schema.optionalKey(Short(60)),
+  schema: Schema.Number,
+  version: Schema.optionalKey(Short(60)),
+  items: Schema.Array(DeviceItem).check(Schema.isMaxLength(200)),
+});
+export type DeviceManifest = typeof DeviceManifest.Type;
+
+export const DeviceItemValue = Schema.Struct({
+  itemId: Schema.String,
+  value: Schema.Unknown,
+  /** When the server heard it (ISO). */
+  at: Schema.String,
+});
+export type DeviceItemValue = typeof DeviceItemValue.Type;
+
+/** One device as the registry holds it: its manifest with the server's safety and privacy floor applied. */
+export const RegisteredDevice = Schema.Struct({
+  deviceId: Schema.String,
+  kind: Schema.String,
+  name: Schema.String,
+  firmware: Schema.NullOr(Schema.String),
+  /** How it reaches the server: the broker, or a client connection. */
+  via: Schema.Literals(["mqtt", "client"]),
+  online: Schema.Boolean,
+  lastSeenAt: Schema.NullOr(Schema.String),
+  version: Schema.NullOr(Schema.String),
+  items: Schema.Array(DeviceItem),
+  values: Schema.Array(DeviceItemValue),
+});
+export type RegisteredDevice = typeof RegisteredDevice.Type;
+
+/** A vessel on a client connection (desktop, phone) reports itself; the answer carries writes for it to apply. */
+export const DevicePublish = Schema.Struct({
+  deviceId: Short(60),
+  manifest: Schema.optionalKey(DeviceManifest),
+  values: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ itemId: Short(80), value: Schema.Unknown })).check(
+      Schema.isMaxLength(200),
+    ),
+  ),
+  /** Results of writes it applied since the last call. */
+  acks: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({ id: Short(60), ok: Schema.Boolean, error: Schema.optionalKey(Short(200)) }),
+    ),
+  ),
+  /** Hold the answer open until a write arrives, at most 15 s. */
+  waitMs: Schema.optionalKey(Schema.Number),
+});
+export type DevicePublish = typeof DevicePublish.Type;
+
+export const DeviceWrite = Schema.Struct({
+  id: Schema.String,
+  itemId: Schema.String,
+  value: Schema.Unknown,
+});
+export type DeviceWrite = typeof DeviceWrite.Type;
+
 export const DevicesOverview = Schema.Struct({
   broker: Schema.Struct({
     state: Schema.Literals(["off", "connecting", "connected"]),
@@ -257,6 +351,8 @@ export const DevicesOverview = Schema.Struct({
   tags: Schema.Array(DeviceTag),
   /** Agents' camera and reboot asks waiting for his yes on the phone. */
   pending: Schema.Array(Schema.Struct({ id: Schema.String, line: Schema.String })),
+  /** Every device the registry knows, drawn from its manifest. Absent from older servers. */
+  registry: Schema.optionalKey(Schema.Array(RegisteredDevice)),
 });
 export type DevicesOverview = typeof DevicesOverview.Type;
 
