@@ -88,9 +88,14 @@
  };
  const KEYS = Object.keys(N);
  const SPRING = new Set(["sx", "sy", "lift", "lean", "tilt", "yaw", "pitch", "zoom", "app"]);
- // the eyes' shape keys move on a critically damped spring (ω 11: a gentle start, settled in about 0.45 s, as the motion
+ // every face value moves on a critically damped spring (ω 11: a gentle start, settled in about 0.45 s, as the motion
  // bar's reference morphs), never an ease that starts at full speed
- const SHAPE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots"]), SHAPE_W = 11;
+ const SHAPE_W = 11;
+ // A change of expression is choreographed, not switched: the body anticipates and moves on an arc (the "shift" clip),
+ // and the face follows in overlapping waves: brows lead, the eyes follow 50 ms later and the mouth 100 ms later.
+ const LAG = Object.fromEntries(Object.keys(N).map((k) => [k, /^(ew|eh|gap|ey|gx|gy|lu|la|ll|arc|sarc|chev|star|heart|spiral|dots|wink|big|wet|tear)$/.test(k) ? 50 : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush)$/.test(k) ? 100 : 0]));
+ // how a mood sits: up and open (joy) or down and closed (sadness); a change moves her body by the difference
+ const VALENCE = {Joy: 1, Love: .9, Surprise: .8, Curious: .4, Angry: .3, Calm: 0, Sulky: -.6, Sad: -1, Sleepy: -.8};
  const STYLE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots", "wink"]);
  TCS.NEUTRAL = N;
 
@@ -238,6 +243,10 @@
   glanceBack:{g: "idle", label: "Glance back", dur: 1100, fn: (t) => ({d: {gx: -.6 * hold(t, 0, .06, .7, .8), yaw: -.12 * hold(t, .05, .3, .7, .9)}})},
   lookAround:{g: "idle", label: "Look around", dur: 1900, fn: (t) => ({d: {gx: .55 * hold(t, .02, .08, .38, .44) - .55 * hold(t, .46, .52, .82, .88), yaw: .22 * hold(t, .05, .25, .35, .45) - .22 * hold(t, .5, .65, .8, .92), tilt: 3 * bell(t, .05, .45) - 3 * bell(t, .5, .92)}})},
   smile:     {g: "idle", label: "Smile at you", dur: 1400, fn: (t) => ({d: {ll: .4 * bell(t, 0, 1), mc: .4 * bell(t, 0, 1), cheek: .4 * bell(t, 0, 1), tilt: -3 * bell(t, 0, 1), lift: -2 * bell(t, 0, 1)}})},
+  // the body's part of a change of expression (play with amp = the change in valence, − for sadder): a small
+  // anticipation the other way, the move along an arc (lift and lean together), one overshoot, and the settle;
+  // sideways scale answers vertical so her volume holds
+  shift:     {g: "body", label: "Shift", dur: 640, fn: (t, a) => { const s = Math.sign(a) || 1, m = Math.min(1.2, Math.abs(a)), ant = bell(t, 0, .24), go = bell(t, .16, .62), back = bell(t, .56, 1); const sy = (-.045 * ant + .045 * go - .016 * back) * s * m; return {d: {sy, sx: -.5 * sy, lift: (3 * ant - 6.5 * go + 1.8 * back) * s * m, lean: (-1.2 * ant + 2.2 * go - .7 * back) * s * m, pitch: (.03 * ant - .06 * go + .02 * back) * s * m}}; }},
   squish:    {g: "body", label: "Squish", dur: 420, fn: (t) => ({d: {sy: -.1 * bell(t, 0, .5) + .04 * bell(t, .5, 1), sx: .08 * bell(t, 0, .5) - .03 * bell(t, .5, 1)}})},
   stomp:     {g: "feel", label: "Stomp", dur: 800, fn: (t, a) => ({d: {lift: -16 * a * bell(t, 0, .45), sy: -.12 * bell(t, .45, .7), sx: .1 * bell(t, .45, .7), flush: .5 * bell(t, .3, 1)}})},
   giggleOnce:{g: "feel", label: "Giggle", dur: 1000, fn: (t) => ({d: {arc: hold(t, 0, .1, .85, 1), lift: -3 * Math.abs(sw(t, 3)), tilt: -4 * bell(t, 0, 1), mc: .5 * bell(t, 0, 1)}, hands: t < .92 ? {L: ["mouth", "back"]} : null})},
@@ -649,6 +658,9 @@
   let tu = tune(T), bi = bias(T), intensity = opts.intensity ?? 1;
   const reduced = opts.reduced ?? (g.matchMedia && g.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const cur = Object.assign({}, N), vel = {}, tgt = Object.assign({}, N);
+  let stagger = null, oldLoop = null;
+  // the target a value is heading for at time t: during a change's overlap, the eyes and mouth keep the old one a moment
+  const targetAt = (k, t) => stagger && t - stagger.t0 < LAG[k] ? stagger.from[k] : tgt[k];
   KEYS.forEach((k) => vel[k] = 0);
   let expr = "neutral", clips = [], fxs = [], props = {}, propT = {}, speech = null, loopT0 = 0, loopFrame = 0, nextLoopAct = 0;
   const hands = {L: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}, R: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}};
@@ -690,10 +702,17 @@
   }
   function setExpression(name, o = {}) {
    if (!E[name]) return;
+   const prev = expr, t = performance.now();
+   const from = Object.fromEntries(KEYS.map((k) => [k, targetAt(k, t)]));
    expr = name;
-   clips = clips.filter((c) => !c.loop); // a mood's own acts (a sigh, a facepalm) end with the mood
+   // a mood's own acts (a sigh, a facepalm) end with the mood, fading out rather than cut
+   for (const c of clips) if (c.loop && c.fade0 === undefined) c.fade0 = t;
+   // the old mood's loop (a sway, a breath) fades out over its first moments, never vanishing at once
+   if (prev !== name && E[prev] && E[prev].loop && LOOPS[E[prev].loop] && LOOPS[E[prev].loop].fn) oldLoop = {lp: LOOPS[E[prev].loop], t0: loopT0, fade0: t};
    if (o.intensity !== undefined) intensity = o.intensity;
    retarget();
+   stagger = {from, t0: t};
+   if (prev !== name && !reduced && !opts.static) { const d = (VALENCE[(E[name] || {}).g] ?? 0) - (VALENCE[(E[prev] || {}).g] ?? 0); play("shift", {amp: Math.abs(d) < .25 ? .35 : clamp(d, -1, 1), raw: true}); }
    const ex = E[name];
    loopT0 = performance.now(); nextLoopAct = loopT0 + 1500;
    // every change morphs: the face's shape keys blend through in-betweens (the motion bar, 13 Nov, replaced the old
@@ -785,22 +804,21 @@
    c._prof = {n, h: b0.h, hw: b0.hw, R: Rx, L: Lx};
    return c._prof;
   }
-  function stepSprings(dt) {
-   const k = tu.k, z = tu.z, c = 2 * z * Math.sqrt(k), a = 1 - Math.exp(-dt / tu.tau);
+  function stepSprings(dt, now) {
+   const k = tu.k, z = tu.z, c = 2 * z * Math.sqrt(k);
    let moving = false;
    for (const key of KEYS) {
-    const target = tgt[key];
-    if (SHAPE.has(key)) {
-     const v = vel[key] || 0, acc = SHAPE_W * SHAPE_W * (target - cur[key]) - 2 * SHAPE_W * v;
+    const target = targetAt(key, now);
+    if (!SPRING.has(key)) {
+     // the face and the tints: critically damped, the leading brows a little quicker than the eyes and mouth that follow
+     // ω from the personality's face speed (an energetic one is quicker), the brows a third quicker than what follows
+     const w = clamp(1 / tu.tau, 5, SHAPE_W) * (LAG[key] ? 1 : 1.3), v = vel[key] || 0, acc = w * w * (target - cur[key]) - 2 * w * v;
      vel[key] = v + acc * dt; cur[key] += vel[key] * dt;
      if (Math.abs(target - cur[key]) > 1e-3 || Math.abs(vel[key]) > 1e-3) moving = true; else { cur[key] = target; vel[key] = 0; }
-    } else if (SPRING.has(key)) {
+    } else {
      const acc = k * (target - cur[key]) - c * vel[key];
      vel[key] += acc * dt; cur[key] += vel[key] * dt;
      if (Math.abs(target - cur[key]) > 1e-3 || Math.abs(vel[key]) > 1e-3) moving = true; else { cur[key] = target; vel[key] = 0; }
-    } else {
-     const d = target - cur[key];
-     if (Math.abs(d) > 2e-3) { cur[key] += d * a; moving = true; } else cur[key] = target;
     }
    }
    return moving;
@@ -847,29 +865,36 @@
   const put = (el, html) => { if (el.__h !== html) { el.__h = html; el.innerHTML = html; } };
   function render(now, snap, dt = 1 / 60) {
    let moving = false;
-   if (snap) { for (const k of KEYS) cur[k] = tgt[k]; } else moving = stepSprings(dt);
+   if (snap) { for (const k of KEYS) cur[k] = tgt[k]; } else moving = stepSprings(dt, now);
+   if (stagger && now - stagger.t0 < 120) moving = true;
    // rendered values: state + clips + loop + speech
    const Rv = Object.assign({}, cur), handReq = {L: null, R: null};
    const add = (d, a = 1) => { for (const k in d) if (k in Rv) Rv[k] += d[k] * a; };
    const ex = E[expr], lp = ex.loop && LOOPS[ex.loop];
    let spinT = 0;
    if (lp && lp.fn && !reduced) {
-    const s = (now - loopT0) / 1000, fade = lp.stop ? 1 - ramp(s, lp.stop - .6, lp.stop) : 1;
+    // a new mood's own loop (a laugh, a sway) eases in after the change's move, never starting at full strength
+    const s = (now - loopT0) / 1000, fade = (lp.stop ? 1 - ramp(s, lp.stop - .6, lp.stop) : 1) * ease(ramp(s, .25, .6));
     const r = lp.fn(s, tu.gamp * intensity);
     if (fade > 0) { add(r.d || {}, fade); if (r.hands && fade > .5 && !(ch.exprHands && ch.exprHands[expr])) Object.assign(handReq, r.hands); }
     if (r.spin !== undefined) spinT = r.spin;
     if (r.fx && !snap) { const lastFx = fxs.find((x) => x.name === r.fx && now - x.t0 < 600); if (!lastFx) spawn(r.fx); }
    } else if (lp && lp.spin) spinT = now / 1000;
+   if (oldLoop && !reduced) {
+    const fade = 1 - clamp((now - oldLoop.fade0) / 280, 0, 1);
+    if (fade <= 0 || oldLoop.lp === lp) oldLoop = null; else { add(oldLoop.lp.fn((now - oldLoop.t0) / 1000, tu.gamp * intensity).d || {}, fade); moving = true; }
+   }
    if (E[expr].look.dots || E[expr].look.spiral) spinT = (now - loopT0) / 1000;
    Rv._close = 0;
    const eyesClosedOrShaped = shaped(cur);
    clips = clips.filter((c) => {
     const t = c.frozen !== undefined ? c.frozen : (now - c.t0) / c.dur; if (t < 0) return true; if (t >= 1) return false;
+    const fade = c.fade0 === undefined ? 1 : 1 - clamp((now - c.fade0) / 220, 0, 1); if (fade <= 0) return false;
     if (eyesClosedOrShaped && /link/.test(c.name) && !c.cut) return false;
     const r = c.c.fn(t, c.a) || {};
-    if (c.name.includes("link")) Rv._close = Math.max(Rv._close, (r.d && r.d.lu) || 0);
-    else add(r.d || {});
-    if (r.hands) for (const s of ["L", "R"]) if (r.hands[s]) handReq[s] = r.hands[s];
+    if (c.name.includes("link")) Rv._close = Math.max(Rv._close, ((r.d && r.d.lu) || 0) * fade);
+    else add(r.d || {}, fade);
+    if (r.hands && fade > .5) for (const s of ["L", "R"]) if (r.hands[s]) handReq[s] = r.hands[s];
     if (c.cut && !c.cutDone && t > .45) { c.cutDone = true; snapFace(); }
     return true;
    });
