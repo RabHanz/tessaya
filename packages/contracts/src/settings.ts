@@ -1344,6 +1344,12 @@ export const DictationCleanupCredentials = Schema.Struct({ anthropic: CloudSpeec
 export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
 export type RoomBrain = typeof RoomBrain.Type;
 
+/** Word → how the voice says it, in plain letters (`pronounce` in baton-shared). */
+export const VoicePronounce = Schema.Record(
+  Schema.String.check(Schema.isMaxLength(60)),
+  Schema.String.check(Schema.isMaxLength(80)),
+);
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1384,6 +1390,8 @@ export const ServerSettings = Schema.Struct({
   ),
   // Tessaya: how the room device's turn reaches Claude. "auto" tries the Anthropic key above first, then the subscription.
   roomBrain: RoomBrain.pipe(Schema.withDecodingDefault(Effect.succeed("auto" as const))),
+  // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
+  voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
   ),
@@ -1842,6 +1850,7 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({ anthropic: Schema.optionalKey(SettingsSecretValue) }),
   ),
   roomBrain: Schema.optionalKey(RoomBrain),
+  voicePronounce: Schema.optionalKey(VoicePronounce),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),
   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),

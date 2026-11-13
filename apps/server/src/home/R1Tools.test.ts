@@ -17,5 +17,10 @@ describe("the room's tools for a replay", () => {
     expect(replayDryRun("home_do", fan, "r1-3d57b3")).toBeNull();
     expect(replayDryRun("home_do", fan, undefined)).toBeNull();
     expect(replayDryRun("home_state", { entityId: "fan.fan" }, "replay-1")).toBeNull();
+    // What she keeps (13 Nov audit, R1-P9): a replay's "say it this way" is answered, never saved.
+    const word = { word: "Tessaya", sayAs: "Tess eye ya" };
+    expect(replayDryRun("tessaya_pronounce", word, "replay-1")).toMatchObject({ isError: false });
+    expect(replayDryRun("tessaya_pronounce", word, "replay-1")?.text).toContain("nothing was kept");
+    expect(replayDryRun("tessaya_pronounce", word, "r1-3d57b3")).toBeNull();
   });
 });

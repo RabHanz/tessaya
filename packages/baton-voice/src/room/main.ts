@@ -12,6 +12,7 @@ import * as NodePath from "node:path";
 
 import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
 
+import { integratedLufs, loudnessGain, withGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "../speaker.ts";
@@ -188,6 +189,10 @@ const recognisers = () => {
 };
 
 /** Pocket TTS's own server, kept running beside the loop (her voice, as on the desktop). */
+/** A few seconds of ordinary speech to measure each voice's loudness by. */
+const CALIBRATION =
+  "Good morning. The office fan is on now, and the lamp in the study is off. Shall I set a timer for twenty minutes?";
+
 const startPocket = async () => {
   const dir = NodePath.join(models, "pocket", "english");
   const port = Number(env("R1_POCKET_PORT", "58232"));
@@ -229,13 +234,23 @@ const startPocket = async () => {
   log(`voice: pocket up in ${Date.now() - since} ms`);
   // Pocket fetches a voice on its first use (about 8 s on the voice host): each persona's is fetched now, in the
   // background, so a slow or failed fetch never holds the loop from starting.
+  // The same fetch measures each voice, so every persona is played at one loudness (R1_VOICE_LUFS, default -16).
+  const target = Number(process.env["R1_VOICE_LUFS"] ?? "-16");
+  const gains = new Map<string, number>();
   void (async () => {
     for (const p of ROOM_CONFIG.personas) {
       const at = Date.now();
-      await tts("Ready.", AbortSignal.timeout(60_000), p.voice).then(
+      await tts(CALIBRATION, AbortSignal.timeout(60_000), p.voice).then(
         async (r) => {
-          await r.arrayBuffer();
-          log(`voice ${p.voice} ready in ${Date.now() - at} ms`);
+          const pcm = createResampler24to16()(
+            createWavReader()(new Uint8Array(await r.arrayBuffer())),
+          );
+          const lufs = integratedLufs(pcm, 16_000);
+          const gain = loudnessGain(lufs, target);
+          gains.set(p.voice, gain);
+          log(
+            `voice ${p.voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB to ${target}`,
+          );
         },
         (e: unknown) => log(`voice ${p.voice} not ready: ${String(e)}`),
       );
@@ -248,7 +263,7 @@ const startPocket = async () => {
     const down = createResampler24to16();
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
       const pcm = down(read(chunk));
-      if (pcm.length > 0) yield pcm;
+      if (pcm.length > 0) yield withGain(pcm, gains.get(voice ?? "") ?? 1);
     }
   };
 };
@@ -366,6 +381,10 @@ const main = async () => {
       "freya/r1/+/voice/persona",
       "freya/r1/+/voice/ask",
       "freya/r1/+/event/session/end",
+      "freya/r1/+/cmd/eye/#",
+      "freya/r1/+/state/eye/#",
+      "freya/r1/+/voice/pronounce",
+      "freya/r1/+/state/caps",
     ],
     onMessage: (t, p) => room?.message(t, p),
     log,

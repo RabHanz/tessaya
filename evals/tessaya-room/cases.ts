@@ -23,9 +23,14 @@ export interface RoomCase {
   readonly lampAfter?: ReadonlyArray<"on" | "off">;
   /** At least this many of the specialists' names must be in the last reply. */
   readonly namesAtLeast?: number;
+  /** The pack id of the persona he calls by name in the first sentence, answering every turn after. */
+  readonly persona?: string;
+  /** No reply may open with a persona's name ("Sebastian here."). */
+  readonly noNameOpen?: boolean;
 }
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
+export const NAMES = DEFAULT_OS_PACK.personas.map((p) => p.name);
 
 /** A short, natural confirmation: no level read out, no "volume set". */
 const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80}$/i;
@@ -95,6 +100,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [PLAIN],
     calls: ["set_device_volume"],
     callsAtMost: { set_device_volume: 1, home_do: 0 },
+  },
+  {
+    id: "no-intro",
+    source:
+      'R1 session 2026-11-13 07:32: every reply after he called Sebastian opened "Sebastian here."',
+    said: ["Sebastian.", "how many days are there in a leap year?", "and in a week?"],
+    persona: "research",
+    noNameOpen: true,
+    lastSays: [/\b(7|seven)\b/i],
   },
   {
     id: "no-look",

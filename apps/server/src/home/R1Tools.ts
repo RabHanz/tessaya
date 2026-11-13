@@ -51,6 +51,7 @@ const ROOM_TOOLS = [
   "tessaya_memory_search",
   "tessaya_ask",
   "tessaya_ask_status",
+  "tessaya_pronounce",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
 const LAPTOP: RoomTool = {
@@ -116,12 +117,13 @@ const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, hea
     );
 });
 
-/** What changes his house: never run for the replay harness's pretend R1. */
-const HOME_WRITES: ReadonlySet<string> = new Set([
+/** What changes his house or what she keeps: never run for the replay harness's pretend R1. */
+const REPLAY_WRITES: ReadonlySet<string> = new Set([
   "home_do",
   "home_undo",
   "home_automation_save",
   "home_automation_set",
+  "tessaya_pronounce",
 ]);
 
 /**
@@ -129,9 +131,9 @@ const HOME_WRITES: ReadonlySet<string> = new Set([
  * office fan" flipped his real fan). Null when the call is not one.
  */
 export const replayDryRun = (name: string, input: unknown, device?: string): ToolOutcome | null =>
-  device?.startsWith("replay-") === true && HOME_WRITES.has(name)
+  device?.startsWith("replay-") === true && REPLAY_WRITES.has(name)
     ? {
-        text: `Done (a replay: nothing in the house was changed). Asked: ${JSON.stringify(input).slice(0, 300)}`,
+        text: `Done (a replay: nothing in the house was changed and nothing was kept). Asked: ${JSON.stringify(input).slice(0, 300)}`,
         isError: false,
         status: "done",
       }

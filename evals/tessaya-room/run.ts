@@ -15,6 +15,7 @@ import * as NodeUtil from "node:util";
 import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
 import { toolUsesOf } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
 import {
+  calledPersona,
   LOOK,
   R1_STREAM_SYSTEM,
   r1Data,
@@ -22,6 +23,8 @@ import {
   roomData,
   splitActs,
   spokenReply,
+  withoutNarration,
+  withoutSelfIntros,
   type ActOutcome,
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
@@ -159,10 +162,15 @@ const context = (
   heard: string,
   history: ReadonlyArray<{ role: string; content: string }>,
   withHouse: boolean,
+  turn: number,
 ): R1Context => ({
   heard,
   privateBlock: "",
-  history,
+  // As r1Gather sends it: her past replies without a self-introduction.
+  history: withoutSelfIntros(
+    history,
+    DEFAULT_OS_PACK.personas.map((p) => p.name),
+  ),
   devices: withHouse
     ? [
         ...house.find(heard),
@@ -179,8 +187,10 @@ const context = (
       ? { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } }
       : undefined,
   now: "Thursday, 12 November 2026 at 10:15 (Asia/Karachi)",
-  persona: null,
-  roster: rosterLine(DEFAULT_OS_PACK.personas, ""),
+  // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
+  persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
+  switched: c.persona !== undefined && turn === 0,
+  roster: rosterLine(DEFAULT_OS_PACK.personas, c.persona ?? ""),
 });
 
 const claude = (args: ReadonlyArray<string>, cwd: string) =>
@@ -261,12 +271,12 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
       }),
     );
   try {
-    for (const heard of c.said) {
+    for (const [turn, heard] of c.said.entries()) {
       let reply: string;
       if (mcp !== null) {
         const ran = await claude(
           [
-            roomData(context(c, house, heard, history, false)),
+            roomData(context(c, house, heard, history, false, turn)),
             "--system-prompt",
             ROOM_SYSTEM,
             "--mcp-config",
@@ -280,12 +290,12 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
           dir,
         );
         calls.push(...ran.lines.flatMap(toolUsesOf).map((u) => u.tool.replace(PREFIX, "")));
-        reply = resultOf(ran.lines);
+        reply = withoutNarration(resultOf(ran.lines));
         firstMs.push(ran.firstMs);
       } else {
         const ran = await claude(
           [
-            r1Data(context(c, house, heard, history, true)).join("\n"),
+            r1Data(context(c, house, heard, history, true, turn)).join("\n"),
             "--system-prompt",
             R1_STREAM_SYSTEM,
             "--tools",
@@ -307,7 +317,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
             line: r.ok ? (r.value?.line ?? "") : (r.error ?? ""),
           };
         });
-        reply = spokenReply(final.rest.trim(), outcomes);
+        reply = spokenReply(withoutNarration(final.rest), outcomes);
         firstMs.push(ran.firstMs);
       }
       replies.push(reply);

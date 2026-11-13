@@ -10,6 +10,9 @@ import {
   LIKE_A_PERSON,
   NAMES,
   NEVER_MISSING,
+  NO_EMPTY_PROMISES,
+  NO_NARRATION,
+  NO_SELF_INTRO,
   QUIET_PROGRESS,
   SELF,
   TOOL_FAILED,
@@ -40,6 +43,12 @@ ${TOOL_FAILED}, then try once more another way (screen_capture again, or ui_tree
 ${ANSWER_ONLY}
 
 ${LIKE_A_PERSON}
+
+${NO_SELF_INTRO}
+
+${NO_NARRATION}
+
+${NO_EMPTY_PROMISES}
 
 ${QUIET_PROGRESS}
 

@@ -32,6 +32,12 @@ export interface EchoGuard {
   readonly reference: (pcm: Int16Array, soundsAtMs: number) => void;
   /** One mic frame (16 kHz) heard at `atMs`. */
   readonly process: (mic: Int16Array, atMs: number) => EchoVerdict;
+  /**
+   * How much a stretch of mic audio heard from `startMs` moves like her own voice at that time (Pearson correlation of
+   * 10 ms loudness, at the best delay up to 800 ms): near 1 for her voice coming back, near 0 for his over silence or
+   * over her. 0 when she was not playing then.
+   */
+  readonly likeness?: (mic: Int16Array, startMs: number) => number;
   /** Nothing is playing any more, or the output device changed: forget the room. */
   readonly reset: () => void;
   /** For tests and tuning. */
@@ -207,6 +213,45 @@ export const createEchoGuard = (): EchoGuard => {
     return { ready: converged, nearEnd, erleDb: erle, ratio, over: overResidual };
   };
 
+  const likeness = (mic16: Int16Array, startMs: number): number => {
+    const hop = 160; // 10 ms at 16 kHz
+    const n = Math.floor(mic16.length / hop);
+    if (n < 20) return 0;
+    const mic = new Float64Array(n);
+    for (let c = 0; c < n; c += 1) {
+      let sum = 0;
+      for (let i = c * hop; i < (c + 1) * hop; i += 1) sum += (mic16[i]! / 32768) ** 2;
+      mic[c] = Math.sqrt(sum / hop);
+    }
+    const first = Math.floor((startMs * (RATE / 1000)) / ENV_HOP);
+    const refAt = (cell: number) =>
+      covered(cell * ENV_HOP)
+        ? envRef[((cell % envRef.length) + envRef.length) % envRef.length]!
+        : 0;
+    let best = 0;
+    for (let d = 0; d <= 80; d += 1) {
+      const ref = Array.from({ length: n }, (_, c) => refAt(first + c - d));
+      // Her voice must have been playing for a good part of it; a pause between her words is quiet too.
+      if (ref.filter((r) => r >= REF_ACTIVE_RMS).length < n * 0.3) continue;
+      let mm = 0;
+      let mr = 0;
+      for (let c = 0; c < n; c += 1) {
+        mm += mic[c]! / n;
+        mr += ref[c]! / n;
+      }
+      let cov = 0;
+      let vm = 0;
+      let vr = 0;
+      for (let c = 0; c < n; c += 1) {
+        cov += (mic[c]! - mm) * (ref[c]! - mr);
+        vm += (mic[c]! - mm) ** 2;
+        vr += (ref[c]! - mr) ** 2;
+      }
+      if (vm > 0 && vr > 0) best = Math.max(best, cov / Math.sqrt(vm * vr));
+    }
+    return best;
+  };
+
   const reset = () => {
     written = [];
     line.fill(0);
@@ -226,5 +271,5 @@ export const createEchoGuard = (): EchoGuard => {
     erleDb: erle,
     converged,
   });
-  return { reference, process, reset, state };
+  return { reference, process, likeness, reset, state };
 };
