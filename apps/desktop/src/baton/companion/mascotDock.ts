@@ -104,6 +104,20 @@ export const standAt = (
   };
 };
 
+/**
+ * Where she lands when he lets go, read from the window's top-left and her own size, never the window's reported size:
+ * Windows can hand back a window grown by a screen's scale factor, and her feet must still land on the edge.
+ */
+export const dropAt = (
+  edges: ReadonlyArray<Edge>,
+  at: { readonly x: number; readonly y: number },
+  size: number,
+): { readonly edge: Edge; readonly x: number; readonly spot: Rect } => {
+  const x = at.x + size / 2;
+  const edge = landing(edges, x, at.y + size * FOOT_SHARE);
+  return { edge, x, spot: { ...standAt(edge, x, size), width: size, height: size } };
+};
+
 /** A short walk along her edge: somewhere at least MIN_WALK away, or null when the edge is too short for one. */
 export const wanderTo = (edge: Edge, x: number, random: number): number | null => {
   const lo = edge.x1 + 40;
