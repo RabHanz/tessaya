@@ -486,6 +486,8 @@ const main = async () => {
       "freya/r1/+/state/eye/#",
       "freya/r1/+/voice/pronounce",
       "freya/r1/+/voice/forget",
+      "freya/r1/+/voice/stepup",
+      "freya/r1/+/voice/prefs/+",
       "freya/r1/+/voice/languages",
       "freya/r1/+/voice/profile",
       "freya/r1/+/voice/profile/+",

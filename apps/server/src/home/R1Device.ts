@@ -252,6 +252,12 @@ export interface R1Context {
   readonly memory: string;
   /** How the person speaking likes things (their own preferences; empty for a guest). */
   readonly preferences: Readonly<Record<string, string>>;
+  /** Several people heard in this turn, in speaking order (the loop's `segments`); empty for one voice. */
+  readonly people?: ReadonlyArray<{
+    readonly name: string | null;
+    readonly said: string;
+    readonly preferences: Readonly<Record<string, string>>;
+  }>;
   readonly voice: unknown;
   readonly now: string;
   /** His work read just now (what needs him, what is in flight), for the tool turn; "" when not read. */
@@ -395,7 +401,7 @@ export const r1Data = (input: R1Context) => [
 export const ROOM_SYSTEM = [
   `${SELF}. this turn reaches you through a speaker in a room of his home: you are heard, not read, so answer in one or two short spoken sentences, plain words, no lists or markdown.`,
   NAMES,
-  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state. the lines in his message marked "live as of this turn" were read from the house and his work just now: answer from them and use their ids with home_do; call home_find or home_state only for what they do not cover, and never answer the house from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_memory_remember to keep what he asks you to remember or how he wants something done from now on (never promise "from now on" without it), tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
+  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state. the lines in his message marked "live as of this turn" were read from the house and his work just now: answer from them and use their ids with home_do; call home_find or home_state only for what they do not cover, and never answer the house from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_preference_set for how the person speaking wants to be addressed or spoken to from now on (what to call them, 12- or 24-hour times, units, her voice, the persona, their news or music), tessaya_memory_remember for a fact or anything else they ask you to keep (never promise "from now on" without one of the two), tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
   `${TOOL_FAILED}. ${NEVER_MISSING}`,
   ANSWER_ONLY,
   LIKE_A_PERSON,
@@ -432,6 +438,7 @@ export const roomData = (input: R1Context) =>
           `What you remember (only the closest few; tessaya_memory_search finds anything not here): ${quoted(input.memory)}`,
         ]),
     ...(input.privateBlock === "" ? [] : [input.privateBlock]),
+    ...peopleLines(input.people ?? []),
     ...(Object.keys(input.preferences).length === 0
       ? []
       : [
@@ -464,6 +471,79 @@ const conversationOf = (voice: unknown): string | undefined =>
   voice.conversation.length <= 80
     ? voice.conversation
     : undefined;
+
+/**
+ * Several people in one turn (HOUSEHOLD-DESIGN §9b): the loop's `segments`, each person's words with their voice.
+ * Null for one voice, so a single speaker's turn is exactly as before.
+ */
+const segmentsOf = (
+  voice: unknown,
+): ReadonlyArray<{ readonly speaker: SpeakerLike | null; readonly words: string }> | null => {
+  if (typeof voice !== "object" || voice === null || !("segments" in voice)) return null;
+  const raw = (voice as { segments?: unknown }).segments;
+  if (!Array.isArray(raw)) return null;
+  const segments = raw.flatMap((s: unknown) =>
+    typeof s === "object" &&
+    s !== null &&
+    typeof (s as { words?: unknown }).words === "string" &&
+    (s as { words: string }).words.trim() !== ""
+      ? [{ speaker: speakerOf(s), words: (s as { words: string }).words.slice(0, 400) }]
+      : [],
+  );
+  return segments.length >= 2 ? segments.slice(0, 6) : null;
+};
+
+/** One envelope per person heard, or the turn itself for one voice. */
+const turnsOf = (turn: TurnEnvelope, voice: unknown): ReadonlyArray<TurnEnvelope> =>
+  segmentsOf(voice)?.map((s) => ({ ...turn, text: s.words, speaker: s.speaker })) ?? [turn];
+
+/** The lines a turn with several people adds: each person's words and own preferences, and how to answer them. */
+export const peopleLines = (people: NonNullable<R1Context["people"]>): ReadonlyArray<string> =>
+  people.length < 2
+    ? []
+    : [
+        `Several people spoke this turn, in this order: ${quoted(
+          people.map((p, i) => ({
+            person: p.name ?? `person ${i + 1} (not recognised)`,
+            said: p.said,
+            ...(Object.keys(p.preferences).length === 0 ? {} : { prefers: p.preferences }),
+          })),
+        )}`,
+        "Answer each of them by name, in that order, in one reply, each only from their own words and preferences. The room hears it all, so say nothing private about anyone. If you cannot tell who asked what, ask them to speak one at a time.",
+      ];
+
+const SAID_WORD = /[a-z0-9]{3,}/g;
+const GENERIC = new Set([
+  "the",
+  "and",
+  "for",
+  "you",
+  "now",
+  "from",
+  "with",
+  "this",
+  "that",
+  "sensor",
+  "switch",
+]);
+/** A found device his sentence names: a word of its name, area, id or kind (light, fan) is in what he said. */
+export const namedIn = (
+  device: {
+    readonly entityId: string;
+    readonly name?: string | null;
+    readonly area?: string | null;
+  },
+  heard: string,
+): boolean => {
+  const said = new Set(heard.toLowerCase().match(SAID_WORD) ?? []);
+  const words =
+    `${device.name ?? ""} ${device.area ?? ""} ${device.entityId.replace(/[._]/g, " ")}`
+      .toLowerCase()
+      .match(SAID_WORD) ?? [];
+  return words.some(
+    (w) => !GENERIC.has(w) && (said.has(w) || said.has(`${w}s`) || said.has(w.replace(/s$/, ""))),
+  );
+};
 
 /** The loop's echo taint: the turn began while her own voice could still be heard in the room. */
 const taintedOf = (voice: unknown): boolean =>
@@ -571,8 +651,11 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   const status = yield* home.status;
   const lastAction = (yield* home.actions(1))[0] ?? null;
   // What in the house matches his words, in view before the model starts: a simple ask then needs no tool round.
+  // Only devices his words actually name: "call me Rab" must not put random devices "live as of this turn" in view.
   const found = withHouse
-    ? yield* home.find({ text: input.heard, limit: 8 }).pipe(Effect.orElseSucceed(() => []))
+    ? (yield* home
+        .find({ text: input.heard, limit: 8 })
+        .pipe(Effect.orElseSucceed(() => []))).filter((d) => namedIn(d, input.heard))
     : [];
   // "Turn it back off" names no device: the one she last acted on stays in view, with its live state.
   const followed = yield* Effect.forEach(
@@ -621,14 +704,27 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
         privateBlock: "",
         conversation: { key: "household", turns: [] },
         preferences: {},
+        who: { member: null, name: null },
       }
     : yield* pipeline.value
         .begin(turn)
         // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
         .pipe(Effect.provideService(MemoryViewer, "desktop"));
+  const many = turnsOf(turn, input.voice);
+  const people =
+    many.length < 2 || Option.isNone(pipeline)
+      ? []
+      : (yield* pipeline.value
+          .beginMany(many)
+          .pipe(Effect.provideService(MemoryViewer, "desktop"))).map((c, i) => ({
+          name: c.who.name,
+          said: many[i]!.text,
+          preferences: c.preferences,
+        }));
   const context: R1Context = {
     heard: input.heard,
-    privateBlock: acts ? "" : begun.privateBlock,
+    // Several voices: the room hears the reply, so nothing private, and each person's own preferences below.
+    privateBlock: acts || people.length > 0 ? "" : begun.privateBlock,
     // The conversation he is having with her on any vessel; the loop's own when the pipeline has none yet.
     history: withoutSelfIntros(
       begun.conversation.turns.length > 0 ? begun.conversation.turns : input.history,
@@ -638,7 +734,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     lastAction,
     automations,
     memory: begun.block,
-    preferences: begun.preferences,
+    preferences: people.length > 0 ? {} : begun.preferences,
+    ...(people.length > 0 ? { people } : {}),
     voice: input.voice,
     persona,
     switched: switchedPersona(input.voice),
@@ -758,10 +855,16 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 ) {
   // Learning waits on a model call, so the turn never waits for it.
   const pipeline = yield* Effect.serviceOption(TessayaTurn);
+  // Each person heard in the turn learns into their own place, never one person's words as another's.
   if (Option.isSome(pipeline))
-    yield* pipeline.value
-      .end(turn, { reply: said, previous: previousOf(input.history) })
-      .pipe(Effect.ignore, Effect.forkDetach);
+    yield* Effect.forEach(
+      turnsOf(turn, input.voice),
+      (one) =>
+        pipeline.value
+          .end(one, { reply: said, previous: previousOf(input.history) })
+          .pipe(Effect.ignore, Effect.forkDetach),
+      { discard: true },
+    );
   const mood: R1Mood = outcomes.some((o) => o.status === "asked")
     ? "curious"
     : outcomes.some((o) => !o.ok || o.status === "failed")
@@ -1039,6 +1142,8 @@ export const r1TurnStream = (
     Effect.gen(function* () {
       let offered = false;
       const say = (words: string) => {
+        // One filler a turn: the 3 s hold and the tool-start cue both fired on a slow first call ("One moment. One moment.").
+        if (offered && FILLERS.includes(words.trim())) return;
         offered = true;
         Queue.offerUnsafe(queue, words);
       };
@@ -1176,6 +1281,8 @@ export const sseReply = (id: string, model: string, text: string, created: numbe
 
 /** Said while a turn that acts or thinks longer is still running, so the room never sits in silence. */
 const HOLD_ON = "One moment.";
+/** What the server says to fill a wait; at most one of them reaches the room per turn. */
+const FILLERS = [HOLD_ON, WEB_CUE];
 const HOLD_AFTER = "3 seconds";
 
 const error = (status: number, message: string) =>

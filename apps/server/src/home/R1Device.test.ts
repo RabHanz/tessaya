@@ -27,6 +27,8 @@ import {
   mqttPublishBytes,
   r1Data,
   r1Gather,
+  peopleLines,
+  namedIn,
   r1Confirmed,
   r1Played,
   r1TurnStream,
@@ -400,6 +402,57 @@ effectIt.effect(
 );
 
 effectIt.effect(
+  "a tool call that starts after the 3 s hold is not cued again: one filler a turn",
+  () =>
+    Effect.gen(function* () {
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.unwrap(
+            Effect.sleep("4 seconds").pipe(
+              Effect.map(() => {
+                turn.cue(false);
+                return Stream.make("Done.");
+              }),
+            ),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const said: Array<string> = [];
+      const turn = yield* r1TurnStream(
+        { heard: "did I answer that request?", history: [] },
+        brain,
+        {
+          specs: [],
+          run: () => Effect.succeed({ text: "", isError: false }),
+        },
+      ).pipe(
+        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+        Effect.provide(
+          Layer.mergeAll(
+            home,
+            Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
+            Layer.mock(BatonOneShot)({}),
+          ),
+        ),
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust("5 seconds");
+      yield* Fiber.join(turn);
+      expect(said.join("")).toBe("One moment. Done.");
+    }),
+);
+
+effectIt.effect(
   "a guess on his partial words reaches the Record only once the loop says it played; an unplayed one never does",
   () =>
     Effect.gen(function* () {
@@ -722,3 +775,37 @@ effectIt.effect("a replay turn never reaches his real R1's eyes; his own turn do
     expect((yield* gather("r1-his")).device).toBe(real);
   }),
 );
+
+describe("several people in one turn", () => {
+  it("names each person in speaking order with their own preferences, and says how to answer them", () => {
+    const lines = peopleLines([
+      { name: "Sara", said: "how hot is it", preferences: { units: "metric" } },
+      { name: null, said: "start a timer", preferences: {} },
+    ]);
+    expect(lines[0]).toContain('"person":"Sara"');
+    expect(lines[0]!.indexOf("Sara")).toBeLessThan(lines[0]!.indexOf("person 2"));
+    expect(lines[0]).toContain('"prefers":{"units":"metric"}');
+    expect(lines[1]).toContain("one at a time");
+    expect(peopleLines([{ name: "Sara", said: "hi", preferences: {} }])).toEqual([]);
+  });
+});
+
+describe("the house read before a turn", () => {
+  it("keeps only devices his words name, so a sentence about him puts no device in view", () => {
+    const ai = {
+      entityId: "conversation.google_generative_ai",
+      name: "Google Generative AI",
+      area: null,
+    };
+    const ramadan = {
+      entityId: "binary_sensor.nahaj_ramadan",
+      name: "Nahaj Ramadan month",
+      area: null,
+    };
+    const lamp = { entityId: "light.desk_lamp", name: "Desk Lamp", area: "Study" };
+    for (const d of [ai, ramadan, lamp]) expect(namedIn(d, "Call me Rab from now on.")).toBe(false);
+    expect(namedIn(lamp, "Turn on the study lamp")).toBe(true);
+    expect(namedIn(lamp, "Turn the lights off")).toBe(true);
+    expect(namedIn(ramadan, "Is it Ramadan yet?")).toBe(true);
+  });
+});
