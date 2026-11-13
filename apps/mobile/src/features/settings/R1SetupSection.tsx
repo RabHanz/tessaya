@@ -95,6 +95,39 @@ const portOf = (device: Device): R1SetupPort => ({
   },
 });
 
+/** Find, pair and set up the R1; outside the component so React Compiler takes the component whole. */
+const setUpOverBluetooth = async (input: {
+  readonly pairing: { readonly deviceId: string; readonly oneTimeKey: string };
+  readonly ssid: string;
+  readonly pass: string;
+  readonly call: R1Call;
+  readonly onLine: (line: string) => void;
+}): Promise<boolean> => {
+  if (!(await allowBluetooth())) throw new Error("Tessaya needs Bluetooth to set up the R1.");
+  const manager = new BleManager();
+  try {
+    input.onLine("Looking for your R1… When asked, type the 6 digits on its eyes.");
+    const device = await findR1(manager);
+    const ok = await runR1Setup({
+      port: portOf(device),
+      ssid: input.ssid,
+      pass: input.pass,
+      claim: async () => {
+        const reply = await input.call("owner", "claim", { ...input.pairing });
+        if (reply?.ok !== true)
+          throw new Error(reply?.error ?? "This server could not pair the R1.");
+        return (reply.value as { blob: string }).blob;
+      },
+      onStep: (step, why) => input.onLine(why === "" ? STEP_LINE[step] : why),
+      timeout: new Promise((resolve) => setTimeout(resolve, SETUP_TIMEOUT_MS)),
+    });
+    await device.cancelConnection().catch(() => undefined);
+    return ok;
+  } finally {
+    manager.destroy();
+  }
+};
+
 export function R1SetupSection(props: {
   readonly prefix: string;
   readonly call: R1Call;
@@ -119,31 +152,18 @@ export function R1SetupSection(props: {
   const setUp = async () => {
     if (pairing === null) return;
     setBusy(true);
-    const manager = new BleManager();
-    try {
-      if (!(await allowBluetooth())) throw new Error("Tessaya needs Bluetooth to set up the R1.");
-      setLine("Looking for your R1… When asked, type the 6 digits on its eyes.");
-      const device = await findR1(manager);
-      const ok = await runR1Setup({
-        port: portOf(device),
-        ssid,
-        pass,
-        claim: async () => {
-          const reply = await props.call("owner", "claim", { ...pairing });
-          if (reply?.ok !== true)
-            throw new Error(reply?.error ?? "This server could not pair the R1.");
-          return (reply.value as { blob: string }).blob;
-        },
-        onStep: (step, why) => setLine(why === "" ? STEP_LINE[step] : why),
-        timeout: new Promise((resolve) => setTimeout(resolve, SETUP_TIMEOUT_MS)),
-      });
-      await device.cancelConnection().catch(() => undefined);
-      if (ok && !props.awayOffered) setAskAway(pairing.deviceId);
-      props.onChanged();
-    } catch (cause) {
+    const ok = await setUpOverBluetooth({
+      pairing,
+      ssid,
+      pass,
+      call: props.call,
+      onLine: setLine,
+    }).catch((cause: unknown) => {
       setLine(cause instanceof Error ? cause.message : "Setup did not finish.");
-    }
-    manager.destroy();
+      return false;
+    });
+    if (ok && !props.awayOffered) setAskAway(pairing.deviceId);
+    props.onChanged();
     setBusy(false);
   };
   const answerAway = async (enabled: boolean) => {
