@@ -362,6 +362,12 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
         ),
       );
       assert.include(stranger.reason, "member of this home");
+      // Nor can she make anyone else's, his least of all.
+      for (const personId of ["owner", "ali"])
+        assert.include(
+          (yield* Effect.flip(as(maya)(p.setup({ personId, name: "x", pin: OWNER_PIN })))).reason,
+          "only your own",
+        );
       // She sees only her own; his is not there for her.
       assert.deepStrictEqual(
         (yield* as(maya)(p.people)).map((s) => s.personId),
