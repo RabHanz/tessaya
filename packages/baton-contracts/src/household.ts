@@ -43,6 +43,8 @@ export const BatonHouseholdMember = Schema.Struct({
   purgeAfter: Schema.NullOr(IsoDateTime),
   /** The caller. */
   you: Schema.Boolean,
+  /** The Windows account whose Hello confirms them, when one is set. */
+  windowsAccount: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonHouseholdMember = typeof BatonHouseholdMember.Type;
 
@@ -97,6 +99,37 @@ export const BatonHouseholdCallInput = Schema.Union([
    * so a home has one members table however many servers it has.
    */
   op("setHome", { on: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))) }),
+  /**
+   * Confirms it's them on this signed-in device, for 5 minutes (A3): their PIN typed here, or (the desktop app only)
+   * Windows Hello passed on this Windows account (`HOST\\user`), which must be theirs alone in `setWindowsAccount`.
+   */
+  op("stepUp", {
+    pin: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+    hello: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+    /** A passkey's answer to `passkeyOptions` (base64url fields, as the browser gives them). */
+    passkey: Schema.optionalKey(
+      Schema.Struct({
+        credentialId: Schema.String.check(Schema.isMaxLength(1024)),
+        clientDataJSON: Schema.String.check(Schema.isMaxLength(8192)),
+        authenticatorData: Schema.String.check(Schema.isMaxLength(8192)),
+        signature: Schema.String.check(Schema.isMaxLength(8192)),
+      }),
+    ),
+  }),
+  /** A fresh challenge for this device's passkey: to add one, or to confirm it's them; with their passkeys. */
+  op("passkeyOptions", { purpose: Schema.Literals(["register", "stepUp"]) }),
+  /** Keeps a new passkey for the member signed in here, from `navigator.credentials.create`'s answer. */
+  op("passkeyRegister", {
+    clientDataJSON: Schema.String.check(Schema.isMaxLength(8192)),
+    attestationObject: Schema.String.check(Schema.isMaxLength(16384)),
+    label: Schema.String.check(Schema.isMaxLength(60)),
+  }),
+  op("passkeyRemove", { credentialId: Schema.String.check(Schema.isMaxLength(1024)) }),
+  /** Which Windows account's Hello confirms this member (null: none). */
+  op("setWindowsAccount", {
+    ...Ref,
+    account: Schema.NullOr(Schema.String.check(Schema.isMaxLength(200))),
+  }),
   /** A name said or typed; spelled out ("Zayd, Z-A-Y-D") it is kept as spelled. Themselves, or an admin. */
   op("rename", { ...Ref, name: TrimmedNonEmptyString.check(Schema.isMaxLength(120)) }),
   /** A member's own preferences: theirs, or the owner's view of anyone's. */
@@ -138,6 +171,16 @@ export const BatonHouseholdCallResult = Schema.Struct({
   homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
   peers: Schema.optionalKey(Schema.Array(Schema.String)),
   voices: Schema.optionalKey(Schema.Array(BatonVoiceProfile)),
+  /** With `passkeyOptions`: the challenge, the site it is for, and the member's passkeys. */
+  passkey: Schema.optionalKey(
+    Schema.Struct({
+      challenge: Schema.String,
+      rpId: Schema.String,
+      userId: Schema.String,
+      userName: Schema.String,
+      keys: Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String })),
+    }),
+  ),
   /** With `preferences`: that member's, by key. */
   preferences: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });

@@ -264,6 +264,52 @@ export const SCRIPT = `"use strict";
     if (mem.stores === null) return void view.appendChild(el("p", "soft", "Loading"));
     var s = mem.sel && storeOf(mem.sel);
     if (s) storeView(s); else peopleView();
+    stepUpCard();
+  }
+  // Confirming it's them (identity I-3): a passkey on this phone, or their PIN; 5 minutes of A3 here.
+  function hh(body) {
+    return fetch("/tessaya/household", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (r.status !== 200) throw new Error(j.message || "That did not work.");
+        if (j.value && j.value.status === "refused") throw new Error(j.value.line);
+        return j.value;
+      });
+    });
+  }
+  function b64u(buf) { return btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(buf)))).split("+").join("-").split("/").join("_").split("=").join(""); }
+  function unb64u(t) { t = t.split("-").join("+").split("_").join("/"); while (t.length % 4) t += "="; return Uint8Array.from(atob(t), function (ch) { return ch.charCodeAt(0); }); }
+  function stepUpCard() {
+    if (!member || mem.code) return;
+    var c = card("Confirm it's you", "For 5 minutes this phone can do what needs you to be sure. Use this phone's passkey (your fingerprint, face or screen lock) or your PIN.");
+    var col = el("div", "col");
+    if (window.PublicKeyCredential) {
+      col.appendChild(mbtn("Confirm with a passkey", "primary", function () {
+        return hh({ op: "passkeyOptions", purpose: "stepUp" }).then(function (v) {
+          var o = v.passkey;
+          if (!o.keys.length) throw new Error("Add a passkey on this phone first.");
+          return navigator.credentials.get({ publicKey: { challenge: unb64u(o.challenge), rpId: o.rpId, userVerification: "required", allowCredentials: o.keys.map(function (k) { return { type: "public-key", id: unb64u(k.id) }; }) } });
+        }).then(function (a) {
+          return hh({ op: "stepUp", passkey: { credentialId: b64u(a.rawId), clientDataJSON: b64u(a.response.clientDataJSON), authenticatorData: b64u(a.response.authenticatorData), signature: b64u(a.response.signature) } });
+        }).then(function (v) { said = v.line; });
+      }));
+      col.appendChild(mbtn("Add a passkey on this phone", "", function () {
+        return hh({ op: "passkeyOptions", purpose: "register" }).then(function (v) {
+          var o = v.passkey;
+          return navigator.credentials.create({ publicKey: {
+            challenge: unb64u(o.challenge), rp: { id: o.rpId, name: "Tessaya" },
+            user: { id: unb64u(o.userId), name: o.userName, displayName: o.userName },
+            pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -8 }, { type: "public-key", alg: -257 }],
+            authenticatorSelection: { userVerification: "required", residentKey: "preferred" },
+            excludeCredentials: o.keys.map(function (k) { return { type: "public-key", id: unb64u(k.id) }; })
+          } });
+        }).then(function (cred) {
+          return hh({ op: "passkeyRegister", clientDataJSON: b64u(cred.response.clientDataJSON), attestationObject: b64u(cred.response.attestationObject), label: "This phone" });
+        }).then(function (v) { said = v.line; });
+      }));
+    }
+    var pin = field("Your PIN", "password", true);
+    var go = mbtn("Confirm with your PIN", "", function () { return hh({ op: "stepUp", pin: pin.value }).then(function (v) { said = v.line; }); });
+    onEnter(pin, go); col.appendChild(pin); col.appendChild(go); c.appendChild(col);
   }
   function codeCard() {
     var c = card("Save this recovery code now", "It is shown this once and never again. If " + mem.code.whose + " PIN is lost, this code is the only way back in. Write it down and keep it away from this phone.");

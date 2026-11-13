@@ -832,3 +832,128 @@ it.effect(
     );
   },
 );
+
+it.effect(
+  "reaches his Bluetooth devices by the names he uses, says the truth of the result, and pairs a new one after a scan",
+  () => {
+    const { sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const registry = yield* DeviceRegistry;
+      const him = { who: "Tessaya via R1", surface: "assistant", approved: true } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true}');
+      yield* devices.receive(
+        `${root}/state/manifest`,
+        JSON.stringify({
+          deviceId: ID,
+          kind: "r1",
+          name: "R1",
+          schema: 1,
+          items: [
+            {
+              id: "audio.output",
+              label: "Output",
+              type: "enum",
+              values: ["speaker", "bt", "auto"],
+              access: "read,write",
+              safety: "confirm",
+            },
+            {
+              id: "bt.connect",
+              label: "Connect Bluetooth",
+              type: "action",
+              access: "write",
+              safety: "owner",
+            },
+          ],
+        }),
+      );
+      // The R1's bond (no name of its own) and his laptop's paired list (names by address).
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"idle","mac":"E8:07:BF:35:26:5C","name":"","saved":true}',
+      );
+      yield* registry.publish("client", {
+        deviceId: "desktop-pc",
+        kind: "desktop",
+        name: "PC",
+        schema: 1,
+        items: [
+          {
+            id: "bt.paired",
+            label: "Paired Bluetooth",
+            type: "list",
+            access: "read",
+            safety: "free",
+          },
+        ],
+      });
+      yield* registry.report("client", "desktop-pc", [
+        {
+          itemId: "bt.paired",
+          value: [
+            { name: "MINISO-V5", mac: "E8:07:BF:35:26:5C" },
+            { name: "WH-1000XM4", mac: "14:C6:00:00:00:01" },
+          ],
+        },
+      ]);
+      const say = (value: unknown, by: HomeDevices.DeviceActor = him) =>
+        devices.command(ID, { op: "item", itemId: "bt.connect", value }, by);
+      const connect = (value: unknown, state: string, mac = "E8:07:BF:35:26:5C") =>
+        Effect.gen(function* () {
+          sent.length = 0;
+          const fiber = yield* say(value).pipe(Effect.forkChild({ startImmediately: true }));
+          yield* devices.receive(`${root}/state/bt`, JSON.stringify({ state, mac, saved: true }));
+          return yield* Fiber.join(fiber);
+        });
+      // "Switch to my speakers": the speaker, by its address, and the truth when it connects.
+      const ok = yield* connect({ name: "my speakers" }, "connected");
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/audio/output", payload: { to: "bt", mac: "E8:07:BF:35:26:5C" } },
+      ]);
+      assert.strictEqual(ok.line, "Connected to MINISO-V5. I'll play through it.");
+      // Taken by another phone: she says so, and how to fix it.
+      const busy = yield* connect("the Miniso", "failed");
+      assert.include(busy.line, "connected to another phone or laptop: disconnect it there first");
+      // His headphones, known only from the laptop's list.
+      const phones = yield* connect("my headphones", "connected", "14:C6:00:00:00:01");
+      assert.strictEqual(phones.line, "Connected to WH-1000XM4. I'll play through it.");
+      // Nothing by that name: no guess.
+      assert.include((yield* say("the kitchen radio")).line, "If it's new, ask me to pair it");
+      // "Pair my new JBL": a scan, his cue, then the match from the scan is paired.
+      sent.length = 0;
+      const pair = yield* say({ name: "new JBL speaker", pair: true });
+      assert.include(pair.line, "Put it in pairing mode");
+      assert.deepStrictEqual(sent, [{ topic: "cmd/bt/scan", payload: { secs: 12 } }]);
+      sent.length = 0;
+      yield* devices.receive(
+        `${root}/event/bt/devices`,
+        JSON.stringify({
+          devices: [{ mac: "AA:BB:CC:DD:EE:01", name: "JBL Flip 5", rssi: -50, audio: true }],
+        }),
+      );
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/bt/pair", payload: { mac: "AA:BB:CC:DD:EE:01" } },
+      ]);
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"connected","mac":"AA:BB:CC:DD:EE:01","saved":true}',
+      );
+      assert.deepInclude(sent, {
+        topic: "voice/say",
+        payload: { text: "Connected to JBL Flip 5. I'll play through it." },
+      });
+      // A rehearsal is answered the same way and sends nothing.
+      sent.length = 0;
+      const dry = { ...him, dryRun: true } as const;
+      assert.strictEqual(
+        (yield* say({ name: "the Miniso" }, dry)).line,
+        "Connecting to MINISO-V5.",
+      );
+      assert.include((yield* say({ name: "new one", pair: true }, dry)).line, "pairing mode");
+      assert.deepStrictEqual(sent, []);
+    }).pipe(Effect.provide(layer));
+  },
+);

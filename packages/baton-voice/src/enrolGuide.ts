@@ -118,9 +118,12 @@ export interface TakeStats {
 }
 
 /** Why a read sentence will not do, or null when it will (the voice check comes later, with its vector). */
-export const takeIssue = (s: TakeStats): EnrolIssue | null => {
+export const takeIssue = (
+  s: TakeStats,
+  quietRms: number = ENROL_QUALITY.quietRms,
+): EnrolIssue | null => {
   if (s.clipShare > ENROL_QUALITY.clipShare) return "loud";
-  if (s.speechRms < ENROL_QUALITY.quietRms) return "quiet";
+  if (s.speechRms < quietRms) return "quiet";
   if (20 * Math.log10(s.speechRms / Math.max(s.noiseRms, 1)) < ENROL_QUALITY.minSnrDb)
     return "noisy";
   return null;
@@ -167,6 +170,11 @@ export interface EnrolGuideInput {
   readonly otherVoiceBelow: number;
   /** Mean sentence-to-rest cosine for three bars (two from `otherVoiceBelow + 0.17`). */
   readonly strongFrom: number;
+  /**
+   * Absolute floors for a mic far quieter than a desk mic (the R1 sends speech at RMS 30-600, 13 Nov); speech still
+   * has to clear the room's own floor and the SNR check. Defaults: `ENROL_QUALITY`.
+   */
+  readonly floors?: { readonly speech: number; readonly quiet: number };
 }
 
 export interface GuideStep {
@@ -180,6 +188,8 @@ export interface GuideStep {
 
 export const createEnrolGuide = (input: EnrolGuideInput) => {
   const n = input.sentences.length;
+  const speechFloor = input.floors?.speech ?? ENROL_QUALITY.speechFloor;
+  const quietRms = input.floors?.quiet ?? ENROL_QUALITY.quietRms;
   let done: Array<Int16Array | null>;
   let again: Array<EnrolIssue | null>;
   let vectors: Map<number, Float32Array>;
@@ -256,11 +266,14 @@ export const createEnrolGuide = (input: EnrolGuideInput) => {
     const reached = heard >= length - 2 || spokenMs >= SPOKEN_SHARE * length * WORD_MS;
     if (!reached) return { changed: false, accepted: null, ready: false };
     const speechRms = Math.sqrt(speechSq / Math.max(1, speechBlocks));
-    const issue = takeIssue({
-      speechRms,
-      noiseRms: noise,
-      clipShare: clipped / Math.max(1, samples),
-    });
+    const issue = takeIssue(
+      {
+        speechRms,
+        noiseRms: noise,
+        clipShare: clipped / Math.max(1, samples),
+      },
+      quietRms,
+    );
     if (issue !== null) {
       markAgain(index, issue);
       newTake();
@@ -298,8 +311,7 @@ export const createEnrolGuide = (input: EnrolGuideInput) => {
     if (blocks >= NOISE_AFTER_BLOCKS && blocks % 25 === 0)
       noise = history.toSorted((x, y) => x - y)[Math.floor(history.length / 10)]!;
     if (current === null) return null;
-    const speech =
-      rms >= Math.max(ENROL_QUALITY.speechFloor, noise * ENROL_QUALITY.speechOverNoise);
+    const speech = rms >= Math.max(speechFloor, noise * ENROL_QUALITY.speechOverNoise);
     if (!started) {
       preroll.push(b);
       if (preroll.length > PREROLL_BLOCKS) preroll.shift();
@@ -320,8 +332,10 @@ export const createEnrolGuide = (input: EnrolGuideInput) => {
     silentBlocks += 1;
     if (judged || silentBlocks * BLOCK_MS < PAUSE_MS || speechBlocks * BLOCK_MS < MIN_SPEECH_MS)
       return null;
-    judged = true;
-    return judge();
+    // Judged again on each quiet block until it decides: the recogniser's last words can land after his pause.
+    const step = judge();
+    if (step.changed) judged = true;
+    return step;
   };
 
   const view = (): EnrolCard => ({

@@ -123,6 +123,32 @@ describe("createEnrolGuide", () => {
     expect(read(g, 1_000).accepted?.index).toBe(0);
   });
 
+  it("hears the R1's quiet mic with its own floors, and moves on when his last words land after the pause", () => {
+    const desk = guide();
+    const r1 = createEnrolGuide({
+      sentences: ["one two three four five six"],
+      title: "",
+      lead: "",
+      mic: "R1",
+      tip: null,
+      otherVoiceBelow: 0.36,
+      strongFrom: 0.68,
+      floors: { speech: 30, quiet: 60 },
+    });
+    // His voice on the R1 on 13 Nov: block RMS about 250 over a room at 3.
+    const quietRead = (g: ReturnType<typeof guide>) => {
+      g.frame(hiss(400, 3));
+      g.frame(tone(1_000, 350));
+      return g.frame(hiss(800, 3));
+    };
+    expect(quietRead(desk).accepted).toBeNull();
+    expect(desk.view().lines[0]!.state).toBe("now");
+    const { no } = r1.take();
+    expect(quietRead(r1).accepted).toBeNull();
+    r1.heard("one two three four five", no);
+    expect(r1.frame(hiss(100, 3)).accepted?.index).toBe(0);
+  });
+
   it("asks for that one sentence again, saying why, and nothing else", () => {
     const g = guide();
     read(g, 2_000);

@@ -28,6 +28,7 @@ import {
 import { HouseholdCaller, TessayaHousehold, layer as householdLayer } from "./TessayaHousehold.ts";
 import { VoiceForgets } from "./VoiceForgets.ts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
+import { authenticator, ORIGIN } from "./testing/softPasskey.ts";
 
 const authLayer = EnvironmentAuth.layer.pipe(
   Layer.provide(ManagedPolicy.layerTest()),
@@ -519,6 +520,126 @@ describe("one voice profile per member, on the home", () => {
         // His own name is his to change.
         const renamed = yield* as(self)(call({ op: "rename", id: zayd.id, name: "Zayd Khan" }));
         assert.strictEqual(renamed.line, "Zayd is now Zayd Khan.");
+      }),
+    ));
+
+  test("a step-up raises only that session to A3 for 5 minutes: their PIN, or Windows Hello on an account that is theirs alone", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const stores = yield* BatonPrivateMemoryService;
+        yield* Effect.provideService(
+          stores.setup({ name: "Owner", pin: "27182818" }),
+          PrivateCaller,
+          { session: "desk", desktop: true },
+        );
+        // His desktop is A2 like any signed-in device: adding someone waits for his phone's yes.
+        const desk = {
+          member: "owner",
+          assurance: 2,
+          via: "the desktop",
+          session: "desk",
+          desktop: true,
+        } as const;
+        const invite = call({ op: "invite", name: "Adam", role: "child" });
+        assert.strictEqual((yield* as(desk)(invite)).status, "asked");
+        // A wrong PIN, then a right one: A3 on this session only, and only for 5 minutes.
+        assert.strictEqual(
+          (yield* as(desk)(call({ op: "stepUp", pin: "11111111" }))).status,
+          "refused",
+        );
+        assert.strictEqual(
+          (yield* as(desk)(call({ op: "stepUp", pin: "27182818" }))).status,
+          "done",
+        );
+        assert.strictEqual((yield* as(desk)(invite)).status, "done");
+        assert.strictEqual((yield* as({ ...desk, session: "phone" })(invite)).status, "asked");
+        yield* TestClock.adjust("301 seconds");
+        assert.strictEqual((yield* as(desk)(invite)).status, "asked");
+        // Windows Hello: not until his account is mapped to him (a phone yes here), and never on a shared account.
+        const hello = call({ op: "stepUp", hello: "LAPTOP\\rab" });
+        assert.strictEqual((yield* as(desk)(hello)).status, "refused");
+        assert.strictEqual((yield* as({ ...desk, desktop: false })(hello)).status, "refused");
+        assert.strictEqual(
+          (yield* as(owner)(call({ op: "setWindowsAccount", id: "owner", account: "laptop\\rab" })))
+            .status,
+          "done",
+        );
+        assert.strictEqual((yield* as(desk)(hello)).status, "done");
+        assert.strictEqual((yield* as(desk)(invite)).status, "done");
+        const adam = (yield* as(owner)(call({ op: "list" }))).members!.find(
+          (m) => m.name === "Adam",
+        )!;
+        assert.strictEqual(
+          (yield* as(owner)(call({ op: "setWindowsAccount", id: adam.id, account: "laptop\\rab" })))
+            .status,
+          "done",
+        );
+        yield* TestClock.adjust("301 seconds");
+        assert.include((yield* as(desk)(hello)).line, "shared");
+      }),
+    ));
+
+  test("a passkey added on their own device confirms it's them there: A3 for 5 minutes, on that site, by that member only", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const phone = {
+          member: "owner",
+          assurance: 2,
+          via: "his phone",
+          session: "phone",
+          origin: ORIGIN,
+        } as const;
+        const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64url");
+        const device = authenticator();
+        const options = (purpose: "register" | "stepUp") =>
+          Effect.map(as(phone)(call({ op: "passkeyOptions", purpose })), (r) => r.passkey!);
+        const reg = yield* options("register");
+        assert.strictEqual(reg.rpId, "home.example");
+        const made = device.create(reg.challenge);
+        const added = yield* as(phone)(
+          call({
+            op: "passkeyRegister",
+            clientDataJSON: b64(made.clientDataJSON),
+            attestationObject: b64(made.attestationObject),
+            label: "His phone",
+          }),
+        );
+        assert.strictEqual(added.status, "done");
+        const step = yield* options("stepUp");
+        assert.lengthOf(step.keys, 1);
+        const answer = (challenge: string) => {
+          const a = device.get(challenge);
+          return {
+            credentialId: step.keys[0]!.id,
+            clientDataJSON: b64(a.clientDataJSON),
+            authenticatorData: b64(a.authenticatorData),
+            signature: b64(a.signature),
+          };
+        };
+        const invite = call({ op: "invite", name: "Adam", role: "child" });
+        assert.strictEqual((yield* as(phone)(invite)).status, "asked");
+        // A challenge is used once; another member's session can't use his passkey.
+        const signed = answer(step.challenge);
+        assert.strictEqual(
+          (yield* as({ ...phone, member: "sara-1" })(call({ op: "stepUp", passkey: signed })))
+            .status,
+          "refused",
+        );
+        const again = yield* options("stepUp");
+        assert.strictEqual(
+          (yield* as(phone)(call({ op: "stepUp", passkey: answer(again.challenge) }))).status,
+          "done",
+        );
+        assert.strictEqual((yield* as(phone)(invite)).status, "done");
+        assert.strictEqual(
+          (yield* as(phone)(call({ op: "stepUp", passkey: answer(again.challenge) }))).status,
+          "refused",
+        );
+        // Removing it takes it away.
+        yield* as(phone)(call({ op: "passkeyRemove", credentialId: step.keys[0]!.id }));
+        assert.lengthOf((yield* options("stepUp")).keys, 0);
       }),
     ));
 });

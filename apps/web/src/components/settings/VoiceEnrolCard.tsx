@@ -49,8 +49,9 @@ export function VoiceEnrolCard({
   const read = card.lines.filter((l) => l.state === "done").length;
   const again = card.lines.filter((l) => l.state === "again").length;
   const current = card.lines.find((l) => l.state === "again" || l.state === "now");
+  // A click outside or Escape mid-read is not a cancel (13 Nov: two phantom cancels); only Cancel stops it.
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && over && onClose()}>
       <DialogPopup showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{over && card.summary ? card.summary.headline : card.title}</DialogTitle>

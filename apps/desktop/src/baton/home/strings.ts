@@ -213,6 +213,15 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
       "How Tessaya talks to each person. Each person changes their own; the owner can change anyone's.",
     "hh.prefs.unset": "Not set",
     "hh.prefs.you": "You",
+    "hh.hello": "Windows Hello confirms",
+    "hh.hello.hint":
+      "Who Windows Hello on {account} proves it is, for things that need you to be sure: adding people, roles, this computer. Only one person per Windows account.",
+    "hh.hello.nobody": "Nobody",
+    "hh.pin": "Confirm it's you with your PIN",
+    "hh.pin.hint":
+      "For the next 5 minutes this device can do what needs you. Without it, those wait for a yes on the owner's phone.",
+    "hh.pin.placeholder": "Your PIN",
+    "hh.pin.button": "Confirm",
     "hh.prefs.set": "Set",
     "hh.prefs.member": "Name in the household",
     "hh.prefs.member.hint":
