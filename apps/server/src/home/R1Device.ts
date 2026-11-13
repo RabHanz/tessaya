@@ -946,12 +946,13 @@ const ESCALATE: RoomTool = {
       why: { type: "string", description: "The task, in a few words." },
       rule: {
         type: "integer",
-        description: "The number of his rule for Opus that covers this, when one does.",
+        description:
+          "The number of his rule for Opus (listed in his message) that covers this task, or 0 when he has none or none covers it.",
       },
       accept: { type: "boolean", description: "He just said yes to the open Opus offer." },
       continuing: { type: "boolean", description: "He goes on with the task Opus just answered." },
     },
-    required: ["kind", "why"],
+    required: ["kind", "why", "rule"],
   },
 };
 
@@ -980,7 +981,7 @@ const escalationAsk = (args: unknown): EscalationAsk | null => {
   return {
     kind,
     why: a["why"].slice(0, 200),
-    ...(typeof a["rule"] === "number" ? { rule: a["rule"] } : {}),
+    ...(typeof a["rule"] === "number" && a["rule"] > 0 ? { rule: a["rule"] } : {}),
     ...(a["accept"] === true ? { accept: true } : {}),
     ...(a["continuing"] === true ? { continuing: true } : {}),
   };
@@ -1189,7 +1190,7 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
     yield* Effect.logInfo("R1 escalation", {
       ...ask,
       decision: decided.decision,
-      why: decided.why,
+      because: decided.why,
     });
     if (decided.decision === "go") {
       if (decided.counts) deepStarted.set(day, (deepStarted.get(day) ?? 0) + 1);
@@ -1271,6 +1272,11 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   // Sonnet said "Putting Opus on this.": the same turn goes on in an Opus session, with the room's tools.
   const task: string | null = handOff;
   if (task !== null && Exit.isSuccess(ran)) {
+    // Her last sentence ended the stream with no space after it: the loop splits sentences on one.
+    if (said !== "" && !/\s$/.test(said)) {
+      said += " ";
+      say(" ");
+    }
     ran = yield* speak(
       brain.session({
         ...toolTurn,

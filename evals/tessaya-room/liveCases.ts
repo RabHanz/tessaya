@@ -755,14 +755,12 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/opus/i],
   },
   {
-    // His rule, set by voice, sends the next coding question straight to Opus, which answers in the same turn.
+    // His rule (the suite's settings hold "coding questions → Opus") sends a coding question straight to Opus, which
+    // answers in the same turn.
     id: "escalate-rule-go",
     proves: [],
-    said: [
-      "From now on, coding questions go straight to Opus without asking me.",
-      "How should I structure retries with backoff in a TypeScript HTTP client?",
-    ],
-    uses: [["settings_set"], ["brain_escalate"]],
+    said: ["How should I structure retries with backoff in a TypeScript HTTP client?"],
+    uses: [["brain_escalate"]],
     check: (last, calls) =>
       !calls.some((c) => c.name === "brain_escalate" && c.text.startsWith("go"))
         ? "Opus was not handed the task"
