@@ -201,7 +201,7 @@ export interface RoomDeps {
       readonly answer: boolean;
       readonly winner?: string;
       readonly until?: number;
-      /** The conversation the winner continues (one per person, or the household's), from #886. */
+      /** The conversation the winner continues (one per person, or the household's). */
       readonly conversation?: string;
     } | null>;
     readonly report: (op: "speaking" | "ended", deviceId: string, untilMs?: number) => void;
