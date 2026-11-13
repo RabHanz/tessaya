@@ -21,6 +21,10 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { onPeer } from "../peer/PeerVessels.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HomeAssistantService } from "./HomeAssistantService.ts";
 
 export type VoiceVerdict =
   | { readonly answer: true; readonly round: string }
@@ -65,6 +69,11 @@ export class VoiceArbiter extends Context.Service<
     readonly ended: (deviceId: string) => Effect.Effect<void>;
     readonly setPrimary: (deviceId: string | null) => Effect.Effect<void>;
     readonly state: Effect.Effect<ArbiterState>;
+    /**
+     * The op on the arbiter of the linked server that has the desk device, when this one has none; null when none
+     * answered (or this server has the device, or no links), and this arbiter decides.
+     */
+    readonly elsewhere: (op: string, args: unknown) => Effect.Effect<BatonVoiceCallResult | null>;
   }
 >()("t3/home/VoiceArbiter") {}
 
@@ -78,6 +87,10 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const record = yield* Effect.serviceOption(BatonRecordService);
   const scope = yield* Effect.scope;
+  // Found here, where the server's layers are: a device's voice door runs with Baton's services only.
+  const home = yield* Effect.serviceOption(HomeAssistantService);
+  const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
+  const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
   const lastAnswered = new Map<string, number>();
   const recent: Array<ArbiterState["recent"][number]> = [];
   let open: Round | null = null;
@@ -171,6 +184,19 @@ const make = Effect.gen(function* () {
       );
     }),
     state: Effect.sync(() => ({ primary, quiet, recent: [...recent] })),
+    elsewhere: Effect.fn("VoiceArbiter.elsewhere")(function* (op: string, args: unknown) {
+      if (links._tag === "None" || peerMcp._tag === "None") return null;
+      if (home._tag === "Some" && (yield* home.value.device) !== null) return null;
+      const there = yield* onPeer(
+        "tessaya_voice_arbiter",
+        { op, args: typeof args === "object" && args !== null ? args : {} },
+        { takes: (v) => (v as { ok?: unknown } | null)?.ok === true, wait: "2 seconds" },
+      ).pipe(
+        Effect.provideService(PeerLinks.PeerLinks, links.value),
+        Effect.provideService(PeerMcpClient.PeerMcpClient, peerMcp.value),
+      );
+      return there === null ? null : (there.value as BatonVoiceCallResult);
+    }),
   });
 });
 
@@ -190,10 +216,14 @@ const decodePrimary = Schema.decodeUnknownOption(
 /** The arbiter's ops on the voice door and the R1 loop's route; null for an op that is not the arbiter's. */
 export const serveArbiter = Effect.fn("VoiceArbiter.serve")(function* (op: string, args: unknown) {
   if (!["arbiter", "claim", "speaking", "ended", "answerFrom"].includes(op)) return null;
+
   const found = yield* Effect.serviceOption(VoiceArbiter);
   if (found._tag === "None")
     return { ok: false, error: "This server has no voice arbiter." } satisfies BatonVoiceCallResult;
   const arbiter = found.value;
+  // A server with no desk device (his desktop's) defers to the linked one that has it: every claim meets in one round.
+  const there = yield* arbiter.elsewhere(op, args);
+  if (there !== null) return there;
   const bad: BatonVoiceCallResult = { ok: false, error: "That is not a voice request." };
   const ok = (value: unknown): BatonVoiceCallResult => ({ ok: true, value });
   switch (op) {

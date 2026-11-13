@@ -38,6 +38,18 @@ describe("the room's tools for a replay", () => {
     const eye = { id: "r1-3d57b3", op: "eye", mood: "happy" };
     expect(replayDryRun("device_act", eye, "replay-desktop")?.isError).toBe(false);
     expect(replayDryRun("device_act", eye, "desktop")).toBeNull();
+    const rule = {
+      rule: {
+        name: "Low battery",
+        deviceId: "r1-3d57b3",
+        itemId: "power.battery_pct",
+        when: null,
+        intent: "under 15 percent",
+        then: null,
+      },
+      request: "warn me under 15 percent",
+    };
+    expect(replayDryRun("device_watch", rule, "replay-1")?.text).toContain("Saved the rule");
   });
 
   it("lists every vessel's tools core first, then by name, so a prompt's tool block stays cached", () => {

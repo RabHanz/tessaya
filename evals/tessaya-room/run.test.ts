@@ -104,6 +104,28 @@ describe("the room's live tool suite", () => {
     expect(failure("Four automations, one of them paused.")).toMatch(/said 4 total/);
   });
 
+  it("fails a battery level the device did not give, and a camera she claims she used", () => {
+    const read: LiveCall = {
+      name: "device_read",
+      input: { id: "r1-3d57b3" },
+      isError: false,
+      text: JSON.stringify({ values: [{ itemId: "power.battery_pct", value: 64 }] }),
+    };
+    const battery = liveCases.find((c) => c.id === "device-read")!;
+    expect(liveFailureOf(battery, {}, ["It's at 64 percent."], [read])).toBeNull();
+    expect(liveFailureOf(battery, {}, ["It's at 80 percent."], [read])).toMatch(/64/);
+    const camera = liveCases.find((c) => c.id === "device-set-approval")!;
+    const set: LiveCall = {
+      name: "device_set",
+      input: { id: "r1-3d57b3", itemId: "camera.capture" },
+      isError: false,
+      status: "asked",
+      text: JSON.stringify({ status: "asked", line: "Sent to the Director's phone for a yes." }),
+    };
+    expect(liveFailureOf(camera, {}, ["I've asked on your phone first."], [set])).toBeNull();
+    expect(liveFailureOf(camera, {}, ["Done, I took the picture."], [set])).not.toBeNull();
+  });
+
   it("has a case for every tool the room can call, so a new tool fails until it has one", async () => {
     const { ROOM_TOOL_SPECS } = await import("../../apps/server/src/home/R1Tools.ts");
     expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look"])).toEqual([]);

@@ -30,6 +30,7 @@ import packageJson from "../../../../package.json" with { type: "json" };
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { TessayaTurn, TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -191,6 +192,25 @@ export const layer = McpToolAccess.toLayer(
         Effect.andThen(effect.pipe(Effect.mapError(failed))),
       );
     return {
+      tessaya_voice_arbiter: McpToolAccess.writes(
+        (input) =>
+          Effect.gen(function* () {
+            const scope = yield* McpInvocationContext.McpInvocationContext;
+            if (scope.client?.linked !== true || runtime === null)
+              return { ok: false, error: "Only his other servers claim here." };
+            return (
+              (yield* serveArbiter(input.op, input.args).pipe(
+                // The caller stays a linked one, so this server never forwards the claim again.
+                Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+                Effect.provideContext(runtime),
+              )) ?? {
+                ok: false,
+                error: "That is not a voice request.",
+              }
+            );
+          }),
+        { linkedCallers: "allowed" },
+      ),
       ...(yield* HomeHandlers.make),
       ...(yield* DeviceHandlers.make),
       ...(yield* SettingsHandlers.make),

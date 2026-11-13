@@ -1,3 +1,4 @@
+import { EnvironmentId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -6,7 +7,9 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
-import { VoiceArbiter, layer as arbiterLayer } from "./VoiceArbiter.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { VoiceArbiter, layer as arbiterLayer, serveArbiter } from "./VoiceArbiter.ts";
 
 const layer = arbiterLayer.pipe(Layer.provideMerge(BatonDatabaseMemory));
 const claim = (deviceId: string, loudnessDb: number, wakeScore = 0.9, answerHere = false) => ({
@@ -84,4 +87,61 @@ it.effect("his primary wins over loudness, and 'answer here' overrides once", ()
     );
     assert.strictEqual((yield* arbiter.state).primary, "r1-kitchen");
   }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "his desktop's server claims on the arbiter of the server with the desk device, and decides itself when none answers",
+  () =>
+    Effect.gen(function* () {
+      const sent: Array<[string, unknown]> = [];
+      const peers = (answers: boolean) =>
+        Layer.mergeAll(
+          Layer.mock(PeerLinks.PeerLinks)({
+            enabled: Effect.succeed(true),
+            list: Effect.succeed([
+              { environmentId: EnvironmentId.make("env-home"), label: "home", status: "reachable" },
+            ] as never),
+          }),
+          Layer.mock(PeerMcpClient.PeerMcpClient)({
+            call: (input) =>
+              Effect.sync(() => {
+                sent.push([input.tool, input.arguments]);
+                return answers
+                  ? {
+                      ok: true,
+                      value: { answer: false, round: "r1", winner: "r1-office", until: 9 },
+                    }
+                  : { ok: false, error: "This server has no voice arbiter." };
+              }) as never,
+          }),
+        );
+      const desk = claim("desktop-laptop", -31);
+      const forwarded = yield* serveArbiter("claim", desk).pipe(
+        Effect.provide(
+          arbiterLayer.pipe(
+            Layer.provideMerge(peers(true)),
+            Layer.provideMerge(BatonDatabaseMemory),
+          ),
+        ),
+      );
+      assert.deepStrictEqual(forwarded, {
+        ok: true,
+        value: { answer: false, round: "r1", winner: "r1-office", until: 9 },
+      });
+      assert.deepStrictEqual(sent, [
+        ["tessaya_voice_arbiter", { op: "claim", args: desk, origin: "another of his servers" }],
+      ]);
+      // No other server took it: this server's own arbiter answers, as before.
+      const fiber = yield* serveArbiter("claim", desk).pipe(
+        Effect.provide(
+          arbiterLayer.pipe(
+            Layer.provideMerge(peers(false)),
+            Layer.provideMerge(BatonDatabaseMemory),
+          ),
+        ),
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* TestClock.adjust("250 millis");
+      assert.deepInclude((yield* Fiber.join(fiber))?.value as object, { answer: true });
+    }),
 );

@@ -52,6 +52,8 @@ export interface LiveCase {
   readonly lastNotSays?: ReadonlyArray<RegExp>;
   /** A check of its own on the last reply and the calls: why it fails, or null. */
   readonly check?: (last: string, calls: ReadonlyArray<LiveCall>) => string | null;
+  /** Needs a device in the server's registry (device_list); not applicable on a server with none. */
+  readonly device?: boolean;
   /** Asks his real laptop (read-only); runs only with --laptop. */
   readonly laptop?: boolean;
 }
@@ -97,6 +99,19 @@ export const spokenCounts = (
     n: /^\d+$/.test(n!) ? Number(n) : NUMBER_WORDS.indexOf(n!.toLowerCase()),
     of: /^paused$/i.test(word!) ? "paused" : /^automations?$/i.test(word!) ? "total" : "running",
   }));
+
+/** Whether a device_list answer names any device. */
+export const hasDevices = (text: string): boolean => {
+  try {
+    const v = JSON.parse(text) as {
+      devices?: ReadonlyArray<unknown>;
+      registry?: ReadonlyArray<unknown>;
+    };
+    return (v.devices?.length ?? 0) + (v.registry?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+};
 
 /** Her words claiming a house change happened. */
 const CLAIMS_DONE =
@@ -412,6 +427,48 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["What does the background activity setting do, and can you change it yourself?"],
     uses: [["settings_explain"]],
     clean: ["settings_explain"],
+  },
+  {
+    id: "device-read",
+    device: true,
+    proves: ["device_list", "device_read"],
+    said: ["How much battery does my desk device have left?"],
+    uses: [["device_read", "device_list"]],
+    clean: ["device_read", "device_list"],
+    // The level she says must be the one the device reported, never a guess.
+    check: (last, calls) => {
+      const levels = calls
+        .filter((c) => (c.name === "device_read" || c.name === "device_list") && !c.isError)
+        .flatMap((c) => [
+          ...c.text.matchAll(/"(?:power\.battery_pct|batteryPct)"[^0-9]{0,40}?(\d+)/g),
+        ])
+        .map(([, n]) => n!);
+      if (levels.length === 0) return null;
+      return levels.some((n) => new RegExp(`\\b${n}\\b`).test(last))
+        ? null
+        : `said no level the device gave (${[...new Set(levels)].join(", ")})`;
+    },
+  },
+  {
+    id: "device-set-approval",
+    device: true,
+    proves: ["device_set"],
+    said: ["Take a picture with my desk device's camera."],
+    // The camera is an owner item: it goes to his phone, whichever tool reaches it.
+    uses: [["device_set", "device_owner"]],
+    argsOf: "device_set",
+    args: (input) => ({ "never confirms for him": input["confirmed"] !== true }),
+    lastSays: [/\b(phone|yes|approv\w*|confirm\w*|ask\w*)\b/i],
+    lastNotSays: [/\b(took|taken|here it is|i can see)\b/i],
+  },
+  {
+    id: "device-watch",
+    device: true,
+    proves: ["device_watch"],
+    said: ["Warn me when my desk device's battery drops under 15 percent."],
+    uses: [["device_watch"]],
+    argsOf: "device_watch",
+    args: (input) => ({ "a standing rule": JSON.stringify(input).includes("15") }),
   },
   {
     id: "louder",
