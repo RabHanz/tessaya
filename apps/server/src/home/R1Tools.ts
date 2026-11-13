@@ -6,6 +6,8 @@
  */
 import { BatonHomeCallResult } from "@t3tools/baton-contracts";
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
+import { type Assurance, type MemberRole, OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
+import { principalRefusal } from "@t3tools/baton-shared/trust";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
@@ -33,7 +35,8 @@ import * as TessayaHandlers from "../mcp/toolkits/tessaya/handlers.ts";
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type RoomToolSet, type ToolOutcome } from "./R1Brain.ts";
-import { NOT_HIS_VOICE_TO_FORGET } from "../baton/TessayaTurn.ts";
+import { NOT_HIS_VOICE_TO_FORGET, TurnOrigin } from "../baton/TessayaTurn.ts";
+import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices } from "./HomeDevices.ts";
@@ -159,6 +162,29 @@ const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, hea
       }),
     );
 });
+
+/**
+ * Why a room turn may not use this tool, or null. Only a guest's voice or a member other than the owner is narrowed; a
+ * voice that names nobody we know is a guest.
+ */
+export const roomRefusal = (
+  origin: {
+    readonly member?: string | null | undefined;
+    readonly assurance?: Assurance | undefined;
+  },
+  grants: { readonly role: MemberRole; readonly machine: boolean } | null,
+  tool: string,
+): string | null =>
+  origin.member === undefined || origin.member === OWNER_MEMBER_ID
+    ? null
+    : principalRefusal(
+        {
+          role: grants?.role ?? "guest",
+          machine: grants?.machine ?? false,
+          assurance: origin.assurance ?? 0,
+        },
+        tool,
+      );
 
 const decoders = new Map(
   [...new Set<SharedName>([...ROOM_TOOLS, ...DESK_TOOLS])].map((name) => [
@@ -304,6 +330,21 @@ const makeRunners = Effect.gen(function* () {
     McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer),
   ).pipe(Effect.provideService(SecureRandom.SecureRandom, random.value));
   const environmentId = yield* environment.value.getEnvironmentId;
+  const household = yield* Effect.serviceOption(TessayaHousehold);
+  /**
+   * The household's role table at execution (HOUSEHOLD-DESIGN §5): a guest's voice, or a member who is not the owner,
+   * reaches only what their role does. The owner's own voice, or one Voice ID could not judge, keeps the gates it has.
+   */
+  const householdRefusal = Effect.fn("R1Tools.householdRefusal")(function* (name: string) {
+    const origin = yield* TurnOrigin;
+    if (origin === null || origin.member === OWNER_MEMBER_ID || origin.member === undefined)
+      return null;
+    const grants =
+      origin.member === null || Option.isNone(household)
+        ? null
+        : yield* household.value.grantsOf(origin.member);
+    return roomRefusal(origin, grants, name);
+  });
   const runner = (vessel: {
     readonly specs: ReadonlyArray<RoomTool>;
     readonly client: McpInvocationContext.McpClientCaller;
@@ -313,6 +354,8 @@ const makeRunners = Effect.gen(function* () {
     return Effect.fn("R1Tools.run")(function* (name: string, raw: unknown, device?: string) {
       const spec = vessel.specs.find((s) => s.name === name);
       const input = spec === undefined ? raw : asAdvertised(spec, raw);
+      const refused = yield* householdRefusal(name);
+      if (refused !== null) return { text: refused, isError: true } as ToolOutcome;
       if (name === LAPTOP.name && allowed.has(name)) {
         const question =
           typeof input === "object" && input !== null && "question" in input

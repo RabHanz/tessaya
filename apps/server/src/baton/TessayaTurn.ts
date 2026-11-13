@@ -3,7 +3,14 @@
  * desktop, a desk device, the phone and the mascot are vessels. Each sends the same envelope, gets the same memory
  * for the same words and persona, and every addressed turn it carries is learned from the same way.
  */
-import { memberOfSubject, vesselSubject } from "@t3tools/baton-shared/household";
+import {
+  type Assurance,
+  memberOfSpeaker,
+  memberOfSubject,
+  OWNER_MEMBER_ID,
+  vesselSubject,
+  voiceAssurance,
+} from "@t3tools/baton-shared/household";
 import { memoryBlock } from "@t3tools/baton-shared/memory";
 import { privatePersonOf, type SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import * as Clock from "effect/Clock";
@@ -80,10 +87,35 @@ export const TurnOrigin = Context.Reference<{
   readonly hisVoice?: boolean;
   /** Who spoke, so a tool that writes for him knows whose words they are. */
   readonly speaker?: SpeakerLike | null;
+  /** The member the turn is from (null: a guest's voice) and how sure (A0-A4): what Trust and the household gate on. */
+  readonly member?: string | null;
+  readonly assurance?: Assurance;
+  /** The turn read outside content. */
+  readonly tainted?: boolean;
   readonly persona?: string | null;
   /** A replay or test of the vessel: its writes are dry runs. */
   readonly rehearsal?: boolean;
 } | null>("t3/baton/TessayaTurn/TurnOrigin", { defaultValue: () => null });
+
+/**
+ * Who a turn is from and how sure (ACCOUNTS-IDENTITY-DESIGN §2.4): a spoken turn is its voice's member at its voice's
+ * level; a typed one on a signed-in desktop, phone or browser is the owner's device at A2 (I-0: those sessions are his
+ * until a member's own device sends its turns); an agent's or a job's turn is the owner's at A0.
+ */
+export const turnIdentity = (
+  turn: Pick<TurnEnvelope, "speaker" | "vessel">,
+): { readonly member: string | null; readonly assurance: Assurance } =>
+  turn.speaker !== null && turn.speaker !== undefined
+    ? { member: memberOfSpeaker(turn.speaker), assurance: voiceAssurance(turn.speaker) }
+    : {
+        member: OWNER_MEMBER_ID,
+        assurance:
+          turn.vessel.kind === "desktop" ||
+          turn.vessel.kind === "phone" ||
+          turn.vessel.kind === "web"
+            ? 2
+            : 0,
+      };
 
 /** The origin a turn's tool calls run under. */
 export const originOf = (turn: TurnEnvelope) => ({
@@ -91,6 +123,8 @@ export const originOf = (turn: TurnEnvelope) => ({
   label: turn.origin ?? turn.vessel.kind,
   hisVoice: hisVoice(turn.speaker ?? null),
   speaker: turn.speaker ?? null,
+  ...turnIdentity(turn),
+  tainted: turn.tainted === true,
   persona: turn.persona ?? null,
   rehearsal: turn.rehearsal === true,
 });

@@ -8,7 +8,9 @@ import {
   type ToolVerdict,
 } from "./operator.ts";
 import { DEFAULT_OS_PACK, mergePack } from "./osPack.ts";
+import { MEMBER_ROLES, voiceAssurance, type Assurance } from "./household.ts";
 import {
+  approvalRefusal,
   decideMessage,
   decideTrust,
   MESSAGES_PER_MINUTE,
@@ -277,5 +279,122 @@ describe("a message from one agent to another's thread", () => {
       verdict: "deny",
       why: expect.stringContaining("30 messages in the last minute"),
     });
+  });
+});
+
+describe("who is asking narrows Trust (identity I-2)", () => {
+  const ctx = CONTEXTS[1]!;
+  const tool = (name: string, input: Record<string, unknown> = {}) => ({
+    tool: `mcp__baton__${name}`,
+    input,
+  });
+  const as = (
+    role: (typeof MEMBER_ROLES)[number] | "service",
+    assurance: Assurance,
+    machine = false,
+  ) => ({
+    role,
+    assurance,
+    machine,
+  });
+
+  it("never loosens the base verdict, for any role, level or call", () => {
+    for (const role of [...MEMBER_ROLES, "service"] as const)
+      for (const assurance of [0, 1, 2, 3, 4] as const)
+        for (const context of CONTEXTS)
+          for (const call of CALLS) {
+            const base = decideTrust({ call, context });
+            const mine = decideTrust({ call, context, principal: as(role, assurance) });
+            expect(rank(mine), `${role} A${assurance} ${call.tool}`).toBeGreaterThanOrEqual(
+              rank(base),
+            );
+          }
+  });
+
+  it.each([
+    // A child runs the house's ordinary things, never this computer, locks or cameras.
+    ["child", 2, tool("home_do", { action: "turn on the lamp" }), "base"],
+    ["child", 2, { tool: "Bash", input: { command: "ls" } }, "deny"],
+    ["child", 2, tool("room_look"), "deny"],
+    ["child", 2, tool("something_new"), "deny"],
+    // A guest's house request goes to a member; their own memory is nothing of theirs here.
+    ["guest", 0, tool("home_do", { action: "turn on the lamp" }), "ask"],
+    ["guest", 0, tool("tessaya_memory_search"), "deny"],
+    ["guest", 0, tool("settings_get"), "base"],
+    // An adult reaches this computer only with the owner's machine grant.
+    ["adult", 2, { tool: "Bash", input: { command: "ls" } }, "deny"],
+    // Their own things need A2: a listen-level voice is refused, not asked of someone else.
+    ["adult", 1, tool("tessaya_memory_search"), "deny"],
+    ["adult", 2, tool("tessaya_memory_search"), "base"],
+    ["adult", 0, tool("home_do", { action: "turn on the lamp" }), "ask"],
+  ] as const)("a %s at A%i: %o is %s", (role, assurance, call, verdict) => {
+    const mine = decideTrust({ call, context: ctx, principal: as(role, assurance) });
+    if (verdict === "base") expect(mine).toEqual(decideTrust({ call, context: ctx }));
+    else expect(mine.verdict).toBe(verdict);
+  });
+
+  it("gives the machine grant's holder this computer's base verdict, and never a child a risky act", () => {
+    const bash = { tool: "Bash", input: { command: "ls" } };
+    expect(decideTrust({ call: bash, context: ctx, principal: as("adult", 2, true) })).toEqual(
+      decideTrust({ call: bash, context: ctx }),
+    );
+    const unlock = tool("type_text", { text: "pay the invoice" });
+    expect(decideTrust({ call: unlock, context: ctx })).toMatchObject({
+      verdict: "ask",
+      risky: true,
+    });
+    expect(decideTrust({ call: unlock, context: ctx, principal: as("child", 2) }).verdict).toBe(
+      "deny",
+    );
+  });
+});
+
+describe("whose yes counts", () => {
+  const member = (
+    role: "owner" | "admin" | "adult" | "child" | "guest" | "service",
+    assurance: Assurance,
+    id: string = role,
+  ) => ({
+    member: id,
+    role,
+    assurance,
+  });
+  it("needs A3 for a risky yes, which no voice reaches", () => {
+    const bestVoice = voiceAssurance({
+      kind: "owner",
+      personId: "owner",
+      verified: true,
+      inherited: false,
+    });
+    expect(approvalRefusal({ risky: true, approver: member("owner", bestVoice) })).toContain(
+      "own device",
+    );
+    expect(approvalRefusal({ risky: true, approver: member("owner", 3) })).toBeNull();
+    expect(approvalRefusal({ risky: false, approver: member("owner", bestVoice) })).toBeNull();
+    expect(approvalRefusal({ risky: false, approver: member("adult", 1) })).not.toBeNull();
+  });
+  it("refuses children, guests, agents, nobody, and a requester approving their own risky ask", () => {
+    for (const role of ["child", "guest", "service"] as const)
+      expect(approvalRefusal({ risky: false, approver: member(role, 3) })).not.toBeNull();
+    expect(
+      approvalRefusal({ risky: false, approver: { member: null, role: null, assurance: 3 } }),
+    ).not.toBeNull();
+    expect(
+      approvalRefusal({
+        risky: true,
+        approver: member("adult", 3, "sara"),
+        requester: { member: "sara", role: "adult" },
+      }),
+    ).toContain("Someone else");
+  });
+  it("lets only a child's guardian among adults answer for them", () => {
+    const requester = { member: "adam", role: "child" as const, guardians: ["sara"] };
+    expect(
+      approvalRefusal({ risky: false, approver: member("adult", 2, "omar"), requester }),
+    ).not.toBeNull();
+    expect(
+      approvalRefusal({ risky: false, approver: member("adult", 2, "sara"), requester }),
+    ).toBeNull();
+    expect(approvalRefusal({ risky: false, approver: member("owner", 2), requester })).toBeNull();
   });
 });

@@ -92,6 +92,10 @@ export class TessayaHousehold extends Context.Service<
     readonly call: (input: BatonHouseholdCallInput) => Effect.Effect<Result>;
     /** A member's role, or null for someone who is not (or no longer) a member. */
     readonly roleOf: (member: string) => Effect.Effect<MemberRole | null>;
+    /** What Trust needs of a member: their role and whether they hold the machine grant; null when not a member. */
+    readonly grantsOf: (
+      member: string,
+    ) => Effect.Effect<{ readonly role: MemberRole; readonly machine: boolean } | null>;
     /** Destroys the data of members whose export window ended. */
     readonly purgeDue: Effect.Effect<number>;
   }
@@ -121,6 +125,13 @@ export const make = Effect.gen(function* () {
   const roleOf = Effect.fn("TessayaHousehold.roleOf")(function* (member: string) {
     const row = yield* rowOf(member);
     return Option.isSome(row) && row.value.removed_at === null ? row.value.role : null;
+  });
+
+  const grantsOf = Effect.fn("TessayaHousehold.grantsOf")(function* (member: string) {
+    const row = yield* rowOf(member);
+    return Option.isSome(row) && row.value.removed_at === null
+      ? { role: row.value.role, machine: row.value.machine === 1 }
+      : null;
   });
 
   const callerRole = Effect.gen(function* () {
@@ -470,7 +481,7 @@ export const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
 
-  return TessayaHousehold.of({ call, roleOf, purgeDue });
+  return TessayaHousehold.of({ call, roleOf, grantsOf, purgeDue });
 });
 
 export const layer = Layer.effect(TessayaHousehold, make);

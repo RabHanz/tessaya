@@ -26,8 +26,9 @@ export const make = Effect.gen(function* () {
       origin === null
         ? { member: "owner", service: true, assurance: 0 as const, via: "an agent" }
         : {
-            member: memberOfSpeaker(origin.speaker ?? null),
-            assurance: voiceAssurance(origin.speaker ?? null),
+            member: origin.member ?? memberOfSpeaker(origin.speaker ?? null),
+            assurance: origin.assurance ?? voiceAssurance(origin.speaker ?? null),
+            tainted: origin.tainted === true,
             via: `Tessaya via ${origin.label}`,
           };
     return yield* Effect.flatMap(TessayaHousehold, (h) => h.call(input)).pipe(
