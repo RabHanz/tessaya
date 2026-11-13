@@ -3,7 +3,7 @@ import type * as NodeChildProcess from "node:child_process";
 import * as NodeEvents from "node:events";
 import * as NodeStream from "node:stream";
 
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createVoiceSessions, sessionEvent, type SessionEvent } from "./VoiceSessions.ts";
 
@@ -19,20 +19,26 @@ const WARM = "only gets you ready";
 const fakeClaude = (
   heard: Array<string>,
   missing: { count: number },
-  onHear: (said: string) => void = () => undefined,
-) =>
-  (() => {
+  onHear: (said: string, proc: number) => void = () => undefined,
+  killed: Array<number> = [],
+) => {
+  let spawned = 0;
+  return (() => {
+    const id = (spawned += 1);
     const stdin = new NodeStream.PassThrough();
     const stdout = new NodeStream.PassThrough();
     const proc = Object.assign(new NodeEvents.EventEmitter(), {
       stdin,
       stdout,
-      kill: () => void proc.emit("exit", 0),
+      kill: () => {
+        killed.push(id);
+        proc.emit("exit", 0);
+      },
     });
     stdin.on("data", (chunk: Buffer) => {
       const said = String(JSON.parse(String(chunk)).message.content);
       heard.push(said);
-      onHear(said);
+      onHear(said, id);
       if (said.includes("hang")) return;
       if (said.includes("search"))
         stdout.write(
@@ -55,6 +61,7 @@ const fakeClaude = (
     );
     return proc;
   }) as unknown as typeof NodeChildProcess.spawn;
+};
 
 const spec = { model: "sonnet", effort: "low", system: "Be brief.", tools: [] };
 
@@ -102,14 +109,19 @@ describe("warm subscription sessions for spoken turns", () => {
     expect(events.filter((e) => e.type === "text").length).toBe(2);
   });
 
-  it("closes a session he cut off, and the next turn runs in its warm successor", async () => {
+  it("closes a session he cut off, and the next turn runs in a session warmed before the cut", async () => {
     const heard: Array<string> = [];
+    const by: Array<string> = [];
     let reached = () => undefined as void;
     const hanging = new Promise<void>((resolve) => (reached = resolve));
     const sessions = createVoiceSessions({
-      spawn: fakeClaude(heard, { count: 0 }, (said) => said === "hang on" && reached()),
+      spawn: fakeClaude(heard, { count: 0 }, (said, proc) => {
+        by.push(`${proc}:${said.includes(WARM) ? "warm" : said}`);
+        if (said === "hang on") reached();
+      }),
       retryMs: 1,
     });
+    await sessions.warm("r1", spec);
     const turn = (signal?: AbortSignal) => ({
       run: async () => ({ text: "" }),
       onEvent: () => undefined,
@@ -124,5 +136,44 @@ describe("warm subscription sessions for spoken turns", () => {
     await sessions.turn("r1", spec, "again", turn());
     await sessions.close();
     expect(heard.filter((h) => !h.includes(WARM))).toEqual(["hang on", "again"]);
+    // An early start he talked past must not leave the next turn waiting on a warm-up (13 Nov: 2.9 s).
+    const proc = by.find((b) => b.endsWith(":again"))!.split(":")[0];
+    expect(by.indexOf(`${proc}:warm`)).toBeLessThan(by.indexOf("1:hang on"));
+  });
+
+  it("lets a vessel's sessions go when its spec changes", async () => {
+    const killed: Array<number> = [];
+    const sessions = createVoiceSessions({
+      spawn: fakeClaude([], { count: 0 }, () => undefined, killed),
+      retryMs: 1,
+    });
+    await sessions.warm("r1", spec);
+    await sessions.warm("r1", { ...spec, system: "Be kind." });
+    expect(killed.toSorted()).toEqual([1, 2]);
+    await sessions.close();
+  });
+
+  it("renews a waiting session before it goes stale, and stops once the vessel has gone quiet", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      let clock = 0;
+      const killed: Array<number> = [];
+      const sessions = createVoiceSessions({
+        spawn: fakeClaude([], { count: 0 }, () => undefined, killed),
+        now: () => clock,
+        retryMs: 1,
+      });
+      await sessions.warm("r1", spec);
+      clock += 30 * 60_000;
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      // Two replacements warmed, then the two they replaced went.
+      expect(killed.toSorted()).toEqual([1, 2]);
+      clock += 13 * 60 * 60_000;
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      expect(killed.toSorted()).toEqual([1, 2, 3, 4]);
+      await sessions.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
