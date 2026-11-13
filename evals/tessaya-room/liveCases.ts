@@ -759,7 +759,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     // answers in the same turn.
     id: "escalate-rule-go",
     proves: [],
-    said: ["How should I structure retries with backoff in a TypeScript HTTP client?"],
+    said: ["Write me a TypeScript function that retries a fetch call with exponential backoff."],
     uses: [["brain_escalate"]],
     check: (last, calls) =>
       !calls.some((c) => c.name === "brain_escalate" && c.text.startsWith("go"))

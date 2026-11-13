@@ -72,7 +72,7 @@ export const escalationRulesLine = (settings: BrainEscalation): string | null =>
   const rules = settings.rules ?? [];
   return rules.length === 0
     ? null
-    : `His rules for Opus (pass the number to brain_escalate when one covers this): ${rules
+    : `His rules for Opus, which he set himself: when one covers what he just asked, even loosely (a question about writing code is a coding question), call brain_escalate with its number before you answer: ${rules
         .map(
           (r, i) =>
             `${i + 1}. ${r.when} → ${r.then === "sonnet" ? "stay on Sonnet" : r.then === "ask" ? "ask him first" : "Opus"}`,
