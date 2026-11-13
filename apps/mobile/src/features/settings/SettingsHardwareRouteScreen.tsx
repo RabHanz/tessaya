@@ -3,6 +3,8 @@
  * and live controls, all through the server's `baton.devices.call`. Camera and restart are the owner kind.
  */
 import { useAtomValue } from "@effect/atom-react";
+import { phoneManifest, phoneValues } from "@t3tools/baton-shared/phoneDevice";
+import * as Device from "expo-device";
 import {
   R1_MOODS,
   type R1KeyBinding,
@@ -158,7 +160,26 @@ function HardwareSections({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // This phone joins the device registry while he looks at his hardware (a stub until the phone companion lands).
+  const publishPhone = () => {
+    const facts = {
+      installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
+      model: Device.modelName ?? null,
+      os: Device.osName === null ? null : `${Device.osName} ${Device.osVersion ?? ""}`.trim(),
+      motion: Device.isDevice,
+    };
+    const manifest = phoneManifest(facts);
+    void devicesCall({
+      environmentId,
+      input: {
+        kind: "vessel",
+        op: "publish",
+        args: { deviceId: manifest.deviceId, manifest, values: phoneValues(facts) },
+      },
+    });
+  };
   const refresh = async () => {
+    publishPhone();
     const result = await devicesCall({
       environmentId,
       input: { kind: "read", op: "list", args: {} },

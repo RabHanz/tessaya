@@ -27,6 +27,7 @@ import type {
 } from "@t3tools/baton-contracts";
 import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
+  BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   tessayaPlaceOf,
 } from "@t3tools/baton-contracts";
@@ -350,6 +351,7 @@ import { createComposerDictation, routePill } from "./composerDictation.ts";
 import { cleanupLevelNow } from "./cleanupLevel.ts";
 import { ownFieldFocused } from "./ownWindowField.ts";
 import { micAwakeMs, micAwakeOf, type MicAwake } from "./micAwake.ts";
+import { desktopDeviceId, startDesktopDevice } from "../devices/desktopDevice.ts";
 import * as Electron from "electron";
 
 import {
@@ -8444,6 +8446,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   applyBindings();
   // An agent's change to his dictation settings, through this machine's server, applied as his own click would be.
   const direct = input.direct;
+  let screenLocked = false;
   if (direct !== undefined) {
     const remote = createRemoteSettings({
       // The server holds a sync open up to 25 s while nothing waits: the wait covers it.
@@ -8461,6 +8464,54 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         )
         .then((ms) => setTimeout(remoteLoop, ms).unref());
     setTimeout(remoteLoop, REMOTE_SETTINGS_RETRY_MS).unref();
+    // This machine in the device registry: its hardware, and writes to its voice choices as his own clicks.
+    const device = startDesktopDevice({
+      publish: (body, timeoutMs) =>
+        direct(
+          BATON_DEVICES_WS_METHODS.call,
+          { kind: "vessel", op: "publish", args: body },
+          timeoutMs,
+        ).then((r) => (r as { value?: unknown } | null)?.value ?? null),
+      deviceId: desktopDeviceId(NodeOS.hostname()),
+      name: `${NodeOS.hostname()} (desktop)`,
+      appVersion: input.appVersion,
+      platform: input.platform,
+      facts: () => ({
+        controls: homeState().controls,
+        screens: Electron.screen
+          .getAllDisplays()
+          .map((d) => `${d.label || "Screen"} ${d.size.width}x${d.size.height}`),
+        onBattery: Electron.powerMonitor.isOnBatteryPower(),
+        locked: screenLocked,
+        idleSeconds: Electron.powerMonitor.getSystemIdleTime(),
+      }),
+      applySetting: (id, value) => applyHome(id, value),
+      onChange: (poke) => {
+        const locked = () => {
+          screenLocked = true;
+          poke();
+        };
+        const unlocked = () => {
+          screenLocked = false;
+          poke();
+        };
+        Electron.screen.on("display-added", poke);
+        Electron.screen.on("display-removed", poke);
+        Electron.powerMonitor.on("on-ac", poke);
+        Electron.powerMonitor.on("on-battery", poke);
+        Electron.powerMonitor.on("lock-screen", locked);
+        Electron.powerMonitor.on("unlock-screen", unlocked);
+        return () => {
+          Electron.screen.removeListener("display-added", poke);
+          Electron.screen.removeListener("display-removed", poke);
+          Electron.powerMonitor.removeListener("on-ac", poke);
+          Electron.powerMonitor.removeListener("on-battery", poke);
+          Electron.powerMonitor.removeListener("lock-screen", locked);
+          Electron.powerMonitor.removeListener("unlock-screen", unlocked);
+        };
+      },
+    });
+    Electron.app.on("will-quit", device.stop);
   }
   Electron.app.on("will-quit", () => {
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);

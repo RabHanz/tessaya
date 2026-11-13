@@ -1,11 +1,13 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
 import { BatonPhoneInbox, layer as inboxLayer } from "../baton/BatonPhoneInbox.ts";
 import { layer as recordLayer } from "../baton/BatonRecordService.ts";
+import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import * as HomeDevices from "./HomeDevices.ts";
@@ -50,7 +52,7 @@ const setup = () => {
       }),
   });
   const layer = HomeDevices.layer.pipe(
-    Layer.provideMerge(Layer.mergeAll(broker, home, inboxLayer, recordLayer)),
+    Layer.provideMerge(Layer.mergeAll(broker, home, inboxLayer, recordLayer, registryLayer)),
     Layer.provideMerge(BatonDatabaseMemory),
   );
   const topics = () => sent.map((s) => s.topic);
@@ -64,17 +66,39 @@ it("folds the firmware's topics into a device, keeping only the times of a voice
   const devices = new Map<string, HomeDevices.Heard>();
   const fold = (topic: string, payload: string, at = 1000) =>
     HomeDevices.applyMessage(devices, `${root}/${topic}`, payload, at);
-  assert.deepStrictEqual(fold("state/online", "1"), { id: ID, cameOnline: true, tag: null });
+  assert.include(fold("state/online", "1"), { id: ID, cameOnline: true, tag: null });
   assert.isFalse(fold("state/online", "1")!.cameOnline);
-  fold("state/battery", "71");
-  fold("state/wifi", '{"rssi":-61,"quality":"good"}');
-  fold("event/announce", '{"fw_ver":"3.29.10"}');
-  fold("state/ota", '{"phase":"failed","rc":-3,"extra":"no space"}');
-  assert.deepStrictEqual(fold("event/nfc", "04A1B2C3"), {
-    id: ID,
-    cameOnline: false,
-    tag: "04a1b2c3",
+  // The firmware's older topics become its manifest's items for the registry.
+  assert.deepStrictEqual(fold("state/battery", "71")!.items, [
+    { itemId: "power.battery_pct", value: 71 },
+  ]);
+  assert.deepStrictEqual(fold("state/wifi", '{"rssi":-61,"quality":"good"}')!.items, [
+    { itemId: "wifi.rssi", value: -61 },
+    { itemId: "wifi.quality", value: "good" },
+  ]);
+  assert.deepStrictEqual(fold("event/announce", '{"fw_ver":"3.29.10"}')!.items, [
+    { itemId: "system.firmware", value: "3.29.10" },
+  ]);
+  assert.deepStrictEqual(
+    fold("state/power", '{"battery_pct":-1,"charging":true,"uptime_ms":23500}')!.items,
+    [
+      { itemId: "power.charging", value: true },
+      { itemId: "system.uptime", value: 24 },
+    ],
+  );
+  assert.deepStrictEqual(fold("state/item/imu.posture", '{"value":"face_down","at":5}')!.items, [
+    { itemId: "imu.posture", value: "face_down" },
+  ]);
+  assert.deepStrictEqual(fold("state/audio/output", '{"out":"onboard","device":""}')!.items, [
+    { itemId: "audio.output", value: "speaker" },
+    { itemId: "audio.device", value: "" },
+  ]);
+  assert.deepStrictEqual(fold("state/item/ack", '{"cmd":"item/audio.volume","ok":true}')!.ack, {
+    itemId: "audio.volume",
+    ok: true,
   });
+  fold("state/ota", '{"phase":"failed","rc":-3,"extra":"no space"}');
+  assert.include(fold("event/nfc", "04A1B2C3"), { id: ID, cameOnline: false, tag: "04a1b2c3" });
   assert.isNull(fold("event/nfc", "left")!.tag);
   for (const first of [900, 1100, 1000])
     fold(
@@ -82,10 +106,7 @@ it("folds the firmware's topics into a device, keeping only the times of a voice
       JSON.stringify({ asrMs: 120, firstSoundMs: first, text: "unlock the door" }),
     );
   const d = devices.get(ID)!;
-  assert.deepStrictEqual(
-    [d.batteryPct, d.rssi, d.signal, d.firmware, d.ota?.line],
-    [71, -61, "good", "3.29.10", "failed (code -3): no space"],
-  );
+  assert.strictEqual(d.ota?.line, "failed (code -3): no space");
   const stages = HomeDevices.stagesOf(d);
   assert.deepStrictEqual(
     stages.find((s) => s.name === "Heard to first sound"),
@@ -474,6 +495,78 @@ it.effect(
           ["cmd/volume", { pct: 71 }],
         ],
       );
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "keeps the R1's manifest and values in the registry, shows them, and sends an item write it acknowledges",
+  () => {
+    const { sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const registry = yield* DeviceRegistry;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(
+        `${root}/state/manifest`,
+        JSON.stringify({
+          deviceId: ID,
+          kind: "r1",
+          name: "R1",
+          firmware: "smp-0.3.46",
+          schema: 1,
+          version: "cb7e6b0d",
+          items: [
+            {
+              id: "power.battery_pct",
+              label: "Battery",
+              type: "number",
+              unit: "%",
+              range: [0, 100],
+              access: "read",
+              safety: "free",
+            },
+            {
+              id: "audio.volume",
+              label: "Volume",
+              type: "number",
+              range: [0, 100],
+              access: "read,write",
+              safety: "free",
+            },
+            // The device calls its camera free; the server's floor makes it his owner yes.
+            {
+              id: "camera.capture",
+              label: "Camera",
+              type: "action",
+              access: "write",
+              safety: "free",
+            },
+          ],
+        }),
+      );
+      yield* devices.receive(`${root}/state/power`, '{"battery_pct":64,"charging":false}');
+      const r1 = (yield* registry.get(ID))!;
+      assert.deepStrictEqual(
+        r1.items.map((i) => [i.id, i.safety, i.privacy === true]),
+        [
+          ["power.battery_pct", "free", false],
+          ["audio.volume", "free", false],
+          ["camera.capture", "owner", true],
+        ],
+      );
+      const view = (yield* devices.overview).devices[0]!;
+      assert.deepStrictEqual([view.batteryPct, view.charging], [64, false]);
+      sent.length = 0;
+      const write = yield* registry
+        .write(ID, "audio.volume", 40)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* devices.receive(`${root}/state/item/ack`, '{"cmd":"item/audio.volume","ok":true}');
+      assert.strictEqual((yield* Fiber.join(write)).status, "done");
+      assert.deepStrictEqual(sent, [{ topic: "cmd/item/audio.volume", payload: { value: 40 } }]);
+      const refused = yield* registry.write(ID, "audio.volume", 140).pipe(Effect.flip);
+      assert.include(refused.why, "from 0 to 100");
     }).pipe(Effect.provide(layer));
   },
 );
