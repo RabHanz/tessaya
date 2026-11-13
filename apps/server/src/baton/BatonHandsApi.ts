@@ -4,7 +4,12 @@
  * with `baton:hands-host`, takes and answers; asking never reaches a tool the allowlist does not name.
  */
 import { AuthBatonHandsHostScope, AuthBatonHandsScope } from "@t3tools/contracts";
-import type { HandsBroker, HandsAudit, HandsResult } from "@t3tools/baton-shared/remoteHands";
+import {
+  publishedSpecs,
+  type HandsBroker,
+  type HandsAudit,
+  type HandsResult,
+} from "@t3tools/baton-shared/remoteHands";
 
 export const HANDS_SCOPE = AuthBatonHandsScope;
 export const HANDS_HOST_SCOPE = AuthBatonHandsHostScope;
@@ -63,7 +68,11 @@ export const handleHands = async (
     if (!req.scopes.has(HANDS_HOST_SCOPE))
       return say(403, "Only the desktop app takes remote hands calls.");
     if (req.path === "take") {
-      const call = await broker.take(waitMs);
+      // The desktop's own tools for a brain turn, sent when they change; absent keeps what it offered.
+      const tools = body["tools"] === undefined ? undefined : publishedSpecs(body["tools"]);
+      if (tools === null)
+        return say(400, "tools must be a list of {name, description, input_schema}.");
+      const call = await broker.take(waitMs, tools);
       return { status: 200, json: { call } };
     }
     const id = body["id"];

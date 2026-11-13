@@ -70,6 +70,7 @@ import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BrainUsage, brainUsageReport } from "./BrainUsage.ts";
+import { VesselHands } from "./VesselHands.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
@@ -159,6 +160,7 @@ export type BatonServices =
   | BatonMemoryLearning
   | TessayaTurn
   | BrainUsage
+  | VesselHands
   | TessayaHousehold
   | ServerConfig.ServerConfig
   | ScheduledTaskService

@@ -30,6 +30,12 @@ describe("remote hands API", () => {
   it("lets only the desktop's session take and answer a call", async () => {
     const b = broker();
     expect((await handleHands(b, { ...asker, path: "take" }, 1)).status).toBe(403);
+    // What the desktop offers a brain turn comes only with its own take, and only well-formed.
+    expect(
+      (await handleHands(b, { method: "POST", path: "take", ...host, json: { tools: "all" } }, 1))
+        .status,
+    ).toBe(400);
+    expect(b.published()).toEqual([]);
     expect(
       (await handleHands(b, { ...asker, path: "reply", json: { id: "c1", result: { ok: true } } }))
         .status,
