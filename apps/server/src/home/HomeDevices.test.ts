@@ -279,14 +279,17 @@ it.effect(
   },
 );
 
-it.effect("offers away-from-home on his phone when the R1 says it could not reach home", () => {
+it.effect("offers away-from-home on his phone when the R1 says it is away from home", () => {
   const { layer, away } = setup();
   return Effect.gen(function* () {
     const devices = yield* HomeDevices.HomeDevices;
     const inbox = yield* BatonPhoneInbox;
     yield* devices.tick;
-    yield* devices.receive(`${root}/event/net/away`, "{}");
-    yield* devices.receive(`${root}/event/net/away`, "{}");
+    // Back on its first entry: nothing to offer.
+    yield* devices.receive(`${root}/event/net/away`, '{"away":false,"endpoint":0}');
+    assert.lengthOf(yield* inbox.pending, 0);
+    yield* devices.receive(`${root}/event/net/away`, '{"away":true,"endpoint":1}');
+    yield* devices.receive(`${root}/event/net/away`, '{"away":true,"endpoint":1}');
     const cards = (yield* inbox.pending).filter((p) => p.detail.includes("away from home"));
     assert.lengthOf(cards, 1);
     assert.isFalse(away());

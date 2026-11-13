@@ -982,8 +982,8 @@ const make = Effect.gen(function* () {
   });
 
   /**
-   * The R1 says it was away and could not reach home (firmware F2, reported once it is back): with away off, his phone
-   * gets a card to turn it on. One card at a time.
+   * The R1 reached this server through an entry other than home's first one: with away off, his phone gets a card to
+   * turn it on. One card at a time.
    */
   const offerAway = Effect.fn("HomeDevices.offerAway")(function* (id: string) {
     if (reach._tag === "None" || (yield* reach.value.status).away) return;
@@ -1014,7 +1014,9 @@ const make = Effect.gen(function* () {
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
     if (tail === "event/key") yield* runKey(result.id, json(payload));
-    else if (tail === "event/net/away") yield* offerAway(result.id);
+    // On every change the R1 says whether it is on an entry other than its first (firmware 0.3.66).
+    else if (tail === "event/net/away" && json(payload)?.["away"] === true)
+      yield* offerAway(result.id);
     else if (tail === "state/key/bind") yield* keepBinds(result.id, json(payload));
     else if (tail === "voice/stepup/done") yield* stepUpDone(result.id, json(payload));
     else if (
