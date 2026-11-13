@@ -61,6 +61,20 @@ export const agentsOf = (json: string): ReadonlyMap<string, SessionPane> => {
   return found;
 };
 
+/**
+ * Herdr's state, made "blocked" where Claude Code itself says a dialog waits: Herdr does not know every dialog (a held
+ * cross-session message), and text typed into one picks its default.
+ */
+export const withClaudeWaiting = (
+  agents: ReadonlyMap<string, SessionPane>,
+  sessions: ReadonlyArray<Pick<ClaudeLiveSession, "sessionId" | "status">>,
+): ReadonlyMap<string, SessionPane> => {
+  const waiting = new Set(sessions.filter((s) => s.status === "waiting").map((s) => s.sessionId));
+  return new Map(
+    [...agents].map(([id, at]) => [id, waiting.has(id) ? { ...at, status: "blocked" } : at]),
+  );
+};
+
 /** Every running Herdr session is asked, as discovery does; the pane comes back as `<session>~<pane>` off default. */
 export const agentsWith = Effect.fn("BatonWeaveBoxes.agents")(function* (cli: HerdrCli["Service"]) {
   const listed = yield* cli.run(["session", "list"]);
@@ -132,7 +146,13 @@ export const layer = Layer.effect(
     const local = yield* AdoptedRuntimeAdapter;
     const cli = yield* HerdrCli;
     return [
-      { name: "here", adapter: local, agents: Effect.suspend(() => agentsWith(cli)) },
+      {
+        name: "here",
+        adapter: local,
+        agents: Effect.suspend(() =>
+          Effect.zipWith(agentsWith(cli), readAllProfileLiveSessions(), withClaudeWaiting),
+        ),
+      },
       makeLiveBox(readAllProfileLiveSessions()),
     ] as ReadonlyArray<WeaveBox>;
   }),

@@ -119,7 +119,7 @@ NodeTest.test("a ticking line in a permission dialog does not change its card", 
 NodeTest.test("an AskUserQuestion is read with its header, descriptions and free-text slot", () => {
   const prompt = parsePanePrompt(fixture("pane-question.txt"));
   NodeAssert.equal(prompt.header, "Colour");
-  NodeAssert.equal(prompt.question, "Which colour do you prefer?");
+  NodeAssert.equal(plain(prompt.question), "Which colour do you prefer?");
   NodeAssert.deepEqual(
     prompt.options.map((o) => [o.label, o.description]),
     [
@@ -134,14 +134,14 @@ NodeTest.test("an AskUserQuestion is read with its header, descriptions and free
     keys: ["down", "down", "down"],
     text: "Purple",
   });
-  NodeAssert.equal(answerFrom("Colour. Which colour do you prefer?\nBlue", prompt), "Blue");
+  NodeAssert.equal(answerFrom(`Colour. ${prompt.question}\nBlue`, prompt), "Blue");
   NodeAssert.equal(answerFrom("Blue", prompt), "Blue");
 });
 
 NodeTest.test("a dialog whose question sits in a dashed box is read with its options", () => {
   const prompt = parsePanePrompt(fixture("pane-boxed.txt"));
   NodeAssert.equal(
-    prompt.question,
+    plain(prompt.question),
     '"Campaign notes" was made by someone else. Let Claude read it?',
   );
   NodeAssert.match(prompt.context, /created outside your organization/);
@@ -161,7 +161,7 @@ NodeTest.test(
   "a held message with no footer and a wrapped option is read with both options",
   () => {
     const prompt = parsePanePrompt(fixture("pane-held-message.txt"));
-    NodeAssert.equal(prompt.question, "Held message from another session");
+    NodeAssert.equal(plain(prompt.question), "Held message from another session");
     NodeAssert.match(prompt.context, /permission mode class/);
     NodeAssert.deepEqual(
       prompt.options.map((o) => o.label),
@@ -171,6 +171,109 @@ NodeTest.test(
       keys: ["down", "enter"],
       text: null,
     });
+  },
+);
+
+NodeTest.test(
+  "a card's answer is pressed on its dialog and never typed, whatever the session's status says",
+  async () => {
+    // Typed into Claude Code's held-message dialog, any letter moves to Deny and Enter confirms it.
+    const dir = NodeFS.mkdtempSync(
+      NodePath.join(process.env.TMPDIR ?? NodeOS.tmpdir(), "baton-live-acp-"),
+    );
+    const sessions = NodePath.join(dir, "sessions");
+    const cwd = NodePath.join(dir, "work");
+    NodeFS.mkdirSync(sessions);
+    NodeFS.mkdirSync(cwd);
+    const log = NodePath.join(dir, "herdr.log");
+    const screen = NodePath.join(dir, "screen.txt");
+    const herdr = NodePath.join(dir, "herdr");
+    NodeFS.writeFileSync(
+      herdr,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> ${log}\ncase "$*" in *" read "*) cat ${screen};; esac\n`,
+      { mode: 0o755 },
+    );
+    const sid = "11111111-2222-4333-8444-666666666666";
+    NodeFS.writeFileSync(
+      NodePath.join(sessions, `${process.pid}.json`),
+      JSON.stringify({
+        pid: process.pid,
+        sessionId: sid,
+        cwd,
+        kind: "interactive",
+        status: "busy",
+      }),
+    );
+    const child = NodeChildProcess.spawn(process.execPath, [AGENT], {
+      env: {
+        ...process.env,
+        BATON_CLAUDE_SESSIONS_DIR: sessions,
+        BATON_HERDR_BIN: herdr,
+        BATON_TEST_HERDR_PANE: "p1",
+        T3CODE_THREAD_ID: "",
+        BATON_LIVE_POLL_MS: "50",
+        BATON_LIVE_PROMPT_CLEAR_TRIES: "1",
+        BATON_LIVE_QUEUE_DIR: NodePath.join(dir, "queue"),
+      },
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    const replies = new Map();
+    NodeReadline.createInterface({ input: child.stdout }).on("line", (line) => {
+      const message = JSON.parse(line);
+      if (message.id !== undefined) replies.get(message.id)?.(message);
+    });
+    const call = (id, method, params) =>
+      new Promise((resolve) => {
+        replies.set(id, resolve);
+        child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      });
+    // What T3 sends back for a card: the card's question (context, then the prompt's question), a line break, the choice.
+    const answer = (shown, choice) =>
+      call(Math.random(), "session/prompt", {
+        sessionId: sid,
+        prompt: [
+          {
+            type: "text",
+            text: `${[shown.context, shown.question].filter((p) => p !== "").join(". ")}\n${choice}`,
+          },
+        ],
+      });
+    const typed = () =>
+      NodeFS.readFileSync(log, "utf8")
+        .split("\n")
+        .filter((l) => / (prompt|send-keys|send-text) /.test(l));
+    try {
+      await call(1, "initialize", { protocolVersion: 2 });
+      await call(2, "session/resume", { sessionId: sid, cwd, mcpServers: [] });
+      const held = fixture("pane-held-message.txt");
+      const shown = parsePanePrompt(held);
+
+      // Its dialog has gone: nothing is pressed, and the answer is not typed as a message.
+      NodeFS.writeFileSync(screen, "❯ \n───────\n  ⏵⏵ bypass permissions on");
+      await answer(shown, "Deliver this message to Claude");
+      NodeAssert.deepEqual(typed(), []);
+
+      // Its dialog is up: option 2 is one down and Enter, for every kind of dialog; free text goes in its slot.
+      for (const [name, choice, keys] of [
+        ["pane-held-message.txt", "Deliver this message to Claude", ["down"]],
+        ["pane-permission.txt", "Deny", ["down"]],
+        ["pane-trust.txt", "Yes, I trust this folder", ["down"]],
+        ["pane-question.txt", "Green", ["down"]],
+        ["pane-question.txt", "Purple", ["down down down", "pane send-text p1 Purple"]],
+      ]) {
+        NodeFS.writeFileSync(screen, fixture(name));
+        NodeFS.writeFileSync(log, "");
+        await answer(parsePanePrompt(fixture(name)), choice);
+        NodeAssert.deepEqual(
+          typed(),
+          [...keys, "enter"].map((k) => (k.startsWith("pane ") ? k : `agent send-keys p1 ${k}`)),
+          `${name}: ${choice}`,
+        );
+      }
+    } finally {
+      child.kill();
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+    }
   },
 );
 
@@ -636,7 +739,7 @@ NodeTest.test(
   "the review screen of a multi-question form is read, with its answers, Submit, Cancel and a way back",
   () => {
     const prompt = parsePanePrompt(fixture("pane-review.txt"));
-    NodeAssert.equal(prompt.question, "Ready to submit your answers?");
+    NodeAssert.equal(plain(prompt.question), "Ready to submit your answers?");
     NodeAssert.equal(prompt.header, "Review your answers");
     NodeAssert.deepEqual(
       prompt.tabs?.map((t) => [t.label, t.answered]),
@@ -671,7 +774,7 @@ NodeTest.test(
   () => {
     // Read from a throwaway Claude Code session asked for two questions in one AskUserQuestion call.
     const prompt = parsePanePrompt(fixture("pane-form-tabs.txt"));
-    NodeAssert.equal(prompt.question, "Which colour do you prefer?");
+    NodeAssert.equal(plain(prompt.question), "Which colour do you prefer?");
     NodeAssert.deepEqual(
       prompt.tabs?.map((t) => [t.label, t.answered]),
       [
@@ -701,7 +804,7 @@ NodeTest.test("a free-text option called Other is the custom slot too", () => {
 
 NodeTest.test("the single question still reads as before", () => {
   NodeAssert.equal(
-    parsePanePrompt(fixture("pane-question.txt")).question,
+    plain(parsePanePrompt(fixture("pane-question.txt")).question),
     "Which colour do you prefer?",
   );
   NodeAssert.equal(parseReviewScreen(["nothing here"]), null);
@@ -895,7 +998,7 @@ NodeTest.test(
       "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
     ].join("\n");
     const prompt = parsePanePrompt(screen);
-    NodeAssert.equal(prompt?.question, "Which account should CI run under?");
+    NodeAssert.equal(plain(prompt?.question), "Which account should CI run under?");
     NodeAssert.deepEqual(
       prompt?.tabs?.map((t) => t.label),
       ["CI account", "Merge 4416", "Submit"],
@@ -931,7 +1034,7 @@ NodeTest.test(
     ].join("\n");
     const prompt = parsePanePrompt(screen);
     NodeAssert.equal(
-      prompt?.question,
+      plain(prompt?.question),
       "#4416 (clip posting path) needs another cloud CI run after my one-line test fix. Which Claude cloud account should run it? Only sablebox is logged in for cloud right now.",
     );
     NodeAssert.equal(

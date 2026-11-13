@@ -12,14 +12,14 @@ export const herdrBin = (env = process.env) =>
   env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
 
 /**
- * A permission card's question ends with a short id of the prompt it was read from. T3 sends the question back with
- * the answer, so an answer meant for one dialog never matches another that reads the same.
+ * A card's question ends with a short id of the prompt it was read from. T3 sends the question back with the answer,
+ * so an answer meant for one dialog never matches another that reads the same.
  */
 const withRef = (prompt) => ({
   ...prompt,
   question: `${prompt.question} (ref ${NodeCrypto.createHash("sha256").update(prompt.key).digest("hex").slice(0, 6)})`,
 });
-/** The id `withRef` adds: its presence marks a message as a permission card's answer. */
+/** The id `withRef` adds: its presence marks a message as a card's answer. */
 export const CARD_REF = /\(ref [0-9a-f]{6}\)$/;
 
 /** The last lines on a pane's screen, for a question Tessaya could not read as options. */
@@ -116,7 +116,9 @@ export function parseReviewScreen(lines) {
  */
 export function parsePanePrompt(screen) {
   const text = String(screen ?? "").replace(ANSI, "");
-  return parseScreen(text) ?? unreadPermission(text) ?? keyHintPrompt(text);
+  const found = parseScreen(text) ?? unreadPermission(text) ?? keyHintPrompt(text);
+  // Every card carries its ref, so its answer is pressed or dropped, never typed: typed text picks a dialog's default.
+  return found === null || CARD_REF.test(found.question) ? found : withRef(found);
 }
 
 /**
