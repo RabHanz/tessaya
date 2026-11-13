@@ -5,10 +5,10 @@ upstream's reactors. ws.ts merges BatonRpcGroup onto the socket's group, adds it
 its own scope middleware (upstream's throws for methods its table does not list).
 
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index 14f12059ce5ce64748987735835cfa3d3a1a9356..e9791a5c4fd90da1f7bd11022373e9f2121349f0 100644
+index 14f12059ce5ce64748987735835cfa3d3a1a9356..aa2c4d91db931b33c62819321e30f5c17a0c7ce4 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
-@@ -300,6 +300,51 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -300,6 +300,64 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
        }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "192.168.1.50" }))),
      );
  
@@ -54,13 +54,26 @@ index 14f12059ce5ce64748987735835cfa3d3a1a9356..e9791a5c4fd90da1f7bd11022373e9f2
 +        expect(
 +          EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, true),
 +        ).toBe(false);
++        // A household member's device pairs another device for that member, never for the owner.
++        const sara = yield* serverAuth.issuePairingCredential(
++          { scopes: ["orchestration:read"] },
++          { delegatedByToken: true, subject: "member:sara" },
++        );
++        const saraCookie = yield* serverAuth.createBrowserSession(sara.credential, requestMetadata);
++        const saraSession = yield* serverAuth.authenticateHttpRequest({
++          cookies: { [sessions.cookieName]: saraCookie.sessionToken },
++          headers: {},
++        } as unknown as Parameters<
++          EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
++        >[0]);
++        expect(saraSession.subject).toBe("member:sara");
 +      }).pipe(Effect.provide(layerEnvironmentAuth())),
 +    );
 +
      it.effect("preserves pairing grants after rejecting scopes they do not grant", () =>
        Effect.gen(function* () {
          const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-@@ -369,6 +414,25 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -369,6 +427,25 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
        }).pipe(Effect.provide(layerEnvironmentAuth())),
      );
  
@@ -87,7 +100,7 @@ index 14f12059ce5ce64748987735835cfa3d3a1a9356..e9791a5c4fd90da1f7bd11022373e9f2
        "preserves a rejected MCP pairing code for exactly one concurrent lower-access retry",
        () =>
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..185c73d9992c44ea851e0e81b4e7475f7b024e5f 100644
+index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..8e3eb2271b8310dfa55169ccfbf9a2c443b21ed7 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -1,5 +1,6 @@
@@ -97,7 +110,15 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..185c73d9992c44ea851e0e81b4e7475f
    AuthAccessWriteScope,
    AuthMcpClientAccess,
    AuthOrchestrationOperateScope,
-@@ -77,6 +78,8 @@ export interface IssuedBearerSession {
+@@ -49,6 +50,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
+ import * as ManagedLimits from "../policy/managedLimits.ts";
+ import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
+ import { MCP_APPROVAL_SUBJECT_PREFIX } from "../persistence/AuthPairingLinks.ts";
++import { isMemberSubject } from "@t3tools/baton-shared/household";
+ import { requestUrl } from "../requestUrl.ts";
+ 
+ const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
+@@ -77,6 +79,8 @@ export interface IssuedBearerSession {
  // MCP client tokens are restricted to /mcp; HTTP API and WebSocket RPC would bypass their access cap.
  const MCP_CLIENT_SUBJECT = "mcp-client";
  const MCP_CLIENT_SESSION_TTL = Duration.days(30);
@@ -106,7 +127,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..185c73d9992c44ea851e0e81b4e7475f
  
  export interface McpClientSession {
    readonly sessionId: AuthSessionId;
-@@ -86,6 +89,34 @@ export interface McpClientSession {
+@@ -86,6 +90,34 @@ export interface McpClientSession {
    readonly peerLink: boolean;
  }
  
@@ -141,15 +162,19 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..185c73d9992c44ea851e0e81b4e7475f
  export interface AuthenticatedSession {
    readonly sessionId: AuthSessionId;
    readonly subject: string;
-@@ -496,6 +527,7 @@ export class EnvironmentAuth extends Context.Service<
+@@ -496,6 +528,11 @@ export class EnvironmentAuth extends Context.Service<
      >;
      readonly issuePairingCredential: (
        input?: AuthCreatePairingCredentialInput,
-+      issuer?: { readonly delegatedByToken: boolean },
++      issuer?: {
++        readonly delegatedByToken: boolean;
++        /** The issuing session's subject, so a member's pairing stays that member's (Tessaya households). */
++        readonly subject?: string;
++      },
      ) => Effect.Effect<
        AuthPairingCredentialResult,
        ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
-@@ -985,7 +1017,9 @@ export const make = Effect.gen(function* () {
+@@ -985,7 +1022,9 @@ export const make = Effect.gen(function* () {
                        proofKeyThumbprint: input.proofKeyThumbprint,
                        ttl: Duration.hours(1),
                      }
@@ -160,7 +185,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..185c73d9992c44ea851e0e81b4e7475f
                  replaceActiveForSubjectAndMethod: grant.method === "desktop-bootstrap",
                  client: {
                    ...requestMetadata,
-@@ -1142,12 +1176,15 @@ export const make = Effect.gen(function* () {
+@@ -1142,12 +1181,20 @@ export const make = Effect.gen(function* () {
        Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
      );
  
@@ -174,12 +199,17 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..185c73d9992c44ea851e0e81b4e7475f
          ? mcpClientScopes(input.access)
          : (input?.scopes ?? AuthStandardClientScopes),
 -      subject: "one-time-token",
-+      subject: issuer?.delegatedByToken === true ? TOKEN_DELEGATED_SUBJECT : "one-time-token",
++      subject:
++        issuer?.subject !== undefined && isMemberSubject(issuer.subject)
++          ? issuer.subject
++          : issuer?.delegatedByToken === true
++            ? TOKEN_DELEGATED_SUBJECT
++            : "one-time-token",
        ...(input?.label ? { label: input.label } : {}),
        ...(input?.access ? { mcpApproval: input.access } : {}),
      }).pipe(
 diff --git a/apps/server/src/auth/http.ts b/apps/server/src/auth/http.ts
-index c2a99533fb14789f945575445da93c1411ecc453..8f7c222603024b62ab63f5fd0dded80181188647 100644
+index c2a99533fb14789f945575445da93c1411ecc453..9e92fcb52d857cbd07b5ec3ea3cb1f3e974b7ada 100644
 --- a/apps/server/src/auth/http.ts
 +++ b/apps/server/src/auth/http.ts
 @@ -1,6 +1,7 @@
@@ -219,7 +249,7 @@ index c2a99533fb14789f945575445da93c1411ecc453..8f7c222603024b62ab63f5fd0dded801
              if (requestedScopes === null || requestedScopes?.length === 0) {
                return yield* failEnvironmentInvalidRequest("invalid_scope");
              }
-@@ -461,7 +468,12 @@ export const layer = HttpApiBuilder.group(
+@@ -461,7 +468,13 @@ export const layer = HttpApiBuilder.group(
                  return yield* failEnvironmentScopeRequired(delegatedScope);
                }
              }
@@ -229,6 +259,7 @@ index c2a99533fb14789f945575445da93c1411ecc453..8f7c222603024b62ab63f5fd0dded801
 +                session,
 +                session.scopes.has(AuthBatonHandsHostScope),
 +              ),
++              subject: session.subject,
 +            });
            },
            Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>

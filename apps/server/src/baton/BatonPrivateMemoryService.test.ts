@@ -37,9 +37,9 @@ const test = <A, E>(name: string, body: () => Effect.Effect<A, E, Layer.Success<
 
 const desk = { session: "desk", desktop: true } as const;
 const phone = { session: "phone", desktop: false } as const;
-const saraPhone = { session: "sara-phone", desktop: false } as const;
+const saraPhone = { session: "sara-phone", desktop: false, member: "sara" } as const;
 const as =
-  (who: { readonly session: string; readonly desktop: boolean }) =>
+  (who: { readonly session: string; readonly desktop: boolean; readonly member?: string }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.provideService(effect, PrivateCaller, who);
 
@@ -179,6 +179,9 @@ describe("BatonPrivateMemoryService", () => {
       assert.isTrue(
         his.rows.some((r) => r.storeId === owner && r.action === "read (Sara's store)"),
       );
+      // Each line names the member a device acted for; his own lines read as before.
+      assert.isTrue(hers.rows.some((r) => r.by === "phone or browser, for sara"));
+      assert.isFalse(his.rows.some((r) => r.by.includes(", for owner")));
       // A person cannot see the whole log; he can.
       assert.include((yield* Effect.flip(as(saraPhone)(p.audit()))).reason, "every store");
       assert.isTrue(yield* as(phone)(p.forget(saraId, read[0]!.id)));

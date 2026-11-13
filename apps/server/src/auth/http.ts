@@ -473,6 +473,7 @@ export const layer = HttpApiBuilder.group(
                 session,
                 session.scopes.has(AuthBatonHandsHostScope),
               ),
+              subject: session.subject,
             });
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>

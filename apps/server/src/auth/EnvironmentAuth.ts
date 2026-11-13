@@ -50,6 +50,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ManagedLimits from "../policy/managedLimits.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { MCP_APPROVAL_SUBJECT_PREFIX } from "../persistence/AuthPairingLinks.ts";
+import { isMemberSubject } from "@t3tools/baton-shared/household";
 import { requestUrl } from "../requestUrl.ts";
 
 const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
@@ -527,7 +528,11 @@ export class EnvironmentAuth extends Context.Service<
     >;
     readonly issuePairingCredential: (
       input?: AuthCreatePairingCredentialInput,
-      issuer?: { readonly delegatedByToken: boolean },
+      issuer?: {
+        readonly delegatedByToken: boolean;
+        /** The issuing session's subject, so a member's pairing stays that member's (Tessaya households). */
+        readonly subject?: string;
+      },
     ) => Effect.Effect<
       AuthPairingCredentialResult,
       ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
@@ -1184,7 +1189,12 @@ export const make = Effect.gen(function* () {
       scopes: input?.access
         ? mcpClientScopes(input.access)
         : (input?.scopes ?? AuthStandardClientScopes),
-      subject: issuer?.delegatedByToken === true ? TOKEN_DELEGATED_SUBJECT : "one-time-token",
+      subject:
+        issuer?.subject !== undefined && isMemberSubject(issuer.subject)
+          ? issuer.subject
+          : issuer?.delegatedByToken === true
+            ? TOKEN_DELEGATED_SUBJECT
+            : "one-time-token",
       ...(input?.label ? { label: input.label } : {}),
       ...(input?.access ? { mcpApproval: input.access } : {}),
     }).pipe(

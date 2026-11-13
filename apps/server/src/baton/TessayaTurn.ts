@@ -3,6 +3,7 @@
  * desktop, a desk device, the phone and the mascot are vessels. Each sends the same envelope, gets the same memory
  * for the same words and persona, and every addressed turn it carries is learned from the same way.
  */
+import { memberOfSubject, vesselSubject } from "@t3tools/baton-shared/household";
 import { memoryBlock } from "@t3tools/baton-shared/memory";
 import { privatePersonOf, type SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import * as Context from "effect/Context";
@@ -155,8 +156,9 @@ export const make = Effect.gen(function* () {
     // shortcut: only a store opened for this vessel's own session is read; nothing opens one for a device yet (M2).
     const recalled = yield* stores.value.recall({ turn: asked, text: turn.text }).pipe(
       Effect.provideService(PrivateCaller, {
-        session: `vessel:${turn.vessel.id}`,
+        session: vesselSubject(turn.vessel.id),
         desktop: true,
+        member: memberOfSubject(vesselSubject(turn.vessel.id)),
       }),
       Effect.option,
     );

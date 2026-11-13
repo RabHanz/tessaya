@@ -342,6 +342,19 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
         expect(
           EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, true),
         ).toBe(false);
+        // A household member's device pairs another device for that member, never for the owner.
+        const sara = yield* serverAuth.issuePairingCredential(
+          { scopes: ["orchestration:read"] },
+          { delegatedByToken: true, subject: "member:sara" },
+        );
+        const saraCookie = yield* serverAuth.createBrowserSession(sara.credential, requestMetadata);
+        const saraSession = yield* serverAuth.authenticateHttpRequest({
+          cookies: { [sessions.cookieName]: saraCookie.sessionToken },
+          headers: {},
+        } as unknown as Parameters<
+          EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
+        >[0]);
+        expect(saraSession.subject).toBe("member:sara");
       }).pipe(Effect.provide(layerEnvironmentAuth())),
     );
 
