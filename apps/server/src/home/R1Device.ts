@@ -52,6 +52,7 @@ import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
 import { MemoryViewer } from "../baton/BatonMemoryService.ts";
 import { readPack } from "../baton/OperatingSystemPack.ts";
 import { TessayaTurn, TurnOrigin, originOf, type TurnEnvelope } from "../baton/TessayaTurn.ts";
+import { TurnPools } from "../baton/TurnPools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
@@ -417,6 +418,10 @@ const addressedOf = (voice: unknown): boolean | undefined =>
     ? voice.addressed
     : undefined;
 
+/** The loop's echo taint: the turn began while her own voice could still be heard in the room. */
+const taintedOf = (voice: unknown): boolean =>
+  typeof voice === "object" && voice !== null && "tainted" in voice && voice.tainted === true;
+
 /** The exchange before this one, so "yes, from now on" has a referent when it is learned from. */
 const previousOf = (history: R1Heard["history"]): string | null => {
   const last = history.slice(-2).map((t) => `${t.role}: ${t.content}`);
@@ -472,6 +477,16 @@ interface R1Heard {
 
 const isReplay = (input: R1Heard) => input.device?.startsWith("replay-") === true;
 
+/** A turn's brain call takes one of the shared brain slots, so many vessels at once never overload the box (§2.0a). */
+const inBrainSlot =
+  (turn: TurnEnvelope) =>
+  <A, E, R>(work: Effect.Effect<A, E, R>) =>
+    Effect.flatMap(Effect.serviceOption(TurnPools), (pools) =>
+      Option.isNone(pools)
+        ? work
+        : pools.value.run("brain", { vessel: turn.vessel.id, class: "interactive" }, work),
+    );
+
 /** The house, the last action and memories for this turn, and the eyes set to thinking. */
 /** His shared dictionary as vocabulary entries: each term spelt his way, its aliases as the forms it is heard as. */
 export const dictionaryEntries = (
@@ -526,6 +541,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
     persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
     speaker: speakerOf(input.voice),
     addressed: addressedOf(input.voice),
+    // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
+    tainted: taintedOf(input.voice),
     timeZone,
     // Each turn is a fresh call, with no session holding standing memory.
     sessionless: true,
@@ -764,6 +781,7 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
     })
     .pipe(
       Stream.runForEach((words) => Effect.sync(() => sentences.push(words))),
+      inBrainSlot(turn),
       Effect.exit,
     );
   sentences.flush();
@@ -831,6 +849,7 @@ export const r1TurnStream = (
             spoken = head.rest.length;
           }),
         ),
+        inBrainSlot(turn),
         Effect.exit,
       );
       // Where a slow turn's time went, for the room loop's latency work.

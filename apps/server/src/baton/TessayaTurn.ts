@@ -13,6 +13,7 @@ import * as Option from "effect/Option";
 import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
+import { TurnPools } from "./TurnPools.ts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
 
@@ -98,6 +99,7 @@ export const make = Effect.gen(function* () {
   const memory = yield* BatonMemoryService;
   const learning = yield* BatonMemoryLearning;
   const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
+  const pools = yield* Effect.serviceOption(TurnPools);
 
   const privateFor = Effect.fn("TessayaTurn.private")(function* (turn: TurnEnvelope) {
     const asked = {
@@ -150,7 +152,7 @@ export const make = Effect.gen(function* () {
     done: { readonly reply: string; readonly previous?: string | null | undefined },
   ) {
     if (notLearnable(turn) !== null) return null;
-    return yield* learning.learn({
+    const learn = learning.learn({
       origin: "turn",
       said: turn.text,
       reply: done.reply,
@@ -161,6 +163,10 @@ export const make = Effect.gen(function* () {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
       ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
     });
+    // Learning is background work: one model call at a time across every vessel, behind any spoken turn.
+    return yield* Option.isNone(pools)
+      ? learn
+      : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, learn);
   });
 
   return TessayaTurn.of({ begin, end });
