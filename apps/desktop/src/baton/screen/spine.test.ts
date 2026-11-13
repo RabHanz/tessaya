@@ -39,8 +39,13 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
     judgeToolCall({ tool, input }, { actWithoutAsking: false, tainted: false });
 
   it("every tool is in the table the gate reads", () => {
+    // The house and device tools come from his server's registry, judged here by name (batonTools.test covers them).
     expect(new Set(tools)).toEqual(
-      new Set([...BATON_TOOLS].filter((t) => !REMOTE_ONLY_TOOLS.has(t))),
+      new Set(
+        [...BATON_TOOLS].filter(
+          (t) => !REMOTE_ONLY_TOOLS.has(t) && !t.startsWith("home_") && !t.startsWith("device_"),
+        ),
+      ),
     );
   });
   it("seeing, pointing and the two guided modes are allowed here because each asks where it runs", () => {
