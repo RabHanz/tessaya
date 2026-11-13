@@ -94,17 +94,17 @@ describe("warm subscription sessions for spoken turns", () => {
   });
 
   it("gives Claude Code's own file tools, in his folder, only to a session whose spec asks for them", async () => {
-    const started: Array<{ args: ReadonlyArray<string>; cwd: unknown }> = [];
+    const started: Array<{ cmd: string; args: ReadonlyArray<string>; cwd: unknown }> = [];
     const claude = fakeClaude([], { count: 0 });
     const spawn = ((cmd: string, args: ReadonlyArray<string>, options: { cwd?: unknown }) => {
-      started.push({ args, cwd: options.cwd });
+      started.push({ cmd, args, cwd: options.cwd });
       return claude(cmd, args as Array<string>, options as never);
     }) as unknown as typeof NodeChildProcess.spawn;
     const sessions = createVoiceSessions({ spawn, retryMs: 1, lean: true });
     await sessions.warm("room", spec);
     await sessions.warm("desktop", {
       ...spec,
-      builtins: { tools: ["Read", "Bash"], cwd: "/home/him" },
+      builtins: { tools: ["Read", "Bash"], cwd: "/home/him", binary: "/opt/claude" },
     });
     await sessions.close();
     const toolsOf = (i: number) => started[i]!.args[started[i]!.args.indexOf("--tools") + 1];
@@ -112,6 +112,8 @@ describe("warm subscription sessions for spoken turns", () => {
     expect(started[0]!.cwd).not.toBe("/home/him");
     expect(toolsOf(1)).toBe("Read,Bash");
     expect(started[1]!.cwd).toBe("/home/him");
+    expect(started.find((st) => st.cwd === "/home/him")?.cmd).toBe("/opt/claude");
+    expect(started.find((st) => st.cwd !== "/home/him")?.cmd).toBe("claude");
   });
 
   it("survives a vanished binary, and warms each turn's own session before his words", async () => {

@@ -21,7 +21,11 @@ const run = (ownMachine: boolean) =>
       { name: "screen_capture", description: "his screen", input_schema: { type: "object" } },
     ]);
     const said = yield* deskTurnStream(
-      { text: "what's on my screen?", context: "the window he is using (data): Notepad" },
+      {
+        text: "what's on my screen?",
+        context: "the window he is using (data): Notepad",
+        claudeBinary: "C:\\claude.exe",
+      },
       { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
       ownMachine,
     ).pipe(
@@ -77,6 +81,7 @@ effectIt.effect(
       expect(turn.user).toContain('"vessel":"R1"');
       expect(turn.tools.map((t) => t.name)).toContain("screen_capture");
       expect(turn.builtins?.tools).toContain("Bash");
+      expect(turn.builtins?.binary).toBe("C:\\claude.exe");
     }),
 );
 

@@ -6,6 +6,7 @@
  */
 import { volumeAfter, volumeLine } from "@t3tools/baton-shared/speakingVolume";
 import { speakerPath, type SpeakerIdentity, type SpokenAnswer } from "@t3tools/baton-voice";
+import { contextLine } from "@t3tools/baton-shared/agentPrompt";
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { appOf, tracedTurns } from "@t3tools/baton-shared/skillLearning";
 import { replayTurn } from "../agent/replay.ts";
@@ -100,7 +101,9 @@ import {
 } from "@t3tools/baton-shared/companionPacing";
 
 import {
+  resolveBinary,
   SessionClosed,
+  spawnable,
   startVisionSession,
   type VisionContent,
   type VisionSession,
@@ -722,6 +725,12 @@ export const startScreenCompanion = (input: {
   readonly env: NodeJS.ProcessEnv;
   /** This machine's own server, whether or not T3's window is up. */
   readonly direct?: (method: string, body: unknown) => Promise<unknown>;
+  /** His sentence through the one brain on this machine's server; her words stream to `onWords`. */
+  readonly deskTurn?: (
+    body: unknown,
+    onWords: (words: string) => void,
+    signal: AbortSignal,
+  ) => Promise<void>;
   /** His private memory stores on this machine's server: read and written only for the speaker's own store. */
   /** A household member's role on this machine's server, for a saved person's turn (identity I-2); null: not a member. */
   readonly memberGrants?: (
@@ -1006,6 +1015,7 @@ export const startScreenCompanion = (input: {
     hush();
     // The answering turn does nothing more (stopsOnCutIn), as when he talks over her.
     if (answering > 0) cutIns.cut();
+    serverTurn?.abort();
     input.onDismissed?.();
     // Closing the pill is not a Stop: a device's or standing job's turn goes on unless he really stops.
     if (!quiet) turnLock.stopDevice();
@@ -3264,6 +3274,62 @@ export const startScreenCompanion = (input: {
       ? { status: "cancelled", text: "He started talking to Tessaya, so it stopped." }
       : out;
   };
+  /** The server brain's turn in progress: his stop or his cutting in ends it. */
+  let serverTurn: AbortController | null = null;
+  /** His sentence through the one brain on his server (SPINE-UNIFY S4), with what this desktop sees. */
+  const serverSay: AssistantAgent["say"] = async (text, where, onDelta) => {
+    const deskTurn = input.deskTurn!;
+    beginTurn(text);
+    const controller = new AbortController();
+    serverTurn = controller;
+    let reply = "";
+    try {
+      await deskTurn(
+        {
+          text,
+          context: contextLine({
+            now: clockLine(new Date()),
+            window: where.window,
+            session: where.session,
+            target: null,
+            ...(where.persona === undefined ? {} : { persona: where.persona }),
+            presence: (await actions?.presence?.()) ?? "",
+          }),
+          ...(where.persona === undefined ? {} : { persona: where.persona.id }),
+          speaker:
+            voiceTurn && heardFrom !== null
+              ? {
+                  kind: heardFrom.kind,
+                  personId: heardFrom.personId,
+                  verified: heardFrom.verified,
+                  inherited: heardFrom.inherited,
+                  confidence: heardFrom.confidence,
+                }
+              : null,
+          project: where.project ?? null,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          // Found on his PATH here, as his own sessions find it; a server spawns it without a shell.
+          claudeBinary: spawnable(resolveBinary(settings.claudeBinary, input.platform, input.env)),
+        },
+        (words) => {
+          reply += words;
+          onDelta?.(words);
+        },
+        controller.signal,
+      );
+    } catch (error) {
+      if (controller.signal.aborted) throw new SessionClosed("He stopped the turn.");
+      // A server without the one brain (older, or not up yet): this desktop answers, as before the setting.
+      if (reply === "") {
+        input.onNote?.("server_brain_fallback", { why: String(error).slice(0, 200) });
+        return agentOf().say(text, where, onDelta);
+      }
+      throw error;
+    } finally {
+      if (serverTurn === controller) serverTurn = null;
+    }
+    return reply;
+  };
   /** His sentence goes to his session; a device's to a fresh one of its own, ended with the turn. */
   const sayFor = (
     outside: boolean,
@@ -3280,7 +3346,9 @@ export const startScreenCompanion = (input: {
             await once.end();
           }
         }
-      : agentOf().say;
+      : settings.serverBrain && input.deskTurn !== undefined
+        ? serverSay
+        : agentOf().say;
   /** A sentence of his, to the one assistant. Streams its first sentence as soon as it is written. */
   const agentTurn = async (
     text: string,
@@ -3761,6 +3829,7 @@ export const startScreenCompanion = (input: {
     hush,
     cutIn: () => {
       if (answering > 0) cutIns.cut();
+      serverTurn?.abort();
       hush();
     },
     dismiss,

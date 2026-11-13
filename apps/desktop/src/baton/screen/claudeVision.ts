@@ -256,6 +256,26 @@ export const resolveBinary = (
   return name;
 };
 
+/**
+ * What a process can start without a shell: npm's `claude.cmd` only runs the package's own `claude.exe`, so that, when
+ * it is there; anything else as given.
+ */
+export const spawnable = (
+  binary: string,
+  exists: (path: string) => boolean = NodeFS.existsSync,
+): string => {
+  if (!/\.cmd$/i.test(binary)) return binary;
+  const exe = NodePath.win32.join(
+    NodePath.win32.dirname(binary),
+    "node_modules",
+    "@anthropic-ai",
+    "claude-code",
+    "bin",
+    "claude.exe",
+  );
+  return exists(exe) ? exe : binary;
+};
+
 export const startVisionSession = (options: VisionSessionOptions): VisionSession => {
   NodeFS.mkdirSync(options.workDir, { recursive: true });
   const promptFile = NodePath.join(

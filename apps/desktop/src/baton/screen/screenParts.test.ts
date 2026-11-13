@@ -10,6 +10,7 @@ import { withBrainRoutes } from "../voice/desktopVoiceCore.ts";
 import {
   resolveBinary,
   resultOf,
+  spawnable,
   startVisionSession,
   subscriptionEnv,
   userMessage,
@@ -94,6 +95,11 @@ describe("claudeVision", () => {
     expect(resolveBinary("D:\\tools\\claude.exe", "win32", env, () => false)).toBe(
       "D:\\tools\\claude.exe",
     );
+    // npm's shim runs the package's own exe, which a server can start without a shell (his laptop, 13 Nov).
+    const exe = "C:\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe";
+    expect(spawnable("C:\\npm\\claude.cmd", (p) => p === exe)).toBe(exe);
+    expect(spawnable("C:\\npm\\claude.cmd", () => false)).toBe("C:\\npm\\claude.cmd");
+    expect(spawnable("claude")).toBe("claude");
   });
 
   it("names a missing claude in words", async () => {

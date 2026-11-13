@@ -27,6 +27,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
+import { readDeskTurn } from "./agent/deskTurnStream.ts";
 import { conversationsIn } from "./conversation/conversationLog.ts";
 import {
   beginStart,
@@ -491,6 +492,25 @@ export const startBatonDesktop = Effect.gen(function* () {
     };
     const direct = (method: string, body: unknown, timeoutMs?: number) =>
       own(`/tessaya/desk/${method}`, body, timeoutMs);
+    // His sentence through the one brain on this machine's server (SPINE-UNIFY S4): her words as they stream.
+    const deskTurn = async (
+      body: unknown,
+      onWords: (words: string) => void,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") throw new Error("The local server is not ready.");
+      const response = await fetch(new URL("/tessaya/desk/turn", config.value.httpBaseUrl), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (!response.ok || response.body === null)
+        throw new Error(`The server brain did not answer (${response.status}).`);
+      await readDeskTurn(response.body, onWords);
+    };
     // His private stores live on this machine's own server: always asked here, never through T3's window.
     const privateMemory = createPrivateMemory((op, args = {}) =>
       own("/tessaya/private", { op, ...args }),
@@ -625,6 +645,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         platform: environment.platform,
         env: hostEnvironment,
         direct,
+        deskTurn,
         privateMemory,
         speak: (text) => {
           spokenThisTurn.push(text);
