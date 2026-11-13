@@ -67,6 +67,7 @@ import Migration0035 from "./Migrations/Baton/035_MemberPasskeys.ts";
 import Migration0036 from "./Migrations/Baton/036_MemoryEntities.ts";
 import Migration0037 from "./Migrations/Baton/037_BrainUsage.ts";
 import Migration0038 from "./Migrations/Baton/038_JobOrigin.ts";
+import Migration0039 from "./Migrations/Baton/039_Comms.ts";
 
 /**
  * Baton's own tracking table. Upstream's `effect_sql_migrations` is left to
@@ -114,6 +115,7 @@ const batonMigrationEntries = [
   [36, "MemoryEntities", Migration0036],
   [37, "BrainUsage", Migration0037],
   [38, "JobOrigin", Migration0038],
+  [39, "Comms", Migration0039],
 ] as const;
 
 export const batonMigrationManifest = batonMigrationEntries.map(

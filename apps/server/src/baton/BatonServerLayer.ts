@@ -41,6 +41,7 @@ import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
 import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as R1Brain from "../home/R1Brain.ts";
 import * as TessayaHousehold from "./TessayaHousehold.ts";
+import * as TessayaComms from "./TessayaComms.ts";
 import * as VoiceForgets from "./VoiceForgets.ts";
 import * as MemberPreferences from "./MemberPreferences.ts";
 import * as StepUps from "../home/StepUps.ts";
@@ -246,7 +247,12 @@ const servicesInner = IntentService.layer.pipe(
       ),
     ),
   ),
-  Layer.provideMerge(TessayaHousehold.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
+  // Comms (notes, calls, consent) over the household it reads who is who from; one step, as the pipe holds 20.
+  Layer.provideMerge(
+    TessayaComms.layer.pipe(
+      Layer.provideMerge(TessayaHousehold.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
+    ),
+  ),
   Layer.provideMerge(BatonPrivateMemoryService.layer),
   Layer.provideMerge(BatonVoiceLibrary.layer),
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
