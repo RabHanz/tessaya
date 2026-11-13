@@ -14,6 +14,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
@@ -188,7 +189,9 @@ export const layer = Layer.effect(
           ? "invalid-key"
           : status === 429
             ? "rate-limit"
-            : "unreachable",
+            : status >= 500
+              ? "overloaded"
+              : "unreachable",
       });
 
     // Off the key's roles: logged, and the call fails with BrainRefused. Nothing falls back from here.
@@ -249,9 +252,17 @@ export const layer = Layer.effect(
         );
         if (request === null) return { configured: false } as const;
         const started = yield* Clock.currentTimeMillis;
-        const response = yield* execute(request);
-        if (response.status < 200 || response.status >= 300)
-          return yield* rejected(response.status);
+        const response = yield* execute(request).pipe(
+          Effect.flatMap((r) =>
+            r.status >= 200 && r.status < 300 ? Effect.succeed(r) : Effect.fail(rejected(r.status)),
+          ),
+          // One quick second try when the API is busy or failing (429, 5xx, 529), inside the same 2.5 s budget.
+          Effect.retry({
+            times: 1,
+            schedule: Schedule.spaced("200 millis"),
+            while: (error) => error.reason !== "invalid-key",
+          }),
+        );
         const { content } = yield* HttpClientResponse.schemaBodyJson(MessagesResponse)(
           response,
         ).pipe(Effect.mapError(() => new DictationCleanupError({ reason: "unreachable" })));

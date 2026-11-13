@@ -371,6 +371,7 @@ export class DictationCleanupError extends Schema.TaggedError<DictationCleanupEr
       "unreadable-key",
       "invalid-key",
       "rate-limit",
+      "overloaded",
       "timeout",
       "unreachable",
     ]),
