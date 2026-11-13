@@ -6,8 +6,12 @@ import * as Layer from "effect/Layer";
 import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
+import { HomeDevices } from "./HomeDevices.ts";
 
-const layer = registryLayer.pipe(Layer.provideMerge(BatonDatabaseMemory));
+// The door's R1 ops need HomeDevices; a vessel's report never reaches it.
+const layer = Layer.mergeAll(registryLayer, Layer.mock(HomeDevices)({})).pipe(
+  Layer.provideMerge(BatonDatabaseMemory),
+);
 const vessel = { who: "the desktop", surface: "settings" } as const;
 const DESK = "desk-laptop";
 const manifest = {

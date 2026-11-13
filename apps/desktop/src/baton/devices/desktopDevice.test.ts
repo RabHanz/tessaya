@@ -58,12 +58,12 @@ const facts: DesktopFacts = {
 describe("the desktop's manifest", () => {
   it("names his peripherals, leaves out the plumbing, and marks webcams and Windows Hello private", () => {
     const m = desktopManifest({
-      deviceId: desktopDeviceId("Rabee-LAPTOP"),
+      deviceId: desktopDeviceId("Kitchen-PC"),
       name: "Laptop",
       appVersion: "0.1.120",
       facts,
     });
-    expect(m.deviceId).toBe("desktop-rabee-laptop");
+    expect(m.deviceId).toBe("desktop-kitchen-pc");
     expect(m.items.find((i) => i.id === "audio.input")).toMatchObject({
       type: "enum",
       access: "read,write",

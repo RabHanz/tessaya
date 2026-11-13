@@ -36,7 +36,7 @@ const CONTROL_ITEMS: Readonly<
       "how long the microphone stays open after a dictation, so the next one starts at once",
   },
 };
-/** Stable across restarts and readable in a list: "desktop-rabee-laptop". */
+/** Stable across restarts and readable in a list: "desktop-kitchen-pc". */
 export const desktopDeviceId = (host: string): string =>
   `desktop-${
     host
