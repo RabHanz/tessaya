@@ -10,11 +10,13 @@ import { pronounce, pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import { stopIntent } from "@t3tools/baton-shared/stopPhrases";
 
 import { createEchoGuard } from "../echoGuard.ts";
+import { ackLines, pickAck, type Acknowledge } from "./acknowledge.ts";
 import {
   accumulate,
+  answersStepUp,
   cueOf,
-  NOT_SURE_YET,
   stepUpFor,
+  stepUpLine,
   type RecognitionSession,
   type StepUp,
 } from "../recognition.ts";
@@ -93,19 +95,6 @@ const sameWords = (a: string, b: string) => {
 
 /** How many times one turn may start her brain on a guess before the final text: each costs a brain call. */
 const MAX_GUESSES = 3;
-/** His reply to her step-up: the phrase she gave (its words in order), or a yes to "is that you?". */
-export const answersStepUp = (step: StepUp, text: string): boolean => {
-  const said = text
-    .toLowerCase()
-    .replace(/[^a-z' ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (step.kind === "phrase") return ` ${said} `.includes(` ${step.phrase} `);
-  if (step.kind === "confirm")
-    return /^(?:yes|yeah|yep|yup|it's me|it is me|that's me|correct)\b/.test(said);
-  return false;
-};
-
 /** His words must hold still this long at a pause before her brain starts early on them. */
 const STABLE_MS = 300;
 
@@ -224,6 +213,8 @@ export interface RoomDeps {
   /** A guess's reply was played to him in full: the server may now record it and learn from it. */
   readonly played?: (callId: string) => void;
   readonly log: (line: string) => void;
+  /** 0 to 1, for her varied lines (Math.random when absent). */
+  readonly random?: () => number;
   /**
    * Her server's voice arbiter (one responder per utterance across his devices): a claim before she answers a wake or
    * her name, and where her reply stands. Null from `claim` when the arbiter cannot be asked: this R1 answers.
@@ -278,6 +269,8 @@ export interface RoomConfig {
   readonly joinMs: number;
   /** His own stop phrases (voice settings), beside the shared ones; over her voice only these and her name count. */
   readonly stopPhrases: ReadonlyArray<string>;
+  /** Her name alone and then nothing: a short spoken "I'm here" (voice), a sound (tone), or only her look (off). */
+  readonly acknowledge: Acknowledge;
   /** After this long with nothing said to her, the session ends (the R1 plays its exit chime); S2 starts it again. */
   readonly idleStopMs: number;
   /** Who answers by name, the lead first; each speaks in its own voice. */
@@ -315,6 +308,7 @@ export const ROOM_CONFIG: RoomConfig = {
   echoTailMs: 1_500,
   joinMs: 2_000,
   stopPhrases: [],
+  acknowledge: "voice",
   // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
   idleStopMs: 15 * 60_000,
   // shortcut: the default pack's personas and voices (his picks); a pack he edits on the laptop is not read here.
@@ -879,12 +873,84 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
     const look = () => eye("cmd/eye/persona", { name: (persona?.name ?? "").toLowerCase() });
 
-    const speakNow = (text: string) => {
+    /** Her last "I'm here", so it is never the same twice running, and when it was. */
+    let lastAck: string | null = null;
+    let lastAckAt = Number.NEGATIVE_INFINITY;
+    let ackScheduledAt = Number.NEGATIVE_INFINITY;
+    /** Her "I'm here" lines in this persona's voice, rendered once so they play at once. */
+    const prerenderAcks = () => {
+      const voice = voiceNow();
+      if (config.acknowledge !== "voice" || voice === undefined || ackRendered.has(voice)) return;
+      ackRendered.add(voice);
+      void (async () => {
+        for (const line of ackLines(persona?.id ?? "")) {
+          const chunks: Int16Array[] = [];
+          try {
+            for await (const pcm of deps.speak(spoken(line), new AbortController().signal, voice))
+              chunks.push(pcm);
+            ackAudio.set(`${voice}|${line}`, chunks);
+          } catch {
+            // Not rendered: said live instead when it comes up.
+          }
+        }
+      })();
+    };
+    let lastExchangeAt = Number.NEGATIVE_INFINITY;
+    /** He said her name (or pressed S2) and then nothing: she shows she is listening, varied and in context. */
+    const acknowledge = () => {
+      if (config.acknowledge === "off") return;
+      face("attentive");
+      if (config.acknowledge === "tone") {
+        if (!noCues.has(id))
+          void send(cueSamples("wake"), new AbortController().signal, () => undefined).catch(
+            () => undefined,
+          );
+        return;
+      }
+      const name = recog?.verified === true && !recog.named ? recog.name : null;
+      const line = pickAck(
+        {
+          personaId: persona?.id ?? "",
+          hour: Number(
+            new Intl.DateTimeFormat("en-GB", {
+              hour: "numeric",
+              hourCycle: "h23",
+              timeZone: config.tz,
+            }).format(deps.now()),
+          ),
+          sinceExchangeMs: deps.now() - lastExchangeAt,
+          sinceAckMs: deps.now() - lastAckAt,
+          name,
+          last: lastAck,
+        },
+        deps.random ?? Math.random,
+      );
+      lastAckAt = deps.now();
+      if (line === null) {
+        deps.log(`[${id}] her name alone: her look, no words`);
+        return;
+      }
+      lastAck = line;
+      if (name !== null && line.includes(name) && recog !== null) recog = { ...recog, named: true };
+      deps.log(`[${id}] her name alone: "${line}"`);
+      speakNow(line, ackAudio.get(`${voiceNow() ?? ""}|${line}`));
+    };
+
+    const speakNow = (text: string, audio?: ReadonlyArray<Int16Array>) => {
       saying(text);
       const control = new AbortController();
       reply = control;
       lastActivity = deps.now();
-      lastSaid = say(text, control.signal)
+      lastSaid = (
+        audio === undefined
+          ? say(text, control.signal)
+          : play(
+              (async function* () {
+                yield* audio;
+              })(),
+              control.signal,
+            )
+      )
         .catch(() => undefined)
         .finally(() => {
           if (reply !== control) return;
@@ -1454,6 +1520,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           deps.arbiter?.report("ended", id);
         }
         if (said !== "" && !me.merged) history.push({ role: "assistant", content: said });
+        if (said !== "") lastExchangeAt = deps.now();
         lastActivity = deps.now();
       }
       const metrics: TurnMetrics = {
@@ -1716,14 +1783,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         recog = asked.session;
         heldAct = { act, step: asked.step, at: deps.now() };
         if (asked.step.kind === "none") return settleStepUp(true, "session");
-        const ask =
-          asked.step.kind === "phrase"
-            ? `Say "${asked.step.phrase}" for me.`
-            : asked.step.kind === "confirm"
-              ? `Is that you, ${asked.step.name}?`
-              : "Tap yes on your phone if that's you.";
+        const line = stepUpLine(asked.step);
+        if (line === null) return;
         if (reply !== null) interrupt();
-        speakNow(asked.step.explain ? `${NOT_SURE_YET} ${ask}` : ask);
+        speakNow(line);
       },
       /** S2 on this R1: someone is at it, which proves presence for an act waiting on who is speaking. */
       present: () => settleStepUp(true, "button"),
@@ -1743,6 +1806,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       wake: () => {
         openUntil = Math.max(openUntil, deps.now() + config.followMs);
         firstUntil = deps.now() + config.firstTurnMs;
+        // Nothing said within 1.2 s of her name or S2: she shows she heard (13 Nov: the red light, then silence).
+        const seq = starts;
+        const at = deps.now();
+        if (deps.now() - ackScheduledAt < 1_500) return;
+        ackScheduledAt = at;
+        void deps.sleep(1_200).then(() => {
+          if (closed || starts !== seq || turns.inTurn() || speaking() || reply !== null) return;
+          acknowledge();
+        });
+        prerenderAcks();
       },
       /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
       tick: (): "stop" | null => {
@@ -1772,6 +1845,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const capabilities = new Map<string, ReadonlyArray<string>>();
   /** His own pronunciations per R1, from her server (`voice/pronounce`, retained). */
   const pronunciations = new Map<string, Readonly<Record<string, string>>>();
+  /** Her "I'm here" lines, rendered per voice once for the loop's life (voice|line to audio). */
+  const ackAudio = new Map<string, ReadonlyArray<Int16Array>>();
+  const ackRendered = new Set<string>();
   /** Each R1's claim to the arbiter on its way: her voice waits for it, nothing else does. */
   const gates = new Map<string, Promise<boolean>>();
   const gateOf = (id: string) => gates.get(id) ?? Promise.resolve(true);

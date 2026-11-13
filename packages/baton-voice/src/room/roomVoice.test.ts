@@ -20,7 +20,9 @@ const DEV = "r1-test";
 const frame = (loud: boolean) => toBytes(new Int16Array(960).fill(loud ? 3000 : 0));
 
 /** A fake room on a manual clock: sleeps advance it, nothing waits on wall time. */
-const setup = (over: Partial<RoomDeps> = {}, config = ROOM_CONFIG) => {
+/** The room as configured, with her "I'm here" off (its own tests turn it on). */
+const QUIET = { ...ROOM_CONFIG, acknowledge: "off" as const };
+const setup = (over: Partial<RoomDeps> = {}, config: typeof ROOM_CONFIG = QUIET) => {
   let clock = 1_000;
   const published: Array<{ topic: string; payload: Uint8Array | string }> = [];
   const brainCalls: Array<Parameters<RoomDeps["brain"]>[0]> = [];
@@ -478,7 +480,7 @@ describe("answering only when he is talking to her", () => {
           for (let i = 0; i < 10; i += 1) yield voice(3_200, 210, 3.1, i * 3_200);
         },
       },
-      { ...ROOM_CONFIG, leadMs: 60_000, prerollMs: 0 },
+      { ...QUIET, leadMs: 60_000, prerollMs: 0 },
     );
     const played: Array<{ at: number; pcm: Int16Array }> = [];
     const publish = t.deps.publish;
@@ -532,7 +534,7 @@ describe("answering only when he is talking to her", () => {
           for (let i = 0; i < 10; i += 1) yield voice(3_200, 210, 3.1, i * 3_200);
         },
       },
-      { ...ROOM_CONFIG, leadMs: 60_000, prerollMs: 0 },
+      { ...QUIET, leadMs: 60_000, prerollMs: 0 },
     );
     const played: Array<{ at: number; pcm: Int16Array }> = [];
     const publish = t.deps.publish;
@@ -623,7 +625,7 @@ describe("answering only when he is talking to her", () => {
             if (ms < 1_000) t.advance(ms);
           },
         },
-        { ...ROOM_CONFIG, leadMs: 60_000, prerollMs: 0 },
+        { ...QUIET, leadMs: 60_000, prerollMs: 0 },
       );
       const played: Array<{ at: number; pcm: Int16Array }> = [];
       const publish = t.deps.publish;
@@ -1021,7 +1023,7 @@ describe("the per-device switch", () => {
       publish: (t: string) => published.push(t),
       sleep: async () => undefined,
     };
-    const room = createRoomVoice(deps, { ...ROOM_CONFIG, inhouse: new Set(["r1-a"]) });
+    const room = createRoomVoice(deps, { ...QUIET, inhouse: new Set(["r1-a"]) });
     room.message("freya/r1/r1-a/state/online", Buffer.from("1"));
     room.message("freya/r1/r1-b/state/online", Buffer.from("1"));
     room.message("freya/r1/r1-a/state/online", Buffer.from("0"));
@@ -1471,7 +1473,7 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
 
   it("takes his Urdu as his when the household speaks it, set per R1 by voice/languages (13 Nov correction)", async () => {
     const line = "Ik heb minekin, for nie bata. Foi já gente. Quem quer essa trilha?";
-    const urdu = setup({ recognise: heard([line]) }, { ...ROOM_CONFIG, languages: ["en", "ur"] });
+    const urdu = setup({ recognise: heard([line]) }, { ...QUIET, languages: ["en", "ur"] });
     urdu.s2();
     await speakTurn(urdu);
     expect(urdu.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([line]);
@@ -1978,5 +1980,55 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
     await t.feed(true, 20);
     await t.feed(false, 40);
     expect(t.brainCalls.at(-1)!.tessaya.persona).toBe("research");
+  });
+});
+
+describe("her name alone, then nothing (16:36:43, 13 Nov: the red light and silence)", () => {
+  const wakeThenSilence = async (acknowledge: "voice" | "tone" | "off", speaks: boolean) => {
+    const spoken: string[] = [];
+    const logs: string[] = [];
+    const waits: Array<() => void> = [];
+    const t = setup(
+      {
+        speak: async function* (text) {
+          spoken.push(text);
+          yield new Int16Array(3_200);
+        },
+        random: () => 0.9,
+        log: (l) => logs.push(l),
+        // Her 1.2 s wait runs on his real time: it ends only when the test says so.
+        sleep: async (ms) => {
+          if (ms === 1_200) await new Promise<void>((r) => waits.push(r));
+          else t.advance(ms);
+        },
+      },
+      { ...ROOM_CONFIG, acknowledge },
+    );
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    const cueFrames = t.published.filter((p) => p.topic.endsWith("/voice/down")).length;
+    if (speaks) await t.feed(true, 20);
+    t.advance(1_200);
+    for (const go of waits) go();
+    await t.feed(false, 30);
+    const after = t.published.filter((p) => p.topic.endsWith("/voice/down")).length - cueFrames;
+    return { t, spoken, after, logs };
+  };
+
+  it("says a short line of hers and looks attentive when nothing follows, but not when he goes straight on", async () => {
+    const quiet = await wakeThenSilence("voice", false);
+    expect(
+      quiet.logs.some((l) => /her name alone: "(Yes\?|Mm\?|I'm here\.|Go on\.|Hey\.)"/.test(l)),
+    ).toBe(true);
+    expect(quiet.t.published.some((p) => p.payload === '{"mood":"attentive"}')).toBe(true);
+    const talking = await wakeThenSilence("voice", true);
+    expect(talking.t.brainCalls).toHaveLength(1);
+    expect(talking.logs.some((l) => l.includes("her name alone"))).toBe(false);
+  });
+
+  it("is a sound with 'tone' and nothing with 'off'", async () => {
+    const off = await wakeThenSilence("off", false);
+    expect(off.after).toBe(0);
+    const tone = await wakeThenSilence("tone", false);
+    expect(tone.after).toBeGreaterThan(0);
   });
 });

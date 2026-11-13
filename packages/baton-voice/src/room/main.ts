@@ -679,6 +679,8 @@ const main = async () => {
         .split(",")
         .map((l) => l.trim())
         .filter(Boolean),
+      // Her name alone: a spoken "I'm here" (voice), a sound (tone) or only her look (off).
+      acknowledge: ((v) => (v === "tone" || v === "off" ? v : "voice"))(process.env["R1_ACK"]),
     },
   );
   setInterval(() => room?.sweep(), 1_000);
