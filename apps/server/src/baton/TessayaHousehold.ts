@@ -39,6 +39,7 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
+import { VoiceForgets } from "./VoiceForgets.ts";
 
 /** Who is asking, set by the transport: the member a session or voice acts for, its role if not the member's, and how sure. */
 export const HouseholdCaller = Context.Reference<{
@@ -70,6 +71,8 @@ interface Row {
 
 /** The linked-server tool a forwarded request runs on the home (`household_peer`). */
 export const HOUSEHOLD_PEER_TOOL = "household_peer";
+/** The linked-server tool that tells a server a member's data was destroyed, so its vessels forget their voice. */
+export const VOICE_FORGET_TOOL = "household_voice_forget";
 const HOME_KEY = "household.home";
 /** How long a server not holding the members keeps the home's answer about who is who. */
 const GRANTS_CACHE_MS = 60_000;
@@ -116,6 +119,8 @@ export class TessayaHousehold extends Context.Service<
     } | null>;
     /** Destroys the data of members whose export window ended. */
     readonly purgeDue: Effect.Effect<number>;
+    /** Another of this home's servers destroyed this member's data: this server's vessels forget their voice too. */
+    readonly forgetVoiceHere: (member: string) => Effect.Effect<void>;
   }
 >()("t3/baton/TessayaHousehold") {}
 
@@ -267,9 +272,37 @@ export const make = Effect.gen(function* () {
     }
   });
 
+  const voices = yield* Effect.serviceOption(VoiceForgets);
+  const forgetVoiceHere = (member: string) =>
+    Option.isSome(voices) ? voices.value.forget(member) : Effect.void;
+  /** Every linked server forgets the member's voice too: its desktop, its devices. A quiet one catches up on its desktop's next check. */
+  const forgetOnPeers = Effect.fn("TessayaHousehold.forgetOnPeers")(function* (member: string) {
+    if (Option.isNone(links) || Option.isNone(peerMcp)) return;
+    const linked = (yield* links.value.list.pipe(Effect.orElseSucceed(() => []))).filter(
+      (l) => l.status !== "expired",
+    );
+    yield* Effect.forEach(
+      linked,
+      (link) =>
+        peerMcp.value
+          .call({
+            environmentId: link.environmentId,
+            tool: VOICE_FORGET_TOOL,
+            arguments: { member },
+            limits: { runtimeMode: "approval-required", interactionMode: "default" },
+            success: Schema.Unknown,
+          })
+          .pipe(Effect.timeout("10 seconds"), Effect.ignoreCause),
+      { concurrency: "unbounded", discard: true },
+    );
+  });
+
   const purge = Effect.fn("TessayaHousehold.purge")(function* (row: Row) {
     if (Option.isSome(stores)) yield* stores.value.shred(row.id);
     yield* sql`DELETE FROM tessaya_household_members WHERE id = ${row.id}`.pipe(Effect.orDie);
+    // Their voice print is theirs too (design §5.1): every vessel here and on every linked server forgets it.
+    yield* forgetVoiceHere(row.id);
+    yield* forgetOnPeers(row.id);
   });
 
   const purgeDue = Effect.gen(function* () {
@@ -605,7 +638,14 @@ export const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
 
-  return TessayaHousehold.of({ call, callHere, roleOf, grantsOf, purgeDue });
+  return TessayaHousehold.of({
+    call,
+    callHere,
+    roleOf,
+    grantsOf,
+    purgeDue,
+    forgetVoiceHere,
+  });
 });
 
 export const layer = Layer.effect(TessayaHousehold, make);

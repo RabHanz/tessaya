@@ -65,6 +65,21 @@ export const make = Effect.gen(function* () {
     household_home_server: McpToolAccess.writes((input: Args) =>
       run({ op: "setHome", on: typeof input["on"] === "string" ? input["on"] : null }),
     ),
+    // Only another of this home's servers: a member's data there is gone, so this server's vessels forget their voice.
+    household_voice_forget: McpToolAccess.writes(
+      (input: Args) =>
+        Effect.gen(function* () {
+          if (context === null) return yield* unavailable;
+          const client = (yield* McpInvocationContext.McpInvocationContext).client;
+          if (client?.linked !== true)
+            return { ok: false, line: "Only another of this home's servers may ask this." };
+          yield* Effect.flatMap(TessayaHousehold, (h) =>
+            h.forgetVoiceHere(String(input["member"] ?? "")),
+          ).pipe(Effect.provideContext(context));
+          return { ok: true, line: "Forgotten here." };
+        }),
+      { linkedCallers: "allowed" },
+    ),
     // Only another of this home's servers, over its link: the caller it carries is believed from a linked server alone.
     household_peer: McpToolAccess.writes(
       (input: Args) =>

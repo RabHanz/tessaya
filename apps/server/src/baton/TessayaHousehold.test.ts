@@ -6,6 +6,7 @@ import { AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
@@ -26,6 +27,7 @@ import {
   layer as privateLayer,
 } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold, layer as householdLayer } from "./TessayaHousehold.ts";
+import { VoiceForgets } from "./VoiceForgets.ts";
 
 const authLayer = EnvironmentAuth.layer.pipe(
   Layer.provide(ManagedPolicy.layerTest()),
@@ -353,4 +355,47 @@ describe("a home's members on one server, asked by its others", () => {
       const unknownPeer = yield* as(owner)(home.callHere({ op: "setHome", on: "nowhere" }));
       assert.strictEqual(unknownPeer.status, "refused");
     }).pipe(Effect.scoped));
+});
+
+describe("a removed member's voice", () => {
+  test("is forgotten by every vessel here and on every linked server once their data is destroyed", () =>
+    Effect.gen(function* () {
+      const forgotten: Array<string> = [];
+      const told: Array<[string, unknown]> = [];
+      const link = { environmentId: "env-laptop", label: "laptop", status: "connected" } as never;
+      yield* Effect.gen(function* () {
+        const h = yield* TessayaHousehold;
+        yield* as(owner)(h.callHere({ op: "invite", name: "Sara", role: "adult" }));
+        const id = (yield* as(owner)(h.callHere({ op: "list" }))).members!.find(
+          (m) => m.name === "Sara",
+        )!.id;
+        yield* as(owner)(h.callHere({ op: "remove", id }));
+        // Leaving keeps the voice for the export window; only destroying the data forgets it.
+        assert.deepStrictEqual(forgotten, []);
+        yield* as(owner)(h.callHere({ op: "remove", id, now: true }));
+        assert.deepStrictEqual(forgotten, [id]);
+        assert.deepStrictEqual(told, [["household_voice_forget", { member: id }]]);
+      }).pipe(
+        Effect.provide(
+          stackWith(null).pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  VoiceForgets,
+                  VoiceForgets.of({
+                    forget: (m) => Effect.sync(() => void forgotten.push(m)),
+                    forgotten: Stream.empty,
+                  }),
+                ),
+                Layer.mock(PeerLinks.PeerLinks)({ list: Effect.succeed([link]) }),
+                Layer.mock(PeerMcpClient.PeerMcpClient)({
+                  call: (input) =>
+                    Effect.sync(() => (told.push([input.tool, input.arguments]), {})) as never,
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+    }));
 });

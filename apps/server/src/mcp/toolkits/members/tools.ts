@@ -131,6 +131,18 @@ const PeerTool = Tool.make("household_peer", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+/** Never the model's: another of this home's servers says a member's data was destroyed; vessels here forget their voice. */
+const VoiceForgetTool = Tool.make("household_voice_forget", {
+  ...shared,
+  description:
+    "Used only by another of this home's linked servers when a member's data is destroyed. Never call it yourself.",
+  parameters: Schema.Struct({ member: Schema.String.check(Schema.isMaxLength(140)) }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit, so every vessel gets them through its one registration. */
 export const MembersTools = [
   ListTool,
@@ -141,4 +153,5 @@ export const MembersTools = [
   RestoreTool,
   HomeServerTool,
   PeerTool,
+  VoiceForgetTool,
 ] as const;
