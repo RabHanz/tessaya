@@ -198,7 +198,7 @@ index 77dbddadb6bbbb4eede94b66bb423aacbc659326..476f2edf5a8d179817864197b0622dd3
  
  const SHARED_KEY_SET = new Set<string>(SHARED_SERVER_SETTING_KEYS);
 diff --git a/packages/shared/src/serverSettings.test.ts b/packages/shared/src/serverSettings.test.ts
-index 354260ea3cfb92018e0006d5a3582211af4e00fc..ee15d3cac7204e75909887e99ed9db53f75ec4a4 100644
+index 354260ea3cfb92018e0006d5a3582211af4e00fc..d9fcf773335ffbd1efa8e8444f5adf2fb68e48e5 100644
 --- a/packages/shared/src/serverSettings.test.ts
 +++ b/packages/shared/src/serverSettings.test.ts
 @@ -1,5 +1,7 @@
@@ -209,7 +209,17 @@ index 354260ea3cfb92018e0006d5a3582211af4e00fc..ee15d3cac7204e75909887e99ed9db53
    ProjectId,
    ProviderDriverKind,
    ProviderInstanceId,
-@@ -1029,7 +1031,8 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
+@@ -408,7 +410,8 @@ describe("serverSettings helpers", () => {
+       },
+       sourceControlWriterModelSelection: selection,
+       reviewGuideModelSelection: selection,
+-      speechPostProcessingModelSelection: selection,
++      // Dictation clean-up reads its model from the one cleanup setting (39b020b8d3).
++      dictationCleanup: { ...DEFAULT_SERVER_SETTINGS.dictationCleanup, model: selection },
+     });
+     // A text generator has no provider snapshot; an empty list must not read as unusable.
+     const on = settings(true);
+@@ -1029,7 +1032,8 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
      ]);
      const base = { ...DEFAULT_SERVER_SETTINGS, textGenerationModelSelection: textGeneration };
      expect(resolveSpeechPostProcessingModelSelection(base)).toBe(textGeneration);
@@ -219,7 +229,7 @@ index 354260ea3cfb92018e0006d5a3582211af4e00fc..ee15d3cac7204e75909887e99ed9db53
      expect(resolveSpeechPostProcessingModelSelection(pinned)).toEqual(cleanup);
      expect(
        resolveSpeechPostProcessingModelSelection({
-@@ -1054,8 +1057,57 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
+@@ -1054,8 +1058,57 @@ describe("resolveSpeechPostProcessingModelSelection", () => {
        ] as never),
      ).toBe(textGeneration);
      expect(
