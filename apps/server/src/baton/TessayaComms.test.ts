@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import type { MemberRole } from "@t3tools/baton-shared/household";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
@@ -379,5 +380,103 @@ layer("TessayaComms", (it) => {
       yield* comms("sara", { op: "dnd", until: null });
       assert.isNull((yield* comms("sara", { op: "settings" })).settings?.dndUntil);
     }),
+  );
+
+  it.effect(
+    "sounds an owner's emergency everywhere through quiet hours until each person says okay",
+    () =>
+      Effect.gen(function* () {
+        const fire = {
+          id: "fire",
+          label: "Fire",
+          text: "Fire: get out now",
+          who: "any" as const,
+          children: false,
+          automations: false,
+        };
+        assert.strictEqual(
+          (yield* comms("sara", { op: "emergencyKinds", kinds: [fire] })).status,
+          "refused",
+        );
+        yield* comms("owner", { op: "emergencyKinds", kinds: [fire] });
+        yield* comms("owner", {
+          op: "settings",
+          quietHours: { from: "00:00", to: "23:59", timeZone: "UTC" },
+        });
+        assert.strictEqual(
+          (yield* comms("gus", { op: "emergency", kind: "fire" })).status,
+          "refused",
+        );
+        const h = house();
+        const sounding = yield* comms("maya", { op: "emergency", kind: "fire" }).pipe(h.inHouse);
+        assert.strictEqual(sounding.status, "done");
+        // Children's vessels are left out of this kind; the adults and the owner must answer.
+        assert.deepStrictEqual([...(sounding.emergency?.pending ?? [])].toSorted(), [
+          "owner",
+          "sara",
+        ]);
+        const says = () => h.said.filter((x) => x.op === "say").length;
+        assert.strictEqual(says(), 1);
+        assert.strictEqual(
+          (yield* comms("sara", { op: "emergency", kind: "fire" })).status,
+          "refused",
+        );
+        yield* TestClock.adjust("20 seconds");
+        assert.strictEqual(says(), 2);
+        yield* comms("sara", { op: "emergencyAck" });
+        yield* TestClock.adjust("20 seconds");
+        assert.strictEqual(says(), 3);
+        const last = yield* comms("owner", { op: "emergencyAck" });
+        assert.match(last.line, /stopped/);
+        yield* TestClock.adjust("1 minute");
+        assert.strictEqual(says(), 3);
+        // Rate-limited: not again within two minutes.
+        assert.strictEqual(
+          (yield* comms("owner", { op: "emergency", kind: "fire" })).status,
+          "refused",
+        );
+        yield* comms("owner", { op: "settings", quietHours: null });
+      }),
+  );
+
+  it.effect(
+    "stops everywhere on a false alarm, which a child can't call on someone else's alarm",
+    () =>
+      Effect.gen(function* () {
+        const drill = {
+          id: "drill",
+          label: "Drill",
+          text: "This is a drill",
+          who: "adults" as const,
+          children: true,
+          automations: true,
+        };
+        yield* comms("owner", { op: "emergencyKinds", kinds: [drill] });
+        assert.strictEqual(
+          (yield* comms("maya", { op: "emergency", kind: "drill" })).status,
+          "refused",
+        );
+        const h = house();
+        // An automation (Home Assistant through an agent token) may set off a kind open to automations.
+        const auto = yield* Effect.flatMap(TessayaComms, (c) =>
+          c.call({ op: "emergency", kind: "drill" }),
+        ).pipe(
+          Effect.provideService(HouseholdCaller, {
+            member: "owner",
+            service: true,
+            assurance: 0,
+            via: "an agent",
+          }),
+          h.inHouse,
+        );
+        assert.strictEqual(auto.status, "done");
+        assert.strictEqual((yield* comms("maya", { op: "emergencyCancel" })).status, "refused");
+        const stopped = yield* comms("sara", { op: "emergencyCancel" }).pipe(h.inHouse);
+        assert.match(stopped.line, /false alarm/);
+        const before = h.said.filter((x) => x.op === "say").length;
+        yield* TestClock.adjust("1 minute");
+        assert.strictEqual(h.said.filter((x) => x.op === "say").length, before);
+        assert.isNull((yield* comms("owner", { op: "settings" })).emergency ?? null);
+      }),
   );
 });

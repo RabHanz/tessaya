@@ -845,6 +845,25 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     }),
   },
   {
+    // §8.7: an emergency is one the owner defined; asked without one set up, she lists none and sets nothing off.
+    id: "comms-emergency",
+    proves: ["comms_emergency"],
+    said: ["There's a fire, sound the fire alarm in the whole house!"],
+    uses: [["comms_emergency"]],
+  },
+  {
+    id: "comms-emergency-ok",
+    proves: ["comms_emergency_ok"],
+    said: ["Okay, I'm out of the house, I heard the alarm."],
+    uses: [["comms_emergency_ok"]],
+  },
+  {
+    id: "comms-false-alarm",
+    proves: ["comms_false_alarm"],
+    said: ["False alarm, cancel the emergency alarm."],
+    uses: [["comms_false_alarm"]],
+  },
+  {
     id: "members-list",
     proves: ["members_list"],
     said: ["Who lives here, and what can each of them do?"],

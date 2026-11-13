@@ -135,6 +135,29 @@ export const CommsSettings = Schema.Struct({
 });
 export type CommsSettings = typeof CommsSettings.Type;
 
+/** An emergency the owner defined (§8.7): what it says, who may set it off, and whether children's vessels get it. */
+export const CommsEmergencyKind = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[a-z0-9-]{1,40}$/)),
+  label: TrimmedNonEmptyString.check(Schema.isMaxLength(60)),
+  text: TrimmedNonEmptyString.check(Schema.isMaxLength(300)),
+  who: Schema.Literals(["any", "adults", "owner"]),
+  children: Schema.Boolean,
+  /** An automation (Home Assistant's smoke alarm through an agent token) may set it off. */
+  automations: Schema.Boolean,
+});
+export type CommsEmergencyKind = typeof CommsEmergencyKind.Type;
+
+/** The emergency sounding now, and who has not said okay. */
+export const CommsEmergency = Schema.Struct({
+  kind: Schema.String,
+  label: Schema.String,
+  by: Schema.String,
+  startedAt: IsoDateTime,
+  pending: Schema.Array(Schema.String),
+  acked: Schema.Array(Schema.String),
+});
+export type CommsEmergency = typeof CommsEmergency.Type;
+
 const op = <const O extends string, F extends Schema.Struct.Fields>(name: O, fields: F) =>
   Schema.Struct({ op: Schema.Literal(name), ...fields });
 
@@ -175,6 +198,16 @@ export const CommsCallInput = Schema.Union([
     enabled: Schema.optionalKey(Schema.Boolean),
     quietHours: Schema.optionalKey(Schema.NullOr(CommsQuietHours)),
   }),
+  /** The owner's emergency kinds: set them when given, or read them. */
+  op("emergencyKinds", {
+    kinds: Schema.optionalKey(Schema.Array(CommsEmergencyKind).check(Schema.isMaxLength(12))),
+  }),
+  /** Sets off an emergency by its kind's id: every vessel, through quiet hours, until each person says okay. */
+  op("emergency", { kind: Schema.String.check(Schema.isMaxLength(40)) }),
+  /** The caller says okay to the emergency sounding now. */
+  op("emergencyAck", {}),
+  /** A false alarm: it stops everywhere. */
+  op("emergencyCancel", {}),
   /** The comms log: a member's own; the owner sees everyone's metadata, never content (Decision 5). */
   op("log", {
     limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
@@ -193,6 +226,8 @@ export const CommsCallResult = Schema.Struct({
   consents: Schema.optionalKey(Schema.Array(CommsConsent)),
   call: Schema.optionalKey(CommsCall),
   settings: Schema.optionalKey(CommsSettings),
+  emergency: Schema.optionalKey(Schema.NullOr(CommsEmergency)),
+  emergencyKinds: Schema.optionalKey(Schema.Array(CommsEmergencyKind)),
   /** Where a note went, in words: "the kitchen R1", "Sara's phone". */
   delivered: Schema.optionalKey(Schema.Array(Schema.String)),
 });

@@ -258,7 +258,7 @@ export const SCRIPT = `"use strict";
   }
   function card(title, note) { var c = el("div", "card"); if (title) c.appendChild(el("h2", "", title)); if (note) c.appendChild(el("p", "soft", note)); view.appendChild(c); return c; }
   // Messages between the people of this home (COMMS-DESIGN C-1): their own inbox, and a note to someone or everyone.
-  var msg = { notes: null, people: [], said: "", on: true };
+  var msg = { notes: null, people: [], said: "", on: true, kinds: [], alarm: null };
   function cm(body) {
     return fetch("/tessaya/comms", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
@@ -268,8 +268,9 @@ export const SCRIPT = `"use strict";
     });
   }
   function loadMsg() {
-    return Promise.all([cm({ op: "inbox" }), cm({ op: "settings" }), hh({ op: "list" }).catch(function () { return { members: [] }; })]).then(function (r) {
+    return Promise.all([cm({ op: "inbox" }), cm({ op: "settings" }), hh({ op: "list" }).catch(function () { return { members: [] }; }), cm({ op: "emergencyKinds" })]).then(function (r) {
       msg.notes = r[0].notes || []; msg.on = !!(r[1].settings && r[1].settings.enabled);
+      msg.alarm = r[1].emergency || null; msg.kinds = r[3].emergencyKinds || [];
       msg.people = (r[2].members || []).filter(function (m) { return !m.you && m.state === "active" && m.role !== "guest"; });
     }).catch(function (e) { msg.said = e.message; }).then(drawMsg);
   }
@@ -277,10 +278,33 @@ export const SCRIPT = `"use strict";
     if (tab !== "msg") return;
     drawTabs(); view.textContent = "";
     if (msg.said) view.appendChild(el("p", "card warn", msg.said));
+    // An emergency sounding now (§8.7): say okay, or call a false alarm.
+    if (msg.alarm) {
+      var al = card("🚨 " + msg.alarm.label, "Set off by " + msg.alarm.by + ". Waiting on " + msg.alarm.pending.length + " to say okay.");
+      var ar = el("div", "row");
+      ar.appendChild(plain("Okay", function () { cm({ op: "emergencyAck" }).then(function (v) { msg.said = v.line; }, function (e) { msg.said = e.message; }).then(loadMsg); }));
+      ar.appendChild(plain("False alarm", function () { cm({ op: "emergencyCancel" }).then(function (v) { msg.said = v.line; }, function (e) { msg.said = e.message; }).then(loadMsg); }));
+      al.appendChild(ar);
+    }
     // The owner's switch; a member sees why nothing goes.
     if (!member) {
       var sw = card("Messages in this home", msg.on ? "On: people here can message and announce to each other." : "Off: nothing is sent or played.");
       sw.appendChild(plain(msg.on ? "Turn off" : "Turn on", function () { cm({ op: "settings", enabled: !msg.on }).then(function () {}, function (e) { msg.said = e.message; }).then(loadMsg); }));
+      // The owner's emergencies: what each says and who may set it off; each can be removed again.
+      var ek = card("Emergencies", "Each sounds on every device, through quiet hours, until everyone says okay.");
+      msg.kinds.forEach(function (k) {
+        var kr = el("div", "row"); kr.appendChild(el("p", "", k.label + ": " + k.text + " (" + k.who + ")"));
+        kr.appendChild(plain("Remove", function () { cm({ op: "emergencyKinds", kinds: msg.kinds.filter(function (x) { return x.id !== k.id; }) }).then(function () {}, function (e) { msg.said = e.message; }).then(loadMsg); }));
+        ek.appendChild(kr);
+      });
+      var lbl = field("Name, like Fire"), txt = field("What she says"), whoSel = el("select", "field");
+      [["any", "Anyone"], ["adults", "Adults"], ["owner", "Only me"]].forEach(function (o) { var op = el("option", "", o[1]); op.value = o[0]; whoSel.appendChild(op); });
+      var addK = plain("Add", function () {
+        var id = lbl.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+        if (!id || !txt.value.trim()) return;
+        cm({ op: "emergencyKinds", kinds: msg.kinds.concat([{ id: id, label: lbl.value.trim().slice(0, 60), text: txt.value.trim().slice(0, 300), who: whoSel.value, children: true, automations: false }]) }).then(function () {}, function (e) { msg.said = e.message; }).then(loadMsg);
+      });
+      var ka = el("div", "row"); ka.appendChild(lbl); ka.appendChild(txt); ka.appendChild(whoSel); ka.appendChild(addK); ek.appendChild(ka);
     } else if (!msg.on) view.appendChild(el("p", "soft", "Messages are off in this home. The owner turns them on."));
     var c = card("Send a message", "");
     var to = el("select", "field"); to.setAttribute("aria-label", "To");

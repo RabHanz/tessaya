@@ -6,11 +6,13 @@
  * list. Every act is one Record row; a note's content is never written there.
  */
 import {
+  CommsEmergencyKind,
   CommsQuietHours,
   type CommsAddress,
   type CommsCallInput,
   type CommsCallResult,
   type CommsConsent,
+  type CommsEmergency,
   type CommsForms,
   type CommsNote,
   type CommsReceipt,
@@ -26,12 +28,19 @@ import {
   trimForms,
 } from "@t3tools/baton-shared/comms";
 import { planDelivery, type DeliveryTarget } from "@t3tools/baton-shared/commsDelivery";
+import {
+  EMERGENCY_MAX_MS,
+  EMERGENCY_REPEAT_MS,
+  emergencyRateOk,
+  emergencyRefusal,
+} from "@t3tools/baton-shared/commsEmergency";
 import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import type { MemberRole } from "@t3tools/baton-shared/household";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Random from "effect/Random";
@@ -110,6 +119,10 @@ const DND_PREFIX = "comms.dnd.";
 export const NOTE_ITEM = "comms.note";
 export const OFF_LINE =
   "Messages are off in this home. The owner turns them on under Messages on Tessaya's phone page.";
+const KINDS_KEY = "comms.emergencyKinds";
+const decodeKinds = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Array(CommsEmergencyKind)),
+);
 const decodeQuiet = Schema.decodeUnknownOption(Schema.fromJsonString(CommsQuietHours));
 const RECEIPT_RANK: Readonly<Record<CommsReceipt["state"], number>> = {
   queued: 0,
@@ -668,6 +681,264 @@ export const make = Effect.gen(function* () {
     return { status: "done", line: `${notes.length} shown.`, notes } satisfies Result;
   });
 
+  const emergencyKindsNow = Effect.map(setting(KINDS_KEY), (v) =>
+    v === null ? [] : Option.getOrElse(decodeKinds(v), () => []),
+  );
+  // shortcut: the sounding emergency lives in this server's memory; a restart ends it (the Record keeps it).
+  let active: {
+    readonly kind: CommsEmergencyKind;
+    readonly by: string;
+    readonly byMember: string | null;
+    readonly note: CommsNote;
+    readonly startedAt: number;
+    readonly pending: Set<string>;
+    readonly acked: Set<string>;
+    fiber: Fiber.Fiber<void> | null;
+  } | null = null;
+  const lastSounded = new Map<string, number>();
+  const emergencyView = (): CommsEmergency | null =>
+    active === null
+      ? null
+      : {
+          kind: active.kind.id,
+          label: active.kind.label,
+          by: active.by,
+          startedAt: DateTime.formatIso(DateTime.makeUnsafe(active.startedAt)),
+          pending: [...active.pending],
+          acked: [...active.acked],
+        };
+
+  /** Every awake vessel at once, through quiet hours and do-not-disturb (§8.7). */
+  const soundEverywhere = Effect.fn("TessayaComms.soundEverywhere")(function* (note: CommsNote) {
+    const registry = yield* Effect.serviceOption(DeviceRegistry);
+    const devices = Option.isNone(registry) ? [] : yield* registry.value.list;
+    const plan = planDelivery({
+      note,
+      senderRole: "owner",
+      members: yield* members,
+      vessels: devices.map((d) => ({
+        id: d.deviceId,
+        name: d.name,
+        online: d.online,
+        caps: commsCaps(d),
+        personalOf: d.kind === "phone" || d.kind === "desktop" ? OWNER_MEMBER_ID : null,
+      })),
+      presence: [],
+      quietNow: false,
+      dnd: new Set(),
+    });
+    for (const target of plan.targets) yield* show(note, target, false);
+    const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
+    if (Option.isSome(inbox))
+      yield* inbox.value.mirror({
+        id: `comms-${note.id}-${yield* Clock.currentTimeMillis}`,
+        title: `🚨 ${note.forms.glance.words}`,
+        detail: note.text,
+        buttons: ["OK"],
+        yes: 0,
+        cancel: 0,
+      });
+  });
+
+  const endEmergency = Effect.fn("TessayaComms.endEmergency")(function* (why: string, by: string) {
+    const was = active;
+    if (was === null) return;
+    active = null;
+    if (was.fiber !== null) yield* Fiber.interrupt(was.fiber);
+    yield* write({
+      actor: by,
+      subject: `emergency ${was.kind.label}`,
+      outcome: "ended",
+      ref: was.note.id,
+      detail: `${why}; never answered: ${[...was.pending].join(", ") || "nobody"}`,
+    });
+  });
+
+  const emergencyKinds = Effect.fn("TessayaComms.emergencyKinds")(function* (
+    input: Extract<CommsCallInput, { op: "emergencyKinds" }>,
+  ) {
+    const { member, role, name } = yield* who;
+    if (input.kinds !== undefined) {
+      if (role !== "owner" && role !== "admin")
+        return refused("Only the owner sets the emergencies.");
+      yield* setSetting(KINDS_KEY, input.kinds.length === 0 ? null : JSON.stringify(input.kinds));
+      yield* write({
+        actor: name ?? member ?? "someone",
+        subject: "emergency kinds",
+        outcome: "changed",
+        detail: input.kinds.map((k) => k.label).join(", "),
+      });
+    }
+    const kinds = yield* emergencyKindsNow;
+    return {
+      status: "done",
+      line:
+        kinds.length === 0
+          ? "No emergencies are set up. The owner adds them on the phone page."
+          : `Emergencies: ${kinds.map((k) => `${k.label} (${k.id})`).join(", ")}.`,
+      emergencyKinds: kinds,
+      emergency: emergencyView(),
+    } satisfies Result;
+  });
+
+  const emergency = Effect.fn("TessayaComms.emergency")(function* (
+    input: Extract<CommsCallInput, { op: "emergency" }>,
+  ) {
+    const { caller, member, role, name } = yield* who;
+    const kind = (yield* emergencyKindsNow).find((k) => k.id === input.kind.toLowerCase());
+    if (kind === undefined)
+      return refused(
+        `There is no emergency called "${input.kind}". ${(yield* emergencyKinds({ op: "emergencyKinds" })).line}`,
+      );
+    const why = emergencyRefusal(kind, { role, service: caller.service === true });
+    if (why !== null) return refused(why);
+    if (active !== null)
+      return refused(
+        `${active.kind.label} is already sounding. Say okay, or "false alarm" to stop it.`,
+      );
+    const now = yield* Clock.currentTimeMillis;
+    if (!emergencyRateOk(lastSounded.get(kind.id) ?? null, now))
+      return refused(
+        `${kind.label} sounded a moment ago; wait two minutes before setting it off again.`,
+      );
+    const by = name ?? caller.via;
+    const note: CommsNote = {
+      id: yield* newId,
+      kind: "announce",
+      from: member,
+      fromLabel: by,
+      fromVessel: null,
+      to: ["all"],
+      text: kind.text,
+      forms: {
+        glance: { emoji: "🚨", words: kind.label.split(/\s+/).slice(0, 4).join(" ") },
+        spoken: kind.text,
+        mood: "surprise",
+      },
+      urgency: "urgent",
+      private: false,
+      replyTo: null,
+      tag: "emergency",
+      audio: null,
+      createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
+      deliverAt: null,
+      expiresAt: null,
+    };
+    if ((yield* TurnOrigin)?.rehearsal === true)
+      return {
+        status: "done",
+        line: `${kind.label} would sound now. (A replay: nothing sounded.)`,
+        note,
+      } satisfies Result;
+    const people = (yield* members).filter(
+      (m) => m.role !== "guest" && (kind.children || m.role !== "child"),
+    );
+    yield* insertNote(note);
+    lastSounded.set(kind.id, now);
+    const mine = {
+      kind,
+      by,
+      byMember: member,
+      note,
+      startedAt: now,
+      pending: new Set(people.map((m) => m.id)),
+      acked: new Set<string>(),
+      fiber: null as Fiber.Fiber<void> | null,
+    };
+    active = mine;
+    yield* soundEverywhere(note);
+    // Again every 20 s until each person says okay, a false alarm, or 30 minutes.
+    mine.fiber = yield* Effect.forkDetach(
+      Effect.gen(function* () {
+        while (true) {
+          yield* Effect.sleep(EMERGENCY_REPEAT_MS);
+          if (active !== mine || mine.pending.size === 0) return;
+          if ((yield* Clock.currentTimeMillis) - mine.startedAt >= EMERGENCY_MAX_MS) {
+            // This fiber ends itself: it must not wait on its own interrupt.
+            mine.fiber = null;
+            return yield* endEmergency("30 minutes passed", "comms");
+          }
+          yield* soundEverywhere(note);
+        }
+      }),
+    );
+    yield* write({
+      actor: by,
+      subject: `emergency ${kind.label}`,
+      outcome: "sounding",
+      ref: note.id,
+      detail: `via ${caller.via}; ${people.length} to answer`,
+    });
+    return {
+      status: "done",
+      line: `${kind.label} is sounding everywhere, through quiet hours. It repeats until each person says okay; "false alarm" stops it.`,
+      note,
+      emergency: emergencyView(),
+    } satisfies Result;
+  });
+
+  const emergencyAck = Effect.fn("TessayaComms.emergencyAck")(function* () {
+    const { member, name } = yield* who;
+    if (active === null) return refused("Nothing is sounding.");
+    if ((yield* TurnOrigin)?.rehearsal === true)
+      return { status: "done", line: "Okay. (A replay: nothing changed.)" } satisfies Result;
+    if (member === null || !active.pending.has(member))
+      return { status: "done", line: "Okay.", emergency: emergencyView() } satisfies Result;
+    active.pending.delete(member);
+    active.acked.add(member);
+    yield* write({
+      actor: name ?? member,
+      subject: `emergency ${active.kind.label}`,
+      outcome: "acknowledged",
+      ref: active.note.id,
+    });
+    const left = active.pending.size;
+    if (left === 0) yield* endEmergency("everyone said okay", name ?? member);
+    return {
+      status: "done",
+      line:
+        left === 0
+          ? "Okay. Everyone has answered; it has stopped."
+          : `Okay. Waiting on ${left} more.`,
+      emergency: emergencyView(),
+    } satisfies Result;
+  });
+
+  const emergencyCancel = Effect.fn("TessayaComms.emergencyCancel")(function* () {
+    const { member, role, name } = yield* who;
+    if (active === null) return refused("Nothing is sounding.");
+    const mayCancel =
+      role === "owner" ||
+      role === "admin" ||
+      role === "adult" ||
+      (member !== null && member === active.byMember);
+    if (!mayCancel) return refused("A grown-up calls a false alarm.");
+    if ((yield* TurnOrigin)?.rehearsal === true)
+      return { status: "done", line: "Stopped. (A replay: nothing changed.)" } satisfies Result;
+    const label = active.kind.label;
+    yield* endEmergency("false alarm", name ?? member ?? "someone");
+    const devices = yield* Effect.serviceOption(HomeDevices);
+    const registry = yield* Effect.serviceOption(DeviceRegistry);
+    if (Option.isSome(devices) && Option.isSome(registry))
+      for (const d of yield* registry.value.list)
+        if (d.online && commsCaps(d).display === "eyes-round")
+          yield* devices.value
+            .command(
+              d.deviceId,
+              { op: "say", text: `False alarm: ${label} is over. All clear.` },
+              {
+                who: "a false alarm",
+                surface: "assistant",
+              },
+            )
+            .pipe(Effect.ignore);
+    return {
+      status: "done",
+      line: `Stopped everywhere: ${label} was a false alarm.`,
+      emergency: null,
+    } satisfies Result;
+  });
+
   /** Plays one of the caller's notes where their turn is (an R1), or hands it to their screen; marks it read. */
   const play = Effect.fn("TessayaComms.play")(function* (
     input: Extract<CommsCallInput, { op: "play" }>,
@@ -770,6 +1041,7 @@ export const make = Effect.gen(function* () {
         quietHours: yield* quietHours,
         dndUntil: until === null ? null : DateTime.formatIso(DateTime.makeUnsafe(until)),
       },
+      emergency: emergencyView(),
     } satisfies Result;
   });
 
@@ -815,6 +1087,14 @@ export const make = Effect.gen(function* () {
         return yield* dnd(input);
       case "settings":
         return yield* settings(input);
+      case "emergencyKinds":
+        return yield* emergencyKinds(input);
+      case "emergency":
+        return yield* emergency(input);
+      case "emergencyAck":
+        return yield* emergencyAck();
+      case "emergencyCancel":
+        return yield* emergencyCancel();
     }
   });
 
