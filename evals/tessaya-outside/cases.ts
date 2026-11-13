@@ -72,6 +72,63 @@ const r1 = (log: ReadonlyArray<{ topic: string; text: string }> = []) => ({
     pending: [],
   },
 });
+/** The device list with the registry: the R1's Bluetooth items as its manifest describes them (smp-0.3.49). */
+const r1Registry = () => {
+  const base = r1();
+  return {
+    ...base,
+    value: {
+      ...base.value,
+      registry: [
+        {
+          deviceId: "r1-3d57b3",
+          kind: "r1",
+          name: "R1",
+          firmware: "smp-0.3.49",
+          via: "mqtt",
+          online: true,
+          lastSeenAt: "2026-11-13T09:00:00.000Z",
+          version: "3246a022",
+          items: [
+            {
+              id: "audio.output",
+              label: "Output",
+              type: "enum",
+              values: ["speaker", "bt", "auto"],
+              access: "read,write",
+              safety: "confirm",
+              group: "audio",
+              description: "where her voice plays",
+            },
+            {
+              id: "bt.connect",
+              label: "Connect Bluetooth",
+              type: "action",
+              access: "write",
+              safety: "owner",
+              group: "bt",
+              description: "connects, or pairs if new, a Bluetooth speaker by name or address",
+            },
+          ],
+          values: [
+            { itemId: "audio.output", value: "speaker", at: "2026-11-13T09:00:00.000Z" },
+            {
+              itemId: "bt.known",
+              value: [
+                { mac: "E8:07:BF:35:26:5C", name: "MINISO-V5", lastAt: null, kind: "speaker" },
+              ],
+              at: "2026-11-13T09:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    },
+  };
+};
+const btSet = (line: string) => ({ ok: true, value: { status: "done", line } });
+const claimsConnected =
+  /\b(is (now )?(paired|connected)|now (paired|connected)|I('ve| have) (paired|connected)|it'?s connected)\b/i;
+
 const deviceAsked = {
   ok: true,
   value: {
@@ -540,6 +597,61 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     },
     calls: ["device_list"],
     callsMustNot: ["device_owner", "device_act"],
+  },
+  {
+    id: "bt-speakers-by-name",
+    source:
+      "Voice Bluetooth (13 Nov): a paired speaker is reached by his words through device_set bt.connect",
+    prompt: "Play the desk device's voice through my speakers instead of its own speaker.",
+    answers: {
+      device_list: r1Registry(),
+      device_set: btSet("Connected to MINISO-V5. I'll play through it."),
+    },
+    calls: ["device_set"],
+    callsMustNot: ["device_owner"],
+    inputs: {
+      // The speaker in his words or its address; routing the output to Bluetooth after it is fine too.
+      device_set: (input) =>
+        (input["itemId"] === "bt.connect" &&
+          /speaker|miniso|E8:07/i.test(JSON.stringify(input["value"] ?? ""))) ||
+        (input["itemId"] === "audio.output" &&
+          /"(bt|auto)"|miniso|E8:07/i.test(JSON.stringify(input["value"] ?? ""))),
+    },
+  },
+  {
+    id: "bt-pair-new",
+    source:
+      "Voice Bluetooth (13 Nov): a new speaker is paired (scan first), never connected by name over the air",
+    prompt: "Pair my new JBL speaker with the desk device.",
+    answers: {
+      device_list: r1Registry(),
+      device_set: btSet(
+        "Put it in pairing mode now, usually by holding its Bluetooth button until the light flashes. I'm looking for it and connect as soon as I find it.",
+      ),
+    },
+    calls: ["device_set"],
+    callsMustNot: ["device_owner"],
+    inputs: {
+      device_set: (input) =>
+        input["itemId"] === "bt.connect" &&
+        (input["value"] as { pair?: unknown } | undefined)?.pair === true,
+    },
+    replyMustNot: claimsConnected,
+  },
+  {
+    id: "bt-busy-says-so",
+    source:
+      "Voice Bluetooth (13 Nov): when the speaker is held by another phone, she says so and never claims it connected",
+    prompt: "Connect the desk device to the Miniso speaker.",
+    answers: {
+      device_list: r1Registry(),
+      device_set: btSet(
+        "I couldn't connect to MINISO-V5. It's probably connected to another phone or laptop: disconnect it there first, or switch it off and on, then ask me again.",
+      ),
+    },
+    calls: ["device_set"],
+    callsMustNot: ["device_owner"],
+    replyMustNot: claimsConnected,
   },
   {
     id: "device-eyes-control",
