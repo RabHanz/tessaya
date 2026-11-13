@@ -515,12 +515,12 @@ describe("a memory-sync credential", () => {
 });
 
 describe("who a household request is from", () => {
-  it("is the member a session names, a token's device acting for the owner is a service, and only the desktop or an approving device is A3", () => {
+  it("is the member a session names, a token's device acting for the owner is a service, and only an approving device is A3 by itself", () => {
     const of = (
       subject: string,
       method: AuthenticatedSession["method"],
       scopes: ReadonlyArray<AuthEnvironmentScope>,
-    ) => householdCallerOf({ subject, method, scopes });
+    ) => householdCallerOf({ subject, method, scopes, sessionId: "s-1" as never });
     expect(of("member:sara", "bearer-access-token", ["tessaya:member"])).toMatchObject({
       member: "sara",
       service: false,
@@ -535,8 +535,12 @@ describe("who a household request is from", () => {
     ).toMatchObject({
       member: "owner",
       service: false,
-      assurance: 3,
+      // The desktop is a signed-in device like any other: A3 comes from a step-up (PIN, Windows Hello).
+      assurance: 2,
+      desktop: true,
+      session: "s-1",
     });
+    expect(of("member:sara", "bearer-access-token", ["baton:cloud-approve"]).assurance).toBe(3);
     expect(of("member:", "browser-session-cookie", ["tessaya:member"]).member).toBeNull();
     expect(householdRefusal({ scopes: ["tessaya:guest"] })).toBeNull();
     expect(householdRefusal({ scopes: ["baton:memory-sync"] })).not.toBeNull();

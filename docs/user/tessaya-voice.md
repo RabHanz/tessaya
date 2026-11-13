@@ -31,6 +31,8 @@ Tessaya serves everyone who lives with you. In Tessaya's window, open **Memory**
 - **Roles**: an admin manages members and devices but never the owner; adults have their own memory, devices and asks; children are limited; guests can talk and nothing more. A new device of theirs never gets your computer's threads, terminals or files unless you give them **this computer** separately.
 - Adding someone, raising a role and removing someone by voice is sent to your phone or desktop for a yes first.
 - **Remove** signs them out everywhere at once and keeps their data for 7 days so they can export it; **Restore** undoes it until then. **Remove now** destroys their data at once, for a safety case.
+- **Preferences for** shows how Tessaya talks to each person: what to call them, who answers, her voice, units, times, news and music. Everyone changes their own; the owner can change anyone's. Spell an unusual name ("Zaid, Z-A-Y-D") and she keeps the spelling.
+- Adding people, changing roles and giving **this computer** need you to be sure it's you. On Windows, choose yourself under **Windows Hello confirms** once (your phone says yes to that), and from then on Windows Hello covers the next 5 minutes. Without it, type your PIN under **Confirm it's you with your PIN**, or say yes on your phone.
 
 ## Good to know
 

@@ -308,7 +308,11 @@ import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { createPrivateTab } from "../memory/privateTab.ts";
 import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
-import { createHouseholdTab, type HouseholdCall } from "../memory/householdTab.ts";
+import {
+  createHouseholdTab,
+  windowsAccountOf,
+  type HouseholdCall,
+} from "../memory/householdTab.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
 import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
@@ -5413,6 +5417,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           // Their voice profile is saved under their member id, so Voice ID's verdict names the member.
           enrol: (member) => voiceId.read({ kind: "saved", name: member.name, id: member.id }),
           refresh: () => home.refresh(),
+          // Windows Hello for what needs him (A3), where this Windows account is mapped to him alone (identity I-3).
+          ...(input.platform === "win32"
+            ? {
+                windowsAccount: windowsAccountOf(NodeOS.hostname(), NodeOS.userInfo().username),
+                hello: () => windowsHello("Confirm it's you for Tessaya", input.platform),
+              }
+            : {}),
         });
   const privateTab =
     input.privateMemory === undefined
