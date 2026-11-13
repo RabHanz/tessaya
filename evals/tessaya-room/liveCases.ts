@@ -116,6 +116,9 @@ export const hasDevices = (text: string): boolean => {
 /** Her words claiming a house change happened. */
 const CLAIMS_DONE =
   /\b(done|it'?s (now )?(on|off)|turned (it )?(on|off)|is (now )?(on|off) now|switched (it )?(on|off))\b/i;
+/** "It hasn't turned on yet", "not switched on": her saying the change did not happen (13 Nov suite). */
+const NOT_DONE =
+  /\b(hasn'?t|has not|haven'?t|isn'?t|not|won'?t|until)\b(?:\s+\w+){0,2}\s+(done|turned|switched|on|off)\b/gi;
 /** Her own deliberation, said aloud about him (07:38, 13 Nov). */
 const REASONING =
   /\b(let me correct that|I'll ask him|I should ask|he (said|asked|wants|means)|the conversation|nothing in the conversation)\b/i;
@@ -550,7 +553,7 @@ export const liveFailureOf = (
         .join(", ")}`;
   }
   const acts = calls.filter((x) => x.name === "home_do" || x.name.startsWith("home_automation"));
-  if (acts.length > 0 && !acts.some(changed) && CLAIMS_DONE.test(last))
+  if (acts.length > 0 && !acts.some(changed) && CLAIMS_DONE.test(last.replace(NOT_DONE, "")))
     return `claimed it was done, but: ${acts.map((x) => x.text.slice(0, 100)).join(" | ")}`;
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;
   for (const re of c.lastNotSays ?? []) if (re.test(last)) return `last reply ${re}`;

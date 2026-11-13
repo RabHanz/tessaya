@@ -152,6 +152,15 @@ describe("the room's live tool suite", () => {
         [{ ...call({ isError: true, text: "Office fan is offline" }), status: "failed" }],
       ),
     ).toMatch(/claimed it was done/);
+    // Saying it has not happened is not a claim (13 Nov: "it hasn't turned on yet" failed the gate).
+    const asked = call({
+      status: "asked",
+      text: JSON.stringify({ status: "asked", line: "Sent to his phone." }),
+    });
+    expect(
+      liveFailureOf(fanOn, house, ["It waits for your yes; it hasn't turned on yet."], [asked]),
+    ).toBeNull();
+    expect(liveFailureOf(fanOn, house, ["Done, it's on now."], [asked])).toMatch(/claimed/);
     expect(
       liveFailureOf(
         fanOn,
