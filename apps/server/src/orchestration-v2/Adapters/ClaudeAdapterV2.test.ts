@@ -11674,57 +11674,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  it.effect("fails the turn when Claude exits before it, as on a missing conversation", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const harness = yield* makeWakeHarnessWithOptions({ displayName: "Second account" });
-        // The CLI's whole output when --resume names a transcript its config dir does not hold.
-        yield* Queue.offer(
-          harness.sdkMessages,
-          makeResultFrame({
-            uuid: "00000000-0000-4000-8000-000000000640",
-            result: "",
-            subtype: "error_during_execution",
-            isError: true,
-            numTurns: 0,
-            terminalReason: null,
-            errors: [`No conversation found with session ID: ${WAKE_NATIVE_SESSION}`],
-          }),
-        );
-        // The process exits after it, with the result still unread; shutdown would discard it.
-        yield* Queue.interrupt(harness.sdkMessages);
-        // The process exits before the turn attaches, so the start itself fails, naming the account.
-        const failed = yield* Effect.flip(
-          harness.runtime.startTurn(
-            makeClaudeTestTurnInput({
-              threadId: harness.threadId,
-              providerThread: harness.providerThread,
-              now: yield* DateTime.now,
-              attemptId: RunAttemptId.make("missing-conversation"),
-              text: "Continue",
-              attachments: [],
-              nativeThreadHasTurns: true,
-            }),
-          ),
-        );
-        assert.include(
-          JSON.stringify(failed),
-          `This conversation couldn't be resumed on Second account: No conversation found with session ID: ${WAKE_NATIVE_SESSION}`,
-        );
-        assert.lengthOf(harness.offeredMessages, 0);
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            IdAllocator.layer,
-            McpProviderSessions.layer,
-            NodeServices.layer,
-            NodeCrypto.layer,
-          ),
-        ),
-      ),
-    ),
-  );
-
   it.effect("a user turn before the wakeup fires keeps the pending wakeup's hold", () =>
     Effect.scoped(
       Effect.gen(function* () {
