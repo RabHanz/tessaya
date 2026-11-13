@@ -17,7 +17,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { CLOUD_ENDPOINT_RUNTIME_CONFIG } from "../cloud/config.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
 import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
-import { HomeAssistantService } from "./HomeAssistantService.ts";
+import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 
 /** The firmware keeps four broker URLs of up to 96 characters (`r1bt_endpoints.c`). */
@@ -151,9 +151,8 @@ export const layer = Layer.effect(
 
     /** Sends the list to one R1 on this hub when it reports another. Only the R1 this server's record names. */
     const sync = Effect.fn("R1Reach.sync")(function* (id: string) {
-      const device = yield* home.device;
-      if (device === null || device.mqttUrl !== null || device.deviceId !== id || !online.has(id))
-        return;
+      const device = r1ById(yield* home.devices, id);
+      if (device === null || device.mqttUrl !== null || !online.has(id)) return;
       const { endpoints } = yield* compose;
       if (endpoints.broker.length === 0 || reportMatches(reported.get(id), endpoints)) return;
       const json = yield* encodeJson(endpoints).pipe(Effect.orDie);

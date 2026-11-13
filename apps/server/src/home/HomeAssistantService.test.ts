@@ -612,3 +612,58 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect(
+  "keeps several R1s, reads a server's one record from before, and finds each by id or key",
+  () => {
+    const { layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* HomeAssistantService.HomeAssistantService;
+      const r1 = (id: string, key: string): HomeAssistantService.R1Device => ({
+        deviceKey: key,
+        deviceId: id,
+        mqttUrl: null,
+        mqttUser: null,
+        mqttPass: null,
+      });
+      // A server set up before several R1s: its one record is still read, and kept on the next write.
+      stored.set(
+        "r1-device",
+        new TextEncoder().encode(JSON.stringify(r1("r1-old", "o".repeat(32)))),
+      );
+      assert.deepStrictEqual(
+        (yield* home.devices).map((d) => d.deviceId),
+        ["r1-old"],
+      );
+      yield* home.putDevice(r1("r1-desk", "d".repeat(32)));
+      yield* home.putDevice(r1("r1-kitchen", "k".repeat(32)));
+      // The first R1 stays in the old place for a rollback to an older build.
+      assert.include(new TextDecoder().decode(stored.get("r1-device")), "r1-old");
+      const all = yield* home.devices;
+      assert.deepStrictEqual(
+        all.map((d) => d.deviceId),
+        ["r1-old", "r1-desk", "r1-kitchen"],
+      );
+      assert.strictEqual(HomeAssistantService.r1ByKey(all, "k".repeat(32))?.deviceId, "r1-kitchen");
+      assert.isNull(HomeAssistantService.r1ByKey(all, "x".repeat(32)));
+      assert.isNull(HomeAssistantService.r1ByKey(all, ""));
+      // Replacing one keeps the others; a record with no id is refused.
+      yield* home.putDevice(r1("r1-desk", "e".repeat(32)));
+      assert.strictEqual(
+        HomeAssistantService.r1ById(yield* home.devices, "r1-desk")?.deviceKey,
+        "e".repeat(32),
+      );
+      const noId = yield* home
+        .putDevice({ ...r1("x", "z".repeat(32)), deviceId: null })
+        .pipe(Effect.flip);
+      assert.include(noId.why, "id");
+      yield* home.removeDevice("r1-old");
+      assert.deepStrictEqual(
+        (yield* home.devices).map((d) => d.deviceId),
+        ["r1-desk", "r1-kitchen"],
+      );
+      yield* home.removeDevice(null);
+      assert.lengthOf(yield* home.devices, 0);
+    }).pipe(Effect.provide(layer));
+  },
+);

@@ -719,9 +719,9 @@ const make = Effect.gen(function* () {
     string,
     { id: string; command: DeviceCommand; line: string; by: DeviceActor; until: number }
   >();
-  let link: DeviceLink | null = null;
-  let linkKey: string | null = null;
-  let device: R1Device | null = null;
+  // One link per broker the R1 records name (this server's hub is the null URL): R1s may sit on different ones.
+  const links = new Map<string, { readonly link: DeviceLink; readonly host: string }>();
+  let devices: ReadonlyArray<R1Device> = [];
   let counter = 0;
 
   const readSaved = sql<{
@@ -766,7 +766,8 @@ const make = Effect.gen(function* () {
   const publish = (id: string, path: string, payload: unknown, retain = false) =>
     Effect.sync(() => {
       const text = typeof payload === "string" ? payload : JSON.stringify(payload);
-      link?.publish(`freya/r1/${id}/${path}`, text, retain);
+      // To every broker: the R1 is on one of them, and the others never hear it.
+      for (const l of links.values()) l.link.publish(`freya/r1/${id}/${path}`, text, retain);
     });
 
   // A member's data was destroyed (household removal): every device's voice loop forgets their voice print. The loop
@@ -840,7 +841,7 @@ const make = Effect.gen(function* () {
 
   const live = (id: string) =>
     Effect.suspend(() => {
-      if (link === null || !link.connected())
+      if (![...links.values()].some((l) => l.link.connected()))
         return Effect.fail(
           new DeviceRefusedError({
             why: "The devices' broker is not connected. Check the R1's broker in Settings → Home.",
@@ -1392,7 +1393,7 @@ const make = Effect.gen(function* () {
         });
         yield* publish(id, "cmd/voice/earcons", "", true);
         yield* registry.forget(id);
-        if (device?.deviceId === id) yield* home.setDevice(null).pipe(Effect.ignore);
+        yield* home.removeDevice(id);
         // Its live link to this server's hub closes now; its next login is refused.
         if (hub._tag === "Some") hub.value.dropDevice(id);
         return done("Forgotten. Set it up again in Settings → Home.");
@@ -1566,7 +1567,7 @@ const make = Effect.gen(function* () {
       id,
       name: `Agora R1 (${id})`,
       kind: "agora-r1",
-      configured: id === device?.deviceId,
+      configured: devices.some((d) => d.deviceId === id),
       online: d.online,
       lastSeenAt: iso(d.lastSeen),
       batteryPct: n("power.battery_pct"),
@@ -1607,22 +1608,26 @@ const make = Effect.gen(function* () {
 
   const tick = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
-    device = yield* home.device;
-    const key = device === null ? null : `${device.mqttUrl}|${device.mqttUser}|${device.mqttPass}`;
-    if (key !== linkKey) {
-      link?.close();
-      link = null;
-      linkKey = key;
-      if (device !== null)
-        link = yield* broker.connect({
-          url: device.mqttUrl,
-          user: device.mqttUser,
-          pass: device.mqttPass,
-          onMessage: (topic, payload) => {
-            Queue.offerUnsafe(incoming, { topic, payload });
-          },
+    devices = yield* home.devices;
+    const wanted = new Map(devices.map((d) => [`${d.mqttUrl}|${d.mqttUser}|${d.mqttPass}`, d]));
+    for (const [key, l] of links)
+      if (!wanted.has(key)) {
+        l.link.close();
+        links.delete(key);
+      }
+    for (const [key, d] of wanted)
+      if (!links.has(key))
+        links.set(key, {
+          link: yield* broker.connect({
+            url: d.mqttUrl,
+            user: d.mqttUser,
+            pass: d.mqttPass,
+            onMessage: (topic, payload) => {
+              Queue.offerUnsafe(incoming, { topic, payload });
+            },
+          }),
+          host: d.mqttUrl === null ? "this server" : new URL(d.mqttUrl).hostname,
         });
-    }
     for (const [id, until] of trials) if (until <= now) yield* revert(id);
     for (const [id, until] of enrolling)
       if (until <= now) {
@@ -1668,14 +1673,18 @@ const make = Effect.gen(function* () {
     Effect.repeat(Schedule.spaced("5 seconds")),
     Effect.forkIn(scope),
   );
-  yield* Effect.addFinalizer(() => Effect.sync(() => link?.close()));
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      for (const l of links.values()) l.link.close();
+    }),
+  );
 
   return HomeDevices.of({
     overview: Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       const saved = yield* readSaved;
       const ids = new Set(heard.keys());
-      if (device?.deviceId != null) ids.add(device.deviceId);
+      for (const d of devices) if (d.deviceId !== null) ids.add(d.deviceId);
       const registered = yield* registry.list;
       const valuesOf = (id: string) =>
         new Map(
@@ -1683,13 +1692,13 @@ const make = Effect.gen(function* () {
         );
       return {
         broker: {
-          state: link === null ? "off" : link.connected() ? "connected" : "connecting",
-          host:
-            device === null
-              ? null
-              : device.mqttUrl === null
-                ? "this server"
-                : new URL(device.mqttUrl).hostname,
+          state:
+            links.size === 0
+              ? "off"
+              : [...links.values()].every((l) => l.link.connected())
+                ? "connected"
+                : "connecting",
+          host: links.size === 0 ? null : [...links.values()].map((l) => l.host).join(", "),
         },
         devices: [...ids].map((id) =>
           viewOf(id, heard.get(id) ?? blank(), saved, now, valuesOf(id)),

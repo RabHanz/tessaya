@@ -71,7 +71,7 @@ it.effect("sends the R1 its list when it comes online, again only when the list 
             noteKeyUse: () => Effect.void,
             keyUsedOutside: () => null,
           }),
-          Layer.mock(HomeAssistantService)({ device: Effect.succeed(record) }),
+          Layer.mock(HomeAssistantService)({ devices: Effect.succeed([record]) }),
           Layer.mock(ServerSecretStore)({
             get: (name) => Effect.sync(() => Option.fromNullishOr(store.get(name))),
             set: (name, value) => Effect.sync(() => void store.set(name, value)),

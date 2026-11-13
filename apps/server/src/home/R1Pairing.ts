@@ -13,7 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import { DeviceRefusedError } from "./DeviceRegistry.ts";
-import { HomeAssistantService } from "./HomeAssistantService.ts";
+import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach, type R1Endpoints } from "./R1Reach.ts";
 
@@ -118,8 +118,8 @@ export const layer = Layer.effect(
     const hub = yield* R1Hub;
     const reach = yield* R1Reach;
     const newKey = () => NodeCrypto.randomBytes(32).toString("hex");
-    const store = (device: Parameters<typeof home.setDevice>[0]) =>
-      home.setDevice(device).pipe(Effect.mapError((e) => refuse(e.why)));
+    const store = (device: Parameters<typeof home.putDevice>[0]) =>
+      home.putDevice(device).pipe(Effect.mapError((e) => refuse(e.why)));
 
     return R1Pairing.of({
       claim: Effect.fn("R1Pairing.claim")(function* (input) {
@@ -128,12 +128,6 @@ export const layer = Layer.effect(
         if (!DEVICE_ID.test(deviceId)) return yield* refuse("That is not an R1 id.");
         if (!ONE_TIME_KEY.test(oneTimeKey))
           return yield* refuse("That is not the code from the R1's pairing picture.");
-        const current = yield* home.device;
-        // shortcut: one R1 per server until per-device records land (next PR).
-        if (current !== null && current.deviceId !== deviceId)
-          return yield* refuse(
-            `This server already has ${current.deviceId ?? "an R1"}. Forget it in Settings → Hardware first.`,
-          );
         const key = newKey();
         yield* store({ deviceKey: key, deviceId, mqttUrl: null, mqttUser: null, mqttPass: null });
         // A claimed again R1 (reset, re-paired) must not keep a link made with its old key.
@@ -150,9 +144,8 @@ export const layer = Layer.effect(
         };
       }),
       rotate: Effect.fn("R1Pairing.rotate")(function* (id, confirmed) {
-        const device = yield* home.device;
-        if (device === null || device.deviceId !== id)
-          return yield* refuse(`${id} is not set up on this server.`);
+        const device = r1ById(yield* home.devices, id);
+        if (device === null) return yield* refuse(`${id} is not set up on this server.`);
         if (device.mqttUrl !== null || !hub.connected(id))
           return yield* refuse(
             "The R1 must be online on this server to take a new key. Try again once it shows online.",

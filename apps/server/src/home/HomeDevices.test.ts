@@ -45,11 +45,16 @@ const setup = () => {
       }),
   });
   const home = Layer.mock(HomeAssistantService)({
-    device: Effect.sync(() => record),
-    setDevice: (d) =>
+    devices: Effect.sync(() => (record === null ? [] : [record])),
+    putDevice: (d) =>
       Effect.sync(() => {
         record = d;
-        return { configured: d !== null };
+        return { configured: true };
+      }),
+    removeDevice: () =>
+      Effect.sync(() => {
+        record = null;
+        return { configured: false };
       }),
     call: (request) =>
       Effect.sync(() => {

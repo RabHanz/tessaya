@@ -232,7 +232,7 @@ function HardwareSections({
                 : `${view.broker.state === "connected" ? "Connected to" : "Connecting to"} ${view.broker.host ?? "the broker"}.`
           }
         />
-        {reach === null || view?.broker.host !== "this server" ? null : (
+        {reach === null || view?.broker.host?.includes("this server") !== true ? null : (
           <SettingsRow
             title="Away from home"
             description={reach.line}
@@ -1260,7 +1260,7 @@ function SetupSection({
   const [deviceKey, setDeviceKey] = useState("");
   const [devicePass, setDevicePass] = useState("");
   return (
-    <SettingsSection title={configured ? "Replace the R1's settings" : "Set up an R1"}>
+    <SettingsSection title={configured ? "Add an R1, or replace one by its id" : "Set up an R1"}>
       <SettingsRow
         title="Device and broker"
         description="Its id (r1-…), its key to reach Tessaya (24 characters or more), and its MQTT broker: empty when the R1 connects to this server itself. The key and passwords stay on the server."

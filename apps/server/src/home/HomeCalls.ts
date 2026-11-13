@@ -130,7 +130,7 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
       devicePass: Schema.optionalKey(Text(200)),
     }),
     (a, home) =>
-      home.setDevice({
+      home.putDevice({
         deviceKey: a.deviceKey,
         mqttUrl: a.mqttUrl ?? null,
         mqttUser: a.mqttUser ?? null,
@@ -139,7 +139,10 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
         devicePass: a.devicePass ?? null,
       }),
   ),
-  r1Forget: op(None, (_, home) => home.setDevice(null)),
+  // One R1 by id, or every R1 (the older form with no arguments).
+  r1Forget: op(Schema.Struct({ deviceId: Schema.optionalKey(Text(60)) }), (a, home) =>
+    home.removeDevice(a.deviceId ?? null),
+  ),
   answer: op(Schema.Struct({ id: Text(120), yes: Schema.Boolean }), (a, home) =>
     home.answer(a.id, a.yes),
   ),
