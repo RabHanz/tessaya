@@ -68,6 +68,27 @@ describe("tessaya-room grader", () => {
 });
 
 describe("the room's live tool suite", () => {
+  it("checks the Record's answer by what it names, not by the word nothing", () => {
+    const record = liveCases.find((c) => c.id === "record")!;
+    const read: LiveCall = {
+      name: "tessaya_record",
+      input: {},
+      isError: false,
+      text: JSON.stringify({
+        entries: [
+          { subject: 'heard "Turn on the Master Bedroom Fan."', ago: "1 min ago" },
+          { subject: 'heard "What time is it?"', ago: "3 h 2 min ago" },
+        ],
+      }),
+    };
+    expect(
+      liveFailureOf(record, {}, ["You turned on the bedroom fan. Nothing else needs you."], [read]),
+    ).toBeNull();
+    expect(
+      liveFailureOf(record, {}, ["Nothing happened in the last five minutes."], [read]),
+    ).toMatch(/named none/);
+  });
+
   it("has a case for every tool the room can call, so a new tool fails until it has one", async () => {
     const { ROOM_TOOL_SPECS } = await import("../../apps/server/src/home/R1Tools.ts");
     expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look"])).toEqual([]);

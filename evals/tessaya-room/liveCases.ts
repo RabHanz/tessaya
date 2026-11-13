@@ -50,6 +50,8 @@ export interface LiveCase {
   /** The last reply must match each. */
   readonly lastSays?: ReadonlyArray<RegExp>;
   readonly lastNotSays?: ReadonlyArray<RegExp>;
+  /** A check of its own on the last reply and the calls: why it fails, or null. */
+  readonly check?: (last: string, calls: ReadonlyArray<LiveCall>) => string | null;
   /** Asks his real laptop (read-only); runs only with --laptop. */
   readonly laptop?: boolean;
 }
@@ -58,6 +60,15 @@ export type House = Partial<Readonly<Record<Slot, Device>>>;
 
 const target = (input: Readonly<Record<string, unknown>>): string =>
   JSON.stringify(input["target"] ?? input["data"] ?? "");
+
+/** The words that carry meaning, for telling whether a reply is about something. */
+export const contentWords = (text: string): ReadonlyArray<string> =>
+  text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(
+      (w) => w.length > 3 && !["heard", "what", "that", "this", "with", "your", "have"].includes(w),
+    );
 
 /** Her words claiming a house change happened. */
 const CLAIMS_DONE =
@@ -184,8 +195,27 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Check the record: what happened in the last five minutes?"],
     uses: [["tessaya_record"]],
     clean: ["tessaya_record"],
-    // The suite's own turns are in the Record by now (08:27, 13 Nov: UTC times read as long ago).
-    lastNotSays: [/\bnothing\b/i],
+    // What the Record shows from the last five minutes must reach her answer (08:27, 13 Nov: rows a minute old,
+    // read as UTC, became "nothing in the last five minutes"). The suite's own turns are always there.
+    check: (last, calls) => {
+      const recent = calls
+        .filter((c) => c.name === "tessaya_record" && !c.isError)
+        .flatMap((c) => {
+          try {
+            return (
+              JSON.parse(c.text) as { entries: ReadonlyArray<{ subject: string; ago?: string }> }
+            ).entries;
+          } catch {
+            return [];
+          }
+        })
+        .filter((e) => /^(just now|[0-5] min ago)$/.test(e.ago ?? ""));
+      const said = new Set(contentWords(last));
+      return recent.length === 0 ||
+        recent.some((e) => contentWords(e.subject).some((w) => said.has(w)))
+        ? null
+        : `named none of the ${recent.length} entries from the last five minutes`;
+    },
   },
   {
     id: "team-board",
@@ -265,6 +295,41 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     proves: ["tessaya_ask_status"],
     said: ["Did I answer the request mcp-r1room-0000 yet?"],
     uses: [["tessaya_ask_status"]],
+  },
+  {
+    id: "setting-free",
+    proves: ["settings_find", "settings_set"],
+    said: ["Turn off the prompt suggestions."],
+    uses: [["settings_find", "settings_explain"], ["settings_set"]],
+    clean: ["settings_set"],
+    argsOf: "settings_set",
+    args: (input) => ({
+      promptSuggestionsEnabled: input["key"] === "promptSuggestionsEnabled",
+      off: [false, "false", "off"].includes(input["value"] as never),
+    }),
+  },
+  {
+    id: "setting-confirm",
+    proves: ["settings_set"],
+    said: ["Switch the desk device's brain to my subscription."],
+    uses: [["settings_set"]],
+    argsOf: "settings_set",
+    args: (input) => ({ roomBrain: input["key"] === "roomBrain" }),
+    // A confirm setting waits for his yes: she says it is with him.
+    lastSays: [/\b(yes|phone|approv\w*|confirm\w*)\b/i],
+  },
+  {
+    id: "setting-get",
+    proves: ["settings_get"],
+    said: ["Which speech model are you using right now?"],
+    uses: [["settings_get", "settings_explain"]],
+  },
+  {
+    id: "setting-explain",
+    proves: ["settings_explain"],
+    said: ["What does the background activity setting do, and can you change it yourself?"],
+    uses: [["settings_explain"]],
+    clean: ["settings_explain"],
   },
   {
     id: "louder",
@@ -349,6 +414,7 @@ export const liveFailureOf = (
     return `claimed it was done, but: ${acts.map((x) => x.text.slice(0, 100)).join(" | ")}`;
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;
   for (const re of c.lastNotSays ?? []) if (re.test(last)) return `last reply ${re}`;
+  if (c.check !== undefined) return c.check(last, calls);
   return null;
 };
 

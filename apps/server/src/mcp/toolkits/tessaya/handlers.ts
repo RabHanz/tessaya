@@ -30,12 +30,14 @@ import packageJson from "../../../../package.json" with { type: "json" };
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
+import * as SettingsHandlers from "../settings/handlers.ts";
 import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
 
 const decodeAsked = Schema.decodeUnknownOption(
@@ -181,6 +183,7 @@ export const layer = McpToolAccess.toLayer(
     return {
       ...(yield* HomeHandlers.make),
       ...(yield* DeviceHandlers.make),
+      ...(yield* SettingsHandlers.make),
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
       // State and names only: no synopsis, prompt or folder, and a walled project's work by its project's name.
@@ -242,10 +245,12 @@ export const layer = McpToolAccess.toLayer(
             Effect.gen(function* () {
               const owner = yield* ownerOf;
               const id = `mcp-${owner}-${yield* random.uuidV4()}`;
+              // The vessel the turn came through (TurnOrigin), else what the caller says it came from.
+              const origin = (yield* TurnOrigin)?.label ?? input.origin;
               const asked = yield* phone("ask", {
                 id,
                 text: input.text,
-                ...(input.origin === undefined ? {} : { origin: input.origin }),
+                ...(origin === undefined ? {} : { origin }),
               }).pipe(Effect.provideService(AskOwner, owner));
               return {
                 id: asked?.ok === false ? null : id,

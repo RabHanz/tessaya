@@ -7,6 +7,7 @@ import { BAR_NOT_CONNECTED } from "@t3tools/baton-shared/phoneRelay";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+import { TurnOrigin } from "../baton/TessayaTurn.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 
@@ -57,7 +58,7 @@ export const askLaptop = Effect.fn("R1Laptop.ask")(function* (question: string) 
         })
         .pipe(Effect.timeout("15 seconds"), Effect.result);
     // A laptop before the origin field refuses an argument it does not list; it is asked without it.
-    const named = yield* call("tessaya_ask", { text, origin: "R1" });
+    const named = yield* call("tessaya_ask", { text, origin: (yield* TurnOrigin)?.label ?? "R1" });
     const asked =
       named._tag === "Failure" && /unknown argument/i.test(String(named.failure.message))
         ? yield* call("tessaya_ask", { text })
