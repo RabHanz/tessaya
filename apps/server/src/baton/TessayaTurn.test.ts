@@ -74,6 +74,9 @@ it.effect("a turn's tools know which vessel heard it", () =>
       label: "R1",
       hisVoice: false,
       speaker: null,
+      member: "owner",
+      assurance: 0,
+      tainted: false,
       persona: null,
       rehearsal: false,
     });
@@ -304,3 +307,50 @@ it.effect(
       assert.include(after.block, "boiler service is booked for the twelfth");
     }),
 );
+
+it("carries who the turn is from and how sure, beside hisVoice and the speaker (identity I-2)", () => {
+  const room = { kind: "device" as const, id: "kitchen" };
+  const voice = (kind: SpeakerLike["kind"], verified: boolean, personId: string | null) => ({
+    kind,
+    personId,
+    verified,
+    inherited: false,
+    confidence: 0.71,
+  });
+  const of = (turn: TurnEnvelope) => {
+    const o = originOf(turn);
+    return [o.member, o.assurance, o.hisVoice];
+  };
+  assert.deepStrictEqual(of({ vessel: room, text: "hi", speaker: voice("owner", true, "owner") }), [
+    "owner",
+    2,
+    true,
+  ]);
+  assert.deepStrictEqual(of({ vessel: room, text: "hi", speaker: voice("saved", true, "sara") }), [
+    "sara",
+    2,
+    false,
+  ]);
+  assert.deepStrictEqual(of({ vessel: room, text: "hi", speaker: voice("saved", false, "sara") }), [
+    "sara",
+    1,
+    false,
+  ]);
+  assert.deepStrictEqual(of({ vessel: room, text: "hi", speaker: voice("guest", false, null) }), [
+    null,
+    0,
+    false,
+  ]);
+  // Typed on his desktop: his own signed-in device. An agent's turn names him but proves nothing.
+  assert.deepStrictEqual(of({ vessel: { kind: "desktop", id: "desktop" }, text: "hi" }), [
+    "owner",
+    2,
+    false,
+  ]);
+  assert.deepStrictEqual(of({ vessel: { kind: "mcp", id: "agent" }, text: "hi" }), [
+    "owner",
+    0,
+    false,
+  ]);
+  assert.strictEqual(originOf({ vessel: room, text: "hi", tainted: true }).tainted, true);
+});

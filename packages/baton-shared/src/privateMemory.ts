@@ -84,6 +84,8 @@ export interface SpeakerLike {
   readonly personId: string | null;
   readonly verified: boolean;
   readonly inherited: boolean;
+  /** Raw cosine to the matched voice (Voice ID's `confidence`), carried so a turn says how close it was. */
+  readonly confidence?: number | null;
 }
 
 /**

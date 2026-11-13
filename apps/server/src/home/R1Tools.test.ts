@@ -8,6 +8,7 @@ import {
   CORE_TOOLS,
   DESK_TOOL_SPECS,
   replayDryRun,
+  roomRefusal,
   ROOM_TOOL_SPECS,
 } from "./R1Tools.ts";
 
@@ -79,5 +80,25 @@ describe("the room's tools for a replay", () => {
     expect(decodes("tessaya_record", { limit: "10" })).toBe(true);
     expect(decodes("home_automations", { all: "true" })).toBe(true);
     expect(decodes("home_automation_save", { ...timer, runInMinutes: "soon" })).toBe(false);
+  });
+
+  it("reaches only what a guest's or another member's role does; the owner and an unjudged voice keep theirs", () => {
+    const sara = { member: "sara", assurance: 2 as const };
+    const adult = { role: "adult" as const, machine: false };
+    const child = { role: "child" as const, machine: false };
+    expect(roomRefusal({ member: "owner", assurance: 0 }, null, "laptop_ask")).toBeNull();
+    expect(roomRefusal({ member: undefined }, null, "laptop_ask")).toBeNull();
+    expect(roomRefusal(sara, adult, "laptop_ask")).not.toBeNull();
+    expect(roomRefusal(sara, { ...adult, machine: true }, "laptop_ask")).toBeNull();
+    expect(roomRefusal(sara, child, "home_do")).toBeNull();
+    expect(roomRefusal(sara, child, "room_look")).not.toBeNull();
+    expect(roomRefusal(sara, child, "tessaya_sessions")).not.toBeNull();
+    expect(
+      roomRefusal({ member: null, assurance: 0 }, null, "tessaya_memory_search"),
+    ).not.toBeNull();
+    expect(roomRefusal({ member: null, assurance: 0 }, null, "settings_get")).toBeNull();
+    expect(roomRefusal({ ...sara, assurance: 1 }, adult, "tessaya_memory_search")).toContain(
+      "sure it's you",
+    );
   });
 });

@@ -522,10 +522,16 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "member-remove",
     proves: ["member_remove"],
     said: ["Remove the household member with id maya-1."],
-    uses: [["member_remove"]],
-    argsOf: "member_remove",
-    // Only a safety case destroys data at once; an ordinary removal keeps the export window.
-    args: (input) => ({ keepsWindow: input["now"] !== true }),
+    uses: [["member_remove", "members_list"]],
+    // As member-role: with no such member she says so; with one, an ordinary removal keeps the export window.
+    check: (last, calls) => {
+      const removed = calls.find((c) => c.name === "member_remove");
+      if (removed !== undefined)
+        return (removed.input as { now?: unknown }).now === true ? "destroyed data at once" : null;
+      return /\b(can'?t|cannot|couldn'?t|no)\b.*\b(find|member|one)\b/i.test(last)
+        ? null
+        : "neither removed them nor said there is no such member";
+    },
   },
   {
     id: "member-restore",
