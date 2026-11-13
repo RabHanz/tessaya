@@ -2,6 +2,8 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
@@ -110,6 +112,40 @@ it.effect(
       assert.strictEqual(desk.items.length, 3);
       yield* fresh((r) => r.forget(DESK));
       assert.isNull(yield* fresh((r) => r.get(DESK)));
+    }).pipe(Effect.provide(BatonDatabaseMemory));
+  },
+);
+
+it.effect(
+  "never keeps a pretend vessel, removes ones kept before, and marks a device unseen for two weeks stale",
+  () => {
+    const fresh = <A>(f: (r: DeviceRegistry["Service"]) => Effect.Effect<A>) =>
+      Effect.flatMap(DeviceRegistry, f).pipe(Effect.provide(registryLayer));
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // Rows a suite run left before pretend vessels were refused (13 Nov: he saw a second R1).
+      yield* sql`
+        INSERT INTO fabric_devices (id, kind, name, firmware, via, version, manifest, last_seen, updated_at)
+        VALUES ('replay-p5', 'r1', 'R1', NULL, 'mqtt', NULL, '{}', 1, 1)
+      `;
+      yield* sql`INSERT INTO fabric_device_state (device_id, item_id, value, at) VALUES ('room-suite', 'power.battery_pct', '50', 1)`;
+      const kept = yield* fresh((r) =>
+        Effect.gen(function* () {
+          yield* r.publish("mqtt", { ...manifest, deviceId: "replay-audit", kind: "r1" });
+          yield* r.publish("client", { ...manifest, deviceId: "desk-x", test: true });
+          yield* r.report("mqtt", "bench-r1", [{ itemId: "power.battery_pct", value: 9 }]);
+          yield* r.seen("suite-r1", true);
+          yield* r.publish("client", manifest);
+          return (yield* r.list).map((d) => d.deviceId);
+        }),
+      );
+      assert.deepStrictEqual(kept, [DESK]);
+      const rows = yield* sql<{ n: number }>`
+        SELECT (SELECT count(*) FROM fabric_devices) + (SELECT count(*) FROM fabric_device_state) AS n
+      `;
+      assert.strictEqual(rows[0]!.n, 1);
+      yield* TestClock.adjust("15 days");
+      assert.isTrue((yield* fresh((r) => r.get(DESK)))?.stale);
     }).pipe(Effect.provide(BatonDatabaseMemory));
   },
 );

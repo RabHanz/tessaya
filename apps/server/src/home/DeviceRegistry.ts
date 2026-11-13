@@ -10,7 +10,7 @@ import {
   type DeviceWrite,
   type RegisteredDevice,
 } from "@t3tools/baton-contracts";
-import { checkWrite, withFloor } from "@t3tools/baton-shared/deviceItems";
+import { checkWrite, isTestVessel, withFloor } from "@t3tools/baton-shared/deviceItems";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -70,6 +70,8 @@ interface Held {
 /** A client vessel calls at least every 15 s while it runs. */
 const CLIENT_ONLINE_MS = 45_000;
 const ACK_WAIT_MS = 4_000;
+/** A device away this long is shown as gone, with "forget it" offered. */
+const STALE_MS = 14 * 24 * 60 * 60_000;
 const MAX_VALUE_CHARS = 2_000;
 const MAX_ITEMS = 300;
 const decodeManifest = Schema.decodeUnknownOption(DeviceManifest);
@@ -150,7 +152,12 @@ const make = Effect.gen(function* () {
   }>`SELECT id, kind, name, firmware, via, version, manifest, last_seen FROM fabric_devices`.pipe(
     Effect.orDie,
   );
-  for (const row of rows) {
+  // Pretend vessels kept before they were refused (13 Nov): removed at start.
+  for (const row of rows.filter((r) => isTestVessel(r.id))) {
+    yield* sql`DELETE FROM fabric_devices WHERE id = ${row.id}`.pipe(Effect.orDie);
+    yield* sql`DELETE FROM fabric_device_state WHERE device_id = ${row.id}`.pipe(Effect.orDie);
+  }
+  for (const row of rows.filter((r) => !isTestVessel(r.id))) {
     const manifest = decodeManifest(parse(row.manifest));
     devices.set(row.id, {
       deviceId: row.id,
@@ -172,6 +179,8 @@ const make = Effect.gen(function* () {
     value: string;
     at: number;
   }>`SELECT device_id, item_id, value, at FROM fabric_device_state`.pipe(Effect.orDie);
+  for (const id of new Set(state.map((r) => r.device_id).filter(isTestVessel)))
+    yield* sql`DELETE FROM fabric_device_state WHERE device_id = ${id}`.pipe(Effect.orDie);
   for (const row of state)
     devices.get(row.device_id)?.values.set(row.item_id, { value: parse(row.value), at: row.at });
 
@@ -218,6 +227,9 @@ const make = Effect.gen(function* () {
     firmware: d.firmware,
     via: d.via,
     online: onlineOf(d, now),
+    ...(!onlineOf(d, now) && d.lastSeen !== null && now - d.lastSeen > STALE_MS
+      ? { stale: true }
+      : {}),
     lastSeenAt: iso(d.lastSeen),
     version: d.version,
     items: d.items,
@@ -232,6 +244,8 @@ const make = Effect.gen(function* () {
     if (decoded._tag === "None")
       return "The manifest is not in the expected shape; it was ignored.";
     const m = decoded.value;
+    // Taken and answered, never kept: a pretend vessel must not show as one of his devices.
+    if (m.test === true || isTestVessel(m.deviceId)) return null;
     const now = yield* Clock.currentTimeMillis;
     const d = held(via, m.deviceId, now);
     d.kind = m.kind;
@@ -253,6 +267,7 @@ const make = Effect.gen(function* () {
     deviceId: string,
     values: ReadonlyArray<{ readonly itemId: string; readonly value: unknown }>,
   ) {
+    if (isTestVessel(deviceId)) return;
     const now = yield* Clock.currentTimeMillis;
     const d = held(via, deviceId, now);
     for (const { itemId, value } of values) {
@@ -368,6 +383,7 @@ const make = Effect.gen(function* () {
     publish,
     report,
     seen: Effect.fn("DeviceRegistry.seen")(function* (deviceId: string, online: boolean) {
+      if (isTestVessel(deviceId)) return;
       const now = yield* Clock.currentTimeMillis;
       const d = devices.get(deviceId) ?? held("mqtt", deviceId, now);
       d.online = online;

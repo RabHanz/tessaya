@@ -23,6 +23,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { DeviceRegistry } from "./DeviceRegistry.ts";
+import { isTestVessel } from "@t3tools/baton-shared/deviceItems";
 import { onPeer } from "../peer/PeerVessels.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
@@ -146,7 +147,8 @@ const make = Effect.gen(function* () {
   ) {
     const out = new Set<string>();
     for (const [id, at] of lastClaimed) {
-      if (id === deviceId || now - at > ACTIVE_MS) continue;
+      // A pretend vessel never holds his real ones' window open.
+      if (id === deviceId || now - at > ACTIVE_MS || isTestVessel(id)) continue;
       const known = registry._tag === "Some" ? yield* registry.value.get(id) : null;
       if (known !== null && !known.online) continue;
       out.add(id);

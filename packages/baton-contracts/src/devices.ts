@@ -290,6 +290,8 @@ export const DeviceManifest = Schema.Struct({
   firmware: Schema.optionalKey(Short(60)),
   schema: Schema.Number,
   version: Schema.optionalKey(Short(60)),
+  /** A pretend vessel (the suite, a replay, a bench): answered, never kept or shown. */
+  test: Schema.optionalKey(Schema.Boolean),
   items: Schema.Array(DeviceItem).check(Schema.isMaxLength(200)),
 });
 export type DeviceManifest = typeof DeviceManifest.Type;
@@ -315,6 +317,8 @@ export const RegisteredDevice = Schema.Struct({
   version: Schema.NullOr(Schema.String),
   items: Schema.Array(DeviceItem),
   values: Schema.Array(DeviceItemValue),
+  /** Not heard from in two weeks: shown as such, with a way to forget it. */
+  stale: Schema.optionalKey(Schema.Boolean),
   /** Private items in use now (a camera, a microphone): every client shows a live light until then. */
   live: Schema.optionalKey(
     Schema.Array(Schema.Struct({ itemId: Schema.String, until: Schema.String })),
