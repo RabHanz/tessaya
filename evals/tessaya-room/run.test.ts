@@ -89,6 +89,21 @@ describe("the room's live tool suite", () => {
     ).toMatch(/named none/);
   });
 
+  it("fails a miscounted automation answer, as .138's three for two (13 Nov)", () => {
+    const automations = liveCases.find((c) => c.id === "automations")!;
+    const listed: LiveCall = {
+      name: "home_automations",
+      input: { all: true },
+      isError: false,
+      text: JSON.stringify({ running: 2, paused: 1, total: 3, automations: [] }),
+    };
+    const failure = (reply: string) => liveFailureOf(automations, {}, [reply], [listed]);
+    expect(failure("You have three automations: two are running and one is paused.")).toBeNull();
+    expect(failure("You have three automations, and three are active.")).toMatch(/said 3 running/);
+    expect(failure("Three are running right now.")).toMatch(/said 3 running/);
+    expect(failure("Four automations, one of them paused.")).toMatch(/said 4 total/);
+  });
+
   it("has a case for every tool the room can call, so a new tool fails until it has one", async () => {
     const { ROOM_TOOL_SPECS } = await import("../../apps/server/src/home/R1Tools.ts");
     expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look"])).toEqual([]);

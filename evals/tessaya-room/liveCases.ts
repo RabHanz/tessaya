@@ -70,6 +70,34 @@ export const contentWords = (text: string): ReadonlyArray<string> =>
       (w) => w.length > 3 && !["heard", "what", "that", "this", "with", "your", "have"].includes(w),
     );
 
+const NUMBER_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+];
+/** The counts she says, each with what it counts: "two are running", "one is paused", "three automations". */
+export const spokenCounts = (
+  text: string,
+): ReadonlyArray<{ readonly n: number; readonly of: "running" | "paused" | "total" }> =>
+  [
+    ...text.matchAll(
+      /\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\s+(?:of them|automations?))?(?:\s+(?:are|is))?(?:\s+(?:currently|now|still))?\s+(automations?|running|active|enabled|on|paused)\b/gi,
+    ),
+  ].map(([, n, word]) => ({
+    n: /^\d+$/.test(n!) ? Number(n) : NUMBER_WORDS.indexOf(n!.toLowerCase()),
+    of: /^paused$/i.test(word!) ? "paused" : /^automations?$/i.test(word!) ? "total" : "running",
+  }));
+
 /** Her words claiming a house change happened. */
 const CLAIMS_DONE =
   /\b(done|it'?s (now )?(on|off)|turned (it )?(on|off)|is (now )?(on|off) now|switched (it )?(on|off))\b/i;
@@ -180,6 +208,24 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     argsOf: "home_automations",
     // 08:40, 13 Nov: without all she listed only her own and told him he had none.
     args: (input) => ({ "his own too (all: true)": input["all"] === true }),
+    // .138's gate: "three are running" for two. Every count she says must be one the tool gave.
+    check: (last, calls) => {
+      const counts = calls
+        .filter((c) => c.name === "home_automations" && !c.isError)
+        .map((c) => {
+          try {
+            return JSON.parse(c.text) as { running: number; paused: number; total: number };
+          } catch {
+            return null;
+          }
+        })
+        .at(-1);
+      if (counts == null) return "home_automations gave no counts";
+      const wrong = spokenCounts(last).filter(({ n, of }) => n !== counts[of]);
+      return wrong.length === 0
+        ? null
+        : `said ${wrong.map(({ n, of }) => `${n} ${of}`).join(", ")}; the tool gave ${counts.running} running, ${counts.paused} paused, ${counts.total} in all`;
+    },
   },
   {
     id: "automation-pause",

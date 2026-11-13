@@ -25,7 +25,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
-import { DESK_REPLAY_CLIENT, ROOM_CLIENT } from "../home/handlers.ts";
+import { DESK_REPLAY_CLIENT, ROOM_CLIENT, withCounts } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
 import { TessayaToolkit } from "./tools.ts";
 
@@ -638,3 +638,18 @@ it.effect("an agent's desktop settings change never lets devices look at his scr
     expect(sent).toEqual([{ showWords: false }]);
   }),
 );
+
+it("counts the automations she lists, so she says the numbers rather than counting (.138, 13 Nov)", () => {
+  const row = (paused: boolean, status = "active") => ({ id: "a", paused, status });
+  const rows = [row(false), row(true), row(false), row(false, "deleted")];
+  expect(withCounts({ ok: true, value: rows }).value).toEqual({
+    running: 2,
+    paused: 1,
+    total: 3,
+    automations: rows,
+  });
+  expect(withCounts({ ok: false, error: "Home is not connected." })).toEqual({
+    ok: false,
+    error: "Home is not connected.",
+  });
+});
