@@ -501,13 +501,13 @@ describe("answering only when he is talking to her", () => {
     expect(await outcome).toBe("held back");
   });
 
-  it("never answers on a bench sweep (test/no-reply), and answers again once it is cleared", async () => {
+  it("never answers on a bench sweep (cmd/voice/no-reply), and answers again once it is cleared", async () => {
     const logs: string[] = [];
     const t = setup({
       recognise: said(["So here's the thing, the first job failed.", "What time is it?"]),
       log: (l) => logs.push(l),
     });
-    t.room.message(`freya/r1/${DEV}/test/no-reply`, Buffer.from('{"on":true}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/no-reply`, Buffer.from('{"on":true}'));
     t.s2();
     await t.feed(true, 20);
     await t.feed(false, 40);
@@ -515,7 +515,7 @@ describe("answering only when he is talking to her", () => {
     expect(logs.some((l) => /bench, not answered; his \(likeness 0\.00, 8 words, #/.test(l))).toBe(
       true,
     );
-    t.room.message(`freya/r1/${DEV}/test/no-reply`, Buffer.from('{"on":false}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/no-reply`, Buffer.from('{"on":false}'));
     t.s2();
     await t.feed(true, 20);
     await t.feed(false, 40);

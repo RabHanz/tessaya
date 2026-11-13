@@ -175,7 +175,7 @@ export interface RoomDeps {
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   readonly log: (line: string) => void;
-  /** A bench turn kept for a regression case (`test/no-reply` with `keep`): never his, only while the bench asks. */
+  /** A bench turn kept for a regression case (`cmd/voice/no-reply` with `keep`): never his, only while the bench asks. */
   readonly keep?: (turn: BenchTurn) => void;
   /** Her name with no session open (`voice/wake`): voiced segments only, never recognised beyond the wake check. */
   readonly wake?: {
@@ -362,7 +362,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       readonly entry: { role: "user"; content: string };
       merged: boolean;
     } | null = null;
-    /** Her recent downlink, kept only while a bench asks for its turns (`test/no-reply` with `keep`). */
+    /** Her recent downlink, kept only while a bench asks for its turns (`cmd/voice/no-reply` with `keep`). */
     const played: Array<{ at: number; pcm: Int16Array }> = [];
     /** His turn so far, for the echo check on a cut-in. */
     let turnPcm: Int16Array[] = [];
@@ -730,7 +730,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // Her own voice through the R1's mic: timing and how it sounds, never her words alone (13 Nov, 07:40 and 07:41).
       const echoed =
         given === undefined && raw !== "" && herEcho(pcm, raw, startedAt, lastVoice, rawCalled);
-      // A bench sweep (`test/no-reply`): heard, judged and logged, never answered or kept in the conversation.
+      // A bench sweep (`cmd/voice/no-reply`): heard, judged and logged, never answered or kept in the conversation.
       const sweep = bench.get(id);
       if (given === undefined && sweep !== undefined && raw !== "") {
         kept?.control.abort();
@@ -1202,7 +1202,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const muted = new Set<string>();
   /** R1s with her listening and closing sounds off (`cmd/voice/earcons {"on":false}`, retained); on by default. */
   const noCues = new Set<string>();
-  /** R1s on a bench (`test/no-reply`, retained): what they hear is judged and logged, never answered. */
+  /** R1s on a bench (`cmd/voice/no-reply`, retained): what they hear is judged and logged, never answered. */
   const bench = new Map<string, { readonly keep: boolean }>();
   const cue = (id: string, name: PillSound) => {
     if (!noCues.has(id)) sessions.get(id)?.cue(name);
@@ -1259,7 +1259,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         } else deps.log(`[${id}] eye seen ${tail} ${body}`);
         return;
       }
-      if (tail === "test/no-reply") {
+      if (tail === "cmd/voice/no-reply") {
         const on = json()["on"];
         if (on === false || String(payload).trim() === "") bench.delete(id);
         else bench.set(id, { keep: json()["keep"] === true });

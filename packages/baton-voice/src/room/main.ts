@@ -385,7 +385,7 @@ const main = async () => {
       "freya/r1/+/state/eye/#",
       "freya/r1/+/voice/pronounce",
       "freya/r1/+/state/caps",
-      "freya/r1/+/test/no-reply",
+      "freya/r1/+/cmd/voice/no-reply",
     ],
     onMessage: (t, p) => room?.message(t, p),
     log,
@@ -461,7 +461,7 @@ const main = async () => {
       },
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
-      // A bench's turns for regression cases, only while it set `test/no-reply` with `keep` (never his).
+      // A bench's turns for regression cases, only while it set `cmd/voice/no-reply` with `keep` (never his).
       keep: (b) => {
         const dir = NodePath.join(state, "bench");
         NodeFS.mkdirSync(dir, { recursive: true });
