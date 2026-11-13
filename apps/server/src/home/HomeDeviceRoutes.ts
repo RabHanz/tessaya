@@ -3,10 +3,11 @@
  * Where the R1 posts a camera picture (`POST /camera/upload?device=<id>`, the firmware's fixed path, no auth of its
  * own). The service keeps it only when he opened a window for that device moments ago, and only in memory. And where
  * the room loop claims a wake for an R1 (`POST /api/devices/r1/v1/voice/arbiter`, the R1's device key), so one
- * device answers him.
+ * device answers him. And the R1's own MQTT hub (`/api/r1/mqtt`, R1Hub.ts).
  */
 import * as NodeCrypto from "node:crypto";
 
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -17,6 +18,7 @@ import { StepUps } from "./StepUps.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
+import { R1_HUB_PATH, R1Hub, runHubSocket } from "./R1Hub.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
@@ -71,6 +73,17 @@ export const routes = HttpRouter.use((router) =>
       Effect.catchCause(() => Effect.succeed(HttpServerResponse.text("No.", { status: 400 }))),
     );
     yield* router.add("POST", "/camera/upload", upload);
+    // The R1's own MQTT hub. No auth here: the firmware cannot add headers, so the CONNECT's login is the auth.
+    const hub = Context.get(context, R1Hub);
+    yield* router.add(
+      "GET",
+      R1_HUB_PATH,
+      Effect.gen(function* () {
+        const socket = yield* Effect.flatMap(HttpServerRequest.HttpServerRequest, (r) => r.upgrade);
+        yield* runHubSocket(socket, hub).pipe(Effect.scoped);
+        return HttpServerResponse.empty();
+      }).pipe(Effect.catchCause(() => Effect.succeed(HttpServerResponse.empty({ status: 400 })))),
+    );
     const arbiter = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(

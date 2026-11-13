@@ -127,6 +127,7 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
       mqttUser: Schema.optionalKey(Text(100)),
       mqttPass: Schema.optionalKey(Text(200)),
       deviceId: Schema.optionalKey(Text(60)),
+      devicePass: Schema.optionalKey(Text(200)),
     }),
     (a, home) =>
       home.setDevice({
@@ -135,6 +136,7 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
         mqttUser: a.mqttUser ?? null,
         mqttPass: a.mqttPass ?? null,
         deviceId: a.deviceId ?? null,
+        devicePass: a.devicePass ?? null,
       }),
   ),
   r1Forget: op(None, (_, home) => home.setDevice(null)),

@@ -6,7 +6,6 @@
  * risky act goes to his phone: anyone in the room can talk to it). The eyes follow her over the device's MQTT.
  */
 import * as NodeCrypto from "node:crypto";
-import * as NodeNet from "node:net";
 import * as NodePath from "node:path";
 
 import {
@@ -76,82 +75,10 @@ import {
   type ToolOutcome,
 } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
+import { publishToDevice } from "./R1Hub.ts";
 import { HomeAssistantService, type HomeActor, type R1Device } from "./HomeAssistantService.ts";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
-
-const utf8 = (text: string) => {
-  const bytes = Buffer.from(text, "utf8");
-  return Buffer.concat([Buffer.from([bytes.length >> 8, bytes.length & 0xff]), bytes]);
-};
-const remaining = (length: number) => {
-  const out: Array<number> = [];
-  do {
-    let byte = length % 128;
-    length = Math.floor(length / 128);
-    if (length > 0) byte |= 0x80;
-    out.push(byte);
-  } while (length > 0);
-  return Buffer.from(out);
-};
-const packet = (type: number, body: Buffer) =>
-  Buffer.concat([Buffer.from([type]), remaining(body.length), body]);
-
-/** MQTT 3.1.1 bytes for one QoS 0 publish, logged in with a user and password. */
-export const mqttPublishBytes = (input: {
-  readonly clientId: string;
-  readonly user: string | null;
-  readonly pass: string | null;
-  readonly topic: string;
-  readonly payload: string;
-  /** The broker keeps it and hands it to whoever subscribes later. */
-  readonly retain?: boolean;
-}): { readonly connect: Buffer; readonly publish: Buffer; readonly disconnect: Buffer } => {
-  const flags = 0x02 | (input.user === null ? 0 : 0x80) | (input.pass === null ? 0 : 0x40);
-  const connect = packet(
-    0x10,
-    Buffer.concat([
-      utf8("MQTT"),
-      Buffer.from([0x04, flags, 0x00, 0x1e]),
-      utf8(input.clientId),
-      ...(input.user === null ? [] : [utf8(input.user)]),
-      ...(input.pass === null ? [] : [utf8(input.pass)]),
-    ]),
-  );
-  const publish = packet(
-    input.retain === true ? 0x31 : 0x30,
-    Buffer.concat([utf8(input.topic), Buffer.from(input.payload, "utf8")]),
-  );
-  return { connect, publish, disconnect: Buffer.from([0xe0, 0x00]) };
-};
-
-const publishOnce = (device: R1Device, topic: string, payload: string, retain = false) =>
-  Effect.callback<void>((resume) => {
-    const url = new URL(device.mqttUrl ?? "mqtt://127.0.0.1:1883");
-    const bytes = mqttPublishBytes({
-      clientId: `tessaya-${NodeCrypto.randomBytes(4).toString("hex")}`,
-      user: device.mqttUser,
-      pass: device.mqttPass,
-      topic,
-      payload,
-      retain,
-    });
-    const socket = NodeNet.connect(Number(url.port || 1883), url.hostname);
-    const done = () => {
-      socket.destroy();
-      resume(Effect.void);
-    };
-    socket.setTimeout(3000, done);
-    socket.on("error", done);
-    socket.on("connect", () => socket.write(bytes.connect));
-    socket.once("data", (ack) => {
-      // CONNACK return code 0 is accepted; anything else, nothing is sent.
-      if (ack[0] === 0x20 && ack[3] === 0)
-        socket.write(Buffer.concat([bytes.publish, bytes.disconnect]), done);
-      else done();
-    });
-    return Effect.sync(() => socket.destroy());
-  });
 
 export type R1Mood = "thinking" | "happy" | "curious" | "sad" | "worried" | "sleepy" | "neutral";
 
@@ -160,12 +87,12 @@ const eyeIntentTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/
 
 /**
  * A mood the server would like the eyes to show, sent to the room loop as an intent: the loop is the device's one
- * writer and weighs it against its own (listening, speaking). Nothing when the device has no broker set.
+ * writer and weighs it against its own (listening, speaking). Nothing when no R1 is set up.
  */
 const eyes = (device: R1Device | null, mood: R1Mood, holdMs: number, reason: string) =>
-  device?.mqttUrl == null || device.deviceId === null
+  device?.deviceId == null
     ? Effect.void
-    : publishOnce(
+    : publishToDevice(
         device,
         eyeIntentTopic(device.deviceId),
         JSON.stringify({ vessel: device.deviceId, mood, holdMs, reason }),
@@ -186,8 +113,8 @@ const publishPronunciations = Effect.fn("R1Device.publishPronunciations")(functi
     const json = JSON.stringify(map);
     if (json === sent) return;
     const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device);
-    if (device?.mqttUrl == null || device.deviceId === null) return;
-    yield* publishOnce(device, pronounceTopic(device.deviceId), json, true);
+    if (device?.deviceId == null) return;
+    yield* publishToDevice(device, pronounceTopic(device.deviceId), json, true);
     sent = json;
   }, Effect.ignore);
   yield* publish((yield* settings.value.getSettings).voicePronounce);
@@ -897,8 +824,8 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
   const s = speakerOf(voice);
   const his = s?.kind === "owner" && s.verified && !s.inherited;
   // Firmware before 3.32 shows nothing while it takes a picture, so the eyes glance first.
-  if (his && device.mqttUrl != null)
-    yield* publishOnce(
+  if (his)
+    yield* publishToDevice(
       device,
       `freya/r1/${id}/cmd/eye/gesture`,
       JSON.stringify({ name: "glance" }),

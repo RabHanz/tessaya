@@ -147,13 +147,18 @@ export interface HomeAutomationInput {
   readonly request: string;
 }
 
-/** The R1's own settings, kept whole in the secret store: its key to reach Tessaya and the broker it listens on. */
+/**
+ * The R1's own settings, kept whole in the secret store: its key to reach Tessaya and the broker it listens on. No
+ * broker means this server's own hub (`R1Hub`).
+ */
 export interface R1Device {
   readonly deviceKey: string;
   readonly mqttUrl: string | null;
   readonly mqttUser: string | null;
   readonly mqttPass: string | null;
   readonly deviceId: string | null;
+  /** The password the R1 already logs in with, when it is not the device key (an R1 moved from a broker of its own). */
+  readonly devicePass?: string | null;
 }
 
 export class HomeAssistantService extends Context.Service<

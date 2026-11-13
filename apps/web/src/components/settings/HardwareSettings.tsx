@@ -278,6 +278,12 @@ function HardwareSections({
         <SetupSection
           busy={busy}
           configured={devices.some((d) => d.configured)}
+          onShowBus={() =>
+            run("owner", "busLogin", {}, (v) => {
+              const login = v as { user: string; key: string; path: string };
+              return `User ${login.user}, key ${login.key}, at ws://<this server>${login.path}.`;
+            })
+          }
           onSave={async (args) => {
             setBusy(true);
             const result = await homeCall({
@@ -1180,21 +1186,24 @@ function SetupSection({
   busy,
   configured,
   onSave,
+  onShowBus,
 }: {
   readonly busy: boolean;
   readonly configured: boolean;
   readonly onSave: (args: Record<string, string>) => Promise<void>;
+  readonly onShowBus: () => Promise<unknown>;
 }) {
   const [deviceId, setDeviceId] = useState("");
   const [mqttUrl, setMqttUrl] = useState("");
   const [mqttUser, setMqttUser] = useState("");
   const [mqttPass, setMqttPass] = useState("");
   const [deviceKey, setDeviceKey] = useState("");
+  const [devicePass, setDevicePass] = useState("");
   return (
     <SettingsSection title={configured ? "Replace the R1's settings" : "Set up an R1"}>
       <SettingsRow
         title="Device and broker"
-        description="Its id (r1-…), the MQTT broker it listens on, and the key it uses to reach Tessaya (24 characters or more). The key and password stay on the server."
+        description="Its id (r1-…), its key to reach Tessaya (24 characters or more), and its MQTT broker: empty when the R1 connects to this server itself. The key and passwords stay on the server."
       >
         <div className="flex flex-col gap-2 pt-2">
           <Input
@@ -1204,7 +1213,7 @@ function SetupSection({
           />
           <Input
             value={mqttUrl}
-            placeholder="mqtt://broker.local:1883"
+            placeholder="Broker, e.g. mqtt://broker.local:1883 (empty: this server)"
             onChange={(e) => setMqttUrl(e.target.value)}
           />
           <Input
@@ -1222,25 +1231,29 @@ function SetupSection({
             value={deviceKey}
             onChange={(e) => setDeviceKey(e.target.value)}
           />
+          {mqttUrl.trim() === "" ? (
+            <SecretInput
+              value={devicePass}
+              placeholder="The R1's own MQTT password, if it is not the key (optional)"
+              onChange={(e) => setDevicePass(e.target.value)}
+            />
+          ) : null}
           <div>
             <Button
               size="xs"
-              disabled={
-                busy ||
-                deviceId.trim() === "" ||
-                mqttUrl.trim() === "" ||
-                deviceKey.trim().length < 24
-              }
+              disabled={busy || deviceId.trim() === "" || deviceKey.trim().length < 24}
               onClick={() =>
                 void onSave({
                   deviceKey: deviceKey.trim(),
                   deviceId: deviceId.trim(),
-                  mqttUrl: mqttUrl.trim(),
+                  ...(mqttUrl.trim() === "" ? {} : { mqttUrl: mqttUrl.trim() }),
                   ...(mqttUser.trim() === "" ? {} : { mqttUser: mqttUser.trim() }),
                   ...(mqttPass === "" ? {} : { mqttPass }),
+                  ...(mqttUrl.trim() !== "" || devicePass === "" ? {} : { devicePass }),
                 }).then(() => {
                   setDeviceKey("");
                   setMqttPass("");
+                  setDevicePass("");
                 })
               }
             >
@@ -1249,6 +1262,15 @@ function SetupSection({
           </div>
         </div>
       </SettingsRow>
+      <SettingsRow
+        title="Room loop login"
+        description="What a voice loop or another server on a different machine logs in to this server's R1 hub with."
+        control={
+          <Button size="xs" variant="outline" disabled={busy} onClick={() => void onShowBus()}>
+            Show
+          </Button>
+        }
+      />
     </SettingsSection>
   );
 }

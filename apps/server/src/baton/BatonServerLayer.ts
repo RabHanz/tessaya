@@ -48,6 +48,7 @@ import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
 import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
+import * as R1Hub from "../home/R1Hub.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
 import * as VoiceArbiter from "../home/VoiceArbiter.ts";
 import * as DeviceTriggers from "../home/DeviceTriggers.ts";
@@ -124,9 +125,12 @@ const homeLayer = HomeAssistantService.layer.pipe(
   Layer.provide(BatonPhoneInbox.layer),
 );
 
+// The R1's own MQTT hub: one instance, so the route, the devices and every publish share its subscribers.
+const hubLayer = R1Hub.layer.pipe(Layer.provide(homeLayer));
+
 // The R1 and later devices: one instance, shared by the rules that drive them.
 const homeDevicesLayer = HomeDevices.layer.pipe(
-  Layer.provide(HomeDevices.brokerLayer),
+  Layer.provide(HomeDevices.brokerLayer.pipe(Layer.provide(hubLayer))),
   Layer.provide(DeviceRegistry.layer),
   Layer.provide(homeLayer),
   // A button bound to a thread continues or stops it through the engine's own door.
@@ -252,6 +256,7 @@ const servicesInner = IntentService.layer.pipe(
   Layer.provideMerge(VesselHands.layer),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(BatonRecordService.layer),
+  Layer.provideMerge(hubLayer),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.
   Layer.provide(BatonDatabase.layer),
 );

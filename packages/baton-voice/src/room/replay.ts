@@ -7,7 +7,8 @@
 import * as NodeFS from "node:fs";
 
 import { DOWN_FRAME_BYTES, fromBytes, toBytes } from "./audio.ts";
-import { connectMqtt, realDeviceActivity } from "./mqtt.ts";
+import { connectMqtt } from "@t3tools/baton-shared/mqtt";
+import { realDeviceActivity } from "./mqtt.ts";
 
 const env = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;
@@ -52,8 +53,8 @@ const main = async () => {
   // Only what comes after his voice ends counts: a reply to an earlier piece of the clip (he paused) is not the answer.
   let voiceEndAt = Number.POSITIVE_INFINITY;
   const mqtt = connectMqtt({
-    host: env("R1_MQTT_HOST"),
-    port: Number(env("R1_MQTT_PORT", "1883")),
+    url:
+      process.env["R1_MQTT_URL"] || `mqtt://${env("R1_MQTT_HOST")}:${env("R1_MQTT_PORT", "1883")}`,
     clientId: `tessaya-replay-${process.pid}`,
     user: env("R1_MQTT_USER"),
     pass: NodeFS.readFileSync(env("R1_MQTT_PASS_FILE"), "utf8").trim(),

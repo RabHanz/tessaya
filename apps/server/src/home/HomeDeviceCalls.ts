@@ -24,11 +24,13 @@ import {
 import { itemsView, readView } from "@t3tools/baton-shared/deviceItems";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { DeviceTriggers } from "./DeviceTriggers.ts";
+import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);
@@ -190,6 +192,13 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   nfcRemove: op(Schema.Struct({ uid: Text(40) }), (a, devices) => devices.removeTag(a.uid)),
   cameraView: op(ById, (a, devices) => devices.cameraView(a.id)),
   cameraClear: op(ById, (a, devices) => devices.cameraClear(a.id)),
+  busLogin: op(Schema.Struct({}), () =>
+    Effect.flatMap(Effect.serviceOption(R1Hub), (hub) =>
+      Option.isNone(hub)
+        ? Effect.fail(new DeviceRefusedError({ why: "This server has no R1 hub." }))
+        : Effect.map(hub.value.busLogin, (login) => ({ ...login, path: R1_HUB_PATH })),
+    ),
+  ),
 };
 
 export type DevicesCallKind = BatonDevicesCallInput["kind"];
