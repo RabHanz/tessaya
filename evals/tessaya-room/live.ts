@@ -11,6 +11,7 @@ import * as NodeUtil from "node:util";
 
 import {
   fill,
+  hasDevices,
   liveCases,
   liveFailureOf,
   slotsOf,
@@ -153,12 +154,27 @@ const house = await discover([...new Set(cases.flatMap(slotsOf))], async (domain
     ])
   ).calls;
 });
+// The device cases need a device in the registry (a scratch copy keeps none, so they do not apply there).
+const devicesHere = !cases.some((c) => c.device === true)
+  ? false
+  : desktop !== null
+    ? hasDevices(await desktop.call("device_list", {}).catch(() => "{}"))
+    : (
+        await turn([
+          { role: "user", content: "List my devices with device_list; just their names." },
+        ])
+      ).calls.some((c) => c.name === "device_list" && !c.isError && hasDevices(c.text));
 const rows = [];
 for (const c of cases) {
   const need = slotsOf(c).filter((s) => house[s] === undefined);
   if (need.length > 0) {
     rows.push({ id: c.id, proves: c.proves, result: "n/a", why: `no ${need.join(", ")} here` });
     console.log(`n/a   ${c.id}: no ${need.join(", ")} in this house`);
+    continue;
+  }
+  if (c.device === true && !devicesHere) {
+    rows.push({ id: c.id, proves: c.proves, result: "n/a", why: "no device registered here" });
+    console.log(`n/a   ${c.id}: no device registered on this server`);
     continue;
   }
   // A case only the R1's own tools, or the desktop's own refused ones, could pass does not apply to this vessel.

@@ -65,6 +65,13 @@ const outsideAgentsOnly = (): boolean => {
     fiber && Context.getOrUndefined(fiber.context, McpInvocationContext.McpInvocationContext);
   return scope?.client !== undefined;
 };
+/** Shown only to his other servers over a peer link. */
+const linkedServersOnly = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope =
+    fiber && Context.getOrUndefined(fiber.context, McpInvocationContext.McpInvocationContext);
+  return scope?.client?.linked === true;
+};
 const JobsTool = Tool.make("tessaya_jobs", {
   ...shared,
   description:
@@ -430,6 +437,29 @@ const SessionDefaultsTool = Tool.make("tessaya_session_defaults", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+// His other servers' vessels claim here when this server has the desk device: one responder per utterance (R1-P7).
+const VoiceArbiterTool = Tool.make("tessaya_voice_arbiter", {
+  ...shared,
+  description:
+    "For another of his servers only: a voice claim, a reply's start or end, or the arbiter's state, on this server's voice arbiter.",
+  parameters: Schema.Struct({
+    op: Schema.Literals(["arbiter", "claim", "speaking", "ended", "answerFrom"]),
+    args: Schema.Record(Schema.String, Schema.Unknown),
+    origin: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+    hisVoice: Schema.optional(Schema.Boolean),
+  }),
+  success: Schema.Struct({
+    ok: Schema.Boolean,
+    error: Schema.optionalKey(Schema.String),
+    value: Schema.optionalKey(Schema.Unknown),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, linkedServersOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
   ...DeviceTools,
@@ -458,4 +488,5 @@ export const TessayaToolkit = Toolkit.make(
   OpenInTerminalTool,
   MainSessionTool,
   SessionDefaultsTool,
+  VoiceArbiterTool,
 );

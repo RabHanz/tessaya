@@ -190,11 +190,14 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
               ? JSON.stringify({ kept: "noted", id: null, line: "Kept." })
               : name === "tessaya_memory_forget"
                 ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
-                : JSON.stringify({
-                    id: null,
-                    status: "queued",
-                    line: "Sent; it waits for his answer.",
-                  }),
+                : name === "device_watch"
+                  ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
+                    JSON.stringify({ ok: true, value: { status: "done", line: "Saved the rule." } })
+                  : JSON.stringify({
+                      id: null,
+                      status: "queued",
+                      line: "Sent; it waits for his answer.",
+                    }),
         isError: false,
         status: "done",
       }

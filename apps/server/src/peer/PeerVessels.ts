@@ -51,7 +51,9 @@ export const asForwarded = Effect.fn("PeerVessels.asForwarded")(function* <A, E,
 
 /** His other servers this turn may forward to: none for a linked caller. */
 const peersToAsk = Effect.gen(function* () {
-  const client = (yield* McpInvocationContext.McpInvocationContext).client;
+  // Outside a tool call (a device's own door, as the voice arbiter's) there is no caller to read.
+  const scope = yield* Effect.serviceOption(McpInvocationContext.McpInvocationContext);
+  const client = scope._tag === "None" ? undefined : scope.value.client;
   const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
   const mcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
   const vessel = vesselOf(client);
@@ -97,7 +99,12 @@ const named = (label: string, on: string) => label.toLowerCase().includes(on.tri
 export const onPeer = Effect.fn("PeerVessels.onPeer")(function* (
   tool: string,
   args: Readonly<Record<string, unknown>>,
-  options: { readonly on?: string | undefined; readonly takes: (value: unknown) => boolean },
+  options: {
+    readonly on?: string | undefined;
+    readonly takes: (value: unknown) => boolean;
+    /** How long one server may take; a voice claim cannot wait past its round. */
+    readonly wait?: Duration.Input;
+  },
 ) {
   const peers = yield* peersToAsk;
   if (peers === null) return null;
@@ -107,7 +114,7 @@ export const onPeer = Effect.fn("PeerVessels.onPeer")(function* (
       ? peers.linked
       : peers.linked.filter((l) => named(l.label, options.on!));
   for (const link of targets) {
-    const answer = yield* peers.call(link.environmentId, tool, rest, "15 seconds");
+    const answer = yield* peers.call(link.environmentId, tool, rest, options.wait ?? "15 seconds");
     if (answer._tag === "Some" && options.takes(answer.value))
       return { on: link.label, value: answer.value };
   }
