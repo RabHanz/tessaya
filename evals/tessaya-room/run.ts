@@ -25,9 +25,9 @@ import {
   spokenReply,
   withoutNarration,
   withoutSelfIntros,
-  type ActOutcome,
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
+import type { ActOutcome } from "../../apps/server/src/baton/TessayaBrain.ts";
 import { volumeAfter, volumeLine } from "../../packages/baton-shared/src/speakingVolume.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/baton-shared/src/osPack.ts";
