@@ -10,7 +10,7 @@ const note = (over: Partial<CommsNote> = {}): CommsNote => ({
   from: "sara",
   fromLabel: "Sara",
   fromVessel: null,
-  to: ["person:rabee"],
+  to: ["person:omid"],
   text: "I'm running late",
   forms: {
     glance: { emoji: "⏰", words: "Running late" },
@@ -31,8 +31,8 @@ const device = (kind: string, values: Record<string, unknown> = {}) => ({
   kind,
   values: Object.entries(values).map(([itemId, value]) => ({ itemId, value, at: "" })),
 });
-const shared = { personal: false, forName: "Rabee" };
-const own = { personal: true, forName: "Rabee" };
+const shared = { personal: false, forName: "Omid" };
+const own = { personal: true, forName: "Omid" };
 
 describe("comms addresses and forms", () => {
   it("parses every address kind and refuses anything else", () => {
@@ -139,7 +139,7 @@ describe("renderNote", () => {
 
   it("holds a private note's body on a shared vessel until that voice is verified there", () => {
     const held = renderNote(note({ private: true }), r1, shared);
-    expect(held).toMatchObject({ held: true, voice: { say: "A message for Rabee from Sara." } });
+    expect(held).toMatchObject({ held: true, voice: { say: "A message for Omid from Sara." } });
     expect(renderNote(note({ private: true }), r1, { ...shared, verified: true }).held).toBe(false);
     expect(renderNote(note({ private: true }), phone, own).held).toBe(false);
   });

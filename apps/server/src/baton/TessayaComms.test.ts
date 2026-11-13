@@ -9,7 +9,7 @@ import { TessayaComms, layer as commsLayer } from "./TessayaComms.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 
 const MEMBERS: Readonly<Record<string, { role: MemberRole; name: string }>> = {
-  owner: { role: "owner", name: "Rabee" },
+  owner: { role: "owner", name: "Omid" },
   sara: { role: "adult", name: "Sara" },
   maya: { role: "child", name: "Maya" },
   gus: { role: "guest", name: "Gus" },
@@ -54,7 +54,7 @@ layer("TessayaComms", (it) => {
         text: "Running late 🚗",
       });
       assert.strictEqual(sent.status, "done");
-      assert.strictEqual(sent.note?.fromLabel, "Rabee");
+      assert.strictEqual(sent.note?.fromLabel, "Omid");
       assert.deepStrictEqual(sent.note?.forms.glance, { emoji: "🚗", words: "Running late" });
       const sara = yield* comms("sara", { op: "inbox" });
       assert.isTrue((sara.notes ?? []).some((n) => n.id === sent.note?.id));
