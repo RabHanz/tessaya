@@ -164,6 +164,8 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "wizard.offer.title": "A two-minute tour of",
     "wizard.offer.em": "Tessaya",
     "memory.sync.codePlaceholder": "Code from that machine",
+    "memory.household": "Make household",
+    "memory.householdHint": "Only {persona} recalls this now; every persona will",
     "wizard.offer.text":
       "Your microphone, wake words and voices, what she may do on your screen, your privacy, and how to stop her. Skip any step.",
     "wizard.offer.start": "Start the tour",
