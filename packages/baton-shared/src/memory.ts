@@ -44,7 +44,16 @@ export interface MemoryItem {
   readonly supersededBy: string | null;
   /** Held until he says yes (content from a tainted turn). Hidden from retrieval. */
   readonly proposed: boolean;
+  /** The persona it was learned with (its pack id), if any. */
+  readonly persona?: string | null;
+  /** Every persona's (household), or only `persona`'s (a private persona's, or about that persona and him). */
+  readonly visibility?: MemoryVisibility;
+  /** The vessel kind that heard it ("device", "desktop", ...), and the voice that told it ("owner", a person id). */
+  readonly surface?: string | null;
+  readonly speaker?: string | null;
 }
+
+export type MemoryVisibility = "household" | "persona";
 
 export interface MemoryDraft {
   readonly kind: MemoryKind;
@@ -61,6 +70,10 @@ export interface MemoryDraft {
   readonly supersedes?: string;
   /** When an imported item was first written where it came from (Freya's memories keep their dates). Imports only. */
   readonly createdAt?: string;
+  readonly persona?: string | null;
+  readonly visibility?: MemoryVisibility;
+  readonly surface?: string | null;
+  readonly speaker?: string | null;
 }
 
 export interface MemoryQuery {

@@ -63,7 +63,7 @@ export interface Persona {
   readonly projects: ReadonlyArray<string>;
   /** The projects it leads (`leads:`): it hands out their work and is on their team. */
   readonly leads: ReadonlyArray<string>;
-  /** P5's `private:` (not read from the pack yet): its conversation and memory are its own, and the roster leaves it out. */
+  /** `private: yes` in its file: its memory is its own, and the roster leaves it out (never the lead). */
   readonly private?: boolean;
 }
 
@@ -157,6 +157,7 @@ const face = (
     ...(fields["cloud voice"] ? { cloudVoice: fields["cloud voice"].toLowerCase() } : {}),
     role: fields["role"] ?? "",
     lead,
+    ...(!lead && /^(?:yes|true)$/i.test((fields["private"] ?? "").trim()) ? { private: true } : {}),
     tools: tools === undefined || tools.trim() === "" ? null : listOf(tools),
   };
 };

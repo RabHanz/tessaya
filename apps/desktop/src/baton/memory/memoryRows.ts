@@ -86,6 +86,7 @@ export const memoryMeta = (item: MemoryItem, used: boolean): string =>
     item.scope === "global" ? null : `${item.scope}: ${item.scopeRef ?? ""}`,
     item.source === "import" ? "imported" : null,
     item.pinned ? "pinned" : null,
+    item.visibility === "persona" ? `only ${item.persona ?? "one persona"}` : null,
     used ? "used in the last answer" : null,
   ]
     .filter((x): x is string => x !== null)
@@ -142,6 +143,7 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
     pinned: item.pinned,
     held: item.proposed,
     why: whyRemembered(item),
+    ...(item.visibility === "persona" && item.persona != null ? { personaOnly: item.persona } : {}),
   });
   const sectionOf = (item: MemoryItem): string =>
     item.proposed

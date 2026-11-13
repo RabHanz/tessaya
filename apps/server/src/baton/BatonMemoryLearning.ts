@@ -41,6 +41,7 @@ const Proposals = Schema.Struct({
       hisStatement: Schema.optionalKey(Schema.Boolean),
       replaces: Schema.optionalKey(Schema.NullOr(Schema.String)),
       days: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+      personaOnly: Schema.optionalKey(Schema.Boolean),
     }),
   ),
 });
@@ -238,12 +239,21 @@ export const make = Effect.gen(function* () {
         role: "background",
       })
       .pipe(Effect.orElseSucceed(() => ({ items: [] })));
-    const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis).map(
-      (d) =>
+    // A private persona's turn keeps all it learns to itself (pack `private: true`, Memory v2 §2.3).
+    const privatePersona =
+      input.agent !== undefined &&
+      readPack(NodePath.dirname(config.dbPath)).personas.some(
+        (p) => p.id === input.agent && p.private === true,
+      );
+    const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis)
+      .map((d) =>
         walled === null
           ? d
           : { ...d, draft: { ...d.draft, scope: "project" as const, scopeRef: walled } },
-    );
+      )
+      .map((d) =>
+        privatePersona ? { ...d, draft: { ...d.draft, visibility: "persona" as const } } : d,
+      );
     let stored = 0;
     let held = 0;
     for (const { draft, replaces } of drafts) {

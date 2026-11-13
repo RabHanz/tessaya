@@ -144,6 +144,8 @@ export type HomeControl =
       readonly why: string;
       /** A private store's id: its buttons act on that store, and it has no Pin or History. */
       readonly store?: string;
+      /** Only this persona recalls it; "Make household" opens it to every persona. */
+      readonly personaOnly?: string;
     })
   /** The People area of the Memory tab: everyday memory, his private store and each person's, each under a PIN. */
   | (HomeControlBase & {

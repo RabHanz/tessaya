@@ -29,6 +29,7 @@ import {
   type MemoryDraft,
   type MemoryItem,
   type MemoryKind,
+  type MemoryVisibility,
   type MemoryVersion,
   type MemoryVersionBy,
   MEMORY_VERSIONS_KEPT,
@@ -71,6 +72,10 @@ interface ItemRow {
   readonly expires_at: string | null;
   readonly superseded_by: string | null;
   readonly origin: string;
+  readonly persona?: string | null;
+  readonly visibility?: string | null;
+  readonly surface?: string | null;
+  readonly speaker?: string | null;
 }
 
 const fromRow = (row: ItemRow): MemoryItem => ({
@@ -89,6 +94,10 @@ const fromRow = (row: ItemRow): MemoryItem => ({
   expiresAt: row.expires_at,
   supersededBy: row.superseded_by,
   proposed: row.proposed === 1,
+  persona: row.persona ?? null,
+  visibility: row.visibility === "persona" ? "persona" : "household",
+  surface: row.surface ?? null,
+  speaker: row.speaker ?? null,
 });
 
 const refuse = (reason: string) => new BatonMemoryRefusedError({ reason });
@@ -155,10 +164,14 @@ export class BatonMemoryService extends Context.Service<
     readonly search: (query: MemoryQuery) => Effect.Effect<ReadonlyArray<MemoryHit>>;
     /** Stores, reinforces a duplicate, or holds a tainted proposal; refuses what must not be kept. */
     readonly add: (draft: MemoryDraft) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
-    /** His edit: the item becomes his own words. */
+    /** His edit: the item becomes his own words. A visibility alone changes only who may recall it. */
     readonly edit: (
       id: string,
-      patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
+      patch: {
+        readonly text?: string | undefined;
+        readonly kind?: MemoryKind | undefined;
+        readonly visibility?: MemoryVisibility | undefined;
+      },
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
     /** The weekly pass's rewrite (or the consolidation's): new wording, but the source and confidence stay as they were. */
     readonly rewrite: (
@@ -317,7 +330,9 @@ export const make = Effect.gen(function* () {
       ? DEFAULT_OS_PACK
       : readPack(NodePath.dirname(config.value.dbPath));
     return (item: MemoryItem) =>
-      item.scope !== "project" || item.scopeRef === null || mayRecall(pack, agent, item.scopeRef);
+      // A persona's own memory reaches only that persona (Memory v2 §2.3); his own view and upkeep see all.
+      (item.visibility !== "persona" || (agent !== undefined && item.persona === agent)) &&
+      (item.scope !== "project" || item.scopeRef === null || mayRecall(pack, agent, item.scopeRef));
   });
 
   /** What this reader may see: walled unless it is upkeep or his own view on the desktop; a persona only from the desktop. */
@@ -419,11 +434,14 @@ export const make = Effect.gen(function* () {
     yield* sql`
       INSERT INTO fabric_memory_items (
         id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
-        created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at
+        created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at,
+        persona, visibility, surface, speaker
       ) VALUES (
         ${id}, ${draft.kind}, ${text}, ${draft.source}, ${draft.sourceRef ?? null}, ${scope},
         ${scopeRef}, ${startingConfidence(draft)}, ${draft.pinned === true ? 1 : 0},
-        ${proposed ? 1 : 0}, ${born}, ${born}, NULL, ${expiresAt}, NULL, ${origin}, ${at}
+        ${proposed ? 1 : 0}, ${born}, ${born}, NULL, ${expiresAt}, NULL, ${origin}, ${at},
+        ${draft.persona ?? null}, ${draft.visibility === "persona" && draft.persona != null ? "persona" : "household"},
+        ${draft.surface ?? null}, ${draft.speaker ?? null}
       )
     `.pipe(Effect.orDie);
     const created = yield* requireItem(id);
@@ -474,11 +492,25 @@ export const make = Effect.gen(function* () {
 
   const edit = Effect.fn("BatonMemoryService.edit")(function* (
     id: string,
-    patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
+    patch: {
+      readonly text?: string | undefined;
+      readonly kind?: MemoryKind | undefined;
+      readonly visibility?: MemoryVisibility | undefined;
+    },
     why = "he edited it",
   ) {
     const current = yield* requireSeen(id);
     const at = yield* nowIso;
+    // "Make household" (or back to the persona it was learned with): only who may recall it changes, not its words.
+    if (patch.visibility !== undefined && patch.text === undefined && patch.kind === undefined) {
+      const visibility =
+        patch.visibility === "persona" && current.persona != null ? "persona" : "household";
+      yield* sql`
+        UPDATE fabric_memory_items SET visibility = ${visibility}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
+        WHERE id = ${id}
+      `.pipe(Effect.orDie);
+      return yield* requireItem(id);
+    }
     const text = patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
     if (reason !== null) return yield* refuse(reason);
@@ -924,11 +956,14 @@ export const make = Effect.gen(function* () {
         yield* sql`
           INSERT INTO fabric_memory_items (
             id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
-            created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at
+            created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at,
+            persona, visibility, surface, speaker
           ) VALUES (
             ${i.id}, ${i.kind}, ${i.text}, ${i.source}, ${i.sourceRef}, ${i.scope}, ${i.scopeRef},
             ${i.confidence}, ${i.pinned ? 1 : 0}, ${i.proposed ? 1 : 0}, ${i.createdAt}, ${i.updatedAt}, ${i.lastUsedAt},
-            ${i.expiresAt}, ${i.supersededBy}, ${change.writer}, ${at}
+            ${i.expiresAt}, ${i.supersededBy}, ${change.writer}, ${at},
+            ${i.persona ?? null}, ${i.visibility === "persona" && i.persona != null ? "persona" : "household"},
+            ${i.surface ?? null}, ${i.speaker ?? null}
           )
         `.pipe(Effect.orDie);
       }

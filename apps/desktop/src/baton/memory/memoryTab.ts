@@ -207,6 +207,8 @@ export const createMemoryTab = (input: {
       );
     } else if ((target = memoryIdOf(id, "m.forget")) !== null) {
       void run("forget", { id: target }, "Forgotten.");
+    } else if ((target = memoryIdOf(id, "m.household")) !== null) {
+      void run("edit", { id: target, visibility: "household" }, "Every persona can recall it now.");
     } else if ((target = memoryIdOf(id, "m.accept")) !== null) {
       void run("accept", { id: target }, "Kept.");
     } else return false;
