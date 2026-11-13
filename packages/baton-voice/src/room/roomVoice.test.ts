@@ -1044,6 +1044,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
       },
     });
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from("{}"));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     expect(spoken).toEqual([["Alfred here.", "peter_yearsley"]]);
     t.room.message(
       `freya/r1/${DEV}/voice/ask`,
@@ -1076,8 +1077,12 @@ describe("what Tessaya's Devices page can ask of the room", () => {
       `freya/r1/${DEV}/voice/say`,
       Buffer.from(JSON.stringify({ text: "Dinner is ready." })),
     );
-    await new Promise<void>((r) => queueMicrotask(r));
-    await Promise.resolve();
+    // The R1 plays her voice only in its own session: it is asked to open one, and the line ends it.
+    expect(t.published.map((p) => p.topic)).toEqual([`freya/r1/${DEV}/cmd/voice/start`]);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await vi.waitFor(() =>
+      expect(t.published.map((p) => p.topic)).toContain(`freya/r1/${DEV}/cmd/voice/stop`),
+    );
     expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/voice/down`)).toBe(true);
     t.room.message(`freya/r1/${DEV}/voice/ctl`, Buffer.from(JSON.stringify({ ev: "mute" })));
     await t.feed(true, 20).catch(() => undefined);
@@ -1449,6 +1454,7 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     ]);
     // The loop's own: an R1 button switches to Alfred.
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"alfred"}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     expect(logs).toContain(`[${DEV}] eye sent cmd/eye/persona {"name":"alfred"}`);
   });
 });

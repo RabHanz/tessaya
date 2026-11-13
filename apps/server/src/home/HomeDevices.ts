@@ -27,6 +27,8 @@ import {
   type DeviceTransport,
   type DeviceView,
   type DevicesOverview,
+  BT_KINDS,
+  type BtKind,
 } from "@t3tools/baton-contracts";
 import { recordText } from "@t3tools/baton-shared/audit";
 import {
@@ -38,6 +40,7 @@ import {
   type BtKnown,
 } from "@t3tools/baton-shared/btNames";
 import { isTestVessel, valueText } from "@t3tools/baton-shared/deviceItems";
+import { displaySupported } from "@t3tools/baton-shared/deviceView";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -255,8 +258,12 @@ const codOf = (v: unknown): number | undefined => {
   return typeof n === "number" && Number.isInteger(n) && n >= 0 && n < 0x1000000 ? n : undefined;
 };
 /** `cod` and the `kind` it (or the name) gives, for the known list. */
-const withKind = (name: string, cod: number | undefined) => {
-  const kind = kindOf({ name, cod });
+const withKind = (name: string, cod: number | undefined, said?: unknown) => {
+  const kind = kindOf({
+    name,
+    cod,
+    kind: (BT_KINDS as ReadonlyArray<unknown>).includes(said) ? (said as BtKind) : undefined,
+  });
   // "other" says nothing: it must not cover a kind another source knows.
   return { ...(cod === undefined ? {} : { cod }), ...(kind === "other" ? {} : { kind }) };
 };
@@ -423,7 +430,13 @@ export const applyMessage = (
       const mac = str(body?.["mac"]);
       d.speaker.saved =
         body?.["saved"] === true && mac !== null
-          ? { mac, name: recordText(str(body?.["name"]) ?? mac, 40) }
+          ? (() => {
+              // No name from the firmware (0.3.51): the one heard before stays; btHeard fills it from the known list.
+              const name =
+                recordText(str(body?.["name"]) ?? "", 40) ||
+                (d.speaker.saved?.mac === mac ? d.speaker.saved.name : "");
+              return { mac, name, ...withKind(name, codOf(body?.["cod"]), body?.["kind"]) };
+            })()
           : null;
       break;
     }
@@ -441,7 +454,7 @@ export const applyMessage = (
                 name: recordText(str(v["name"]) ?? "", 40),
                 rssi: num(v["rssi"]),
                 audio: v["audio"] === true,
-                ...(codOf(v["cod"]) === undefined ? {} : { cod: codOf(v["cod"])! }),
+                ...withKind(str(v["name"]) ?? "", codOf(v["cod"]), v["kind"]),
               },
             ];
       });
@@ -1047,6 +1060,18 @@ const make = Effect.gen(function* () {
         lastAt: linked ? now : null,
         ...withKind(str(body?.["name"]) ?? "", codOf(body?.["cod"])),
       });
+    // The firmware often says no name (0.3.51): the one this vessel or his desktop knows it by fills it in.
+    const shown = heard.get(id)?.speaker;
+    if (shown != null) {
+      const known = yield* knownOf(id);
+      const named = <T extends { mac: string; name: string; cod?: number }>(f: T): T => {
+        if (f.name !== "") return f;
+        const name = known.find((k) => k.mac === f.mac.toUpperCase())?.name ?? "";
+        return name === "" ? f : { ...f, name, ...withKind(name, f.cod) };
+      };
+      if (shown.saved !== null) shown.saved = named(shown.saved);
+      shown.found = shown.found.map(named);
+    }
     if (tail === "state/bt" && (linked || state === "failed")) {
       const waiter = btWait.get(id);
       if (waiter !== undefined) {
@@ -1199,6 +1224,10 @@ const make = Effect.gen(function* () {
         return done("Saved. The R1 confirms it in a moment.");
       }
       case "display":
+        if (!displaySupported(heard.get(id)?.display))
+          return yield* new DeviceRefusedError({
+            why: "This R1's firmware cannot turn its screen yet; it needs a firmware update. Nothing was sent.",
+          });
         yield* publish(
           id,
           "cmd/display/rotate",
@@ -1292,6 +1321,8 @@ const make = Effect.gen(function* () {
             return done("Speaker forgotten. Pair it again to use it.");
           case "route":
             yield* publish(id, "cmd/bt/route", { out: c.output ?? "auto" });
+            // A connect forces `cmd/audio/output` to bt; only this undoes it, or replies go to a speaker that is gone.
+            if (c.output !== "bt") yield* publish(id, "cmd/audio/output", { to: "auto" });
             return done(
               c.output === "bt"
                 ? "Replies play only on the Bluetooth speaker."

@@ -4,6 +4,7 @@
  * list (the vessel's bonds and the devices it connected to, and the paired list of his desktop) is where a name
  * becomes a MAC. Pure.
  */
+import { BT_KINDS, type BtKind } from "@t3tools/baton-contracts";
 
 export interface BtKnown {
   readonly mac: string;
@@ -17,8 +18,7 @@ export interface BtKnown {
   readonly kind?: BtKind | undefined;
 }
 
-export const BT_KINDS = ["headphones", "headset", "speaker", "car", "receiver", "other"] as const;
-export type BtKind = (typeof BT_KINDS)[number];
+export { BT_KINDS, type BtKind };
 
 /**
  * The Class of Device's audio/video minor class (Bluetooth Assigned Numbers, major class 0x04), or null when the

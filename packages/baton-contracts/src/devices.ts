@@ -162,6 +162,10 @@ export const DEVICE_SPEAKER_OUTPUTS = ["auto", "bt", "onboard"] as const;
 export type DeviceSpeakerOutput = (typeof DEVICE_SPEAKER_OUTPUTS)[number];
 
 /** An external Bluetooth speaker (the R1 as an A2DP source). */
+/** What a Bluetooth audio device is: the firmware's word, else its Class of Device, else its name (btNames `kindOf`). */
+export const BT_KINDS = ["headphones", "headset", "speaker", "car", "receiver", "other"] as const;
+export type BtKind = (typeof BT_KINDS)[number];
+
 export const DeviceSpeaker = Schema.Struct({
   state: Schema.Literals([
     "off",
@@ -173,7 +177,14 @@ export const DeviceSpeaker = Schema.Struct({
     "failed",
   ]),
   /** The saved speaker, kept across reboots until forgotten. */
-  saved: Schema.NullOr(Schema.Struct({ mac: Schema.String, name: Schema.String })),
+  saved: Schema.NullOr(
+    Schema.Struct({
+      mac: Schema.String,
+      name: Schema.String,
+      cod: Schema.optionalKey(Schema.Number),
+      kind: Schema.optionalKey(Schema.Literals(BT_KINDS)),
+    }),
+  ),
   output: Schema.Literals(DEVICE_SPEAKER_OUTPUTS),
   found: Schema.Array(
     Schema.Struct({
@@ -183,6 +194,7 @@ export const DeviceSpeaker = Schema.Struct({
       audio: Schema.Boolean,
       /** Its Bluetooth Class of Device, when the firmware reports it. */
       cod: Schema.optionalKey(Schema.Number),
+      kind: Schema.optionalKey(Schema.Literals(BT_KINDS)),
     }),
   ),
   scannedAt: Schema.NullOr(Schema.String),

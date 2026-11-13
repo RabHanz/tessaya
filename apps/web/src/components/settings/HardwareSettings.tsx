@@ -36,8 +36,21 @@ import {
   tagActionLine,
   transportLine,
   when,
+  btDeviceLabel,
+  btKindNoun,
+  displaySupported,
+  outputLabels,
+  scanLine,
 } from "@t3tools/baton-shared/deviceView";
 import { Link } from "@tanstack/react-router";
+import {
+  BluetoothIcon,
+  CarIcon,
+  HeadphonesIcon,
+  HeadsetIcon,
+  RadioReceiverIcon,
+  SpeakerIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -422,7 +435,11 @@ function DeviceControls({
               value={displayChoiceOf(d)}
               onValueChange={(set) => void run("act", "display", { id, set })}
             >
-              <SelectTrigger size="sm" aria-label="Screen rotation" disabled={off}>
+              <SelectTrigger
+                size="sm"
+                aria-label="Screen rotation"
+                disabled={off || !displaySupported(d.display)}
+              >
                 <SelectValue>
                   {DISPLAY_CHOICES.find(([v]) => v === displayChoiceOf(d))?.[1]}
                 </SelectValue>
@@ -438,7 +455,7 @@ function DeviceControls({
             <Button
               size="xs"
               variant="outline"
-              disabled={off}
+              disabled={off || !displaySupported(d.display)}
               onClick={() => void run("act", "display", { id, set: "calibrate" })}
             >
               Set upright
@@ -718,9 +735,16 @@ function DeviceControls({
 }
 
 const ACTIONS = ["mute", "unmute", ...R1_MOODS.map((m) => `mood:${m}`), "scene"] as const;
-const OUTPUT_LABEL = { auto: "Speaker, else R1", bt: "Speaker only", onboard: "R1 only" } as const;
+const KIND_ICON = {
+  headphones: HeadphonesIcon,
+  headset: HeadsetIcon,
+  speaker: SpeakerIcon,
+  car: CarIcon,
+  receiver: RadioReceiverIcon,
+  other: BluetoothIcon,
+} as const;
 
-/** Shown only once the R1's firmware reports it can drive a Bluetooth speaker. */
+/** Shown only once the R1's firmware reports it can drive Bluetooth audio. */
 function SpeakerSection({
   device: d,
   busy,
@@ -734,10 +758,22 @@ function SpeakerSection({
   const s = d.speaker!;
   const off = busy || d.online !== true;
   const linked = s.state === "connected" || s.state === "streaming";
+  const labels = outputLabels(s);
+  const SavedIcon = KIND_ICON[s.saved?.kind ?? "other"];
   return (
-    <SettingsSection title={`Bluetooth speaker · ${id}`}>
+    <SettingsSection title={`Bluetooth audio · ${id}`}>
       <SettingsRow
-        title={s.saved?.name ?? "Speaker"}
+        title={
+          s.saved === null ? (
+            "Bluetooth audio"
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <SavedIcon aria-hidden className="size-4" />
+              {btDeviceLabel(s.saved)}
+              <span className="text-muted-foreground text-xs">{btKindNoun(s.saved.kind)}</span>
+            </span>
+          )
+        }
         description={speakerLine(s)}
         control={
           <span className="flex gap-1.5">
@@ -781,23 +817,19 @@ function SpeakerSection({
             onValueChange={(output) => void run("act", "speaker", { id, action: "route", output })}
           >
             <SelectTrigger size="sm">
-              <SelectValue>{OUTPUT_LABEL[s.output]}</SelectValue>
+              <SelectValue>{labels[s.output]}</SelectValue>
             </SelectTrigger>
             <SelectPopup>
-              <SelectItem value="auto">{OUTPUT_LABEL.auto}</SelectItem>
-              <SelectItem value="bt">{OUTPUT_LABEL.bt}</SelectItem>
-              <SelectItem value="onboard">{OUTPUT_LABEL.onboard}</SelectItem>
+              <SelectItem value="auto">{labels.auto}</SelectItem>
+              <SelectItem value="bt">{labels.bt}</SelectItem>
+              <SelectItem value="onboard">{labels.onboard}</SelectItem>
             </SelectPopup>
           </Select>
         }
       />
       <SettingsRow
-        title="Pair a speaker"
-        description={
-          s.scannedAt === null
-            ? "Put the speaker in pairing mode, then scan."
-            : `${s.found.length} found at ${clock(s.scannedAt)}. Pick one to pair.`
-        }
+        title="Pair a device"
+        description={scanLine(s)}
         control={
           <Button
             size="xs"
@@ -819,8 +851,8 @@ function SpeakerSection({
                 disabled={off}
                 onClick={() => void run("act", "speaker", { id, action: "pair", mac: f.mac })}
               >
-                {f.name || f.mac}
-                {f.audio ? null : " (not audio)"}
+                {btDeviceLabel(f)}
+                {f.audio ? ` · ${btKindNoun(f.kind)}` : " (not audio)"}
               </Button>
             ))}
           </div>
