@@ -197,6 +197,16 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
     : { text: `The arguments for ${name} are not right.`, isError: true };
 };
 
+/**
+ * A tool call that changes something (the house, a device, a send, a memory) or looks through the camera: on a turn
+ * started from his partial words it waits until the final words match the guess. Only shared reads go ahead.
+ */
+export const changesSomething = (name: string): boolean =>
+  !(
+    decoders.has(name) &&
+    Context.get(TessayaToolkit.tools[name as SharedName].annotations, Tool.Readonly)
+  ) && name !== LAPTOP.name;
+
 /** A shared tool as every vessel advertises it: its toolkit description and schema. */
 const specOf = (name: SharedName): RoomTool => {
   const tool: Tool.Any = TessayaToolkit.tools[name];

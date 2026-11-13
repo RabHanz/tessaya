@@ -6,6 +6,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
@@ -26,6 +27,7 @@ import {
   mqttPublishBytes,
   r1Data,
   r1Gather,
+  r1Confirmed,
   r1Played,
   r1TurnStream,
   roomData,
@@ -329,6 +331,80 @@ effectIt.effect(
         run: () => Effect.die("no tools"),
       }).pipe(Stream.runDrain, Effect.provide(services));
       expect(recorded).toHaveLength(2);
+    }),
+);
+
+effectIt.effect(
+  "a guess's house change waits for his final words: confirmed it runs, never confirmed it never does, a read never waits",
+  () =>
+    Effect.gen(function* () {
+      const ran: Array<string> = [];
+      // Round one finds the fan (a read), round two turns it off (a write), round three speaks.
+      const brain = R1Brain.of({
+        route: Effect.succeed("api"),
+        subscription: () => Stream.empty,
+        warm: Effect.void,
+        converse: (turn) =>
+          toolLoop(
+            (request: ConverseRequest) =>
+              Stream.make<Array<ConversePart>>(
+                request.messages.length === 1
+                  ? { type: "tool", id: "t1", name: "home_find", input: {} }
+                  : request.messages.length === 3
+                    ? { type: "tool", id: "t2", name: "home_do", input: {} }
+                    : { type: "text", text: "Done." },
+              ),
+            turn,
+          ),
+      });
+      const tools = {
+        specs: [],
+        run: (name: string) =>
+          Effect.sync(() => {
+            ran.push(name);
+            return { text: "done", isError: false, status: "done" };
+          }),
+      };
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const services = Layer.mergeAll(
+        home,
+        Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
+        Layer.mock(BatonOneShot)({}),
+      );
+      const turn = (voice?: object) =>
+        r1TurnStream({ heard: "turn off the fan", history: [], voice }, brain, tools).pipe(
+          Stream.runDrain,
+          Effect.provide(services),
+          Effect.forkChild,
+        );
+
+      // Never confirmed (his final words were different): the read ran, the write never does.
+      const unconfirmed = yield* turn({ speculative: true, callId: "g1" });
+      yield* TestClock.adjust("20 seconds");
+      yield* Fiber.join(unconfirmed);
+      expect(ran).toEqual(["home_find"]);
+
+      // Confirmed while it waits: the write goes ahead.
+      ran.length = 0;
+      const confirmed = yield* turn({ speculative: true, callId: "g2" });
+      yield* TestClock.adjust("1 second");
+      expect(ran).toEqual(["home_find"]);
+      yield* r1Confirmed("g2");
+      yield* TestClock.adjust("1 second");
+      yield* Fiber.join(confirmed);
+      expect(ran).toEqual(["home_find", "home_do"]);
+
+      // His final turn (no guess) never waits.
+      ran.length = 0;
+      const final = yield* turn();
+      yield* TestClock.adjust("1 second");
+      yield* Fiber.join(final);
+      expect(ran).toEqual(["home_find", "home_do"]);
     }),
 );
 

@@ -1128,8 +1128,10 @@ describe("her brain starting on the recogniser's partial words", () => {
 
   it("keeps the guess when the final text says the same words, so the brain started early", async () => {
     const played: string[] = [];
+    const confirmed: string[] = [];
     const g = guessing("turn on the study light", "Turn on the study light.", {
       played: (callId) => played.push(callId),
+      confirmed: (callId) => confirmed.push(callId),
     });
     const m = await g.run();
     expect(g.atRelease()).toBe(1);
@@ -1138,6 +1140,8 @@ describe("her brain starting on the recogniser's partial words", () => {
     expect(g.t.published.some((p) => p.topic.endsWith("voice/down"))).toBe(true);
     // Only now, played to him, may the server record the guess and learn from it.
     expect(played).toHaveLength(1);
+    // Its held house changes were released for the same guess.
+    expect(confirmed).toEqual(played);
   });
 
   it("starts the guess without waiting for the mood reader, which is slower on the voice host", async () => {
@@ -1158,9 +1162,11 @@ describe("her brain starting on the recogniser's partial words", () => {
 
   it("drops a guess that heard different words and answers the final text instead", async () => {
     const played: string[] = [];
+    const confirmed: string[] = [];
     const sent: Array<{ speculative?: true; callId?: string }> = [];
     const g = guessing("turn on the study", "turn on the study light", {
       played: (callId) => played.push(callId),
+      confirmed: (callId) => confirmed.push(callId),
       brain: async function* (input) {
         sent.push(input.tessaya);
         yield "Done.";
@@ -1171,6 +1177,8 @@ describe("her brain starting on the recogniser's partial words", () => {
     // The guess went out marked as one, the final turn did not, and the thrown-away guess is never reported played.
     expect(sent.map((t) => t.speculative === true)).toEqual([true, false]);
     expect(played).toEqual([]);
+    // The guess heard other words: whatever it would have changed is never released.
+    expect(confirmed).toEqual([]);
   });
 });
 
