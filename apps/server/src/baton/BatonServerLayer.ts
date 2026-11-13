@@ -43,6 +43,7 @@ import * as TurnPools from "./TurnPools.ts";
 import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
+import * as VoiceArbiter from "../home/VoiceArbiter.ts";
 import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
 import * as BatonSessionsAcross from "./BatonSessionsAcross.ts";
@@ -144,6 +145,8 @@ const servicesInner = IntentService.layer.pipe(
       // The R1 and later devices: the broker comes from the R1's record in Home; camera and reboot asks go to the phone.
       // One owner of every device's manifest and values: the R1 through the broker, desktops and phones as clients.
       DeviceRegistry.layer,
+      // One responder per utterance across every vessel that heard him (R1-P7).
+      VoiceArbiter.layer,
       HomeDevices.layer.pipe(
         Layer.provide(HomeDevices.brokerLayer),
         Layer.provide(DeviceRegistry.layer),

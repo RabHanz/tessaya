@@ -40,6 +40,7 @@ import * as Semaphore from "effect/Semaphore";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
+import { serveArbiter } from "../home/VoiceArbiter.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 
 export const GOOGLE_KEY_SECRET = "google-api-key";
@@ -387,6 +388,8 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (input: Ba
   const allowed = input.kind === "read" ? READ : ACT;
   const bad: BatonVoiceCallResult = { ok: false, error: "That is not a voice request." };
   if (!allowed.has(input.op)) return bad;
+  const arbiter = yield* serveArbiter(input.op, args);
+  if (arbiter !== null) return arbiter;
   const answer = <A>(effect: Effect.Effect<A, VoiceRefusedError>) =>
     effect.pipe(
       Effect.map((value): BatonVoiceCallResult => ({ ok: true, value })),
