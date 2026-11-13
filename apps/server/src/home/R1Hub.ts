@@ -427,7 +427,7 @@ export const serveTcp = Effect.fn("R1Hub.serveTcp")(function* (
       server.listen(bind.port, bind.host, () => resume(Effect.succeed(server)));
     }),
     (server) => Effect.sync(() => void server.close()),
-  ).pipe(Effect.catchDefect((cause) => Effect.logWarning("R1 hub TCP is off", { cause })));
+  );
 });
 
 /** One WebSocket on the hub: reads in order, writes through a bounded queue (a stalled socket loses QoS 0 frames). */
