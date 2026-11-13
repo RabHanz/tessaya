@@ -78,7 +78,7 @@ const preferenceControls = (
       value: whose.id,
       options: [you, ...others].map((m) => ({
         value: m.id,
-        label: m.you ? text("hh.you") : m.name,
+        label: m.you ? text("hh.prefs.you") : m.name,
       })),
     });
   // Their own name is theirs to change; someone else's is the owner's (the server asks for a yes where it must).

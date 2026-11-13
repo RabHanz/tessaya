@@ -212,6 +212,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "hh.prefs.for.hint":
       "How Tessaya talks to each person. Each person changes their own; the owner can change anyone's.",
     "hh.prefs.unset": "Not set",
+    "hh.prefs.you": "You",
     "hh.prefs.set": "Set",
     "hh.prefs.member": "Name in the household",
     "hh.prefs.member.hint":
