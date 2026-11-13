@@ -36,6 +36,8 @@ import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { BatonRecordService } from "./BatonRecordService.ts";
+
 interface AskRow {
   readonly id: string;
   readonly text: string;
@@ -119,7 +121,15 @@ export class BatonPhoneInbox extends Context.Service<
     readonly mirror: (prompt: PhonePrompt) => Effect.Effect<void>;
     readonly pending: Effect.Effect<ReadonlyArray<PhonePrompt>>;
     /** The phone answers a mirrored question; false if it was already answered or gone. */
-    readonly answerPrompt: (id: string, index: number) => Effect.Effect<boolean>;
+    /**
+     * The phone's answer to a mirrored card; `by` is who answered and how sure (identity I-2), kept on the card and
+     * written to the Record as "Approved by Sara (A3, her phone)".
+     */
+    readonly answerPrompt: (
+      id: string,
+      index: number,
+      by?: PromptApprover,
+    ) => Effect.Effect<boolean>;
     /** The desktop asks whether the phone answered: the button index, or null. */
     readonly promptAnswer: (id: string) => Effect.Effect<number | null>;
     readonly closePrompt: (id: string) => Effect.Effect<void>;
@@ -142,7 +152,19 @@ export const AskOwner = Context.Reference<string | null>("t3/baton/BatonPhoneInb
   defaultValue: () => null,
 });
 
+/** Who answered a card: their member id and name, their assurance (A0-A4) and the device it came from. */
+export interface PromptApprover {
+  readonly member: string | null;
+  readonly name: string;
+  readonly assurance: number;
+  readonly via: string;
+}
+
+/** The Record's words for who answered a card. */
+export const approverLine = (by: PromptApprover) => `${by.name} (A${by.assurance}, ${by.via})`;
+
 export const make = Effect.gen(function* () {
+  const record = yield* Effect.serviceOption(BatonRecordService);
   const agentPosts = yield* Semaphore.make(1);
   let latestState: { readonly at: number; readonly state: BatonDesktopState } | null = null;
   const sql = yield* SqlClient.SqlClient;
@@ -302,6 +324,7 @@ export const make = Effect.gen(function* () {
   const answerPrompt = Effect.fn("BatonPhoneInbox.answerPrompt")(function* (
     id: string,
     index: number,
+    by?: PromptApprover,
   ) {
     yield* sweep;
     const rows =
@@ -312,9 +335,19 @@ export const make = Effect.gen(function* () {
     const buttons = row === undefined ? 0 : decodeButtons(row.buttons).length;
     if (row === undefined || !Number.isInteger(index) || index < 0 || index >= buttons)
       return false;
-    yield* sql`UPDATE fabric_phone_prompts SET status = 'answered', answer = ${index} WHERE id = ${id}`.pipe(
+    yield* sql`UPDATE fabric_phone_prompts SET status = 'answered', answer = ${index}, answered_by = ${by === undefined ? null : approverLine(by)}, answered_level = ${by?.assurance ?? null} WHERE id = ${id}`.pipe(
       Effect.orDie,
     );
+    if (by !== undefined && Option.isSome(record))
+      yield* record.value.append({
+        kind: "approval",
+        actor: by.name,
+        ref: id,
+        subject: row.title,
+        outcome:
+          index === row.yes ? "approved" : index === row.cancel ? "declined" : `chose ${index + 1}`,
+        detail: `${index === row.yes ? "Approved" : "Answered"} by ${approverLine(by)}`,
+      });
     return true;
   });
 

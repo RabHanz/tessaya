@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
+import { BatonRecordService, layer as BatonRecordLayer } from "./BatonRecordService.ts";
 import {
   AskOwner,
   AskSource,
@@ -359,3 +360,37 @@ layer("BatonPhoneInbox", (it) => {
       }),
   );
 });
+
+it.effect(
+  "a card's answer names who gave it and how sure, on the card and in the Record (identity I-2)",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      yield* inbox.mirror({
+        id: "prompt-who",
+        title: "Add Maya as an adult",
+        detail: "",
+        buttons: ["Yes", "No"],
+        yes: 0,
+        cancel: 1,
+      });
+      yield* inbox.answerPrompt("prompt-who", 0, {
+        member: "sara",
+        name: "Sara",
+        assurance: 3,
+        via: "her phone",
+      });
+      const rows = yield* (yield* BatonRecordService).query({ limit: 5 });
+      assert.isTrue(
+        JSON.stringify(rows).includes("Approved by Sara (A3, her phone)"),
+        JSON.stringify(rows).slice(0, 400),
+      );
+    }).pipe(
+      Effect.provide(
+        inboxLayer.pipe(
+          Layer.provideMerge(BatonRecordLayer),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      ),
+    ),
+);
