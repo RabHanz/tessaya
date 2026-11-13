@@ -28,6 +28,7 @@ import * as TessayaHandlers from "../mcp/toolkits/tessaya/handlers.ts";
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type ToolOutcome } from "./R1Brain.ts";
+import { NOT_HIS_VOICE_TO_FORGET } from "../baton/TessayaTurn.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices } from "./HomeDevices.ts";
@@ -50,6 +51,9 @@ const ROOM_TOOLS = [
   "tessaya_record",
   "tessaya_rules",
   "tessaya_memory_search",
+  "tessaya_memory_remember",
+  "tessaya_memory_forget",
+  "tessaya_memory_about",
   "tessaya_ask",
   "tessaya_ask_status",
   "tessaya_pronounce",
@@ -160,11 +164,15 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
         text:
           name === "tessaya_pronounce"
             ? "Saved (a replay: nothing was kept)."
-            : JSON.stringify({
-                id: null,
-                status: "queued",
-                line: "Sent; it waits for his answer.",
-              }),
+            : name === "tessaya_memory_remember"
+              ? JSON.stringify({ kept: "noted", id: null, line: "Kept." })
+              : name === "tessaya_memory_forget"
+                ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
+                : JSON.stringify({
+                    id: null,
+                    status: "queued",
+                    line: "Sent; it waits for his answer.",
+                  }),
         isError: false,
         status: "done",
       }

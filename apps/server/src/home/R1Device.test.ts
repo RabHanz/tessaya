@@ -366,6 +366,10 @@ describe("asking his laptop", () => {
             kind: "device",
             id: "r1-3d57b3",
             label: "the kitchen R1",
+            hisVoice: false,
+            speaker: null,
+            persona: null,
+            rehearsal: false,
           }),
         ),
       );

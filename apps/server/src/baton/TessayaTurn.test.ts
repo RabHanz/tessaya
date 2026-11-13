@@ -9,6 +9,7 @@ import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import {
+  NOT_HIS_VOICE_TO_FORGET,
   TessayaTurn,
   TurnOrigin,
   layer as turnLayer,
@@ -65,7 +66,15 @@ it.effect("a turn's tools know which vessel heard it", () =>
       TurnOrigin,
       originOf({ vessel: { kind: "device", id: "desk-1" }, origin: "R1", text: "hi" }),
     );
-    assert.deepStrictEqual(seen, { kind: "device", id: "desk-1", label: "R1", hisVoice: false });
+    assert.deepStrictEqual(seen, {
+      kind: "device",
+      id: "desk-1",
+      label: "R1",
+      hisVoice: false,
+      speaker: null,
+      persona: null,
+      rehearsal: false,
+    });
     assert.strictEqual(originOf({ vessel: { kind: "phone", id: "p" }, text: "hi" }).label, "phone");
     // His voice verified on this turn's own audio is his yes (identity A2); carried over or unverified is not.
     const said = (s: Partial<SpeakerLike>) =>
@@ -158,5 +167,49 @@ layer("TessayaTurn", (it) => {
         ],
       );
     }),
+  );
+
+  it.effect(
+    "remember keeps his verified words as his, an unknown voice's as told, an agent's for his yes, and no guest's",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const turn = yield* TessayaTurn;
+        const on = (speaker: SpeakerLike | null, rehearsal = false) =>
+          originOf({ vessel: device, origin: "R1", text: "", speaker, rehearsal });
+        const as = <A, E>(origin: ReturnType<typeof on>, work: Effect.Effect<A, E>) =>
+          Effect.provideService(work, TurnOrigin, origin);
+        const his = yield* as(on(owner()), turn.remember("The spare key is under the blue pot"));
+        const told = yield* as(on(null), turn.remember("The gate code changes every month"));
+        const agent = yield* turn.remember("He prefers window seats on flights");
+        const dry = yield* as(on(owner(), true), turn.remember("Nothing to keep here at all"));
+        const guest = yield* Effect.flip(
+          as(on(owner({ kind: "guest", personId: null })), turn.remember("Buy me a pony")),
+        );
+        assert.deepStrictEqual(
+          [his.kept, told.kept, agent.kept, dry.kept],
+          ["his", "noted", "held", "rehearsal"],
+        );
+        assert.include(guest.reason, "only keep things");
+        const items = yield* memory.list({ includeProposed: true, limit: 50 } as never);
+        const byText = (t: string) => items.find((i) => i.text.startsWith(t));
+        assert.strictEqual(byText("The spare key")?.source, "user");
+        assert.strictEqual(byText("The gate code")?.source, "thread");
+        assert.isTrue(byText("He prefers window")?.proposed);
+        assert.isUndefined(byText("Nothing to keep"));
+        assert.isUndefined(byText("Buy me"));
+
+        // Forget: only his verified voice; anyone else is told where he can.
+        const id = his.id!;
+        const refused = yield* as(on(null), turn.forget(id));
+        assert.strictEqual(refused, NOT_HIS_VOICE_TO_FORGET);
+        assert.isDefined((yield* memory.list({ limit: 50 })).find((i) => i.id === id));
+        assert.strictEqual(yield* as(on(owner()), turn.forget(id)), "Forgotten.");
+        assert.isUndefined((yield* memory.list({ limit: 50 })).find((i) => i.id === id));
+
+        // About: the closest memories, his own words marked.
+        const about = yield* turn.about("gate code");
+        assert.include(about[0]!.line, "The gate code changes every month");
+      }),
   );
 });

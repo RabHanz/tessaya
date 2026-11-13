@@ -11,6 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts";
+import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { TurnPools } from "./TurnPools.ts";
@@ -42,27 +43,47 @@ export interface TurnEnvelope {
   readonly rehearsal?: boolean | undefined;
 }
 
+/** His own voice on this very turn: the only voice whose words are kept as his, or that may forget for him. */
+const hisVoice = (speaker: SpeakerLike | null) =>
+  speaker !== null && speaker.kind === "owner" && speaker.verified && !speaker.inherited;
+
 /** The vessel that heard the turn, for every tool it calls: a tool reads it to name where a request came from. */
 export const TurnOrigin = Context.Reference<{
   readonly kind: VesselKind;
   readonly id: string;
   readonly label: string;
   /**
-   * His own voice, verified on this turn's audio (identity design A2): his yes for what the turn asks. False for any
-   * other voice, an unverified one, or one carried over from an earlier turn.
+   * His own voice, verified on this turn's audio (identity design A2): his yes for what the turn asks, and his words.
+   * False for any other voice, an unverified one, or one carried over from an earlier turn.
    */
   readonly hisVoice?: boolean;
+  /** Who spoke, so a tool that writes for him knows whose words they are. */
+  readonly speaker?: SpeakerLike | null;
+  readonly persona?: string | null;
+  /** A replay or test of the vessel: its writes are dry runs. */
+  readonly rehearsal?: boolean;
 } | null>("t3/baton/TessayaTurn/TurnOrigin", { defaultValue: () => null });
 
 /** The origin a turn's tool calls run under. */
 export const originOf = (turn: TurnEnvelope) => ({
   ...turn.vessel,
   label: turn.origin ?? turn.vessel.kind,
-  hisVoice:
-    turn.speaker?.kind === "owner" &&
-    turn.speaker.verified === true &&
-    turn.speaker.inherited !== true,
+  hisVoice: hisVoice(turn.speaker ?? null),
+  speaker: turn.speaker ?? null,
+  persona: turn.persona ?? null,
+  rehearsal: turn.rehearsal === true,
 });
+
+/** Forget's answer to any voice but his verified one, also what a replay hears (it is never verified). */
+export const NOT_HIS_VOICE_TO_FORGET =
+  "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
+
+/** What `remember` did, in words she can say. */
+export interface Remembered {
+  readonly kept: "his" | "noted" | "held" | "rehearsal";
+  readonly id: string | null;
+  readonly line: string;
+}
 
 export interface TurnContext {
   /** Standing memory (sessionless vessels only), then what matches this sentence. */
@@ -97,6 +118,19 @@ export class TessayaTurn extends Context.Service<
      * After the reply: learn from the exchange when the turn may teach (null when it may not). A spoken vessel forks
      * it; it waits on a model call.
      */
+    /**
+     * "Remember this", from any vessel or agent. His verified voice keeps it as his words; a voice not yet known
+     * keeps it as a note she was told (like what she learns); a guest's or another person's is refused; an agent
+     * outside a turn proposes it, held for his yes.
+     */
+    readonly remember: (text: string) => Effect.Effect<Remembered, BatonMemoryRefusedError>;
+    /** Forgets by id, only for his verified voice; otherwise says where he can. */
+    readonly forget: (id: string) => Effect.Effect<string>;
+    /** "What do you know about X": the memories closest to it, best first, his words marked, at most `limit`. */
+    readonly about: (
+      subject: string,
+      limit?: number,
+    ) => Effect.Effect<ReadonlyArray<{ readonly id: string; readonly line: string }>>;
     readonly end: (
       turn: TurnEnvelope,
       done: { readonly reply: string; readonly previous?: string | null | undefined },
@@ -178,7 +212,59 @@ export const make = Effect.gen(function* () {
       : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, learn);
   });
 
-  return TessayaTurn.of({ begin, end });
+  const remember = Effect.fn("TessayaTurn.remember")(function* (text: string) {
+    const origin = yield* TurnOrigin;
+    if (origin?.rehearsal === true)
+      return {
+        kept: "rehearsal" as const,
+        id: null,
+        line: "Kept.",
+      };
+    const kind = origin?.speaker?.kind;
+    if (kind === "guest" || kind === "saved")
+      return yield* new BatonMemoryRefusedError({
+        reason: "I can only keep things in his memory for him. Ask him to tell me.",
+      });
+    const his = origin?.hisVoice === true;
+    const item = yield* memory.add({
+      kind: "note",
+      text: text.trim(),
+      source: his ? "user" : "thread",
+      sourceRef: origin === null ? "agent" : `vessel:${origin.kind}:${origin.id}`,
+      // An agent outside a turn only proposes; he says yes in Memory.
+      ...(origin === null ? { tainted: true } : {}),
+    });
+    return item.proposed
+      ? { kept: "held" as const, id: item.id, line: "Noted; it waits for his yes in Memory." }
+      : his
+        ? { kept: "his" as const, id: item.id, line: "Kept." }
+        : {
+            kept: "noted" as const,
+            id: item.id,
+            line: "Kept.",
+          };
+  });
+
+  const forget = Effect.fn("TessayaTurn.forget")(function* (id: string) {
+    const origin = yield* TurnOrigin;
+    if (origin === null || origin.hisVoice !== true) return NOT_HIS_VOICE_TO_FORGET;
+    if (origin.rehearsal === true) return "Forgotten.";
+    return (yield* memory.forget(id)) ? "Forgotten." : "There is no memory by that id.";
+  });
+
+  const about = Effect.fn("TessayaTurn.about")(function* (subject: string, limit = 8) {
+    const origin = yield* TurnOrigin;
+    const ranked = yield* memory.related({
+      text: subject,
+      ...(origin?.persona == null ? {} : { agent: origin.persona }),
+    });
+    return ranked.slice(0, limit).map((item) => ({
+      id: item.id,
+      line: `${item.text} (${item.source === "user" ? "his words" : `${item.kind}, ${Math.round(item.confidence * 100)}%`}, ${item.updatedAt.slice(0, 10)})`,
+    }));
+  });
+
+  return TessayaTurn.of({ begin, end, remember, forget, about });
 });
 
 export const layer = Layer.effect(TessayaTurn, make);

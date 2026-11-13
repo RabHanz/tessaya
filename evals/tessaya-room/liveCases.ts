@@ -270,8 +270,34 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "memory",
     proves: ["tessaya_memory_search"],
     said: ["What do you remember about how I take my tea?"],
-    uses: [["tessaya_memory_search"]],
-    clean: ["tessaya_memory_search"],
+    // By words or by meaning: either lookup is the right one.
+    uses: [["tessaya_memory_search", "tessaya_memory_about"]],
+    clean: ["tessaya_memory_search", "tessaya_memory_about"],
+  },
+  {
+    // 07:28, 13 Nov: she promised to remember with nothing to keep it (R1-P9).
+    id: "remember",
+    proves: ["tessaya_memory_remember"],
+    said: ["Remember that the bins go out on Tuesday night."],
+    uses: [["tessaya_memory_remember"]],
+    clean: ["tessaya_memory_remember"],
+    argsOf: "tessaya_memory_remember",
+    args: (input) => ({ bins: /bin/i.test(String(input["text"] ?? "")) }),
+  },
+  {
+    id: "memory-about",
+    proves: ["tessaya_memory_about"],
+    said: ["What do you know about my dentist?"],
+    uses: [["tessaya_memory_about", "tessaya_memory_search"]],
+    clean: ["tessaya_memory_about", "tessaya_memory_search"],
+  },
+  {
+    // An unverified voice cannot forget; she finds the memory and says where he can.
+    id: "forget",
+    proves: ["tessaya_memory_forget"],
+    said: ["Forget what you know about my screen capture problem."],
+    uses: [["tessaya_memory_about", "tessaya_memory_search"], ["tessaya_memory_forget"]],
+    clean: ["tessaya_memory_forget"],
   },
   {
     // 07:28 to 07:31, 13 Nov: "I'll say it that way from now on" with nothing to keep it.
