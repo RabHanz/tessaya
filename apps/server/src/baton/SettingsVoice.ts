@@ -136,6 +136,7 @@ export const SERVER_SETTINGS_VOICE: {
   providerInstances: owner("provider accounts and their setup"),
   observability: owner("tracing and telemetry"),
   sourceControlHosts: owner("source control hosts"),
+  offeredSourceControlProviders: free("which code hosts the add and publish project pickers offer"),
   usageLimitSources: owner("where usage limits are read from"),
   textGenerators: owner("text generators"),
   secretProviders: never(
