@@ -10,6 +10,7 @@ import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/sp
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -22,7 +23,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { advertisedJsonSchema } from "../mcp/advertisedJsonSchema.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as McpToolAccess from "../mcp/McpToolAccess.ts";
-import { ROOM_CLIENT } from "../mcp/toolkits/home/handlers.ts";
+import { ROOM_CLIENT, ROOM_REPLAY_CLIENT } from "../mcp/toolkits/home/handlers.ts";
 import * as TessayaHandlers from "../mcp/toolkits/tessaya/handlers.ts";
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -116,7 +117,16 @@ const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, hea
     );
 });
 
-/** What changes his house: never run for the replay harness's pretend R1. */
+const decoders = new Map(
+  ROOM_TOOLS.map((name) => [
+    name as string,
+    Schema.decodeUnknownOption(
+      TessayaToolkit.tools[name].parametersSchema as Schema.Codec<unknown>,
+    ),
+  ]),
+);
+
+/** The house's own writes: for a replay they run through the house's checks as a dry run (HomeActor.dryRun). */
 const HOME_WRITES: ReadonlySet<string> = new Set([
   "home_do",
   "home_undo",
@@ -125,17 +135,34 @@ const HOME_WRITES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * A replay turn's house change, answered as done without touching the house (13 Nov 01:29: a replay of "turn on the
- * office fan" flipped his real fan). Null when the call is not one.
+ * A replay's other writes (an ask to his phone), checked against the tool's schema and then not sent (13 Nov 01:29: a
+ * replay of "turn on the office fan" flipped his real fan). Null when the call is not one.
  */
-export const replayDryRun = (name: string, input: unknown, device?: string): ToolOutcome | null =>
-  device?.startsWith("replay-") === true && HOME_WRITES.has(name)
+export const replayDryRun = (name: string, input: unknown, device?: string): ToolOutcome | null => {
+  if (device?.startsWith("replay-") !== true || HOME_WRITES.has(name) || !allowed.has(name))
+    return null;
+  if (
+    Context.get(
+      TessayaToolkit.tools[name as (typeof ROOM_TOOLS)[number]].annotations,
+      Tool.Readonly,
+    )
+  )
+    return null;
+  return Option.isSome(decoders.get(name)!(input))
     ? {
-        text: `Done (a replay: nothing in the house was changed). Asked: ${JSON.stringify(input).slice(0, 300)}`,
+        // What the real call answers, so her reply is the one he would hear.
+        text: JSON.stringify({
+          id: null,
+          status: "queued",
+          line: "Sent; it waits for his answer.",
+        }),
         isError: false,
         status: "done",
       }
-    : null;
+    : { text: `The arguments for ${name} are not right.`, isError: true };
+};
+
+const allowed = new Set<string>(ROOM_TOOLS);
 
 /** @public The room eval serves these too. */
 export const ROOM_TOOL_SPECS: ReadonlyArray<RoomTool> = [
@@ -151,8 +178,33 @@ export const ROOM_TOOL_SPECS: ReadonlyArray<RoomTool> = [
   VOLUME,
 ];
 
+/**
+ * His words as the tool takes them: a number or a yes/no the model sent as a string ("1", "true") becomes one where the
+ * tool's schema wants it (13 Nov: every timer and a Record read were refused for `runInMinutes: "1"`).
+ */
+export const asAdvertised = (spec: RoomTool, input: unknown): unknown => {
+  const properties = (spec.input_schema as { properties?: Record<string, { type?: unknown }> })
+    .properties;
+  if (typeof input !== "object" || input === null || properties === undefined) return input;
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => {
+      const type = properties[key]?.type;
+      if (typeof value !== "string") return [key, value];
+      const trimmed = value.trim();
+      if (
+        (type === "number" || type === "integer") &&
+        trimmed !== "" &&
+        Number.isFinite(Number(trimmed))
+      )
+        return [key, Number(trimmed)];
+      if (type === "boolean" && (trimmed === "true" || trimmed === "false"))
+        return [key, trimmed === "true"];
+      return [key, value];
+    }),
+  );
+};
+
 const decodeHome = Schema.decodeUnknownOption(BatonHomeCallResult);
-const allowed = new Set<string>(ROOM_TOOLS);
 
 /** A failure's own words when it has them, as the model should say them. */
 const reasonOf = (value: unknown): string =>
@@ -176,7 +228,9 @@ const makeRoomTools = Effect.gen(function* () {
     McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer),
   ).pipe(Effect.provideService(SecureRandom.SecureRandom, random.value));
   const environmentId = yield* environment.value.getEnvironmentId;
-  const run = Effect.fn("R1Tools.run")(function* (name: string, input: unknown, device?: string) {
+  const run = Effect.fn("R1Tools.run")(function* (name: string, raw: unknown, device?: string) {
+    const spec = ROOM_TOOL_SPECS.find((s) => s.name === name);
+    const input = spec === undefined ? raw : asAdvertised(spec, raw);
     if (name === LAPTOP.name) {
       const question =
         typeof input === "object" && input !== null && "question" in input
@@ -196,7 +250,7 @@ const makeRoomTools = Effect.gen(function* () {
       issuedAt: yield* Clock.currentTimeMillis,
       requestNamespace: ROOM_CLIENT.sessionId,
       thread: undefined,
-      client: ROOM_CLIENT,
+      client: device?.startsWith("replay-") === true ? ROOM_REPLAY_CLIENT : ROOM_CLIENT,
       linkedEnvironments: false,
     };
     const last = yield* toolkit.handle(name as (typeof ROOM_TOOLS)[number], input as never).pipe(

@@ -27,6 +27,11 @@ export const ROOM_CLIENT: McpInvocationContext.McpClientCaller = {
   label: "the desk device in his home",
   access: "approval-required",
 };
+/** The tool suite's pretend R1 (`replay-…`): the same caller, and its house acts are a dry run. */
+export const ROOM_REPLAY_CLIENT: McpInvocationContext.McpClientCaller = {
+  ...ROOM_CLIENT,
+  sessionId: "r1-replay",
+};
 const linked = { linkedCallers: "allowed" } as const;
 
 /** Handler declarations for `HomeToolkit`, spread into Tessaya's toolkit layer. */
@@ -43,10 +48,12 @@ export const make = Effect.gen(function* () {
     const by: HomeActor =
       scope.client === ROOM_CLIENT
         ? { who: "Tessaya", surface: "r1" }
-        : {
-            who: scope.client === undefined ? "an agent in T3" : "an outside agent",
-            surface: "agent",
-          };
+        : scope.client === ROOM_REPLAY_CLIENT
+          ? { who: "Tessaya", surface: "r1", dryRun: true }
+          : {
+              who: scope.client === undefined ? "an agent in T3" : "an outside agent",
+              surface: "agent",
+            };
     return yield* serveHomeCall({ kind, op, args }, by).pipe(Effect.provideContext(context));
   });
   return {

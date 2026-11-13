@@ -600,6 +600,15 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
 
 type RoomRunner = RoomToolSet;
 
+/** One tool call of a turn, as the tool suite reads it back (a replay's `trace`). */
+export interface RoomCall {
+  readonly name: string;
+  readonly input: unknown;
+  readonly isError: boolean;
+  readonly status?: string;
+  readonly text: string;
+}
+
 /**
  * The key route's turn: the one assistant with the room's tools. Null when it did not answer before a word was said,
  * so the caller can fall back; once she has spoken, a failure ends the turn with an apology.
@@ -609,6 +618,7 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   brain: R1Brain["Service"],
   tools: RoomRunner,
   say: (words: string) => void,
+  calls?: Array<RoomCall>,
 ) {
   const startedAt = yield* Clock.currentTimeMillis;
   const { device, context } = yield* r1Gather(input, false);
@@ -633,6 +643,13 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
           ),
           Effect.tap((o: ToolOutcome) =>
             Effect.sync(() => {
+              calls?.push({
+                name,
+                input: args,
+                isError: o.isError,
+                ...(o.status === undefined ? {} : { status: o.status }),
+                text: o.text.slice(0, 4000),
+              });
               if (o.status !== undefined)
                 outcomes.push({ ok: !o.isError, status: o.status, line: o.text });
             }),
@@ -658,7 +675,12 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   return said;
 });
 
-const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"], tools: RoomRunner | null) =>
+const r1TurnStream = (
+  input: R1Heard,
+  brain: R1Brain["Service"],
+  tools: RoomRunner | null,
+  calls?: Array<RoomCall>,
+) =>
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
       let offered = false;
@@ -673,7 +695,7 @@ const r1TurnStream = (input: R1Heard, brain: R1Brain["Service"], tools: RoomRunn
       );
       const way = yield* brain.route;
       if (way !== "subscription" && tools !== null) {
-        const done = yield* r1ToolTurn(input, brain, tools, say).pipe(
+        const done = yield* r1ToolTurn(input, brain, tools, say, calls).pipe(
           Effect.orElseSucceed(() => null),
         );
         if (done !== null) return yield* Queue.end(queue);
@@ -740,6 +762,8 @@ const ChatBody = Schema.Struct({
   /** From an in-house voice pipeline: who seems to be speaking and how they sound. Shown to the model as data. */
   tessaya: Schema.optional(Schema.Unknown),
   device: Schema.optional(Schema.String),
+  /** A replay's (the tool suite's): its tool calls come back after the reply, as a `tessaya.trace` chunk. */
+  trace: Schema.optional(Schema.Boolean),
 });
 const decodeChat = Schema.decodeUnknownOption(Schema.fromJsonString(ChatBody));
 const textOf = (content: unknown): string =>
@@ -815,6 +839,10 @@ export const routes = HttpRouter.use((router) =>
       const model = body.value.model ?? "tessaya-r1";
       const created = Math.floor((yield* Clock.currentTimeMillis) / 1000);
       const brain = Context.getOption(context, R1Brain);
+      const calls =
+        body.value.trace === true && body.value.device?.startsWith("replay-") === true
+          ? new Array<RoomCall>()
+          : undefined;
       if (Option.isSome(brain) && body.value.stream !== false)
         return HttpServerResponse.stream(
           r1TurnStream(
@@ -826,9 +854,17 @@ export const routes = HttpRouter.use((router) =>
             },
             brain.value,
             tools,
+            calls,
           ).pipe(
             Stream.provideContext(context),
             Stream.map((words) => sseChunk(id, model, created, words)),
+            Stream.concat(
+              Stream.suspend(() =>
+                calls === undefined
+                  ? Stream.empty
+                  : Stream.make(`data: ${JSON.stringify({ object: "tessaya.trace", calls })}\n\n`),
+              ),
+            ),
             Stream.concat(Stream.make(`${sseChunk(id, model, created, null)}data: [DONE]\n\n`)),
             Stream.encodeText,
           ),

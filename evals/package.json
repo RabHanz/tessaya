@@ -14,7 +14,8 @@
     "tessaya-outside": "node tessaya-outside/run.ts",
     "typecheck": "effect-tsgo tsrs --noEmit",
     "test": "vp test run --config ../vite.config.ts --dir .",
-    "tessaya-room": "node tessaya-room/run.ts"
+    "tessaya-room": "node tessaya-room/run.ts",
+    "tessaya-room:live": "node tessaya-room/live.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

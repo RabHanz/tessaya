@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { roomCases } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
+import { liveCases, liveFailureOf, uncovered, type LiveCall } from "./liveCases.ts";
 
 const caseOf = (id: string) => roomCases.find((c) => c.id === id)!;
 const sample = (s: Partial<RoomSample>): RoomSample => ({
@@ -54,5 +55,46 @@ describe("tessaya-room grader", () => {
     const bad = sample({ replies: ["It's on."] });
     expect(casePasses(c, [good, good, bad])).toBe(true);
     expect(casePasses(c, [good, bad])).toBe(false);
+  });
+});
+
+describe("the room's live tool suite", () => {
+  it("has a case for every tool the room can call, so a new tool fails until it has one", async () => {
+    const { ROOM_TOOL_SPECS } = await import("../../apps/server/src/home/R1Tools.ts");
+    expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look"])).toEqual([]);
+    expect(uncovered(["a_new_tool"])).toEqual(["a_new_tool"]);
+  });
+
+  it("fails a reply that claims a change the house did not make (07:19 and 07:39, 13 Nov)", () => {
+    const fanOn = liveCases.find((c) => c.id === "fan-flip")!;
+    const house = { fan: { entityId: "fan.office", name: "Office fan", state: "off" } };
+    const call = (over: Partial<LiveCall>): LiveCall => ({
+      name: "home_do",
+      input: { domain: "fan", service: "turn_on", target: { entity_id: "fan.office" } },
+      isError: false,
+      status: "done",
+      text: "A dry run, so nothing was changed or sent: fan.turn_on on Office fan would run.",
+      ...over,
+    });
+    expect(liveFailureOf(fanOn, house, ["Done, the fan is on."], [call({})])).toBeNull();
+    expect(
+      liveFailureOf(
+        fanOn,
+        house,
+        ["Done, the office fan is on."],
+        [{ ...call({ isError: true, text: "Office fan is offline" }), status: "failed" }],
+      ),
+    ).toMatch(/claimed it was done/);
+    expect(
+      liveFailureOf(
+        fanOn,
+        house,
+        ["Done."],
+        [call({ input: { domain: "fan", service: "toggle" } })],
+      ),
+    ).toMatch(/blind toggle/);
+    expect(liveFailureOf(fanOn, house, ["I'll ask him what he meant."], [call({})])).toMatch(
+      /reasoning/,
+    );
   });
 });

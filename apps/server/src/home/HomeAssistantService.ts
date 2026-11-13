@@ -113,6 +113,8 @@ export interface HomeActor {
   readonly surface: HomeSurface;
   /** His yes was already given through his own gate (spoken or clicked on the desktop). Never true from the R1. */
   readonly approved?: boolean;
+  /** The tool suite's pretend R1: checked and judged as for real, then nothing is written, asked or run. */
+  readonly dryRun?: boolean;
 }
 
 export interface HomeCallRequest {
@@ -226,6 +228,7 @@ interface EntityEntry {
   readonly deviceId: string | null;
   readonly aliases: ReadonlyArray<string>;
   readonly labels: ReadonlyArray<string>;
+  readonly disabled: boolean;
 }
 interface ActionRow {
   readonly id: string;
@@ -285,6 +288,52 @@ const hostOf = (url: string): string | null => {
   }
 };
 const iso = (ms: number) => new Date(ms).toISOString();
+
+const SETTLE_MS = 3_000;
+const SETTLE_STEP_MS = 250;
+/** The state a call should leave its entities in, as a test of one; null where it cannot be told. */
+const expectedAfter = (request: {
+  readonly domain: string;
+  readonly service: string;
+  readonly data?: unknown;
+}): ((entity: { s: string; a: Record<string, unknown> }) => boolean) | null => {
+  const data = asRecord(request.data);
+  const is =
+    (...states: ReadonlyArray<string>) =>
+    (e: { s: string }) =>
+      states.includes(e.s);
+  if (request.domain === "fan" && request.service === "set_percentage")
+    return (e) =>
+      Number(e.a["percentage"]) === Number(data["percentage"]) ||
+      (data["percentage"] === 0 && e.s === "off");
+  if (request.domain === "climate" && request.service === "set_hvac_mode")
+    return is(String(data["hvac_mode"]));
+  if (
+    request.domain === "climate" &&
+    request.service === "set_temperature" &&
+    data["temperature"] !== undefined
+  )
+    return (e) => Number(e.a["temperature"]) === Number(data["temperature"]);
+  if (request.domain === "cover")
+    return request.service === "open_cover"
+      ? is("open", "opening")
+      : request.service === "close_cover"
+        ? is("closed", "closing")
+        : null;
+  if (request.domain === "lock")
+    return request.service === "lock"
+      ? is("locked", "locking")
+      : request.service === "unlock"
+        ? is("unlocked", "unlocking", "open")
+        : null;
+  if (SWITCHED.has(request.domain) || request.domain === "media_player")
+    return request.service === "turn_on"
+      ? (e) => e.s !== "off" && e.s !== "unavailable"
+      : request.service === "turn_off"
+        ? is("off", "standby")
+        : null;
+  return null;
+};
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -422,6 +471,7 @@ const make = Effect.gen(function* () {
         deviceId: (r["device_id"] ?? null) as string | null,
         aliases: asList(r["aliases"]),
         labels: asList(r["labels"]),
+        disabled: r["disabled_by"] !== null && r["disabled_by"] !== undefined,
       });
     }
   });
@@ -438,8 +488,16 @@ const make = Effect.gen(function* () {
     String(
       states.get(entityId)?.a["friendly_name"] ?? registry.entities.get(entityId)?.name ?? entityId,
     );
+  /** HA has it, but its integration has given no state yet: a device that is off the network, not a missing one. */
+  const offline = (entityId: string): boolean => {
+    const entry = registry.entities.get(entityId);
+    return states.has(entityId)
+      ? states.get(entityId)!.s === "unavailable"
+      : entry !== undefined && !entry.disabled;
+  };
   const summary = (entityId: string): HomeEntity | null => {
-    const cached = states.get(entityId);
+    const cached =
+      states.get(entityId) ?? (offline(entityId) ? { s: "unavailable", a: {} } : undefined);
     if (cached === undefined) return null;
     const attributes: Record<string, string> = {};
     for (const key of KEY_ATTRIBUTES)
@@ -741,6 +799,18 @@ const make = Effect.gen(function* () {
       line: input.line,
     };
     const reasons = input.verdict.reasons.join("; ");
+    // The suite's pretend R1: the words she would get for real, so her reply is the one he would hear; nothing is kept.
+    if (input.by.dryRun === true) {
+      if (input.verdict.tier === "never")
+        return outcome(
+          "refused",
+          null,
+          `Not done: ${reasons}. That one is done in Home Assistant itself.`,
+        );
+      if (input.verdict.tier === "ask" && !approved)
+        return outcome("asked", null, `Sent to the Director's phone for a yes (${reasons}).`);
+      return outcome("done", null, `Done: ${input.line}.`);
+    }
     if (input.verdict.tier === "never") {
       yield* saveAction({ ...base, status: "refused" });
       yield* audit({ id, by: input.by, line: input.line, status: "refused", why: input.why });
@@ -845,6 +915,20 @@ const make = Effect.gen(function* () {
     return null;
   });
 
+  /** The entities a call names that have not reached what it asked for after SETTLE; none where that cannot be told. */
+  const lagged = Effect.fnUntraced(function* (
+    request: HomeCallRequest,
+    named: ReadonlyArray<string>,
+  ) {
+    const want = expectedAfter(request);
+    if (want === null) return [];
+    const watched = named.filter((e) => e.startsWith(`${request.domain}.`) && states.has(e));
+    const lagging = () => watched.filter((e) => !want(states.get(e)!));
+    for (let waited = 0; lagging().length > 0 && waited < SETTLE_MS; waited += SETTLE_STEP_MS)
+      yield* Effect.sleep(SETTLE_STEP_MS);
+    return lagging();
+  });
+
   const call = Effect.fn("HomeAssistant.call")(function* (
     request: HomeCallRequest,
     by: HomeActor,
@@ -853,13 +937,25 @@ const make = Effect.gen(function* () {
     const forwarded = yield* viaPeer("home_do", { ...request });
     if (forwarded !== null) return forwarded as HomeOutcome;
     yield* live;
-    // HA answers a call on an entity it does not have with success and does nothing, so "done" would be a lie.
-    const missing = asList(callTarget(request)["entity_id"]).filter(
-      (e) => e !== "all" && !e.includes("{{") && !states.has(e),
+    // HA answers a call on an entity it does not have, or cannot reach, with success and does nothing, so "done"
+    // would be a lie. One it has but cannot reach is offline, not missing (his office fan, 07:20 13 Nov).
+    const named = asList(callTarget(request)["entity_id"]).filter(
+      (e) => e !== "all" && !e.includes("{{"),
     );
+    const away = named.filter(offline);
+    if (away.length > 0)
+      return yield* new HomeRefusedError({
+        why: `${away.map(nameOf).join(", ")} is offline: Home Assistant has it but cannot reach it now, so nothing was sent. Say it is offline, not missing.`,
+      });
+    const missing = named.filter((e) => !states.has(e));
     if (missing.length > 0)
       return yield* new HomeRefusedError({
         why: `There is no ${missing.join(", ")} in the house; use an id from home_find.`,
+      });
+    // A blind flip turns an on device off; the state is known, so the call that says what he wants is.
+    if (request.service === "toggle" && request.domain !== "script" && named.length > 0)
+      return yield* new HomeRefusedError({
+        why: `Toggle flips without looking. ${named.map((e) => `${nameOf(e)} is ${states.get(e)!.s}`).join(", ")}; call turn_on or turn_off for what he asked.`,
       });
     const { verdict, ids } = yield* judge(request);
     // A toggle script flips what it runs on, so "turn on" ran on an on fan turns it off (00:42, 13 Nov). Where the
@@ -905,18 +1001,34 @@ const make = Effect.gen(function* () {
             service: "create",
             service_data: { scene_id: scene, snapshot_entities: snapshot },
           });
-        yield* command({
+        const send = command({
           type: "call_service",
           domain: request.domain,
           service: request.service,
           ...(request.target === undefined ? {} : { target: request.target }),
           service_data: asRecord(request.data),
         });
+        yield* send;
         if (scene !== null)
           yield* sql`UPDATE fabric_home_actions SET undo_scene = ${scene} WHERE id = ${actionId}`.pipe(
             Effect.orDie,
           );
-        return outcome("done", actionId, `Done: ${line}.`, scene === null ? null : actionId, ids);
+        // HA's yes is not the device's: his fan stayed off after "done" (07:39, 13 Nov). Look, send once more, look.
+        const undoId = scene === null ? null : actionId;
+        let lagging = yield* lagged(request, named);
+        if (lagging.length > 0) {
+          yield* send;
+          lagging = yield* lagged(request, named);
+        }
+        if (lagging.length > 0)
+          return outcome(
+            "failed",
+            actionId,
+            `Home Assistant took ${line} twice, but ${lagging.map((e) => `${nameOf(e)} is still ${states.get(e)?.s ?? "unknown"}`).join(", ")}. Say so; it may be offline or slow.`,
+            undoId,
+            ids,
+          );
+        return outcome("done", actionId, `Done: ${line}.`, undoId, ids);
       }),
     });
   });
@@ -1472,7 +1584,11 @@ const make = Effect.gen(function* () {
       .filter((w) => w.length > 0);
     const area = input.area?.toLowerCase();
     const scored: Array<{ id: string; score: number }> = [];
-    for (const id of states.keys()) {
+    // An offline device is found too (marked unavailable), so it is never called missing.
+    for (const id of new Set([
+      ...states.keys(),
+      ...[...registry.entities.keys()].filter(offline),
+    ])) {
       if (input.domain !== undefined && !id.startsWith(`${input.domain}.`)) continue;
       const areaName = areaOf(id)?.toLowerCase() ?? "";
       if (area !== undefined && !areaName.includes(area)) continue;
@@ -1482,14 +1598,34 @@ const make = Effect.gen(function* () {
         `${id} ${nameOf(id)} ${areaName} ${deviceName} ${(entry?.aliases ?? []).join(" ")}`.toLowerCase();
       const hits = words.filter((w) => hay.includes(w)).length;
       if (words.length > 0 && hits === 0) continue;
-      const unavailable = states.get(id)?.s === "unavailable" ? 0.5 : 0;
+      const unavailable = offline(id) ? 0.5 : 0;
       scored.push({
         id,
         score: hits - unavailable + (nameOf(id).toLowerCase().includes(words.join(" ")) ? 1 : 0),
       });
     }
     scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-    return scored.slice(0, limit).flatMap(({ id }) => summary(id) ?? []);
+    const found = scored.slice(0, limit).flatMap(({ id }) => summary(id) ?? []);
+    // Two called "Lamp" are told apart by room, and the one she last used is marked, so she can ask which.
+    const shared = new Set(found.map((e) => e.name).filter((n, i, all) => all.indexOf(n) !== i));
+    if (shared.size === 0) return found;
+    const recent = new Map<string, string>();
+    for (const row of yield* sql<ActionRow>`SELECT * FROM fabric_home_actions WHERE status = 'done' ORDER BY at DESC LIMIT 50`.pipe(
+      Effect.orElseSucceed(() => []),
+    ))
+      for (const e of entitiesOf(row.request)) if (!recent.has(e)) recent.set(e, localTime(row.at));
+    return found.map((e) =>
+      shared.has(e.name)
+        ? {
+            ...e,
+            name: `${e.name} (${e.area ?? e.entityId})`,
+            attributes: {
+              ...e.attributes,
+              ...(recent.has(e.entityId) ? { last_used: recent.get(e.entityId)! } : {}),
+            },
+          }
+        : e,
+    );
   });
 
   const connect = Effect.fn("HomeAssistant.connect")(function* (input: {
