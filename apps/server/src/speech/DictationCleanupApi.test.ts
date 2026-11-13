@@ -98,10 +98,10 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     // His table: cleanup back on the key, on the model his row names.
     yield* settings.updateSettings({
       brainKeyRoles: { anthropic: ["cleanup"] },
-      brainModels: { cleanup: { model: "claude-haiku-4-5" } },
+      brainModels: { cleanup: { model: "claude-sonnet-5-5" } },
     });
     yield* fetching(api.cleanup(input));
-    expect(yield* bodyModel(sent)).toBe("claude-haiku-4-5");
+    expect(yield* bodyModel(sent)).toBe("claude-sonnet-5-5");
 
     upstream.mockResolvedValueOnce(new Response("nope", { status: 401 }));
     expect(yield* Effect.flip(fetching(api.cleanup(input)))).toMatchObject({
