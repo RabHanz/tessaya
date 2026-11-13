@@ -33,6 +33,9 @@ const sourceOf = (id: number, name: string): string => {
 /** Triggers whose body may delete or update: each runs on later writes, never at migration time, and is reviewed. */
 const REVIEWED_TRIGGERS = new Set(["fabric_memory_vectors_gone"]);
 
+/** Migrations whose UPDATE only fills a column the same migration added, which an older build never reads. */
+const REVIEWED_BACKFILLS = new Set(["31_MemoryPersona"]);
+
 /** Comments out first (a commented-out END must not end a trigger early), then the reviewed triggers' bodies. */
 const withoutTriggerBodies = (source: string): string =>
   source
@@ -80,6 +83,7 @@ describe("every Tessaya migration is additive", () => {
       // A trigger's body runs on later writes, not at migration time, so its DELETE or UPDATE changes nothing here.
       const source = withoutTriggerBodies(sourceOf(id, name));
       for (const rule of FORBIDDEN) {
+        if (rule.what === "rewrites rows" && REVIEWED_BACKFILLS.has(`${String(id)}_${name}`)) continue;
         expect(
           rule.pattern.test(source),
           `${String(id)}_${name} ${rule.what}, which an older build cannot survive (D7)`,
