@@ -42,6 +42,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useBatonAccounts } from "../../state/batonAccounts";
 import { useQuietThreadShell } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
@@ -60,8 +61,6 @@ const useNow = () => Date.parse(`${useNowMinute()}:00Z`);
 
 const useLiveAccount = (threadRef: ScopedThreadRef) =>
   useLiveAccounts(threadRef).find((entry) => entry.active);
-
-const NO_ACCOUNTS = Atom.make(AsyncResult.initial<never, never>(false));
 
 /** Set by the header's chip: the picker opens on it, at that account's row. Cleared when the picker closes. */
 export const batonPickerFocusAtom = Atom.make<{
@@ -109,18 +108,6 @@ function useFocusRequestedRow(accountIds: ReadonlyArray<string>) {
     }, 0);
     return () => clearTimeout(timer);
   }, [accountId, shown]);
-}
-
-/** One record per real account on the thread's environment (baton.accounts.list). */
-export function useBatonAccounts(
-  environmentId: EnvironmentId | null,
-): ReadonlyArray<BatonAccountRecord> {
-  const result = useAtomValue(
-    environmentId === null
-      ? NO_ACCOUNTS
-      : batonWorkSessions.accountsQuery({ environmentId, input: {} }),
-  );
-  return Option.getOrNull(AsyncResult.value(result))?.accounts ?? [];
 }
 
 /** The rail's one entry per provider, with Terminal its own group. */

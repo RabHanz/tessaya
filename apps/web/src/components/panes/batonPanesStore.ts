@@ -160,8 +160,7 @@ onThreadClaimed((key) => {
   useBatonPanesStore.setState({ ceded: [...ceded, key] });
 });
 
-// A page sharing the main window's pane key (Tessaya's embedded T3 page) holds its threads without a
-// composer; were it to keep its copy too, the two would write old text back over each other forever.
+// Drafts this window changed itself; another window's copy of the rest would write old text back over them.
 const editedHere = new Set<string>();
 let adopting = false;
 useComposerDraftStore.subscribe(({ draftsByThreadKey: next }, { draftsByThreadKey: previous }) => {

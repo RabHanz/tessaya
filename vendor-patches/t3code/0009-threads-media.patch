@@ -1945,7 +1945,7 @@ index b7f1f7ac366f313c7f36801a17997ae2fd47293a..4020588f721e495813ba295b47312757
      const store = useComposerDraftStore.getState();
      store.addFiles(threadRef, [makeFile("file-pending")]);
 diff --git a/apps/web/src/composerDraftStore.ts b/apps/web/src/composerDraftStore.ts
-index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a277531836ce2081 100644
+index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a369625dd8d 100644
 --- a/apps/web/src/composerDraftStore.ts
 +++ b/apps/web/src/composerDraftStore.ts
 @@ -89,6 +89,7 @@ import {
@@ -1956,7 +1956,36 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
  import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
  import { useShallow } from "zustand/react/shallow";
  import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
-@@ -242,6 +243,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
+@@ -102,6 +103,8 @@ import { UnifiedSettings } from "@t3tools/contracts/settings";
+ 
+ const isElementContextDetails = Schema.is(ElementContextDetails);
+ import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
++import { DraftId } from "./draftId";
++import { isTessayaGuest } from "./tessayaGuestFlag";
+ const isRuntimeMode = Schema.is(RuntimeMode);
+ const isProviderDriverKind = Schema.is(ProviderDriverKind);
+ const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
+@@ -115,8 +118,7 @@ const COMPOSER_DRAFT_STORAGE_VERSION = 9;
+ const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
+ export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
+ 
+-export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
+-export type DraftId = typeof DraftId.Type;
++export { DraftId };
+ 
+ const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
+ 
+@@ -125,7 +127,8 @@ type ComposerPersistState =
+   | PersistedComposerDraftStoreState;
+ 
+ const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPersistState>>(
+-  typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
++  // Tessaya's guest page has no composer; T3's own window owns the drafts, so the guest neither reads nor writes them.
++  typeof localStorage !== "undefined" && !isTessayaGuest() ? localStorage : createMemoryStorage(),
+   (value) =>
+     JSON.stringify({
+       state:
+@@ -242,6 +245,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
  const PersistedComposerThreadDraftState = Schema.Struct({
    prompt: Schema.String,
    attachments: Schema.Array(PersistedComposerImageAttachment),
@@ -1965,7 +1994,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
    files: Schema.optionalKey(Schema.Array(PersistedComposerDraftFileAttachment)),
    terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
    previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
-@@ -1913,6 +1916,9 @@ function normalizePersistedDraftsByThreadId(
+@@ -1913,6 +1918,9 @@ function normalizePersistedDraftsByThreadId(
            return normalized ? [normalized] : [];
          })
        : [];
@@ -1975,7 +2004,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
      const files = Array.isArray(draftCandidate.files)
        ? draftCandidate.files.filter(isPersistedComposerDraftFileAttachment)
        : [];
-@@ -2042,6 +2048,7 @@ function normalizePersistedDraftsByThreadId(
+@@ -2042,6 +2050,7 @@ function normalizePersistedDraftsByThreadId(
      if (
        promptCandidate.length === 0 &&
        attachments.length === 0 &&
@@ -1983,7 +2012,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
        files.length === 0 &&
        terminalContexts.length === 0 &&
        previewAnnotations.length === 0 &&
-@@ -2069,6 +2076,7 @@ function normalizePersistedDraftsByThreadId(
+@@ -2069,6 +2078,7 @@ function normalizePersistedDraftsByThreadId(
      nextDraftsByThreadKey[normalizedThreadKey] = {
        prompt,
        attachments,
@@ -1991,7 +2020,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
        ...(files.length > 0 ? { files } : {}),
        ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
        ...(previewAnnotations.length > 0 ? { previewAnnotations } : {}),
-@@ -2173,6 +2181,7 @@ export function partializeComposerDraftStoreState(
+@@ -2173,6 +2183,7 @@ export function partializeComposerDraftStoreState(
      if (
        draft.prompt.length === 0 &&
        draft.persistedAttachments.length === 0 &&
@@ -1999,7 +2028,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
        draft.files.length === 0 &&
        draft.terminalContexts.length === 0 &&
        draft.previewAnnotations.length === 0 &&
-@@ -2188,6 +2197,9 @@ export function partializeComposerDraftStoreState(
+@@ -2188,6 +2199,9 @@ export function partializeComposerDraftStoreState(
      const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
        prompt: draft.prompt,
        attachments: draft.persistedAttachments,
@@ -2009,7 +2038,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
        ...(draft.files.length > 0
          ? {
              files: draft.files.map((file) => ({
-@@ -4329,6 +4341,57 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
+@@ -4329,6 +4343,57 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
  
  export const useComposerDraftStore = composerDraftStore;
  
@@ -2062,7 +2091,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..0c19aeea24bb9310695648e1a2775318
 +  return stale;
 +}
 +
-+startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
++if (!isTessayaGuest()) startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
 +
  export function subscribeComposerDraftModelReconciliation(input: {
    readonly registry: AtomRegistry.AtomRegistry;

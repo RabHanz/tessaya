@@ -23,7 +23,8 @@ import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } fro
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useLiveAccounts } from "./BatonLiveModel";
-import { batonPickerFocusAtom, useBatonAccounts } from "./BatonPickerAccount";
+import { useBatonAccounts } from "../../state/batonAccounts";
+import { batonPickerFocusAtom } from "./BatonPickerAccount";
 import { useAtomSet } from "@effect/atom-react";
 
 const TONE_VARIANT = { ok: "outline", warn: "warning", limit: "error" } as const;

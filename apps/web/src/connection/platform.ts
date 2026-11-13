@@ -49,7 +49,6 @@ import {
   readPrimaryEnvironmentTarget,
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
-import { clearComposerDraftsEnvironment } from "../composerDraftStore";
 import { isHostedStaticApp } from "../hostedPairing";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { randomUUID } from "../lib/utils";
@@ -794,9 +793,12 @@ const layerEnvironmentOwnedDataCleanup = Layer.succeed(
   Persistence.EnvironmentOwnedDataCleanup,
   Persistence.EnvironmentOwnedDataCleanup.of({
     clear: Effect.fn("Persistence.EnvironmentOwnedDataCleanup.clear")(function (environmentId) {
-      return Effect.sync(() => {
-        clearComposerDraftsEnvironment(environmentId);
-      });
+      // Lazy: Tessaya's guest page connects environments but must never load (and persist) the drafts store.
+      return Effect.promise(() =>
+        import("../composerDraftStore").then((drafts) =>
+          drafts.clearComposerDraftsEnvironment(environmentId),
+        ),
+      );
     }),
   }),
 );

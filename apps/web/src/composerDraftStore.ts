@@ -103,6 +103,8 @@ import { UnifiedSettings } from "@t3tools/contracts/settings";
 
 const isElementContextDetails = Schema.is(ElementContextDetails);
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
+import { DraftId } from "./draftId";
+import { isTessayaGuest } from "./tessayaGuestFlag";
 const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
@@ -116,8 +118,7 @@ const COMPOSER_DRAFT_STORAGE_VERSION = 9;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
 
-export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
-export type DraftId = typeof DraftId.Type;
+export { DraftId };
 
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 
@@ -126,7 +127,8 @@ type ComposerPersistState =
   | PersistedComposerDraftStoreState;
 
 const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPersistState>>(
-  typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
+  // Tessaya's guest page has no composer; T3's own window owns the drafts, so the guest neither reads nor writes them.
+  typeof localStorage !== "undefined" && !isTessayaGuest() ? localStorage : createMemoryStorage(),
   (value) =>
     JSON.stringify({
       state:
@@ -4390,7 +4392,7 @@ export function restoreComposerImageBackups(
   return stale;
 }
 
-startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
+if (!isTessayaGuest()) startComposerImageBackup(composerDraftStore, restoreComposerImageBackups);
 
 export function subscribeComposerDraftModelReconciliation(input: {
   readonly registry: AtomRegistry.AtomRegistry;
