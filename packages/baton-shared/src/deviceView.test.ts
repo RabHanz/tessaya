@@ -27,7 +27,7 @@ describe("an R1 button's choices", () => {
 describe("the Bluetooth audio row", () => {
   it("names a device by its name or what it is, never its address, and says why a scan found nothing", () => {
     expect(btDeviceLabel({ name: "E8:07:BF:35:26:5C", kind: "headphones" })).toBe("Headphones");
-    expect(btDeviceLabel({ name: "", kind: undefined })).toBe("Bluetooth device");
+    expect(btDeviceLabel({ name: "" })).toBe("Bluetooth device");
     const s = {
       state: "idle",
       saved: { mac: "E8:07:BF:35:26:5C", name: "Office speaker", kind: "speaker" },
