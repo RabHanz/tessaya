@@ -6,6 +6,7 @@
  * them. The pick rules are `voiceArbiter.ts` in baton-shared.
  */
 import {
+  ACTIVE_MS,
   CLAIM_WINDOW_MS,
   QUIET_AFTER_MS,
   pickResponder,
@@ -21,6 +22,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { DeviceRegistry } from "./DeviceRegistry.ts";
 import { onPeer } from "../peer/PeerVessels.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
@@ -103,6 +105,11 @@ export class VoiceArbiter extends Context.Service<
 interface Round {
   readonly id: string;
   readonly claims: Array<VoiceClaim>;
+  /** The vessels that may still claim; the round closes early once each has. */
+  readonly expected: ReadonlySet<string>;
+  /** Nothing is known yet (no round since start): the full window, so the first round still hears everyone. */
+  readonly blind: boolean;
+  readonly allIn: Deferred.Deferred<void>;
   readonly decided: Deferred.Deferred<{ readonly winner: string; readonly conversation: string }>;
 }
 
@@ -114,7 +121,10 @@ const make = Effect.gen(function* () {
   const home = yield* Effect.serviceOption(HomeAssistantService);
   const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
   const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
+  const registry = yield* Effect.serviceOption(DeviceRegistry);
   const lastAnswered = new Map<string, number>();
+  /** When each vessel last claimed: the ones that may hear him at once. */
+  const lastClaimed = new Map<string, number>();
   const recent: Array<ArbiterState["recent"][number]> = [];
   let open: Round | null = null;
   let quiet: { winner: string; until: number; conversation: string } | null = null;
@@ -126,8 +136,29 @@ const make = Effect.gen(function* () {
   const stored = decodeSaved(saved[0]?.value ?? "{}");
   let primary: string | null = stored._tag === "Some" ? (stored.value.primary ?? null) : null;
 
+  /**
+   * Other vessels that could hear the same words: claimed within ACTIVE_MS and not offline in the registry. None:
+   * the round decides at once, with no window (13 Nov: every R1 wake waited for a window nobody else could join).
+   */
+  const othersNearby = Effect.fn("VoiceArbiter.othersNearby")(function* (
+    deviceId: string,
+    now: number,
+  ) {
+    const out = new Set<string>();
+    for (const [id, at] of lastClaimed) {
+      if (id === deviceId || now - at > ACTIVE_MS) continue;
+      const known = registry._tag === "Some" ? yield* registry.value.get(id) : null;
+      if (known !== null && !known.online) continue;
+      out.add(id);
+    }
+    return out;
+  });
+
   const decide = Effect.fn("VoiceArbiter.decide")(function* (round: Round) {
-    yield* Effect.sleep(CLAIM_WINDOW_MS);
+    // The window, cut short once every vessel that might claim has.
+    if (round.blind) yield* Effect.sleep(CLAIM_WINDOW_MS);
+    else if (round.expected.size > 0)
+      yield* Deferred.await(round.allIn).pipe(Effect.timeoutOption(`${CLAIM_WINDOW_MS} millis`));
     const now = yield* Clock.currentTimeMillis;
     open = null;
     const winner = pickResponder(round.claims, { primary, lastAnswered, now })!;
@@ -137,6 +168,8 @@ const make = Effect.gen(function* () {
     const claimants = [...new Set(round.claims.map((c) => c.deviceId))];
     recent.push({ round: round.id, at: now, winner: winner.deviceId, claimants });
     if (recent.length > RECENT_KEEP) recent.shift();
+    // The verdict first; the Record's write is after it, off the claim's path.
+    yield* Deferred.succeed(round.decided, { winner: winner.deviceId, conversation });
     if (claimants.length > 1 && record._tag === "Some")
       yield* record.value
         .append({
@@ -148,11 +181,13 @@ const make = Effect.gen(function* () {
           detail: `heard on ${claimants.join(", ")}${winner.answerHere === true ? " (answer here)" : ""}`,
         })
         .pipe(Effect.ignore);
-    yield* Deferred.succeed(round.decided, { winner: winner.deviceId, conversation });
   });
 
   const claim = Effect.fn("VoiceArbiter.claim")(function* (c: VoiceClaim) {
     const now = yield* Clock.currentTimeMillis;
+    // Read before this claim is counted, so a vessel never waits for itself.
+    const others = yield* othersNearby(c.deviceId, now);
+    lastClaimed.set(c.deviceId, now);
     if (quiet !== null && quiet.until <= now) quiet = null;
     // Her reply is playing elsewhere: what this device heard is her, unless he asked for this one.
     if (quiet !== null && c.answerHere !== true && open === null) {
@@ -176,11 +211,17 @@ const make = Effect.gen(function* () {
         id: `v${now.toString(36)}${(counter++ % 1296).toString(36)}`,
         claims: [],
         decided: yield* Deferred.make<{ winner: string; conversation: string }>(),
+        expected: others,
+        blind: recent.length === 0,
+        allIn: yield* Deferred.make<void>(),
       };
       open = round;
+      round.claims.push(c);
       yield* decide(round).pipe(Effect.forkIn(scope));
-    }
-    round.claims.push(c);
+    } else round.claims.push(c);
+    const claimed = new Set(round.claims.map((x) => x.deviceId));
+    if ([...round.expected].every((id) => claimed.has(id)))
+      yield* Deferred.succeed(round.allIn, undefined);
     const { winner, conversation } = yield* Deferred.await(round.decided);
     return winner === c.deviceId
       ? ({ answer: true, round: round.id, conversation } satisfies VoiceVerdict)
@@ -213,8 +254,10 @@ const make = Effect.gen(function* () {
     }),
     state: Effect.sync(() => ({ primary, quiet, recent: [...recent] })),
     elsewhere: Effect.fn("VoiceArbiter.elsewhere")(function* (op: string, args: unknown) {
-      if (links._tag === "None" || peerMcp._tag === "None") return null;
-      if (home._tag === "Some" && (yield* home.value.device) !== null) return null;
+      // Only a server that knows it has no desk device forwards (13 Nov: the arbiter's layer lacked the house, so the
+      // home server itself forwarded every claim to its peers first, about 0.7 s each).
+      if (links._tag === "None" || peerMcp._tag === "None" || home._tag === "None") return null;
+      if ((yield* home.value.device) !== null) return null;
       const there = yield* onPeer(
         "tessaya_voice_arbiter",
         { op, args: typeof args === "object" && args !== null ? args : {} },

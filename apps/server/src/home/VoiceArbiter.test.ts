@@ -10,6 +10,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { VoiceArbiter, layer as arbiterLayer, serveArbiter } from "./VoiceArbiter.ts";
 
 const layer = arbiterLayer.pipe(Layer.provideMerge(BatonDatabaseMemory));
@@ -100,7 +101,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const sent: Array<[string, unknown]> = [];
-      const peers = (answers: boolean) =>
+      const links = (answers: boolean) =>
         Layer.mergeAll(
           Layer.mock(PeerLinks.PeerLinks)({
             enabled: Effect.succeed(true),
@@ -119,6 +120,13 @@ it.effect(
                     }
                   : { ok: false, error: "This server has no voice arbiter." };
               }) as never,
+          }),
+        );
+      const peers = (answers: boolean, hasDesk = false) =>
+        Layer.mergeAll(
+          links(answers),
+          Layer.mock(HomeAssistantService)({
+            device: Effect.succeed(hasDesk ? ({ deviceId: "r1-office" } as never) : null),
           }),
         );
       const desk = claim("desktop-laptop", -31);
@@ -149,6 +157,27 @@ it.effect(
       );
       yield* TestClock.adjust("250 millis");
       assert.deepInclude((yield* Fiber.join(fiber))?.value as object, { answer: true });
+      // The server with the desk device decides itself and never asks its peers first (13 Nov: it did, ~0.7 s a claim).
+      sent.length = 0;
+      yield* serveArbiter("arbiter", {}).pipe(
+        Effect.provide(
+          arbiterLayer.pipe(
+            Layer.provideMerge(peers(true, true)),
+            Layer.provideMerge(BatonDatabaseMemory),
+          ),
+        ),
+      );
+      assert.deepStrictEqual(sent, []);
+      // Nor does one that cannot tell (no house service where its arbiter is built: the live bug).
+      yield* serveArbiter("arbiter", {}).pipe(
+        Effect.provide(
+          arbiterLayer.pipe(
+            Layer.provideMerge(links(true)),
+            Layer.provideMerge(BatonDatabaseMemory),
+          ),
+        ),
+      );
+      assert.deepStrictEqual(sent, []);
     }),
 );
 
@@ -179,5 +208,46 @@ it.effect(
         { ...claim("r1-office", -20), speaker: { personId: "owner", verified: false } },
       ]);
       assert.strictEqual(next[0]!.conversation, "household");
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "answers at once when no other vessel is active, and closes the window early once every active one has claimed",
+  () =>
+    Effect.gen(function* () {
+      const arbiter = yield* VoiceArbiter;
+      const startedAt = yield* Clock.currentTimeMillis;
+      // The first round knows nobody yet: it waits the window, so both are heard.
+      yield* round([claim("r1-office", -20), claim("desktop-laptop", -40)]);
+      yield* arbiter.ended("r1-office");
+      yield* TestClock.adjust("3 seconds");
+      const before = yield* Clock.currentTimeMillis;
+      // Both known vessels claim: the second claim closes the round with no wait.
+      const both = yield* Effect.forEach(
+        [claim("r1-office", -20), claim("desktop-laptop", -40)],
+        (c) => arbiter.claim(c).pipe(Effect.forkChild({ startImmediately: true })),
+      );
+      const verdicts = yield* Effect.forEach(both, Fiber.join);
+      assert.deepStrictEqual(
+        verdicts.map((v) => v.answer),
+        [true, false],
+      );
+      assert.strictEqual(yield* Clock.currentTimeMillis, before);
+      yield* arbiter.ended("r1-office");
+      // Only the R1 hears him while the desktop is known: it waits for the desktop, at most the window.
+      yield* TestClock.adjust("3 seconds");
+      const alone = yield* arbiter
+        .claim(claim("r1-office", -20))
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      assert.isUndefined(alone.pollUnsafe());
+      yield* TestClock.adjust("250 millis");
+      assert.isTrue((yield* Fiber.join(alone)).answer);
+      yield* arbiter.ended("r1-office");
+      // Half an hour on, the desktop is no longer active: the R1 is answered with no window at all.
+      yield* TestClock.adjust("31 minutes");
+      const at = yield* Clock.currentTimeMillis;
+      assert.isTrue((yield* arbiter.claim(claim("r1-office", -20))).answer);
+      assert.strictEqual(yield* Clock.currentTimeMillis, at);
+      assert.isAbove(at, startedAt);
     }).pipe(Effect.provide(layer)),
 );

@@ -10,6 +10,8 @@ export type VoiceClaim = VoiceClaimInput;
 export const CLAIM_WINDOW_MS = 250;
 /** A device he spoke to this recently keeps the conversation. */
 export const RECENT_MS = 120_000;
+/** A vessel that claimed this recently may hear him again: a round waits for it, and only for such vessels. */
+export const ACTIVE_MS = 30 * 60_000;
 /** Losers stay quiet this long after her reply ends. */
 export const QUIET_AFTER_MS = 2_000;
 
