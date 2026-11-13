@@ -105,6 +105,10 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       // Messages and announcements to the people here: a child may, a guest is refused by the service.
       "comms_send",
       "comms_react",
+      // Who may set one off is the owner's per-kind rule, judged by the service; okay and false alarm stop it.
+      "comms_emergency",
+      "comms_emergency_ok",
+      "comms_false_alarm",
     ].map((t) => [t, "home" as const]),
   ),
   ...Object.fromEntries(

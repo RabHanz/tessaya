@@ -87,4 +87,45 @@ const DndTool = Tool.make("comms_dnd", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
-export const CommsTools = [SendTool, InboxTool, PlayTool, ReactTool, DndTool] as const;
+const EmergencyTool = Tool.make("comms_emergency", {
+  ...shared,
+  description: COMMS_TOOL_TEXT.comms_emergency,
+  parameters: Schema.Struct({
+    kind: Schema.optionalKey(
+      Schema.String.check(Schema.isMaxLength(40)).annotate({
+        description: "The emergency's id, as comms_emergency without a kind lists them.",
+      }),
+    ),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+const EmergencyOkTool = Tool.make("comms_emergency_ok", {
+  ...shared,
+  description: COMMS_TOOL_TEXT.comms_emergency_ok,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const FalseAlarmTool = Tool.make("comms_false_alarm", {
+  ...shared,
+  description: COMMS_TOOL_TEXT.comms_false_alarm,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+export const CommsTools = [
+  SendTool,
+  InboxTool,
+  PlayTool,
+  ReactTool,
+  DndTool,
+  EmergencyTool,
+  EmergencyOkTool,
+  FalseAlarmTool,
+] as const;

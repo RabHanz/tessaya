@@ -44,6 +44,7 @@ People who live with you can message each other and make announcements through T
 - **Private** messages show only that they exist on a shared speaker, until Tessaya is sure it's that person.
 - **Do not disturb**: "don't disturb me till three" and "I'm free". While it's on, messages wait quietly. Only an adult's urgent message sounds.
 - A child's "urgent" never breaks anyone's quiet. Guests can't send messages.
+- **Emergencies** ("fire, get out", "come downstairs now") are yours to define, under **Messages** on the phone page. For each one you choose who may set it off. Setting one off ("there's a fire, sound the alarm") plays it on every device through quiet hours and do-not-disturb, and repeats every 20 seconds until each person says "okay" or taps **Okay**. "False alarm" stops it everywhere. The same kind can sound again only after two minutes.
 - Everything sent shows in Tessaya's activity log with who sent it and to whom. You see when others messaged, never what they wrote.
 
 ## Brain and usage

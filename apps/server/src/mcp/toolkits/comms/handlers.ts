@@ -58,6 +58,13 @@ export const make = Effect.gen(function* () {
     comms_react: McpToolAccess.writes((input: Args) =>
       run({ op: "react", noteId: input["id"], emoji: input["emoji"] }),
     ),
+    comms_emergency: McpToolAccess.writes((input: Args) =>
+      typeof input["kind"] === "string" && input["kind"] !== ""
+        ? run({ op: "emergency", kind: input["kind"] })
+        : run({ op: "emergencyKinds" }),
+    ),
+    comms_emergency_ok: McpToolAccess.writes(() => run({ op: "emergencyAck" })),
+    comms_false_alarm: McpToolAccess.writes(() => run({ op: "emergencyCancel" })),
     comms_dnd: McpToolAccess.writes((input: Args) => {
       // The model gives a local time with its offset; the service keeps it as UTC ISO.
       const at = typeof input["until"] === "string" ? Date.parse(input["until"]) : Number.NaN;
