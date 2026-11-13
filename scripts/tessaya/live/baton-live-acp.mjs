@@ -660,7 +660,7 @@ export function answerPrompt(sessionId, paneRef, text) {
 export const STALE_ANSWER_NOTE =
   "That answer was for a question that is no longer on the screen, so nothing was pressed. The question showing now has its own card.";
 
-/** True when the text's first line is a permission card's question, which ends with its prompt's ref. */
+/** True when the text's first line is a card's question, which ends with its prompt's ref. */
 export const isRefAnswer = (text) => {
   const body = String(text ?? "").trim();
   const at = body.indexOf("\n");
@@ -670,7 +670,7 @@ export const isRefAnswer = (text) => {
 async function answerNow(sessionId, paneRef, text) {
   const shown = await readPanePrompt(paneRef, true);
   const forThis = shown !== null && isCardAnswer(text, shown);
-  // A permission card's answer for another dialog presses nothing and is never typed as a message.
+  // A card's answer for another dialog presses nothing and is never typed as a message.
   const stale = !forThis && isRefAnswer(text);
   if (!forThis && !stale) return null;
   try {

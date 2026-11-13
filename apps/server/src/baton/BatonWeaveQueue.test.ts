@@ -11,7 +11,12 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory } from "./BatonDatabase.ts";
 import { holdServerLock, SERVER_LOCK_STALE_MS } from "./BatonLiveQueue.ts";
-import { agentsOf, BatonWeaveBoxes, type SessionPane } from "./BatonWeaveBoxes.ts";
+import {
+  agentsOf,
+  BatonWeaveBoxes,
+  type SessionPane,
+  withClaudeWaiting,
+} from "./BatonWeaveBoxes.ts";
 import { make as makeWeave, queueDirFor, WeaveStores } from "./BatonWeaveService.ts";
 // @ts-expect-error -- plain JS shared with the live agent, which runs without a build
 import * as bridge from "../../../../scripts/tessaya/live/baton-live-acp.mjs";
@@ -313,6 +318,19 @@ it("finds a session's pane and state in `herdr agent list` by its id", () => {
     ],
   );
   assert.strictEqual(agentsOf("not json").size, 0);
+  // A dialog Herdr does not know (a held cross-session message) still holds typing when Claude Code says it waits.
+  assert.deepStrictEqual(
+    [
+      ...withClaudeWaiting(agentsOf(listed), [
+        { sessionId: "other", status: "waiting" },
+        { sessionId: "sid-1", status: "idle" },
+      ]),
+    ],
+    [
+      ["other", { pane: "w1:p1", status: "blocked" }],
+      ["sid-1", { pane: "w2:p4", status: "blocked" }],
+    ],
+  );
 });
 
 it.effect("two servers on one folder: only the one holding it imports and types", () =>
