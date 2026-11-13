@@ -35,7 +35,14 @@ export const BATON_DEVICES_ACT_OPS = [
   "set",
   "watch",
 ] as const;
-export const BATON_DEVICES_OWNER_OPS = ["reboot", "camera", "cameraView", "cameraClear"] as const;
+export const BATON_DEVICES_OWNER_OPS = [
+  "reboot",
+  "camera",
+  "cameraView",
+  "cameraClear",
+  // The R1 hub's bus login, for a room loop or a watching server on another machine.
+  "busLogin",
+] as const;
 export const BATON_DEVICES_VESSEL_OPS = ["publish"] as const;
 
 /** The nine moods the R1's eye clips cover. */

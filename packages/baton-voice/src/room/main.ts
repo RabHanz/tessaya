@@ -27,7 +27,7 @@ import {
 import { createSpeakerStore } from "../speakerStore.ts";
 import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
-import { connectMqtt } from "./mqtt.ts";
+import { connectMqtt } from "@t3tools/baton-shared/mqtt";
 import { noteTime, pickRecogniser, turnAcross, type RecogniserState } from "./recognisers.ts";
 import { createProfileSync, parseShared } from "./profileSync.ts";
 import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
@@ -459,8 +459,9 @@ const main = async () => {
 
   let room: ReturnType<typeof createRoomVoice> | null = null;
   const mqtt = connectMqtt({
-    host: env("R1_MQTT_HOST"),
-    port: Number(env("R1_MQTT_PORT", "1883")),
+    // A broker URL (the server's `ws://<host>:<port>/api/r1/mqtt`), or the old host and port.
+    url:
+      process.env["R1_MQTT_URL"] || `mqtt://${env("R1_MQTT_HOST")}:${env("R1_MQTT_PORT", "1883")}`,
     clientId: `tessaya-room-${process.pid}`,
     user: env("R1_MQTT_USER"),
     pass: secret("R1_MQTT_PASS_FILE"),

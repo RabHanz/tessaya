@@ -26,7 +26,6 @@ import {
   calledPersona,
   dictionaryEntries,
   houseTime,
-  mqttPublishBytes,
   r1Data,
   r1Gather,
   peopleLines,
@@ -59,31 +58,6 @@ describe("R1Device", () => {
         { ok: false, status: "failed", line: "Home is unreachable right now." },
       ]),
     ).toBe("I couldn't: Home is unreachable right now.");
-  });
-
-  it("writes MQTT 3.1.1 connect and publish packets", () => {
-    const { connect, publish, disconnect } = mqttPublishBytes({
-      clientId: "c",
-      user: "u",
-      pass: "p",
-      topic: "t/x",
-      payload: "{}",
-    });
-    expect([...connect]).toEqual([
-      0x10, 19, 0, 4, 0x4d, 0x51, 0x54, 0x54, 4, 0xc2, 0, 30, 0, 1, 0x63, 0, 1, 0x75, 0, 1, 0x70,
-    ]);
-    expect([...publish]).toEqual([0x30, 7, 0, 3, 0x74, 0x2f, 0x78, 0x7b, 0x7d]);
-    expect([...disconnect]).toEqual([0xe0, 0]);
-    // Retained, so a room loop that starts later still gets his pronunciations.
-    const kept = mqttPublishBytes({
-      clientId: "c",
-      user: null,
-      pass: null,
-      topic: "t/x",
-      payload: "{}",
-      retain: true,
-    });
-    expect(kept.publish[0]).toBe(0x31);
   });
 
   it("streams one OpenAI-style chunk, a stop and [DONE]", () => {

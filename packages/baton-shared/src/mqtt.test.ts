@@ -7,9 +7,9 @@ import {
   publishPacket,
   subscribePacket,
   topicMatches,
-} from "./Mqtt.ts";
+} from "./mqtt.ts";
 
-describe("the devices' MQTT client", () => {
+describe("the R1's MQTT client", () => {
   it("frames a 1920-byte voice publish with a two-byte remaining length and reads it back across split chunks", () => {
     const payload = new Uint8Array(1920).fill(7);
     const bytes = publishPacket("freya/r1/r1-3d57b3/voice/down", payload);

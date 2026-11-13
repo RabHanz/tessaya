@@ -956,6 +956,7 @@ function SetupSection({
   const [mqttUser, setMqttUser] = useState("");
   const [mqttPass, setMqttPass] = useState("");
   const [deviceKey, setDeviceKey] = useState("");
+  const [devicePass, setDevicePass] = useState("");
   const field = (
     labelText: string,
     value: string,
@@ -981,11 +982,12 @@ function SetupSection({
     >
       <View className="gap-2 px-4 py-3">
         <Text textRole="footnote" className="text-foreground-muted">
-          Its id (r1-…), the MQTT broker it listens on, and the key it uses to reach Tessaya (24
-          characters or more). The key and password stay on the server.
+          Its id (r1-…), the key it uses to reach Tessaya (24 characters or more), and the MQTT
+          broker it listens on. Leave the broker empty when the R1 connects to this server itself.
+          The key and passwords stay on the server.
         </Text>
         {field("Device id, e.g. r1-3d57b3", deviceId, setDeviceId)}
-        {field("mqtt://broker.local:1883", mqttUrl, setMqttUrl)}
+        {field("Broker, e.g. mqtt://broker.local:1883 (empty: this server)", mqttUrl, setMqttUrl)}
         {field("Broker user (optional)", mqttUser, setMqttUser)}
         {field("Broker password (optional)", mqttPass, setMqttPass, true)}
         {field(
@@ -994,26 +996,31 @@ function SetupSection({
           setDeviceKey,
           true,
         )}
+        {mqttUrl.trim() === ""
+          ? field(
+              "The R1's own MQTT password, if it is not the key (optional)",
+              devicePass,
+              setDevicePass,
+              true,
+            )
+          : null}
         <View className="flex-row">
           <ControlPill
             variant="primary"
             label="Save"
-            disabled={
-              busy ||
-              deviceId.trim() === "" ||
-              mqttUrl.trim() === "" ||
-              deviceKey.trim().length < 24
-            }
+            disabled={busy || deviceId.trim() === "" || deviceKey.trim().length < 24}
             onPress={() =>
               void onSave({
                 deviceKey: deviceKey.trim(),
                 deviceId: deviceId.trim(),
-                mqttUrl: mqttUrl.trim(),
+                ...(mqttUrl.trim() === "" ? {} : { mqttUrl: mqttUrl.trim() }),
                 ...(mqttUser.trim() === "" ? {} : { mqttUser: mqttUser.trim() }),
                 ...(mqttPass === "" ? {} : { mqttPass }),
+                ...(mqttUrl.trim() !== "" || devicePass === "" ? {} : { devicePass }),
               }).then(() => {
                 setDeviceKey("");
                 setMqttPass("");
+                setDevicePass("");
               })
             }
           />

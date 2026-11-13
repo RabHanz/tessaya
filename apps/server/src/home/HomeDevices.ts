@@ -60,7 +60,8 @@ import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
-import { connectMqtt } from "./Mqtt.ts";
+import { connectMqtt } from "@t3tools/baton-shared/mqtt";
+import { R1Hub } from "./R1Hub.ts";
 
 /** settings is him in Settings → Devices (the RPC checked his scope); anyone else asks before camera or reboot. */
 export interface DeviceActor {
@@ -606,12 +607,12 @@ export interface DeviceLink {
   readonly close: () => void;
 }
 
-/** The broker, behind a seam so tests run without a socket. */
+/** The broker, behind a seam so tests run without a socket. No URL is this server's own hub. */
 export class HomeDeviceBroker extends Context.Service<
   HomeDeviceBroker,
   {
     readonly connect: (input: {
-      readonly url: string;
+      readonly url: string | null;
       readonly user: string | null;
       readonly pass: string | null;
       readonly onMessage: (topic: string, payload: string) => void;
@@ -619,31 +620,32 @@ export class HomeDeviceBroker extends Context.Service<
   }
 >()("t3/home/HomeDevices/HomeDeviceBroker") {}
 
-export const brokerLayer = Layer.succeed(HomeDeviceBroker, {
-  connect: Effect.fn("HomeDeviceBroker.connect")(function* (
-    input: Parameters<HomeDeviceBroker["Service"]["connect"]>[0],
-  ) {
-    return yield* Effect.sync((): DeviceLink => {
-      const url = new URL(input.url);
-      const client = connectMqtt({
-        host: url.hostname,
-        port: Number(url.port || 1883),
-        clientId: `tessaya-devices-${NodeCrypto.randomBytes(3).toString("hex")}`,
-        ...(input.user === null ? {} : { user: input.user }),
-        ...(input.pass === null ? {} : { pass: input.pass }),
-        subscribe: ["freya/r1/+/state/#", "freya/r1/+/event/#", "freya/r1/+/voice/stepup/done"],
-        onMessage: (topic, payload) => input.onMessage(topic, payload.toString("utf8")),
-        log: () => {},
-      });
-      return {
-        publish: (topic: string, payload: string, retain?: boolean) =>
-          client.publish(topic, payload, retain),
-        connected: client.connected,
-        close: client.close,
-      };
-    });
-  }),
-});
+const SUBSCRIBE = ["freya/r1/+/state/#", "freya/r1/+/event/#", "freya/r1/+/voice/stepup/done"];
+
+export const brokerLayer = Layer.effect(
+  HomeDeviceBroker,
+  Effect.map(R1Hub, (hub) =>
+    HomeDeviceBroker.of({
+      connect: Effect.fn("HomeDeviceBroker.connect")(function* (input) {
+        const onMessage = (topic: string, payload: Buffer) =>
+          input.onMessage(topic, payload.toString("utf8"));
+        if (input.url === null) return hub.attach(SUBSCRIBE, onMessage);
+        const url = input.url;
+        return yield* Effect.sync((): DeviceLink =>
+          connectMqtt({
+            url,
+            clientId: `tessaya-devices-${NodeCrypto.randomBytes(3).toString("hex")}`,
+            ...(input.user === null ? {} : { user: input.user }),
+            ...(input.pass === null ? {} : { pass: input.pass }),
+            subscribe: SUBSCRIBE,
+            onMessage,
+            log: () => {},
+          }),
+        );
+      }),
+    }),
+  ),
+);
 
 /** A button's thread action; a seam, since importing the engine here closes an import cycle through the MCP tools. */
 export class HomeDeviceThreads extends Context.Service<
@@ -1573,13 +1575,12 @@ const make = Effect.gen(function* () {
   const tick = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     device = yield* home.device;
-    const key =
-      device?.mqttUrl == null ? null : `${device.mqttUrl}|${device.mqttUser}|${device.mqttPass}`;
+    const key = device === null ? null : `${device.mqttUrl}|${device.mqttUser}|${device.mqttPass}`;
     if (key !== linkKey) {
       link?.close();
       link = null;
       linkKey = key;
-      if (device?.mqttUrl != null)
+      if (device !== null)
         link = yield* broker.connect({
           url: device.mqttUrl,
           user: device.mqttUser,
@@ -1650,7 +1651,12 @@ const make = Effect.gen(function* () {
       return {
         broker: {
           state: link === null ? "off" : link.connected() ? "connected" : "connecting",
-          host: device?.mqttUrl == null ? null : new URL(device.mqttUrl).hostname,
+          host:
+            device === null
+              ? null
+              : device.mqttUrl === null
+                ? "this server"
+                : new URL(device.mqttUrl).hostname,
         },
         devices: [...ids].map((id) =>
           viewOf(id, heard.get(id) ?? blank(), saved, now, valuesOf(id)),
