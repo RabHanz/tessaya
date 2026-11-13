@@ -3,6 +3,7 @@
  * on 2026-11-11 (she knew no one else, did not know the status of things, and ended every reply on the house), or is
  * a control.
  */
+import { commsWaitingLine } from "../../packages/baton-shared/src/comms.ts";
 import { DEFAULT_OS_PACK } from "../../packages/baton-shared/src/osPack.ts";
 
 export interface RoomCase {
@@ -27,6 +28,8 @@ export interface RoomCase {
   readonly persona?: string;
   /** No reply may open with a persona's name ("Sebastian here."). */
   readonly noNameOpen?: boolean;
+  /** What the turn tells her to say now (TessayaTurn.begin's notice: messages that waited). */
+  readonly notice?: string;
 }
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
@@ -38,6 +41,24 @@ const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
+  {
+    // COMMS-DESIGN §2.4: a message that waited is told once, on the turn that proves he is here, beside his question.
+    id: "comms-waiting",
+    source: "Comms C-1 (#988): the context line for messages that waited",
+    said: ["morning, what's the weather like?"],
+    verified: true,
+    notice: commsWaitingLine("Omid", [{ from: "Sara", count: 2 }]),
+    lastSays: [/\bSara\b/, /\b(message|messages)\b/i, /\b(play|hear|read)\b/i],
+    callsAtMost: { comms_play: 0, comms_send: 0 },
+  },
+  {
+    // Control: no line, no mention of messages.
+    id: "comms-none-waiting",
+    source: "Comms C-1 (#988): control for comms-waiting",
+    said: ["morning, what's the weather like?"],
+    verified: true,
+    callsAtMost: { comms_inbox: 0, comms_play: 0 },
+  },
   {
     id: "who-else",
     source: "R1 retest 2026-11-11: she said she knows no one else",

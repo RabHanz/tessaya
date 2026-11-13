@@ -36,7 +36,7 @@ Tessaya serves everyone who lives with you. In Tessaya's window, open **Memory**
 
 ## Messages and announcements
 
-People who live with you can message each other and make announcements through Tessaya. Messages are off until you turn them on: open Tessaya on your phone (`/tessaya` on your server), go to **Messages** and press **Turn on**.
+People who live with you can message each other and make announcements through Tessaya. Messages are off until you turn them on: in Tessaya's window open **Devices**, then **Intercom**, and switch on **Messages and announcements**. The same page sets quiet hours, your do-not-disturb, who may drop in on you, and the emergencies. On your phone, **Messages** at `/tessaya` on your server has the same switch.
 
 - Say it to her on any device: "tell the kids dinner's ready", "message Sara I'm running late", "tell everyone the car's here", "any messages?", "play it", "heart Sara's message".
 - A message follows the person. It plays where Tessaya last recognised their voice in the past 10 minutes, and it shows on their own devices. If she can't reach them, it waits and she tells them the next time she hears them.
@@ -44,7 +44,7 @@ People who live with you can message each other and make announcements through T
 - **Private** messages show only that they exist on a shared speaker, until Tessaya is sure it's that person.
 - **Do not disturb**: "don't disturb me till three" and "I'm free". While it's on, messages wait quietly. Only an adult's urgent message sounds.
 - A child's "urgent" never breaks anyone's quiet. Guests can't send messages.
-- **Emergencies** ("fire, get out", "come downstairs now") are yours to define, under **Messages** on the phone page. For each one you choose who may set it off. Setting one off ("there's a fire, sound the alarm") plays it on every device through quiet hours and do-not-disturb, and repeats every 20 seconds until each person says "okay" or taps **Okay**. "False alarm" stops it everywhere. The same kind can sound again only after two minutes.
+- **Emergencies** ("fire, get out", "come downstairs now") are yours to define, on the **Intercom** page. For each one you choose who may set it off. Setting one off ("there's a fire, sound the alarm") plays it on every device through quiet hours and do-not-disturb, and repeats every 20 seconds until each person says "okay" or taps **Okay**. "False alarm" stops it everywhere. The same kind can sound again only after two minutes.
 - Everything sent shows in Tessaya's activity log with who sent it and to whom. You see when others messaged, never what they wrote.
 
 ## Brain and usage

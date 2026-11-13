@@ -7,6 +7,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
+import { SessionMember } from "../baton/TessayaTurn.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import { HomeDevices } from "./HomeDevices.ts";
 
@@ -34,6 +35,26 @@ const manifest = {
     { id: "power.on_battery", label: "On battery", type: "bool", access: "read", safety: "free" },
   ],
 };
+
+it.effect("keeps whose a client vessel is from the session that first reported it", () =>
+  Effect.gen(function* () {
+    const registry = yield* DeviceRegistry;
+    const publish = (member: string) =>
+      serveDevicesCall(
+        {
+          kind: "vessel",
+          op: "publish",
+          args: { deviceId: "desk-sara", manifest: { ...manifest, deviceId: "desk-sara" } },
+        },
+        vessel,
+      ).pipe(Effect.provideService(SessionMember, member));
+    yield* publish("sara");
+    assert.strictEqual((yield* registry.get("desk-sara"))?.member, "sara");
+    // Another session reporting the same id never takes it over.
+    yield* publish("owner");
+    assert.strictEqual((yield* registry.get("desk-sara"))?.member, "sara");
+  }).pipe(Effect.provide(layer)),
+);
 
 it.effect(
   "takes a desktop's manifest and values over the devices door and hands it the writes meant for it",

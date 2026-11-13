@@ -16,6 +16,7 @@ import {
   type CommsForms,
   type CommsNote,
   type CommsReceipt,
+  type RegisteredDevice,
 } from "@t3tools/baton-contracts";
 import {
   commsCaps,
@@ -118,7 +119,7 @@ const DND_PREFIX = "comms.dnd.";
 /** The item a screen vessel (a desktop, a phone) declares to take notes: the server writes the plan to it. */
 export const NOTE_ITEM = "comms.note";
 export const OFF_LINE =
-  "Messages are off in this home. The owner turns them on under Messages on Tessaya's phone page.";
+  "Messages are off in this home. The owner turns them on in Tessaya's window under Intercom, or under Messages on the phone page.";
 const KINDS_KEY = "comms.emergencyKinds";
 const decodeKinds = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Array(CommsEmergencyKind)),
@@ -136,6 +137,13 @@ const RECEIPT_RANK: Readonly<Record<CommsReceipt["state"], number>> = {
 /** Voice notes keep their audio this long by default (§5.5); text notes until deleted. */
 export const VOICE_KEEP_DAYS = 30;
 const DAY_MS = 86_400_000;
+
+/**
+ * Whose own device a vessel is: a client vessel (a phone, a desktop) belongs to the member whose session reported it,
+ * and one from before members existed to the owner (identity I-0); a broker vessel (an R1) is the room's.
+ */
+export const personalOf = (d: Pick<RegisteredDevice, "via" | "member">): string | null =>
+  d.via === "client" ? (d.member ?? OWNER_MEMBER_ID) : null;
 
 /** Whether a member with this role is among a note's recipients, by person, group or `all`. */
 export const addressedTo = (
@@ -370,8 +378,7 @@ export const make = Effect.gen(function* () {
         name: d.name,
         online: d.online,
         caps: commsCaps(d),
-        // shortcut: every desktop and phone is the owner's until a member's own device names them (identity I-0).
-        personalOf: d.kind === "phone" || d.kind === "desktop" ? OWNER_MEMBER_ID : null,
+        personalOf: personalOf(d),
       })),
       presence: heard.flatMap((h) =>
         h.heard === null
@@ -721,7 +728,7 @@ export const make = Effect.gen(function* () {
         name: d.name,
         online: d.online,
         caps: commsCaps(d),
-        personalOf: d.kind === "phone" || d.kind === "desktop" ? OWNER_MEMBER_ID : null,
+        personalOf: personalOf(d),
       })),
       presence: [],
       quietNow: false,
@@ -774,7 +781,7 @@ export const make = Effect.gen(function* () {
       status: "done",
       line:
         kinds.length === 0
-          ? "No emergencies are set up. The owner adds them on the phone page."
+          ? "No emergencies are set up. The owner adds them in Tessaya's window under Intercom."
           : `Emergencies: ${kinds.map((k) => `${k.label} (${k.id})`).join(", ")}.`,
       emergencyKinds: kinds,
       emergency: emergencyView(),

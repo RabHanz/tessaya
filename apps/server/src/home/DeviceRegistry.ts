@@ -65,6 +65,8 @@ interface Held {
   online: boolean | null;
   /** Private items in use, until when. */
   live: Map<string, number>;
+  /** The member whose session first reported this client vessel; null: a room vessel, or the owner's from before. */
+  member: string | null;
 }
 
 /** A client vessel calls at least every 15 s while it runs. */
@@ -113,6 +115,11 @@ export class DeviceRegistry extends Context.Service<
       waitMs: number,
     ) => Effect.Effect<ReadonlyArray<DeviceWrite>>;
     readonly forget: (deviceId: string) => Effect.Effect<void>;
+    /**
+     * A client vessel's member, from the session that reported it. The first claim stands: another member's session
+     * reporting the same id never takes it over.
+     */
+    readonly claim: (deviceId: string, member: string) => Effect.Effect<void>;
     /** A private item was just used: its live light shows for `ms`. */
     readonly markLive: (deviceId: string, itemId: string, ms: number) => Effect.Effect<void>;
     readonly changes: Effect.Effect<PubSub.Subscription<DeviceChange>, never, Scope.Scope>;
@@ -149,7 +156,8 @@ const make = Effect.gen(function* () {
     version: string | null;
     manifest: string;
     last_seen: number | null;
-  }>`SELECT id, kind, name, firmware, via, version, manifest, last_seen FROM fabric_devices`.pipe(
+    member: string | null;
+  }>`SELECT id, kind, name, firmware, via, version, manifest, last_seen, member FROM fabric_devices`.pipe(
     Effect.orDie,
   );
   // Pretend vessels kept before they were refused (13 Nov): removed at start.
@@ -171,6 +179,7 @@ const make = Effect.gen(function* () {
       lastSeen: row.last_seen,
       online: null,
       live: new Map(),
+      member: row.member,
     });
   }
   const state = yield* sql<{
@@ -208,6 +217,7 @@ const make = Effect.gen(function* () {
         lastSeen: now,
         online: null,
         live: new Map(),
+        member: null,
       };
       devices.set(deviceId, d);
     }
@@ -232,6 +242,7 @@ const make = Effect.gen(function* () {
       : {}),
     lastSeenAt: iso(d.lastSeen),
     version: d.version,
+    ...(d.member === null ? {} : { member: d.member }),
     items: d.items,
     values: [...d.values].map(([itemId, v]) => ({ itemId, value: v.value, at: iso(v.at)! })),
     live: [...d.live]
@@ -418,6 +429,12 @@ const make = Effect.gen(function* () {
       queued.delete(deviceId);
       yield* sql`DELETE FROM fabric_devices WHERE id = ${deviceId}`;
       yield* sql`DELETE FROM fabric_device_state WHERE device_id = ${deviceId}`;
+    }, Effect.orDie),
+    claim: Effect.fn("DeviceRegistry.claim")(function* (deviceId: string, member: string) {
+      const d = devices.get(deviceId);
+      if (d === undefined || d.via !== "client" || d.member !== null) return;
+      d.member = member;
+      yield* sql`UPDATE fabric_devices SET member = ${member} WHERE id = ${deviceId}`;
     }, Effect.orDie),
     changes: PubSub.subscribe(changes),
     markLive: Effect.fn("DeviceRegistry.markLive")(function* (

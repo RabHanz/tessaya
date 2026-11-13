@@ -110,6 +110,31 @@ const makeHouse = () => {
 
 /** What his work reads return: canned, from a made-up project. */
 const WORK = {
+  // Two notes from Sara, as comms_inbox answers when messages waited for him (the comms-waiting case).
+  comms_inbox: {
+    status: "done",
+    line: "2 messages.",
+    notes: [
+      {
+        id: "note-1",
+        kind: "text",
+        fromLabel: "Sara",
+        text: "Running late, back by eight",
+        forms: { glance: { emoji: "⏰", words: "Running late" } },
+        private: false,
+        createdAt: "2026-11-12T04:50:00.000Z",
+      },
+      {
+        id: "note-2",
+        kind: "voice",
+        fromLabel: "Sara",
+        text: "Can you get milk on the way",
+        forms: { glance: { emoji: "🥛", words: "Get milk" } },
+        private: false,
+        createdAt: "2026-11-12T05:01:00.000Z",
+      },
+    ],
+  },
   tessaya_in_flight: {
     turns: [{ session: "acme/app", title: "checkout refactor", agent: "Codex", minutes: 14 }],
   },
@@ -254,6 +279,7 @@ const context = (
   lastAction: house.last(),
   automations: null,
   memory: "",
+  ...(c.notice === undefined ? {} : { notice: c.notice }),
   preferences: {},
   voice:
     c.verified === true

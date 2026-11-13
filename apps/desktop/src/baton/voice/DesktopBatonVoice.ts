@@ -90,6 +90,7 @@ import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { COMMS_SOUND_PLACEHOLDER, noteCardOf } from "@t3tools/baton-shared/comms";
+import { createIntercomTab, type CommsCall } from "../home/intercomTab.ts";
 import { releasesUrl, repoSlug } from "@t3tools/baton-shared/repo";
 import { answerNeeds } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
@@ -1244,6 +1245,8 @@ export interface DesktopBatonVoiceInput {
   readonly privateMemory?: PrivateMemory;
   /** The household's members on this machine's server, for the Memory tab's Household area. */
   readonly household?: HouseholdCall;
+  /** Messages, emergencies and drop-in permissions on this machine's server, for the Intercom page. */
+  readonly comms?: CommsCall;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** The voice match model in the voice model worker (VOICE-ID); absent, Voice ID cannot run here. */
@@ -5445,6 +5448,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               }
             : {}),
         });
+  const intercomTab =
+    input.comms === undefined || input.household === undefined
+      ? null
+      : createIntercomTab({
+          call: input.comms,
+          members: () => input.household!("list").then((r) => r.members ?? []),
+          refresh: () => home.refresh(),
+        });
   const privateTab =
     input.privateMemory === undefined
       ? null
@@ -6522,6 +6533,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...at("memory"),
       ...(privateTab?.controls() ?? []),
       ...(householdTab?.controls() ?? []),
+      ...(intercomTab?.controls() ?? []),
       ...(privateTab === null || privateTab.everyday() ? memoryTab.controls() : []),
       ...vaultTab.controls(),
       ...at("pack"),
@@ -7439,6 +7451,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const on = value === true;
     if (privateTab?.act(id, value)) return;
     if (householdTab?.act(id, value)) return;
+    if (intercomTab?.act(id, value)) return;
     if (memoryTab.act(id, value)) return;
     if (vaultTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
@@ -8312,6 +8325,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       : { learn: (call) => learnDoor(BATON_LEARN_WS_METHODS.call, call, 5_000) }),
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
+      if (tab === "intercom") void intercomTab?.load();
       if (tab === "memory") {
         void memoryTab.load();
         void privateTab?.load();

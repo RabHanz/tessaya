@@ -77,12 +77,13 @@ describe("commsCaps", () => {
     // The R1's live light is not firmware-locked yet: no mic opens to a person until its manifest says so.
     expect(commsCaps(device("r1")).live).toBeNull();
     expect(
-      commsCaps(device("r1", { "live.indicator": "eyes", "audio.aec": "full" })),
+      commsCaps(device("r1", { "live.indicator": "eyes+led", "audio.aec": "full" })),
     ).toMatchObject({
-      live: "eyes",
+      live: ["eyes", "led"],
       aec: "full",
     });
     expect(commsCaps(device("r1", { "live.indicator": "blink" })).live).toBeNull();
+    expect(commsCaps(device("r1", { "live.indicator": "eyes+blink" })).live).toBeNull();
     expect(commsCaps(device("phone")).push).toBe(true);
     expect(commsCaps(device("toaster"))).toMatchObject({
       display: "none",
