@@ -52,7 +52,7 @@ fill it in only for an R1 on a separate MQTT broker. **Forget** removes all of i
 
 **Add an R1.** A new R1 shows a pairing QR on its right eye. In Settings → Hardware → **Add an R1**, paste the QR's
 text (`T3R1:…`, from your phone's camera) with your Wi-Fi name and password. In Chrome, **Set up over Bluetooth** does
-the rest; if your computer asks for a passkey, enter the six digits shown there and on the R1's eyes. Anywhere else,
+the rest; when asked, type the six digits the R1's eyes show. Anywhere else,
 **Get a setup code**, join the R1's own Wi-Fi (the QR on its left eye) and paste the code into its page. After the first
 R1 you are asked once whether it may work away from home.
 

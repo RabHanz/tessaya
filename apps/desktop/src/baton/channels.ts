@@ -11,3 +11,5 @@ export const BATON_SESSION_REQUEST_CHANNEL = "desktop:baton-session-request";
 export const BATON_SESSION_RESPONSE_CHANNEL = "desktop:baton-session-response";
 export const BATON_USAGE_CHANNEL = "desktop:baton-usage";
 export const BATON_OPEN_TESSAYA_CHANNEL = "desktop:baton-open-tessaya";
+export const R1_BLE_PAIRING_REQUEST_CHANNEL = "desktop:r1-ble-pairing-request";
+export const R1_BLE_PAIRING_RESPONSE_CHANNEL = "desktop:r1-ble-pairing-response";

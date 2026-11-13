@@ -1,16 +1,16 @@
 /**
- * Settings → Hardware → Add an R1: the pairing QR's text, Wi-Fi, then over Bluetooth where the browser has it
- * (Chrome, the desktop app), or as a setup code for the R1's own Wi-Fi page anywhere else. Then, once per server,
+ * Settings → Hardware → Add an R1: the pairing QR's text and Wi-Fi, then over Bluetooth
+ * where the browser has it (Chrome, the desktop app), or as a setup code for the R1's own Wi-Fi page anywhere else. Then, once per server,
  * the away-from-home question. The steps are shared with the phone (`@t3tools/baton-shared/r1Setup`).
  */
 import {
-  blePasskey,
   parsePairingQr,
   R1_SETUP_SERVICE,
   runR1Setup,
   type R1SetupPort,
   type R1SetupStep,
 } from "@t3tools/baton-shared/r1Setup";
+import { batonDesktopBridge } from "@t3tools/baton-contracts";
 import { useState } from "react";
 
 import { Button } from "../ui/button";
@@ -27,8 +27,8 @@ export type R1Call = (
 
 // Web Bluetooth's few calls used here; the DOM types do not carry it.
 interface GattCharacteristic extends EventTarget {
-  readonly value?: DataView;
   writeValueWithResponse(value: Uint8Array): Promise<void>;
+  readValue(): Promise<DataView>;
   startNotifications(): Promise<unknown>;
 }
 interface Bluetooth {
@@ -42,14 +42,8 @@ interface Bluetooth {
     };
   }>;
 }
-/**
- * The browser's Bluetooth, where pairing with a passkey works. Not in the desktop app yet: Electron cancels a pairing
- * that needs a passkey unless its main process answers it, and that is not wired; the setup code works there.
- */
-const webBluetooth = (): Bluetooth | null => {
-  const nav = globalThis.navigator as { bluetooth?: Bluetooth; userAgent?: string } | undefined;
-  return nav?.userAgent?.includes("Electron") === true ? null : (nav?.bluetooth ?? null);
-};
+const webBluetooth = (): Bluetooth | null =>
+  (globalThis.navigator as { bluetooth?: Bluetooth } | undefined)?.bluetooth ?? null;
 
 const SETUP_TIMEOUT_MS = 90_000;
 
@@ -61,12 +55,13 @@ const connectR1 = async (bluetooth: Bluetooth): Promise<R1SetupPort> => {
   return {
     write: async (uuid, value) =>
       (await service.getCharacteristic(uuid)).writeValueWithResponse(value),
-    watch: async (uuid, onValue) => {
+    read: async (uuid) => {
+      const v = await (await service.getCharacteristic(uuid)).readValue();
+      return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    },
+    watch: async (uuid, onNotify) => {
       const ch = await service.getCharacteristic(uuid);
-      const listener = () => {
-        if (ch.value !== undefined)
-          onValue(new Uint8Array(ch.value.buffer, ch.value.byteOffset, ch.value.byteLength));
-      };
+      const listener = () => onNotify();
       ch.addEventListener("characteristicvaluechanged", listener);
       await ch.startNotifications();
       return () => ch.removeEventListener("characteristicvaluechanged", listener);
@@ -79,7 +74,7 @@ const STEP_LINE: Record<R1SetupStep, string> = {
   claim: "Pairing it with this server…",
   joining: "Joining your Wi-Fi…",
   online: "Your R1 is set up.",
-  failed: "The R1 could not join. Check the Wi-Fi name and password, then try again.",
+  failed: "Setup did not finish.",
 };
 
 export function R1SetupSection({
@@ -102,6 +97,13 @@ export function R1SetupSection({
   const [code, setCode] = useState<string | null>(null);
   const [askAway, setAskAway] = useState<string | null>(null);
   const pairing = parsePairingQr(qr);
+  // The desktop app's pairing, waiting for him: the R1's eyes show the digits; nothing is filled in for him.
+  const [pairAsk, setPairAsk] = useState<{
+    readonly kind: "providePin" | "confirmPin" | "confirm";
+    readonly pin?: string;
+    readonly answer: (reply: { confirmed: boolean; pin?: string }) => void;
+  } | null>(null);
+  const [typed, setTyped] = useState("");
 
   const claim = async () => {
     if (pairing === null) throw new Error("That is not the R1's pairing code.");
@@ -116,6 +118,14 @@ export function R1SetupSection({
   const viaBluetooth = async () => {
     if (bluetooth === null || pairing === null) return;
     setBusy(true);
+    // In the desktop app the pairing asks here; a browser or phone shows the system's own prompt.
+    const stopAsking = batonDesktopBridge()?.onR1BlePairing?.(
+      (request) =>
+        new Promise((answer) => {
+          setTyped("");
+          setPairAsk({ ...request, answer });
+        }),
+    );
     try {
       const port = await connectR1(bluetooth);
       const ok = await runR1Setup({
@@ -123,15 +133,15 @@ export function R1SetupSection({
         ssid,
         pass,
         claim,
-        onStep: (step, said) =>
-          setLine(said === "" ? STEP_LINE[step] : `${STEP_LINE[step]} (${said})`),
+        onStep: (step, why) => setLine(why === "" ? STEP_LINE[step] : why),
         timeout: new Promise((resolve) => setTimeout(resolve, SETUP_TIMEOUT_MS)),
       });
-      setLine(STEP_LINE[ok ? "online" : "failed"]);
       finish(ok);
     } catch (cause) {
       setLine(cause instanceof Error ? cause.message : "Setup did not finish.");
     }
+    stopAsking?.();
+    setPairAsk(null);
     setBusy(false);
   };
   const viaCode = async () => {
@@ -172,12 +182,6 @@ export function R1SetupSection({
             placeholder="T3R1:R1-…"
             onChange={(e) => setQr(e.target.value)}
           />
-          {pairing === null ? null : (
-            <p className="text-sm text-muted-foreground">
-              {pairing.deviceId}. If your computer asks for a passkey, enter{" "}
-              <strong>{blePasskey(pairing.oneTimeKey)}</strong>; the R1's eyes show the same.
-            </p>
-          )}
           <Input
             aria-label="Wi-Fi name"
             value={ssid}
@@ -209,6 +213,52 @@ export function R1SetupSection({
               Get a setup code
             </Button>
           </div>
+          {pairAsk === null ? null : (
+            <div className="flex flex-col gap-2">
+              {pairAsk.kind === "providePin" ? (
+                <Input
+                  aria-label="The 6 digits on the R1's eyes"
+                  inputMode="numeric"
+                  autoFocus
+                  value={typed}
+                  placeholder="Type the 6 digits on the R1's eyes"
+                  onChange={(e) => setTyped(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+              ) : (
+                <p className="text-sm">
+                  {pairAsk.kind === "confirmPin"
+                    ? `Do the R1's eyes show ${pairAsk.pin ?? ""}?`
+                    : "Pair with this R1?"}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  size="xs"
+                  disabled={pairAsk.kind === "providePin" && typed.length !== 6}
+                  onClick={() => {
+                    pairAsk.answer(
+                      pairAsk.kind === "providePin"
+                        ? { confirmed: true, pin: typed }
+                        : { confirmed: true },
+                    );
+                    setPairAsk(null);
+                  }}
+                >
+                  Pair
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => {
+                    pairAsk.answer({ confirmed: false });
+                    setPairAsk(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
           {code === null ? null : (
             <Input
               aria-label="Setup code"
