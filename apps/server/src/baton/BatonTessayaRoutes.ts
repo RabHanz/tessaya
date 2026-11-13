@@ -20,6 +20,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
@@ -44,6 +45,7 @@ import {
 } from "./BatonRpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { SessionMember } from "./TessayaTurn.ts";
+import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
 import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
@@ -312,6 +314,7 @@ export const routes = HttpRouter.use((router) =>
     const handlers = yield* BatonRpcHandlers.makeHandlers;
     const deskTools = yield* DeskTools;
     const decodeToolCall = Schema.decodeUnknownOption(DeskToolCall);
+    const decodeDeskTurn = Schema.decodeUnknownOption(DeskTurnBody);
     const deskToolsAnswer = Effect.fn("BatonTessayaRoutes.deskTools")(function* (
       calledAs: string,
       request: HttpServerRequest.HttpServerRequest,
@@ -379,6 +382,27 @@ export const routes = HttpRouter.use((router) =>
         if (!session.value.scopes.includes(AuthBatonHandsHostScope))
           return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
         return yield* deskToolsAnswer(calledAs, request);
+      }
+      // His sentence at the desk, through the one brain (SPINE-UNIFY S4): only the desktop app's own session sends it.
+      if (calledAs === "turn") {
+        if (!session.value.scopes.includes(AuthBatonHandsHostScope) || deskTools === null)
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+        const body = decodeDeskTurn(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+        if (body._tag === "None")
+          return HttpServerResponse.jsonUnsafe(
+            { message: "That request is not valid." },
+            { status: 400 },
+          );
+        return HttpServerResponse.stream(
+          deskTurnStream(body.value, deskTools, true).pipe(
+            Stream.provideService(SessionMember, memberOfSubject(session.value.subject)),
+            Stream.provideContext(context),
+            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.concat(Stream.make("data: [DONE]\n\n")),
+            Stream.encodeText,
+          ),
+          { contentType: "text/event-stream", headers: { "cache-control": "no-store" } },
+        );
       }
       const tag = BATON_METHOD_OF.get(calledAs) ?? calledAs;
       const codec = DESK_CODECS.get(tag);

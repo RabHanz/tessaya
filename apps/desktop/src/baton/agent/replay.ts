@@ -14,7 +14,7 @@ import type { Brain } from "@t3tools/baton-shared/osPack";
 
 import { createPersonaConversations } from "../conversation/conversationLog.ts";
 import { startVisionSession } from "../screen/claudeVision.ts";
-import type { TurnPersona } from "./agentPrompt.ts";
+import type { TurnPersona } from "@t3tools/baton-shared/agentPrompt";
 import { createAssistantAgent, type Where } from "./agentSession.ts";
 import { startBatonMcp } from "./batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "./batonTools.ts";
