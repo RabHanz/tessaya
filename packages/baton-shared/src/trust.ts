@@ -86,6 +86,10 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "memory_remember",
       "note_search",
       "member_preferences",
+      // Their own messages: a private one is theirs alone.
+      "comms_inbox",
+      "comms_play",
+      "comms_dnd",
     ].map((t) => [t, "personal" as const]),
   ),
   ...Object.fromEntries(
@@ -98,6 +102,9 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "home_state",
       "home_do",
       "home_undo",
+      // Messages and announcements to the people here: a child may, a guest is refused by the service.
+      "comms_send",
+      "comms_react",
     ].map((t) => [t, "home" as const]),
   ),
   ...Object.fromEntries(

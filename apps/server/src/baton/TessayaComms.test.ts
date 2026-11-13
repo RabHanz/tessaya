@@ -7,6 +7,56 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
 import { TessayaComms, layer as commsLayer } from "./TessayaComms.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
+import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { HomeDevices } from "../home/HomeDevices.ts";
+import { TurnOrigin } from "./TessayaTurn.ts";
+
+/** A pretend house: an R1 in the kitchen and the owner's desktop, which takes notes; what each was sent. */
+const house = () => {
+  const said: Array<{ id: string; op: string; text?: string }> = [];
+  const written: Array<{ id: string; value: unknown }> = [];
+  const device = (deviceId: string, kind: string, items: ReadonlyArray<string> = []) => ({
+    deviceId,
+    kind,
+    name: deviceId,
+    firmware: null,
+    via: "client" as const,
+    online: true,
+    lastSeenAt: null,
+    version: null,
+    items: items.map((id) => ({
+      id,
+      label: id,
+      type: "action",
+      access: "write",
+      safety: "free" as const,
+    })),
+    values: [],
+  });
+  const devices = [device("r1-kitchen", "r1"), device("desk-1", "desktop", ["comms.note"])];
+  const registry = DeviceRegistry.of({
+    list: Effect.succeed(devices),
+    get: (id: string) => Effect.succeed(devices.find((d) => d.deviceId === id) ?? null),
+    write: (id: string, _item: string, value: unknown) =>
+      Effect.sync(() => {
+        written.push({ id, value });
+        return { status: "sent" as const, line: "" };
+      }),
+  } as never);
+  const homeDevices = HomeDevices.of({
+    command: (id: string, c: { op: string; text?: string }) =>
+      Effect.sync(() => {
+        said.push({ id, op: c.op, ...(c.text === undefined ? {} : { text: c.text }) });
+        return { status: "done" as const, line: "" };
+      }),
+  } as never);
+  const inHouse = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.provideService(DeviceRegistry, registry),
+      Effect.provideService(HomeDevices, homeDevices),
+    );
+  return { said, written, inHouse };
+};
 
 const MEMBERS: Readonly<Record<string, { role: MemberRole; name: string }>> = {
   owner: { role: "owner", name: "Omid" },
@@ -19,6 +69,12 @@ const household = Layer.succeed(
   TessayaHousehold.of({
     grantsOf: (member: string) =>
       Effect.succeed(MEMBERS[member] === undefined ? null : { ...MEMBERS[member], machine: false }),
+    call: () =>
+      Effect.succeed({
+        status: "done" as const,
+        line: "",
+        members: Object.entries(MEMBERS).map(([id, m]) => ({ id, ...m, state: "active" })),
+      }),
   } as never),
 );
 
@@ -41,12 +97,15 @@ const as =
 
 const comms = (member: string | null, input: Parameters<TessayaComms["Service"]["call"]>[0]) =>
   Effect.flatMap(TessayaComms, (c) => c.call(input)).pipe(as(member));
+/** Comms is off until the owner turns it on. */
+const on = comms("owner", { op: "settings", enabled: true });
 
 const commsRows = Effect.flatMap(BatonRecordService, (r) => r.query({ kind: "comms" }));
 
 layer("TessayaComms", (it) => {
   it.effect("sends a note to a person, who sees it in their inbox and nobody else does", () =>
     Effect.gen(function* () {
+      yield* on;
       const sent = yield* comms("owner", {
         op: "send",
         to: ["person:sara"],
@@ -66,6 +125,7 @@ layer("TessayaComms", (it) => {
 
   it.effect("delivers a group note by role and a note to all to every member but a guest", () =>
     Effect.gen(function* () {
+      yield* on;
       yield* comms("owner", { op: "send", to: ["group:kids"], kind: "announce", text: "Dinner" });
       yield* comms("owner", { op: "send", to: ["all"], kind: "announce", text: "Car's here" });
       const texts = (who: string) =>
@@ -80,6 +140,7 @@ layer("TessayaComms", (it) => {
 
   it.effect("refuses a guest's send and keeps a child's urgent from overriding quiet hours", () =>
     Effect.gen(function* () {
+      yield* on;
       const guest = yield* comms("gus", { op: "send", to: ["all"], kind: "text", text: "hi" });
       assert.strictEqual(guest.status, "refused");
       const stranger = yield* comms("nobody", {
@@ -102,6 +163,7 @@ layer("TessayaComms", (it) => {
 
   it.effect("writes exactly one Record row per act, and never the note's words", () =>
     Effect.gen(function* () {
+      yield* on;
       const before = (yield* commsRows).length;
       const sent = yield* comms("owner", {
         op: "send",
@@ -129,6 +191,7 @@ layer("TessayaComms", (it) => {
 
   it.effect("lets a reaction reach the sender only on a note the reactor can see", () =>
     Effect.gen(function* () {
+      yield* on;
       const sent = yield* comms("owner", {
         op: "send",
         to: ["person:sara"],
@@ -190,6 +253,7 @@ layer("TessayaComms", (it) => {
 
   it.effect("shows the owner everyone's log as metadata only", () =>
     Effect.gen(function* () {
+      yield* on;
       yield* comms("sara", { op: "send", to: ["person:maya"], kind: "text", text: "between us" });
       const owner = (yield* comms("owner", { op: "log" })).notes ?? [];
       const theirs = owner.find((n) => n.from === "sara" && n.to.includes("person:maya"));
@@ -197,6 +261,123 @@ layer("TessayaComms", (it) => {
       assert.strictEqual(theirs?.text, "");
       const maya = (yield* comms("maya", { op: "log" })).notes ?? [];
       assert.isTrue(maya.some((n) => n.text === "between us"));
+    }),
+  );
+
+  it.effect("sends nothing while comms is off, and only the owner turns it on", () =>
+    Effect.gen(function* () {
+      yield* comms("owner", { op: "settings", enabled: false });
+      const off = yield* comms("owner", { op: "send", to: ["all"], kind: "text", text: "hi" });
+      assert.strictEqual(off.status, "refused");
+      assert.strictEqual(
+        (yield* comms("sara", { op: "settings", enabled: true })).status,
+        "refused",
+      );
+      const back = yield* comms("owner", { op: "settings", enabled: true });
+      assert.isTrue(back.settings?.enabled);
+    }),
+  );
+
+  it.effect("plays an announcement on the R1 and puts the card on the owner's desktop", () =>
+    Effect.gen(function* () {
+      yield* on;
+      const h = house();
+      const sent = yield* comms("sara", {
+        op: "send",
+        to: ["all"],
+        kind: "announce",
+        text: "The car's here",
+      }).pipe(h.inHouse);
+      assert.deepStrictEqual(sent.delivered, ["r1-kitchen", "desk-1"]);
+      assert.deepStrictEqual(
+        h.said.map((x) => `${x.id} ${x.op}${x.text === undefined ? "" : ` ${x.text}`}`),
+        ["r1-kitchen eye", "r1-kitchen say From Sara: The car's here"],
+      );
+      assert.deepStrictEqual(
+        h.written.map((w) => `${w.id} ${(w.value as { id: string }).id}`),
+        [`desk-1 ${sent.note?.id}`],
+      );
+    }),
+  );
+
+  it.effect("sends nothing anywhere for a replay, and says so", () =>
+    Effect.gen(function* () {
+      yield* on;
+      const h = house();
+      const sent = yield* comms("sara", {
+        op: "send",
+        to: ["all"],
+        kind: "announce",
+        text: "x",
+      }).pipe(
+        h.inHouse,
+        Effect.provideService(TurnOrigin, {
+          kind: "device",
+          id: "replay-1",
+          label: "R1",
+          rehearsal: true,
+        }),
+      );
+      assert.match(sent.line, /replay/);
+      assert.deepStrictEqual(h.written, []);
+      assert.isTrue(h.said.every((x) => x.op === "eye" || x.op === "say"));
+      const inbox = yield* comms("owner", { op: "inbox" });
+      assert.isFalse((inbox.notes ?? []).some((n) => n.id === sent.note?.id));
+    }),
+  );
+
+  it.effect("holds a note for someone it can't reach and tells them once when they're back", () =>
+    Effect.gen(function* () {
+      yield* on;
+      const sent = yield* comms("owner", {
+        op: "send",
+        to: ["person:maya"],
+        kind: "text",
+        text: "Call me",
+      });
+      assert.match(sent.line, /waits for Maya/);
+      const service = yield* TessayaComms;
+      // Earlier tests left notes for Maya too: each sender is counted once, then nothing is told again.
+      const told = yield* service.waitingFor("maya", "r1-kitchen");
+      assert.isTrue(told.some((w) => w.from === "Omid" && w.count >= 1));
+      assert.deepStrictEqual(yield* service.waitingFor("maya", "r1-kitchen"), []);
+    }),
+  );
+
+  it.effect(
+    "shows a private note only as existing to an unsure voice, and plays it to a sure one",
+    () =>
+      Effect.gen(function* () {
+        yield* on;
+        const sent = yield* comms("owner", {
+          op: "send",
+          to: ["person:sara"],
+          kind: "text",
+          text: "the code is 4321",
+          private: true,
+        });
+        const unsure = yield* Effect.flatMap(TessayaComms, (c) => c.call({ op: "inbox" })).pipe(
+          Effect.provideService(HouseholdCaller, { member: "sara", assurance: 1, via: "R1" }),
+        );
+        const seen = (unsure.notes ?? []).find((n) => n.id === sent.note?.id);
+        assert.strictEqual(seen?.text, "");
+        const refusedPlay = yield* Effect.flatMap(TessayaComms, (c) =>
+          c.call({ op: "play", noteId: sent.note!.id }),
+        ).pipe(Effect.provideService(HouseholdCaller, { member: "sara", assurance: 1, via: "R1" }));
+        assert.strictEqual(refusedPlay.status, "refused");
+        const played = yield* comms("sara", { op: "play", noteId: sent.note!.id });
+        assert.match(played.line, /4321/);
+      }),
+  );
+
+  it.effect("keeps a member's do-not-disturb until it ends, and turns it off", () =>
+    Effect.gen(function* () {
+      const on1 = yield* comms("sara", { op: "dnd", until: "2099-01-01T00:00:00.000Z" });
+      assert.strictEqual(on1.settings?.dndUntil, "2099-01-01T00:00:00.000Z");
+      const past = yield* comms("sara", { op: "dnd", until: "1969-12-31T00:00:00.000Z" });
+      assert.strictEqual(past.status, "refused");
+      yield* comms("sara", { op: "dnd", until: null });
+      assert.isNull((yield* comms("sara", { op: "settings" })).settings?.dndUntil);
     }),
   );
 });

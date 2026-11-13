@@ -34,6 +34,7 @@ import { HOME_KEY, HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.
 import { BatonMemoryRefusedError, type BatonHouseholdCallInput } from "@t3tools/baton-contracts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
+import { TessayaComms } from "./TessayaComms.ts";
 import { TurnPools } from "./TurnPools.ts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
@@ -113,6 +114,19 @@ export interface ConversationTurn {
 const hisVoice = (speaker: SpeakerLike | null) =>
   speaker !== null && speaker.kind === "owner" && speaker.verified && !speaker.inherited;
 
+/** What a turn is told of messages that waited for its speaker; senders' names are quoted as data. */
+export const commsWaitingLine = (
+  name: string,
+  waiting: ReadonlyArray<{ readonly from: string; readonly count: number }>,
+): string =>
+  waiting.length === 0
+    ? ""
+    : `Messages waited for ${name}: ${waiting
+        .map((w) => `${w.count} from ${JSON.stringify(w.from)}`)
+        .join(
+          ", ",
+        )}. Tell them once, in a few words, and offer to play them (comms_inbox, then comms_play).`;
+
 /** The vessel that heard the turn, for every tool it calls: a tool reads it to name where a request came from. */
 export const TurnOrigin = Context.Reference<{
   readonly kind: VesselKind;
@@ -176,8 +190,12 @@ export const NOT_HIS_VOICE_TO_FORGET =
 export interface WhoIsHome {
   readonly member: string;
   readonly name: string;
-  /** Last verified voice or own-device turn: where (the vessel, "R1", "desktop") and how long ago. */
-  readonly heard: { readonly via: string; readonly minutesAgo: number } | null;
+  /** Last verified voice or own-device turn: where (the vessel, "R1", "desktop"), its id, and how long ago. */
+  readonly heard: {
+    readonly via: string;
+    readonly vessel: string;
+    readonly minutesAgo: number;
+  } | null;
   /** Their own devices: how many are connected now, and minutes since one was (0 while connected). */
   readonly devices: { readonly connected: number; readonly minutesAgo: number } | null;
   /** Heard within the last half hour, or a device connected now. */
@@ -492,8 +510,9 @@ export const make = Effect.gen(function* () {
     const member = turnIdentity(turn).member;
     yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
+    const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
     return {
-      block: [standing.block, extra, nameOnceLine(turn.nameOnce)]
+      block: [standing.block, extra, nameOnceLine(turn.nameOnce), waiting]
         .filter((b) => b !== "")
         .join("\n\n"),
       ids: sentence.ids,
@@ -504,8 +523,24 @@ export const make = Effect.gen(function* () {
     };
   });
 
+  /**
+   * Messages that waited for this member, told once on the turn that proves they are here (COMMS-DESIGN §2.4): only a
+   * verified voice or their own device, never a replay.
+   */
+  const waitingLine = Effect.fn("TessayaTurn.waitingLine")(function* (
+    turn: TurnEnvelope,
+    member: string | null,
+    name: string | null,
+  ) {
+    const comms = yield* Effect.serviceOption(TessayaComms);
+    if (Option.isNone(comms) || member === null || turn.rehearsal === true) return "";
+    if (turnIdentity(turn).assurance < 2) return "";
+    const waiting = yield* comms.value.waitingFor(member, turn.vessel.id);
+    return commsWaitingLine(name ?? (yield* memberName(member)) ?? "them", waiting);
+  });
+
   // shortcut: in this server's memory, as HOUSEHOLD-DESIGN §7 asks (a state, not a history); a restart forgets it.
-  const seen = new Map<string, { at: number; via: string }>();
+  const seen = new Map<string, { at: number; via: string; vessel: string }>();
   /**
    * Who was just here: a voice verified on its own audio (A2) on a vessel, or a member's own signed-in device typing.
    * A guess (an unverified or carried-over voice), a guest, a replay or a turn not said to her proves nothing.
@@ -517,6 +552,7 @@ export const make = Effect.gen(function* () {
     seen.set(identity.member, {
       at: yield* Clock.currentTimeMillis,
       via: turn.origin ?? `${turn.vessel.kind} ${turn.vessel.id}`,
+      vessel: turn.vessel.id,
     });
   });
 
@@ -542,7 +578,9 @@ export const make = Effect.gen(function* () {
       const s = seen.get(member);
       const d = devices.get(member);
       const heard =
-        s === undefined ? null : { via: s.via, minutesAgo: Math.floor((now - s.at) / 60_000) };
+        s === undefined
+          ? null
+          : { via: s.via, vessel: s.vessel, minutesAgo: Math.floor((now - s.at) / 60_000) };
       out.push({
         member,
         name:

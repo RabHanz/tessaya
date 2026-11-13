@@ -41,6 +41,7 @@ import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
 import * as JobsHandlers from "../jobs/handlers.ts";
 import * as MembersHandlers from "../members/handlers.ts";
+import * as CommsHandlers from "../comms/handlers.ts";
 import * as SettingsHandlers from "../settings/handlers.ts";
 import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
 
@@ -218,6 +219,7 @@ export const layer = McpToolAccess.toLayer(
       ...(yield* DeviceHandlers.make),
       ...(yield* SettingsHandlers.make),
       ...(yield* MembersHandlers.make),
+      ...(yield* CommsHandlers.make),
       ...(yield* JobsHandlers.make),
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),

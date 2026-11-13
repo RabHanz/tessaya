@@ -175,6 +175,10 @@ export const desktopManifest = (input: {
     schema: 1,
     items: [
       ...controlItems,
+      // Comms (COMMS-DESIGN §3.3): the server writes a note's plan here; this computer shows its card.
+      item("comms.note", "Messages", "action", "comms", "shows a message from someone at home", {
+        access: "write",
+      }),
       item("screen.list", "Screens", "string", "system", "the screens connected to this computer"),
       item(
         "power.on_battery",
@@ -358,6 +362,8 @@ export const startDesktopDevice = (input: {
   readonly platform: string;
   readonly facts: () => Omit<DesktopFacts, "scan">;
   readonly applySetting: (id: string, value: string) => void;
+  /** A message from someone at home, as the server rendered it for this computer. */
+  readonly onNote: (note: unknown) => void;
   /** Calls `poke` when something it reads changed (a screen, power, lock); returns how to stop. */
   readonly onChange: (poke: () => void) => () => void;
 }) => {
@@ -405,6 +411,11 @@ export const startDesktopDevice = (input: {
       for (const v of next.values) sentValues.set(v.itemId, JSON.stringify(v.value));
       const writes = Array.isArray(answer?.writes) ? (answer.writes as Array<DeviceWrite>) : [];
       for (const w of writes) {
+        if (w.itemId === "comms.note") {
+          input.onNote(w.value);
+          acks.push({ id: w.id, ok: true });
+          continue;
+        }
         const setting = settingOfWrite(w);
         if (setting === null)
           acks.push({ id: w.id, ok: false, error: "This computer does not take that." });

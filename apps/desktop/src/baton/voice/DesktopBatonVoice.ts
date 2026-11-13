@@ -89,6 +89,7 @@ import {
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
+import { COMMS_SOUND_PLACEHOLDER, noteCardOf } from "@t3tools/baton-shared/comms";
 import { releasesUrl, repoSlug } from "@t3tools/baton-shared/repo";
 import { answerNeeds } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
@@ -8579,6 +8580,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         idleSeconds: Electron.powerMonitor.getSystemIdleTime(),
       }),
       applySetting: (id, value) => applyHome(id, value),
+      // A message from someone at home: a toast, its glance on the pill, and its sound (a placeholder cue for now).
+      onNote: (value) => {
+        const card = noteCardOf(value);
+        if (card === null) return;
+        pill.on({ type: "done", label: `${card.emoji} ${card.title}`.slice(0, PILL_TEXT_CHARS) });
+        if (card.sound !== null) pill.cue(COMMS_SOUND_PLACEHOLDER[card.sound]);
+        if (Electron.Notification.isSupported())
+          new Electron.Notification({ title: card.title, body: card.body, silent: true }).show();
+      },
       onChange: (poke) => {
         const locked = () => {
           screenLocked = true;
