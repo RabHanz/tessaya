@@ -61,6 +61,11 @@ export const HOUSEHOLD_DEFAULTS = {
   adminsAllowed: true,
   /** An invite (a member-bound pairing code) lasts this long. */
   inviteHours: 24,
+  /**
+   * Decision 1: a member's store, made when they accept, is also wrapped to the owner's key, so the owner can open it
+   * (his rule of 11 Nov, and every store's today). The design's proposal for other homes is false: sealed from the owner.
+   */
+  ownerOpensMemberStores: true,
 } as const;
 
 /**

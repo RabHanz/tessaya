@@ -1413,6 +1413,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     model: SPEAKER_MODEL.id,
     appData: input.env["APPDATA"],
     onChange: () => pushHome(),
+    // Only a member of this home has a saved voice, asked of its household (from its home server).
+    ...(input.household === undefined
+      ? {}
+      : {
+          isMember: async (id: string) =>
+            ((await input.household!("list")).members ?? []).some(
+              (m) => m.id === id && m.state !== "leaving",
+            ),
+        }),
     // The card follows his words with the local model only: nothing of the read is uploaded.
     transcribe: (pcm) =>
       sidecar === null ? Promise.resolve("") : makeSidecarStt(sidecar).transcribe(pcm),

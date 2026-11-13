@@ -52,6 +52,7 @@ import {
   type KdfParams,
   type Sealed,
 } from "@t3tools/baton-shared/privateCrypto";
+import { HOUSEHOLD_DEFAULTS } from "@t3tools/baton-shared/household";
 import { newRecoveryKey, parseRecoveryKey } from "@t3tools/baton-shared/vaultCrypto";
 import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
@@ -78,6 +79,15 @@ export const PrivateCaller = Context.Reference<{
 }>("t3/baton/BatonPrivateMemoryService/PrivateCaller", {
   defaultValue: () => ({ session: null, desktop: false }),
 });
+
+/**
+ * Whether someone is a member of this home (the household's answer, from its home server). Optional: a server without
+ * a household keeps the old rule (the owner makes each store).
+ */
+export class StoreMembership extends Context.Service<
+  StoreMembership,
+  { readonly isMember: (personId: string) => Effect.Effect<boolean> }
+>()("t3/baton/BatonPrivateMemoryService/StoreMembership") {}
 
 /** scrypt's cost for new stores; tests lower it. Stored per store, so it can be raised later. */
 export const PrivateKdf = Context.Reference<KdfParams>(
@@ -269,9 +279,14 @@ export const make = Effect.gen(function* () {
     Effect.map(sql<StoreRow>`SELECT * FROM tessaya_private_stores WHERE id = ${id}`, (rows) =>
       Option.fromNullishOr(rows[0]),
     ).pipe(Effect.orDie);
+  /** A member other than the owner reaches only their own store; any other reads as not there. */
+  const theirs = (row: StoreRow, member: string | null | undefined) =>
+    member === undefined || member === OWNER_PERSON_ID || row.person_id === member;
   const needStore = (id: string) =>
-    Effect.flatMap(storeRow(id), (row) =>
-      Effect.fromOption(row).pipe(Effect.mapError(() => refuse(NO_STORE))),
+    Effect.flatMap(Effect.all([storeRow(id), PrivateCaller]), ([row, c]) =>
+      Option.isSome(row) && theirs(row.value, c.member)
+        ? Effect.succeed(row.value)
+        : Effect.fail(refuse(NO_STORE)),
     );
   const storeOfPerson = (personId: string) =>
     Effect.map(
@@ -611,10 +626,27 @@ export const make = Effect.gen(function* () {
       return yield* refuse("That person already has a store.");
     let adminPublic: string | null = null;
     if (kind === "person") {
-      const owner = yield* ownerOpenFor;
-      if (Option.isNone(owner))
-        return yield* refuse("Open your own private memories first: you make each person's store.");
-      adminPublic = keysOf(owner.value.row).box.publicKey;
+      const c = yield* PrivateCaller;
+      if (c.member === personId) {
+        // A member making their own store when they accept: sealed to their PIN, and wrapped to the owner's public
+        // key where the household's default says so (decision 1); the owner's store need not be open.
+        const owner = yield* storeOfPerson(OWNER_PERSON_ID);
+        adminPublic =
+          HOUSEHOLD_DEFAULTS.ownerOpensMemberStores && Option.isSome(owner)
+            ? keysOf(owner.value).box.publicKey
+            : null;
+      } else {
+        const owner = yield* ownerOpenFor;
+        if (Option.isNone(owner))
+          return yield* refuse(
+            "Open your own private memories first: you make each person's store.",
+          );
+        adminPublic = keysOf(owner.value.row).box.publicKey;
+      }
+      // Only a member of this home has a store here, asked of the home server where there is one.
+      const household = yield* Effect.serviceOption(StoreMembership);
+      if (Option.isSome(household) && !(yield* household.value.isMember(personId)))
+        return yield* refuse("Only a member of this home has a private store here.");
     }
     const id = NodeCrypto.randomUUID();
     const kdf = yield* PrivateKdf;
@@ -707,7 +739,8 @@ export const make = Effect.gen(function* () {
   return BatonPrivateMemoryService.of({
     people: Effect.gen(function* () {
       yield* sweep;
-      const rows = yield* readStores.pipe(Effect.orDie);
+      const c = yield* PrivateCaller;
+      const rows = (yield* readStores.pipe(Effect.orDie)).filter((r) => theirs(r, c.member));
       return yield* Effect.forEach(rows, describe);
     }),
 

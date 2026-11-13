@@ -13,7 +13,7 @@ import {
   type SpeakerProfile,
 } from "@t3tools/baton-voice";
 
-import { enrolOwner, enrolSaved, SAVED_PERSON_LINES } from "./speakerEnrolment.ts";
+import { enrolOwner, enrolSaved, personId, SAVED_PERSON_LINES } from "./speakerEnrolment.ts";
 import type { VoiceIdModelState, VoiceIdSettings, VoiceIdView } from "./voiceIdRows.ts";
 
 const RATE = 16_000;
@@ -53,6 +53,11 @@ export const createVoiceId = (input: {
   readonly micName?: () => string;
   /** His first name for the script, or null. */
   readonly scriptName?: string | null;
+  /**
+   * Whether a saved person is a member of this home, asked of its home server: only members' voices are kept. Absent,
+   * anyone may be saved (a desktop with no household).
+   */
+  readonly isMember?: (id: string) => Promise<boolean>;
   readonly onNote?: (kind: string, fields: Readonly<Record<string, unknown>>) => void;
 }) => {
   const store = createSpeakerStore(input.stateDir);
@@ -133,19 +138,30 @@ export const createVoiceId = (input: {
         input.onNote?.("voice_id_enrolled", { who: "owner", ...result });
       } else {
         const name = done.who.name;
-        const made = await enrolSaved({
-          name,
-          ...(done.who.id === undefined ? {} : { id: done.who.id }),
-          taken: profiles.map((p) => p.id),
-          embedder: model,
-          spoken: pcm,
-          consentNote: `${name} agreed aloud in Settings and read the lines, ${new Date().toISOString()}.`,
-          save: store.save,
-          now: new Date(),
-        });
+        const member =
+          done.who.id ??
+          personId(
+            name,
+            profiles.map((p) => p.id),
+          );
+        const isMember =
+          input.isMember === undefined || (await input.isMember(member).catch(() => false));
+        const made = !isMember
+          ? null
+          : await enrolSaved({
+              name,
+              ...(done.who.id === undefined ? {} : { id: done.who.id }),
+              taken: profiles.map((p) => p.id),
+              embedder: model,
+              spoken: pcm,
+              consentNote: `${name} agreed aloud in Settings and read the lines, ${new Date().toISOString()}.`,
+              save: store.save,
+              now: new Date(),
+            });
         saved = made !== null;
-        note =
-          made === null
+        note = !isMember
+          ? `${name} isn't a member of this home yet. Add them under Memory, Household, then enrol their voice there.`
+          : made === null
             ? `Not enough of ${name}'s voice was heard. Try again with ${name} reading all three lines.`
             : `I'll know ${name}'s voice now. They can ask me things, but they can't make me do anything.`;
         input.onNote?.("voice_id_enrolled", { who: "saved", saved: made !== null });
