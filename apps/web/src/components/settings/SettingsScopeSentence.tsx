@@ -52,8 +52,6 @@ export const SETTINGS_DEVICE_ONLY_PATHS: ReadonlySet<string> = new Set([
   // Access picks its environment on the page itself.
   "/settings/access",
   "/settings/about",
-  // The household's devices across his servers, with no server to pick (Tessaya's window).
-  "/tessaya/hardware",
 ]);
 
 interface SettingsScopeMenuProps {

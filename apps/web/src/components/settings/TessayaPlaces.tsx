@@ -63,6 +63,13 @@ export function TessayaPageView({ page }: { readonly page: TessayaPage }) {
   const [chosen, setChosen] = useState<SettingsScopeSearch | null>(null);
   const search = chosen ?? (primary === null ? {} : { machine: primary });
   const Page = TESSAYA_PAGES[page];
+  // Hardware is the household's devices on every server: no settings scope, so no server picker (13 Nov).
+  if (page === "hardware")
+    return (
+      <div className="flex h-dvh min-h-0 flex-col overflow-auto bg-background">
+        <Page />
+      </div>
+    );
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-auto bg-background">
       <SettingsScopeProvider search={search} singleEnvironment onChange={setChosen}>
