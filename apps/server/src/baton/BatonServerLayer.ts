@@ -173,7 +173,8 @@ const servicesInner = IntentService.layer.pipe(
       // One owner of every device's manifest and values: the R1 through the broker, desktops and phones as clients.
       DeviceRegistry.layer,
       // One responder per utterance across every vessel that heard him (R1-P7).
-      VoiceArbiter.layer,
+      // The house tells it whether this server has the desk device; the registry, which vessels are online.
+      VoiceArbiter.layer.pipe(Layer.provide(homeLayer), Layer.provide(DeviceRegistry.layer)),
       // Rules on device state, fired on each registry change; their actions go through the devices and the house.
       DeviceTriggers.layer.pipe(
         Layer.provide(homeDevicesLayer),
