@@ -181,6 +181,8 @@ export const DeviceSpeaker = Schema.Struct({
       name: Schema.String,
       rssi: Schema.NullOr(Schema.Number),
       audio: Schema.Boolean,
+      /** Its Bluetooth Class of Device, when the firmware reports it. */
+      cod: Schema.optionalKey(Schema.Number),
     }),
   ),
   scannedAt: Schema.NullOr(Schema.String),

@@ -31,6 +31,7 @@ import {
 import { recordText } from "@t3tools/baton-shared/audit";
 import {
   btLabel,
+  kindOf,
   knownFrom,
   mergeKnown,
   resolveBluetooth,
@@ -248,6 +249,18 @@ const btTargetOf = (
   return null;
 };
 
+/** The firmware's Class of Device: a number, or hex text ("0x240404"). */
+const codOf = (v: unknown): number | undefined => {
+  const n = typeof v === "string" ? Number.parseInt(v, v.startsWith("0x") ? 16 : 10) : v;
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n < 0x1000000 ? n : undefined;
+};
+/** `cod` and the `kind` it (or the name) gives, for the known list. */
+const withKind = (name: string, cod: number | undefined) => {
+  const kind = kindOf({ name, cod });
+  // "other" says nothing: it must not cover a kind another source knows.
+  return { ...(cod === undefined ? {} : { cod }), ...(kind === "other" ? {} : { kind }) };
+};
+
 /** The R1 says `onboard` on its older topics where its manifest says `speaker`. */
 const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out);
 
@@ -428,6 +441,7 @@ export const applyMessage = (
                 name: recordText(str(v["name"]) ?? "", 40),
                 rssi: num(v["rssi"]),
                 audio: v["audio"] === true,
+                ...(codOf(v["cod"]) === undefined ? {} : { cod: codOf(v["cod"])! }),
               },
             ];
       });
@@ -1031,6 +1045,7 @@ const make = Effect.gen(function* () {
         mac: mac.toUpperCase(),
         name: str(body?.["name"]) ?? "",
         lastAt: linked ? now : null,
+        ...withKind(str(body?.["name"]) ?? "", codOf(body?.["cod"])),
       });
     if (tail === "state/bt" && (linked || state === "failed")) {
       const waiter = btWait.get(id);
@@ -1053,7 +1068,12 @@ const make = Effect.gen(function* () {
           } as const)
         : resolveBluetooth(
             wanted.name,
-            nearby.map((f) => ({ mac: f.mac, name: f.name, lastAt: null })),
+            nearby.map((f) => ({
+              mac: f.mac,
+              name: f.name,
+              lastAt: null,
+              ...withKind(f.name, f.cod),
+            })),
           );
     if (picked.kind === "none")
       return yield* say(
