@@ -3,7 +3,6 @@
  * The phone page at /tessaya (docs/baton/MOBILE.md): the page itself, then a small API behind the server's own session
  * (the pairing cookie, or a bearer token), with the rules in BatonTessayaApi. Mounted by BatonServerLayer.routes.
  */
-import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
 import {
@@ -26,7 +25,7 @@ import * as Stream from "effect/Stream";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { HomeAssistantService, r1ByKey } from "../home/HomeAssistantService.ts";
 import { DeskTools } from "../home/R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
@@ -345,19 +344,14 @@ export const routes = HttpRouter.use((router) =>
     // Tessaya, behind the R1's device key the suite already holds, and always a rehearsal: nothing changes or is sent.
     const rehearse = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
-        Effect.orElseSucceed(() => null),
       );
-      const bearer = Buffer.from(
+      const device = r1ByKey(
+        all,
         (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, ""),
       );
-      const key = Buffer.from(device?.deviceKey ?? "");
-      if (
-        device === null ||
-        bearer.length !== key.length ||
-        !NodeCrypto.timingSafeEqual(bearer, key)
-      )
+      if (device === null)
         return HttpServerResponse.jsonUnsafe({ message: "Wrong device key." }, { status: 401 });
       const calledAs = new URL(request.url, "http://local").pathname.replace(
         /^\/tessaya\/rehearse\//,

@@ -248,7 +248,7 @@ function HardwareSections({
                 : `${view.broker.state === "connected" ? "Connected to" : "Connecting to"} ${view.broker.host ?? "the broker"}.`
           }
         />
-        {reach === null || view?.broker.host !== "this server" ? null : (
+        {reach === null || view?.broker.host?.includes("this server") !== true ? null : (
           <Row divider title="Away from home" description={reach.line}>
             {[true, false].map((enabled) => (
               <ControlPill
@@ -1038,7 +1038,7 @@ function SetupSection({
   );
   return (
     <SettingsSection
-      title={`${prefix}${configured ? "Replace the R1's settings" : "Set up an R1"}`}
+      title={`${prefix}${configured ? "Add an R1, or replace one by its id" : "Set up an R1"}`}
     >
       <View className="gap-2 px-4 py-3">
         <Text textRole="footnote" className="text-foreground-muted">

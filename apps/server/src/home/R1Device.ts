@@ -76,7 +76,13 @@ import {
 } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { noteDeviceKeyUse, publishToDevice } from "./R1Hub.ts";
-import { HomeAssistantService, type HomeActor, type R1Device } from "./HomeAssistantService.ts";
+import {
+  HomeAssistantService,
+  r1ById,
+  r1ByKey,
+  type HomeActor,
+  type R1Device,
+} from "./HomeAssistantService.ts";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
 
@@ -112,9 +118,10 @@ const publishPronunciations = Effect.fn("R1Device.publishPronunciations")(functi
   ) {
     const json = JSON.stringify(map);
     if (json === sent) return;
-    const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device);
-    if (device?.deviceId == null) return;
-    yield* publishToDevice(device, pronounceTopic(device.deviceId), json, true);
+    // Every R1's loop speaks with his pronunciations.
+    for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices))
+      if (device.deviceId !== null)
+        yield* publishToDevice(device, pronounceTopic(device.deviceId), json, true);
     sent = json;
   }, Effect.ignore);
   yield* publish((yield* settings.value.getSettings).voicePronounce);
@@ -537,7 +544,9 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   const input = { ...raw, heard: biasTranscript(raw.heard, dictionaryEntries(words)) };
   const home = yield* HomeAssistantService;
   // A replay turn has no device: its eyes and camera are his real R1's, so they stay still.
-  const device = isReplay(input) ? null : yield* home.device;
+  const all = isReplay(input) ? [] : yield* home.devices;
+  // The R1 the turn came from; a caller that names none (older loops) means the first.
+  const device = input.device === undefined ? (all[0] ?? null) : r1ById(all, input.device);
   yield* eyes(device, "thinking", 15_000, "gathering the turn").pipe(Effect.forkDetach);
   const status = yield* home.status;
   const lastAction = (yield* home.actions(1))[0] ?? null;
@@ -1023,12 +1032,6 @@ const textOf = (content: unknown): string =>
           .join(" ")
       : "";
 
-const sameKey = (given: string, expected: string) => {
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && NodeCrypto.timingSafeEqual(a, b);
-};
-
 /** OpenAI's streamed chat shape, as a speech bridge reads it: content chunks, a stop chunk, then [DONE]. */
 const sseChunk = (id: string, model: string, created: number, content: string | null): string =>
   `data: ${JSON.stringify({
@@ -1076,12 +1079,13 @@ export const routes = HttpRouter.use((router) =>
     const tools = yield* RoomTools;
     const chat = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (device === null) return error(503, "This server has no R1 set up.");
-      if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      // Each R1's room loop calls with that R1's key.
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodeChat(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a chat request.");
@@ -1171,12 +1175,13 @@ export const routes = HttpRouter.use((router) =>
     // The loop played a guess's reply: only now does it reach the Record and learning.
     const played = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (device === null) return error(503, "This server has no R1 set up.");
-      if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      // Each R1's room loop calls with that R1's key.
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a played turn.");
@@ -1187,12 +1192,13 @@ export const routes = HttpRouter.use((router) =>
     // His final words matched a guess: the writes it held go ahead.
     const confirm = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (device === null) return error(503, "This server has no R1 set up.");
-      if (!sameKey(bearer, device.deviceKey)) return error(401, "Wrong device key.");
+      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      // Each R1's room loop calls with that R1's key.
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a confirmed turn.");

@@ -161,7 +161,7 @@ it.effect(
         serve("/tessaya/rehearse/baton.tools.call", {
           deskTools: deskTools as RoomToolSet,
           runtime: Context.make(HomeAssistantService, {
-            device: Effect.succeed({ deviceKey: "r1-key" }),
+            devices: Effect.succeed([{ deviceKey: "r1-key", deviceId: "r1-3d57b3" }]),
           } as never) as never,
           init: {
             method: "POST",

@@ -13,7 +13,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
 import { requestUrl } from "../requestUrl.ts";
 import { StepUps } from "./StepUps.ts";
-import { HomeAssistantService } from "./HomeAssistantService.ts";
+import { HomeAssistantService, r1ById, r1ByKey } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
 import { noteDeviceKeyUse, R1_HUB_PATH, R1Hub, runHubSocket } from "./R1Hub.ts";
@@ -75,8 +75,11 @@ export const routes = HttpRouter.use((router) =>
         !(length > 0 && length <= MAX_SHOT_BYTES)
       )
         return HttpServerResponse.text("No.", { status: 400 });
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
-        Effect.provideContext(context),
+      const device = r1ById(
+        yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+          Effect.provideContext(context),
+        ),
+        id.value,
       );
       if (!uploadAuthorized(request.headers, device?.deviceKey ?? null))
         return HttpServerResponse.text("Wrong device key.", { status: 401 });
@@ -102,11 +105,15 @@ export const routes = HttpRouter.use((router) =>
     );
     const arbiter = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
-        Effect.provideContext(context),
-      );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (device === null || !sameKey(bearer, device.deviceKey))
+      // Any R1's key: each R1's room loop calls with its own.
+      const device = r1ByKey(
+        yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+          Effect.provideContext(context),
+        ),
+        bearer,
+      );
+      if (device === null)
         return HttpServerResponse.jsonUnsafe(
           { ok: false, error: "Wrong device key." },
           { status: 401 },
@@ -129,11 +136,15 @@ export const routes = HttpRouter.use((router) =>
     // The loop's answer to a step-up over HTTP, as on `voice/stepup/done` (the live suite's way in, too): whether it ran.
     const stepUp = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
-        Effect.provideContext(context),
-      );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (device === null || !sameKey(bearer, device.deviceKey))
+      // Any R1's key: each R1's room loop calls with its own.
+      const device = r1ByKey(
+        yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+          Effect.provideContext(context),
+        ),
+        bearer,
+      );
+      if (device === null)
         return HttpServerResponse.jsonUnsafe(
           { ok: false, error: "Wrong device key." },
           { status: 401 },
@@ -175,11 +186,15 @@ export const routes = HttpRouter.use((router) =>
     const decodeVoice = Schema.decodeUnknownOption(VoiceUpload);
     const voice = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
-        Effect.provideContext(context),
-      );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (device === null || !sameKey(bearer, device.deviceKey))
+      // Any R1's key: each R1's room loop calls with its own.
+      const device = r1ByKey(
+        yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+          Effect.provideContext(context),
+        ),
+        bearer,
+      );
+      if (device === null)
         return HttpServerResponse.jsonUnsafe(
           { ok: false, error: "Wrong device key." },
           { status: 401 },

@@ -46,7 +46,7 @@ in Home Assistant's logbook.
 ## The R1 desk device (Settings → Hardware)
 
 Settings → Hardware shows each Agora R1 this server hears: online, battery, Wi-Fi, firmware and when it was last
-seen, with its controls. To add one, give its id and its device key under **Set up an R1**. Leave the broker empty
+seen, with its controls. A home can have several. To add one, give its id and its device key under **Set up an R1**. Leave the broker empty
 when the R1 connects to this server itself (`ws://<this server>:<port>/api/r1/mqtt`), which needs no broker of its own;
 fill it in only for an R1 on a separate MQTT broker. **Forget** removes all of it from this server again.
 

@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { expect } from "vite-plus/test";
 
-import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
+import { HomeAssistantService, r1ById, type R1Device } from "./HomeAssistantService.ts";
 import { deviceGrant, makeHub, R1Hub } from "./R1Hub.ts";
 import { claimKey, claimPlaintext, openClaim, R1Pairing, sealClaim } from "./R1Pairing.ts";
 import * as R1PairingModule from "./R1Pairing.ts";
@@ -48,9 +48,11 @@ it("matches the firmware's known-answer vector", () => {
 });
 
 const setup = () => {
-  let record: R1Device | null = null;
+  let records: ReadonlyArray<R1Device> = [];
   let outside: number | null = null;
-  const hub = makeHub((user, pass) => Effect.sync(() => deviceGrant(record, user, pass)));
+  const hub = makeHub((user, pass) =>
+    Effect.sync(() => deviceGrant(r1ById(records, user), user, pass)),
+  );
   const sent: Array<string> = [];
   hub.attach(["freya/r1/+/cmd/net/key"], (_t, p) => sent.push(p.toString("utf8")));
   const layer = R1PairingModule.layer.pipe(
@@ -63,11 +65,11 @@ const setup = () => {
           keyUsedOutside: () => outside,
         }),
         Layer.mock(HomeAssistantService)({
-          device: Effect.sync(() => record),
-          setDevice: (d) =>
+          devices: Effect.sync(() => records),
+          putDevice: (d) =>
             Effect.sync(() => {
-              record = d;
-              return { configured: d !== null };
+              records = [...records.filter((r) => r.deviceId !== d.deviceId), d];
+              return { configured: true };
             }),
         }),
         Layer.mock(R1Reach)({
@@ -95,12 +97,12 @@ const setup = () => {
     hub,
     sent,
     login,
-    record: () => record,
+    record: (id = "r1-a") => r1ById(records, id),
     setOutside: (at: number) => void (outside = at),
   };
 };
 
-it.effect("claims a new R1 with a fresh key in a sealed blob, and keeps to one R1 for now", () => {
+it.effect("claims each R1 with a fresh key of its own in a sealed blob", () => {
   const t = setup();
   return Effect.gen(function* () {
     const pairing = yield* R1Pairing;
@@ -119,8 +121,10 @@ it.effect("claims a new R1 with a fresh key in a sealed blob, and keeps to one R
       .pipe(Effect.flip);
     expect(short.why).toContain("pairing picture");
     expect(JSON.stringify(claimed)).not.toContain(opened.key);
-    const other = yield* pairing.claim({ deviceId: "r1-b", oneTimeKey: OTK }).pipe(Effect.flip);
-    expect(other.why).toContain("already has r1-a");
+    // A second R1 in the same home: its own record and key, the first one untouched.
+    yield* pairing.claim({ deviceId: "R1-B", oneTimeKey: OTK });
+    expect(t.record("r1-b")!.deviceKey).not.toBe(t.record("r1-a")!.deviceKey);
+    expect(t.record("r1-a")!.deviceKey).toBe(opened.key);
   }).pipe(Effect.provide(t.layer));
 });
 

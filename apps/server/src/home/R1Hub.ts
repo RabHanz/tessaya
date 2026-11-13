@@ -28,7 +28,7 @@ import type { HttpServerRequest } from "effect/http";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { isPrivateNetworkAddress } from "../startupAccess.ts";
-import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
+import { HomeAssistantService, r1ById, type R1Device } from "./HomeAssistantService.ts";
 
 export const R1_HUB_PATH = "/api/r1/mqtt";
 /** The bus login's user name; its key is the `r1-bus` secret. Checked before device ids, so no R1 can take it. */
@@ -365,7 +365,7 @@ export const layer = Layer.effect(
             Option.isSome(key) && sameKey(pass, key.value) ? { kind: "bus" as const } : null,
           )
         : Effect.gen(function* () {
-            const device = yield* home.device;
+            const device = r1ById(yield* home.devices, user);
             const grant = deviceGrant(device, user, pass);
             // The R1 logged in with its current key: a rotation finished, and the old one stops working.
             if (
@@ -375,7 +375,7 @@ export const layer = Layer.effect(
               sameKey(pass, device.deviceKey)
             )
               yield* home
-                .setDevice({ ...device, previousKey: null, devicePass: null })
+                .putDevice({ ...device, previousKey: null, devicePass: null })
                 .pipe(Effect.ignore);
             return grant;
           }),

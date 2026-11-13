@@ -1,9 +1,10 @@
-// @effect-diagnostics globalDate:off preferSchemaOverJson:off globalJsonInEffect:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off preferSchemaOverJson:off globalJsonInEffect:off
 /**
  * Home Assistant stays the house's brain: one WebSocket feeds a cache that never streams to clients, and every write
  * is risk-checked (`homeRisk`), snapshotted with HA's `scene.create` for undo, and logged to the Record and HA's logbook.
  * Temporary automations carry a time condition too, so they go inert on time even with this server down.
  */
+import * as NodeCrypto from "node:crypto";
 import type {
   HomeActionRow,
   HomeAutomationKind,
@@ -31,6 +32,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Semaphore from "effect/Semaphore";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -50,7 +52,11 @@ import {
 } from "./HomeAssistantConnection.ts";
 
 export const TOKEN_SECRET = "home-assistant-token";
+/** Before several R1s: one record. Read when DEVICES_SECRET is missing, and kept as the first R1 for a rollback. */
 const DEVICE_SECRET = "r1-device";
+const DEVICES_SECRET = "r1-devices";
+const MAX_R1 = 16;
+const R1_ID = /^[A-Za-z0-9_-]{1,60}$/;
 const URL_KEY = "home.url";
 /** A second address for the same Home Assistant (another route to the house), tried when the first is unreachable. */
 const FALLBACK_KEY = "home.fallbackUrl";
@@ -215,11 +221,16 @@ export class HomeAssistantService extends Context.Service<
     readonly answer: (id: string, yes: boolean) => Effect.Effect<HomeOutcome, HomeRefusedError>;
     readonly overrides: Effect.Effect<HomeOverrides>;
     readonly setOverride: (entityId: string, tier: HomeTier | null) => Effect.Effect<HomeOverrides>;
-    /** The R1's settings, or null when none were given. Never sent to a client. */
+    /** Every R1 set up here, with its key. Never sent to a client. */
+    readonly devices: Effect.Effect<ReadonlyArray<R1Device>>;
+    /** The first R1, for what needs only one (warming the room's brain). */
     readonly device: Effect.Effect<R1Device | null>;
-    readonly setDevice: (
-      device: R1Device | null,
+    /** Adds an R1, or replaces the one with its id. */
+    readonly putDevice: (
+      device: R1Device,
     ) => Effect.Effect<{ readonly configured: boolean }, HomeRefusedError>;
+    /** Removes one R1 by id, or every R1 for null. */
+    readonly removeDevice: (id: string | null) => Effect.Effect<{ readonly configured: boolean }>;
     /** One pass of the sweep and the approval check; the layer runs it on its own clock. */
     readonly tick: Effect.Effect<void>;
   }
@@ -348,6 +359,43 @@ const expectedAfter = (request: {
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const secrets = yield* ServerSecretStore;
+  const deviceLock = yield* Semaphore.make(1);
+  const readJson = (name: string) =>
+    secrets.get(name).pipe(
+      Effect.map((bytes) => {
+        if (Option.isNone(bytes)) return null;
+        try {
+          return JSON.parse(new TextDecoder().decode(bytes.value)) as unknown;
+        } catch {
+          return null;
+        }
+      }),
+      Effect.orElseSucceed(() => null),
+    );
+  // Every R1 on this server, in the order they were set up; a server from before keeps its one record.
+  const devices: Effect.Effect<ReadonlyArray<R1Device>> = Effect.gen(function* () {
+    const many = yield* readJson(DEVICES_SECRET);
+    if (Array.isArray(many)) return many as ReadonlyArray<R1Device>;
+    const one = yield* readJson(DEVICE_SECRET);
+    return one !== null && typeof one === "object" ? [one as R1Device] : [];
+  });
+  const writeDevices = Effect.fn("HomeAssistant.writeDevices")(function* (
+    all: ReadonlyArray<R1Device>,
+  ) {
+    yield* secrets
+      .set(DEVICES_SECRET, new TextEncoder().encode(JSON.stringify(all)))
+      .pipe(
+        Effect.mapError(
+          () => new HomeRefusedError({ why: "The device settings could not be stored." }),
+        ),
+      );
+    // The first R1 is kept in the old place too, so a rollback to a build from before still finds it.
+    yield* (
+      all[0] === undefined
+        ? secrets.remove(DEVICE_SECRET)
+        : secrets.set(DEVICE_SECRET, new TextEncoder().encode(JSON.stringify(all[0])))
+    ).pipe(Effect.ignore);
+  });
   const connection = yield* HomeAssistantConnection;
   const record = yield* Effect.serviceOption(BatonRecordService);
   const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
@@ -1908,35 +1956,53 @@ const make = Effect.gen(function* () {
       yield* setSetting(OVERRIDES_KEY, JSON.stringify(current));
       return current;
     }),
-    device: secrets.get(DEVICE_SECRET).pipe(
-      Effect.map((bytes) => {
-        if (Option.isNone(bytes)) return null;
-        try {
-          return JSON.parse(new TextDecoder().decode(bytes.value)) as R1Device;
-        } catch {
-          return null;
-        }
-      }),
-      Effect.orElseSucceed(() => null),
-    ),
-    setDevice: Effect.fn("HomeAssistant.setDevice")(function* (device: R1Device | null) {
-      if (device === null) {
-        yield* secrets.remove(DEVICE_SECRET).pipe(Effect.ignore);
-        return { configured: false };
-      }
+    devices,
+    device: Effect.map(devices, (all) => all[0] ?? null),
+    putDevice: Effect.fn("HomeAssistant.putDevice")(function* (device: R1Device) {
       if (device.deviceKey.length < 24)
         return yield* new HomeRefusedError({ why: "The device key is too short." });
-      yield* secrets
-        .set(DEVICE_SECRET, new TextEncoder().encode(JSON.stringify(device)))
-        .pipe(
-          Effect.mapError(
-            () => new HomeRefusedError({ why: "The device settings could not be stored." }),
-          ),
-        );
-      return { configured: true };
+      if (device.deviceId === null || !R1_ID.test(device.deviceId))
+        return yield* new HomeRefusedError({ why: "Give the R1's id, such as r1-a1b2c3." });
+      const id = device.deviceId;
+      return yield* deviceLock.withPermits(1)(
+        Effect.gen(function* () {
+          const all = yield* devices;
+          if (all.length >= MAX_R1 && !all.some((d) => d.deviceId === id))
+            return yield* new HomeRefusedError({
+              why: `This server already has ${MAX_R1} R1s. Forget one first.`,
+            });
+          // Replaced in place, so the order they were set up in stays.
+          yield* writeDevices(
+            all.some((d) => d.deviceId === id)
+              ? all.map((d) => (d.deviceId === id ? device : d))
+              : [...all, device],
+          );
+          return { configured: true };
+        }),
+      );
+    }),
+    removeDevice: Effect.fn("HomeAssistant.removeDevice")(function* (id: string | null) {
+      return yield* deviceLock.withPermits(1)(
+        Effect.gen(function* () {
+          const left = id === null ? [] : (yield* devices).filter((d) => d.deviceId !== id);
+          yield* writeDevices(left).pipe(Effect.ignore);
+          return { configured: left.length > 0 };
+        }),
+      );
     }),
     tick,
   });
 });
 
 export const layer = Layer.effect(HomeAssistantService, make);
+
+/** The R1 with this id, if it is set up here. */
+export const r1ById = (all: ReadonlyArray<R1Device>, id: string): R1Device | null =>
+  all.find((d) => d.deviceId === id) ?? null;
+
+const keyDigest = (s: string) => NodeCrypto.createHash("sha256").update(s).digest();
+/** The R1 whose device key this is (the room loop's and the camera's bearer), compared in constant time. */
+export const r1ByKey = (all: ReadonlyArray<R1Device>, key: string): R1Device | null =>
+  key === ""
+    ? null
+    : (all.find((d) => NodeCrypto.timingSafeEqual(keyDigest(key), keyDigest(d.deviceKey))) ?? null);

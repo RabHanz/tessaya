@@ -251,7 +251,7 @@ effectIt.effect(
           }),
       };
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([]),
@@ -306,7 +306,7 @@ effectIt.effect(
         state: "on",
       };
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([lamp] as never),
@@ -351,7 +351,7 @@ effectIt.effect(
           }),
       });
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([]),
@@ -396,7 +396,7 @@ effectIt.effect(
           ),
       });
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([]),
@@ -455,7 +455,7 @@ effectIt.effect(
           ),
       });
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([]),
@@ -511,7 +511,7 @@ effectIt.effect(
           ),
       });
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([]),
@@ -561,7 +561,7 @@ effectIt.effect(
           ),
       });
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([]),
@@ -630,7 +630,7 @@ effectIt.effect(
           }),
       };
       const home = Layer.mock(HomeAssistantService)({
-        device: Effect.succeed(null),
+        devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
         find: () => Effect.succeed([]),
@@ -850,9 +850,9 @@ effectIt.effect("a replay turn never reaches his real R1's eyes; his own turn do
     let read = 0;
     const real = { deviceId: "r1-his", mqttUrl: null } as unknown as R1Device;
     const home = Layer.mock(HomeAssistantService)({
-      device: Effect.sync(() => {
+      devices: Effect.sync(() => {
         read += 1;
-        return real;
+        return [real];
       }),
       status: Effect.succeed({ state: "connected", line: "" } as never),
       actions: () => Effect.succeed([]),
