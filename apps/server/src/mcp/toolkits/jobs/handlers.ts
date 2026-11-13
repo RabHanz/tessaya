@@ -1,8 +1,13 @@
 /** The job tools' handlers: thin; BatonJobFlow does the work, and its words come back as one line to say. */
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, ScheduledTaskId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
+import { BatonCloudService } from "../../../baton/BatonCloudService.ts";
+import { BatonEngine } from "../../../baton/BatonEngine.ts";
 import * as JobFlow from "../../../baton/BatonJobFlow.ts";
+import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
+import { ScheduledTaskService } from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { BatonRuntime, type BatonServices } from "../../../baton/BatonRpcHandlers.ts";
 import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -37,10 +42,121 @@ export const make = Effect.gen(function* () {
         ),
       ),
     );
+  type Reply = { readonly id: string | null; readonly line: string };
+  const noTask: Reply = { id: null, line: "There is no scheduled task by that id." };
   const noJob = { id: null, line: "There is no job by that id." };
   const act = McpToolAccess.writes;
 
+  /** A time on his house's clock ("Fri 14 Nov, 09:00"), never UTC. */
+  const houseTime = (iso: string | null) =>
+    iso === null
+      ? Effect.succeed(null)
+      : run(
+          Effect.flatMap(HomeAssistantService, (home) => home.timeZone).pipe(
+            Effect.map((zone) =>
+              new Intl.DateTimeFormat("en-GB", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: zone === "UTC" ? undefined : zone,
+              }).format(DateTime.toDateUtc(DateTime.makeUnsafe(iso))),
+            ),
+          ),
+        );
+  const tasks = run(Effect.flatMap(ScheduledTaskService, (scheduler) => scheduler.list()));
+
   return {
+    cloud_dispatch: act((input: JobInput<"cloud_dispatch">) =>
+      Effect.map(
+        run(
+          Effect.flatMap(BatonCloudService, (cloud) =>
+            cloud.call(
+              {
+                op: "dispatch",
+                ...(input.provider === undefined ? {} : { provider: input.provider }),
+                args: {
+                  repo: input.repo,
+                  branch: input.branch,
+                  brief: input.brief,
+                  expectedUsage: input.expected_points,
+                  fromWeb: input.from_web_or_file === true,
+                  ...(input.label === undefined ? {} : { label: input.label }),
+                },
+              },
+              "act",
+            ),
+          ),
+        ),
+        (result) =>
+          result.ok
+            ? {
+                id: null,
+                line: "Asked. It waits for his answer on a card in Approvals, where he picks the assistant and account; nothing runs before that.",
+              }
+            : { id: null, line: result.error ?? "The cloud request was not made." },
+      ),
+    ),
+    project_add: act((input: JobInput<"project_add">) =>
+      Effect.map(
+        run(
+          Effect.flatMap(BatonEngine, (engine) =>
+            engine.addProject({
+              tag: "voice",
+              title: input.title,
+              folder: input.folder,
+              repository: input.repository,
+            }),
+          ),
+        ),
+        (added) =>
+          "refused" in added
+            ? { id: null, line: `No project was added: ${added.refused}` }
+            : { id: added.projectId, line: `Added the project at ${added.folder}.` },
+      ),
+    ),
+    schedules_list: McpToolAccess.reads(() =>
+      Effect.flatMap(tasks, (listed) =>
+        Effect.forEach(listed.tasks, (task) =>
+          Effect.map(houseTime(task.nextRunAt), (next) => ({
+            id: task.id,
+            title: task.title,
+            on: task.enabled,
+            next,
+            last: task.lastRunStatus,
+          })),
+        ),
+      ),
+    ),
+    schedule_run_now: act((input: JobInput<"schedule_run_now">) =>
+      Effect.gen(function* () {
+        if (!(yield* tasks).tasks.some((task) => task.id === input.id)) return noTask;
+        const ran = yield* run(
+          Effect.flatMap(ScheduledTaskService, (scheduler) =>
+            scheduler.runNow({ id: ScheduledTaskId.make(input.id) }),
+          ),
+        );
+        return {
+          id: input.id,
+          line:
+            ran.threadId === null
+              ? "It did not start."
+              : "Started its run; it does not wait for it to finish.",
+        } satisfies Reply;
+      }),
+    ),
+    schedule_delete: act((input: JobInput<"schedule_delete">) =>
+      Effect.gen(function* () {
+        if (!(yield* tasks).tasks.some((task) => task.id === input.id)) return noTask;
+        yield* run(
+          Effect.flatMap(ScheduledTaskService, (scheduler) =>
+            scheduler.delete({ id: ScheduledTaskId.make(input.id) }),
+          ),
+        );
+        return { id: input.id, line: "Deleted; it will not run again." } satisfies Reply;
+      }),
+    ),
     job_start: act((input: JobInput<"job_start">) =>
       Effect.gen(function* () {
         const origin = yield* TurnOrigin;

@@ -462,6 +462,57 @@ export const liveCases: ReadonlyArray<LiveCase> = [
         : "removing a schedule was not held for his phone",
   },
   {
+    id: "project-add-needs-card",
+    proves: ["project_add"],
+    said: ["Add a project from the repository acme/app."],
+    voices: [{ speaker: SURE }],
+    uses: [["project_add"]],
+    stepUps: [{ how: "voice", ok: true, ran: false }],
+    lastSays: [/\bphone\b/i],
+    check: (_last, calls) =>
+      calls.some((x) => x.name === "project_add" && x.status === "asked" && HELD.test(x.text))
+        ? null
+        : "project_add was not held for his phone",
+  },
+  {
+    id: "schedules",
+    proves: ["schedules_list"],
+    said: ["Which scheduled tasks do I have?"],
+    uses: [["schedules_list"]],
+    clean: ["schedules_list"],
+  },
+  {
+    id: "schedule-run-now",
+    proves: ["schedule_run_now"],
+    said: ["Run the scheduled task task-suite-1 now."],
+    voices: [{ speaker: SURE }],
+    uses: [["schedule_run_now"]],
+    clean: ["schedule_run_now"],
+  },
+  {
+    id: "schedule-delete-needs-card",
+    proves: ["schedule_delete"],
+    said: ["Delete the scheduled task task-suite-1."],
+    voices: [{ speaker: SURE }],
+    uses: [["schedule_delete"]],
+    stepUps: [{ how: "voice", ok: true, ran: false }],
+    check: (_last, calls) =>
+      calls.some((x) => x.name === "schedule_delete" && x.status === "asked" && HELD.test(x.text))
+        ? null
+        : "schedule_delete was not held for his phone",
+  },
+  {
+    id: "cloud-dispatch",
+    proves: ["cloud_dispatch"],
+    said: [
+      "Send a cloud task for acme/app on branch fix-login: fix the login timeout. It's a small fix.",
+    ],
+    voices: [{ speaker: SURE }],
+    uses: [["cloud_dispatch"]],
+    clean: ["cloud_dispatch"],
+    lastSays: [/\b(approv\w*|card|pick|answer)\b/i],
+  },
+  {
     id: "watch",
     proves: ["tessaya_watch"],
     said: ["What are you watching for me?"],

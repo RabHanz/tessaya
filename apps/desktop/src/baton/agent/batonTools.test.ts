@@ -1,4 +1,4 @@
-import { BATON_TOOLS, REMOTE_ONLY_TOOLS } from "@t3tools/baton-shared/operator";
+import { BATON_TOOLS, REMOTE_ONLY_TOOLS, ROOM_ONLY_TOOLS } from "@t3tools/baton-shared/operator";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -58,7 +58,7 @@ describe("the assistant's tool table", () => {
     };
     const names = buildBatonTools({ ...host([]), shared: registry }).map((t) => t.name);
     expect(new Set(names)).toEqual(
-      new Set([...BATON_TOOLS].filter((t) => !REMOTE_ONLY_TOOLS.has(t))),
+      new Set([...BATON_TOOLS].filter((t) => !REMOTE_ONLY_TOOLS.has(t) && !ROOM_ONLY_TOOLS.has(t))),
     );
     expect(buildBatonTools(host([])).some((t) => t.name === "home_do")).toBe(false);
   });

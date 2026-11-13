@@ -35,6 +35,7 @@ import {
   ROOM_REPLAY_CLIENT,
 } from "../mcp/toolkits/home/handlers.ts";
 import * as TessayaHandlers from "../mcp/toolkits/tessaya/handlers.ts";
+import { JobTools } from "../mcp/toolkits/jobs/tools.ts";
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type RoomToolSet, type ToolOutcome } from "./R1Brain.ts";
@@ -100,10 +101,15 @@ const ROOM_TOOLS = [
   "job_retry",
   "job_stop",
   "job_schedule",
+  "schedules_list",
+  "schedule_run_now",
+  "schedule_delete",
+  "project_add",
+  "cloud_dispatch",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
-/** The room's job tools: the desktop has its own, over the same flow. */
-const JOB_TOOLS: ReadonlySet<string> = new Set(ROOM_TOOLS.filter((n) => n.startsWith("job_")));
+/** The room's work tools (jobs, schedules, projects, cloud), judged by the desktop's table; the desktop has its own. */
+const JOB_TOOLS: ReadonlySet<string> = new Set(JobTools.map((tool) => tool.name));
 
 /**
  * The shared tools his desktop's Tessaya gets: the room's, plus his devices (the desktop has no device of its own).
@@ -262,7 +268,11 @@ const replayJob = (name: string, input: Record<string, unknown>) => {
                 ? "Asked it to try again."
                 : name === "job_split"
                   ? `Started ${Array.isArray(input["parts"]) ? input["parts"].length : 0} workers, one per part; one summary goes to the job's thread when they are all in.`
-                  : "Done (a replay: nothing changed).";
+                  : name === "cloud_dispatch"
+                    ? "Asked. It waits for his answer on a card in Approvals, where he picks the assistant and account; nothing runs before that."
+                    : name === "schedule_run_now"
+                      ? "Started its run; it does not wait for it to finish."
+                      : "Done (a replay: nothing changed).";
   return { id, line };
 };
 

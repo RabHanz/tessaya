@@ -124,6 +124,11 @@ describe("the room's tools for a replay", () => {
     // Agreeing after reading something is never the model's own idea: his yes on a card.
     expect(jobVerdict("job_agree", { id: "job-1" }, true)).toBe("card");
     expect(jobVerdict("home_do", {}, true)).toBe("allow");
+    // A new project and deleting a schedule wait for his phone; a run-now and a cloud request (its own card) do not.
+    expect(jobVerdict("project_add", { repository: "acme/app" }, false)).toBe("card");
+    expect(jobVerdict("schedule_delete", { id: "t1" }, false)).toBe("card");
+    expect(jobVerdict("schedule_run_now", { id: "t1" }, false)).toBe("allow");
+    expect(jobVerdict("cloud_dispatch", { repo: "acme/app" }, false)).toBe("allow");
     // Starting work is the owner's (machine reach, A2): a lower voice is held for a step-up.
     expect(stepUpNeeds("job_start", 1)).toBe(2);
     expect(stepUpNeeds("job_stop", 2)).toBeNull();

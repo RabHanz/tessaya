@@ -48,7 +48,9 @@ import * as Stream from "effect/Stream";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import { ManagedProjectFolders } from "../project/ManagedProjectFolders.ts";
 import { ProjectService } from "../project/ProjectService.ts";
+import { SourceControlRepositoryService } from "../sourceControl/SourceControlRepositoryService.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -211,6 +213,18 @@ export interface BatonEngineShape {
     readonly title: string;
     readonly workspaceRoot: string;
   }) => Effect.Effect<ProjectId | null>;
+  /**
+   * A project he asked for by voice: an existing folder, a repository cloned beside his other new projects, or neither
+   * (a new folder with a git repository, named by its title). The reason in words when it can't.
+   */
+  readonly addProject: (input: {
+    readonly tag: string;
+    readonly title?: string | undefined;
+    readonly folder?: string | undefined;
+    readonly repository?: string | undefined;
+  }) => Effect.Effect<
+    { readonly projectId: ProjectId; readonly folder: string } | { readonly refused: string }
+  >;
   /** Upstream's settlement, so a settled work session reads settled in T3's own sidebar. */
   readonly settleThread: (input: {
     readonly tag: string;
@@ -296,6 +310,8 @@ export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagement.ThreadManagementService;
   const eventSink = yield* EventSink.EventSinkV2;
   const projectService = yield* Effect.serviceOption(ProjectService);
+  const managedFolders = yield* Effect.serviceOption(ManagedProjectFolders);
+  const repositories = yield* Effect.serviceOption(SourceControlRepositoryService);
   const random = yield* SecureRandom.SecureRandom;
   const uuid = random.uuidV4();
   const commandId = (tag: string) => Effect.map(uuid, (id) => CommandId.make(`baton:${tag}:${id}`));
@@ -688,7 +704,62 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
+  const addProject: BatonEngineShape["addProject"] = Effect.fn("BatonEngine.addProject")(
+    function* (input) {
+      const reason = (error: unknown) =>
+        typeof error === "object" && error !== null && "message" in error
+          ? String(error.message)
+          : "it did not work";
+      if (Option.isNone(projectService) || Option.isNone(managedFolders))
+        return { refused: "Projects can't be added on this server." };
+      const named = managedFolders.value;
+      if (input.folder === undefined && input.repository === undefined) {
+        if (input.title === undefined) return { refused: "Say what to call the new project." };
+        return yield* named.createNamedProject({ name: input.title }).pipe(
+          Effect.map((made) => ({ projectId: made.projectId, folder: made.workspaceRoot })),
+          Effect.catch((error) => Effect.succeed({ refused: reason(error) })),
+        );
+      }
+      let folder = input.folder;
+      if (input.repository !== undefined) {
+        if (Option.isNone(repositories))
+          return { refused: "Repositories can't be cloned on this server." };
+        const leaf =
+          input.repository
+            .replace(/\.git$/, "")
+            .split(/[/:]/)
+            .findLast((part) => part !== "") ?? "project";
+        const cloned = yield* repositories.value
+          .cloneRepository(
+            {
+              ...(/^[\w.-]+\/[\w.-]+$/.test(input.repository)
+                ? { repository: input.repository }
+                : { remoteUrl: input.repository }),
+              destinationPath: folder ?? `${named.namedProjectsRoot}/${leaf}`,
+            },
+            { timeoutMs: null },
+          )
+          .pipe(Effect.result);
+        if (cloned._tag === "Failure") return { refused: cloned.failure.detail };
+        folder = cloned.success.cwd;
+      }
+      const root = folder!;
+      return yield* projectService.value
+        .create({
+          commandId: yield* commandId(`${input.tag}:project`),
+          projectId: ProjectId.make(yield* uuid),
+          title: input.title ?? root.split("/").findLast((part) => part !== "") ?? root,
+          workspaceRoot: root,
+        })
+        .pipe(
+          Effect.map((project) => ({ projectId: project.id, folder: root })),
+          Effect.catch((error) => Effect.succeed({ refused: reason(error) })),
+        );
+    },
+  );
+
   return {
+    addProject,
     threadShells,
     threadShell,
     writeEvents,
@@ -743,6 +814,7 @@ export const layerStatic = (input: {
   readonly unarchived?: Array<ThreadId>;
 }) =>
   Layer.succeed(BatonEngine, {
+    addProject: () => Effect.succeed({ refused: "Projects are not added in tests." }),
     threadShells: Effect.succeed(input.shells ?? []),
     threadShell: (threadId) =>
       Effect.succeed(
