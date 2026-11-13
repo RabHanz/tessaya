@@ -114,6 +114,7 @@ export const deskCall = (
           goal: text("goal"),
           folders: strings("folders"),
           tools: strings("tools"),
+          ...(text("worker") === "" ? {} : { worker: text("worker") }),
           ...(typeof args["reportEveryMinutes"] === "number"
             ? { reportEveryMinutes: args["reportEveryMinutes"] }
             : {}),

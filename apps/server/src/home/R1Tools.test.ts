@@ -7,6 +7,7 @@ import {
   asAdvertised,
   CORE_TOOLS,
   DESK_TOOL_SPECS,
+  jobVerdict,
   replayDryRun,
   roomRefusal,
   ROOM_TOOL_SPECS,
@@ -52,6 +53,10 @@ describe("the room's tools for a replay", () => {
       request: "warn me under 15 percent",
     };
     expect(replayDryRun("device_watch", rule, "replay-1")?.text).toContain("Saved the rule");
+    // A job is opened as for real in words, and nothing starts.
+    const job = { title: "Fix login", goal: "fix the login bug", project: "acme" };
+    expect(replayDryRun("job_start", job, "replay-1")?.text).toContain("nothing was started");
+    expect(replayDryRun("job_start", job, "r1-3d57b3")).toBeNull();
   });
 
   it("lists every vessel's tools core first, then by name, so a prompt's tool block stays cached", () => {
@@ -110,5 +115,19 @@ describe("the room's tools for a replay", () => {
     expect(stepUpNeeds("home_do", 0)).toBeNull();
     expect(stepUpNeeds("settings_get", 0)).toBeNull();
     expect(stepUpNeeds("tessaya_memory_remember", 0)).toBeNull();
+  });
+  it("judges a job act by the desktop's own table: a schedule waits for his phone, a stop needs only his voice", () => {
+    expect(jobVerdict("job_start", { project: "acme", goal: "fix it" }, false)).toBe("allow");
+    expect(jobVerdict("job_stop", { id: "job-1" }, false)).toBe("allow");
+    expect(jobVerdict("job_schedule", { id: "job-1", every_minutes: 60 }, false)).toBe("card");
+    expect(jobVerdict("job_schedule", { id: "job-1", every_minutes: 0 }, false)).toBe("card");
+    // Agreeing after reading something is never the model's own idea: his yes on a card.
+    expect(jobVerdict("job_agree", { id: "job-1" }, true)).toBe("card");
+    expect(jobVerdict("home_do", {}, true)).toBe("allow");
+    // Starting work is the owner's (machine reach, A2): a lower voice is held for a step-up.
+    expect(stepUpNeeds("job_start", 1)).toBe(2);
+    expect(stepUpNeeds("job_stop", 2)).toBeNull();
+    // The desktop has its own job tools over the same flow.
+    expect(DESK_TOOL_SPECS.some((s) => s.name.startsWith("job_"))).toBe(false);
   });
 });

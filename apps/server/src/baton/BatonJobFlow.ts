@@ -30,8 +30,11 @@ import {
   retryRefusal,
   retryText,
 } from "@t3tools/baton-shared/jobReport";
+import { inQuietHours } from "@t3tools/baton-shared/attention";
+import { DEFAULT_POLICY } from "@t3tools/baton-shared/initiative";
 import {
   jobChanges,
+  jobNotice,
   outboundDecision,
   permissionsSummary,
   workerFirstMessage,
@@ -59,6 +62,8 @@ import * as Option from "effect/Option";
 import * as ServerConfig from "../config.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { HomeDevices } from "../home/HomeDevices.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack } from "./OperatingSystemPack.ts";
@@ -123,6 +128,8 @@ export interface StartOptions {
   readonly agreed?: boolean;
   /** A specialist role of the pack, whose brief is put in the frame. */
   readonly role?: string;
+  /** The R1 he asked on, where its plan-ready and done lines are said. */
+  readonly origin?: string;
 }
 
 export const startJob = Effect.fn("BatonJobFlow.start")(function* (
@@ -158,6 +165,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     workerInstanceId: input.modelSelection.instanceId,
     ...(options.parentId === undefined ? {} : { parentId: options.parentId }),
     ...(options.role === undefined ? {} : { persona: options.role }),
+    ...(options.origin === undefined ? {} : { origin: options.origin }),
   });
   // A retried start finds the thread it already made.
   const existing = yield* threadOf(id);
@@ -231,25 +239,29 @@ export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: BatonJ
     input.project,
     yield* engine.projects,
     yield* registry.getProviders,
+    input.worker,
   );
   if (!placed.ok) return yield* new BatonJobPlacementError({ detail: placed.why });
   const { project, label, worker } = placed.value;
-  return yield* startJob({
-    projectId: project.id,
-    title: input.title,
-    goal: input.goal,
-    permissions: {
-      folders: input.folders,
-      projects: [label],
-      tools: input.tools.length === 0 ? ["read"] : input.tools,
+  return yield* startJob(
+    {
+      projectId: project.id,
+      title: input.title,
+      goal: input.goal,
+      permissions: {
+        folders: input.folders,
+        projects: [label],
+        tools: input.tools.length === 0 ? ["read"] : input.tools,
+      },
+      ...(input.reportEveryMinutes === undefined
+        ? {}
+        : { limits: { reportEveryMinutes: input.reportEveryMinutes } }),
+      modelSelection: { instanceId: worker.instanceId, model: worker.model } as ModelSelection,
+      // Anything the worker would ask permission for becomes a card that needs him.
+      runtimeMode: "approval-required",
     },
-    ...(input.reportEveryMinutes === undefined
-      ? {}
-      : { limits: { reportEveryMinutes: input.reportEveryMinutes } }),
-    modelSelection: { instanceId: worker.instanceId, model: worker.model } as ModelSelection,
-    // Anything the worker would ask permission for becomes a card that needs him.
-    runtimeMode: "approval-required",
-  });
+    input.origin === undefined ? {} : { origin: input.origin },
+  );
 });
 
 export const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {
@@ -901,15 +913,46 @@ export const jobRecordSeed = Effect.fn("BatonJobFlow.jobRecordSeed")(function* (
   return seen;
 });
 
-/** Each job whose phase or standing changed, as one Record row. */
+/**
+ * A job's change said on the R1 he asked it on (voice/say opens a session there, so he can answer): never in quiet
+ * hours, and at most the nudge budget an hour. The Record row is kept either way, so nothing is lost when it is quiet.
+ */
+const sayOnOrigin = Effect.fn("BatonJobFlow.sayOnOrigin")(function* (
+  device: string,
+  line: string,
+  said: Array<number>,
+) {
+  const devices = yield* Effect.serviceOption(HomeDevices);
+  if (Option.isNone(devices)) return;
+  const now = yield* Clock.currentTimeMillis;
+  const house = yield* Effect.serviceOption(HomeAssistantService);
+  const zone = Option.isSome(house) ? yield* house.value.timeZone : "UTC";
+  // shortcut: the desktop's own quiet hours never reach the server, so the default policy's hold here.
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: zone }).format(
+      now,
+    ),
+  );
+  if (inQuietHours(DEFAULT_POLICY.quietHours, hour)) return;
+  const recent = said.filter((at) => now - at < 3_600_000);
+  if (recent.length >= DEFAULT_POLICY.maxPerHour) return;
+  said.splice(0, said.length, ...recent, now);
+  yield* devices.value
+    .command(device, { op: "say", text: line }, { who: "Tessaya", surface: "assistant" })
+    .pipe(Effect.ignoreCause({ log: true }));
+});
+
+/** Each job whose phase or standing changed, as one Record row, and said where he asked for it. */
 export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(function* (
   entries: ReadonlyArray<BatonFleetEntry>,
   seen: Map<string, string>,
+  said: Array<number> = [],
 ) {
   const record = yield* Effect.serviceOption(BatonRecordService);
   if (Option.isNone(record)) return;
   const changes = jobChanges(yield* (yield* BatonJobService).view({ entries }), seen);
   if (changes.length === 0) return;
+  const origins = yield* (yield* BatonJobService).origins();
   const projects = new Map((yield* (yield* BatonEngine).projects).map((p) => [p.id, p.title]));
   const personas = yield* (yield* BatonJobService).personas();
   const roster = readPack(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath)).personas;
@@ -925,5 +968,8 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
       subject: job.title,
       outcome,
     });
+    const origin = origins.get(job.workSessionId);
+    const line = jobNotice(job.title, outcome);
+    if (origin !== undefined && line !== null) yield* sayOnOrigin(origin, line, said);
   }
 });

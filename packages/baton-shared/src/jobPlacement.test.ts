@@ -58,6 +58,13 @@ describe("placing a job from his words", () => {
     });
   });
 
+  it("puts the job on the worker he named, by its kind when no name fits", () => {
+    const providers = [provider("claudeAgent", "claudeAgent"), provider("codex_work", "codex")];
+    const placed = placeJob("shop", projects, providers, "Codex");
+    expect(placed.ok && placed.value.worker.instanceId).toBe("codex_work");
+    expect(placeJob("shop", projects, providers, "gemini")).toMatchObject({ ok: false });
+  });
+
   it("hands off to the worker named by id or name, and lists the ready ones when none matches", () => {
     const providers = [provider("codex", "codex"), provider("claudeAgent", "claudeAgent")];
     expect(handoffTarget("codex", providers)).toMatchObject({ ok: true, value: { model: "big" } });

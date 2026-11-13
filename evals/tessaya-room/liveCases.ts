@@ -350,6 +350,117 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["tessaya_jobs"]],
     clean: ["tessaya_jobs"],
   },
+  // His jobs (BatonJobFlow), by voice: a plan-first thread, and the desktop's own rule for what asks (operator.ts).
+  {
+    id: "job-start",
+    proves: ["job_start"],
+    said: [
+      "Start a job in acme app: fix the login bug where the session expires too early. Have Codex do it.",
+    ],
+    voices: [{ speaker: SURE }],
+    uses: [["job_start"]],
+    clean: ["job_start"],
+    argsOf: "job_start",
+    args: (input) => ({
+      project: /acme/i.test(String(input["project"] ?? "")),
+      worker: /codex/i.test(String(input["worker"] ?? "")),
+      goal: /login/i.test(String(input["goal"] ?? "")),
+    }),
+    // One short confirmation that a plan is coming, never the plan or code.
+    lastSays: [/\bplan\b/i],
+    lastNotSays: [/```|\bfunction\b|=>/],
+  },
+  {
+    id: "job-steer",
+    proves: ["job_refine"],
+    said: [
+      "Start a job in acme app to store sessions in a database.",
+      "Tell that job to use Postgres instead of SQLite.",
+    ],
+    voices: [{ speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["job_refine"]],
+    clean: ["job_refine"],
+    argsOf: "job_refine",
+    args: (input) => ({
+      id: input["id"] === "job-replay-1",
+      postgres: /postgres/i.test(String(input["text"] ?? "")),
+    }),
+  },
+  {
+    id: "job-go",
+    proves: ["job_agree"],
+    said: ["The plan for job job-suite-1 looks right. Go ahead."],
+    voices: [{ speaker: SURE }],
+    uses: [["job_agree"]],
+    clean: ["job_agree"],
+  },
+  {
+    id: "job-team",
+    proves: ["job_split"],
+    said: [
+      "Start a job in acme app to add a public API.",
+      "Its plan is fine, go ahead.",
+      "Now split that job into two parts for the team: one writes the API, one writes its tests after that.",
+    ],
+    voices: [{ speaker: SURE }, { speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["job_agree"], ["job_split"]],
+    clean: ["job_split"],
+    argsOf: "job_split",
+    args: (input) => ({ two: Array.isArray(input["parts"]) && input["parts"].length === 2 }),
+  },
+  {
+    id: "job-retry",
+    proves: ["job_retry"],
+    said: ["Job job-suite-1 failed because its tests timed out. Try it again."],
+    voices: [{ speaker: SURE }],
+    uses: [["job_retry"]],
+    clean: ["job_retry"],
+  },
+  // A stop keeps its thread and plan, so his verified voice is enough, on the R1 as on the desktop.
+  {
+    id: "job-stop",
+    proves: ["job_stop"],
+    said: ["Stop job job-suite-1."],
+    voices: [{ speaker: SURE }],
+    uses: [["job_stop"]],
+    clean: ["job_stop"],
+    check: (_last, calls) =>
+      calls.some((x) => x.name === "job_stop" && x.status === "asked")
+        ? "a stop on his verified voice was held"
+        : null,
+  },
+  // A schedule is unattended spending: a card on his phone, whoever asked, and no voice releases it.
+  {
+    id: "job-schedule-needs-card",
+    proves: ["job_schedule"],
+    said: [
+      "Start a job in acme app to update its dependencies.",
+      "Its plan is fine, go ahead.",
+      "Run that job again every day.",
+    ],
+    voices: [{ speaker: SURE }, { speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["job_agree"], ["job_schedule"]],
+    stepUps: [{ how: "voice", ok: true, ran: false }],
+    lastSays: [/\bphone\b/i],
+    check: (_last, calls) =>
+      calls.some((x) => x.name === "job_schedule" && x.status === "asked" && HELD.test(x.text))
+        ? null
+        : "job_schedule was not held for his phone",
+  },
+  {
+    id: "job-unschedule-needs-card",
+    proves: ["job_schedule"],
+    said: ["Take job job-suite-1 off its schedule."],
+    voices: [{ speaker: SURE }],
+    uses: [["job_schedule"]],
+    stepUps: [{ how: "voice", ok: true, ran: false }],
+    argsOf: "job_schedule",
+    args: (input) => ({ off: Number(input["every_minutes"]) === 0 }),
+    check: (_last, calls) =>
+      calls.some((x) => x.name === "job_schedule" && x.status === "asked" && HELD.test(x.text))
+        ? null
+        : "removing a schedule was not held for his phone",
+  },
   {
     id: "watch",
     proves: ["tessaya_watch"],

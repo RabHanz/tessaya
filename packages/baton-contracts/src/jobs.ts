@@ -230,6 +230,10 @@ export const BatonJobPlaceInput = Schema.Struct({
   /** Read only when empty. */
   tools: Schema.Array(BatonJobTool),
   reportEveryMinutes: Schema.optionalKey(Schema.Number),
+  /** The worker he named: an instance's id or name, or a kind such as codex. Absent: the first ready Claude. */
+  worker: Schema.optionalKey(TrimmedNonEmptyString),
+  /** The R1 he asked on: its plan-ready and done lines are said there. */
+  origin: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(120))),
 });
 export type BatonJobPlaceInput = typeof BatonJobPlaceInput.Type;
 

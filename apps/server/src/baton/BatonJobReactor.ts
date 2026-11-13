@@ -49,6 +49,8 @@ export const layer = Layer.effect(
     return {
       start: Effect.fn("BatonJobReactor.start")(function* () {
         const seen = yield* jobRecordSeed().pipe(Effect.provideContext(context));
+        // When a job's change was last said on an R1, for the hourly nudge budget.
+        const said: Array<number> = [];
         // A worker that has used up its time or turns is stopped, even if it makes no more events.
         yield* forkParked(
           Effect.forever(
@@ -60,7 +62,7 @@ export const layer = Layer.effect(
                       Effect.andThen(noteDayTurns(fleet.entries)),
                       Effect.andThen(autoRetry(fleet.entries)),
                       Effect.andThen(postReports(fleet.entries)),
-                      Effect.andThen(recordJobChanges(fleet.entries, seen)),
+                      Effect.andThen(recordJobChanges(fleet.entries, seen, said)),
                     ),
                   ),
                 ),

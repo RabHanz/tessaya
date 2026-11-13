@@ -71,6 +71,12 @@ R1 stops listening, and S2 starts it again.
 answers in its own voice, with its own eyes on the R1 and its own memories. It stays on for follow-ups in the 8-second
 window; once the R1 rests, Tessaya answers again.
 
+**Work by voice.** Ask for a job ("start a job in my app to fix the login bug, have Codex do it") and Tessaya opens
+it in its own thread, where the worker writes a plan and starts nothing until you agree. She says on that R1 when the
+plan is ready and when the job is done or needs you, outside quiet hours (22:00 to 08:00 on the house's clock) and at
+most three times an hour. Say "go ahead", pass on changes, split it across the team, stop it or try it again by
+voice; these need your recognised voice. Putting a job on a schedule always asks for a yes on your phone first.
+
 **Buttons** (firmware 3.32 and later). Some presses are the R1's own and cannot change: S2 tap starts or stops
 talking, holding S2 is push-to-talk, a long S2 press wakes it, S1 and S3 taps turn the volume up and down, and holding
 S1 and S3 together for 5 seconds starts Wi-Fi setup. The rest are yours under **Buttons** in Settings → Hardware: the

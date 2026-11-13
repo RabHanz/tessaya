@@ -30,6 +30,11 @@ export interface HeldAct {
   readonly needs: Assurance;
   /** Also a card on the phone inbox; never for a replay. */
   readonly phone: boolean;
+  /**
+   * An act that always waits for his yes on a card (judgeToolCall asks), not only for knowing who spoke: its card asks
+   * for that yes, and only the card releases it, as `needs` (above what any voice gives).
+   */
+  readonly card?: boolean;
   readonly run: HeldRun;
 }
 
@@ -89,24 +94,35 @@ const make = Effect.gen(function* () {
   const hold = Effect.fn("StepUps.hold")(function* (act: HeldAct) {
     const id = `stepup-${yield* Clock.currentTimeMillis}-${yield* Random.nextIntBetween(0, 1e6)}`;
     held.set(id, act);
-    for (const l of listeners) yield* l(act.device, id);
+    // A card act is not the voice's to settle, so the vessel is not asked who spoke.
+    if (act.card !== true) for (const l of listeners) yield* l(act.device, id);
     if (Option.isSome(inbox) && act.phone) {
       const phone = inbox.value;
       yield* phone.mirror({
         id,
-        title: "Is this you?",
-        detail: `Tessaya is holding this until she knows who asked: ${act.what}.`,
-        buttons: ["Yes, it's me", "No"],
+        ...(act.card === true
+          ? {
+              title: "Tessaya wants your yes",
+              detail: `Asked on ${act.device}: ${act.what}.`,
+              buttons: ["Yes, do it", "No"],
+              // Only a phone that may approve answers it, as the house's owner asks are.
+              needs: "cloud-approve" as const,
+            }
+          : {
+              title: "Is this you?",
+              detail: `Tessaya is holding this until she knows who asked: ${act.what}.`,
+              buttons: ["Yes, it's me", "No"],
+            }),
         yes: 0,
         cancel: 1,
       });
-      // A yes on their own phone is their device at A2 (§3.1); a no lets it go.
+      // A yes on their own phone is their device at A2 (§3.1), and the yes a card act waited for; a no lets it go.
       yield* phone.promptAnswer(id).pipe(
         Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
         Effect.timeoutOption(`${HELD_MS} millis`),
         Effect.flatMap((answer) =>
           Option.isSome(answer) && answer.value === 0
-            ? release(id, { member: act.member, assurance: 2 })
+            ? release(id, { member: act.member, assurance: act.card === true ? act.needs : 2 })
             : Effect.sync(() => void held.delete(id)),
         ),
         Effect.ignore,

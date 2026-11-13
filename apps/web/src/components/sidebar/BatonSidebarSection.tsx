@@ -237,6 +237,7 @@ export function BatonSidebarSection(props: {
               goal: text("goal"),
               folders: strings("folders"),
               tools: strings("tools") as never,
+              ...(text("worker") === "" ? {} : { worker: text("worker") }),
               ...(typeof args["reportEveryMinutes"] === "number"
                 ? { reportEveryMinutes: args["reportEveryMinutes"] }
                 : {}),
