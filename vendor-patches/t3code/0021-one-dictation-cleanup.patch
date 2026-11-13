@@ -280,7 +280,7 @@ index 354260ea3cfb92018e0006d5a3582211af4e00fc..ee15d3cac7204e75909887e99ed9db53
 +  });
  });
 diff --git a/packages/shared/src/serverSettings.ts b/packages/shared/src/serverSettings.ts
-index 24c418decfa2922a8b571211049e632b130c54fe..ec0e2a33664dad2563195a928c24cab39ce0c536 100644
+index 24c418decfa2922a8b571211049e632b130c54fe..4dad9b15245f44d3884ca484cea28a2c259bd662 100644
 --- a/packages/shared/src/serverSettings.ts
 +++ b/packages/shared/src/serverSettings.ts
 @@ -12,6 +12,7 @@ import {
@@ -309,7 +309,24 @@ index 24c418decfa2922a8b571211049e632b130c54fe..ec0e2a33664dad2563195a928c24cab3
      // Merged per entry below; its `null` removals must not reach deepMerge.
      usageLimitSources: usageLimitSourcesPatch,
      textGenerators: textGeneratorsPatch,
-@@ -536,6 +539,10 @@ export function applyServerSettingsPatch(
+@@ -401,6 +404,8 @@ export function applyServerSettingsPatch(
+     usageModelAliases: usageModelAliasesPatch,
+     // Entry replacement: deepMerge would keep keys the client meant to clear.
+     projectSettingsOverrides: projectSettingsOverridesPatch,
++    // Tessaya: replaced whole, so a word taken off the list stays off.
++    voicePronounce: voicePronouncePatch,
+     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
+     projectAutoPullOverrides: _legacyAutoPull,
+     projectScriptOverrides: _legacyScripts,
+@@ -496,6 +501,7 @@ export function applyServerSettingsPatch(
+   const next = deepMerge(current, patchForMerge);
+   const nextWithReplacementsBase = {
+     ...next,
++    ...(voicePronouncePatch === undefined ? {} : { voicePronounce: voicePronouncePatch }),
+     favorites,
+     providerModelPreferences: nextModelPreferences,
+     ...(worktreeCleanupPatch === undefined
+@@ -536,6 +542,10 @@ export function applyServerSettingsPatch(
      ...(patch.providerInstances !== undefined
        ? { providerInstances: patch.providerInstances }
        : {}),

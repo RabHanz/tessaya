@@ -1990,7 +1990,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6e68e6ee4 100644
+index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..1aef714c861f9e1514cd677e8f0a7325819e7aca 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,7 @@ import {
@@ -2001,7 +2001,7 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1338,6 +1339,10 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -1338,6 +1339,16 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -2009,10 +2009,16 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
 +export const DictationCleanupCredentials = Schema.Struct({ anthropic: CloudSpeechCredential });
 +export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
 +export type RoomBrain = typeof RoomBrain.Type;
++
++/** Word → how the voice says it, in plain letters (`pronounce` in baton-shared). */
++export const VoicePronounce = Schema.Record(
++  Schema.String.check(Schema.isMaxLength(60)),
++  Schema.String.check(Schema.isMaxLength(80)),
++);
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1361,6 +1366,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1361,6 +1372,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2024,7 +2030,7 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1369,6 +1379,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1369,6 +1385,13 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2033,10 +2039,12 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
 +  ),
 +  // Tessaya: how the room device's turn reaches Claude. "auto" tries the Anthropic key above first, then the subscription.
 +  roomBrain: RoomBrain.pipe(Schema.withDecodingDefault(Effect.succeed("auto" as const))),
++  // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
++  voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1378,10 +1393,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1378,10 +1401,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2050,7 +2058,7 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1810,6 +1827,8 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1810,6 +1835,8 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2059,7 +2067,7 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
    continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
-@@ -1819,11 +1838,16 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1819,11 +1846,17 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2067,6 +2075,7 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
 +    Schema.Struct({ anthropic: Schema.optionalKey(SettingsSecretValue) }),
 +  ),
 +  roomBrain: Schema.optionalKey(RoomBrain),
++  voicePronounce: Schema.optionalKey(VoicePronounce),
    speechModelId: Schema.optionalKey(Schema.String),
    speechAcceleration: Schema.optionalKey(SpeechAcceleration),
    speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
@@ -2076,7 +2085,7 @@ index 5622b7d32a86f7b7e551d79d92a3e5bf1fbd1e1f..8caa5fc4fcff3b1c1314c167da181ce6
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2070,3 +2094,5 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2070,3 +2103,5 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;
