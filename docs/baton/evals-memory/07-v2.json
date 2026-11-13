@@ -1,0 +1,147 @@
+{
+  "about": "Memory v2 (tessaya-ops research/MEMORY-V2-DESIGN.md). People: a question names a person or project by a name or alias that the item about them never repeats, so only a people-and-projects layer (MEMV2-7) links them. Persona: an item marked persona-only (`persona`, `visibility: persona`) reaches the persona that learned it and no other (MEMV2-5); until then it is household and every persona sees it. Synthetic and generic: no real person's data.",
+  "items": [
+    {
+      "key": "pe-maya-sister",
+      "kind": "fact",
+      "text": "Maya is my younger sister",
+      "source": "user"
+    },
+    {
+      "key": "pe-sister-birthday",
+      "kind": "fact",
+      "text": "My sister's birthday is the ninth of April",
+      "source": "user"
+    },
+    {
+      "key": "pe-sister-allergy",
+      "kind": "fact",
+      "text": "My sister is allergic to peanuts, so no satay when she visits",
+      "source": "user"
+    },
+    {
+      "key": "pe-omar-builder",
+      "kind": "fact",
+      "text": "Omar Haddad is the builder doing the kitchen",
+      "source": "user"
+    },
+    {
+      "key": "pe-builder-quote",
+      "kind": "decision",
+      "text": "We accepted the builder's quote of eleven thousand for the kitchen",
+      "source": "user"
+    },
+    {
+      "key": "pe-builder-start",
+      "kind": "fact",
+      "text": "The builder starts on the first Monday of next month",
+      "source": "thread"
+    },
+    {
+      "key": "pe-lumen-app",
+      "kind": "fact",
+      "text": "Lumen is the name of the reading app venture",
+      "source": "user"
+    },
+    {
+      "key": "pe-reading-pricing",
+      "kind": "decision",
+      "text": "The reading app launches at four pounds a month with a free week",
+      "source": "user"
+    },
+    {
+      "key": "pe-dentist",
+      "kind": "fact",
+      "text": "My dentist is on the high street, above the bakery",
+      "source": "user"
+    },
+    {
+      "key": "pe-gym",
+      "kind": "preference",
+      "text": "I go to the gym on Tuesday and Thursday mornings",
+      "source": "user"
+    },
+    {
+      "key": "ps-alfred-joke",
+      "kind": "preference",
+      "text": "He likes the butler to open with a dry remark about the weather",
+      "source": "thread",
+      "persona": "alfred",
+      "visibility": "persona"
+    },
+    {
+      "key": "ps-sebastian-sources",
+      "kind": "preference",
+      "text": "When researching, always give him two sources and say which one is weaker",
+      "source": "thread",
+      "persona": "sebastian",
+      "visibility": "persona"
+    }
+  ],
+  "cases": [
+    {
+      "recall": true,
+      "group": "people",
+      "query": "when is Maya's birthday",
+      "present": ["pe-sister-birthday"]
+    },
+    {
+      "recall": true,
+      "group": "people",
+      "query": "what can't Maya eat",
+      "present": ["pe-sister-allergy"],
+      "pending": "MEMV2-7"
+    },
+    {
+      "recall": true,
+      "group": "people",
+      "query": "how much is Omar charging us",
+      "present": ["pe-builder-quote"],
+      "pending": "MEMV2-7"
+    },
+    {
+      "recall": true,
+      "group": "people",
+      "query": "when does Omar start",
+      "present": ["pe-builder-start"]
+    },
+    {
+      "recall": true,
+      "group": "people",
+      "query": "what is Lumen's price",
+      "present": ["pe-reading-pricing"],
+      "pending": "MEMV2-7"
+    },
+    { "recall": true, "group": "people", "query": "who is Maya", "top": "pe-maya-sister" },
+    {
+      "recall": true,
+      "group": "persona",
+      "agent": "alfred",
+      "query": "how should you open when he talks about the weather",
+      "present": ["ps-alfred-joke"]
+    },
+    {
+      "recall": true,
+      "group": "persona",
+      "agent": "tessaya",
+      "query": "how should you open a remark about the weather",
+      "absent": ["ps-alfred-joke"],
+      "pending": "MEMV2-5"
+    },
+    {
+      "recall": true,
+      "group": "persona",
+      "agent": "sebastian",
+      "query": "how many sources when researching",
+      "present": ["ps-sebastian-sources"]
+    },
+    {
+      "recall": true,
+      "group": "persona",
+      "agent": "alfred",
+      "query": "how many sources when researching",
+      "absent": ["ps-sebastian-sources"],
+      "pending": "MEMV2-5"
+    }
+  ]
+}

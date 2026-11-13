@@ -4,6 +4,7 @@ import * as NodePath from "node:path";
 
 import type { MemoryDraft } from "@t3tools/baton-shared/memory";
 import { assert, describe, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -18,6 +19,7 @@ import {
 import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer, textHash } from "./BatonMemoryService.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
+import { roomMemories } from "../home/R1Device.ts";
 import { vectorToBytes } from "./memoryVectors.ts";
 
 /** docs/baton/evals-memory/*.json: what is remembered, then what a question should bring back first. */
@@ -41,6 +43,8 @@ interface Corpus {
     readonly present?: ReadonlyArray<string>;
     readonly absent?: ReadonlyArray<string>;
     readonly count?: number;
+    /** The persona asking (its pack id), as the desktop and the room name it. */
+    readonly agent?: string;
   }>;
 }
 
@@ -73,6 +77,8 @@ interface Run {
   readonly keys: ReadonlyArray<string>;
   /** Nothing should come back (count 0). */
   readonly abstain: boolean;
+  /** It brought back a fact a newer one replaced (Memora's obsolete-memory failure). */
+  readonly stale: boolean;
 }
 
 /** Mean recall@K over the keys a case expects, mean reciprocal rank of the first one, and how many abstentions held. */
@@ -90,6 +96,7 @@ const score = (runs: ReadonlyArray<Run>) => {
       return rank < 0 ? 0 : 1 / (rank + 1);
     }),
     abstained: `${abstain.filter((r) => r.keys.length === 0).length}/${abstain.length}`,
+    stale: `${runs.filter((r) => r.stale).length}/${runs.length}`,
   };
 };
 
@@ -130,9 +137,20 @@ const embedAll = Effect.gen(function* () {
 
 const corpusOf = new Map(corpora);
 
+/** Which path a case is asked through: the desktop's search or block, or what a device vessel (today the R1) gets for a sentence. */
+type Arm = "keyword" | "fused" | "device";
+/**
+ * The device arm is scored, not held to each case: it must not fall under what it reached when it was last measured
+ * (06-corpus, every case). Raise these when the device's recall improves; one pipeline for every vessel makes it the fused arm.
+ */
+const DEVICE_AT_LEAST = {
+  keyword: { recallAtK: 0.49, mrr: 0.48 },
+  fused: { recallAtK: 0.49, mrr: 0.48 },
+} as const;
+
 // it.effect runs on the test clock, so the 300 ms query-embed budget never cuts a slow embed: the scores are a best case.
-const retrieval = (arm: "keyword" | "fused", model: Layer.Layer<BatonMemoryEmbedder>) =>
-  it.effect.each(files)(`retrieval (${arm}): %s`, (file) =>
+const retrieval = (arm: Arm, model: Layer.Layer<BatonMemoryEmbedder>, withModel: boolean) =>
+  it.effect.each(files)(`retrieval (${arm}${withModel ? "" : ", no model"}): %s`, (file) =>
     Effect.gen(function* () {
       const corpus = corpusOf.get(file)!;
       const memory = yield* BatonMemoryService;
@@ -146,17 +164,32 @@ const retrieval = (arm: "keyword" | "fused", model: Layer.Layer<BatonMemoryEmbed
         idOf.set(key, made.id);
         if (!keyOf.has(made.id)) keyOf.set(made.id, key);
       }
-      if (arm === "fused") yield* embedAll;
+      if (withModel) yield* embedAll;
+      const replaced = new Set(
+        corpus.items.flatMap((i) => (i.supersedes === undefined ? [] : [i.supersedes])),
+      );
       const runs: Array<Run> = [];
       const wrong: Array<string> = [];
       for (const c of corpus.cases) {
-        const scope = c.scopeRef === undefined ? {} : { scopeRef: c.scopeRef };
-        const ids = c.recall
-          ? (yield* memory.recall({ text: c.query, budgetTokens: 300, ...scope })).ids
-          : (yield* memory.search({ text: c.query, ...scope })).map((h) => h.item.id);
+        const scope = {
+          ...(c.scopeRef === undefined ? {} : { scopeRef: c.scopeRef }),
+          ...(c.agent === undefined ? {} : { agent: c.agent }),
+        };
+        const ids =
+          arm === "device"
+            ? (yield* roomMemories(c.query, c.agent)).map((i) => i.id)
+            : c.recall
+              ? (yield* memory.recall({ text: c.query, budgetTokens: 300, ...scope })).ids
+              : (yield* memory.search({ text: c.query, ...scope })).map((h) => h.item.id);
         const keys = ids.map((id) => keyOf.get(id) ?? id);
         const expected = [...(c.top === undefined ? [] : [c.top]), ...(c.present ?? [])];
-        runs.push({ group: c.group ?? "all", expected, keys, abstain: c.count === 0 });
+        runs.push({
+          group: c.group ?? "all",
+          expected,
+          keys,
+          abstain: c.count === 0,
+          stale: keys.some((k) => replaced.has(k)),
+        });
         const say = `"${c.query}" gave ${JSON.stringify(keys)}`;
         // A case passes on its whole block (any rank within the budget); recall@5 counts only the first five.
         const check = () => {
@@ -178,24 +211,36 @@ const retrieval = (arm: "keyword" | "fused", model: Layer.Layer<BatonMemoryEmbed
           c.pending === undefined
             ? false
             : c.pending === "MEM-13"
-              ? arm === "keyword"
+              ? !withModel
               : c.pending.startsWith("fused: ")
-                ? arm === "fused"
+                ? withModel
                 : true;
         if (passed === pending) wrong.push(pending ? `${say}: passes now, drop "pending"` : say);
       }
       const groups = [...new Set(runs.map((r) => r.group))];
       for (const group of groups.length > 1 ? ["all", ...groups] : groups) {
-        const { cases, recallAtK, mrr, abstained } = score(
+        const { cases, recallAtK, mrr, abstained, stale } = score(
           group === "all" ? runs : runs.filter((r) => r.group === group),
         );
         const scores =
           cases === 0
             ? `recall@${K} n/a MRR n/a`
             : `recall@${K} ${recallAtK.toFixed(3)} MRR ${mrr.toFixed(3)} over ${cases}`;
-        console.log(`memory eval ${arm} ${file} ${group}: ${scores}, nothing back ${abstained}`);
+        console.log(
+          `memory eval ${arm}${withModel ? "" : " (no model)"} ${file} ${group}: ${scores}, nothing back ${abstained}, stale ${stale}`,
+        );
       }
-      assert.deepStrictEqual(wrong, []);
+      // A replaced fact never comes back on any path.
+      assert.isFalse(
+        runs.some((r) => r.stale),
+        "a superseded item came back",
+      );
+      if (arm !== "device") return assert.deepStrictEqual(wrong, []);
+      if (file !== "06-corpus.json") return;
+      const floor = DEVICE_AT_LEAST[withModel ? "fused" : "keyword"];
+      const all = score(runs);
+      assert.isAtLeast(all.recallAtK, floor.recallAtK);
+      assert.isAtLeast(all.mrr, floor.mrr);
     }).pipe(
       Effect.provide(
         memoryLayer.pipe(Layer.provideMerge(model), Layer.provideMerge(SqlitePersistenceMemory)),
@@ -274,10 +319,57 @@ const nowhere = Layer.succeed(ServerConfig.ServerConfig, {
   dbPath: "/nowhere/statev2.sqlite",
 } as unknown as ServerConfig.ServerConfig["Service"]);
 
-retrieval("keyword", noEmbedder);
+retrieval("keyword", noEmbedder, false);
+retrieval("device", noEmbedder, false);
 learning("keyword", noEmbedder);
 // The model is not in git (scripts/tessaya/fetch-memory-model.mjs fetches it), so CI runs the keyword arm only.
 describe.runIf(hasModel)("with the local model", () => {
-  retrieval("fused", strictModel);
+  retrieval("fused", strictModel, true);
+  retrieval("device", strictModel, true);
   learning("fused", strictModel);
+});
+
+/**
+ * How long each path takes per sentence on this machine, on the wall clock with the real 300 ms query-embed budget.
+ * A benchmark, not a test: it prints and asserts nothing. `MEMORY_EVAL_LATENCY=1 vp test run <this file> --silent=false`
+ */
+describe.runIf(hasModel && process.env["MEMORY_EVAL_LATENCY"] === "1")("latency", () => {
+  it.live("p50 and p95 per path over 06-corpus", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const { items, cases } = corpusOf.get("06-corpus.json")!;
+      const idOf = new Map<string, string>();
+      for (const { key, supersedes, ...draft } of items) {
+        const made = yield* memory.add({
+          ...draft,
+          ...(supersedes === undefined ? {} : { supersedes: idOf.get(supersedes)! }),
+        });
+        idOf.set(key, made.id);
+      }
+      yield* embedAll;
+      const paths: Record<string, (text: string) => Effect.Effect<unknown>> = {
+        keyword: (text) => memory.search({ text }),
+        fused: (text) => memory.recall({ text, budgetTokens: 300 }),
+        device: (text) =>
+          roomMemories(text, undefined).pipe(Effect.provideService(BatonMemoryService, memory)),
+      };
+      for (const [arm, ask] of Object.entries(paths)) {
+        const ms: Array<number> = [];
+        for (const c of cases) ms.push(Duration.toMillis((yield* Effect.timed(ask(c.query)))[0]));
+        ms.sort((a, b) => a - b);
+        const at = (q: number) =>
+          ms[Math.min(ms.length - 1, Math.floor(q * ms.length))]!.toFixed(1);
+        console.log(
+          `memory eval latency ${arm}: p50 ${at(0.5)} ms, p95 ${at(0.95)} ms over ${ms.length}`,
+        );
+      }
+    }).pipe(
+      Effect.provide(
+        memoryLayer.pipe(
+          Layer.provideMerge(strictModel),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      ),
+    ),
+  );
 });
