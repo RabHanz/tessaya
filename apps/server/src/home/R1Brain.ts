@@ -383,13 +383,18 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
         // The first thing the room hears: her words, or the cue when a tool call starts first.
         let actAt: number | null = null;
         const used: Array<string> = [];
+        // Where a turn's time goes, in ms from the start: the model starting a call, the tool running, her words.
+        const steps: Array<string> = [];
+        const step = (what: string) => steps.push(`${what}@${Date.now() - startedAt}`);
         const ran = yield* Effect.tryPromise({
           // Interrupted (he cut her off), the signal aborts and the session is replaced.
           try: (signal) =>
             sessions.turn(turn.vessel, spec, turn.user, {
               signal,
-              run: (name, args) =>
-                Effect.runPromiseWith(context)(turn.run(name, args)).then((outcome) => {
+              run: (name, args) => {
+                step(`run:${name}`);
+                return Effect.runPromiseWith(context)(turn.run(name, args)).then((outcome) => {
+                  step(`ran:${name}`);
                   // A failed tool is an MCP error result: the model sees it as one.
                   if (outcome.isError) throw new Error(outcome.text);
                   return {
@@ -400,14 +405,17 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
                           images: [{ data: outcome.image.data, mimeType: outcome.image.mediaType }],
                         }),
                   };
-                }),
+                });
+              },
               onEvent: (event) => {
                 if (event.type === "text") {
+                  if (firstAt === null) step("words");
                   firstAt ??= Date.now();
                   actAt ??= firstAt;
                   Queue.offerUnsafe(queue, event.text);
                 } else if (event.type === "tool") {
                   used.push(event.name);
+                  step(`call:${event.name}`);
                   actAt ??= Date.now();
                   // Before her first word only: once she is talking, she says it herself.
                   if (firstAt === null && used.length === 1) turn.cue(event.web);
@@ -425,6 +433,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
           ms: (yield* Clock.currentTimeMillis) - startedAt,
           brainFirstMs: firstAt === null ? null : firstAt - startedAt,
           firstActMs: actAt === null ? null : actAt - startedAt,
+          steps: steps.join(" "),
         });
         if (ran._tag === "Failure") return yield* Queue.failCause(queue, ran.cause);
         yield* Queue.end(queue);

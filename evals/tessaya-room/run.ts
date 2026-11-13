@@ -276,7 +276,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
       if (mcp !== null) {
         const ran = await claude(
           [
-            roomData(context(c, house, heard, history, false, turn)),
+            roomData(context(c, house, heard, history, true, turn)),
             "--system-prompt",
             ROOM_SYSTEM,
             "--mcp-config",
