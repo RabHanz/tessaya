@@ -7,7 +7,14 @@ import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 
 import type { Approval } from "./approvals.ts";
 
-export type NeedSource = "approval" | "session" | "job" | "commitment" | "ledger" | "deadline";
+export type NeedSource =
+  | "approval"
+  | "session"
+  | "job"
+  | "commitment"
+  | "ledger"
+  | "deadline"
+  | "memory";
 
 export interface NeedItem {
   readonly id: string;

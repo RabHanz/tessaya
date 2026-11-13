@@ -122,6 +122,36 @@ it.effect("a turn's tools know which vessel heard it", () =>
 );
 
 layer("TessayaTurn", (it) => {
+  it.effect("what his memories say is coming up this week reaches every vessel", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const turn = yield* TessayaTurn;
+      yield* memory.setMeta("timeZone", "UTC");
+      yield* memory.add({
+        kind: "fact",
+        text: "Rumi's birthday is the fifth of January",
+        source: "user",
+      });
+      yield* memory.add({
+        kind: "fact",
+        text: "Tariq's birthday is the ninth of June",
+        source: "user",
+      });
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const soon = yield* turn.comingUp;
+      assert.deepStrictEqual(
+        soon.filter((c) => c.text.includes("birthday")),
+        [
+          {
+            text: "Rumi's birthday is the fifth of January",
+            when: "in 3 days",
+            kind: "every year",
+          },
+        ],
+      );
+    }),
+  );
+
   it.effect(
     "who's home: a verified voice or a member's own device, never a guess, a guest or a replay",
     () =>

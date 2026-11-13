@@ -360,6 +360,23 @@ const WhosHomeTool = Tool.make("tessaya_whos_home", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const ComingUpTool = Tool.make("tessaya_coming_up", {
+  ...shared,
+  description:
+    'What his memories say is coming up in the next week, soonest first: birthdays and anniversaries, dated plans, a weekday he named lately, and anything kept only until a date. For "what\'s coming up", "anything this week", or to mention a date he would want to know about. Walled projects\' memories are never shown here.',
+  // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
+  success: Schema.Struct({
+    items: Schema.Array(
+      Schema.Struct({ text: Schema.String, when: Schema.String, kind: Schema.String }),
+    ),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const MemoryAboutTool = Tool.make("tessaya_memory_about", {
   ...shared,
   description:
@@ -513,6 +530,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryRememberTool,
   MemoryForgetTool,
   MemoryAboutTool,
+  ComingUpTool,
   WhosHomeTool,
   PreferenceSetTool,
   RulesTool,

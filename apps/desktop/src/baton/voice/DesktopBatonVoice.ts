@@ -239,6 +239,8 @@ import {
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
 import { detectSecret, REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
+import { comingUp, needsFromMemory, whenSaid } from "@t3tools/baton-shared/memoryDates";
+
 import {
   PRIVATE_MEMORY_NAME,
   SERVER_MEMORY_NAME,
@@ -612,6 +614,9 @@ import {
 import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
+
+/** His zone on this computer: days ahead are counted in it. */
+const hisZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /** How long the hold key is down before its pill shows: the helper's tap cutoff (SHORT_TAP_MS), so a tap never flashes. */
 const PRESS_SHOW_MS = 200;
@@ -3126,6 +3131,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
           jobs?: ReadonlyArray<BatonJob>;
         } | null;
+        // What his memories say is coming up (a birthday, a dated plan) ranks with the rest.
+        const remembered = (await requestKept({
+          kind: "memory",
+          op: "list",
+          args: { limit: 500 },
+        }).catch(() => null)) as { items?: ReadonlyArray<MemoryItem> } | null;
         return answerNeeds({
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
@@ -3134,6 +3145,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             ...needsFromCommitments(commitments.list(), Date.now()),
             ...syncNeeds(syncNow, Date.now()),
             ...cloudLoginsNeeds(cloudNow(), Date.now()),
+            ...needsFromMemory(remembered?.items ?? [], Date.now(), hisZone()),
           ],
           config: needsConfig(),
           external: externalNeeds,
@@ -3148,8 +3160,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           kind: "memory",
           op: "list",
           args: { includeProposed: true, limit: 500 },
-        }).catch(() => null)) as { items?: ReadonlyArray<{ proposed: boolean }> } | null;
+        }).catch(() => null)) as { items?: ReadonlyArray<MemoryItem> } | null;
         const held = memory?.items?.filter((i) => i.proposed).length ?? 0;
+        const soon = comingUp(memory?.items ?? [], Date.now(), hisZone());
         return morningBrief({
           jobs: jobs?.jobs ?? [],
           findings: await watchFindings(),
@@ -3162,6 +3175,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               : [
                   `${held} ${held === 1 ? "memory waits" : "memories wait"} for his yes in the Memory tab (held filter).`,
                 ]),
+            ...soon.map(
+              (c) => `Coming up ${whenSaid(c.inDays)}, from what he told you: ${c.item.text}`,
+            ),
           ],
         });
       }

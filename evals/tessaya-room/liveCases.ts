@@ -413,6 +413,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/Z[-.,\s]+A[-.,\s]+Y[-.,\s]+D/i],
   },
   {
+    id: "coming-up",
+    proves: ["tessaya_coming_up"],
+    said: ["Anything coming up this week I should know about?"],
+    uses: [["tessaya_coming_up"]],
+    clean: ["tessaya_coming_up"],
+  },
+  {
     id: "whos-home",
     proves: ["tessaya_whos_home"],
     said: ["Who's home right now?"],

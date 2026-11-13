@@ -303,6 +303,10 @@ export const layer = McpToolAccess.toLayer(
           ),
         ),
       ),
+      // Read as a client (MemoryViewer's default here): walls hold.
+      tessaya_coming_up: McpToolAccess.reads(() =>
+        call(withTurn((turn) => Effect.map(turn.comingUp, (items) => ({ items })))),
+      ),
       tessaya_memory_about: McpToolAccess.reads((input) =>
         call(withTurn((turn) => Effect.map(turn.about(input.subject), (items) => ({ items })))),
       ),

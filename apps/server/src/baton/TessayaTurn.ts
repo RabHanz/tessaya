@@ -14,6 +14,7 @@ import {
   voiceAssurance,
 } from "@t3tools/baton-shared/household";
 import { memoryBlock } from "@t3tools/baton-shared/memory";
+import { comingUp, whenSaid } from "@t3tools/baton-shared/memoryDates";
 import { foldSpelling, spellBack } from "@t3tools/baton-shared/spelling";
 import {
   privatePersonOf,
@@ -271,6 +272,10 @@ export class TessayaTurn extends Context.Service<
      * their own device, today, most recent first. A state for noticing and suggestions, not a history.
      */
     readonly whoIsHome: Effect.Effect<ReadonlyArray<WhoIsHome>>;
+    /** What his memories say is coming up this week, as the caller may see them (Memory v2 step 8). */
+    readonly comingUp: Effect.Effect<
+      ReadonlyArray<{ readonly text: string; readonly when: string; readonly kind: string }>
+    >;
     readonly beginMany: (
       turns: ReadonlyArray<TurnEnvelope>,
     ) => Effect.Effect<ReadonlyArray<TurnContext>>;
@@ -530,6 +535,21 @@ export const make = Effect.gen(function* () {
     return out.toSorted((a, b) => a.lastSeenMinutes - b.lastSeenMinutes);
   }).pipe(Effect.withSpan("TessayaTurn.whoIsHome"));
 
+  const comingUpNow = Effect.gen(function* () {
+    const origin = yield* TurnOrigin;
+    const items = yield* memory.list({
+      limit: 2_000,
+      ...(origin?.persona == null ? {} : { agent: origin.persona }),
+    });
+    const zone =
+      (yield* memory.meta("timeZone")) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return comingUp(items, yield* Clock.currentTimeMillis, zone).map((c) => ({
+      text: c.item.text,
+      when: whenSaid(c.inDays),
+      kind: c.kind,
+    }));
+  }).pipe(Effect.withSpan("TessayaTurn.comingUp"));
+
   const beginMany = Effect.fn("TessayaTurn.beginMany")(function* (
     turns: ReadonlyArray<TurnEnvelope>,
   ) {
@@ -677,6 +697,7 @@ export const make = Effect.gen(function* () {
     about,
     setPreference,
     whoIsHome,
+    comingUp: comingUpNow,
   });
 });
 
