@@ -3,6 +3,7 @@ import type { LearnInput } from "@t3tools/baton-shared/memoryLearning";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
@@ -217,6 +218,43 @@ layer("TessayaTurn", (it) => {
         // About: the closest memories, his own words marked.
         const about = yield* turn.about("gate code");
         assert.include(about[0]!.line, "The gate code changes every month");
+      }),
+  );
+
+  it.effect(
+    "one conversation per person or household, continued on whichever vessel answers next",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const said = (
+          vessel: TurnEnvelope["vessel"],
+          text: string,
+          over: Partial<TurnEnvelope> = {},
+        ) => turn.end({ vessel, text, ...over }, { reply: `About ${text}.` });
+        const heard = (over: Partial<TurnEnvelope> = {}) =>
+          Effect.map(turn.begin({ vessel: device, text: "and then?", ...over }), (c) =>
+            c.conversation.turns.map((t) => `${t.vessel} ${t.role}: ${t.content}`),
+          );
+        // Earlier cases in this layer spoke too; a quiet spell first, so this one starts afresh.
+        yield* TestClock.adjust("11 minutes");
+        yield* said(desktop, "the shop deploy");
+        // Not said to her, or a rehearsal: never part of the conversation.
+        yield* said(desktop, "the television", { addressed: false });
+        yield* said(device, "a replay", { rehearsal: true });
+        assert.deepStrictEqual(yield* heard(), [
+          "laptop user: the shop deploy",
+          "laptop assistant: About the shop deploy.",
+        ]);
+        // His verified voice has its own conversation; the household's stays apart from it.
+        yield* said(device, "my private plans", { speaker: owner() });
+        assert.lengthOf(yield* heard({ speaker: owner() }), 2);
+        assert.notInclude((yield* heard()).join(" "), "private plans");
+        // A conversation the arbiter names is the one continued.
+        yield* said(device, "the kitchen timer", { conversation: "arbiter:k1" });
+        assert.lengthOf(yield* heard({ conversation: "arbiter:k1" }), 2);
+        // After a quiet spell she starts afresh.
+        yield* TestClock.adjust("11 minutes");
+        assert.deepStrictEqual(yield* heard(), []);
       }),
   );
 });
