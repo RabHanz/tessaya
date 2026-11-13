@@ -89,6 +89,14 @@ export const make = Effect.gen(function* () {
       (input: Args) => routed("device_owner", input, devices("owner", ...split(input))),
       linked,
     ),
+    device_read: McpToolAccess.reads((input: Args) =>
+      routed("device_read", input, devices("read", "read", split({ ...input, op: "read" })[1])),
+    ),
+    device_set: McpToolAccess.writes(
+      (input: Args) =>
+        routed("device_set", input, devices("act", "set", split({ ...input, op: "set" })[1])),
+      linked,
+    ),
     device_tag: McpToolAccess.writes((input: Args) => {
       const [op, args] = split(input);
       return routed(

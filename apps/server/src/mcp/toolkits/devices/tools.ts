@@ -105,5 +105,48 @@ const TagTool = Tool.make("device_tag", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const ItemId = Schema.String.check(Schema.isMaxLength(80)).annotate({
+  description: "An item id from the device's manifest, e.g. power.battery_pct.",
+});
+const ReadTool = Tool.make("device_read", {
+  ...shared,
+  description: DEVICE_TOOL_TEXT.device_read,
+  parameters: Schema.Struct({
+    id: Id,
+    items: Schema.optionalKey(Schema.Array(ItemId).check(Schema.isMaxLength(50))),
+    on: Schema.optional(On),
+    ...PeerOrigin,
+  }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const SetTool = Tool.make("device_set", {
+  ...shared,
+  description: DEVICE_TOOL_TEXT.device_set,
+  parameters: Schema.Struct({
+    id: Id,
+    itemId: ItemId,
+    value: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number,
+        Schema.Boolean,
+        Schema.String.check(Schema.isMaxLength(200)),
+        Schema.Null,
+      ]),
+    ),
+    confirmed: Schema.optionalKey(
+      Schema.Boolean.annotate({ description: "He said yes to exactly this change, just now." }),
+    ),
+    on: Schema.optional(On),
+    ...PeerOrigin,
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit, beside the house's tools. */
-export const DeviceTools = [ListTool, ActTool, OwnerTool, TagTool] as const;
+export const DeviceTools = [ListTool, ActTool, OwnerTool, TagTool, ReadTool, SetTool] as const;

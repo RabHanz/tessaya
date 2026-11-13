@@ -66,6 +66,10 @@ const ROOM_TOOLS = [
   "settings_get",
   "settings_explain",
   "settings_set",
+  // Every vessel's self-described items, from any vessel (R1-P13).
+  "device_list",
+  "device_read",
+  "device_set",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
 /**
@@ -74,7 +78,6 @@ const ROOM_TOOLS = [
  */
 const DESK_TOOLS = [
   ...ROOM_TOOLS.filter((name) => name !== "tessaya_ask" && name !== "tessaya_ask_status"),
-  "device_list",
   "device_act",
   "device_owner",
   "device_tag",

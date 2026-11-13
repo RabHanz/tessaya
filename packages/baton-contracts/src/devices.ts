@@ -11,7 +11,8 @@ export const BATON_DEVICES_WS_METHODS = { call: "baton.devices.call" } as const;
 /** `vessel` is a device on a client connection reporting itself (desktop, phone); never an agent's. */
 export const BATON_DEVICES_CALL_KINDS = ["read", "act", "owner", "vessel"] as const;
 
-export const BATON_DEVICES_READ_OPS = ["list"] as const;
+/** `items` and `read` are the registry's: every device's items, and their values. */
+export const BATON_DEVICES_READ_OPS = ["list", "items", "read"] as const;
 export const BATON_DEVICES_ACT_OPS = [
   "eye",
   "led",
@@ -31,6 +32,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "nfcRemove",
   "forget",
   "speaker",
+  "set",
 ] as const;
 export const BATON_DEVICES_OWNER_OPS = ["reboot", "camera", "cameraView", "cameraClear"] as const;
 export const BATON_DEVICES_VESSEL_OPS = ["publish"] as const;
@@ -312,6 +314,10 @@ export const RegisteredDevice = Schema.Struct({
   version: Schema.NullOr(Schema.String),
   items: Schema.Array(DeviceItem),
   values: Schema.Array(DeviceItemValue),
+  /** Private items in use now (a camera, a microphone): every client shows a live light until then. */
+  live: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ itemId: Schema.String, until: Schema.String })),
+  ),
 });
 export type RegisteredDevice = typeof RegisteredDevice.Type;
 

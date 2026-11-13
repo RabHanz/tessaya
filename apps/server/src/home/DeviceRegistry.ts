@@ -63,6 +63,8 @@ interface Held {
   lastSeen: number | null;
   /** A broker device says so itself (state/online); a client vessel is online while it keeps calling. */
   online: boolean | null;
+  /** Private items in use, until when. */
+  live: Map<string, number>;
 }
 
 /** A client vessel calls at least every 15 s while it runs. */
@@ -109,6 +111,8 @@ export class DeviceRegistry extends Context.Service<
       waitMs: number,
     ) => Effect.Effect<ReadonlyArray<DeviceWrite>>;
     readonly forget: (deviceId: string) => Effect.Effect<void>;
+    /** A private item was just used: its live light shows for `ms`. */
+    readonly markLive: (deviceId: string, itemId: string, ms: number) => Effect.Effect<void>;
     readonly changes: Effect.Effect<PubSub.Subscription<DeviceChange>, never, Scope.Scope>;
   }
 >()("t3/home/DeviceRegistry") {}
@@ -159,6 +163,7 @@ const make = Effect.gen(function* () {
       values: new Map(),
       lastSeen: row.last_seen,
       online: null,
+      live: new Map(),
     });
   }
   const state = yield* sql<{
@@ -193,6 +198,7 @@ const make = Effect.gen(function* () {
         values: new Map(),
         lastSeen: now,
         online: null,
+        live: new Map(),
       };
       devices.set(deviceId, d);
     }
@@ -216,6 +222,9 @@ const make = Effect.gen(function* () {
     version: d.version,
     items: d.items,
     values: [...d.values].map(([itemId, v]) => ({ itemId, value: v.value, at: iso(v.at)! })),
+    live: [...d.live]
+      .filter(([, until]) => until > now)
+      .map(([itemId, until]) => ({ itemId, until: iso(until)! })),
   });
 
   const publish = Effect.fn("DeviceRegistry.publish")(function* (via: DeviceVia, raw: unknown) {
@@ -395,6 +404,14 @@ const make = Effect.gen(function* () {
       yield* sql`DELETE FROM fabric_device_state WHERE device_id = ${deviceId}`;
     }, Effect.orDie),
     changes: PubSub.subscribe(changes),
+    markLive: Effect.fn("DeviceRegistry.markLive")(function* (
+      deviceId: string,
+      itemId: string,
+      ms: number,
+    ) {
+      const now = yield* Clock.currentTimeMillis;
+      devices.get(deviceId)?.live.set(itemId, now + ms);
+    }),
   });
 });
 

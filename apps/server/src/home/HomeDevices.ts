@@ -29,6 +29,7 @@ import {
   type DevicesOverview,
 } from "@t3tools/baton-contracts";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { valueText } from "@t3tools/baton-shared/deviceItems";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -78,10 +79,21 @@ export type DeviceCommand =
       readonly output?: DeviceSpeakerOutput;
     }
   | { readonly op: "reboot" }
-  | { readonly op: "camera" };
+  | { readonly op: "camera" }
+  /**
+   * Any registry item on any vessel, by its manifest. `confirmed`: he said yes to this change in the conversation,
+   * which a `confirm` item needs from her; an agent's never counts.
+   */
+  | {
+      readonly op: "item";
+      readonly itemId: string;
+      readonly value: unknown;
+      readonly confirmed?: boolean;
+    };
 
 export interface DeviceOutcome {
-  readonly status: "done" | "asked";
+  /** confirm: nothing was done; she asks him and calls again. */
+  readonly status: "done" | "asked" | "confirm";
   readonly line: string;
 }
 
@@ -90,6 +102,8 @@ export interface DeviceOutcome {
 const R1_DEFAULT_VOLUME = 71;
 
 const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["reboot", "camera"]);
+/** How long a private item's live light shows after it is used. */
+const LIVE_MS = 30_000;
 
 const TRIAL_MS = 60_000;
 const CAMERA_WINDOW_MS = 30_000;
@@ -806,13 +820,33 @@ const make = Effect.gen(function* () {
   });
 
   const describe = (c: DeviceCommand): string =>
-    c.op === "camera" ? "take one camera picture" : c.op === "reboot" ? "restart the device" : c.op;
+    c.op === "camera"
+      ? "take one camera picture"
+      : c.op === "reboot"
+        ? "restart the device"
+        : c.op === "item"
+          ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
+          : c.op;
+
+  /** A registry item and its device, or why there is none. */
+  const itemOf = Effect.fn("HomeDevices.itemOf")(function* (id: string, itemId: string) {
+    const reg = yield* registry.get(id);
+    const item = reg?.items.find((i) => i.id === itemId);
+    if (reg === null || item === undefined)
+      return yield* new DeviceRefusedError({
+        why:
+          reg === null
+            ? `No device called ${id} is known here.`
+            : `${reg.name} has no item ${itemId}.`,
+      });
+    return { reg, item };
+  });
 
   const run = Effect.fn("HomeDevices.run")(function* (
     id: string,
     c: DeviceCommand,
     by: DeviceActor,
-  ) {
+  ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
     const now = yield* Clock.currentTimeMillis;
     const done = (line: string): DeviceOutcome => ({ status: "done", line });
     switch (c.op) {
@@ -1000,6 +1034,26 @@ const make = Effect.gen(function* () {
         yield* publish(id, "cmd/camera/capture", {});
         yield* audit(by, id, "R1 camera picture", "taken");
         return done("Taking one picture.");
+      case "item": {
+        const { reg, item } = yield* itemOf(id, c.itemId);
+        if (item.privacy === true) yield* registry.markLive(id, c.itemId, LIVE_MS);
+        // The R1's picture keeps its own path: the window the upload is accepted in.
+        if (reg.via === "mqtt" && c.itemId === "camera.capture")
+          return yield* run(id, { op: "camera" }, by);
+        const out = yield* registry.write(id, c.itemId, c.value);
+        const said =
+          item.type === "action"
+            ? `${item.label} on ${reg.name}`
+            : `${item.label} on ${reg.name} to ${valueText(item, c.value)}`;
+        yield* audit(by, id, said, out.status);
+        return done(
+          out.status === "sent"
+            ? out.line
+            : item.type === "action"
+              ? `Done: ${item.label} on ${reg.name}.`
+              : `${item.label} on ${reg.name} is now ${valueText(item, c.value)}.`,
+        );
+      }
     }
   });
 
@@ -1008,8 +1062,23 @@ const make = Effect.gen(function* () {
     c: DeviceCommand,
     by: DeviceActor,
   ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
-    if (c.op !== "forget") yield* live(id);
-    if (RISKY_OPS.has(c.op) && by.surface !== "settings" && by.approved !== true) {
+    // A registry item is checked by its own class; the registry says when its device is away.
+    let needsYes = RISKY_OPS.has(c.op);
+    if (c.op === "item") {
+      const { reg, item } = yield* itemOf(id, c.itemId);
+      if (item.safety === "never" && by.surface !== "settings")
+        return yield* new DeviceRefusedError({
+          why: `${item.label} on ${reg.name} is changed only in Settings → Hardware.`,
+        });
+      // His yes in the conversation counts from her own turn, never from an agent's say-so.
+      if (item.safety === "confirm" && by.surface === "assistant" && c.confirmed !== true)
+        return {
+          status: "confirm",
+          line: `Ask him first, in a few words: ${item.label} on ${reg.name}${item.type === "action" ? "" : ` to ${valueText(item, c.value)}`}? Then call again with confirmed: true once he says yes.`,
+        } satisfies DeviceOutcome;
+      needsYes = item.safety === "owner" || (item.safety === "confirm" && by.surface === "agent");
+    } else if (c.op !== "forget") yield* live(id);
+    if (needsYes && by.surface !== "settings" && by.approved !== true) {
       const now = yield* Clock.currentTimeMillis;
       const askId = `device-${now.toString(36)}${(counter++ % 1296).toString(36)}`;
       const line = `${by.who} wants to ${describe(c)} on ${id}`;
@@ -1019,7 +1088,10 @@ const make = Effect.gen(function* () {
         });
       yield* inbox.value.mirror({
         id: askId,
-        title: "Tessaya wants to use the R1",
+        title:
+          c.op === "item"
+            ? "Tessaya wants to use one of your devices"
+            : "Tessaya wants to use the R1",
         detail: `${line}.`,
         buttons: ["Yes, do it", "No"],
         yes: 0,
