@@ -102,6 +102,9 @@ const MODEL_LABELS: Readonly<Record<string, string>> = {
   haiku: "Haiku",
   sonnet: "Sonnet",
   opus: "Opus",
+  "claude-haiku-5-5": "Haiku 5.5",
+  "claude-sonnet-5-5": "Sonnet 5.5",
+  "claude-opus-5-5": "Opus 5.5",
 };
 const EFFORTS = ["default", ...BrainEffort.literals] as const;
 const EFFORT_LABELS: Readonly<Record<string, string>> = {
@@ -146,7 +149,7 @@ function BrainSections({ environmentId }: { readonly environmentId: EnvironmentI
                   : ROLE_HINTS[role]
               }
               control={
-                <div className="flex flex-wrap justify-end gap-1.5">
+                <div className="grid w-full grid-cols-2 gap-1.5 sm:w-80">
                   <Choice
                     label={`${BRAIN_ROLE_LABELS[role]}: login`}
                     value={use}
