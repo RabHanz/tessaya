@@ -922,7 +922,12 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   const outcomes: Array<ActOutcome> = [];
   let said = "";
   let readTheWeb = false;
+  // What the room hears first, from the turn's start: her first whole sentence, or the cue before a tool call.
+  const clock = yield* Clock.Clock;
+  let firstSentenceAt: number | null = null;
+  let cueAt: number | null = null;
   const sentences = speakableSentences((sentence) => {
+    firstSentenceAt ??= clock.currentTimeMillisUnsafe();
     said += sentence;
     say(sentence);
   }, names);
@@ -965,7 +970,10 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
           vessel: input.device ?? turn.vessel.id,
           cue: (web) => {
             if (web) readTheWeb = true;
-            if (said === "") say(`${web ? WEB_CUE : HOLD_ON} `);
+            if (said === "") {
+              cueAt ??= clock.currentTimeMillisUnsafe();
+              say(`${web ? WEB_CUE : HOLD_ON} `);
+            }
           },
         });
   const ran = yield* words.pipe(
@@ -974,6 +982,12 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
     Effect.exit,
   );
   sentences.flush();
+  // The model's first token (R1 tool turn's brainFirstMs) is not speakable; this is what the vessel can say.
+  yield* Effect.logInfo("R1 turn first said", {
+    route: via === "api" ? "tools" : "session",
+    firstSentenceMs: firstSentenceAt === null ? null : firstSentenceAt - startedAt,
+    cueMs: cueAt === null ? null : cueAt - startedAt,
+  });
   if (said.trim() === "") return null;
   if (Exit.isFailure(ran)) {
     const sorry = " Sorry, something went wrong on my side.";
