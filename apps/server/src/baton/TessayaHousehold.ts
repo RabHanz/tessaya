@@ -464,19 +464,25 @@ export const make = Effect.gen(function* () {
   const home = Effect.gen(function* () {
     const sessions = yield* allSessions;
     const now = yield* Clock.currentTimeMillis;
-    const around = (yield* rows).filter(
-      (row) =>
-        row.removed_at === null &&
-        sessionsOf(row.id, sessions).some(
-          (s) =>
-            s.connected ||
-            (s.lastConnectedAt !== null &&
-              now - DateTime.toEpochMillis(s.lastConnectedAt) < AROUND_MS),
+    const around = (yield* rows).flatMap((row) => {
+      if (row.removed_at !== null) return [];
+      const mine = sessionsOf(row.id, sessions);
+      const connected = mine.filter((s) => s.connected).length;
+      const last = Math.max(
+        ...mine.map((s) =>
+          s.lastConnectedAt === null ? 0 : DateTime.toEpochMillis(s.lastConnectedAt),
         ),
+      );
+      if (connected === 0 && now - last >= AROUND_MS) return [];
+      const minutesAgo = connected > 0 ? 0 : Math.floor((now - last) / 60_000);
+      return [{ id: row.id, name: row.name, connected, minutesAgo }];
+    });
+    return done(
+      around.length === 0
+        ? "Nobody's devices are connected right now."
+        : `Around now, by their devices: ${around.map((r) => r.name).join(", ")}.`,
+      { around },
     );
-    return around.length === 0
-      ? "Nobody's devices are connected right now."
-      : `Around now, by their devices: ${around.map((r) => r.name).join(", ")}.`;
   });
 
   /**
@@ -764,7 +770,7 @@ export const make = Effect.gen(function* () {
       case "list":
         return done("", { members: yield* list, homeOn: yield* homeOn, peers: yield* peerLabels });
       case "home":
-        return done(yield* home);
+        return yield* home;
       case "invite": {
         // "Zayd, Z-A-Y-D": kept as spelled, said back once, and taught to her voice.
         const spelled = foldSpelling(input.name.trim());

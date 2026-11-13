@@ -83,7 +83,8 @@ describe("every Tessaya migration is additive", () => {
       // A trigger's body runs on later writes, not at migration time, so its DELETE or UPDATE changes nothing here.
       const source = withoutTriggerBodies(sourceOf(id, name));
       for (const rule of FORBIDDEN) {
-        if (rule.what === "rewrites rows" && REVIEWED_BACKFILLS.has(`${String(id)}_${name}`)) continue;
+        if (rule.what === "rewrites rows" && REVIEWED_BACKFILLS.has(`${String(id)}_${name}`))
+          continue;
         expect(
           rule.pattern.test(source),
           `${String(id)}_${name} ${rule.what}, which an older build cannot survive (D7)`,

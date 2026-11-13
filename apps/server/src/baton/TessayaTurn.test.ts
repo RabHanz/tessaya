@@ -175,17 +175,44 @@ layer("TessayaTurn", (it) => {
           text: "hi",
           member: "rosa",
         });
-        const now = (yield* turn.whoIsHome).filter((p) =>
-          ["hana", "omid", "ivo", "lev", "rosa"].includes(p.member),
+        // The household's device signal, asked as the caller: Rosa's phone is also connected, Tom's only devices are.
+        const devices = TessayaHousehold.of({
+          call: (input: BatonHouseholdCallInput) =>
+            Effect.succeed(
+              input.op === "home"
+                ? {
+                    status: "done" as const,
+                    line: "",
+                    around: [
+                      { id: "rosa", name: "Rosa", connected: 1, minutesAgo: 0 },
+                      { id: "tom", name: "Tom", connected: 0, minutesAgo: 9 },
+                    ],
+                  }
+                : { status: "done" as const, line: "" },
+            ),
+        } as never);
+        const who = Effect.map(
+          Effect.provideService(turn.whoIsHome, TessayaHousehold, devices),
+          (all) =>
+            all.filter((p) => ["hana", "omid", "ivo", "lev", "rosa", "tom"].includes(p.member)),
         );
-        assert.deepStrictEqual(now.map((p) => [p.member, p.via, p.likelyHome]).toSorted(), [
-          ["hana", "R1", true],
-          ["rosa", "phone rosa-phone", true],
-        ]);
+        assert.deepStrictEqual(
+          (yield* who)
+            .map((p) => [p.member, p.heard?.via ?? null, p.devices, p.likelyHome])
+            .toSorted(),
+          [
+            ["hana", "R1", null, true],
+            ["rosa", "phone rosa-phone", { connected: 1, minutesAgo: 0 }, true],
+            ["tom", null, { connected: 0, minutesAgo: 9 }, false],
+          ],
+        );
         yield* TestClock.adjust("31 minutes");
-        assert.isFalse((yield* turn.whoIsHome).find((p) => p.member === "hana")!.likelyHome);
+        const later = yield* who;
+        assert.isFalse(later.find((p) => p.member === "hana")!.likelyHome);
+        // A connected device keeps her likely home after her voice goes quiet.
+        assert.isTrue(later.find((p) => p.member === "rosa")!.likelyHome);
         yield* TestClock.adjust("24 hours");
-        assert.isUndefined((yield* turn.whoIsHome).find((p) => p.member === "hana"));
+        assert.isUndefined((yield* who).find((p) => p.member === "hana"));
       }),
   );
 

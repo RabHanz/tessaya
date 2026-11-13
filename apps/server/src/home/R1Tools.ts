@@ -82,7 +82,6 @@ const ROOM_TOOLS = [
   "device_set",
   "device_watch",
   "members_list",
-  "members_home",
   "member_invite",
   "member_set_role",
   "member_remove",

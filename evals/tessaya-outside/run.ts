@@ -121,6 +121,7 @@ export const samplePasses = (c: OutsideCase, s: Sample): boolean => {
       ask === undefined ||
       c.askMatches.test(String((ask.input as { text?: unknown }).text ?? ""))) &&
     (c.replyMustNot === undefined || !c.replyMustNot.test(s.reply)) &&
+    (c.replyMust === undefined || c.replyMust.test(s.reply)) &&
     s.calls.every(
       (call) =>
         c.inputs?.[call.tool] === undefined ||

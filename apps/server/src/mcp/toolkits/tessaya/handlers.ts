@@ -290,14 +290,7 @@ export const layer = McpToolAccess.toLayer(
                   reason: "I only say who's home to the people who live here.",
                 });
               return {
-                people: (yield* turn.whoIsHome).map(
-                  ({ name, lastSeenMinutes, via, likelyHome }) => ({
-                    name,
-                    lastSeenMinutes,
-                    via,
-                    likelyHome,
-                  }),
-                ),
+                people: (yield* turn.whoIsHome).map(({ member: _m, ...person }) => person),
               };
             }),
           ),

@@ -170,14 +170,15 @@ export const originOf = (turn: TurnEnvelope) => ({
 export const NOT_HIS_VOICE_TO_FORGET =
   "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
 
-/** One member she has lately heard or seen active. */
+/** One member she has lately heard, or whose devices are connected, and which of the two backs the guess. */
 export interface WhoIsHome {
   readonly member: string;
   readonly name: string;
-  readonly lastSeenMinutes: number;
-  /** Where: the vessel ("R1", "desktop"), so "Sara was in the kitchen 5 minutes ago". */
-  readonly via: string;
-  /** Heard within the last half hour. */
+  /** Last verified voice or own-device turn: where (the vessel, "R1", "desktop") and how long ago. */
+  readonly heard: { readonly via: string; readonly minutesAgo: number } | null;
+  /** Their own devices: how many are connected now, and minutes since one was (0 while connected). */
+  readonly devices: { readonly connected: number; readonly minutesAgo: number } | null;
+  /** Heard within the last half hour, or a device connected now. */
   readonly likelyHome: boolean;
 }
 /** Heard this recently: likely still home. */
@@ -268,8 +269,9 @@ export class TessayaTurn extends Context.Service<
      * that person's own preferences and conversation, with nothing private read for anyone.
      */
     /**
-     * Who is home, as far as she can tell (HOUSEHOLD-DESIGN §7): each member heard by a verified voice, or active on
-     * their own device, today, most recent first. A state for noticing and suggestions, not a history.
+     * Who is home, as far as she can tell (HOUSEHOLD-DESIGN §7): each member heard by a verified voice or a turn on their
+     * own device today, and whose devices are connected (the household's, asked as the caller), most recent first.
+     * A state for noticing and suggestions, not a history.
      */
     readonly whoIsHome: Effect.Effect<ReadonlyArray<WhoIsHome>>;
     /** What his memories say is coming up this week, as the caller may see them (Memory v2 step 8). */
@@ -518,21 +520,41 @@ export const make = Effect.gen(function* () {
 
   const whoIsHome = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
+    const origin = yield* TurnOrigin;
+    const asked = yield* askHousehold(
+      { op: "home" },
+      origin === null
+        ? { member: OWNER_MEMBER_ID, assurance: 2, tainted: false }
+        : {
+            member: origin.member ?? memberOfSpeaker(origin.speaker ?? null) ?? "",
+            assurance: origin.assurance ?? voiceAssurance(origin.speaker ?? null),
+            tainted: origin.tainted === true,
+          },
+    ).pipe(Effect.orElseSucceed(() => null));
+    const devices = new Map((asked?.around ?? []).map((d) => [d.id, d]));
     const out: Array<WhoIsHome> = [];
     for (const [member, s] of seen) {
-      if (now - s.at > PRESENCE_FORGET_MS) {
-        seen.delete(member);
-        continue;
-      }
+      if (now - s.at > PRESENCE_FORGET_MS) seen.delete(member);
+    }
+    for (const member of new Set([...seen.keys(), ...devices.keys()])) {
+      const s = seen.get(member);
+      const d = devices.get(member);
+      const heard =
+        s === undefined ? null : { via: s.via, minutesAgo: Math.floor((now - s.at) / 60_000) };
       out.push({
         member,
-        name: (yield* preferencesOf(member)).name ?? (yield* memberName(member)) ?? member,
-        lastSeenMinutes: Math.floor((now - s.at) / 60_000),
-        via: s.via,
-        likelyHome: now - s.at <= PRESENCE_HOME_MS,
+        name:
+          (yield* preferencesOf(member)).name ?? d?.name ?? (yield* memberName(member)) ?? member,
+        heard,
+        devices: d === undefined ? null : { connected: d.connected, minutesAgo: d.minutesAgo },
+        likelyHome:
+          (s !== undefined && now - s.at <= PRESENCE_HOME_MS) ||
+          (d !== undefined && d.connected > 0),
       });
     }
-    return out.toSorted((a, b) => a.lastSeenMinutes - b.lastSeenMinutes);
+    const latest = (p: WhoIsHome) =>
+      Math.min(p.heard?.minutesAgo ?? Infinity, p.devices?.minutesAgo ?? Infinity);
+    return out.toSorted((a, b) => latest(a) - latest(b));
   }).pipe(Effect.withSpan("TessayaTurn.whoIsHome"));
 
   const comingUpNow = Effect.gen(function* () {

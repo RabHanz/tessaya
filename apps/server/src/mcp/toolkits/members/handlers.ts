@@ -46,7 +46,6 @@ export const make = Effect.gen(function* () {
   const id = (input: Args) => String(input["id"] ?? "");
   return {
     members_list: McpToolAccess.reads(() => run({ op: "list" })),
-    members_home: McpToolAccess.reads(() => run({ op: "home" })),
     member_invite: McpToolAccess.writes((input: Args) =>
       run({
         op: "invite",

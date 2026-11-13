@@ -181,6 +181,17 @@ export const BatonHouseholdCallResult = Schema.Struct({
       keys: Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String })),
     }),
   ),
+  /** With `home`: members whose devices are connected now (minutesAgo 0) or were within the last quarter hour. */
+  around: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        connected: Schema.Number,
+        minutesAgo: Schema.Number,
+      }),
+    ),
+  ),
   /** With `preferences`: that member's, by key. */
   preferences: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
