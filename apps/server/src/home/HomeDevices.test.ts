@@ -12,6 +12,8 @@ import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import * as HomeDevices from "./HomeDevices.ts";
 
+import { VoiceForgets, layer as VoiceForgetsLayer } from "../baton/VoiceForgets.ts";
+
 const ID = "r1-3d57b3";
 const root = `freya/r1/${ID}`;
 
@@ -679,5 +681,47 @@ it.effect(
         ["camera.capture"],
       );
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "gives every device the household's shared voices, retained one per member, and clears a member who is gone",
+  () => {
+    const { sent, layer } = setup();
+    const profile = (id: string, version: number) => ({
+      id,
+      name: id,
+      kind: "saved" as const,
+      model: "m",
+      centroid: "AACAPw==",
+      samples: 5,
+      sources: ["spoken" as const],
+      enrolledAt: "2026-11-13T00:00:00Z",
+      version,
+      updatedAt: "2026-11-13T00:00:00Z",
+    });
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const voices = yield* VoiceForgets;
+      yield* devices.tick;
+      yield* voices.setProfiles([profile("sara", 1)]);
+      // A device that comes online gets every member's voice at once.
+      yield* devices.receive(`${root}/state/online`, "1");
+      const voiceSends = () => sent.filter((s) => s.topic.startsWith("voice/profile/"));
+      assert.deepStrictEqual(
+        voiceSends().map((s) => [s.topic, (s.payload as { version: number }).version, s.retain]),
+        [["voice/profile/sara", 1, true]],
+      );
+      sent.length = 0;
+      yield* voices.setProfiles([profile("omar", 1)]);
+      yield* TestClock.adjust("1 second");
+      assert.deepStrictEqual(
+        voiceSends().map((s) => [s.topic, s.payload, s.retain]),
+        [
+          ["voice/profile/omar", profile("omar", 1), true],
+          ["voice/profile/sara", "", true],
+        ],
+      );
+    }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(VoiceForgetsLayer))));
   },
 );

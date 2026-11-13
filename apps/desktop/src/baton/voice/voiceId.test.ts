@@ -211,3 +211,25 @@ it("forgets a saved voice whose member left the home, and keeps his own", async 
   expect(t.voiceId.profiles().map((p) => p.id)).toEqual(["owner"]);
   expect(t.deleted).toEqual(["maya-3f2a"]);
 });
+
+it("takes a newer shared profile and starts its own refinements from it, and keeps a copy at least as new", async () => {
+  using t = setup();
+  t.voiceId.sync();
+  await t.voiceId.settled();
+  const shared = {
+    id: "owner",
+    name: "You",
+    kind: "owner" as const,
+    model: "m",
+    centroid: Float32Array.from([1, 0, 0]),
+    samples: 9,
+    sources: ["spoken" as const],
+    enrolledAt: "2026-11-13T00:00:00Z",
+    version: 2,
+  };
+  expect(t.voiceId.adoptShared([shared])).toEqual(["owner"]);
+  const mine = t.voiceId.profiles()[0]!;
+  expect([mine.version, Array.from(mine.base!)]).toEqual([2, [1, 0, 0]]);
+  expect(t.voiceId.adoptShared([{ ...shared, samples: 1 }])).toEqual([]);
+  expect(t.voiceId.adoptShared([{ ...shared, version: 3 }])).toEqual(["owner"]);
+});

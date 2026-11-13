@@ -20,6 +20,7 @@ import {
   BatonHouseholdCallResult,
   type BatonHouseholdCallInput,
   type BatonHouseholdMember,
+  type BatonVoiceProfile,
 } from "@t3tools/baton-contracts";
 import type { AuthClientSession, AuthEnvironmentScope } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -91,7 +92,36 @@ type Result = BatonHouseholdCallResult;
 // Written only here, from member ids: never malformed.
 const guardiansOf = (row: Row): ReadonlyArray<string> =>
   JSON.parse(row.guardians_json) as Array<string>;
+// A plain list of strings: a child's guardians, a voice profile's sources.
 const guardiansJson = (ids: ReadonlyArray<string>) => JSON.stringify(ids);
+
+interface VoiceRow {
+  readonly member_id: string;
+  readonly model: string;
+  readonly name: string;
+  readonly kind: "owner" | "saved";
+  readonly centroid: string;
+  readonly samples: number;
+  readonly sources_json: string;
+  readonly enrolled_at: string;
+  readonly consent_note: string | null;
+  readonly version: number;
+  readonly updated_at: string;
+}
+// Written only here, from a decoded profile: never malformed.
+const voiceOf = (r: VoiceRow): BatonVoiceProfile => ({
+  id: r.member_id,
+  name: r.name,
+  kind: r.kind,
+  model: r.model,
+  centroid: r.centroid,
+  samples: r.samples,
+  sources: JSON.parse(r.sources_json) as BatonVoiceProfile["sources"],
+  enrolledAt: r.enrolled_at,
+  ...(r.consent_note === null ? {} : { consentNote: r.consent_note }),
+  version: r.version,
+  updatedAt: r.updated_at,
+});
 const refused = (line: string): Result => ({ status: "refused", line });
 const done = (line: string, extra: Omit<Result, "status" | "line"> = {}): Result => ({
   status: "done",
@@ -297,9 +327,37 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  /** Every member's shared voice profile, kept here (the home). */
+  const voicesHere = Effect.map(
+    sql<VoiceRow>`SELECT v.* FROM tessaya_voice_profiles v JOIN tessaya_household_members m ON m.id = v.member_id WHERE m.removed_at IS NULL ORDER BY v.member_id`.pipe(
+      Effect.orDie,
+    ),
+    (rows) => rows.map(voiceOf),
+  );
+  /** Every vessel here gets the profiles: from this server's table, or from the home where the members live elsewhere. */
+  const shareVoices = Effect.gen(function* () {
+    if (Option.isNone(voices)) return;
+    const on = yield* homeOn;
+    const list =
+      on === null
+        ? yield* voicesHere
+        : ((yield* askHome(on, { op: "voices" }).pipe(
+            Effect.provideService(HouseholdCaller, {
+              member: OWNER_MEMBER_ID,
+              service: true,
+              assurance: 0,
+              via: "another of this home's servers",
+            }),
+          ))?.voices ?? null);
+    // An unreachable home leaves every vessel with what it has.
+    if (list !== null) yield* voices.value.setProfiles(list);
+  }).pipe(Effect.withSpan("TessayaHousehold.shareVoices"));
+
   const purge = Effect.fn("TessayaHousehold.purge")(function* (row: Row) {
     if (Option.isSome(stores)) yield* stores.value.shred(row.id);
     yield* sql`DELETE FROM tessaya_household_members WHERE id = ${row.id}`.pipe(Effect.orDie);
+    yield* sql`DELETE FROM tessaya_voice_profiles WHERE member_id = ${row.id}`.pipe(Effect.orDie);
+    yield* shareVoices;
     // Their voice print is theirs too (design §5.1): every vessel here and on every linked server forgets it.
     yield* forgetVoiceHere(row.id);
     yield* forgetOnPeers(row.id);
@@ -574,6 +632,50 @@ export const make = Effect.gen(function* () {
           ),
         );
       }
+      case "voices": {
+        if (role !== "owner" && role !== "admin" && role !== "service")
+          return refused("Only the owner or this home's devices read everyone's voice.");
+        return done("", { voices: yield* voicesHere });
+      }
+      case "saveVoice": {
+        const p = input.profile;
+        const target = yield* rowOf(p.id);
+        if (Option.isNone(target) || target.value.removed_at !== null)
+          return refused("Only a member of this home has a voice profile here.");
+        if ((p.kind === "owner") !== (target.value.role === "owner"))
+          return refused("That profile's kind doesn't match the member.");
+        // Their own voice, or the owner or an admin enrolling someone sitting with them.
+        const may =
+          (c.member === p.id && c.service !== true) || role === "owner" || role === "admin";
+        if (!may || c.assurance < 2 || c.tainted === true)
+          return refused("Only they, the owner or an admin save a member's voice.");
+        const now = iso(yield* Clock.currentTimeMillis);
+        const existing =
+          (yield* sql<VoiceRow>`SELECT * FROM tessaya_voice_profiles WHERE member_id = ${p.id} AND model = ${p.model}`.pipe(
+            Effect.orDie,
+          ))[0];
+        // A copy found on a device stands only when it has more samples; a new enrolment always does.
+        if (existing !== undefined && !input.fresh && existing.samples >= p.samples)
+          return done(`${target.value.name}'s voice here already has as many samples; kept.`);
+        const version = (existing?.version ?? 0) + 1;
+        yield* sql`INSERT INTO tessaya_voice_profiles ${sql.insert({
+          member_id: p.id,
+          model: p.model,
+          name: p.name,
+          kind: p.kind,
+          centroid: p.centroid,
+          samples: p.samples,
+          sources_json: guardiansJson(p.sources),
+          enrolled_at: p.enrolledAt,
+          consent_note: p.consentNote ?? null,
+          version,
+          updated_at: now,
+        })} ON CONFLICT (member_id, model) DO UPDATE SET name = excluded.name, kind = excluded.kind, centroid = excluded.centroid, samples = excluded.samples, sources_json = excluded.sources_json, enrolled_at = excluded.enrolled_at, consent_note = excluded.consent_note, version = excluded.version, updated_at = excluded.updated_at`.pipe(
+          Effect.orDie,
+        );
+        yield* shareVoices;
+        return done(`Saved ${target.value.name}'s voice for every device in this home.`);
+      }
       case "setHome": {
         const on = input.on === null || input.on.trim() === "" ? null : input.on.trim();
         if (on !== null && !(yield* peerLabels).includes(on))
@@ -632,7 +734,7 @@ export const make = Effect.gen(function* () {
     }
   });
 
-  yield* purgeDue.pipe(
+  yield* Effect.andThen(purgeDue, shareVoices).pipe(
     Effect.repeat(Schedule.spaced("1 hour")),
     Effect.catchCause(() => Effect.void),
     Effect.forkScoped,

@@ -57,6 +57,9 @@ import {
   type VoiceCoreEvent,
   type VoiceIntentClient,
   OVER_HER_VOICE,
+  profileFromWire,
+  profileToWire,
+  type SpeakerProfile,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
 import type { ConversationLog } from "../conversation/conversationLog.ts";
@@ -1413,6 +1416,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     model: SPEAKER_MODEL.id,
     appData: input.env["APPDATA"],
     onChange: () => pushHome(),
+    // A new enrolment here is that member's one voice for every device in the home.
+    ...(input.household === undefined
+      ? {}
+      : {
+          onEnrolled: (p: SpeakerProfile) =>
+            void input.household!("saveVoice", { profile: profileToWire(p), fresh: true }).catch(
+              () => null,
+            ),
+        }),
     // Only a member of this home has a saved voice, asked of its household (from its home server).
     ...(input.household === undefined
       ? {}
@@ -7317,8 +7329,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
   };
 
-  /** One confirmation that says what goes with it, then the profile is deleted at once. */
-  // A member removed from the home (their data destroyed) is forgotten here too: checked soon after start and hourly.
+  // One voice profile per member, kept on the home server: this desktop keeps a copy of each and refines its own copy.
+  // Checked soon after start and hourly: a newer shared profile is taken, a removed member is forgotten, and a profile
+  // this desktop had before there was one shared copy is offered to the home (kept there only if it has more samples).
   // Only a whole answer from the household counts; an unreachable home changes nothing.
   if (input.household !== undefined) {
     const household = input.household;
@@ -7328,10 +7341,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (members === undefined || members.length === 0) return;
       const gone = voiceId.keepOnly(new Set(members.map((m) => m.id)));
       if (gone.length > 0) input.onNote?.("voice_id_forgot_removed", { count: gone.length });
+      for (const p of voiceId.profiles().filter((x) => x.version === undefined))
+        await household("saveVoice", { profile: profileToWire(p), fresh: false }).catch(() => null);
+      const shared = (await household("voices").catch(() => null))?.voices;
+      if (shared === undefined) return;
+      const taken = voiceId.adoptShared(shared.flatMap((w) => profileFromWire(w) ?? []));
+      if (taken.length > 0) input.onNote?.("voice_id_took_shared", { count: taken.length });
     };
     setTimeout(() => void reconcile(), 30_000).unref();
     setInterval(() => void reconcile(), 60 * 60_000).unref();
   }
+  /** One confirmation that says what goes with it, then the profile is deleted at once. */
   const forgetVoice = async (id: string, what: string) => {
     const answer = await (input.extras?.ask({
       title: `Delete ${what}?`,

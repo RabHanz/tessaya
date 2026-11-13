@@ -88,9 +88,12 @@ export const createSpeakerIdentity = (input: {
       decideSpeaker({ ...base, use: "act" }),
       at,
     );
-    if (identity.kind === "owner" && input.settings().adapt) {
-      const owner = base.profiles.find((p) => p.kind === "owner" && p.model === embedder.model);
-      const moved = owner === undefined ? null : adaptProfile(owner, clip, input.policy);
+    // This device refines the speaker's copy from their own verified turn; the shared profile changes only by enrolling.
+    if (identity.verified && identity.personId !== null && input.settings().adapt) {
+      const mine = base.profiles.find(
+        (p) => p.id === identity.personId && p.model === embedder.model,
+      );
+      const moved = mine === undefined ? null : adaptProfile(mine, clip, input.policy);
       if (moved !== null) input.voiceId.save(moved);
     }
     return decided(identity, use, ms);

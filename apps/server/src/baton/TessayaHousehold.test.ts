@@ -6,7 +6,6 @@ import { AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
@@ -384,13 +383,91 @@ describe("a removed member's voice", () => {
                   VoiceForgets,
                   VoiceForgets.of({
                     forget: (m) => Effect.sync(() => void forgotten.push(m)),
-                    forgotten: Stream.empty,
+                    setProfiles: () => Effect.void,
+                    current: Effect.succeed([]),
+                    listen: () => Effect.void,
                   }),
                 ),
                 Layer.mock(PeerLinks.PeerLinks)({ list: Effect.succeed([link]) }),
                 Layer.mock(PeerMcpClient.PeerMcpClient)({
                   call: (input) =>
                     Effect.sync(() => (told.push([input.tool, input.arguments]), {})) as never,
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+    }));
+});
+
+describe("one voice profile per member, on the home", () => {
+  const voice = (id: string, samples: number, centroid = "AACAPwAAAAA=") => ({
+    id,
+    name: id,
+    kind: id === "owner" ? ("owner" as const) : ("saved" as const),
+    model: "m",
+    centroid,
+    samples,
+    sources: ["spoken" as const],
+    enrolledAt: "2026-11-13T00:00:00Z",
+  });
+  test("a new enrolment replaces it everywhere; a device's old copy stands only with more samples; members only", () =>
+    Effect.gen(function* () {
+      const shared: Array<ReadonlyArray<{ id: string; version: number }>> = [];
+      yield* Effect.gen(function* () {
+        const h = yield* TessayaHousehold;
+        const saved = (fresh: boolean, samples: number, centroid?: string) =>
+          as(owner)(
+            h.callHere({ op: "saveVoice", profile: voice("owner", samples, centroid), fresh }),
+          );
+        // The R1's enrolment lands first; the desktop's older copy with more samples then wins; a fresh one replaces it.
+        assert.strictEqual((yield* saved(true, 4)).status, "done");
+        assert.strictEqual((yield* saved(false, 3)).line.includes("kept"), true);
+        yield* saved(false, 9, "AAAAAAAAgD8=");
+        yield* saved(true, 2);
+        const listed = (yield* as(owner)(h.callHere({ op: "voices" }))).voices!;
+        assert.deepStrictEqual(
+          listed.map((v) => [v.id, v.samples, v.version]),
+          [["owner", 2, 3]],
+        );
+        assert.deepStrictEqual(
+          shared.at(-1)?.map((v) => [v.id, v.version]),
+          [["owner", 3]],
+        );
+        // Nobody who isn't a member, and no member's voice saved by someone else who isn't the owner or an admin.
+        const stranger = yield* as(owner)(
+          h.callHere({ op: "saveVoice", profile: voice("ali", 5), fresh: true }),
+        );
+        assert.strictEqual(stranger.status, "refused");
+        yield* as(owner)(h.callHere({ op: "invite", name: "Sara", role: "adult" }));
+        yield* as(owner)(h.callHere({ op: "invite", name: "Omar", role: "adult" }));
+        const ids = (yield* as(owner)(h.callHere({ op: "list" }))).members!.map((m) => m.id);
+        const [sara, omar] = [ids[1]!, ids[2]!];
+        const byOmar = yield* as({ member: omar, assurance: 2, via: "his phone" })(
+          h.callHere({ op: "saveVoice", profile: voice(sara, 5), fresh: true }),
+        );
+        assert.strictEqual(byOmar.status, "refused");
+        // Gone with their data.
+        yield* as({ member: sara, assurance: 2, via: "her phone" })(
+          h.callHere({ op: "saveVoice", profile: voice(sara, 5), fresh: true }),
+        );
+        yield* as(owner)(h.callHere({ op: "remove", id: sara, now: true }));
+        assert.deepStrictEqual(
+          (yield* as(owner)(h.callHere({ op: "voices" }))).voices!.map((v) => v.id),
+          ["owner"],
+        );
+      }).pipe(
+        Effect.provide(
+          stackWith(null).pipe(
+            Layer.provide(
+              Layer.succeed(
+                VoiceForgets,
+                VoiceForgets.of({
+                  forget: () => Effect.void,
+                  setProfiles: (list) => Effect.sync(() => void shared.push(list)),
+                  current: Effect.succeed([]),
+                  listen: () => Effect.void,
                 }),
               ),
             ),
