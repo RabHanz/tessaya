@@ -45,6 +45,8 @@ export const DeskTurnBody = Schema.Struct({
   /** This desktop's id in the device registry. */
   vessel: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   timeZone: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+  /** The Claude Code binary his desktop is set to use, honoured only on his own machine. */
+  claudeBinary: Schema.optional(Schema.String.check(Schema.isMaxLength(500))),
 });
 export type DeskTurnBody = typeof DeskTurnBody.Type;
 
@@ -126,7 +128,17 @@ export const deskTurnStream = (body: DeskTurnBody, tools: RoomToolSet, ownMachin
           tools,
           device: body.vessel,
           hold: () => (call) => call,
-          ...(ownMachine ? { builtins: { tools: OWN_MACHINE_TOOLS, cwd: NodeOS.homedir() } } : {}),
+          ...(ownMachine
+            ? {
+                builtins: {
+                  tools: OWN_MACHINE_TOOLS,
+                  cwd: NodeOS.homedir(),
+                  ...(body.claudeBinary === undefined || body.claudeBinary.trim() === ""
+                    ? {}
+                    : { binary: body.claudeBinary }),
+                },
+              }
+            : {}),
           gather: Effect.gen(function* () {
             const pipeline = yield* TessayaTurn;
             const begun = yield* pipeline

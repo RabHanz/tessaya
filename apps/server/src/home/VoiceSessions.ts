@@ -63,7 +63,12 @@ export interface SessionSpec {
   readonly system: string;
   readonly tools: ReadonlyArray<SessionTool>;
   /** Claude Code's own tools for this session, and the folder they work in: his desktop's files on his own machine. */
-  readonly builtins?: { readonly tools: ReadonlyArray<string>; readonly cwd: string };
+  readonly builtins?: {
+    readonly tools: ReadonlyArray<string>;
+    readonly cwd: string;
+    /** His desktop's Claude Code binary (its claudeBinary setting), on his own machine. */
+    readonly binary?: string;
+  };
 }
 
 /** The turn in progress: its tool runner and what it hears back. */
@@ -185,7 +190,7 @@ export const createVoiceSessions = (
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !METERED.test(k)));
     let child: NodeChildProcess.ChildProcess | null = null;
     for (let tries = 1; child === null; tries += 1) {
-      const proc = spawn("claude", [...sessionArgs(spec, config)], {
+      const proc = spawn(spec.builtins?.binary ?? "claude", [...sessionArgs(spec, config)], {
         cwd: spec.builtins?.cwd ?? dir,
         env: { ...env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
         stdio: ["pipe", "pipe", "ignore"],
