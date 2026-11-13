@@ -88,8 +88,8 @@ describe("the companion's changes of expression", () => {
       using m = mount(TCS, persona);
       const before = m.sample();
       m.rig.setExpression(expression);
-      // the change itself (0.6 s): after it a sustained mood loop (a laugh, a sway) keeps its 30-a-second ceiling
-      const seen = [before, ...m.frames(36)];
+      // the change itself (1.15 s): after it a sustained mood loop (a laugh, a sway) keeps its 30-a-second ceiling
+      const seen = [before, ...m.frames(69)];
       // the body moves on an arc (anticipation, the move, a settle): it travels, and never jumps
       const lifts = seen.map((s) => s.lift - before.lift);
       const lift = motionOf(lifts);
@@ -99,6 +99,27 @@ describe("the companion's changes of expression", () => {
       const peak = lifts.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0);
       const lead = lifts.slice(0, lifts.indexOf(peak));
       expect(Math.max(0, ...lead.map((v) => -Math.sign(peak) * v))).toBeGreaterThan(0.4);
+      // a change is a move of about a second, slow in and slow out (the motion bar): the face is not yet halfway at
+      // 0.25 s, and still moving at 0.6 s
+      // each eye's shape around its own centre, so the body's posture and squash do not count as the face changing
+      const shape = (nums: ReadonlyArray<number>) => {
+        const eye = (side: number) =>
+          nums.slice(side * (nums.length / 2), (side + 1) * (nums.length / 2));
+        return [0, 1].flatMap((side) => {
+          const e = eye(side),
+            xs = e.filter((_, k) => k % 2 === 0),
+            ys = e.filter((_, k) => k % 2 === 1);
+          const cx = xs.reduce((a, b) => a + b, 0) / xs.length,
+            cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+          return e.map((v, k) => v - (k % 2 === 0 ? cx : cy));
+        });
+      };
+      const start = shape(before.eyes);
+      const faceAt = (i: number) =>
+        shape(seen[i]!.eyes).reduce((a, v, k) => a + Math.abs(v - start[k]!), 0);
+      const total = faceAt(69);
+      expect(faceAt(15)).toBeLessThan(total * 0.5);
+      expect(Math.abs(faceAt(36) - faceAt(33))).toBeGreaterThan(0);
       for (const series of [
         seen.map((s) => s.brow),
         ...before.eyes.map((_, k) => seen.map((s) => s.eyes[k] ?? Number.NaN)),
