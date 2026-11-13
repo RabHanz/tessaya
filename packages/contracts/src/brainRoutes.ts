@@ -124,3 +124,29 @@ export const BrainEscalation = Schema.Struct({
   rules: Schema.optionalKey(Schema.Array(BrainEscalationRule).check(Schema.isMaxLength(30))),
 });
 export type BrainEscalation = typeof BrainEscalation.Type;
+
+/**
+ * Dollars at list price that the API keys may spend before he hears about it, per day and per month in his zone.
+ * null turns one off: a settings patch merges, so leaving it out can't.
+ */
+const dollars = (maximum: number) =>
+  Schema.optionalKey(
+    Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 0.01, maximum }))),
+  );
+export const BrainSpendLimit = Schema.Struct({ day: dollars(10_000), month: dollars(100_000) });
+export type BrainSpendLimit = typeof BrainSpendLimit.Type;
+const spendRow = Schema.optionalKey(BrainSpendLimit);
+/** `all` is every role together; a role's own row alerts on that role alone. Unset: no alert. */
+export const BrainSpendAlert = Schema.Struct({
+  all: spendRow,
+  cleanup: spendRow,
+  voice: spendRow,
+  deep: spendRow,
+  background: spendRow,
+  consolidation: spendRow,
+  web: spendRow,
+  vision: spendRow,
+  intent: spendRow,
+  synopsis: spendRow,
+});
+export type BrainSpendAlert = typeof BrainSpendAlert.Type;

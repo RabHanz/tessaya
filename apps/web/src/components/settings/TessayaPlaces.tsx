@@ -13,6 +13,7 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import { Button } from "../ui/button";
 import { ApisSettingsPanel } from "./ApisSettings";
 import { BatonAccountsSettings } from "./BatonAccountsSettings";
+import { BrainUsagePanel } from "./BrainUsageSettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
 import { SettingsScopeProvider, useSettingsScope } from "./SettingsScopeContext";
@@ -49,6 +50,7 @@ const TESSAYA_PAGES = {
   apis: ApisSettingsPanel,
   accounts: AccountsPage,
   voices: VoicesPage,
+  usage: BrainUsagePanel,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;

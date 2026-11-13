@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * Every model call the brain makes writes one row (BRAIN-DESIGN §13.3, B1d): role, provider, login, model, tokens,
  * and dollars at list price when an API key paid (a subscription row says null: the plan paid). The first slice of
@@ -7,16 +7,20 @@
 import * as NodePath from "node:path";
 
 import { credentialOf } from "@t3tools/baton-shared/brainRoutes";
-import type { BrainCredential, BrainRole } from "@t3tools/contracts";
+import type { BrainCredential, BrainRole, BrainSpendAlert } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { priceUsage, type RateTable } from "../usage/usagePricing.ts";
 import * as BatonDatabase from "./BatonDatabase.ts";
+import * as BatonRecordService from "./BatonRecordService.ts";
 import { readRates } from "./BatonJobSpend.ts";
 
 /** One call's tokens on one model. `input` is the uncached part, as the API counts it. */
@@ -133,6 +137,80 @@ export const zoneOffsetMs = (timeZone: string, at: number): number => {
   return wall - Math.floor(at / 1000) * 1000;
 };
 
+/** A zone `Intl` knows: a client's string is checked before any date math throws on it. */
+export const knownZone = (timeZone: string) => {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions().timeZone !== "";
+  } catch {
+    return false;
+  }
+};
+
+/** Where in his day and month `at` falls: both starts, in ms. */
+export const periodStarts = (timeZone: string, at: number) => {
+  const offset = zoneOffsetMs(timeZone, at);
+  const local = new Date(at + offset);
+  const y = local.getUTCFullYear();
+  const m = local.getUTCMonth();
+  // shortcut: the offset at `at` is used for midnight too, so a DST change today moves the start by an hour.
+  return {
+    day: Date.UTC(y, m, local.getUTCDate()) - offset,
+    month: Date.UTC(y, m, 1) - offset,
+  };
+};
+
+export type SpendScope = "all" | BrainRole;
+/** What the API keys spent this day and month, in dollars: every role together (`all`) and each one. */
+export interface SpendNow {
+  readonly day: Partial<Record<SpendScope, number>>;
+  readonly month: Partial<Record<SpendScope, number>>;
+}
+export interface SpendLimitState {
+  readonly scope: SpendScope;
+  readonly period: "day" | "month";
+  readonly limit: number;
+  readonly spent: number;
+  readonly reached: boolean;
+}
+
+/** Every limit he set, with what was spent against it. */
+export const spendLimits = (
+  limits: BrainSpendAlert,
+  spent: SpendNow,
+): ReadonlyArray<SpendLimitState> =>
+  (Object.entries(limits) as ReadonlyArray<[SpendScope, BrainSpendAlert["all"]]>).flatMap(
+    ([scope, limit]) =>
+      (["day", "month"] as const).flatMap((period) => {
+        const at = limit?.[period];
+        if (at === undefined || at === null) return [];
+        const so = spent[period][scope] ?? 0;
+        return [{ scope, period, limit: at, spent: so, reached: so >= at }];
+      }),
+  );
+
+/** The limits this call took over: reached now, not before it. */
+export const crossedBy = (
+  limits: BrainSpendAlert,
+  after: SpendNow,
+  row: { readonly role: BrainRole; readonly dollars: number },
+): ReadonlyArray<SpendLimitState> => {
+  const less = (sums: SpendNow["day"]) => ({
+    ...sums,
+    all: (sums.all ?? 0) - row.dollars,
+    [row.role]: (sums[row.role] ?? 0) - row.dollars,
+  });
+  const before = spendLimits(limits, { day: less(after.day), month: less(after.month) });
+  return spendLimits(limits, after).filter((now, i) => now.reached && before[i]?.reached === false);
+};
+
+const money = (dollars: number) => `$${dollars.toFixed(2)}`;
+
+/** One line for the Record, the desktop's notice and her voice. */
+export const spendLine = (crossed: SpendLimitState) =>
+  `${crossed.period === "day" ? "Today's" : "This month's"} API spend on ${
+    crossed.scope === "all" ? "all her work" : crossed.scope
+  } reached your ${money(crossed.limit)} alert: ${money(crossed.spent)} so far.`;
+
 const RATES_TTL_MS = 60 * 60_000;
 
 export class BrainUsage extends Context.Service<
@@ -145,18 +223,68 @@ export class BrainUsage extends Context.Service<
       readonly since: number;
       readonly timeZone: string;
     }) => Effect.Effect<ReadonlyArray<UsageTotal>>;
+    /** His spend alerts, each with what the API keys spent against it this day or month in `timeZone`. */
+    readonly limits: (timeZone: string) => Effect.Effect<ReadonlyArray<SpendLimitState>>;
   }
 >()("t3/baton/BrainUsage") {}
+
+/** His zone: the house's, else this machine's. Read where the call is made, so any caller can record. */
+const houseZone = Effect.gen(function* () {
+  const home = yield* Effect.serviceOption(HomeAssistantService);
+  return Option.isSome(home)
+    ? yield* home.value.timeZone
+    : Intl.DateTimeFormat().resolvedOptions().timeZone;
+});
 
 /** `readRateList` gives the price list, or null before T3's usage page has ever fetched one. */
 export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => RateTable | null) {
   const sql = yield* SqlClient.SqlClient;
+  const settings = yield* ServerSettingsService;
+  const notes = yield* BatonRecordService.BatonRecordService;
   // Parsed once an hour, not on every call: T3's list is ~3 MB.
   let rates: { readonly table: RateTable | null; readonly at: number } | null = null;
   const ratesNow = Effect.fn("BrainUsage.rates")(function* () {
     const now = yield* Clock.currentTimeMillis;
     if (rates === null || now - rates.at > RATES_TTL_MS) rates = { table: readRateList(), at: now };
     return rates.table;
+  });
+
+  const spendNow = Effect.fn("BrainUsage.spendNow")(function* (timeZone: string, at: number) {
+    const starts = periodStarts(timeZone, at);
+    const rows = yield* sql<{ role: BrainRole; day: number | null; month: number | null }>`
+      SELECT role, SUM(CASE WHEN at >= ${starts.day} THEN dollars END) AS day, SUM(dollars) AS month
+      FROM tessaya_brain_usage WHERE at >= ${starts.month} AND dollars IS NOT NULL GROUP BY role
+    `;
+    const day: Partial<Record<SpendScope, number>> = { all: 0 };
+    const month: Partial<Record<SpendScope, number>> = { all: 0 };
+    for (const r of rows) {
+      day[r.role] = r.day ?? 0;
+      month[r.role] = r.month ?? 0;
+      day.all = (day.all ?? 0) + (r.day ?? 0);
+      month.all = (month.all ?? 0) + (r.month ?? 0);
+    }
+    return { day, month } satisfies SpendNow;
+  });
+
+  /** A call that takes the keys' spend over one of his limits writes it to the Record once; the desktop says it. */
+  const alertIfCrossed = Effect.fn("BrainUsage.alertIfCrossed")(function* (
+    role: BrainRole,
+    dollars: number,
+    at: number,
+  ) {
+    const limits = (yield* settings.getSettings).brainSpendAlert;
+    if (Object.keys(limits).length === 0) return;
+    const after = yield* spendNow(yield* houseZone, at);
+    for (const crossed of crossedBy(limits, after, { role, dollars })) {
+      yield* Effect.logInfo("brain: a spend alert was reached", { ...crossed });
+      yield* notes.append({
+        kind: "brain_spend",
+        actor: "Tessaya",
+        subject: crossed.scope === "all" ? "API spend" : `API spend: ${crossed.scope}`,
+        outcome: "alert",
+        detail: spendLine(crossed),
+      });
+    }
   });
 
   const record = Effect.fn("BrainUsage.record")(
@@ -169,6 +297,7 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
       VALUES (${at}, ${row.role}, ${"anthropic"}, ${row.credential}, ${row.model}, ${row.input},
         ${row.cacheRead}, ${row.cacheWrite}, ${row.output}, ${dollars})
     `;
+      if (dollars !== null && dollars > 0) yield* alertIfCrossed(row.role, dollars, at);
     },
     Effect.catchCause((cause) =>
       Effect.logWarning("brain: a usage row was not written", { cause }),
@@ -217,7 +346,36 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
     }));
   });
 
-  return BrainUsage.of({ record, totals });
+  const limits = Effect.fn("BrainUsage.limits")(
+    function* (timeZone: string) {
+      const brainSpendAlert = (yield* settings.getSettings).brainSpendAlert;
+      return spendLimits(
+        brainSpendAlert,
+        yield* spendNow(timeZone, yield* Clock.currentTimeMillis),
+      );
+    },
+    Effect.catchCause((cause) =>
+      Effect.as(Effect.logWarning("brain: spend limits could not be read", { cause }), []),
+    ),
+  );
+
+  return BrainUsage.of({ record, totals, limits });
+});
+
+/** The Usage page's and `tessaya_usage_report`'s read: the last `days` days in `timeZone`, and his spend alerts. */
+export const brainUsageReport = Effect.fn("BrainUsage.report")(function* (input: {
+  readonly days: number;
+  readonly timeZone: string;
+}) {
+  const usage = yield* BrainUsage;
+  const now = yield* Clock.currentTimeMillis;
+  const timeZone =
+    input.timeZone !== "" && knownZone(input.timeZone) ? input.timeZone : yield* houseZone;
+  const since = periodStarts(timeZone, now - (input.days - 1) * 86_400_000).day;
+  return {
+    totals: yield* usage.totals({ since, timeZone }),
+    limits: yield* usage.limits(timeZone),
+  };
 });
 
 /** On Baton's database, the same one the services use (a layer is built once per server). */
@@ -227,4 +385,4 @@ export const layer = Layer.effect(
     const { dbPath } = yield* ServerConfig.ServerConfig;
     return yield* make(() => readRates(NodePath.dirname(dbPath)));
   }),
-).pipe(Layer.provide(BatonDatabase.layer));
+).pipe(Layer.provide(BatonRecordService.layer), Layer.provide(BatonDatabase.layer));

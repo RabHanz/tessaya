@@ -14,6 +14,7 @@
  */
 import {
   BATON_ACCOUNT_WS_METHODS,
+  BATON_BRAIN_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
@@ -207,6 +208,10 @@ export function createBatonWorkSessionAtoms<R, E>(
     cloudApprove: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:cloud-approve",
       tag: BATON_CLOUD_WS_METHODS.approve,
+    }),
+    brainUsage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:brain-usage",
+      tag: BATON_BRAIN_WS_METHODS.usage,
     }),
     homeCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:home",

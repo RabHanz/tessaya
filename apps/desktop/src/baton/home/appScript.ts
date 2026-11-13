@@ -668,7 +668,9 @@ function keys(p, which) {
 function resetsIn(iso) { const ms = Date.parse(iso) - Date.now(); if (!(ms > 0)) return 'now'; const h = ms / 3600000; return h < 1 ? 'in under an hour' : h < 48 ? 'in ' + Math.round(h) + ' h' : 'in ' + Math.round(h / 24) + ' d'; }
 function usage(p) {
   const rows = (S.extra && S.extra.usage) || [];
-  if (!rows.length) { p.appendChild($('div', 'empty', 'No accounts reported yet. They appear here once T3 has loaded your sessions.')); return; }
+  // What her brain used, per kind of work and login, and the API spend alerts: T3's web page, inside this window.
+  const brain = () => { p.appendChild($('h2', null, 'Her brain')); embed(p, 'usage'); };
+  if (!rows.length) { p.appendChild($('div', 'empty', 'No accounts reported yet. They appear here once T3 has loaded your sessions.')); brain(); return; }
   const g = $('div', 'group');
   for (const u of rows) {
     const r = $('div', 'row'); r.style.alignItems = 'flex-start'; const t = $('div', 'text'); t.style.flex = '1';
@@ -677,6 +679,7 @@ function usage(p) {
     r.appendChild(t); g.appendChild(r);
   }
   p.appendChild(g);
+  brain();
 }
 let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hedit = null, hnote = '', htimer = null, hbusy = new Set(), hday = null, hrange = 'all', hkind = 'all', hdaylim = {}, hexp = (() => { try { return JSON.parse(localStorage.getItem('tessaya.hdays') || '{}'); } catch (e) { return {}; } })();
 function loadHistory() {

@@ -547,6 +547,22 @@ export const startBatonDesktop = Effect.gen(function* () {
         ),
       );
     }, IN_FLIGHT_MS).unref();
+    // His API spend alerts (BrainUsage writes each once, to the Record): a notice here when one is reached.
+    // @effect-diagnostics-next-line globalDateInEffect:off - a timestamp for the Record's `since`, read by plain code
+    let spendSeen = new Date().toISOString();
+    setInterval(() => {
+      void direct("baton.record.list", { kind: "brain_spend", since: spendSeen, limit: 5 })
+        .then((value) => {
+          const entries = (value as { entries?: ReadonlyArray<{ at: string; detail?: string }> })
+            ?.entries;
+          for (const entry of [...(entries ?? [])].toReversed()) {
+            if (entry.at <= spendSeen) continue;
+            spendSeen = entry.at;
+            notify("API spend alert", entry.detail ?? "An API spend alert was reached.");
+          }
+        })
+        .catch(() => undefined);
+    }, 60_000).unref();
     // Each assistant turn goes to the Record on this machine's server, so "what happened?" has what she was asked and did.
     const noteTurn = (kind: string, fields: Readonly<Record<string, unknown>>) => {
       turnLog.note(kind, fields);

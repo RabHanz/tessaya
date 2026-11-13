@@ -117,6 +117,48 @@ const WORK = {
     rows: [{ project: "acme/app", job: "checkout refactor", state: "working", by: "Codex" }],
   },
   tessaya_sessions: { sessions: [{ title: "checkout refactor", folder: "/home/user/acme/app" }] },
+  // Shaped as BrainUsageResult: cleanup on the API key, talking on the plan, one alert.
+  tessaya_usage_report: {
+    totals: [
+      {
+        day: "2026-11-12",
+        role: "cleanup",
+        credential: "apiKey:anthropic",
+        model: "claude-haiku-5-5",
+        calls: 310,
+        input: 41000,
+        cacheRead: 920000,
+        cacheWrite: 3100,
+        output: 9800,
+        dollars: 0.19,
+      },
+      {
+        day: "2026-11-13",
+        role: "cleanup",
+        credential: "apiKey:anthropic",
+        model: "claude-haiku-5-5",
+        calls: 402,
+        input: 52000,
+        cacheRead: 1190000,
+        cacheWrite: 3100,
+        output: 12100,
+        dollars: 0.23,
+      },
+      {
+        day: "2026-11-13",
+        role: "voice",
+        credential: "subscription",
+        model: "claude-sonnet-5-5",
+        calls: 88,
+        input: 2100,
+        cacheRead: 1200000,
+        cacheWrite: 61000,
+        output: 9100,
+        dollars: null,
+      },
+    ],
+    limits: [{ scope: "all", period: "day", limit: 1, spent: 0.23, reached: false }],
+  },
 } as Record<string, unknown>;
 
 type House = ReturnType<typeof makeHouse>;

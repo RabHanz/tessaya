@@ -4,8 +4,21 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 import { expect } from "vite-plus/test";
 
+import { ServerSettingsService } from "../serverSettings.ts";
+import { parseRateTable, type RateTable } from "../usage/usagePricing.ts";
 import * as BatonDatabase from "./BatonDatabase.ts";
+import * as BatonRecordService from "./BatonRecordService.ts";
 import * as BrainUsage from "./BrainUsage.ts";
+
+const usageLayer = (rates: RateTable | null) =>
+  Layer.effect(
+    BrainUsage.BrainUsage,
+    BrainUsage.make(() => rates),
+  ).pipe(
+    Layer.provideMerge(BatonRecordService.layer),
+    Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provide(BatonDatabase.layerMemory),
+  );
 
 /** Claude Code 2.1's `result` event, trimmed (a real `claude -p --model haiku` run, 13 Nov). */
 const RESULT = {
@@ -66,12 +79,65 @@ it.effect("totals by day in his zone; the plan's rows carry no dollars", () =>
     expect(
       yield* usage.totals({ since: Date.UTC(2026, 10, 12, 19), timeZone: "Asia/Karachi" }),
     ).toHaveLength(2);
-  }).pipe(
-    Effect.provide(
-      Layer.effect(
-        BrainUsage.BrainUsage,
-        BrainUsage.make(() => null),
-      ).pipe(Layer.provide(BatonDatabase.layerMemory)),
-    ),
-  ),
+  }).pipe(Effect.provide(usageLayer(null))),
 );
+
+it.effect(
+  "tells him once when the API keys' spend reaches a limit he set, and the plan never counts",
+  () =>
+    Effect.gen(function* () {
+      const usage = yield* BrainUsage.BrainUsage;
+      const settings = yield* ServerSettingsService;
+      const record = yield* BatonRecordService.BatonRecordService;
+      yield* settings.updateSettings({
+        brainSpendAlert: { all: { day: 0.15 }, cleanup: { month: 1 } },
+      });
+      // $0.10 a call at list: 100k uncached input tokens at $1/M.
+      const call = {
+        model: "claude-haiku-5-5",
+        input: 100_000,
+        cacheRead: 0,
+        cacheWrite: 0,
+        output: 0,
+      };
+      yield* TestClock.setTime(Date.UTC(2026, 10, 13, 6));
+      yield* usage.record({ ...call, role: "cleanup", credential: "apiKey:anthropic" });
+      yield* usage.record({ ...call, role: "voice", credential: "subscription" });
+      expect(yield* record.query({ kind: "brain_spend" })).toEqual([]);
+      yield* usage.record({ ...call, role: "cleanup", credential: "apiKey:anthropic" });
+      yield* usage.record({ ...call, role: "cleanup", credential: "apiKey:anthropic" });
+      const alerts = yield* record.query({ kind: "brain_spend" });
+      expect(alerts.map((a) => a.detail)).toEqual([
+        "Today's API spend on all her work reached your $0.15 alert: $0.20 so far.",
+      ]);
+      expect(yield* usage.limits("Asia/Karachi")).toEqual([
+        { scope: "all", period: "day", limit: 0.15, spent: expect.closeTo(0.3, 6), reached: true },
+        {
+          scope: "cleanup",
+          period: "month",
+          limit: 1,
+          spent: expect.closeTo(0.3, 6),
+          reached: false,
+        },
+      ]);
+    }).pipe(
+      Effect.provide(
+        usageLayer(
+          parseRateTable({
+            "claude-haiku-5-5": { input_cost_per_token: 1e-6, output_cost_per_token: 5e-6 },
+          }),
+        ),
+      ),
+    ),
+);
+
+it("reads his day and month in his zone, and a zone it doesn't know as not one", () => {
+  // 20:00 UTC on 31 Oct is 01:00 on 1 Nov in Karachi: his month has begun.
+  const at = Date.UTC(2026, 9, 31, 20);
+  expect(BrainUsage.periodStarts("Asia/Karachi", at)).toEqual({
+    day: Date.UTC(2026, 9, 31, 19),
+    month: Date.UTC(2026, 9, 31, 19),
+  });
+  expect(BrainUsage.knownZone("Asia/Karachi")).toBe(true);
+  expect(BrainUsage.knownZone("Mars/Olympus")).toBe(false);
+});

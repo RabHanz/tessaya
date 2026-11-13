@@ -30,6 +30,7 @@ import {
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  BATON_BRAIN_WS_METHODS,
   BATON_DICTATION_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -68,6 +69,7 @@ import { liveSwitchRefusal } from "@t3tools/baton-shared/accounts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { BrainUsage, brainUsageReport } from "./BrainUsage.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
@@ -156,6 +158,7 @@ export type BatonServices =
   | BatonSessionsAcross
   | BatonMemoryLearning
   | TessayaTurn
+  | BrainUsage
   | TessayaHousehold
   | ServerConfig.ServerConfig
   | ScheduledTaskService
@@ -604,6 +607,7 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.map(record.query(input), (entries) => ({ entries })),
         ),
       ),
+    [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input)),
     [BATON_RECORD_WS_METHODS.append]: (input) =>
       run(
         Effect.flatMap(BatonRecordService, (record) =>

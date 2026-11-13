@@ -20,6 +20,7 @@ import {
   BatonWeaveListResult,
   BatonWeaveSendInput,
   BatonWeaveSendResult,
+  BrainUsageResult,
   DesktopSettingsView,
   DesktopVoiceSettingsPatch,
   OrchestrationRuleListInput,
@@ -379,6 +380,25 @@ const ComingUpTool = Tool.make("tessaya_coming_up", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const UsageReportTool = Tool.make("tessaya_usage_report", {
+  ...shared,
+  description:
+    'What her brain used and what it cost, per day in his time zone: each kind of work (talking, cleanup, hard tasks on Opus, background), which login paid (his Claude subscription, whose plan covers it, or the API key, priced at list in dollars), the model and tokens; and his API spend alerts with what was spent against each. For "how much did the API cost this week?", "what have you used today?" or "am I near my spend limit?".',
+  parameters: Schema.Struct({
+    days: Schema.optional(
+      Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 31 })).annotate({
+        description: "How many days back, today included. Default 7.",
+      }),
+    ),
+  }),
+  success: BrainUsageResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const MemoryAboutTool = Tool.make("tessaya_memory_about", {
   ...shared,
   description:
@@ -533,6 +553,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryForgetTool,
   MemoryAboutTool,
   ComingUpTool,
+  UsageReportTool,
   WhosHomeTool,
   PreferenceSetTool,
   RulesTool,
