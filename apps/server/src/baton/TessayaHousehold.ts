@@ -41,6 +41,8 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import { VoiceForgets } from "./VoiceForgets.ts";
+import { MemberPreferences } from "./MemberPreferences.ts";
+import { foldSpelling, spellBack } from "@t3tools/baton-shared/spelling";
 
 /** Who is asking, set by the transport: the member a session or voice acts for, its role if not the member's, and how sure. */
 export const HouseholdCaller = Context.Reference<{
@@ -303,6 +305,7 @@ export const make = Effect.gen(function* () {
   });
 
   const voices = yield* Effect.serviceOption(VoiceForgets);
+  const prefs = yield* Effect.serviceOption(MemberPreferences);
   const forgetVoiceHere = (member: string) =>
     Option.isSome(voices) ? voices.value.forget(member) : Effect.void;
   /** Every linked server forgets the member's voice too: its desktop, its devices. A quiet one catches up on its desktop's next check. */
@@ -500,14 +503,18 @@ export const make = Effect.gen(function* () {
       case "home":
         return done(yield* home);
       case "invite": {
-        if (input.name.trim() === "") return refused("Say their name.");
-        const what = `Add ${input.name} as ${input.role === "adult" || input.role === "admin" ? "an" : "a"} ${input.role}`;
+        // "Zayd, Z-A-Y-D": kept as spelled, said back once, and taught to her voice.
+        const spelled = foldSpelling(input.name.trim());
+        const name = spelled.text.slice(0, 60);
+        if (name === "") return refused("Say their name.");
+        if (Option.isSome(prefs)) yield* prefs.value.teach(spelled.names);
+        const what = `Add ${name} as ${input.role === "adult" || input.role === "admin" ? "an" : "a"} ${input.role}`;
         return yield* adminAct(
           manageRefusal(role, null, input.role),
           what,
           Effect.gen(function* () {
             const id = `${
-              input.name
+              name
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, "-")
                 .replace(/^-|-$/g, "") || "member"
@@ -515,7 +522,7 @@ export const make = Effect.gen(function* () {
             const now = iso(yield* Clock.currentTimeMillis);
             const row: Row = {
               id,
-              name: input.name,
+              name: name,
               role: input.role,
               machine: 0,
               // A child's guardian is the adult who added them.
@@ -533,7 +540,7 @@ export const make = Effect.gen(function* () {
             );
             const pairing = yield* pairingFor(row);
             return done(
-              `Added ${input.name}. Their code ${pairing.code} pairs their phone for ${HOUSEHOLD_DEFAULTS.inviteHours} hours; then they enrol their voice.`,
+              `Added ${name}.${spellBack(spelled.names)} Their code ${pairing.code} pairs their phone for ${HOUSEHOLD_DEFAULTS.inviteHours} hours; then they enrol their voice.`,
               pairing,
             );
           }),
@@ -553,6 +560,53 @@ export const make = Effect.gen(function* () {
               `Pair a new device for ${row.name}`,
               make,
             );
+      }
+      case "rename": {
+        const row = yield* target(input.id);
+        if (row === null || row.removed_at !== null) return refused("No member has that id.");
+        const spelled = foldSpelling(input.name.trim());
+        const name = spelled.text.slice(0, 60);
+        if (name === "") return refused("Say their name.");
+        const rename = Effect.gen(function* () {
+          if (Option.isSome(prefs)) yield* prefs.value.teach(spelled.names);
+          yield* sql`UPDATE tessaya_household_members SET name = ${name} WHERE id = ${row.id}`.pipe(
+            Effect.orDie,
+          );
+          yield* sql`UPDATE tessaya_voice_profiles SET name = ${name} WHERE member_id = ${row.id}`.pipe(
+            Effect.orDie,
+          );
+          yield* shareVoices;
+          return done(`${row.name} is now ${name}.${spellBack(spelled.names)}`);
+        });
+        // Their own name is theirs to change; anyone else's is an admin's.
+        const self = c.member === row.id && c.service !== true && c.assurance >= 2;
+        return self
+          ? yield* rename
+          : yield* adminAct(
+              manageRefusal(role, row.role, null),
+              `Rename ${row.name} to ${name}`,
+              rename,
+            );
+      }
+      case "preferences":
+      case "setPreference": {
+        const row = yield* target(input.id);
+        if (row === null || row.removed_at !== null) return refused("No member has that id.");
+        if (Option.isNone(prefs)) return refused("Preferences aren't kept on this server.");
+        // Each member's own, or the owner's, on a device that is theirs (A2) and a turn that read nothing outside.
+        const self = c.member === row.id && c.service !== true;
+        if (!self && role !== "owner")
+          return refused(
+            `Only ${row.name} or the owner can see or change ${row.name}'s preferences.`,
+          );
+        if (input.op === "preferences")
+          return done("", { preferences: yield* prefs.value.of(row.id) });
+        if (c.assurance < 2 || c.tainted === true)
+          return refused("I need to be sure it's you to change preferences: use your own device.");
+        const set = yield* prefs.value.set(row.id, input.key, input.value);
+        return done(self ? set.line : `${set.line} (for ${row.name})`, {
+          preferences: yield* prefs.value.of(row.id),
+        });
       }
       case "setRole": {
         const row = yield* target(input.id);

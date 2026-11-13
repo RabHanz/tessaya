@@ -46,8 +46,9 @@ const InviteTool = Tool.make("member_invite", {
   description:
     "Add someone to the household with a role. Comes back `asked` when the owner's yes is needed on their device: say it waits for that and nothing is added yet. When done, read out the pairing code for their phone, then offer to enrol their voice.",
   parameters: Schema.Struct({
-    name: Schema.String.check(Schema.isMaxLength(60)).annotate({
-      description: "What to call them.",
+    name: Schema.String.check(Schema.isMaxLength(120)).annotate({
+      description:
+        'What to call them, in their words; when they spell it ("Zaid, Z-A-Y-D") pass the spelling too, and it is kept as spelled.',
     }),
     role: Role,
     born: Schema.optionalKey(
@@ -95,6 +96,46 @@ const RestoreTool = Tool.make("member_restore", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+const RenameTool = Tool.make("member_rename", {
+  ...shared,
+  description:
+    "Change a member's name in the household: their own, or anyone's by an admin (then it comes back `asked` for the owner's yes). Pass a spelling with the name (\"Zaid, Z-A-Y-D\") and it is kept as spelled; say the line back, spelling included.",
+  parameters: Schema.Struct({
+    id: Id,
+    name: Schema.String.check(Schema.isMaxLength(120)).annotate({
+      description: "The new name, with its spelling when they spelled it.",
+    }),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const PreferencesTool = Tool.make("member_preferences", {
+  ...shared,
+  description:
+    "A member's own preferences (what to call them, persona, voice, units, time format, news, music): their own, or anyone's for the owner.",
+  parameters: Schema.Struct({ id: Id }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const PreferenceSetTool = Tool.make("member_preference_set", {
+  ...shared,
+  description:
+    "Set or clear another member's preference, which only the owner may do (the speaker's own go through tessaya_preference_set). `key` is name, persona, voice, units, timeFormat, news or music; an empty `value` clears it. Say the line back.",
+  parameters: Schema.Struct({
+    id: Id,
+    key: Schema.Literals(["name", "persona", "voice", "units", "timeFormat", "news", "music"]),
+    value: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
 const HomeServerTool = Tool.make("household_home_server", {
@@ -151,6 +192,9 @@ export const MembersTools = [
   SetRoleTool,
   RemoveTool,
   RestoreTool,
+  RenameTool,
+  PreferencesTool,
+  PreferenceSetTool,
   HomeServerTool,
   PeerTool,
   VoiceForgetTool,

@@ -86,6 +86,7 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "tessaya_memory_about",
       "memory_remember",
       "note_search",
+      "member_preferences",
     ].map((t) => [t, "personal" as const]),
   ),
   ...Object.fromEntries(
@@ -113,6 +114,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "member_set_role",
       "member_remove",
       "member_restore",
+      "member_rename",
+      "member_preference_set",
       "household_home_server",
     ].map((t) => [t, "household" as const]),
   ),

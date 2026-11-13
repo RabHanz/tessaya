@@ -8,11 +8,13 @@ import {
   memberOfSpeaker,
   memberOfSubject,
   OWNER_MEMBER_ID,
+  isPreferenceKey,
+  type PreferenceKey,
   vesselSubject,
   voiceAssurance,
 } from "@t3tools/baton-shared/household";
 import { memoryBlock } from "@t3tools/baton-shared/memory";
-import { foldSpelling, spellOut } from "@t3tools/baton-shared/spelling";
+import { foldSpelling, spellBack } from "@t3tools/baton-shared/spelling";
 import {
   privatePersonOf,
   type PrivateTurn,
@@ -20,7 +22,6 @@ import {
 } from "@t3tools/baton-shared/privateMemory";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -30,7 +31,6 @@ import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts"
 import { MemberPreferences } from "./MemberPreferences.ts";
 import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
-import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { TurnPools } from "./TurnPools.ts";
 
@@ -168,10 +168,6 @@ export const originOf = (turn: TurnEnvelope) => ({
 export const NOT_HIS_VOICE_TO_FORGET =
   "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
 
-/** She spells each name back once: " Zayd, Z-A-Y-D." (empty when nothing was spelled). */
-const spellBack = (names: ReadonlyArray<{ readonly word: string }>): string =>
-  names.map((n) => ` ${n.word}, ${spellOut(n.word)}.`).join("");
-
 /** A member asked to keep something and has no store of their own yet. */
 export const NO_STORE_FOR_MEMBER =
   "Set up your own memory first: choose your PIN in Tessaya on your phone. Until then I can't keep that for you.";
@@ -223,20 +219,6 @@ export interface TurnContext {
   /** Who she is talking to: the member and what to call them (their `name` preference, else their member name). */
   readonly who: { readonly member: string | null; readonly name: string | null };
 }
-
-/** What a member can set for themselves (HOUSEHOLD-DESIGN §4), with what each means to her. */
-export const PREFERENCE_KEYS = {
-  name: "what to call them",
-  persona: "which persona answers them by default",
-  voice: "the voice she speaks to them in",
-  units: "metric or imperial",
-  timeFormat: "how to say times (12-hour with AM/PM, or 24-hour)",
-  news: "where their news comes from",
-  music: "their music service or taste",
-} as const;
-export type PreferenceKey = keyof typeof PREFERENCE_KEYS;
-const isPreferenceKey = (key: string): key is PreferenceKey => key in PREFERENCE_KEYS;
-const PREFERENCE_MAX = 120;
 
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
 const CONVERSATION_TURNS = 12;
@@ -313,28 +295,8 @@ export const make = Effect.gen(function* () {
   const memory = yield* BatonMemoryService;
   const learning = yield* BatonMemoryLearning;
   const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
-  const preferences = yield* Effect.serviceOption(MemberPreferences);
+  const preferences = yield* MemberPreferences;
   const sql = yield* SqlClient.SqlClient;
-  const settings = yield* Effect.serviceOption(ServerSettingsService);
-
-  /** A spelled name's pronunciation, when it was heard said differently ("Zayd" sounds like "Zaid"), for her voice. */
-  const teachVoice = Effect.fn("TessayaTurn.teachVoice")(function* (
-    names: ReadonlyArray<{ readonly word: string; readonly heardAs: string | null }>,
-  ) {
-    const heard = names.filter((n) => n.heardAs !== null);
-    if (heard.length === 0 || Option.isNone(settings)) return;
-    yield* settings.value.getSettings.pipe(
-      Effect.flatMap((current) =>
-        settings.value.updateSettings({
-          voicePronounce: {
-            ...current.voicePronounce,
-            ...Object.fromEntries(heard.map((n) => [n.word, n.heardAs!])),
-          },
-        }),
-      ),
-      Effect.ignore,
-    );
-  });
 
   /** A member's name in the household (the identity lane's members table); null for a guest or no row. */
   const memberName = Effect.fn("TessayaTurn.memberName")(function* (member: string | null) {
@@ -346,15 +308,10 @@ export const make = Effect.gen(function* () {
   });
 
   /** A member's own preferences; nothing for a guest. */
-  const preferencesOf = Effect.fn("TessayaTurn.preferences")(function* (member: string | null) {
-    if (member === null) return {};
-    const rows = yield* sql<{ key: string; value: string }>`
-      SELECT key, value FROM tessaya_member_preferences WHERE member_id = ${member}
-    `.pipe(Effect.orElseSucceed(() => []));
-    return Object.fromEntries(
-      rows.filter((r) => isPreferenceKey(r.key)).map((r) => [r.key, r.value]),
-    ) as Partial<Record<PreferenceKey, string>>;
-  });
+  const preferencesOf = (member: string | null) =>
+    member === null
+      ? Effect.succeed<Partial<Record<PreferenceKey, string>>>({})
+      : preferences.of(member);
 
   /** The speaking member's own preference, set or (null) cleared; a guest has none to set. */
   const setPreference = Effect.fn("TessayaTurn.setPreference")(function* (
@@ -373,26 +330,8 @@ export const make = Effect.gen(function* () {
       });
     if (origin?.rehearsal === true)
       return { member, key, value, line: value === null ? "Cleared." : "Kept." };
-    const folded = foldSpelling(value?.trim() ?? "");
-    const clean = folded.text.replace(/\s+/g, " ").slice(0, PREFERENCE_MAX);
-    yield* teachVoice(folded.names);
-    if (clean === "")
-      yield* sql`DELETE FROM tessaya_member_preferences WHERE member_id = ${member} AND key = ${key}`.pipe(
-        Effect.orDie,
-      );
-    else
-      yield* sql`
-        INSERT INTO tessaya_member_preferences (member_id, key, value, updated_at)
-        VALUES (${member}, ${key}, ${clean}, ${DateTime.formatIso(yield* DateTime.now)})
-        ON CONFLICT (member_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-      `.pipe(Effect.orDie);
-    if (Option.isSome(preferences)) yield* preferences.value.changed(member);
-    return {
-      member,
-      key,
-      value: clean === "" ? null : clean,
-      line: clean === "" ? "Cleared." : `Kept.${spellBack(folded.names)}`,
-    };
+    const set = yield* preferences.set(member, key, value);
+    return { member, key, value: set.value, line: set.line };
   });
   const pools = yield* Effect.serviceOption(TurnPools);
 
@@ -525,7 +464,7 @@ export const make = Effect.gen(function* () {
     const folded = foldSpelling(said.trim());
     const text = folded.text;
     const spelledBack = spellBack(folded.names);
-    if (origin?.rehearsal !== true) yield* teachVoice(folded.names);
+    if (origin?.rehearsal !== true) yield* preferences.teach(folded.names);
     if (origin?.rehearsal === true)
       return {
         kept: "rehearsal" as const,

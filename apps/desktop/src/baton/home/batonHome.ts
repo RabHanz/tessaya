@@ -133,6 +133,8 @@ export type HomeControl =
       readonly addLabel?: string;
       /** The line is typed like a password and never shown back (a cloud key). */
       readonly secret?: boolean;
+      /** It always has a value: its item has no Remove (a member's name). */
+      readonly required?: boolean;
     })
   /** One memory (D150): its text is the label, `hint` says where it came from. Edit, pin and forget are the page's. */
   | (HomeControlBase & {

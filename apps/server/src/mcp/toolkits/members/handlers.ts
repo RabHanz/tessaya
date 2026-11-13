@@ -62,6 +62,20 @@ export const make = Effect.gen(function* () {
       run({ op: "remove", id: id(input), ...(input["now"] === true ? { now: true } : {}) }),
     ),
     member_restore: McpToolAccess.writes((input: Args) => run({ op: "restore", id: id(input) })),
+    member_rename: McpToolAccess.writes((input: Args) =>
+      run({ op: "rename", id: id(input), name: String(input["name"] ?? "") }),
+    ),
+    member_preferences: McpToolAccess.reads((input: Args) =>
+      run({ op: "preferences", id: id(input) }),
+    ),
+    member_preference_set: McpToolAccess.writes((input: Args) =>
+      run({
+        op: "setPreference",
+        id: id(input),
+        key: input["key"] as "name",
+        value: typeof input["value"] === "string" && input["value"] !== "" ? input["value"] : null,
+      }),
+    ),
     household_home_server: McpToolAccess.writes((input: Args) =>
       run({ op: "setHome", on: typeof input["on"] === "string" ? input["on"] : null }),
     ),

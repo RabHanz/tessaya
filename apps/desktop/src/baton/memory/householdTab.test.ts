@@ -29,12 +29,18 @@ const setup = (members: ReadonlyArray<BatonHouseholdMember>) => {
       calls.push([op, args]);
       return op === "list"
         ? { status: "done", line: "", members }
-        : {
-            status: "done",
-            line: `${op} done`,
-            code: "ABCD2345",
-            codeExpiresAt: "2026-11-14T06:00:00.000Z",
-          };
+        : op === "preferences"
+          ? {
+              status: "done",
+              line: "",
+              preferences: args?.["id"] === "owner" ? { units: "metric" } : {},
+            }
+          : {
+              status: "done",
+              line: `${op} done`,
+              code: "ABCD2345",
+              codeExpiresAt: "2026-11-14T06:00:00.000Z",
+            };
     },
     enrol: (m) => enrolled.push(m.id),
     refresh: () => undefined,
@@ -64,5 +70,38 @@ describe("the Household area", () => {
     t.tab.act("m.hh.leaving:sara-1:later", null);
     await t.settle();
     expect(t.calls).toContainEqual(["remove", { id: "sara-1", now: true }]);
+  });
+
+  it("edits your own preferences, and the owner anyone's; a worded one sets and clears, a name is renamed", async () => {
+    const me = member({ id: "owner", name: "Owner", role: "owner", you: true });
+    const t = setup([me, member({})]);
+    await t.tab.load();
+    const ids = () => t.tab.controls().map((c) => c.id);
+    expect(ids()).toContain("m.hh.prefsFor");
+    expect(t.tab.controls().find((c) => c.id === "m.hh.pref:units")).toMatchObject({
+      value: "metric",
+    });
+    t.tab.act("m.hh.pref:name:add", "Zaid, Z-A-Y-D");
+    t.tab.act("m.hh.pref:units", "");
+    await t.settle();
+    expect(t.calls).toContainEqual([
+      "setPreference",
+      { id: "owner", key: "name", value: "Zaid, Z-A-Y-D" },
+    ]);
+    expect(t.calls).toContainEqual(["setPreference", { id: "owner", key: "units", value: null }]);
+    t.tab.act("m.hh.prefsFor", "sara-1");
+    await t.settle();
+    t.tab.act("m.hh.pref:music:rm", "jazz");
+    t.tab.act("m.hh.rename:add", " Sarah ");
+    await t.settle();
+    expect(t.calls).toContainEqual(["setPreference", { id: "sara-1", key: "music", value: null }]);
+    expect(t.calls).toContainEqual(["rename", { id: "sara-1", name: "Sarah" }]);
+  });
+  it("shows a member only their own preferences", async () => {
+    const t = setup([member({ you: true }), member({ id: "owner", name: "Owner", role: "owner" })]);
+    await t.tab.load();
+    const ids = t.tab.controls().map((c) => c.id);
+    expect(ids).not.toContain("m.hh.prefsFor");
+    expect(t.calls).toContainEqual(["preferences", { id: "sara-1" }]);
   });
 });

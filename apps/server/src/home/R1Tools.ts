@@ -85,6 +85,9 @@ const ROOM_TOOLS = [
   "member_set_role",
   "member_remove",
   "member_restore",
+  "member_rename",
+  "member_preferences",
+  "member_preference_set",
   "household_home_server",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 

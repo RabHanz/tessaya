@@ -153,6 +153,10 @@ export const spelledRuns = (text: string): ReadonlyArray<SpelledRun> => {
 /** "Zayd" as she spells it back: "Z-A-Y-D". */
 export const spellOut = (word: string): string => word.toUpperCase().split("").join("-");
 
+/** She spells each name back once: " Zayd, Z-A-Y-D." (empty when nothing was spelled). */
+export const spellBack = (names: ReadonlyArray<{ readonly word: string }>): string =>
+  names.map((n) => ` ${n.word}, ${spellOut(n.word)}.`).join("");
+
 export interface Spelled {
   /** The text with each spelling folded into its word: "my dentist is Dr Qadri". */
   readonly text: string;

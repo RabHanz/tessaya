@@ -597,6 +597,27 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/\b(yes|phone|approv\w*|confirm\w*|device)\b/i],
   },
   {
+    id: "member-rename-spelled",
+    proves: ["member_rename"],
+    said: ["Change my name in the household to Zaid, Z-A-Y-D."],
+    uses: [["member_rename"]],
+    argsOf: "member_rename",
+    // The spelling goes with the name, so it is kept as spelled.
+    args: (input) => ({ spelled: /Z-?A-?Y-?D|z a y d/i.test(String(input["name"])) }),
+  },
+  {
+    id: "member-preferences",
+    proves: ["member_preferences", "member_preference_set"],
+    said: [
+      "What preferences do I have set with you?",
+      "As the owner, set the household member maya-1's units to metric.",
+    ],
+    uses: [
+      ["member_preferences", "tessaya_memory_about", "members_list"],
+      ["member_preference_set", "members_list"],
+    ],
+  },
+  {
     id: "member-role",
     proves: ["member_set_role"],
     said: ["Make the household member with id maya-1 a child."],
