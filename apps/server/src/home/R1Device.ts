@@ -178,6 +178,8 @@ export interface R1Context {
   readonly automations: unknown;
   /** The memory block every vessel gets for these words and this persona (`TessayaTurn.begin`). */
   readonly memory: string;
+  /** What to tell the speaker now (messages that waited), as her own instruction (`TessayaTurn.begin`'s notice). */
+  readonly notice?: string;
   /** How the person speaking likes things (their own preferences; empty for a guest). */
   readonly preferences: Readonly<Record<string, string>>;
   /** Several people heard in this turn, in speaking order (the loop's `segments`); empty for one voice. */
@@ -333,6 +335,7 @@ export const roomData = (input: R1Context) =>
     ...(input.work === undefined || input.work === "" ? [] : [input.work]),
     ...(input.brain === undefined || input.brain === "" ? [] : [input.brain]),
     ...(input.skills === undefined || input.skills === "" ? [] : [input.skills]),
+    ...(input.notice === undefined || input.notice === "" ? [] : [input.notice]),
     ...(input.memory === ""
       ? []
       : [
@@ -625,6 +628,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     lastAction,
     automations,
     memory: begun.block,
+    // Messages that waited are one person's: not told to a room of several voices.
+    ...(people.length > 0 || begun.notice === undefined ? {} : { notice: begun.notice }),
     preferences: people.length > 0 ? {} : begun.preferences,
     ...(people.length > 0 ? { people } : {}),
     voice: input.voice,

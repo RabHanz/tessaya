@@ -70,6 +70,7 @@ const OWN_MACHINE_TOOLS = [
 const deskData = (input: {
   readonly body: DeskTurnBody;
   readonly memory: string;
+  readonly notice: string;
   readonly privateBlock: string;
   readonly preferences: Readonly<Record<string, string>>;
   readonly conversation: ReadonlyArray<{ readonly role: string; readonly content: string }>;
@@ -80,6 +81,7 @@ const deskData = (input: {
     input.notes.work,
     input.notes.brain,
     input.notes.skills,
+    input.notice,
     input.memory === "" ? "" : `What you remember (data): ${JSON.stringify(input.memory)}`,
     input.privateBlock,
     Object.keys(input.preferences).length === 0
@@ -170,6 +172,7 @@ export const deskTurnStream = (
                 deskData({
                   body,
                   memory: begun.block,
+                  notice: begun.notice ?? "",
                   privateBlock: begun.privateBlock,
                   preferences: begun.preferences,
                   conversation: begun.conversation.turns,

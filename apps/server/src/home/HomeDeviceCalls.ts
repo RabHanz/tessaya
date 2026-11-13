@@ -29,6 +29,7 @@ import * as Schema from "effect/Schema";
 
 import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
+import { SessionMember } from "../baton/TessayaTurn.ts";
 import { DeviceTriggers } from "./DeviceTriggers.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { R1Pairing } from "./R1Pairing.ts";
@@ -251,6 +252,9 @@ const servePublish = Effect.fn("DeviceCalls.publish")(function* (args: unknown) 
     if (refused !== null) return { ok: false, error: refused } satisfies BatonDevicesCallResult;
   }
   yield* registry.report("client", p.deviceId, p.values ?? []);
+  // Whose it is: the member of the session that reported it (a member's own phone or desktop), for comms.
+  const member = yield* SessionMember;
+  if (member !== null) yield* registry.claim(p.deviceId, member);
   const writes = yield* registry.take(p.deviceId, p.acks ?? [], p.waitMs ?? 0);
   return { ok: true, value: { writes } } satisfies BatonDevicesCallResult;
 });

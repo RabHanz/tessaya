@@ -7841,7 +7841,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         // A schedule has nobody to wait or press Stop; like a queued fresh start, leave it running.
         if (freshContext && command.scheduledTaskId !== undefined) continue;
         // Tessaya: a handoff runs in its own session, so a busy one stays up and ends when idle.
-        if (!freshContext && providerSwitchPlan?.transition.type === "create_with_handoff") continue;
+        if (!freshContext && providerSwitchPlan?.transition.type === "create_with_handoff")
+          continue;
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,

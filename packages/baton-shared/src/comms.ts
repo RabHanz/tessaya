@@ -80,11 +80,25 @@ export interface CommsCaps {
   readonly duplex: "half" | "full";
   readonly codecs: ReadonlyArray<"pcm16" | "opus">;
   readonly video: "none" | "send" | "recv" | "both";
-  /** How it shows it is live; null: it has no indicator that firmware or code holds, so its mic never opens to a person. */
-  readonly live: "led" | "eyes" | "screen" | "os" | null;
+  /**
+   * How it shows it is live, one or more of led, eyes, screen and os ("eyes+led" on the R1); null: it has no indicator
+   * that firmware or code holds, so its mic never opens to a person.
+   */
+  readonly live: ReadonlyArray<LiveIndicator> | null;
   /** The server can wake it (a charger-held R1, a phone by push); an asleep battery R1 cannot. */
   readonly wakeable: boolean;
 }
+
+const LIVE_INDICATORS = ["led", "eyes", "screen", "os"] as const;
+type LiveIndicator = (typeof LIVE_INDICATORS)[number];
+/** A manifest's `live.indicator` ("eyes+led"), or null when any part is not one we know: then there is none. */
+const liveOf = (value: unknown): ReadonlyArray<LiveIndicator> | null => {
+  if (typeof value !== "string" || value === "") return null;
+  const parts = value.split("+").map((p) => p.trim());
+  return parts.every((p) => (LIVE_INDICATORS as ReadonlyArray<string>).includes(p))
+    ? (parts as Array<LiveIndicator>)
+    : null;
+};
 
 /** The comms items a manifest may carry, by id. */
 export const COMMS_ITEMS = [
@@ -126,7 +140,7 @@ const KIND_CAPS: Readonly<Record<string, CommsCaps>> = {
     duplex: "full",
     codecs: ["pcm16"],
     video: "none",
-    live: "os",
+    live: ["os"],
     wakeable: true,
   },
   desktop: {
@@ -138,7 +152,7 @@ const KIND_CAPS: Readonly<Record<string, CommsCaps>> = {
     duplex: "full",
     codecs: ["pcm16"],
     video: "none",
-    live: "screen",
+    live: ["screen"],
     wakeable: false,
   },
 };
@@ -178,15 +192,7 @@ export const commsCaps = (device: Pick<RegisteredDevice, "kind" | "values">): Co
       : base.codecs,
     video: oneOf(v.get("call.video"), ["none", "send", "recv", "both"], base.video),
     // A manifest that names no indicator we know has none: the mic stays closed to people.
-    live: v.has("live.indicator")
-      ? oneOf<NonNullable<CommsCaps["live"]> | "none">(
-          v.get("live.indicator"),
-          ["led", "eyes", "screen", "os"],
-          "none",
-        ) === "none"
-        ? null
-        : (v.get("live.indicator") as CommsCaps["live"])
-      : base.live,
+    live: v.has("live.indicator") ? liveOf(v.get("live.indicator")) : base.live,
     wakeable: bool(v.get("power.wakeable"), base.wakeable),
   };
 };
@@ -408,3 +414,16 @@ export const COMMS_SOUND_PLACEHOLDER: Readonly<
   live_tick: "stepDone",
   call_waiting: "waiting",
 };
+
+/** What a turn is told of messages that waited for its speaker; senders' names are quoted as data. */
+export const commsWaitingLine = (
+  name: string,
+  waiting: ReadonlyArray<{ readonly from: string; readonly count: number }>,
+): string =>
+  waiting.length === 0
+    ? ""
+    : `Messages waited for ${name}: ${waiting
+        .map((w) => `${w.count} from ${JSON.stringify(w.from)}`)
+        .join(
+          ", ",
+        )}. Tell them once, in a few words, and offer to play them (comms_inbox, then comms_play).`;

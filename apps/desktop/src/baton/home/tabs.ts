@@ -22,6 +22,7 @@ export const TABS = [
   { id: "usage", label: "Usage" },
   { id: "trust", label: "Trust" },
   { id: "hardware", label: "Hardware" },
+  { id: "intercom", label: "Intercom" },
   { id: "homeassistant", label: "Home Assistant" },
   { id: "phone", label: "Phone" },
   { id: "learn", label: "Learn Tessaya" },
@@ -49,7 +50,7 @@ export const AREAS = [
   {
     id: "devices",
     label: "Devices",
-    pages: ["hardware", "homeassistant", "phone"],
+    pages: ["hardware", "intercom", "homeassistant", "phone"],
     settings: null,
   },
   {
@@ -195,6 +196,7 @@ export const tabOf = (id: string): TabId => {
   if (/^cl\.(p|a|ok|deny|head|busy|done|denied|fail)\./.test(id)) return "approvals";
   if (/^cl[:.]/.test(id)) return "cloud";
   if (/^trust[:.]/.test(id)) return "trust";
+  if (/^ic[:.]/.test(id)) return "intercom";
   if (/^help[:.]/.test(id)) return "help";
   if (/^bk[:.]/.test(id)) return "history";
   if (/^vid[:.]/.test(id)) return "voice";

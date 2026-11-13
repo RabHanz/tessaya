@@ -16,12 +16,18 @@ import { TurnOrigin } from "./TessayaTurn.ts";
 const house = () => {
   const said: Array<{ id: string; op: string; text?: string }> = [];
   const written: Array<{ id: string; value: unknown }> = [];
-  const device = (deviceId: string, kind: string, items: ReadonlyArray<string> = []) => ({
+  const device = (
+    deviceId: string,
+    kind: string,
+    items: ReadonlyArray<string> = [],
+    member?: string,
+  ) => ({
     deviceId,
     kind,
     name: deviceId,
     firmware: null,
-    via: "client" as const,
+    via: kind === "r1" ? ("mqtt" as const) : ("client" as const),
+    ...(member === undefined ? {} : { member }),
     online: true,
     lastSeenAt: null,
     version: null,
@@ -34,7 +40,11 @@ const house = () => {
     })),
     values: [],
   });
-  const devices = [device("r1-kitchen", "r1"), device("desk-1", "desktop", ["comms.note"])];
+  const devices = [
+    device("r1-kitchen", "r1"),
+    device("desk-1", "desktop", ["comms.note"]),
+    device("desk-sara", "desktop", ["comms.note"], "sara"),
+  ];
   const registry = DeviceRegistry.of({
     list: Effect.succeed(devices),
     get: (id: string) => Effect.succeed(devices.find((d) => d.deviceId === id) ?? null),
@@ -478,5 +488,23 @@ layer("TessayaComms", (it) => {
         assert.strictEqual(h.said.filter((x) => x.op === "say").length, before);
         assert.isNull((yield* comms("owner", { op: "settings" })).emergency ?? null);
       }),
+  );
+
+  it.effect("puts a member's note on their own desktop, never on someone else's", () =>
+    Effect.gen(function* () {
+      yield* on;
+      const h = house();
+      const sent = yield* comms("owner", {
+        op: "send",
+        to: ["person:sara"],
+        kind: "text",
+        text: "Dinner at eight",
+      }).pipe(h.inHouse);
+      assert.deepStrictEqual(sent.delivered, ["desk-sara"]);
+      assert.deepStrictEqual(
+        h.written.map((w) => w.id),
+        ["desk-sara"],
+      );
+    }),
   );
 });

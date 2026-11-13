@@ -38,6 +38,7 @@ import {
 import {
   BATON_SESSIONS_WS_METHODS,
   type BatonHouseholdCallResult,
+  type CommsCallResult,
   tessayaPlaceOf,
 } from "@t3tools/baton-contracts";
 import { approvalRecord } from "@t3tools/baton-shared/approvals";
@@ -68,6 +69,7 @@ import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 import type { HouseholdCall } from "./memory/householdTab.ts";
+import type { CommsCall } from "./home/intercomTab.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
 import { runFreyaImport } from "./memory/freyaImport.ts";
 import { isTessayaLink, placeInArgs, TESSAYA_SCHEME } from "./home/links.ts";
@@ -518,6 +520,9 @@ export const startBatonDesktop = Effect.gen(function* () {
     // The household lives on this machine's own server, like the stores it shreds.
     const household: HouseholdCall = (op, args = {}) =>
       own("/tessaya/household", { op, ...args }) as Promise<BatonHouseholdCallResult>;
+    // Messages, emergencies and drop-in permissions, on the same server as the household they read.
+    const comms: CommsCall = (op, args = {}) =>
+      own("/tessaya/comms", { op, ...args }) as Promise<CommsCallResult>;
     // The screen locked or the machine slept: this desktop's stores close, and so do sessions that read them.
     const lockPrivate = () => {
       void privateMemory.lockAll();
@@ -758,6 +763,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       direct,
       privateMemory,
       household,
+      comms,
       // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
       // subscription session. The wait matches the server's 2.5 s limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {

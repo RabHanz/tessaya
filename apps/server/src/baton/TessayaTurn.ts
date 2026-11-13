@@ -35,6 +35,7 @@ import { BatonMemoryRefusedError, type BatonHouseholdCallInput } from "@t3tools/
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { TessayaComms } from "./TessayaComms.ts";
+import { commsWaitingLine } from "@t3tools/baton-shared/comms";
 import { TurnPools } from "./TurnPools.ts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
@@ -113,19 +114,6 @@ export interface ConversationTurn {
 /** His own voice on this very turn: the only voice whose words are kept as his, or that may forget for him. */
 const hisVoice = (speaker: SpeakerLike | null) =>
   speaker !== null && speaker.kind === "owner" && speaker.verified && !speaker.inherited;
-
-/** What a turn is told of messages that waited for its speaker; senders' names are quoted as data. */
-export const commsWaitingLine = (
-  name: string,
-  waiting: ReadonlyArray<{ readonly from: string; readonly count: number }>,
-): string =>
-  waiting.length === 0
-    ? ""
-    : `Messages waited for ${name}: ${waiting
-        .map((w) => `${w.count} from ${JSON.stringify(w.from)}`)
-        .join(
-          ", ",
-        )}. Tell them once, in a few words, and offer to play them (comms_inbox, then comms_play).`;
 
 /** The vessel that heard the turn, for every tool it calls: a tool reads it to name where a request came from. */
 export const TurnOrigin = Context.Reference<{
@@ -246,6 +234,11 @@ export const nameOnceLine = (name: string | undefined): string =>
 export interface TurnContext {
   /** Standing memory (sessionless vessels only), then what matches this sentence. */
   readonly block: string;
+  /**
+   * What to tell the speaker now, as her own instruction rather than remembered data: messages that waited for them
+   * (COMMS-DESIGN §2.4). Empty or absent when there is nothing.
+   */
+  readonly notice?: string;
   /** The ids matched to this sentence, best first: the same for every vessel given the same words and persona. */
   readonly ids: ReadonlyArray<string>;
   /** The speaker's own private memories, only when the gate allows it; else "". */
@@ -512,7 +505,8 @@ export const make = Effect.gen(function* () {
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
     return {
-      block: [standing.block, extra, nameOnceLine(turn.nameOnce), waiting]
+      notice: waiting,
+      block: [standing.block, extra, nameOnceLine(turn.nameOnce)]
         .filter((b) => b !== "")
         .join("\n\n"),
       ids: sentence.ids,
