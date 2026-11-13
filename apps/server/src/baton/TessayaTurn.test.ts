@@ -4,6 +4,7 @@ import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
@@ -11,6 +12,8 @@ import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
+import type { BatonHouseholdCallInput } from "@t3tools/baton-contracts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
@@ -119,6 +122,73 @@ it.effect("a turn's tools know which vessel heard it", () =>
 );
 
 layer("TessayaTurn", (it) => {
+  it.effect(
+    "where the members live on another server, preferences are read and changed there",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const sql = yield* SqlClient.SqlClient;
+        const asked: Array<[string, string | null, number]> = [];
+        const home = TessayaHousehold.of({
+          call: (input: BatonHouseholdCallInput) =>
+            Effect.gen(function* () {
+              const caller = yield* HouseholdCaller;
+              asked.push([input.op, caller.member, caller.assurance]);
+              return input.op === "preferences"
+                ? { status: "done" as const, line: "", preferences: { units: "imperial" } }
+                : caller.assurance < 2
+                  ? {
+                      status: "refused" as const,
+                      line: "I need to be sure it's you to change preferences.",
+                    }
+                  : { status: "done" as const, line: "Kept.", preferences: { units: "metric" } };
+            }),
+        } as never);
+        yield* sql`INSERT OR REPLACE INTO fabric_settings (key, value) VALUES ('household.home', 'laptop')`;
+        const nadia = {
+          kind: "saved" as const,
+          personId: "nadia",
+          verified: true,
+          inherited: false,
+        };
+        const there = <A, E>(work: Effect.Effect<A, E>) =>
+          Effect.provideService(work, TessayaHousehold, home);
+        const read = yield* there(turn.begin({ vessel: device, text: "hi", speaker: nadia }));
+        assert.deepStrictEqual(read.preferences, { units: "imperial" });
+        const set = yield* there(
+          turn
+            .setPreference("units", "metric")
+            .pipe(
+              Effect.provideService(
+                TurnOrigin,
+                originOf({ vessel: device, text: "", speaker: nadia }),
+              ),
+            ),
+        );
+        assert.deepStrictEqual([set.value, set.line], ["metric", "Kept."]);
+        // An unverified voice is refused there, by the home's own rule.
+        const unsure = yield* Effect.flip(
+          there(
+            turn
+              .setPreference("units", "metric")
+              .pipe(
+                Effect.provideService(
+                  TurnOrigin,
+                  originOf({ vessel: device, text: "", speaker: { ...nadia, verified: false } }),
+                ),
+              ),
+          ),
+        );
+        assert.include(unsure.reason, "sure it's you");
+        assert.deepStrictEqual(asked, [
+          ["preferences", "nadia", 2],
+          ["setPreference", "nadia", 2],
+          ["setPreference", "nadia", 1],
+        ]);
+        yield* sql`DELETE FROM fabric_settings WHERE key = 'household.home'`;
+      }),
+  );
+
   it.effect("a spelled name is kept as spelled, said back once, and taught to her voice", () =>
     Effect.gen(function* () {
       const turn = yield* TessayaTurn;

@@ -29,7 +29,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
-import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
+import { HOME_KEY, HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
+import { BatonMemoryRefusedError, type BatonHouseholdCallInput } from "@t3tools/baton-contracts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { TurnPools } from "./TurnPools.ts";
@@ -307,11 +308,41 @@ export const make = Effect.gen(function* () {
     return rows[0]?.name ?? null;
   });
 
-  /** A member's own preferences; nothing for a guest. */
-  const preferencesOf = (member: string | null) =>
-    member === null
-      ? Effect.succeed<Partial<Record<PreferenceKey, string>>>({})
-      : preferences.of(member);
+  /** Where this home's members live: null here, else the linked server's label. */
+  const homeOn = sql<{
+    value: string;
+  }>`SELECT value FROM fabric_settings WHERE key = ${HOME_KEY}`.pipe(
+    Effect.map((rows) => (rows[0]?.value ?? "") || null),
+    Effect.orElseSucceed(() => null),
+  );
+
+  /** The household's own call (routed to the home when it lives elsewhere), as this member asking for themselves. */
+  const askHousehold = Effect.fn("TessayaTurn.askHousehold")(function* (
+    input: BatonHouseholdCallInput,
+    caller: { readonly member: string; readonly assurance: Assurance; readonly tainted: boolean },
+  ) {
+    const household = yield* Effect.serviceOption(TessayaHousehold);
+    if (Option.isNone(household)) return null;
+    return yield* household.value
+      .call(input)
+      .pipe(
+        Effect.provideService(HouseholdCaller, { ...caller, via: "Tessaya, for their own turn" }),
+      );
+  });
+
+  /** A member's own preferences, from the home where the members live; nothing for a guest. */
+  const preferencesOf = Effect.fn("TessayaTurn.preferencesOf")(function* (member: string | null) {
+    if (member === null) return {} as Partial<Record<PreferenceKey, string>>;
+    if ((yield* homeOn) === null) return yield* preferences.of(member);
+    const there = yield* askHousehold(
+      { op: "preferences", id: member },
+      { member, assurance: 2, tainted: false },
+    );
+    // An unreachable home leaves her with no preferences, never another server's stale copy.
+    return (there?.status === "done" ? (there.preferences ?? {}) : {}) as Partial<
+      Record<PreferenceKey, string>
+    >;
+  });
 
   /** The speaking member's own preference, set or (null) cleared; a guest has none to set. */
   const setPreference = Effect.fn("TessayaTurn.setPreference")(function* (
@@ -330,6 +361,22 @@ export const make = Effect.gen(function* () {
       });
     if (origin?.rehearsal === true)
       return { member, key, value, line: value === null ? "Cleared." : "Kept." };
+    if ((yield* homeOn) !== null) {
+      // The members live on another server: the change is made there, under its rules (A2, untainted).
+      const there = yield* askHousehold(
+        { op: "setPreference", id: member, key, value },
+        {
+          member,
+          assurance: origin?.assurance ?? 0,
+          tainted: origin?.tainted === true,
+        },
+      );
+      if (there === null || there.status !== "done")
+        return yield* new BatonMemoryRefusedError({
+          reason: there?.line ?? "This home's members can't be reached right now.",
+        });
+      return { member, key, value: there.preferences?.[key] ?? null, line: there.line };
+    }
     const set = yield* preferences.set(member, key, value);
     return { member, key, value: set.value, line: set.line };
   });
