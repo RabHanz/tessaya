@@ -88,6 +88,9 @@
  };
  const KEYS = Object.keys(N);
  const SPRING = new Set(["sx", "sy", "lift", "lean", "tilt", "yaw", "pitch", "zoom", "app"]);
+ // the eyes' shape keys move on a critically damped spring (ω 11: a gentle start, settled in about 0.45 s, as the motion
+ // bar's reference morphs), never an ease that starts at full speed
+ const SHAPE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots"]), SHAPE_W = 11;
  const STYLE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots", "wink"]);
  TCS.NEUTRAL = N;
 
@@ -426,6 +429,7 @@
    + `<g fill="url(#${gid})" stroke="${look.edge}" stroke-width="1.2" stroke-linejoin="round">${base}</g><g fill="url(#${gid})">${base}</g>`
    + (over ? "" : ln(h.line, h.side === "palm" ? .45 : .3) + (look.glove ? ln(h.gl, .28, 1) + ln("M-7 9.6h14", .25, .9) : "")) + `</g>`;
  }
+ TCS.drawFace = drawFace;
  TCS.renderHand = renderHand; TCS.HAND_REF = HAND_REF;
  TCS.HAND_SIDE_OF = (pose) => (HANDS[pose] || HANDS.fist).side;
  // which side each gesture shows (Director, 2026-11-12): the palm only when the hand shows something to the viewer;
@@ -462,6 +466,48 @@
  function heart(cx, cy, r) { return `M${f1(cx)} ${f1(cy + r * .85)}C${f1(cx - r * 1.3)} ${f1(cy)} ${f1(cx - r * .9)} ${f1(cy - r * 1.05)} ${f1(cx)} ${f1(cy - r * .4)}C${f1(cx + r * .9)} ${f1(cy - r * 1.05)} ${f1(cx + r * 1.3)} ${f1(cy)} ${f1(cx)} ${f1(cy + r * .85)}Z`; }
  function spiral(cx, cy, r, rot) { const p = []; for (let i = 0; i <= 40; i++) { const a = i / 40 * TAU * 2.2 + rot, q = r * i / 40; p.push([cx + q * Math.cos(a), cy + q * Math.sin(a)]); } return smoothOpen(p); }
 
+ // Eye shape keys: every style as a closed outline of EYE_N points, starting at the outer right and running down and round,
+ // so any two blend point by point.
+ const EYE_N = 40;
+ const quadPts = (x0, y0, x1, y1, x2, y2, n = 24) => Array.from({length: n}, (_, i) => { const t = i / (n - 1), m = 1 - t; return [m * m * x0 + 2 * m * t * x1 + t * t * x2, m * m * y0 + 2 * m * t * y1 + t * t * y2]; });
+ function linePts(P, n = 24) {
+  const seg = P.slice(1).map((q, i) => Math.hypot(q[0] - P[i][0], q[1] - P[i][1])), total = seg.reduce((a, b) => a + b, 0), out = [];
+  for (let i = 0; i < n; i++) { let d = i / (n - 1) * total, k = 0; while (k < seg.length - 1 && d > seg[k]) { d -= seg[k]; k++; } const t = seg[k] ? Math.min(1, d / seg[k]) : 0; out.push([lerp(P[k][0], P[k + 1][0], t), lerp(P[k][1], P[k + 1][1], t)]); }
+  return out;
+ }
+ // a stroked line as a closed outline: along its lower edge from the right end to the left, round the cap, back along the top
+ function strokeKey(line, width) {
+  const L = line[0][0] > line[line.length - 1][0] ? line : [...line].reverse(), n = L.length, half = width / 2, lo = [], hi = [];
+  for (let i = 0; i < n; i++) { const a = L[Math.max(0, i - 1)], b = L[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1; let nx = -dy / d, ny = dx / d; if (ny < 0) { nx = -nx; ny = -ny; } lo.push([L[i][0] + nx * half, L[i][1] + ny * half]); hi.push([L[i][0] - nx * half, L[i][1] - ny * half]); }
+  return resample([...lo, ...hi.reverse()], EYE_N);
+ }
+ // a closed outline round a centre, sampled by angle from the right going down: the open eye's own order
+ function rayKey(cx, cy, poly) {
+  const out = [];
+  for (let i = 0; i < EYE_N; i++) {
+   const a = i / EYE_N * TAU, dx = Math.cos(a), dy = Math.sin(a); let best = 0;
+   for (let k = 0; k < poly.length; k++) {
+    const p = poly[k], q = poly[(k + 1) % poly.length], ex = q[0] - p[0], ey = q[1] - p[1], den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((p[0] - cx) * ey - (p[1] - cy) * ex) / den, u = ((p[0] - cx) * dy - (p[1] - cy) * dx) / den;
+    if (t > 0 && u >= 0 && u <= 1) best = Math.max(best, t);
+   }
+   out.push([cx + dx * best, cy + dy * best]);
+  }
+  return out;
+ }
+ function resample(P, n) {
+  const C = [...P, P[0]], seg = C.slice(1).map((q, i) => Math.hypot(q[0] - C[i][0], q[1] - C[i][1])), total = seg.reduce((a, b) => a + b, 0), out = [];
+  for (let i = 0; i < n; i++) { let d = i / n * total, k = 0; while (k < seg.length - 1 && d > seg[k]) { d -= seg[k]; k++; } const t = seg[k] ? Math.min(1, d / seg[k]) : 0; out.push([lerp(C[k][0], C[k + 1][0], t), lerp(C[k][1], C[k + 1][1], t)]); }
+  return out;
+ }
+ const starPts = (cx, cy, r) => Array.from({length: 10}, (_, i) => { const a = -PI / 2 + i * PI / 5, q = i % 2 ? r * .46 : r; return [cx + q * Math.cos(a), cy + q * Math.sin(a)]; });
+ function heartPts(cx, cy, r) {
+  const cub = (p0, p1, p2, p3, n) => Array.from({length: n}, (_, i) => { const t = i / n, m = 1 - t; return [0, 1].map((k) => m * m * m * p0[k] + 3 * m * m * t * p1[k] + 3 * m * t * t * p2[k] + t * t * t * p3[k]); });
+  const b = [cx, cy + r * .85], top = [cx, cy - r * .4];
+  return [...cub(b, [cx - r * 1.3, cy], [cx - r * .9, cy - r * 1.05], top, 20), ...cub(top, [cx + r * .9, cy - r * 1.05], [cx + r * 1.3, cy], b, 20)];
+ }
+
  /** Everything on the face, in screen space, from the rendered values. */
  function drawFace(R, F, pal, time, spinT, lens) {
   const P = projector(F.R, F.curv, clamp(R.yaw, -F.yawMax, F.yawMax), R.pitch), o = [];
@@ -472,39 +518,47 @@
    const q = P(lx, ly), k = (1 - .12 * R.yaw * side) * (side < 0 ? 1 + R.big : 1 - R.big * .6);
    const W = F.ew * R.ew * q.s * k, H = F.eh * R.eh * q.t * k, cx = F.cx + q.x, cy = F.cy + q.y;
    eyes.push({side, cx, cy, W, H});
-   // one eye shape at a time: the dominant style replaces the open eye outright (no crossfade, so no ghost layers)
+   // Every eye style is a shape key: a closed outline of EYE_N points in the same order (from the outer right, down,
+   // round). The eye drawn is their blend by the styles' sprung weights, so an open eye morphs into a smile arc, "> <",
+   // a star or a heart through real in-between shapes; nothing swaps or cross-fades (Director's motion bar, 13 Nov).
    const winkV = side > 0 ? clamp(R.wink, 0, 1) : 0;
-   const sv = {arc: Math.max(R.arc, winkV), sarc: R.sarc, chev: R.chev, star: R.star, heart: R.heart, spiral: R.spiral, dots: R.dots};
-   let topK = "", top = 0; for (const k in sv) if (sv[k] > top) { top = sv[k]; topK = k; }
-   const pop = top >= .45 ? .78 + .22 * clamp((top - .45) / .4, 0, 1) : 0;
-   if (top < .45) {
-    o.push(`<g data-l="eye-base" data-s="${side}">`);
-    const s = eyeShape(cx, cy, W, H, side, R, R._close || 0);
-    if (s.h < 3.2 || Math.max(R.lu, 0) + (R._close || 0) > .92) o.push(`<rect x="${f1(cx - W * .48)}" y="${f1(s.ymax - 3.4)}" width="${f1(W * .96)}" height="3.6" rx="1.8" fill="${col}" />`);
-    else {
-     o.push(`<path d="${smoothClosed(s.pts)}" fill="${col}" />`);
-     // catchlights stay toward the light while the eye moves, which makes it read as a glossy sphere
-     const hx = cx - W * .2 - R.gx * W * .1, hy = Math.max(s.ymin + H * .2, cy - H * .22), r1 = W * (.15 + .07 * R.wet) * (1 - clamp(R.lu - .3, 0, .6));
-     // heavy lids get a soft crease above them, so a drowsy eye reads as drowsy rather than as a visor
-     const luE = clamp(R.lu + (R._close || 0), 0, 1);
-     if (luE > .35 && luE < .97 && Math.abs(R.la) < .25) { const ly = cy - H / 2 + luE * H * 1.02; o.push(`<path d="M${f1(cx - W * .6)} ${f1(ly + 1)}Q${f1(cx)} ${f1(ly - 6)} ${f1(cx + W * .6)} ${f1(ly + 1)}" stroke="${col}" stroke-width="${f1(Math.max(2, W * .12))}" fill="none" stroke-linecap="round" opacity="${f1(clamp((luE - .35) * 1.6, 0, .85) )}"/>`); }
-     if (s.h > H * .3) o.push(`<ellipse cx="${f1(hx)}" cy="${f1(hy)}" rx="${f1(r1)}" ry="${f1(r1 * 1.15)}" fill="${sh}" opacity=".95"/><circle cx="${f1(cx + W * .18)}" cy="${f1(Math.min(s.ymax - W * .14, cy + H * .18))}" r="${f1(W * (.07 + .04 * R.wet) * (1 - clamp(R.lu - .3, 0, .7) / .7))}" fill="${sh}" opacity=".8"/>`);
-     if (R.wet > .05 && s.h > H * .3) o.push(`<path d="M${f1(cx - W * .3)} ${f1(s.ymax - H * .12)}Q${f1(cx)} ${f1(s.ymax - H * .02)} ${f1(cx + W * .3)} ${f1(s.ymax - H * .12)}" stroke="${sh}" stroke-width="${f1(W * .07)}" fill="none" stroke-linecap="round" opacity="${f1(R.wet * .7 )}"/>`);
-     if (R.tear > .05) { const tx = cx + side * W * .38, ty = s.ymax - 1; o.push(`<path d="M${f1(tx)} ${f1(ty - 8 * R.tear)}q${f1(5.5 * R.tear)} ${f1(8 * R.tear)} 0 ${f1(11 * R.tear)}q${f1(-5.5 * R.tear)} ${f1(-3 * R.tear)} 0 ${f1(-11 * R.tear)}z" fill="#9fd4f2" opacity=".9"/>`); }
-    }
-    o.push(`</g>`);
+   const keys = {arc: Math.max(R.arc, winkV), sarc: R.sarc, chev: R.chev, star: R.star, heart: R.heart, spin: Math.max(R.spiral, R.dots)};
+   let rest = 1; for (const k in keys) { keys[k] = clamp(keys[k], 0, 1); rest -= keys[k]; }
+   const wOpen = Math.max(0, rest), wSum = wOpen + Object.values(keys).reduce((a, b) => a + b, 0) || 1;
+   const s = eyeShape(cx, cy, W, H, side, R, R._close || 0), sw2 = Math.max(2.5, W * .26);
+   const shapes = [[wOpen, s.pts]];
+   if (keys.arc > .001) { const wk = winkV / (winkV + R.arc + 1e-6); shapes.push([keys.arc, strokeKey(quadPts(cx - W * lerp(.52, .5, wk), cy + H * lerp(.12, .05, wk), cx, cy - H * lerp(.42, .38, wk), cx + W * lerp(.52, .5, wk), cy + H * lerp(.12, .05, wk)), sw2)]); }
+   if (keys.sarc > .001) shapes.push([keys.sarc, strokeKey(quadPts(cx - W * .52, cy + H * .08, cx, cy + H * .34, cx + W * .52, cy + H * .08), sw2 * .8)]);
+   if (keys.chev > .001) shapes.push([keys.chev, strokeKey(linePts([[cx + side * W * .4, cy - H * .28], [cx - side * W * .38, cy], [cx + side * W * .4, cy + H * .28]]), sw2)]);
+   if (keys.star > .001) shapes.push([keys.star, rayKey(cx, cy, starPts(cx, cy, W * .72))]);
+   if (keys.heart > .001) shapes.push([keys.heart, rayKey(cx, cy, heartPts(cx, cy, W * .62))]);
+   // the spinning styles (spiral, loading dots) draw themselves on over a small round pupil the eye shrinks into
+   if (keys.spin > .001) shapes.push([keys.spin, rayKey(cx, cy, Array.from({length: EYE_N}, (_, i) => [cx + W * .16 * Math.cos(i / EYE_N * TAU), cy + W * .16 * Math.sin(i / EYE_N * TAU)]))]);
+   const pts = Array.from({length: EYE_N}, (_, i) => { let x = 0, y = 0; for (const [w, ps] of shapes) { x += w * ps[i][0]; y += w * ps[i][1]; } return [x / wSum, y / wSum]; });
+   // a shut eye stays a visible line, 3.4 px between its lids (it used to become a separate bar: a swap); point i on the
+   // lower lid faces point EYE_N − i on the upper one
+   for (let i = 1; i < EYE_N / 2; i++) { const b = pts[i], t = pts[EYE_N - i], gap = b[1] - t[1]; if (gap < 3.4) { b[1] += (3.4 - gap) / 2; t[1] -= (3.4 - gap) / 2; } }
+   const fill = mixHex(mixHex(col, pal.star || col, keys.star / wSum), pal.heart || col, keys.heart / Math.max(1e-6, wSum - keys.star));
+   o.push(`<g data-l="eye-base" data-s="${side}"><path d="${smoothClosed(pts)}" fill="${fill}"/>`);
+   const open = wOpen / wSum;
+   if (open > .02 && s.h > H * .3) {
+    // catchlights stay toward the light while the eye moves, which makes it read as a glossy sphere; they belong to the open eye
+    const hx = cx - W * .2 - R.gx * W * .1, hy = Math.max(s.ymin + H * .2, cy - H * .22), r1 = W * (.15 + .07 * R.wet) * (1 - clamp(R.lu - .3, 0, .6)) * open;
+    o.push(`<ellipse cx="${f1(hx)}" cy="${f1(hy)}" rx="${f1(r1)}" ry="${f1(r1 * 1.15)}" fill="${sh}" opacity=".95"/><circle cx="${f1(cx + W * .18)}" cy="${f1(Math.min(s.ymax - W * .14, cy + H * .18))}" r="${f1(W * (.07 + .04 * R.wet) * (1 - clamp(R.lu - .3, 0, .6)) * open)}" fill="${sh}" opacity=".8"/>`);
+    if (R.wet > .05) o.push(`<path d="M${f1(cx - W * .3)} ${f1(s.ymax - H * .12)}Q${f1(cx)} ${f1(s.ymax - H * .02)} ${f1(cx + W * .3)} ${f1(s.ymax - H * .12)}" stroke="${sh}" stroke-width="${f1(W * .07)}" fill="none" stroke-linecap="round" opacity="${f1(clamp(R.wet, 0, 1) * open)}"/>`);
    }
-   const sw2 = Math.max(2.5, W * .26), L = (k, svg) => o.push(`<g data-l="eye-${k}" data-s="${side}">${svg}</g>`);
-   if (top >= .45) switch (topK) {
-    case "arc": L("arc", winkV > R.arc ? `<path d="M${f1(cx - W * .5)} ${f1(cy + H * .05)}Q${f1(cx)} ${f1(cy - H * .38 * pop)} ${f1(cx + W * .5)} ${f1(cy + H * .05)}" stroke="${col}" stroke-width="${f1(sw2)}" fill="none" stroke-linecap="round"/>` : `<path d="M${f1(cx - W * .52)} ${f1(cy + H * .12)}Q${f1(cx)} ${f1(cy - H * .42 * pop)} ${f1(cx + W * .52)} ${f1(cy + H * .12)}" stroke="${col}" stroke-width="${f1(sw2)}" fill="none" stroke-linecap="round"/>`); break;
-    case "sarc": L("sarc", `<path d="M${f1(cx - W * .52)} ${f1(cy + H * .08)}Q${f1(cx)} ${f1(cy + H * .34 * pop)} ${f1(cx + W * .52)} ${f1(cy + H * .08)}" stroke="${col}" stroke-width="${f1(sw2 * .8)}" fill="none" stroke-linecap="round"/>`); break;
-    // chevrons point at each other, "> <" (squeezed-shut glee); the R1 firmware (r1eyes.c) draws the same (Director, 12 Nov)
-    case "chev": L("chev", `<path d="M${f1(cx + side * W * .4)} ${f1(cy - H * .28 * pop)}L${f1(cx - side * W * .38)} ${f1(cy)}L${f1(cx + side * W * .4)} ${f1(cy + H * .28 * pop)}" stroke="${col}" stroke-width="${f1(sw2)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`); break;
-    case "star": L("star", `<path d="${star(cx, cy, W * .72 * pop)}" fill="${pal.star}" stroke="${pal.star}" stroke-width="3" stroke-linejoin="round"/><circle cx="${f1(cx - W * .14)}" cy="${f1(cy - W * .16)}" r="${f1(W * .1)}" fill="#fff" opacity=".9"/>`); break;
-    case "heart": L("heart", `<path d="${heart(cx, cy, W * .62 * pop)}" fill="${pal.heart}"/><circle cx="${f1(cx - W * .2)}" cy="${f1(cy - W * .18)}" r="${f1(W * .1)}" fill="#fff" opacity=".8"/>`); break;
-    case "spiral": L("spiral", `<path d="${spiral(cx, cy, W * .6, (spinT || 0) * 6 * side)}" stroke="${col}" stroke-width="${f1(sw2 * .7)}" fill="none" stroke-linecap="round"/>`); break;
-    case "dots": { const r = W * .42; let d = `<ellipse cx="${f1(cx)}" cy="${f1(cy)}" rx="${f1(r)}" ry="${f1(r * H / W)}" fill="none" stroke="${col}" stroke-width="2" opacity=".25"/>`; for (let i = 0; i < 3; i++) { const a = (spinT || 0) * 4.2 + i * TAU / 3; d += `<circle cx="${f1(cx + r * Math.cos(a))}" cy="${f1(cy + r * Math.sin(a) * H / W)}" r="${f1(W * (.13 + .05 * Math.sin(a * 2)) * 1.35)}" fill="${col}" opacity="${f1(.55 + .45 * (i === 0))}"/>`; } L("dots", d); break; }
-   }
+   // heavy lids get a soft crease above them, so a drowsy eye reads as drowsy rather than as a visor
+   const luE = clamp(R.lu + (R._close || 0), 0, 1);
+   if (open > .5 && luE > .35 && luE < .97 && Math.abs(R.la) < .25) { const ly = cy - H / 2 + luE * H * 1.02; o.push(`<path d="M${f1(cx - W * .6)} ${f1(ly + 1)}Q${f1(cx)} ${f1(ly - 6)} ${f1(cx + W * .6)} ${f1(ly + 1)}" stroke="${col}" stroke-width="${f1(Math.max(2, W * .08))}" fill="none" stroke-linecap="round" opacity="${f1(ramp(luE, .35, .5) * (1 - ramp(luE, .85, .97)) * .55 * open)}"/>`); }
+   if (R.tear > .05) { const tx = cx + side * W * .38, ty = s.ymax - 1; o.push(`<path d="M${f1(tx)} ${f1(ty - 8 * R.tear)}q${f1(5.5 * R.tear)} ${f1(8 * R.tear)} 0 ${f1(11 * R.tear)}q${f1(-5.5 * R.tear)} ${f1(-3 * R.tear)} 0 ${f1(-11 * R.tear)}z" fill="#9fd4f5" opacity="${f1(clamp(R.tear, 0, 1))}"/>`); }
+   const kw = (k) => keys[k] / wSum;
+   if (kw("star") > .05) o.push(`<circle cx="${f1(cx - W * .14)}" cy="${f1(cy - W * .16)}" r="${f1(W * .1 * kw("star"))}" fill="#fff" opacity=".9"/>`);
+   if (kw("heart") > .05) o.push(`<circle cx="${f1(cx - W * .2)}" cy="${f1(cy - W * .18)}" r="${f1(W * .1 * kw("heart"))}" fill="#fff" opacity=".8"/>`);
+   o.push(`</g>`);
+   // the spiral and the loading dots draw on with their weight (a growing stroke), never appearing at once
+   const sp = clamp(R.spiral, 0, 1), dt0 = clamp(R.dots, 0, 1);
+   if (sp > .02) o.push(`<g data-l="eye-spiral" data-s="${side}"><path d="${spiral(cx, cy, W * .6, (spinT || 0) * 6 * side)}" pathLength="1" stroke-dasharray="${f1(sp * 100) / 100} 1" stroke="${col}" stroke-width="${f1(sw2 * .7)}" fill="none" stroke-linecap="round"/></g>`);
+   if (dt0 > .02) { const r = W * .42; let d = ""; for (let i = 0; i < 3; i++) { const a = (spinT || 0) * 4.2 + i * TAU / 3; d += `<circle cx="${f1(cx + r * Math.cos(a))}" cy="${f1(cy + r * Math.sin(a) * H / W)}" r="${f1(W * (.13 + .05 * Math.sin(a * 2)) * 1.35 * dt0)}" fill="${col}"/>`; } o.push(`<g data-l="eye-dots" data-s="${side}">${d}</g>`); }
    // brows
    if (R.bo > .02) {
     const by = cy - H / 2 - F.bg + R.by - (side > 0 ? R.bas * 7 : 0), bx = cx + side * W * .04, L = W * .95 * (1 - .1 * R.yaw * side);
@@ -636,17 +690,14 @@
   }
   function setExpression(name, o = {}) {
    if (!E[name]) return;
-   const prev = expr; expr = name;
+   expr = name;
    clips = clips.filter((c) => !c.loop); // a mood's own acts (a sigh, a facepalm) end with the mood
    if (o.intensity !== undefined) intensity = o.intensity;
    retarget();
    const ex = E[name];
    loopT0 = performance.now(); nextLoopAct = loopT0 + 1500;
-   // a big change cuts through a blink, so the new face pops instead of tweening (TABY-BREAKDOWN §1.1)
-   const face = ["arc", "sarc", "chev", "star", "heart", "spiral", "dots", "mc", "ba", "la", "lu", "mo"];
-   const diff = face.reduce((s, k) => s + Math.abs(tgt[k] - cur[k]), 0);
-   if (!reduced && prev !== name && diff > .9 && !o.noCut && !shaped(cur) && !shaped(tgt)) play("blink", {cut: true, dur: 150});
-   else if (shaped(cur) !== shaped(tgt)) snapFace(); // a shape swap is its own cut: the new eyes replace the old at once
+   // every change morphs: the face's shape keys blend through in-betweens (the motion bar, 13 Nov, replaced the old
+   // "cut through a blink so the new face pops" rule)
    if (shaped(tgt)) clips = clips.filter((c) => !(/link/.test(c.name) && !c.cut)); // no blink carries over onto shaped eyes
    if (ex.fx && !reduced) spawn(ex.fx);
    if (name === "sad" || name === "sulky") spawn("gloom");
@@ -664,7 +715,7 @@
    clips.push({name, c, loop: !!o.fromLoop, t0: performance.now() + (o.delay || 0), dur, a: (o.amp ?? 1) * (name.includes("link") ? 1 : tu.gamp), cut: o.cut, cutDone: false});
    wake();
   }
-  function snapFace() { for (const k of KEYS) if (!SPRING.has(k)) { cur[k] = tgt[k]; } }
+  function snapFace() { for (const k of KEYS) if (!SPRING.has(k)) { cur[k] = tgt[k]; vel[k] = 0; } }
   function spawn(name) { if (!FX[name] || reduced) return; fxs.push({name, t0: performance.now(), dur: FX[name].dur, seed: Math.random() * 6}); wake(); }
   function prop(name, on = true) {
    if (name === "monocle" && ch.attach) { if (on) play("monocleOut", {force: true}); else play("monocleDrop", {force: true}); }
@@ -739,7 +790,11 @@
    let moving = false;
    for (const key of KEYS) {
     const target = tgt[key];
-    if (SPRING.has(key)) {
+    if (SHAPE.has(key)) {
+     const v = vel[key] || 0, acc = SHAPE_W * SHAPE_W * (target - cur[key]) - 2 * SHAPE_W * v;
+     vel[key] = v + acc * dt; cur[key] += vel[key] * dt;
+     if (Math.abs(target - cur[key]) > 1e-3 || Math.abs(vel[key]) > 1e-3) moving = true; else { cur[key] = target; vel[key] = 0; }
+    } else if (SPRING.has(key)) {
      const acc = k * (target - cur[key]) - c * vel[key];
      vel[key] += acc * dt; cur[key] += vel[key] * dt;
      if (Math.abs(target - cur[key]) > 1e-3 || Math.abs(vel[key]) > 1e-3) moving = true; else { cur[key] = target; vel[key] = 0; }
