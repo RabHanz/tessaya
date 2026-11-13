@@ -135,6 +135,12 @@ const SetTool = Tool.make("device_set", {
         Schema.Boolean,
         Schema.String.check(Schema.isMaxLength(200)),
         Schema.Null,
+        // A Bluetooth device in his words, by address, or a new one to pair (bt.connect, audio.output).
+        Schema.Struct({
+          name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80))),
+          mac: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(17))),
+          pair: Schema.optionalKey(Schema.Boolean),
+        }),
       ]),
     ),
     confirmed: Schema.optionalKey(

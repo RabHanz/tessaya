@@ -32,11 +32,19 @@ export const make = Effect.gen(function* () {
   ) {
     if (context === null) return yield* unavailable;
     const scope = yield* McpInvocationContext.McpInvocationContext;
-    const via = (yield* TurnOrigin)?.label;
-    // A vessel's own Tessaya acts as his assistant does: harmless controls at once, the camera and a restart on his yes.
+    const turn = yield* TurnOrigin;
+    const via = turn?.label;
+    const vessel = vesselOf(scope.client);
+    // A vessel's own Tessaya acts as his assistant does: harmless controls at once, an owner item on his verified
+    // voice or his yes on the phone. The suite's pretend vessel sends nothing to a device.
     const by: DeviceActor =
-      vesselOf(scope.client) !== null
-        ? { who: via === undefined ? "Tessaya" : `Tessaya via ${via}`, surface: "assistant" }
+      vessel !== null
+        ? {
+            who: via === undefined ? "Tessaya" : `Tessaya via ${via}`,
+            surface: "assistant",
+            ...(turn?.hisVoice === true ? { approved: true } : {}),
+            ...(vessel.dryRun ? { dryRun: true } : {}),
+          }
         : {
             who: scope.client === undefined ? "an agent in T3" : "an outside agent",
             surface: "agent",

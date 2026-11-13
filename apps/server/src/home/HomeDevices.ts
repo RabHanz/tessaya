@@ -29,10 +29,18 @@ import {
   type DevicesOverview,
 } from "@t3tools/baton-contracts";
 import { recordText } from "@t3tools/baton-shared/audit";
+import {
+  btLabel,
+  knownFrom,
+  mergeKnown,
+  resolveBluetooth,
+  type BtKnown,
+} from "@t3tools/baton-shared/btNames";
 import { valueText } from "@t3tools/baton-shared/deviceItems";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { VoiceForgets } from "../baton/VoiceForgets.ts";
@@ -56,6 +64,8 @@ export interface DeviceActor {
   readonly surface: "settings" | "agent" | "assistant";
   /** His yes is already given: his own spoken request at the R1, his voice verified this turn (R1Device). */
   readonly approved?: boolean;
+  /** The suite's pretend vessel: judged and answered as for real, and nothing is sent to a device. */
+  readonly dryRun?: boolean;
 }
 
 export type DeviceCommand =
@@ -212,6 +222,31 @@ export interface Folded {
   readonly manifest: unknown;
   readonly ack: { readonly itemId: string; readonly ok: boolean; readonly error?: string } | null;
 }
+
+/**
+ * A write that names a Bluetooth device in his words: `bt.connect` with a name (or `{name, pair}`), or `audio.output`
+ * with a device rather than one of its routes. Null for any other write.
+ */
+const btTargetOf = (
+  itemId: string,
+  value: unknown,
+  routes: ReadonlyArray<string> | undefined,
+): { readonly name: string; readonly pair: boolean } | null => {
+  const v = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+  const name =
+    typeof value === "string"
+      ? value
+      : typeof v?.["mac"] === "string"
+        ? v["mac"]
+        : typeof v?.["name"] === "string"
+          ? v["name"]
+          : "";
+  const pair = v?.["pair"] === true;
+  if (itemId === "bt.connect") return name === "" && !pair ? null : { name, pair };
+  if (itemId === "audio.output" && (v !== null || (name !== "" && !(routes ?? []).includes(name))))
+    return name === "" && !pair ? null : { name, pair };
+  return null;
+};
 
 /** The R1 says `onboard` on its older topics where its manifest says `speaker`. */
 const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out);
@@ -883,6 +918,154 @@ const make = Effect.gen(function* () {
     if (tail === "event/key") yield* runKey(result.id, json(payload));
     else if (tail === "state/key/bind") yield* keepBinds(result.id, json(payload));
     else if (tail === "voice/stepup/done") yield* stepUpDone(result.id, json(payload));
+    else if (tail === "state/bt" || tail === "state/audio/output" || tail === "event/bt/devices")
+      yield* btHeard(result.id, tail, json(payload), now);
+  });
+
+  /** The R1's next Bluetooth link state after a connect or pair, for the true spoken result. */
+  const btWait = new Map<string, Deferred.Deferred<{ state: string; mac: string | null }>>();
+  /** A pair he asked for: the scan's result is matched to his words, then paired. */
+  const pairing = new Map<string, { name: string; by: DeviceActor; until: number }>();
+
+  /** Every device this vessel may reach by name: its own bonds and links, and the paired lists of his other vessels. */
+  const knownOf = Effect.fn("HomeDevices.knownOf")(function* (id: string) {
+    const own = knownFrom(yield* registry.value(id, "bt.known"));
+    const others = (yield* registry.list).flatMap((d) =>
+      d.deviceId === id ? [] : knownFrom(d.values.find((v) => v.itemId === "bt.paired")?.value),
+    );
+    // Its own names win; another vessel's list only fills a name or an address it never heard.
+    return mergeKnown(
+      others.map((k) => ({ ...k, lastAt: null })),
+      own,
+    );
+  });
+  const remember = Effect.fn("HomeDevices.remember")(function* (id: string, entry: BtKnown) {
+    const own = knownFrom(yield* registry.value(id, "bt.known"));
+    const next = mergeKnown(own, [entry]);
+    if (JSON.stringify(next) !== JSON.stringify(own))
+      yield* registry.report("mqtt", id, [{ itemId: "bt.known", value: next }]);
+  });
+
+  const btLine = (target: BtKnown, got: { state: string; mac: string | null } | null) =>
+    got === null
+      ? `Still connecting to ${btLabel(target)}; it can take a few seconds.`
+      : got.state === "failed"
+        ? `I couldn't connect to ${btLabel(target)}. It's probably connected to another phone or laptop: disconnect it there first, or switch it off and on, then ask me again.`
+        : got.mac !== null && got.mac.toUpperCase() !== target.mac
+          ? `It connected to ${got.mac} rather than ${btLabel(target)}.`
+          : `Connected to ${btLabel(target)}. I'll play through it.`;
+
+  /** Route to one known device and connect; the firmware switches between bonded sinks in 3-5 s. */
+  const btConnect = Effect.fn("HomeDevices.btConnect")(function* (
+    id: string,
+    target: BtKnown,
+    by: DeviceActor,
+    pair: boolean,
+  ) {
+    if (by.dryRun === true) return `Connecting to ${btLabel(target)}.`;
+    const waiter = yield* Deferred.make<{ state: string; mac: string | null }>();
+    btWait.set(id, waiter);
+    yield* publish(
+      id,
+      pair ? "cmd/bt/pair" : "cmd/audio/output",
+      pair ? { mac: target.mac } : { to: "bt", mac: target.mac },
+    );
+    const got = yield* Deferred.await(waiter).pipe(
+      Effect.timeoutOption(pair ? "20 seconds" : "8 seconds"),
+    );
+    if (btWait.get(id) === waiter) btWait.delete(id);
+    const said = btLine(target, got._tag === "Some" ? got.value : null);
+    yield* audit(by, id, `Bluetooth ${pair ? "pair" : "connect"} ${btLabel(target)}`, said);
+    return said;
+  });
+
+  /** His words for a Bluetooth device, resolved; or a pair, which scans first. */
+  const btGo = Effect.fn("HomeDevices.btGo")(function* (
+    id: string,
+    target: { readonly name: string; readonly pair: boolean },
+    by: DeviceActor,
+  ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
+    const now = yield* Clock.currentTimeMillis;
+    if (target.pair) {
+      if (by.dryRun !== true) {
+        pairing.set(id, { name: target.name, by, until: now + 30_000 });
+        yield* publish(id, "cmd/bt/scan", { secs: 12 });
+      }
+      return {
+        status: "done",
+        line: "Put it in pairing mode now, usually by holding its Bluetooth button until the light flashes. I'm looking for it and connect as soon as I find it.",
+      };
+    }
+    const found = resolveBluetooth(target.name, yield* knownOf(id));
+    if (found.kind === "several")
+      return {
+        status: "confirm",
+        line: `Which one: ${found.devices.map(btLabel).join(" or ")}? Ask again with its name.`,
+      };
+    if (found.kind === "none")
+      return {
+        status: "done",
+        line: `I don't know a Bluetooth device called "${recordText(target.name, 40)}" here. If it's new, ask me to pair it.`,
+      };
+    return { status: "done", line: yield* btConnect(id, found.device, by, false) };
+  });
+
+  /** The R1's Bluetooth reports: its links join the known list, a waiting connect hears its result, a scan finds a pair. */
+  const btHeard = Effect.fn("HomeDevices.btHeard")(function* (
+    id: string,
+    tail: string,
+    body: Record<string, unknown> | null,
+    now: number,
+  ) {
+    const mac = str(body?.["mac"]) ?? str(body?.["device"]);
+    const state = str(body?.["state"]);
+    const linked = state === "connected" || state === "streaming";
+    if (
+      mac !== null &&
+      MAC.test(mac) &&
+      (tail === "state/audio/output" || body?.["saved"] === true || linked)
+    )
+      yield* remember(id, {
+        mac: mac.toUpperCase(),
+        name: str(body?.["name"]) ?? "",
+        lastAt: linked ? now : null,
+      });
+    if (tail === "state/bt" && (linked || state === "failed")) {
+      const waiter = btWait.get(id);
+      if (waiter !== undefined) {
+        btWait.delete(id);
+        yield* Deferred.succeed(waiter, { state: state!, mac });
+      }
+    }
+    const wanted = pairing.get(id);
+    if (tail !== "event/bt/devices" || wanted === undefined) return;
+    pairing.delete(id);
+    if (wanted.until < now) return;
+    const nearby = (heard.get(id)?.speaker?.found ?? []).filter((f) => f.audio || f.name !== "");
+    const say = (text: string) => publish(id, "voice/say", { text });
+    const picked =
+      wanted.name.trim() === "" && nearby.length === 1
+        ? ({
+            kind: "one",
+            device: { mac: nearby[0]!.mac, name: nearby[0]!.name, lastAt: null },
+          } as const)
+        : resolveBluetooth(
+            wanted.name,
+            nearby.map((f) => ({ mac: f.mac, name: f.name, lastAt: null })),
+          );
+    if (picked.kind === "none")
+      return yield* say(
+        "I didn't find it. Make sure it's in pairing mode, with its light flashing, and ask me again.",
+      );
+    if (picked.kind === "several")
+      return yield* say(
+        `I found ${picked.devices.map(btLabel).join(" and ")}. Which one should I pair?`,
+      );
+    yield* remember(id, picked.device);
+    // Off the broker's queue: the result it waits for comes in on that queue.
+    yield* Effect.flatMap(btConnect(id, picked.device, wanted.by, true), say).pipe(
+      Effect.forkIn(scope, { startImmediately: true }),
+    );
   });
 
   const revert = Effect.fn("HomeDevices.revert")(function* (id: string) {
@@ -1114,8 +1297,16 @@ const make = Effect.gen(function* () {
         const { reg, item } = yield* itemOf(id, c.itemId);
         if (item.privacy === true) yield* registry.markLive(id, c.itemId, LIVE_MS);
         // The R1's picture keeps its own path: the window the upload is accepted in.
-        if (reg.via === "mqtt" && c.itemId === "camera.capture")
+        if (reg.via === "mqtt" && c.itemId === "camera.capture" && by.dryRun !== true)
           return yield* run(id, { op: "camera" }, by);
+        const bt = btTargetOf(c.itemId, c.value, item.values);
+        if (reg.via === "mqtt" && bt !== null) return yield* btGo(id, bt, by);
+        if (by.dryRun === true)
+          return done(
+            item.type === "action"
+              ? `${item.label} on ${reg.name} would run.`
+              : `${item.label} on ${reg.name} would be ${valueText(item, c.value)}.`,
+          );
         const out = yield* registry.write(id, c.itemId, c.value);
         const said =
           item.type === "action"
@@ -1155,6 +1346,11 @@ const make = Effect.gen(function* () {
       needsYes = item.safety === "owner" || (item.safety === "confirm" && by.surface === "agent");
     } else if (c.op !== "forget") yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
+      if (by.dryRun === true)
+        return {
+          status: "asked",
+          line: "Sent to the Director's phone for a yes (a rehearsal: nothing was sent).",
+        } satisfies DeviceOutcome;
       const now = yield* Clock.currentTimeMillis;
       const askId = `device-${now.toString(36)}${(counter++ % 1296).toString(36)}`;
       const line = `${by.who} wants to ${describe(c)} on ${id}`;

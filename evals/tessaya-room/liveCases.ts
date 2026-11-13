@@ -561,6 +561,48 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastNotSays: [/\b(took|taken|here it is|i can see)\b/i],
   },
   {
+    id: "bt-switch-to-speakers",
+    device: true,
+    proves: [],
+    said: ["Play through my speakers."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "a Bluetooth target in his words": ["bt.connect", "audio.output"].includes(
+        String(input["itemId"]),
+      ),
+    }),
+    // The pretend R1 sends nothing; she says the device she would connect, or asks which one.
+    lastSays: [/\b(connect\w*|which|speaker|pair)\b/i],
+    lastNotSays: [/\bconnected to\b/i],
+  },
+  {
+    id: "bt-back-to-own-speaker",
+    device: true,
+    proves: [],
+    said: ["Go back to your own speaker."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "the R1's own speaker": input["itemId"] === "audio.output" && input["value"] === "speaker",
+    }),
+  },
+  {
+    id: "bt-pair-new",
+    device: true,
+    proves: [],
+    said: ["Pair my new JBL speaker."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "a pair": JSON.stringify(input["value"] ?? "").includes('"pair":true'),
+    }),
+    lastSays: [/pairing mode/i],
+  },
+  {
     id: "device-watch",
     device: true,
     proves: ["device_watch"],

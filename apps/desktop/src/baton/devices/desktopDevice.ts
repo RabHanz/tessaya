@@ -55,6 +55,8 @@ export interface PeripheralScan {
   readonly bluetooth: ReadonlyArray<string>;
   readonly usb: ReadonlyArray<string>;
   readonly cardReaders: ReadonlyArray<string>;
+  /** Paired Bluetooth devices with their addresses (from `BTHENUM\\DEV_<mac>`), so a vessel can reach them by name. */
+  readonly bluetoothPaired: ReadonlyArray<{ readonly name: string; readonly mac: string }>;
   readonly battery: { readonly pct: number; readonly charging: boolean } | null;
 }
 
@@ -106,6 +108,18 @@ export const classifyPnp = (
         !["USB", "Camera", "Image", "Biometric", "Bluetooth"].includes(cls),
     ),
     cardReaders: names((cls) => cls === "SmartCardReader" || cls === "SDHost"),
+    bluetoothPaired: [
+      ...new Map(
+        rows.flatMap((r) => {
+          const id = typeof r.InstanceId === "string" ? r.InstanceId : "";
+          const name = typeof r.FriendlyName === "string" ? r.FriendlyName.trim() : "";
+          const hex = /^(?:BTHENUM|BTHLE)\\DEV_([0-9A-F]{12})/i.exec(id)?.[1]?.toUpperCase();
+          return hex === undefined || name === "" || PLUMBING.test(name)
+            ? []
+            : [[hex, { name: name.slice(0, 60), mac: hex.replace(/(..)(?!$)/g, "$1:") }] as const];
+        }),
+      ).values(),
+    ],
     // Win32_Battery's BatteryStatus 2 is on mains; 6 to 9 are charging.
     battery:
       pct === null
@@ -239,6 +253,13 @@ export const desktopManifest = (input: {
               "peripherals",
               "smart card and SD readers",
             ),
+            item(
+              "bt.paired",
+              "Paired Bluetooth",
+              "list",
+              "peripherals",
+              "Bluetooth devices paired with this computer, by name and address",
+            ),
           ]),
     ],
   };
@@ -278,6 +299,7 @@ export const desktopValues = (
       { itemId: "peripherals.usb", value: list(s.usb) },
       { itemId: "peripherals.bluetooth", value: list(s.bluetooth) },
       { itemId: "peripherals.cardreader", value: list(s.cardReaders) },
+      { itemId: "bt.paired", value: s.bluetoothPaired },
     );
   }
   return out;
