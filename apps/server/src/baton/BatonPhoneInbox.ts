@@ -93,6 +93,9 @@ export type PostResult =
   | { readonly ok: true; readonly ask: PhoneAsk }
   | { readonly ok: false; readonly why: string };
 
+/** On: the one brain on this server answers asks (S6); off: the desktop does. */
+const BRAIN_ANSWERS_KEY = "brain.asks";
+
 export class BatonPhoneInbox extends Context.Service<
   BatonPhoneInbox,
   {
@@ -117,6 +120,9 @@ export class BatonPhoneInbox extends Context.Service<
     readonly answer: (id: string, spoken: string, card: string) => Effect.Effect<boolean>;
     readonly fail: (id: string, message: string) => Effect.Effect<boolean>;
     readonly connected: Effect.Effect<boolean>;
+    /** The one brain on this server answers asks (SPINE-UNIFY S6), as the desktop's one-brain setting says. */
+    readonly brainAnswers: Effect.Effect<boolean>;
+    readonly setBrainAnswers: (on: boolean) => Effect.Effect<void>;
     /** The desktop mirrors a question it is asking him. */
     readonly mirror: (prompt: PhonePrompt) => Effect.Effect<void>;
     readonly pending: Effect.Effect<ReadonlyArray<PhonePrompt>>;
@@ -374,6 +380,16 @@ export const make = Effect.gen(function* () {
     answer,
     fail,
     connected: Effect.map(Clock.currentTimeMillis, (now) => isConnected(lastSeen, now)),
+    brainAnswers: sql<{
+      value: string;
+    }>`SELECT value FROM fabric_settings WHERE key = ${BRAIN_ANSWERS_KEY}`.pipe(
+      Effect.map((rows) => rows[0]?.value === "1"),
+      Effect.orElseSucceed(() => false),
+    ),
+    setBrainAnswers: Effect.fn("BatonPhoneInbox.setBrainAnswers")(function* (on: boolean) {
+      yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${BRAIN_ANSWERS_KEY}, ${on ? "1" : "0"})
+        ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(Effect.orDie);
+    }),
     mirror,
     pending,
     answerPrompt,

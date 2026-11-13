@@ -1173,6 +1173,8 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly runStanding?: ScreenCompanion["runStanding"];
   /** The lead's nightly learning pass over the turns these Record rows trace. */
   readonly learnNightly?: (rows: ReadonlyArray<BatonRecordEntry>) => Promise<string>;
+  /** The one brain on his server answers asks: this desktop takes none from the phone inbox. */
+  readonly serverBrainOn?: () => boolean;
   /** The phone's words run as a typed ask; the reply comes back. "device" words are never his own. */
   readonly askFromPhone?: (
     text: string,
@@ -2792,6 +2794,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   const phoneRelay = createPhoneRelay({
     call: phoneCall,
+    taking: () => input.extras?.serverBrainOn?.() !== true,
     run: (text, source, origin, hisVoice) =>
       input.extras?.askFromPhone === undefined
         ? Promise.reject(new Error("No assistant here."))

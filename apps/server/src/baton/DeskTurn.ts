@@ -103,6 +103,12 @@ export const deskTurnStream = (
   ownMachine: boolean,
   /** The desktop's hands for this turn: this server's own, or the relay of the server it came through. */
   hands: HandsBroker | null,
+  /** Who carried the words: the desktop itself, or an ask from his phone, the web bar or an agent (S6). */
+  from: {
+    readonly kind: TurnEnvelope["vessel"]["kind"];
+    readonly origin: string;
+    readonly tainted?: boolean;
+  } = { kind: "desktop", origin: "desktop" },
 ) =>
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
@@ -112,8 +118,9 @@ export const deskTurnStream = (
         Option.isNone(config) ? NodeOS.homedir() : NodePath.dirname(config.value.dbPath),
       );
       const turn: TurnEnvelope = {
-        vessel: { kind: "desktop", id: body.vessel ?? "desktop" },
-        origin: "desktop",
+        vessel: { kind: from.kind, id: body.vessel ?? from.kind },
+        origin: from.origin,
+        ...(from.tainted === true ? { tainted: true } : {}),
         text: body.text,
         ...(body.persona === undefined ? {} : { persona: body.persona }),
         speaker:
@@ -180,8 +187,8 @@ export const deskTurnStream = (
                 if (Option.isSome(record))
                   yield* record.value
                     .append({
-                      kind: "desktop",
-                      actor: "desktop",
+                      kind: from.kind,
+                      actor: from.origin,
                       subject: `heard ${JSON.stringify(recordText(body.text, 160))}`,
                       outcome: outcomes.length === 0 ? "answered" : `acted ${outcomes.length}`,
                       detail: recordText(reply, 300),

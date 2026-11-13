@@ -76,6 +76,8 @@ export const createPhoneRelay = (input: {
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   readonly wait?: (ms: number) => Promise<void>;
   readonly newId?: () => string;
+  /** False while the one brain on his server answers asks (SPINE-UNIFY S6): this desktop takes none. */
+  readonly taking?: () => boolean;
   /** Calls `renew` every so often until stopped; a minute of real time unless a test drives it. */
   readonly every?: (ms: number, run: () => void) => () => void;
 }) => {
@@ -119,6 +121,7 @@ export const createPhoneRelay = (input: {
   /** One look at the inbox. "away" means the server did not answer. */
   const tick = async (): Promise<"idle" | "answered" | "failed" | "away" | "busy" | "started"> => {
     if (busy) return "busy";
+    if (input.taking?.() === false) return "idle";
     // A flood of device asks waits on the server, not here, where each would be renewed until its turn.
     if (working.size >= MAX_WORKING) return "busy";
     busy = true;

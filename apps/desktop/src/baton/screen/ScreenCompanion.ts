@@ -589,6 +589,8 @@ export interface ScreenCompanion {
   readonly openAskBox: () => void;
   /** A question about something that is not his words (a run's log): an ordinary turn, the text marked as not his. */
   readonly askAbout: (text: string) => void;
+  /** Its one-brain setting: the server answers his phone's, the web bar's and agents' asks. */
+  readonly serverBrainOn: () => boolean;
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
   readonly askFromPhone: (
     text: string,
@@ -3279,6 +3281,9 @@ export const startScreenCompanion = (input: {
       ? { status: "cancelled", text: "He started talking to Tessaya, so it stopped." }
       : out;
   };
+  /** His server answers asks with the one brain exactly while this setting is on; a server that is not up hears it next start. */
+  const tellServerAsks = () =>
+    input.direct?.("brain-asks", { on: settings.serverBrain }).catch(() => undefined);
   /** Memory's skills made his accepted ones (SPINE-UNIFY §9); a server that does not answer waits for the next try. */
   const skillsToMemory = async () => {
     const call = actions?.memory;
@@ -3849,6 +3854,7 @@ export const startScreenCompanion = (input: {
       stopMemorySync ??= memorySync.start();
       // His accepted skills reach the one memory once memory answers, and again after each of his decisions.
       void skillsToMemory();
+      void tellServerAsks();
     },
     active: () => runningMode() !== null,
     hush,
@@ -3904,6 +3910,7 @@ export const startScreenCompanion = (input: {
       void typed(text).catch(fail);
     },
     askFromPhone,
+    serverBrainOn: () => settings.serverBrain,
     stateForServer: () => ({
       screen: settings,
       personas: readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
@@ -4289,6 +4296,7 @@ export const startScreenCompanion = (input: {
       else if (id === "s.serverBrain") {
         save({ serverBrain: value === true });
         void skillsToMemory();
+        void tellServerAsks();
       } else if (id === "s.serverBrainHome") save({ serverBrainHome: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
       else if (id === "s.learn") void learnFromLast();
