@@ -482,7 +482,7 @@ const main = async () => {
             turn.feed(pcm);
             return turn.finish();
           },
-          onWake: (id, word, level, score) => room?.woken(id, word, level, score),
+          onWake: (id, word, level, score, clip) => room?.woken(id, word, level, score, clip),
           log,
         });
   startCameraRelay();

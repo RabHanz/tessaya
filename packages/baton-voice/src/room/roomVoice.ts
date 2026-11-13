@@ -81,6 +81,8 @@ const sameWords = (a: string, b: string) => {
 
 /** How many times one turn may start her brain on a guess before the final text: each costs a brain call. */
 const MAX_GUESSES = 3;
+/** His words must hold still this long at a pause before her brain starts early on them. */
+const STABLE_MS = 300;
 
 /** Reads `source` into a buffer at once and replays it, so a stream started early loses nothing while it waits. */
 const buffered = <T>(source: AsyncIterable<T>): AsyncIterable<T> => {
@@ -196,6 +198,8 @@ export interface RoomDeps {
       readonly deviceId: string;
       readonly wakeScore: number;
       readonly loudnessDb: number | null;
+      /** Who Voice ID heard: a verified member continues his own conversation, the rest the household's. */
+      readonly speaker?: { readonly personId: string | null; readonly verified: boolean } | null;
       readonly answerHere?: boolean;
     }) => Promise<{
       readonly answer: boolean;
@@ -486,6 +490,98 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       return verdict.hers;
     };
 
+    /** The turn as her server's one pipeline takes it (MEMORY-V2-DESIGN §2.0). */
+    const envelopeOf = (
+      given: string | undefined,
+      tainted: boolean,
+      words: string,
+      who: RoomPersona | undefined,
+      switched: boolean,
+      via: Tessaya["via"],
+      speaker: SpeakerIdentity,
+      affect: Affect | undefined,
+    ): Tessaya => ({
+      vessel: { kind: "device", id },
+      origin: given === undefined ? "voice" : "button",
+      persona: (who ?? lead)?.id ?? "",
+      ...(switched ? { switched: true as const } : {}),
+      addressed: true,
+      via,
+      tainted,
+      tz: config.tz,
+      words,
+      capabilities: capabilities.get(id) ?? [],
+      ...(conversationOf.has(id) ? { conversation: conversationOf.get(id)! } : {}),
+      speaker,
+      ...(affect === undefined
+        ? {}
+        : { emotion: { label: affect.emotion, events: affect.events } }),
+    });
+
+    /**
+     * An early start (B6): at his first pause, when the recogniser's words have held still for `STABLE_MS` and end a
+     * sentence, her brain starts on them before the turn ends. The final text keeps it only if it says the same words.
+     */
+    let early: {
+      readonly seq: number;
+      readonly words: string;
+      readonly control: AbortController;
+      readonly callId: string;
+      stream: AsyncIterable<string> | null;
+    } | null = null;
+    let partialNow = { words: "", changedAt: 0 };
+    const startEarly = () => {
+      const words = partialNow.words.trim();
+      if (early !== null || enrolling() || bench.has(id) || words === "") return;
+      if (deps.now() - partialNow.changedAt < STABLE_MS || !/[.?!]$/.test(words)) return;
+      if (
+        speaking() ||
+        turnTainted ||
+        isUnfinished(words) ||
+        stopIntent(words, config.stopPhrases) !== null
+      )
+        return;
+      const called = calledName(words, names);
+      if (!addressed(words, called, turnStartedAt)) return;
+      const who = config.personas.find((p) => p.name === called) ?? persona;
+      const via: Tessaya["via"] =
+        called !== null
+          ? "name"
+          : turnStartedAt <= firstUntil
+            ? "first"
+            : invited
+              ? "reply"
+              : "window";
+      const tessaya = envelopeOf(
+        undefined,
+        beganOverHer(turnStartedAt, playback()),
+        words,
+        who,
+        who !== persona,
+        via,
+        UNVERIFIED(deps.now()),
+        undefined,
+      );
+      const control = new AbortController();
+      const callId = `early-${id}-${starts}`;
+      const messages = [...history, { role: "user" as const, content: words }].slice(
+        -config.historyTurns * 2,
+      );
+      early = {
+        seq: starts,
+        words,
+        control,
+        callId,
+        stream: buffered(
+          deps.brain(
+            { deviceId: id, messages, tessaya: { ...tessaya, speculative: true, callId } },
+            control.signal,
+          ),
+        ),
+      };
+      deps.log(`[${id}] early start on his words so far (${heldBack(words)})`);
+    };
+
     /** A line that was not answered: a glance so he sees she heard something, and a log line without his words. */
     const dropped = (turn: number, why: string, text: string) => {
       const cue = !sentAway && deps.now() - lastGlance >= 5_000;
@@ -713,23 +809,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         via: Tessaya["via"],
         speaker: SpeakerIdentity,
         affect: Affect | undefined,
-      ): Tessaya => ({
-        vessel: { kind: "device", id },
-        origin: given === undefined ? "voice" : "button",
-        persona: (who ?? lead)?.id ?? "",
-        ...(switched ? { switched: true as const } : {}),
-        addressed: true,
-        via,
-        tainted,
-        tz: config.tz,
-        words,
-        capabilities: capabilities.get(id) ?? [],
-        ...(conversationOf.has(id) ? { conversation: conversationOf.get(id)! } : {}),
-        speaker,
-        ...(affect === undefined
-          ? {}
-          : { emotion: { label: affect.emotion, events: affect.events } }),
-      });
+      ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect);
       const current = given === undefined ? rec : null;
       if (given === undefined) rec = null;
       const speakerP =
@@ -782,8 +862,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         stream: AsyncIterable<string> | null;
         callId: string;
       };
-      let guess: Guess | null = null;
-      let guesses = 0;
+      // His pause already started her brain on these words (an early start): it is this turn's first guess.
+      let guess: Guess | null =
+        given === undefined && early !== null && early.seq === seq ? early : null;
+      let guesses = guess === null ? 0 : 1;
+      early = null;
       let settled = false;
       const tryGuess = (words: string) => {
         if (settled || enrolling() || words.trim() === "") return;
@@ -982,8 +1065,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         !addressed(text, null, startedAt)
       ) {
         const level = speechLevel(pcm);
+        const heardBy = await speakerP;
         const verdict = await deps.arbiter
-          .claim({ deviceId: id, wakeScore: 1, loudnessDb: Number.isFinite(level) ? level : null })
+          .claim({
+            deviceId: id,
+            wakeScore: 1,
+            loudnessDb: Number.isFinite(level) ? level : null,
+            ...(heardBy === undefined
+              ? {}
+              : { speaker: { personId: heardBy.personId, verified: heardBy.verified } }),
+          })
           .catch(() => null);
         if (verdict?.conversation !== undefined) conversationOf.set(id, verdict.conversation);
         if (verdict !== null && !verdict.answer) {
@@ -1208,6 +1299,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             starts += 1;
             turnPcm = [a.pcm];
             rec.onPartial?.(cutIn);
+            early?.control.abort();
+            early = null;
+            partialNow = { words: "", changedAt: deps.now() };
+            rec.onPartial?.((words) => {
+              if (!sameWords(words, partialNow.words))
+                partialNow = { words, changedAt: deps.now() };
+            });
             if (enrolling()) {
               cardWords.prefix = `${cardWords.prefix} ${cardWords.turn}`.trim();
               cardWords.turn = "";
@@ -1226,6 +1324,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             turnPcm.push(a.pcm);
             break;
           case "check": {
+            startEarly();
             const { id: checkId, pcm } = a;
             void deps.smartTurn(pcm).then(
               (p) => act(turns.verdict(checkId, p)),
@@ -1417,6 +1516,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       drained: () => chain,
       close: () => {
         closed = true;
+        early?.control.abort();
         rec?.cancel();
         reply?.abort();
       },
@@ -1657,7 +1757,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     },
     session: (id: string) => sessions.get(id),
     /** The wake check heard `word`: the R1 starts its session (its echo opens ours) with that persona answering. */
-    woken: (id: string, word: string, level = Number.NEGATIVE_INFINITY, score = 1) => {
+    woken: (
+      id: string,
+      word: string,
+      level = Number.NEGATIVE_INFINITY,
+      score = 1,
+      /** Her name as heard, for Voice ID on the claim. */
+      clip?: Int16Array,
+    ) => {
       if (sessions.has(id)) return;
       if (deps.now() < (quietUntil.get(id) ?? 0)) {
         deps.log(`[${id}] her name while another device answers: taken as her voice from there`);
@@ -1668,12 +1775,22 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.publish(topic(id, "cmd/voice/start"), "{}");
       };
       if (deps.arbiter === undefined) return open();
-      void deps.arbiter
-        .claim({
-          deviceId: id,
-          wakeScore: Math.min(1, Math.max(0, score)),
-          loudnessDb: Number.isFinite(level) ? level : null,
-        })
+      const arbiter = deps.arbiter;
+      void (
+        clip === undefined || deps.speaker === undefined
+          ? Promise.resolve(undefined)
+          : deps.speaker(clip).catch(() => undefined)
+      )
+        .then((heardBy) =>
+          arbiter.claim({
+            deviceId: id,
+            wakeScore: Math.min(1, Math.max(0, score)),
+            loudnessDb: Number.isFinite(level) ? level : null,
+            ...(heardBy === undefined
+              ? {}
+              : { speaker: { personId: heardBy.personId, verified: heardBy.verified } }),
+          }),
+        )
         .catch(() => null)
         .then((verdict) => {
           if (verdict?.conversation !== undefined) conversationOf.set(id, verdict.conversation);

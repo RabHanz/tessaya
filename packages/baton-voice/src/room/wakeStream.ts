@@ -36,7 +36,13 @@ export interface WakeStreamDeps {
   /** The recogniser on the confirm clip only. */
   readonly confirm: (pcm: Int16Array) => Promise<string>;
   /** `level`: how loud his name was (dBFS), so the session can tell his voice from a far-off room. */
-  readonly onWake: (deviceId: string, word: string, level: number, score: number) => void;
+  readonly onWake: (
+    deviceId: string,
+    word: string,
+    level: number,
+    score: number,
+    clip: Int16Array,
+  ) => void;
   readonly log: (line: string) => void;
 }
 
@@ -99,7 +105,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
     if (trusted || wakeWordHeard(text, word, ratio)) {
       deps.log(`[${id}] woken by ${word} (${at})`);
-      deps.onWake(id, word, speechLevel(clip), Math.min(1, output));
+      deps.onWake(id, word, speechLevel(clip), Math.min(1, output), clip);
     } else deps.log(`[${id}] ${word} fired (${at}), not confirmed (${heldBack(text)})`);
   };
 
