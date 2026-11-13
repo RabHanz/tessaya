@@ -25,6 +25,8 @@ const unknown = (key: string) =>
     message: `No setting is called ${key}; use settings_find.`,
   });
 
+type Args = Readonly<Record<string, unknown>>;
+
 export const make = Effect.gen(function* () {
   const context = yield* BatonRuntime;
   const inRuntime = <A, E>(effect: Effect.Effect<A, E, never>) =>
@@ -35,9 +37,9 @@ export const make = Effect.gen(function* () {
     return { entry, value: yield* settingValue(entry).pipe(Effect.provideContext(context!)) };
   });
   return {
-    settings_find: McpToolAccess.reads((input: { readonly text: string }) =>
+    settings_find: McpToolAccess.reads((input: Args) =>
       Effect.succeed(
-        findSettings(input.text).map((s) => ({
+        findSettings(String(input["text"] ?? "")).map((s) => ({
           key: s.key,
           says: s.say,
           store: s.store,
@@ -45,18 +47,18 @@ export const make = Effect.gen(function* () {
         })),
       ),
     ),
-    settings_get: McpToolAccess.reads((input: { readonly key: string }) =>
+    settings_get: McpToolAccess.reads((input: Args) =>
       inRuntime(
-        Effect.map(described(input.key), ({ entry, value }) => ({
+        Effect.map(described(String(input["key"] ?? "")), ({ entry, value }) => ({
           key: entry.key,
           says: entry.say,
           value,
         })),
       ),
     ),
-    settings_explain: McpToolAccess.reads((input: { readonly key: string }) =>
+    settings_explain: McpToolAccess.reads((input: Args) =>
       inRuntime(
-        Effect.map(described(input.key), ({ entry, value }) => ({
+        Effect.map(described(String(input["key"] ?? "")), ({ entry, value }) => ({
           key: entry.key,
           says: entry.say,
           value,
@@ -72,28 +74,29 @@ export const make = Effect.gen(function* () {
         })),
       ),
     ),
-    settings_set: McpToolAccess.writes(
-      (input: { readonly key: string; readonly value: unknown; readonly why: string }) =>
-        Effect.gen(function* () {
-          const scope = yield* McpInvocationContext.McpInvocationContext;
-          const room = scope.client === ROOM_CLIENT || scope.client === ROOM_REPLAY_CLIENT;
-          const via = (yield* TurnOrigin)?.label;
-          return yield* inRuntime(
-            setSetting({
-              ...input,
-              // The suite's pretend R1 is checked as for real and changes nothing.
-              dryRun: scope.client === ROOM_REPLAY_CLIENT,
-              who:
-                via !== undefined
-                  ? `Tessaya via ${via}`
-                  : room
-                    ? "Tessaya in the room"
-                    : scope.client === undefined
-                      ? "an agent in T3"
-                      : "an outside agent",
-            }).pipe(Effect.provideContext(context!)),
-          );
-        }),
+    settings_set: McpToolAccess.writes((input: Args) =>
+      Effect.gen(function* () {
+        const scope = yield* McpInvocationContext.McpInvocationContext;
+        const room = scope.client === ROOM_CLIENT || scope.client === ROOM_REPLAY_CLIENT;
+        const via = (yield* TurnOrigin)?.label;
+        return yield* inRuntime(
+          setSetting({
+            key: String(input["key"] ?? ""),
+            value: input["value"],
+            why: String(input["why"] ?? ""),
+            // The suite's pretend R1 is checked as for real and changes nothing.
+            dryRun: scope.client === ROOM_REPLAY_CLIENT,
+            who:
+              via !== undefined
+                ? `Tessaya via ${via}`
+                : room
+                  ? "Tessaya in the room"
+                  : scope.client === undefined
+                    ? "an agent in T3"
+                    : "an outside agent",
+          }).pipe(Effect.provideContext(context!)),
+        );
+      }),
     ),
   };
 });
