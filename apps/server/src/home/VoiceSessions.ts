@@ -71,16 +71,17 @@ export interface SessionTurn {
 }
 
 interface Session {
-  readonly spec: string;
-  readonly bornAt: number;
   used: number;
   dead: boolean;
   readonly send: (text: string, turn: SessionTurn) => Promise<void>;
   readonly close: () => void;
 }
 
-/** A warmed session waiting longer than this is replaced, so its login and cache stay fresh. */
+/** A warmed session waiting longer than this is replaced, so its login and the 1 h prompt cache stay fresh. */
 const IDLE_MS = 30 * 60_000;
+/** A vessel with no turn for this long lets its sessions go. */
+const DROP_MS = 12 * 60 * 60_000;
+const SPARES = 2;
 const SPAWN_TRIES = 4;
 const WARM_UP = 'This message only gets you ready; nothing is said aloud. Reply with just "ok".';
 
@@ -196,8 +197,6 @@ export const createVoiceSessions = (
       waiting?.({ type: "error", detail });
     };
     const session: Session = {
-      spec: specKey(spec),
-      bornAt: now(),
       used: 0,
       dead: false,
       close: () => end("the session was closed"),
@@ -234,26 +233,72 @@ export const createVoiceSessions = (
     return session;
   };
 
-  const slots = new Map<string, { now: Promise<Session> | null; next: Promise<Session> | null }>();
-  const usable = (s: Session) => !s.dead && now() - s.bornAt < IDLE_MS && s.used === 0;
-  const settled = async (p: Promise<Session> | null) => (p === null ? null : p.catch(() => null));
+  /** One vessel's warm sessions for its current spec, oldest first. */
+  interface Slot {
+    readonly spec: string;
+    readonly ready: Array<Promise<Session>>;
+    takenAt: number;
+  }
+  const slots = new Map<string, Slot>();
+  const settled = async (p: Promise<Session>) => p.catch(() => null);
+  const closeAll = (slot: Slot) => {
+    for (const p of slot.ready.splice(0)) void settled(p).then((s) => s?.close());
+  };
+  /** Takes `p` out of the slot; false when a turn or a spec change already did. */
+  const remove = (slot: Slot, p: Promise<Session>) => {
+    const at = slot.ready.indexOf(p);
+    if (at >= 0) slot.ready.splice(at, 1);
+    return at >= 0;
+  };
 
-  /** A warm session for this vessel and spec, its successor already warming; the cold path only when there is none. */
+  /** A session for the slot, renewed in the background once it has waited IDLE_MS, so a turn never waits on a warm-up. */
+  const add = (slot: Slot, spec: SessionSpec): Promise<Session> => {
+    const p = start(spec);
+    slot.ready.push(p);
+    void settled(p).then((s) => {
+      if (s === null) return void remove(slot, p);
+      setTimeout(() => {
+        if (!slot.ready.includes(p)) return;
+        // A vessel gone quiet for good (a replay, a retired device) stops holding sessions.
+        if (now() - slot.takenAt > DROP_MS) return void (remove(slot, p) && s.close());
+        // The old one stays usable until its replacement is warm.
+        void settled(add(slot, spec)).then(() => remove(slot, p) && s.close());
+      }, IDLE_MS).unref?.();
+    });
+    return p;
+  };
+
+  /**
+   * A warm session for this vessel, with SPARES more already warming behind it: an early start he talks past closes
+   * its session, and the turn right after must not wait on a warm-up (13 Nov: 2.9 s to her first word).
+   */
   const take = async (vessel: string, spec: SessionSpec): Promise<Session> => {
-    const key = `${vessel}\n${specKey(spec)}`;
-    const slot = slots.get(key) ?? { now: null, next: null };
-    slots.set(key, slot);
-    let current = await settled(slot.now);
-    if (current === null || !usable(current)) {
-      current?.close();
-      const next = await settled(slot.next);
-      current = next !== null && usable(next) ? next : await start(spec);
-      slot.now = Promise.resolve(current);
-      slot.next = null;
+    const slot = slotFor(vessel, spec);
+    for (let left = slot.ready.length; left > 0; left -= 1) {
+      const p = slot.ready.shift()!;
+      topUp(slot, spec);
+      const s = await settled(p);
+      if (s !== null && !s.dead && s.used === 0) return s;
+      s?.close();
     }
-    // Warmed now, for the next recycle or a session lost mid-turn.
-    if (slot.next === null) slot.next = start(spec);
-    return current;
+    const cold = start(spec);
+    topUp(slot, spec);
+    return cold;
+  };
+  /** The vessel's slot for this spec; a new spec lets the old one's sessions go. */
+  const slotFor = (vessel: string, spec: SessionSpec) => {
+    const key = specKey(spec);
+    let slot = slots.get(vessel);
+    if (slot?.spec !== key) {
+      if (slot !== undefined) closeAll(slot);
+      slot = { spec: key, ready: [], takenAt: now() };
+      slots.set(vessel, slot);
+    }
+    slot.takenAt = now();
+    return slot;
+  };
+  const topUp = (slot: Slot, spec: SessionSpec) => {
+    while (slot.ready.length < SPARES) add(slot, spec);
   };
 
   return {
@@ -267,14 +312,16 @@ export const createVoiceSessions = (
         session.close();
       }
     },
-    /** Starts a warm session for this vessel ahead of its first turn. */
-    warm: (vessel: string, spec: SessionSpec) => take(vessel, spec).then(() => undefined),
+    /** Starts this vessel's warm sessions ahead of its first turn; a no-op when they are already up. */
+    warm: async (vessel: string, spec: SessionSpec) => {
+      const slot = slotFor(vessel, spec);
+      topUp(slot, spec);
+      await Promise.all(slot.ready.map(settled));
+    },
     close: async () => {
-      for (const slot of slots.values()) {
-        (await settled(slot.now))?.close();
-        (await settled(slot.next))?.close();
-      }
+      const all = [...slots.values()].flatMap((slot) => slot.ready.splice(0));
       slots.clear();
+      for (const s of await Promise.all(all.map(settled))) s?.close();
     },
   };
 };
