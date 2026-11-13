@@ -358,14 +358,16 @@ describe("answering only when he is talking to her", () => {
     await turn(t);
     expect(t.brainCalls).toHaveLength(1);
 
-    // S2, then a line of hers from the server, then him 13 s later: past the 8 s after her line.
+    // S2, then a line of hers from the server, then him 25 s later: still his first turn.
     const late = setup({ recognise: said(["What's on today?", "And tomorrow?"]) });
     late.s2();
     late.room.message(
       `freya/r1/${DEV}/voice/say`,
       Buffer.from(JSON.stringify({ text: "Morning." })),
     );
-    await late.deps.sleep(ROOM_CONFIG.followMs + 5_000);
+    // Her line goes out first (on the fake clock it would otherwise play over him).
+    await late.feed(false, 5);
+    await late.deps.sleep(ROOM_CONFIG.firstTurnMs - 5_000);
     await turn(late);
     expect(late.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["What's on today?"]);
 
@@ -499,6 +501,126 @@ describe("answering only when he is talking to her", () => {
     t.room.message(`freya/r1/${DEV}/voice/ctl`, Buffer.from('{"ev":"mute"}'));
     finished("So here's the thing, the first job failed because the token expired.");
     expect(await outcome).toBe("held back");
+  });
+
+  describe("stopping her while she speaks (13 Nov: he could not stop or dismiss her)", () => {
+    /** Her reply, the mic open over it: each 60 ms frame of hers comes back as it sounds, or his words instead. */
+    const overHer = async (heard: ReadonlyArray<string>, over: "echo" | "his") => {
+      const logs: string[] = [];
+      const t = setup(
+        {
+          recognise: said(heard),
+          brain: async function* (input) {
+            t.brainCalls.push(input);
+            yield "The office fan is on, and I'll stop it in a minute. Shall I stop the lamp too?";
+          },
+          speak: async function* () {
+            for (let i = 0; i < 10; i += 1) yield voice(3_200, 210, 3.1, i * 3_200);
+          },
+          log: (l) => logs.push(l),
+          // Her "rest once played" timer would jump this fake clock to the end of her reply; it runs without moving it.
+          sleep: async (ms) => {
+            if (ms < 1_000) t.advance(ms);
+          },
+        },
+        { ...ROOM_CONFIG, leadMs: 60_000, prerollMs: 0 },
+      );
+      const played: Array<{ at: number; pcm: Int16Array }> = [];
+      const publish = t.deps.publish;
+      (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
+        if (topic.endsWith("/voice/down"))
+          played.push({
+            at: t.deps.now(),
+            pcm: new Int16Array(Uint8Array.from(payload as Uint8Array).buffer),
+          });
+        publish(topic, payload);
+      };
+      t.s2();
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      const first = played[0]!.at + ROOM_CONFIG.downDelayMs + 180;
+      const his = voice(960 * 12, 120, 4.7);
+      // A second into her reply: her own words back through the mic, or his short word over her.
+      for (let k = 16; k < 28; k += 1) {
+        await t.deps.sleep(Math.max(0, first + k * 60 - t.deps.now()));
+        const pcm =
+          over === "echo"
+            ? played[k]!.pcm.map((v) => Math.round(v * 0.4))
+            : his.slice((k - 16) * 960, (k - 15) * 960);
+        t.room.message(`freya/r1/${DEV}/voice/up`, toBytes(pcm));
+        await t.room.session(DEV)!.drained();
+      }
+      await t.feed(false, 12);
+      const flushed = t.published.some(
+        (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
+      );
+      return { t, logs, flushed };
+    };
+
+    it("never stops for her own words, though they say stop", async () => {
+      const r = await overHer(["Turn the office fan on.", "I'll stop it in a minute."], "echo");
+      expect(r.flushed).toBe(false);
+      expect(r.t.brainCalls).toHaveLength(1);
+    });
+
+    it("stops at once for his stop, answers nothing for it, and listens for his next words", async () => {
+      const r = await overHer(["Turn the office fan on.", "Stop.", "What time is it?"], "his");
+      expect(r.flushed).toBe(true);
+      expect(r.logs.some((l) => l.includes("he said stop; she stopped"))).toBe(true);
+      // A breath, then his next request, with no name: she is listening.
+      await r.t.feed(false, 15);
+      await r.t.feed(true, 20);
+      await r.t.feed(false, 40);
+      expect(r.t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+        "Turn the office fan on.",
+        "What time is it?",
+      ]);
+    });
+
+    it("is dismissed over her voice, and nothing else he says over her is taken", async () => {
+      const sent = await overHer(["Turn the office fan on.", "Dismissed."], "his");
+      expect(sent.flushed).toBe(true);
+      await sent.t.feed(false, 20);
+      expect(sent.t.published.some((p) => p.payload === '{"mood":"sleepy"}')).toBe(true);
+      const other = await overHer(["Turn the office fan on.", "Turn the lamp on as well."], "his");
+      expect(other.flushed).toBe(false);
+      expect(other.t.brainCalls).toHaveLength(1);
+      expect(other.logs.some((l) => l.includes("over her voice and not a stop"))).toBe(true);
+    });
+
+    it("stops on the R1's own stop (S2 or a tap), and a turn on its way then is not answered", async () => {
+      let finished: (text: string) => void = () => undefined;
+      let n = 0;
+      const t = setup({
+        recognise: () => {
+          n += 1;
+          return {
+            feed: () => undefined,
+            finish:
+              n === 1 ? async () => "Turn the fan on." : () => new Promise((r) => (finished = r)),
+            cancel: () => undefined,
+          };
+        },
+        speak: async function* (_t, signal) {
+          yield new Int16Array(3_200);
+          await abortedBy(signal);
+        },
+      });
+      t.s2();
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      t.room.message(`freya/r1/${DEV}/event/voice/interrupt`, Buffer.from('{"src":"key"}'));
+      finished("And the lamp.");
+      await t.feed(false, 20);
+      expect(
+        t.published.some(
+          (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
+        ),
+      ).toBe(true);
+      expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["Turn the fan on."]);
+    });
   });
 
   it("never answers on a bench sweep (cmd/voice/no-reply), and answers again once it is cleared", async () => {

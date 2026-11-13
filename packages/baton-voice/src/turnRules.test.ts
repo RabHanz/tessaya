@@ -27,6 +27,13 @@ describe("turn rules every vessel shares", () => {
   it("decides her echo as the room has since 13 Nov", () => {
     // During her playback, her own words or a fair likeness are her.
     expect(echoVerdict(facts({ own: true, likeness: () => 0 }), p).hers).toBe(true);
+    // His "stop" over her: her own words may say "stop" too, so only a match in sound makes it hers.
+    expect(echoVerdict(facts({ own: true, soundOnly: true, likeness: () => 0.1 }), p).hers).toBe(
+      false,
+    );
+    expect(echoVerdict(facts({ own: true, soundOnly: true, likeness: () => 0.8 }), p).hers).toBe(
+      true,
+    );
     expect(echoVerdict(facts({ likeness: () => 0.5 }), p).hers).toBe(true);
     // Two voices following each other by chance (0.4 to 0.6) are his.
     expect(echoVerdict(facts({ likeness: () => 0.45 }), p)).toMatchObject({

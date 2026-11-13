@@ -1,5 +1,9 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+
 import { describe, expect, it } from "vite-plus/test";
 
+import { createOpenWakeWordScorer } from "../providers/onnx.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 
 const frame = (v: number) => {
@@ -86,5 +90,40 @@ describe("waking her by name with no session open", () => {
     stream.end("r1");
     await stream.drained("r1");
     expect(woken).toEqual(["r1 Tessaya"]);
+  });
+});
+
+describe("her name through the loop's own wake path, with the real models", () => {
+  const models = new URL("../../../../native/baton-dictation/models/", import.meta.url);
+  const model = (file: string) => new URL(file, models).pathname;
+  /** The voice/wake segment the R1 sent at 09:44:59, 13 Nov, captured at the broker (her name, 2.3 s). */
+  const segment = NodeFS.readFileSync(
+    new URL("../../test/fixtures/r1-wake-tessaya.pcm", import.meta.url),
+  );
+  const words = [{ word: "Tessaya", threshold: 0.99 }];
+
+  it("wakes on the R1's real segment, sent as its 60 ms frames, and again on the next segment", async () => {
+    const woken: string[] = [];
+    const logs: string[] = [];
+    const stream = createWakeStream({
+      words,
+      scorer: () =>
+        createOpenWakeWordScorer({
+          melspectrogram: model("melspectrogram.onnx"),
+          embedding: model("embedding_model.onnx"),
+          wakes: [{ word: "Tessaya", path: model("tessaya.onnx"), threshold: 0.99 }],
+        }),
+      confirm: async () => "Tessaya",
+      onWake: (id, word) => woken.push(`${id} ${word}`),
+      log: (l) => logs.push(l),
+    });
+    for (const round of [1, 2]) {
+      for (let at = 0; at < segment.length; at += 1920)
+        stream.frame("r1-a", segment.subarray(at, at + 1920));
+      stream.end("r1-a");
+      await stream.drained("r1-a");
+      expect(woken).toHaveLength(round);
+    }
+    expect(logs[0]).toMatch(/woken by Tessaya \((1\.000|0\.99\d)\/0\.99 after /);
   });
 });

@@ -91,10 +91,12 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     const ratio = output / threshold;
     const trusted = wakeTrusted([{ word, threshold }], word, ratio);
     const text = trusted ? "" : await deps.confirm(clip).catch(() => "");
+    // The score goes in the line: a segment that fires gets no "wake segment" line of its own (13 Nov audit).
+    const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
     if (trusted || wakeWordHeard(text, word, ratio)) {
-      deps.log(`[${id}] woken by ${word}`);
+      deps.log(`[${id}] woken by ${word} (${at})`);
       deps.onWake(id, word);
-    } else deps.log(`[${id}] ${word} fired, not confirmed`);
+    } else deps.log(`[${id}] ${word} fired (${at}), not confirmed`);
   };
 
   const scorePending = async (id: string, d: Device, scorer: WakeScorer) => {
@@ -139,7 +141,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         if (!d.done && d.samples > 0)
           deps.log(
             `[${id}] wake segment ${(d.samples / RATE).toFixed(1)} s, best ${deps.words
-              .map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(2)}/${w.threshold}`)
+              .map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(3)}/${w.threshold}`)
               .join(", ")}`,
           );
         d.samples = 0;

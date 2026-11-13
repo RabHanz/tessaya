@@ -38,6 +38,8 @@ export interface EchoFacts {
   readonly called: boolean;
   /** Its words match a line she said lately. */
   readonly own: boolean;
+  /** A stop or dismissal: her own words may say "stop" too, so only how it sounds can make it hers. */
+  readonly soundOnly?: boolean;
   /** How closely its loudness follows hers (0 to 1), asked only when needed. */
   readonly likeness: () => number;
 }
@@ -64,7 +66,9 @@ export const echoVerdict = (
     return { hers: false, during, compared: false, likeness: 0 };
   const like = facts.likeness();
   // Two voices' loudness can follow each other a little by chance (0.4 to 0.6 on a 13 Nov replay); her echo is near 1.
-  const hers = during ? facts.own || like >= 0.5 : like >= 0.75 || (like >= 0.55 && facts.own);
+  const hers = during
+    ? (facts.own && facts.soundOnly !== true) || like >= 0.5
+    : like >= 0.75 || (like >= 0.55 && facts.own);
   return { hers, during, compared: true, likeness: like };
 };
 
