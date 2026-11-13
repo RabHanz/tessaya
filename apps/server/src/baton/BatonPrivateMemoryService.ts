@@ -67,12 +67,14 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 
 /**
- * Who is calling, set by the transport from the authenticated session: its id (so an unlock belongs to one device) and
- * whether it is the desktop app's own session (the only one that may recall for the assistant, deposit or back up).
+ * Who is calling, set by the transport from the authenticated session: its id (so an unlock belongs to one device),
+ * whether it is the desktop app's own session (the only one that may recall for the assistant, deposit or back up), and
+ * the member the session acts for (null: nobody; absent: the owner, as every caller was before members).
  */
 export const PrivateCaller = Context.Reference<{
   readonly session: string | null;
   readonly desktop: boolean;
+  readonly member?: string | null;
 }>("t3/baton/BatonPrivateMemoryService/PrivateCaller", {
   defaultValue: () => ({ session: null, desktop: false }),
 });
@@ -113,10 +115,15 @@ interface StoreRow {
 interface Opened {
   readonly dek: Buffer;
   readonly box: Buffer;
-  /** Session id to when it opened and when it was last used, in ms. */
+  /** Session id to when it opened and when it was last used, in ms, and the member that session acts for. */
   readonly sessions: Map<
     string,
-    { readonly openedAt: number; lastAt: number; readonly admin: boolean }
+    {
+      readonly openedAt: number;
+      lastAt: number;
+      readonly admin: boolean;
+      readonly member: string | null;
+    }
   >;
 }
 
@@ -312,8 +319,14 @@ export const make = Effect.gen(function* () {
       : Option.none<{ row: StoreRow; open: Opened }>();
   });
 
-  const byWhom = (c: { readonly desktop: boolean }, admin: boolean) =>
-    admin ? "the owner, as admin" : c.desktop ? "desktop" : "phone or browser";
+  const byWhom = (
+    c: { readonly desktop: boolean; readonly member?: string | null },
+    admin: boolean,
+  ) => {
+    const how = admin ? "the owner, as admin" : c.desktop ? "desktop" : "phone or browser";
+    const member = c.member === undefined ? OWNER_PERSON_ID : c.member;
+    return member === OWNER_PERSON_ID ? how : `${how}, for ${member ?? "nobody"}`;
+  };
   const audit = Effect.fn("BatonPrivateMemory.audit")(function* (
     row: Pick<StoreRow, "id" | "name">,
     action: string,
@@ -546,7 +559,12 @@ export const make = Effect.gen(function* () {
     } else if (open.dek !== dek) {
       dek.fill(0);
     }
-    open.sessions.set(sessionKey(c), { openedAt: now, lastAt: now, admin });
+    open.sessions.set(sessionKey(c), {
+      openedAt: now,
+      lastAt: now,
+      admin,
+      member: c.member === undefined ? OWNER_PERSON_ID : c.member,
+    });
     yield* sql`UPDATE tessaya_private_stores SET failures = 0, wait_until = 0, last_opened_at = ${iso(now)} WHERE id = ${row.id}`.pipe(
       Effect.orDie,
     );

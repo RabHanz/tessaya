@@ -45,6 +45,7 @@ import {
   type BatonRpcGroup,
   BATON_METHOD_OF,
 } from "@t3tools/baton-contracts";
+import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { authScopeRequiredResponse, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -412,10 +413,16 @@ export const HIS_OWN_METHODS: ReadonlySet<string> = new Set([
   BATON_ACCOUNT_WS_METHODS.threadKeep,
 ]);
 
-/** Which session is asking, so a private store opens for that device only, and whether it is his desktop's own. */
-export const privateCallerOf = (session: Pick<AuthenticatedSession, "scopes" | "sessionId">) => ({
+/**
+ * Which session is asking, so a private store opens for that device only, whether it is his desktop's own, and the
+ * member it acts for.
+ */
+export const privateCallerOf = (
+  session: Pick<AuthenticatedSession, "scopes" | "sessionId" | "subject">,
+) => ({
   session: String(session.sessionId),
   desktop: session.scopes.includes(AuthBatonHandsHostScope),
+  member: memberOfSubject(session.subject),
 });
 
 /**
