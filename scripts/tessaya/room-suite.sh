@@ -15,7 +15,8 @@ here="$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)"
 home="$(mktemp -d "${TMPDIR:-/tmp}/room-suite.XXXXXX")"
 pid=""
 cleanup() {
-  [ -n "$pid" ] && kill "$pid" 2> /dev/null || true
+  # Wait for the server to exit, or it recreates userdata/ after the rm below.
+  [ -n "$pid" ] && { kill "$pid" && wait "$pid"; } 2> /dev/null || true
   rm -rf -- "$home"
 }
 trap cleanup EXIT
