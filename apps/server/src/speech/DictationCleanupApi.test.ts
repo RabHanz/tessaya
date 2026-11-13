@@ -112,7 +112,7 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     upstream.mockResolvedValueOnce(new Response("nope", { status: 401 }));
     expect(yield* fetching(api.test)).toBe("invalid-key");
 
-    // A busy API (529, 5xx) gets one quick second try; failing twice, the reason says it was the API.
+    // A busy API (529, 5xx) gets one quick second try.
     upstream.mockResolvedValueOnce(new Response("busy", { status: 529 }));
     const retried = yield* fetching(api.cleanup(input)).pipe(Effect.forkChild);
     yield* TestClock.adjust("200 millis");
@@ -122,7 +122,7 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
       .mockResolvedValueOnce(new Response("busy", { status: 503 }));
     const failed = yield* Effect.flip(fetching(api.cleanup(input))).pipe(Effect.forkChild);
     yield* TestClock.adjust("200 millis");
-    expect(yield* Fiber.join(failed)).toMatchObject({ reason: "overloaded" });
+    expect(yield* Fiber.join(failed)).toMatchObject({ reason: "unreachable" });
 
     yield* api.setKey(null);
     expect(yield* api.configured).toBe(false);

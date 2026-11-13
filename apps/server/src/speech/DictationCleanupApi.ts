@@ -189,9 +189,7 @@ export const layer = Layer.effect(
           ? "invalid-key"
           : status === 429
             ? "rate-limit"
-            : status >= 500
-              ? "overloaded"
-              : "unreachable",
+            : "unreachable",
       });
 
     // Off the key's roles: logged, and the call fails with BrainRefused. Nothing falls back from here.
@@ -253,6 +251,12 @@ export const layer = Layer.effect(
         if (request === null) return { configured: false } as const;
         const started = yield* Clock.currentTimeMillis;
         const response = yield* execute(request).pipe(
+          Effect.tap((r) =>
+            r.status >= 200 && r.status < 300
+              ? Effect.void
+              : // The status says which: 529 is a busy API, not a dead network.
+                Effect.logWarning("dictation clean-up: the API said no", { status: r.status }),
+          ),
           Effect.filterOrFail(
             (r) => r.status >= 200 && r.status < 300,
             (r) => rejected(r.status),
