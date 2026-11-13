@@ -523,7 +523,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549
 +  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac521582eb8 100644
+index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943c6333da2 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -611,18 +611,19 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1061,7 +1104,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1061,7 +1104,10 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
 -export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
 +// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
-+// and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
-+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 154;
++// Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more, and her characters
++// (apps/web/public/companion) 27 more.
++export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 181;
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1090,6 +1135,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1090,6 +1136,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
@@ -631,7 +632,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
  export const DESKTOP_EXTRA_RESOURCES = [
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
-@@ -1099,6 +1146,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1099,6 +1147,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -662,7 +663,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2418,196 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2419,196 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -859,7 +860,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +3053,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +3054,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -867,7 +868,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3155,6 +3417,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3155,6 +3418,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -887,7 +888,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3418,6 +3693,59 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3418,6 +3694,59 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -947,7 +948,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3779,6 +4107,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3779,6 +4108,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -961,7 +962,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..0e1da7a3d5a830cefe876cd6ec7f8ac5
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3811,6 +4146,22 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3811,6 +4147,22 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);

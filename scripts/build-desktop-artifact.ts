@@ -1105,8 +1105,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
 }
 
 // Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
-// and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
-export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 154;
+// Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more, and her characters
+// (apps/web/public/companion) 27 more.
+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 181;
 export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
 export const WINDOWS_SERVER_EXTRA_RESOURCES = [
   {
