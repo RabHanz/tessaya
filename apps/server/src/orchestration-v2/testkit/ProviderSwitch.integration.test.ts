@@ -1342,6 +1342,7 @@ describe("orchestration v2 provider switching", () => {
               attachments: [],
               modelSelection: selection,
               dispatchMode: { type: "start_immediately" },
+              providerChangeApproved: true,
             });
           const wait = (ordinal: number) =>
             orchestrator.streamStoredEvents.pipe(
