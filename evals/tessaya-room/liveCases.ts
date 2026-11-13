@@ -743,6 +743,26 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastNotSays: [/no valid id|isn't linked|not answering/i],
     laptop: true,
   },
+  {
+    // A hard task is offered to Opus before she tries it (BRAIN-DESIGN §2.2; his default is ask).
+    id: "escalate-offer",
+    proves: ["brain_escalate"],
+    said: [
+      "Plan my whole next week: the launch is on Thursday, I have two investor calls, the gym four times, and I want one evening free for my brother.",
+    ],
+    uses: [["brain_escalate"]],
+    clean: ["brain_escalate"],
+    lastSays: [/opus/i],
+  },
+  {
+    // Small talk never reaches for Opus.
+    id: "escalate-not",
+    proves: [],
+    said: ["Thanks, that's all for now."],
+    uses: [],
+    check: (_last, calls) =>
+      calls.some((c) => c.name === "brain_escalate") ? "offered Opus for small talk" : null,
+  },
 ];
 
 /** The slots a case's sentences need. */

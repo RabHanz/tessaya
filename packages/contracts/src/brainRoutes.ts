@@ -105,3 +105,22 @@ export const BrainKeyRoles = Schema.Struct({
   anthropic: Schema.optionalKey(Schema.Array(BrainRole)),
 });
 export type BrainKeyRoles = typeof BrainKeyRoles.Type;
+
+/**
+ * When a hard task goes to the deep role (Opus): `ask` offers it each time, `auto` goes on its own within the daily
+ * cap, `never` stays put. His rules, in his own words, are matched by the model when it asks; the check is code
+ * (BRAIN-DESIGN §2.3). Unset fields keep the defaults: ask, 20 a day, no rules.
+ */
+export const BrainEscalationRule = Schema.Struct({
+  when: Schema.String.check(Schema.isMaxLength(200)),
+  then: Schema.Literals(["opus", "ask", "sonnet"]),
+});
+export type BrainEscalationRule = typeof BrainEscalationRule.Type;
+export const BrainEscalation = Schema.Struct({
+  mode: Schema.optionalKey(Schema.Literals(["ask", "auto", "never"])),
+  autoDeepDailyCap: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+  ),
+  rules: Schema.optionalKey(Schema.Array(BrainEscalationRule).check(Schema.isMaxLength(30))),
+});
+export type BrainEscalation = typeof BrainEscalation.Type;

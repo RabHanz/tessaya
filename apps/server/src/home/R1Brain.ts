@@ -74,7 +74,13 @@ export interface SessionToolTurn extends ToolTurn {
   readonly vessel: string;
   /** A tool call started before she said a word: the vessel says a short line (`web`: a search, which takes seconds). */
   readonly cue: (web: boolean) => void;
+  /** `deep`: a task she handed to Opus (BRAIN-DESIGN §2), in sessions of its own; else her voice row. */
+  readonly role?: "voice" | "deep";
 }
+
+/** A vessel's deep sessions wait apart from its voice ones: their spec differs, and one must not replace the other. */
+const slotOf = (turn: Pick<SessionToolTurn, "vessel" | "role">) =>
+  turn.role === "deep" ? `${turn.vessel}#deep` : turn.vessel;
 
 export class R1Brain extends Context.Service<
   R1Brain,
@@ -89,7 +95,7 @@ export class R1Brain extends Context.Service<
     readonly session: (turn: SessionToolTurn) => Stream.Stream<string, R1BrainError>;
     /** Warms a session for this vessel now, so the first turn is as quick as the rest. */
     readonly warm: (
-      turn: Pick<SessionToolTurn, "vessel" | "system" | "tools">,
+      turn: Pick<SessionToolTurn, "vessel" | "system" | "tools" | "role">,
     ) => Effect.Effect<void>;
   }
 >()("t3/home/R1Brain") {}
@@ -230,6 +236,9 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   const voice = settings.getSettings.pipe(
     Effect.map((value) => brainRoute(value, "voice", DEFAULT_ROUTING.cheap)),
   );
+  const deep = settings.getSettings.pipe(
+    Effect.map((value) => brainRoute(value, "deep", DEFAULT_ROUTING.cheap)),
+  );
   const spawn = (model: string): Warm => {
     const proc = NodeChildProcess.spawn(
       "claude",
@@ -359,9 +368,11 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   yield* Effect.addFinalizer(() => Effect.promise(() => sessions.close()));
   /** The subscription session a vessel's turns run in, from the voice row. */
   const sessionSpec = Effect.fn("R1Brain.sessionSpec")(function* (
-    turn: Pick<SessionToolTurn, "system" | "tools">,
+    turn: Pick<SessionToolTurn, "system" | "tools" | "role">,
   ) {
-    const row = yield* voice.pipe(Effect.mapError(() => new R1BrainError({ detail: "settings" })));
+    const row = yield* (turn.role === "deep" ? deep : voice).pipe(
+      Effect.mapError(() => new R1BrainError({ detail: "settings" })),
+    );
     const path = onSubscription(row);
     if ("refused" in path) return yield* new R1BrainError({ detail: path.refused });
     return {
@@ -392,7 +403,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
         const ran = yield* Effect.tryPromise({
           // Interrupted (he cut her off), the signal aborts and the session is replaced.
           try: (signal) =>
-            sessions.turn(turn.vessel, spec, turn.user, {
+            sessions.turn(slotOf(turn), spec, turn.user, {
               signal,
               run: (name, args) => {
                 step(`run:${name}`);
@@ -432,6 +443,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
         }).pipe(Effect.exit);
         yield* Effect.logInfo("R1 tool turn", {
           route: "session",
+          role: turn.role ?? "voice",
           tools: used,
           ms: (yield* Clock.currentTimeMillis) - startedAt,
           brainFirstMs: firstAt === null ? null : firstAt - startedAt,
@@ -444,10 +456,10 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
     );
 
   const warm = Effect.fn("R1Brain.warm")(
-    function* (turn: Pick<SessionToolTurn, "vessel" | "system" | "tools">) {
+    function* (turn: Pick<SessionToolTurn, "vessel" | "system" | "tools" | "role">) {
       if ((yield* route) !== "subscription") return;
       const spec = yield* sessionSpec(turn);
-      yield* Effect.promise(() => sessions.warm(turn.vessel, spec).catch(() => undefined));
+      yield* Effect.promise(() => sessions.warm(slotOf(turn), spec).catch(() => undefined));
     },
     (effect) => effect.pipe(Effect.ignore),
   );

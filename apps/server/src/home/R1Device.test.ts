@@ -453,6 +453,60 @@ effectIt.effect(
 );
 
 effectIt.effect(
+  "a hard task is offered to Opus by default, and his yes hands the turn to an Opus session",
+  () =>
+    Effect.gen(function* () {
+      const sent: Array<{ role: string; user: string }> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.unwrap(
+            Effect.suspend(() => {
+              sent.push({ role: turn.role ?? "voice", user: turn.user });
+              if (turn.role === "deep")
+                return Effect.succeed(Stream.make<Array<string>>("Here is the plan."));
+              const yes = turn.user.includes("An Opus offer is open");
+              return Effect.map(
+                turn.run("brain_escalate", { kind: "plan", why: "his week", accept: yes }),
+                (o) =>
+                  Stream.make(
+                    o.text.startsWith("go") ? "Putting Opus on this. " : "Want Opus on it?",
+                  ),
+              );
+            }),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(BatonRecordService)({ append: () => Effect.void as never });
+      const turn = (heard: string) => {
+        const said: Array<string> = [];
+        return r1TurnStream(
+          { heard, history: [], voice: { conversation: "escalation-test" } },
+          brain,
+          { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+        ).pipe(
+          Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+          Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+          Effect.map(() => said.join("")),
+        );
+      };
+      expect(yield* turn("plan my week around the launch")).toBe("Want Opus on it?");
+      expect(yield* turn("yes, go on")).toBe("Putting Opus on this. Here is the plan.");
+      expect(sent.map((s) => s.role)).toEqual(["voice", "voice", "deep"]);
+      expect(sent[2]!.user).toContain('because: "his week"');
+    }),
+);
+
+effectIt.effect(
   "a guess on his partial words reaches the Record only once the loop says it played; an unplayed one never does",
   () =>
     Effect.gen(function* () {
