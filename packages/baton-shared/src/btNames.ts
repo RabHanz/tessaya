@@ -11,9 +11,43 @@ export interface BtKnown {
   readonly name: string;
   /** When a vessel last connected to it (epoch ms), or null. */
   readonly lastAt: number | null;
+  /** Its Bluetooth Class of Device, when the vessel heard it. */
+  readonly cod?: number | undefined;
+  /** What it is: from `cod`, else guessed from its name (btKindOf). */
+  readonly kind?: BtKind | undefined;
 }
 
-export type BtKind = "speaker" | "headphones" | "other";
+export const BT_KINDS = ["headphones", "headset", "speaker", "car", "receiver", "other"] as const;
+export type BtKind = (typeof BT_KINDS)[number];
+
+/**
+ * The Class of Device's audio/video minor class (Bluetooth Assigned Numbers, major class 0x04), or null when the
+ * class says nothing an audio route can use.
+ */
+export const btKindOfCod = (cod: number): BtKind | null => {
+  if (((cod >> 8) & 0x1f) !== 0x04) return null;
+  switch ((cod >> 2) & 0x3f) {
+    case 0x01: // wearable headset
+    case 0x02: // hands-free
+      return "headset";
+    case 0x06:
+      return "headphones";
+    case 0x05: // loudspeaker
+    case 0x07: // portable audio
+      return "speaker";
+    case 0x08:
+      return "car";
+    case 0x09: // set-top box
+    case 0x0a: // HiFi audio device
+      return "receiver";
+    default:
+      return null;
+  }
+};
+
+/** Its kind: the vessel's word, its class of device, else its name. */
+export const kindOf = (k: Pick<BtKnown, "name" | "cod" | "kind">): BtKind =>
+  k.kind ?? (k.cod === undefined ? null : btKindOfCod(k.cod)) ?? btKindOf(k.name);
 
 const HEADPHONES =
   /head ?(phone|set)s?|ear ?(bud|phone)s?|buds|airpods|wh-|wf-|qc ?\d|in-?ear|over-?ear/i;
@@ -21,7 +55,17 @@ const SPEAKERS =
   /speaker|sound ?(bar|link|core)|boom|jbl|flip|charge|sonos|soundlink|bose|anker|tribit|taotronics|miniso|marshall|ue /i;
 
 export const btKindOf = (name: string): BtKind =>
-  HEADPHONES.test(name) ? "headphones" : SPEAKERS.test(name) ? "speaker" : "other";
+  /headset|hands-?free/i.test(name)
+    ? "headset"
+    : HEADPHONES.test(name)
+      ? "headphones"
+      : SPEAKERS.test(name)
+        ? "speaker"
+        : /\bcar\b|carplay|android auto/i.test(name)
+          ? "car"
+          : /receiver|\bavr\b|amplifier|amp\b/i.test(name)
+            ? "receiver"
+            : "other";
 
 const words = (s: string) =>
   s
@@ -48,11 +92,20 @@ const KIND_WORDS: Readonly<Record<string, BtKind>> = {
   speaker: "speaker",
   soundbar: "speaker",
   headphone: "headphones",
-  headset: "headphones",
+  headset: "headset",
   earbud: "headphones",
   bud: "headphones",
   earphone: "headphones",
+  car: "car",
+  receiver: "receiver",
+  amp: "receiver",
+  amplifier: "receiver",
 };
+/** "My headphones" also means a headset, and the other way round: both are worn. */
+const kindMatches = (asked: BtKind, theirs: BtKind) =>
+  asked === theirs ||
+  (asked === "headphones" && theirs === "headset") ||
+  (asked === "headset" && theirs === "headphones");
 
 /** Two names for one thing: "minisio" for "MINISO", one wrong letter in five. */
 const close = (a: string, b: string) => {
@@ -101,7 +154,12 @@ export const resolveBluetooth = (query: string, known: ReadonlyArray<BtKnown>): 
   const kind = said.map((w) => KIND_WORDS[w]).find((k) => k !== undefined);
   const nameWords = said.filter((w) => KIND_WORDS[w] === undefined);
   const scored = known
-    .filter((k) => kind === undefined || btKindOf(k.name) === kind || k.name === "")
+    .filter(
+      (k) =>
+        kind === undefined ||
+        kindMatches(kind, kindOf(k)) ||
+        (k.name === "" && k.cod === undefined),
+    )
     .map((k) => {
       const theirs = words(k.name).map(singular);
       const hits = nameWords.filter((w) => theirs.some((t) => close(w, t))).length;
@@ -111,7 +169,7 @@ export const resolveBluetooth = (query: string, known: ReadonlyArray<BtKnown>): 
   // "The office speaker" when no name says office: the kind alone decides, or it is asked about.
   if (named.length === 0)
     return kind !== undefined && nameWords.length > 0
-      ? resolveBluetooth(kind === "speaker" ? "speaker" : "headphones", known)
+      ? resolveBluetooth(kind, known)
       : { kind: "none" };
   const best = Math.max(...named.map((s) => s.hits));
   let top = named.filter((s) => s.hits === best).map((s) => s.k);
@@ -135,8 +193,12 @@ export const mergeKnown = (
     for (const k of list) {
       const mac = k.mac.toUpperCase();
       const was = out.get(mac);
+      const cod = k.cod ?? was?.cod;
+      const kind = k.kind ?? was?.kind;
       out.set(mac, {
         mac,
+        ...(cod === undefined ? {} : { cod }),
+        ...(kind === undefined ? {} : { kind }),
         name: k.name !== "" ? k.name : (was?.name ?? ""),
         lastAt:
           Math.max(k.lastAt ?? -1, was?.lastAt ?? -1) < 0
@@ -158,6 +220,13 @@ export const knownFrom = (value: unknown): ReadonlyArray<BtKnown> =>
                 mac: r["mac"].toUpperCase(),
                 name: typeof r["name"] === "string" ? r["name"].slice(0, 60) : "",
                 lastAt: typeof r["lastAt"] === "number" ? r["lastAt"] : null,
+                ...(typeof r["cod"] === "number" && Number.isInteger(r["cod"])
+                  ? { cod: r["cod"] }
+                  : {}),
+                ...(typeof r["kind"] === "string" &&
+                (BT_KINDS as ReadonlyArray<string>).includes(r["kind"])
+                  ? { kind: r["kind"] as BtKind }
+                  : {}),
               },
             ]
           : [];
