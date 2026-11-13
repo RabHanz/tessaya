@@ -7,7 +7,7 @@ import { BatonRuntime, type BatonServices } from "../../../baton/BatonRpcHandler
 import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { ROOM_SESSIONS } from "./tools.ts";
+import { type JobInput, ROOM_SESSIONS } from "./tools.ts";
 
 const refused = (message: string) =>
   new OrchestratorMcpFailure({ code: "capability_denied", message });
@@ -41,7 +41,7 @@ export const make = Effect.gen(function* () {
   const act = McpToolAccess.writes;
 
   return {
-    job_start: act((input) =>
+    job_start: act((input: JobInput<"job_start">) =>
       Effect.gen(function* () {
         const origin = yield* TurnOrigin;
         const started = yield* run(
@@ -67,10 +67,10 @@ export const make = Effect.gen(function* () {
         };
       }),
     ),
-    job_retry: act((input) =>
+    job_retry: act((input: JobInput<"job_retry">) =>
       Effect.map(run(JobFlow.retryJob(input.id)), (line) => ({ id: input.id, line })),
     ),
-    job_refine: act((input) =>
+    job_refine: act((input: JobInput<"job_refine">) =>
       Effect.map(
         run(
           JobFlow.refineJob({
@@ -86,7 +86,7 @@ export const make = Effect.gen(function* () {
             : { id: input.id, line: "Passed on; the worker is making its plan again." },
       ),
     ),
-    job_agree: act((input) =>
+    job_agree: act((input: JobInput<"job_agree">) =>
       Effect.map(run(JobFlow.agreeJob(input.id)), (terms) =>
         terms === null
           ? noJob
@@ -99,7 +99,7 @@ export const make = Effect.gen(function* () {
             },
       ),
     ),
-    job_split: act((input) =>
+    job_split: act((input: JobInput<"job_split">) =>
       Effect.map(
         run(
           JobFlow.splitJob({
@@ -122,13 +122,13 @@ export const make = Effect.gen(function* () {
         }),
       ),
     ),
-    job_stop: act((input) =>
+    job_stop: act((input: JobInput<"job_stop">) =>
       Effect.map(run(JobFlow.stopJob(input.id)), (stopped) => ({
         id: input.id,
         line: stopped ? "Stopped. Its thread and plan stay." : "Nothing was running to stop.",
       })),
     ),
-    job_schedule: act((input) =>
+    job_schedule: act((input: JobInput<"job_schedule">) =>
       Effect.map(
         run(
           JobFlow.scheduleJob({
