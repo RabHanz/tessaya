@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createTurnLock, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
+import { createTurnLock, deviceMayLook, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 
 const deferred = () => {
   let resolve = () => {};
@@ -106,6 +106,12 @@ describe("a confirm asked during a device's turn", () => {
 });
 
 describe("a request from another device", () => {
+  it("takes its one look without a prompt only on his yes: his verified voice there or his setting", () => {
+    expect(deviceMayLook({ deviceRunning: true, mayLook: true })).toBe(true);
+    expect(deviceMayLook({ deviceRunning: true, mayLook: false })).toBe(false);
+    expect(deviceMayLook({ deviceRunning: false, mayLook: true })).toBe(false);
+  });
+
   it("draws nothing on this screen while it runs, and draws again after (13 Nov: the R1's laptop ask)", async () => {
     const drew: Array<string> = [];
     const mark = (what: string) => async () => void drew.push(what);

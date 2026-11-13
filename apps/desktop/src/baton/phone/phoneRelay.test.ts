@@ -5,7 +5,12 @@ import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "./phoneRelay.ts"
 const make = (
   over: {
     take?: unknown;
-    run?: (text: string, source: "phone" | "device") => Promise<{ spoken: string; card: string }>;
+    run?: (
+      text: string,
+      source: "phone" | "device",
+      origin: string | null,
+      hisVoice: boolean,
+    ) => Promise<{ spoken: string; card: string }>;
     poll?: Array<number | null>;
     every?: (ms: number, run: () => void) => () => void;
   } = {},
@@ -59,6 +64,28 @@ describe("the desktop's phone relay", () => {
       await relay.settled();
     }
     expect(sources).toEqual(["phone", "device", "device"]);
+  });
+
+  it("passes on the device it came from and whether his verified voice said it (13 Nov)", async () => {
+    const seen: Array<[string | null, boolean]> = [];
+    for (const take of [
+      { id: "c-4", text: "x", source: "device", origin: "R1", hisVoice: true },
+      { id: "c-5", text: "x", source: "device", hisVoice: "yes" },
+    ]) {
+      const { relay } = make({
+        take,
+        run: async (_t, _s, origin, hisVoice) => (
+          seen.push([origin, hisVoice]),
+          { spoken: "", card: "" }
+        ),
+      });
+      await relay.tick();
+      await relay.settled();
+    }
+    expect(seen).toEqual([
+      ["R1", true],
+      [null, false],
+    ]);
   });
 
   it("starts a device's ask without holding his next phone ask behind it, and renews its lease while it runs", async () => {

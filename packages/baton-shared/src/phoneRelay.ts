@@ -29,6 +29,8 @@ export interface PhoneAsk {
   readonly source: AskSource;
   /** The device he said it to ("R1", "phone"), when it came through one; its answer and approvals name it. */
   readonly origin: string | null;
+  /** Said in his own verified voice on that device: his yes for a look it needs. */
+  readonly hisVoice: boolean;
   readonly status: AskStatus;
   readonly createdAt: number;
   readonly expiresAt: number;

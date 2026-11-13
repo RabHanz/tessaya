@@ -1,3 +1,4 @@
+import { TurnOrigin } from "../baton/TessayaTurn.ts";
 import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/baton-shared/phoneRelay";
 import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
@@ -311,8 +312,13 @@ describe("asking his laptop", () => {
           PeerMcpClient.PeerMcpClient,
           PeerMcpClient.PeerMcpClient.of({
             call: (input) => {
-              const origin = (input.arguments as { origin?: string }).origin;
-              calls.push(origin === undefined ? input.tool : `${input.tool} from ${origin}`);
+              const { origin, hisVoice } = input.arguments as {
+                origin?: string;
+                hisVoice?: boolean;
+              };
+              calls.push(
+                `${origin === undefined ? input.tool : `${input.tool} from ${origin}`}${hisVoice === true ? " in his voice" : ""}`,
+              );
               // A laptop before the origin field refuses an argument it does not list.
               if (beforeOrigin && origin !== undefined)
                 return Effect.fail({ message: 'Unknown argument "origin".' } as never);
@@ -348,6 +354,39 @@ describe("asking his laptop", () => {
         "VS Code is open.",
       );
       expect(older.calls).toEqual(["tessaya_ask from R1", "tessaya_ask", "tessaya_ask_status"]);
+      // The turn's own vessel (TurnOrigin) names it when the pipeline gives one.
+      const named = linked(
+        [laptop],
+        { id: "mcp-x-1", status: "queued", line: "Waiting." },
+        { id: "mcp-x-1", status: "answered", line: "Chrome." },
+      );
+      yield* named.provide(
+        runActs(look).pipe(
+          Effect.provideService(TurnOrigin, {
+            kind: "device",
+            id: "r1-3d57b3",
+            label: "the kitchen R1",
+          }),
+        ),
+      );
+      expect(named.calls[0]).toBe("tessaya_ask from the kitchen R1");
+      // His verified voice on that turn is his yes for the laptop's look (Director, 13 Nov).
+      const his = linked(
+        [laptop],
+        { id: "mcp-x-1", status: "queued", line: "Waiting." },
+        { id: "mcp-x-1", status: "answered", line: "Chrome." },
+      );
+      yield* his.provide(
+        runActs(look).pipe(
+          Effect.provideService(TurnOrigin, {
+            kind: "device",
+            id: "r1-3d57b3",
+            label: "R1",
+            hisVoice: true,
+          }),
+        ),
+      );
+      expect(his.calls[0]).toBe("tessaya_ask from R1 in his voice");
     }),
   );
 

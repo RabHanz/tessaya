@@ -42,6 +42,7 @@ import * as ThreadManagementService from "../../../orchestration-v2/ThreadManage
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
+import { SettingsTools } from "../settings/tools.ts";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -206,6 +207,12 @@ const AskTool = Tool.make("tessaya_ask", {
       Schema.String.check(Schema.isMaxLength(40)).annotate({
         description:
           "The device he said it to (e.g. R1), when it came through one; his approvals name it.",
+      }),
+    ),
+    hisVoice: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Only from his own linked servers: he said it in his verified voice on that device, which is his yes for a look.",
       }),
     ),
   }),
@@ -377,6 +384,7 @@ const SessionDefaultsTool = Tool.make("tessaya_session_defaults", {
 export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
   ...DeviceTools,
+  ...SettingsTools,
   JobsTool,
   WatchTool,
   RecordTool,

@@ -27,6 +27,7 @@ describe("the room's tools for a replay", () => {
     const word = { word: "Tessaya", sayAs: "Tess eye ya" };
     expect(replayDryRun("tessaya_pronounce", word, "replay-1")?.text).toContain("nothing was kept");
     expect(replayDryRun("tessaya_pronounce", word, "r1-3d57b3")).toBeNull();
+    expect(replayDryRun("settings_set", { key: "holdKeyCues" }, "replay-1")).toBeNull();
   });
 
   it("takes a number or a yes/no sent as a string, as every timer was (07:39, 13 Nov)", () => {

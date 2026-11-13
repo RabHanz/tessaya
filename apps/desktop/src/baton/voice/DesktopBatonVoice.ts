@@ -629,6 +629,8 @@ interface VoiceSettings {
   /** Which windows open when the app starts (launchWindows.ts); off, it waits for the tray, hotkey or dock. */
   readonly openTessayaOnStart: boolean;
   readonly openSessionsOnStart: boolean;
+  /** His own devices may look at this screen without asking (an owner setting: Settings or his yes by voice). */
+  readonly devicesMayLook: boolean;
   readonly pinnedLabel: string | null;
   /** Where the wake and VAD models are; null = the ones that shipped with the app. */
   readonly modelsDir: string | null;
@@ -819,6 +821,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   openAtLogin: false,
   openTessayaOnStart: false,
   openSessionsOnStart: true,
+  devicesMayLook: false,
   pinnedLabel: null,
   modelsDir: null,
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
@@ -977,6 +980,7 @@ export const readSettings = (path: string): VoiceSettings => {
       showWords: saved["showWords"] !== false,
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
+      devicesMayLook: saved["devicesMayLook"] === true,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       pillDesign: parsePillDesign(saved["pillDesign"]),
       pillWaveform: parsePillWave(saved["pillWaveform"]),
@@ -1161,6 +1165,8 @@ export interface TrayExtras extends BrainVoiceHook {
     source: "phone" | "device",
     /** The device he said it to ("R1"), when it came through one. */
     origin?: string | null,
+    /** His yes for one look: his verified voice on that device, or his "devices may look" setting. */
+    mayLook?: boolean,
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** What it may tell its server about itself (desktopState.ts adds the voice side and versions). */
   readonly stateForServer?: () => Omit<DesktopStateInput, "voice" | "appVersion" | "environments">;
@@ -2744,10 +2750,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   const phoneRelay = createPhoneRelay({
     call: phoneCall,
-    run: (text, source, origin) =>
+    run: (text, source, origin, hisVoice) =>
       input.extras?.askFromPhone === undefined
         ? Promise.reject(new Error("No assistant here."))
-        : input.extras.askFromPhone(text, source, origin),
+        : input.extras.askFromPhone(text, source, origin, hisVoice || settings.devicesMayLook),
   });
   input.extras?.setPhoneMirror?.(phoneRelay.mirror);
   let phoneQuiet = 0;
@@ -7240,6 +7246,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.openSessionsOnStart,
       },
       {
+        id: "v.devicesMayLook",
+        section: "Start",
+        label: "Let my devices look at this screen without asking",
+        hint: "When your R1 or another device of yours asks what is on this screen, Tessaya looks without a prompt here. Off: she asks each time, unless your own verified voice asked.",
+        kind: "toggle",
+        on: settings.devicesMayLook,
+      },
+      {
         id: "v.diag",
         section: "Checks",
         label: "Something is wrong and you want to report it",
@@ -8156,6 +8170,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       loginItem.set(on);
     } else if (id === "v.startHome") save({ openTessayaOnStart: on });
     else if (id === "v.startSessions") save({ openSessionsOnStart: on });
+    else if (id === "v.devicesMayLook") save({ devicesMayLook: on });
     else if (id === "k.addskill:add" && typeof value === "string") {
       void addSkillFrom(value);
     } else if (/^k\.conn\.(calendar|mail|chat):add$/.test(id) && typeof value === "string") {
@@ -8435,6 +8450,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       sync: (body) => direct(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, body, 30_000),
       current: () => settings,
       apply: applyHome,
+      controls: () => homeState().controls,
     });
     const remoteLoop = () =>
       void remote

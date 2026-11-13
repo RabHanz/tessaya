@@ -59,6 +59,8 @@ interface HomeControlBase {
   readonly moreLabel?: string;
   /** Which tab it is drawn on; filled in here from its id. */
   readonly tab?: TabId;
+  /** How it may change by voice, when not its Settings category's (remoteSettings.ts TAB_VOICE). */
+  readonly voice?: "free" | "confirm" | "owner" | "never";
   /** Its section goes first: what he should do before anything else. */
   readonly lead?: boolean;
 }

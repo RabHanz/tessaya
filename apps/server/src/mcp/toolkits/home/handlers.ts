@@ -6,6 +6,7 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { serveHomeCall, type HomeCallKind } from "../../../home/HomeCalls.ts";
 import type { HomeActor } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -44,12 +45,15 @@ export const make = Effect.gen(function* () {
   ) {
     if (context === null) return yield* unavailable;
     const scope = yield* McpInvocationContext.McpInvocationContext;
+    // Approval cards name the vessel he said it to ("Tessaya via R1").
+    const via = (yield* TurnOrigin)?.label;
+    const tessaya = via === undefined ? "Tessaya" : `Tessaya via ${via}`;
     // An outside client's name, or the T3 thread asking; never a yes, which only his own gate gives.
     const by: HomeActor =
       scope.client === ROOM_CLIENT
-        ? { who: "Tessaya", surface: "r1" }
+        ? { who: tessaya, surface: "r1" }
         : scope.client === ROOM_REPLAY_CLIENT
-          ? { who: "Tessaya", surface: "r1", dryRun: true }
+          ? { who: tessaya, surface: "r1", dryRun: true }
           : {
               who: scope.client === undefined ? "an agent in T3" : "an outside agent",
               surface: "agent",

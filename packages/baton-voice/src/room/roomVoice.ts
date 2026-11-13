@@ -9,11 +9,11 @@ import { pronounce, pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import { stopIntent } from "@t3tools/baton-shared/stopPhrases";
 
 import { createEchoGuard } from "../echoGuard.ts";
+import { addressedInRoom, beganOverHer, echoVerdict, type Playback } from "../turnRules.ts";
 import {
   calledName,
   heldBack,
   invitesReply,
-  isBackchannel,
   isDismissal,
   isOwnVoice,
   isUnfinished,
@@ -417,6 +417,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * ("Freya here") is not him calling. In the tail after she stopped, only a near match in sound is (13 Nov, 07:40).
      */
     let echoLike = 0;
+    const playback = (): Playback => ({
+      playUntil,
+      downDelayMs: config.downDelayMs,
+      echoTailMs: config.echoTailMs,
+      upDelayMs: config.upDelayMs,
+    });
     const herEcho = (
       pcm: Int16Array,
       text: string,
@@ -426,26 +432,23 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** A stop or dismissal: her own text may say "stop" too, so only how it sounds can make it hers. */
       soundOnly = false,
     ) => {
-      echoLike = 0;
-      const audibleEnd = playUntil + config.downDelayMs;
-      const herEnd = audibleEnd + config.echoTailMs;
-      if (startedAt > herEnd) return false;
-      // A Bluetooth speaker plays a little behind what the R1 has been sent.
-      const during = startedAt <= audibleEnd + 300;
-      const own = isOwnVoice(text, herLines);
-      if (called !== null && !(during && own)) return false;
-      if (!during && lastVoice - config.upDelayMs > herEnd) return false;
-      const like = echo.likeness?.(pcm, startedAt - config.upDelayMs) ?? 0;
-      echoLike = like;
-      // Two voices' loudness can follow each other a little by chance (0.4 to 0.6 on a 13 Nov replay); her echo is near 1.
-      const hers = during
-        ? (own && !soundOnly) || like >= 0.5
-        : like >= 0.75 || (like >= 0.55 && own);
-      if (!hers)
+      const verdict = echoVerdict(
+        {
+          startedAt,
+          lastVoice,
+          called: called !== null,
+          own: isOwnVoice(text, herLines),
+          soundOnly,
+          likeness: () => echo.likeness?.(pcm, startedAt - config.upDelayMs) ?? 0,
+        },
+        playback(),
+      );
+      echoLike = verdict.likeness;
+      if (verdict.compared && !verdict.hers)
         deps.log(
-          `[${id}] heard over her voice${during ? "" : "'s tail"}, taken as his (likeness ${like.toFixed(2)})`,
+          `[${id}] heard over her voice${verdict.during ? "" : "'s tail"}, taken as his (likeness ${verdict.likeness.toFixed(2)})`,
         );
-      return hers;
+      return verdict.hers;
     };
 
     /** A line that was not answered: a glance so he sees she heard something, and a log line without his words. */
@@ -617,9 +620,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** Said to her: she was named, or it began inside the window and is more than a stray "yeah" she did not ask for. */
     const addressed = (words: string, called: string | null, startedAt: number) =>
-      called !== null ||
-      startedAt <= firstUntil ||
-      (startedAt <= openUntil && (invited || !isBackchannel(words)));
+      addressedInRoom(words, called !== null, startedAt, { firstUntil, openUntil, invited });
 
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
@@ -634,8 +635,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const turn = (turnNo += 1);
       const decidedAt = deps.now();
       // Begun while her voice was still in the room (before a cut-in or her reply's end moves that on).
-      const tainted =
-        given === undefined && startedAt <= playUntil + config.downDelayMs + config.echoTailMs;
+      const tainted = given === undefined && beganOverHer(startedAt, playback());
       // Begun while she was still playing (the mic open over her): only a stop, a dismissal or her name counts.
       const over =
         given === undefined && (turnTainted || startedAt <= speechUntil + config.downDelayMs + 300);

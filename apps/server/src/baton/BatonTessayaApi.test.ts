@@ -82,6 +82,7 @@ const make = (connected = true) => {
         text: text.trim(),
         source: "phone",
         origin: "phone",
+        hisVoice: false,
         status: "queued",
         createdAt: 0,
         expiresAt: 1,

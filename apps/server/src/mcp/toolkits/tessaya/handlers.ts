@@ -30,12 +30,14 @@ import packageJson from "../../../../package.json" with { type: "json" };
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
+import * as SettingsHandlers from "../settings/handlers.ts";
 import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
 
 const decodeAsked = Schema.decodeUnknownOption(
@@ -181,6 +183,7 @@ export const layer = McpToolAccess.toLayer(
     return {
       ...(yield* HomeHandlers.make),
       ...(yield* DeviceHandlers.make),
+      ...(yield* SettingsHandlers.make),
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
       // State and names only: no synopsis, prompt or folder, and a walled project's work by its project's name.
@@ -242,10 +245,19 @@ export const layer = McpToolAccess.toLayer(
             Effect.gen(function* () {
               const owner = yield* ownerOf;
               const id = `mcp-${owner}-${yield* random.uuidV4()}`;
+              // The vessel the turn came through (TurnOrigin), else what the caller says it came from.
+              const turn = yield* TurnOrigin;
+              const origin = turn?.label ?? input.origin;
+              const scope = yield* McpInvocationContext.McpInvocationContext;
+              // His voice is his yes only as this server's own turn heard it, or as one of his linked servers says.
+              const hisVoice =
+                turn?.hisVoice === true ||
+                (scope.client?.linked === true && input.hisVoice === true);
               const asked = yield* phone("ask", {
                 id,
                 text: input.text,
-                ...(input.origin === undefined ? {} : { origin: input.origin }),
+                ...(origin === undefined ? {} : { origin }),
+                ...(hisVoice ? { hisVoice: true } : {}),
               }).pipe(Effect.provideService(AskOwner, owner));
               return {
                 id: asked?.ok === false ? null : id,
@@ -283,7 +295,12 @@ export const layer = McpToolAccess.toLayer(
             call(
               input.set === undefined
                 ? handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.get]()
-                : handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.set]({ patch: input.set }).pipe(
+                : // Letting devices look at his screen is his (settings_set asks him); an agent's change leaves it.
+                  handlers[BATON_DESKTOP_SETTINGS_WS_METHODS.set]({
+                    patch: Object.fromEntries(
+                      Object.entries(input.set).filter(([key]) => key !== "devicesMayLook"),
+                    ),
+                  }).pipe(
                     Effect.provideService(DesktopSettingsCaller, {
                       actor: `outside:${quoted(scope.client?.label ?? "unknown")}`,
                       scope: `mcp ${scope.client?.access ?? "unknown"}: ${[...scope.capabilities].join(",")}`,

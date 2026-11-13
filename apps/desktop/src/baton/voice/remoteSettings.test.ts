@@ -1,7 +1,8 @@
 import type { DesktopVoiceSettings } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createRemoteSettings } from "./remoteSettings.ts";
+import type { HomeControl } from "../home/batonHome.ts";
+import { createRemoteSettings, voiceControls } from "./remoteSettings.ts";
 
 const saved: DesktopVoiceSettings = {
   dictationCleanup: "local",
@@ -19,6 +20,7 @@ const saved: DesktopVoiceSettings = {
   gpuRecognition: "auto",
   openTessayaOnStart: false,
   openSessionsOnStart: true,
+  devicesMayLook: false,
 };
 
 describe("createRemoteSettings", () => {
@@ -85,5 +87,54 @@ describe("createRemoteSettings", () => {
     change = { version: 9, patch: { pillDesign: "neon" } };
     expect(await remote.tick()).toBe(false);
     expect(clicked).toHaveLength(7);
+  });
+
+  it("publishes every Settings toggle and choice for voice once, with its class, and sets one as his click (13 Nov)", async () => {
+    const controls: ReadonlyArray<HomeControl> = [
+      {
+        id: "v.conversation",
+        section: "Listening",
+        label: "Keep listening",
+        kind: "toggle",
+        on: true,
+      },
+      {
+        id: "v.rateChoice",
+        section: "Voice",
+        label: "How fast she speaks",
+        kind: "choice",
+        value: "normal",
+        options: [
+          { value: "slower", label: "Slower" },
+          { value: "normal", label: "Normal" },
+        ],
+        tab: "voice",
+      },
+      { id: "rs.share", section: "Memory", label: "Share memory", kind: "toggle", on: false },
+      // A setting already typed, and something that is not a setting, stay out.
+      { id: "v.showWords", section: "Dictation", label: "Show words", kind: "toggle", on: true },
+      { id: "n:thread-1", section: "Sessions", label: "A session", kind: "action", button: "Open" },
+    ];
+    expect(voiceControls(controls).map((c) => [c.id, c.voice])).toEqual([
+      ["v.conversation", "free"],
+      ["v.rateChoice", "free"],
+      ["rs.share", "owner"],
+    ]);
+    const sent: Array<{ controls?: unknown }> = [];
+    const clicked: Array<readonly [string, string | boolean]> = [];
+    let change: unknown = null;
+    const remote = createRemoteSettings({
+      sync: async (body) => (sent.push(body), { change }),
+      current: () => saved,
+      apply: (id, value) => void clicked.push([id, value]),
+      controls: () => controls,
+      now: () => 0,
+    });
+    await remote.tick();
+    await remote.tick();
+    expect(sent.map((b) => b.controls !== undefined)).toEqual([true, false]);
+    change = { version: 3, patch: {}, controls: [{ id: "v.rateChoice", value: "slower" }] };
+    expect(await remote.tick()).toBe(true);
+    expect(clicked).toEqual([["v.rateChoice", "slower"]]);
   });
 });

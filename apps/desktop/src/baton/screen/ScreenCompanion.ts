@@ -122,7 +122,7 @@ import {
   type TurnTaint,
 } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
-import { createTurnLock, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
+import { createTurnLock, deviceMayLook, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import type { DesktopStateInput } from "../phone/desktopState.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
@@ -566,6 +566,8 @@ export interface ScreenCompanion {
     source: "phone" | "device",
     /** The device he said it to ("R1"), when it came through one. */
     origin?: string | null,
+    /** His yes for one look: his verified voice on that device, or his "devices may look" setting. */
+    mayLook?: boolean,
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** Mirrors the questions it asks him to his phone; null stops. The first answer, here or there, counts. */
   readonly setPhoneMirror: (mirror: PhoneMirror | null) => void;
@@ -773,6 +775,8 @@ export const startScreenCompanion = (input: {
   let phoneTurn = false;
   /** The device a relayed ask was said to, for its approvals ("Requested from R1"). */
   let askOrigin: string | null = null;
+  /** The relayed ask may take one look without a prompt here (his verified voice, or his setting). */
+  let askMayLook = false;
   /** Whether the running turn's words are a device's, and every such sentence, so none counts as his. */
   const outsideSaid = new Set<string>();
   let phoneMirror: PhoneMirror | null = null;
@@ -1297,6 +1301,9 @@ export const startScreenCompanion = (input: {
         now: Date.now(),
       })
     )
+      return true;
+    // His verified voice on his own device, or his "devices may look" setting, is his yes for this one look.
+    if (deviceMayLook({ deviceRunning: turnLock.deviceRunning(), mayLook: askMayLook }))
       return true;
     // A paired device's turn may get one look, never an hour or always.
     const lasting = !turnLock.deviceRunning();
@@ -3449,14 +3456,17 @@ export const startScreenCompanion = (input: {
     text: string,
     source: "phone" | "device",
     origin: string | null = null,
+    mayLook = false,
   ) => {
     const mine: { spoken: string[]; card: string | null } = { spoken: [], card: null };
     if (source === "device") {
       rememberOutside(outsideSaid, text);
       // The whole turn runs before the card is read: it may wait for his turn, and he may interrupt it.
       askOrigin = origin;
+      askMayLook = mayLook;
       const result = await deviceTurn(text, { direct: false, typed: true }, mine).finally(() => {
         askOrigin = null;
+        askMayLook = false;
       });
       if (result.kind !== "handled") return { spoken: result.reply, card: result.reply };
       const spoken = mine.spoken.join(" ").trim();
