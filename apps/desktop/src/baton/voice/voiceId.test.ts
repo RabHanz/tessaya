@@ -25,7 +25,7 @@ const loud = (lines: number) => {
   return all;
 };
 
-const setup = () => {
+const setup = (isMember?: (id: string) => Promise<boolean>) => {
   const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "voiceid-"));
   let settings = { ...VOICE_ID_DEFAULTS, on: true, wisprSeed: false };
   const changed = vi.fn();
@@ -44,6 +44,7 @@ const setup = () => {
     model: "m",
     appData: undefined,
     onChange: changed,
+    ...(isMember === undefined ? {} : { isMember }),
     onPersonDeleted: (id) => deleted.push(id),
   });
   return {
@@ -182,4 +183,17 @@ describe("Voice ID settings", () => {
       voiceIdControls(view({ listening: false })).find((c) => c.id === "vid.enrol"),
     ).toMatchObject({ disabled: true });
   });
+});
+
+it("keeps a saved voice only for a member of this home", async () => {
+  using t = setup(async (id) => id === "maya-3f2a");
+  t.voiceId.sync();
+  await t.voiceId.settled();
+  t.voiceId.read({ kind: "saved", name: "Ali" });
+  await t.read(loud(3));
+  expect(t.voiceId.profiles()).toEqual([]);
+  t.voiceId.card("close");
+  t.voiceId.read({ kind: "saved", name: "Maya", id: "maya-3f2a" });
+  await t.read(loud(3));
+  expect(t.voiceId.profiles().map((p) => p.id)).toEqual(["maya-3f2a"]);
 });

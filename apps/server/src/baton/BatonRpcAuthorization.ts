@@ -47,7 +47,7 @@ import {
   type BatonRpcGroup,
   BATON_METHOD_OF,
 } from "@t3tools/baton-contracts";
-import { memberOfSubject, type Assurance } from "@t3tools/baton-shared/household";
+import { isMemberSubject, memberOfSubject, type Assurance } from "@t3tools/baton-shared/household";
 import { authScopeRequiredResponse, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -443,6 +443,9 @@ export const privateRefusal = (
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
   op: string,
 ): string | null => {
+  // A household member's own device: their own store only (the service refuses any other), never the assistant's ops.
+  if (isMemberSubject(session.subject) && session.scopes.includes(AuthTessayaMemberScope))
+    return PRIVATE_ASSISTANT_OPS.has(op) ? "Only Tessaya on the owner's desktop does that." : null;
   if (askSourceOf(session) !== "phone")
     return "Private memories open only from his own desktop or a browser he paired.";
   const needs = [

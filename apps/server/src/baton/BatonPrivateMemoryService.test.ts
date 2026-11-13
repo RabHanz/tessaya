@@ -13,6 +13,7 @@ import {
   BatonPrivateMemoryService,
   PrivateCaller,
   PrivateKdf,
+  StoreMembership,
   layer as privateLayer,
   make as makePrivate,
 } from "./BatonPrivateMemoryService.ts";
@@ -339,4 +340,36 @@ describe("BatonPrivateMemoryService", () => {
       assert.notInclude(all, MARKER);
       assert.notInclude(all, OWNER_PIN);
     }));
+});
+
+describe("a member's own store, made when they accept (identity I-1)", () => {
+  const maya = { session: "maya-phone", desktop: false, member: "maya" } as const;
+  const members = (ids: ReadonlyArray<string>) =>
+    Layer.succeed(
+      StoreMembership,
+      StoreMembership.of({ isMember: (id) => Effect.succeed(ids.includes(id)) }),
+    );
+  test("is made by the member alone, wrapped to his key, and reaches no one else's", () =>
+    Effect.gen(function* () {
+      const p = yield* BatonPrivateMemoryService;
+      const owner = yield* as(desk)(p.setup({ name: "Rab", pin: OWNER_PIN }));
+      yield* as(desk)(p.lock());
+      // Maya makes hers on her phone with his store locked; a stranger can't make one.
+      const made = yield* as(maya)(p.setup({ personId: "maya", name: "Maya", pin: SARA_PIN }));
+      const stranger = yield* Effect.flip(
+        as({ session: "x", desktop: false, member: "ali" })(
+          p.setup({ personId: "ali", name: "Ali", pin: SARA_PIN }),
+        ),
+      );
+      assert.include(stranger.reason, "member of this home");
+      // She sees only her own; his is not there for her.
+      assert.deepStrictEqual(
+        (yield* as(maya)(p.people)).map((s) => s.personId),
+        ["maya"],
+      );
+      yield* Effect.flip(as(maya)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN })));
+      // His key opens hers (decision 1's default for his home).
+      yield* as(phone)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN }));
+      assert.isTrue((yield* as(phone)(p.unlock({ storeId: made.store.id }))).open);
+    }).pipe(Effect.provide(members(["maya"]))));
 });

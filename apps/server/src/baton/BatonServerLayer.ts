@@ -219,6 +219,19 @@ const servicesInner = IntentService.layer.pipe(
   ),
   // Beside the mergeAll above, not in it: one more member there loses its types.
   // The household's members, over the private stores it shreds; asks for the owner's yes go through the phone inbox.
+  // A private store is only a member's: the store service asks the household, from its home server.
+  Layer.provideMerge(
+    Layer.effect(
+      BatonPrivateMemoryService.StoreMembership,
+      Effect.map(TessayaHousehold.TessayaHousehold, (household) =>
+        BatonPrivateMemoryService.StoreMembership.of({
+          isMember: Effect.fn("StoreMembership.isMember")((personId: string) =>
+            Effect.map(household.grantsOf(personId), (grants) => grants !== null),
+          ),
+        }),
+      ),
+    ),
+  ),
   Layer.provideMerge(TessayaHousehold.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   Layer.provideMerge(BatonPrivateMemoryService.layer),
   Layer.provideMerge(BatonVoiceLibrary.layer),
