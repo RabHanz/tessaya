@@ -1468,11 +1468,12 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
 });
 
 describe("one responder per utterance (the server's voice arbiter, R1-P7)", () => {
-  it("two R1s hear her name at once: only the arbiter's winner opens, and the other stays quiet while she speaks", async () => {
+  it("two R1s hear her name at once: both listen at once, the arbiter's loser closes and stays quiet", async () => {
     const claims: Array<{ deviceId: string; loudnessDb: number | null }> = [];
     let decide: () => void = () => undefined;
     const decided = new Promise<void>((r) => (decide = r));
-    const reports: string[] = [];
+    let quietLogged: () => void = () => undefined;
+    const quiet = new Promise<void>((r) => (quietLogged = r));
     const t = setup({
       arbiter: {
         claim: async (c) => {
@@ -1486,32 +1487,65 @@ describe("one responder per utterance (the server's voice arbiter, R1-P7)", () =
             ? { answer: true }
             : { answer: false, winner: loudest.deviceId, until: t.deps.now() + 20_000 };
         },
-        report: (op, deviceId) => reports.push(`${op} ${deviceId}`),
+        report: () => undefined,
+      },
+      log: (l) => {
+        if (l.includes("this R1 stays quiet")) quietLogged();
       },
     });
-    let opened: () => void = () => undefined;
-    const openedOne = new Promise<void>((r) => (opened = r));
-    let quietLogged: () => void = () => undefined;
-    const quiet = new Promise<void>((r) => (quietLogged = r));
+    let stopped: () => void = () => undefined;
+    const farStopped = new Promise<void>((r) => (stopped = r));
     const publish = t.deps.publish;
     (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
       publish(topic, payload);
-      if (topic.endsWith("/cmd/voice/start")) opened();
-    };
-    (t.deps as { log: RoomDeps["log"] }).log = (l) => {
-      if (l.includes("this R1 stays quiet")) quietLogged();
+      if (topic === "freya/r1/r1-far/cmd/voice/stop") stopped();
     };
     t.room.woken("r1-near", "Tessaya", -18, 1);
     t.room.woken("r1-far", "Tessaya", -35, 1);
-    await openedOne;
+    // Neither waits for the arbiter to start listening (13 Nov: a 1.3-1.7 s claim round before every wake).
+    const started = () =>
+      t.published
+        .filter((p) => p.topic.endsWith("/cmd/voice/start"))
+        .map((p) => p.topic.split("/")[2]);
+    expect(started()).toEqual(["r1-near", "r1-far"]);
     await quiet;
-    const started = t.published
-      .filter((p) => p.topic.endsWith("/cmd/voice/start"))
-      .map((p) => p.topic.split("/")[2]);
-    expect(started).toEqual(["r1-near"]);
+    await farStopped;
+    expect(
+      t.published
+        .filter((p) => p.topic.endsWith("/cmd/voice/stop"))
+        .map((p) => p.topic.split("/")[2]),
+    ).toEqual(["r1-far"]);
     // The far one hears her name again (her voice from the near one): not taken.
     t.room.woken("r1-far", "Tessaya", -30, 1);
     expect(claims).toHaveLength(2);
+    expect(started()).toEqual(["r1-near", "r1-far"]);
+  });
+
+  it("never lets her voice out on an R1 whose claim is lost while it was answering", async () => {
+    let lose: () => void = () => undefined;
+    const lost = new Promise<void>((r) => (lose = r));
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "What time is it?",
+        cancel: () => undefined,
+      }),
+      arbiter: {
+        claim: async () => {
+          await lost;
+          return { answer: false, winner: "r1-other", until: t.deps.now() + 20_000 };
+        },
+        report: () => undefined,
+      },
+    });
+    t.room.message(`freya/r1/${DEV}/cmd/voice/earcons`, Buffer.from('{"on":false}'));
+    t.room.woken(DEV, "Tessaya", -20, 1);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 10);
+    lose();
+    await t.feed(false, 30).catch(() => undefined);
+    expect(t.published.filter((p) => p.topic.endsWith("/voice/down"))).toEqual([]);
   });
 
   it("claims with who Voice ID heard, and sends the conversation the arbiter names on the turns that follow", async () => {
@@ -1623,15 +1657,25 @@ describe("an early start on his stable words (B6)", () => {
     expect(t.brainCalls).toHaveLength(1);
   });
 
-  it("never starts on words still changing or not ending a sentence, and drops a start the final words disagree with", async () => {
+  it("never starts on an unfinished line, starts on a whole request with no full stop, and drops a start the final words disagree with", async () => {
     const changing = live("Turn on the office fan");
     const a = setup({ recognise: changing.recognise, smartTurn: async () => 0.2 });
     a.s2();
     await a.feed(true, 10);
-    changing.partial("Turn on the office fan");
+    changing.partial("Turn on the");
     await a.feed(true, 6);
     await a.feed(false, 5);
     expect(a.brainCalls).toHaveLength(0);
+
+    // His words often reach the recogniser with no full stop (13 Nov: 1 of 18 started early).
+    const bare = live("Turn on the office fan");
+    const b = setup({ recognise: bare.recognise, smartTurn: async () => 0.2 });
+    b.s2();
+    await b.feed(true, 10);
+    bare.partial("Turn on the office fan");
+    await b.feed(true, 6);
+    await b.feed(false, 5);
+    expect(b.brainCalls).toHaveLength(1);
 
     const r = live("What time is it in London?");
     const t = setup({ recognise: r.recognise, smartTurn: async () => 0.2 });
@@ -1648,5 +1692,40 @@ describe("an early start on his stable words (B6)", () => {
       "What time is it?",
       "What time is it in London?",
     ]);
+  });
+});
+
+describe("an early start with no partial words: a preview of his audio at his first pause", () => {
+  it("starts her brain on the preview when it reads as whole, and keeps it when his final words agree", async () => {
+    let previews = 0;
+    let release: () => void = () => undefined;
+    const done = new Promise<void>((r) => (release = r));
+    const logs: string[] = [];
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => {
+          await done;
+          return "What time is it?";
+        },
+        cancel: () => undefined,
+      }),
+      preview: async () => {
+        previews += 1;
+        return "What time is it?";
+      },
+      smartTurn: async () => 0.2,
+      log: (l) => logs.push(l),
+    });
+    t.s2();
+    await t.feed(true, 16);
+    await t.feed(false, 5);
+    expect(previews).toBe(1);
+    expect(t.brainCalls).toHaveLength(1);
+    await t.feed(false, 30);
+    release();
+    await t.metrics;
+    expect(t.brainCalls).toHaveLength(1);
+    expect(logs.some((l) => l.includes("early start kept"))).toBe(true);
   });
 });

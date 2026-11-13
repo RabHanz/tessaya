@@ -94,3 +94,14 @@ export const heldBack = (text: string): string => {
   const n = text.trim().split(/\s+/).filter(Boolean).length;
   return `${n} word${n === 1 ? "" : "s"}, #${h.toString(16).padStart(8, "0")}`;
 };
+
+/** Words that start a question or a request he finishes in one breath ("what time is it", "turn on the fan"). */
+const STARTS_COMPLETE =
+  /^(?:what|what's|whats|who|where|when|why|how|is|are|was|were|can|could|would|will|do|does|did|have|has|turn|switch|set|tell|show|open|close|play|pause|stop|start|put|give|find|check|look|read|remind|call|send|ask|make|dim|lower|raise)\b/i;
+
+/** A cheap check that a line is a whole question or request: ends a sentence, or starts like one and is not cut off. */
+export const looksComplete = (text: string): boolean => {
+  const t = text.trim();
+  if (t === "" || isUnfinished(t)) return false;
+  return /[.?!]$/.test(t) || (STARTS_COMPLETE.test(t) && t.split(/\s+/).length >= 3);
+};

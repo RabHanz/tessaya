@@ -521,6 +521,11 @@ const main = async () => {
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
+      preview: (pcm) => {
+        const turn = recognise();
+        turn.feed(pcm);
+        return turn.finish();
+      },
       arbiter: arbiter(env("R1_BRAIN_URL"), deviceKey),
       confirmed: turnSignal(env("R1_BRAIN_URL"), deviceKey, "confirm"),
       // A bench's turns for regression cases, only while it set `cmd/voice/no-reply` with `keep` (never his).
