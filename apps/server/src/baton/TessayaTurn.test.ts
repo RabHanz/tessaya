@@ -115,6 +115,50 @@ it.effect("a turn's tools know which vessel heard it", () =>
 );
 
 layer("TessayaTurn", (it) => {
+  it.effect(
+    "several people in one turn: each answered from their own, nothing private, no leak between them",
+    () =>
+      Effect.gen(function* () {
+        setup();
+        const turn = yield* TessayaTurn;
+        const sara = { kind: "saved" as const, personId: "sara", verified: true, inherited: false };
+        const omar = { kind: "saved" as const, personId: "omar", verified: true, inherited: false };
+        const setFor = (speaker: SpeakerLike, key: string, value: string) =>
+          turn
+            .setPreference(key, value)
+            .pipe(
+              Effect.provideService(TurnOrigin, originOf({ vessel: device, text: "", speaker })),
+            );
+        yield* setFor(sara, "units", "metric");
+        yield* setFor(sara, "name", "Sar");
+        yield* setFor(omar, "units", "imperial");
+        const [hers, his, owners] = yield* turn.beginMany([
+          { vessel: device, text: "how hot is it", speaker: sara },
+          { vessel: device, text: "start a timer", speaker: omar },
+          { vessel: device, text: "when do I pray", speaker: owner() },
+        ]);
+        assert.deepStrictEqual(hers!.preferences, { units: "metric", name: "Sar" });
+        assert.deepStrictEqual(his!.preferences, { units: "imperial" });
+        assert.strictEqual(hers!.who.name, "Sar");
+        // Cross-speaker leak: none of Sara's in Omar's context, and nothing private for anyone, his own included.
+        assert.notInclude(JSON.stringify(his), "metric");
+        assert.notInclude(JSON.stringify(his), "Sar");
+        assert.deepStrictEqual(
+          [hers!.privateBlock, his!.privateBlock, owners!.privateBlock],
+          ["", "", ""],
+        );
+        assert.lengthOf(recalledFor, 0);
+        assert.notStrictEqual(hers!.conversation.key, his!.conversation.key);
+        // One voice alone is a turn as before: his private memories are read.
+        assert.include(
+          (yield* turn.beginMany([
+            { vessel: device, text: "when do I pray", speaker: owner() },
+          ]))[0]!.privateBlock,
+          "prays",
+        );
+      }),
+  );
+
   it.effect("each member keeps their own preferences, read in their turns and nobody else's", () =>
     Effect.gen(function* () {
       const turn = yield* TessayaTurn;
