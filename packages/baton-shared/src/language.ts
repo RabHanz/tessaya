@@ -7,6 +7,7 @@ const FOREIGN = new Set([
   // Dutch
   "ik",
   "heb",
+  "mijn",
   "het",
   "een",
   "niet",
@@ -72,7 +73,7 @@ const FOREIGN = new Set([
   "mais",
 ]);
 
-/** Most of it is another language: two of its function words at least, and three in ten words foreign (accents half). */
+/** Mostly another language: two of its function words at least, and two in ten words foreign (accents count half). */
 export const mostlyForeign = (text: string): boolean => {
   const words = text
     .toLowerCase()
@@ -81,5 +82,5 @@ export const mostlyForeign = (text: string): boolean => {
   if (words.length < 4) return false;
   const known = words.filter((w) => FOREIGN.has(w)).length;
   const accented = words.filter((w) => !FOREIGN.has(w) && /[à-öø-ÿ]/.test(w)).length;
-  return known >= 2 && (known + accented / 2) / words.length >= 0.3;
+  return known >= 2 && (known + accented / 2) / words.length >= 0.2;
 };
