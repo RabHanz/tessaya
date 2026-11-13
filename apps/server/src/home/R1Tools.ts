@@ -242,7 +242,9 @@ const replayKept = (input: unknown, field: "text" | "value"): string => {
 
 /** What the job tools answer, from their own words (jobs/handlers.ts), with nothing started. */
 const replayJob = (name: string, input: Record<string, unknown>) => {
-  const id = typeof input["id"] === "string" ? input["id"] : null;
+  // A replay's new job has an id of its own, so a later sentence can steer it as he would a real one.
+  const id =
+    typeof input["id"] === "string" ? input["id"] : name === "job_start" ? "job-replay-1" : null;
   const line =
     name === "job_start"
       ? `Opened ${String(input["title"])} in ${String(input["project"])} (a replay: nothing was started). It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`
@@ -256,7 +258,11 @@ const replayJob = (name: string, input: Record<string, unknown>) => {
               ? input["every_minutes"] === 0
                 ? "The schedule is off."
                 : `It runs again every ${String(input["every_minutes"])} minutes.`
-              : "Done (a replay: nothing changed).";
+              : name === "job_retry"
+                ? "Asked it to try again."
+                : name === "job_split"
+                  ? `Started ${Array.isArray(input["parts"]) ? input["parts"].length : 0} workers, one per part; one summary goes to the job's thread when they are all in.`
+                  : "Done (a replay: nothing changed).";
   return { id, line };
 };
 
@@ -437,6 +443,8 @@ const makeRunners = Effect.gen(function* () {
   const household = yield* Effect.serviceOption(TessayaHousehold);
   const stepUps = yield* Effect.serviceOption(StepUps);
   const voices = yield* Effect.serviceOption(VoiceForgets);
+  // A replay's own rehearsed jobs, by its device: listed with the real ones so the next sentence can act on one.
+  const rehearsed = new Map<string, Array<Record<string, unknown>>>();
   /**
    * The household's role table at execution (HOUSEHOLD-DESIGN §5): a guest's voice, or a member who is not the owner,
    * reaches only what their role does. The owner's own voice, or one Voice ID could not judge, keeps the gates it has.
@@ -451,6 +459,22 @@ const makeRunners = Effect.gen(function* () {
         : yield* household.value.grantsOf(origin.member);
     return roomRefusal(origin, grants, name);
   });
+  const rehearse = (device: string, name: string, input: Record<string, unknown>) => {
+    const jobs = rehearsed.get(device) ?? [];
+    if (name === "job_start")
+      jobs.unshift({
+        workSessionId: "job-replay-1",
+        title: String(input["title"]),
+        project: String(input["project"]),
+        phase: "awaiting_agreement",
+        group: "needs_you",
+      });
+    else
+      for (const job of jobs)
+        if (job["workSessionId"] === input["id"])
+          Object.assign(job, { phase: "approved", group: "running" });
+    rehearsed.set(device, jobs.slice(0, 1));
+  };
   const runner = (vessel: {
     readonly specs: ReadonlyArray<RoomTool>;
     readonly client: McpInvocationContext.McpClientCaller;
@@ -531,7 +555,11 @@ const makeRunners = Effect.gen(function* () {
         return { text: `${HELD_LINE} (${act})`, isError: false, status: "asked" } as ToolOutcome;
       }
       const dry = replayDryRun(name, input, device);
-      if (dry !== null) return dry;
+      if (dry !== null) {
+        if (device !== undefined && !dry.isError && (name === "job_start" || name === "job_agree"))
+          rehearse(device, name, input as Record<string, unknown>);
+        return dry;
+      }
       const scope: McpInvocationScope = {
         environmentId,
         capabilities: new Set(["orchestration"]),
@@ -567,6 +595,13 @@ const makeRunners = Effect.gen(function* () {
           ...(typeof value?.status === "string" ? { status: value.status } : {}),
         } as ToolOutcome;
       }
+      const own =
+        name === "tessaya_jobs" && device !== undefined ? rehearsed.get(device) : undefined;
+      if (own !== undefined && typeof result === "object" && result !== null && "jobs" in result)
+        return {
+          text: JSON.stringify({ ...result, jobs: [...own, ...(result.jobs as Array<unknown>)] }),
+          isError: false,
+        } as ToolOutcome;
       return { text: JSON.stringify(result), isError: false } as ToolOutcome;
     });
     return run;

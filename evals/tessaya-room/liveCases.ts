@@ -373,13 +373,16 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "job-steer",
     proves: ["job_refine"],
-    said: ["Tell job job-suite-1 to use Postgres instead of SQLite."],
-    voices: [{ speaker: SURE }],
-    uses: [["job_refine"]],
+    said: [
+      "Start a job in acme app to store sessions in a database.",
+      "Tell that job to use Postgres instead of SQLite.",
+    ],
+    voices: [{ speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["job_refine"]],
     clean: ["job_refine"],
     argsOf: "job_refine",
     args: (input) => ({
-      id: input["id"] === "job-suite-1",
+      id: input["id"] === "job-replay-1",
       postgres: /postgres/i.test(String(input["text"] ?? "")),
     }),
   },
@@ -395,10 +398,12 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "job-team",
     proves: ["job_split"],
     said: [
-      "Split job job-suite-1 into two parts for the team: one writes the API, one writes its tests after that.",
+      "Start a job in acme app to add a public API.",
+      "Its plan is fine, go ahead.",
+      "Now split that job into two parts for the team: one writes the API, one writes its tests after that.",
     ],
-    voices: [{ speaker: SURE }],
-    uses: [["job_split"]],
+    voices: [{ speaker: SURE }, { speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["job_agree"], ["job_split"]],
     clean: ["job_split"],
     argsOf: "job_split",
     args: (input) => ({ two: Array.isArray(input["parts"]) && input["parts"].length === 2 }),
@@ -428,9 +433,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "job-schedule-needs-card",
     proves: ["job_schedule"],
-    said: ["Run job job-suite-1 again every day."],
-    voices: [{ speaker: SURE }],
-    uses: [["job_schedule"]],
+    said: [
+      "Start a job in acme app to update its dependencies.",
+      "Its plan is fine, go ahead.",
+      "Run that job again every day.",
+    ],
+    voices: [{ speaker: SURE }, { speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["job_agree"], ["job_schedule"]],
     stepUps: [{ how: "voice", ok: true, ran: false }],
     lastSays: [/\bphone\b/i],
     check: (_last, calls) =>
