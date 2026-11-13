@@ -159,6 +159,8 @@ export interface RoomDeps {
   readonly vad: () => { readonly score: (window: Int16Array) => Promise<number> };
   readonly smartTurn: (pcm: Int16Array) => Promise<number>;
   readonly recognise: () => RecogniserTurn;
+  /** A member's data was destroyed: his voice profile on this host goes too. */
+  readonly forget?: (personId: string) => void;
   /** The words in a stretch of his audio on their own (a second, short recognition): for an early start at a pause. */
   readonly preview?: (pcm: Int16Array) => Promise<string>;
   /** A throwaway decode as a session opens: the first clip after a quiet spell is otherwise about 1.5 s slower. */
@@ -1689,6 +1691,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             `[${id}] eye intent ${mood} for ${hold} ms${typeof reason === "string" ? ` (${reason.slice(0, 40)})` : ""}`,
           );
           deps.publish(topic(id, "cmd/eye/set"), JSON.stringify({ mood }));
+        }
+        return;
+      }
+      if (tail === "voice/forget") {
+        // A member's data destroyed in his household (the identity lane): their voice profile here goes with it.
+        const personId = json()["personId"];
+        if (typeof personId === "string" && personId !== "" && personId.length <= 80) {
+          deps.forget?.(personId);
+          deps.log(`[${id}] voice profile removed for a member whose data was destroyed`);
         }
         return;
       }

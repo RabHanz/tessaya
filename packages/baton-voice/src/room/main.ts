@@ -439,6 +439,7 @@ const main = async () => {
       "freya/r1/+/cmd/eye/#",
       "freya/r1/+/state/eye/#",
       "freya/r1/+/voice/pronounce",
+      "freya/r1/+/voice/forget",
       "freya/r1/+/voice/intent/eye",
       "freya/r1/+/state/caps",
       "freya/r1/+/cmd/voice/no-reply",
@@ -521,6 +522,7 @@ const main = async () => {
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
+      forget: (personId) => store.remove(personId),
       preview: (pcm) => {
         const turn = recognise();
         turn.feed(pcm);

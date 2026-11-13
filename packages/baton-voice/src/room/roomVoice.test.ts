@@ -1729,3 +1729,13 @@ describe("an early start with no partial words: a preview of his audio at his fi
     expect(logs.some((l) => l.includes("early start kept"))).toBe(true);
   });
 });
+
+describe("a member's data destroyed (identity lane)", () => {
+  it("removes their voice profile here, and ignores a message without a member", () => {
+    const forgotten: string[] = [];
+    const t = setup({ forget: (id) => forgotten.push(id) });
+    t.room.message(`freya/r1/${DEV}/voice/forget`, Buffer.from('{"personId":"member-7"}'));
+    t.room.message(`freya/r1/${DEV}/voice/forget`, Buffer.from("{}"));
+    expect(forgotten).toEqual(["member-7"]);
+  });
+});
