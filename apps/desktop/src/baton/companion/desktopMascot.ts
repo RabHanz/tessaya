@@ -21,6 +21,7 @@ import type { TurnPhase } from "@t3tools/baton-shared/voiceTurn";
 import { protectFromCapture } from "../captureProtection.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import {
+  FOOT_SHARE,
   bodyRect,
   dropAt,
   edgesFor,
@@ -34,6 +35,14 @@ import {
   type Rect,
 } from "./mascotDock.ts";
 import { MASCOT_SCRIPT } from "./mascotPage.ts";
+import {
+  DEFAULT_PROFILE,
+  STEP_S,
+  resting,
+  stepFlight,
+  throwVelocity,
+  type Flight,
+} from "./mascotPhysics.ts";
 
 export type MascotSize = "small" | "medium" | "large";
 export const MASCOT_SIZES: Readonly<Record<MascotSize, number>> = {
@@ -92,6 +101,8 @@ const HIT_FAR_MS = 400;
 const NEAR_PX = 60;
 const FRAME_MS = 33;
 const DRAG_MS = 16;
+/** A landing at least this fast squashes her. */
+const HARD_LANDING = 900;
 const SNOOZE_MS = 60 * 60_000;
 /** A wander is considered once a minute, and taken about one time in six: every few minutes, never on a beat. */
 const WANDER_CHECK_MS = 60_000;
@@ -165,7 +176,10 @@ export const createDesktopMascot = (input: {
     displays().some((d) => saved.x! >= d.workArea.x && saved.x! <= d.workArea.x + d.workArea.width)
       ? saved.x
       : -1;
-  let dragging: { readonly timer: ReturnType<typeof setInterval> } | null = null;
+  let dragging: {
+    readonly timer: ReturnType<typeof setInterval>;
+    readonly samples: Array<{ readonly x: number; readonly y: number; readonly t: number }>;
+  } | null = null;
   let moving: ReturnType<typeof setInterval> | null = null;
   let hitTimer: ReturnType<typeof setTimeout> | null = null;
   let takingMouse = false;
@@ -416,11 +430,65 @@ export const createDesktopMascot = (input: {
     Electron.Menu.buildFromTemplate(items).popup(win === null ? {} : { window: win });
   };
 
+  /** Thrown or let go: she flies under the physics until she rests on an edge, then nothing runs. */
+  const fling = (start: Flight) => {
+    stopMoving();
+    const all = edges();
+    const screens = displays();
+    let flight = start;
+    let owed = 0;
+    let last = Date.now();
+    let squashed = false;
+    moving = setInterval(() => {
+      const target = win;
+      if (target === null || target.isDestroyed()) return stopMoving();
+      const now = Date.now();
+      owed = Math.min(owed + (now - last) / 1000, 0.1);
+      last = now;
+      while (owed >= STEP_S && !resting(flight)) {
+        owed -= STEP_S;
+        const next = stepFlight({
+          flight,
+          edges: all,
+          displays: screens,
+          half: size() / 4,
+          profile: DEFAULT_PROFILE,
+        });
+        flight = next.flight;
+        for (const event of next.events)
+          if (event.kind === "land" && event.speed > HARD_LANDING && !squashed) {
+            squashed = true;
+            call(`window.mascot.play("squish")`);
+          }
+      }
+      if (!resting(flight) || flight.on === null) {
+        target.setBounds(box({ x: flight.x - size() / 2, y: flight.y - size() * FOOT_SHARE }));
+        return;
+      }
+      stopMoving();
+      edge = flight.on;
+      x = flight.x;
+      save({ x, placed: edge.kind === "floor" });
+      target.setBounds(box(standAt(edge, x, size())));
+      cue(momentOf(phase) ?? "rest");
+    }, DRAG_MS);
+  };
+
   const drop = () => {
     const target = win;
     if (dragging === null || target === null || target.isDestroyed()) return;
     clearInterval(dragging.timer);
+    const { samples } = dragging;
     dragging = null;
+    if (options.motion !== "important" && !options.reduced) {
+      const b = target.getBounds();
+      return fling({
+        x: b.x + size() / 2,
+        y: b.y + size() * FOOT_SHARE,
+        ...throwVelocity(samples),
+        on: null,
+      });
+    }
     const drop = dropAt(edges(), target.getBounds(), size());
     edge = drop.edge;
     x = drop.x;
@@ -441,12 +509,15 @@ export const createDesktopMascot = (input: {
     const b = target.getBounds();
     call(`window.mascot.cue({expression:"surprised"})`);
     call(`window.mascot.play("squish")`);
+    const samples: Array<{ readonly x: number; readonly y: number; readonly t: number }> = [];
     const timer = setInterval(() => {
       if (target.isDestroyed()) return clearInterval(timer);
       const at = Electron.screen.getCursorScreenPoint();
+      samples.push({ x: at.x, y: at.y, t: Date.now() });
+      if (samples.length > 12) samples.shift();
       target.setBounds(box({ x: at.x - (cursor.x - b.x), y: at.y - (cursor.y - b.y) }));
     }, DRAG_MS);
-    dragging = { timer };
+    dragging = { timer, samples };
   };
   const onRelease = (event: Electron.IpcMainEvent) => {
     if (mine(event)) drop();
@@ -511,7 +582,8 @@ export const createDesktopMascot = (input: {
       const moved = JSON.stringify(window) !== JSON.stringify(fg);
       fg = window;
       if (wasFull !== full) return apply();
-      if (!moved || edge === null || dragging !== null || win === null || !win.isVisible()) return;
+      if (!moved || edge === null || dragging !== null || moving !== null) return;
+      if (win === null || !win.isVisible()) return;
       if (snoozed()) return;
       const next = followFocus({
         current: edge,

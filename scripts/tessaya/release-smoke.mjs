@@ -227,7 +227,8 @@ if (tessaya) {
         await sleep(50);
       }
       await stage.evaluate(() => window.mascotIpc.send("baton-mascot:release"));
-      await sleep(2000);
+      // Let go mid-flick, she flies, bounces and slides before she rests.
+      await sleep(6000);
       const after = await where();
       const feet = after.y + after.h * ((112 + 168) / 320);
       row(
@@ -243,6 +244,24 @@ if (tessaya) {
       );
     } catch (error) {
       row("drag the mascot", false, error.message);
+    }
+    // At rest she costs next to nothing: her page's main-thread work over 10 s (blinks only).
+    try {
+      const cdp = await stage.context().newCDPSession(stage);
+      await cdp.send("Performance.enable");
+      const busy = async () =>
+        (await cdp.send("Performance.getMetrics")).metrics.find((m) => m.name === "TaskDuration")
+          .value;
+      const from = await busy();
+      await sleep(10_000);
+      const used = (await busy()) - from;
+      row(
+        "the mascot at rest uses under 1% of a core",
+        used < 0.1,
+        `${(used * 1000).toFixed(0)} ms busy in 10 s`,
+      );
+    } catch (error) {
+      row("measure the mascot at rest", false, error.message);
     }
   }
 }
