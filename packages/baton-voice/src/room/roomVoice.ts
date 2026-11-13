@@ -387,11 +387,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * Her own voice coming back through the mic, not his: heard while she was still audible, ending by then too, and
      * moving like what she played (or half like it and in her words). Her name is never this (checked by the caller).
      */
+    /** The last check's likeness, for the log. */
+    let echoLike = 0;
     const herEcho = (pcm: Int16Array, text: string, startedAt: number, lastVoice: number) => {
       const herEnd = playUntil + config.downDelayMs + config.echoTailMs;
       if (startedAt > herEnd || lastVoice - config.upDelayMs > herEnd) return false;
       const like = echo.likeness?.(pcm, startedAt - config.upDelayMs) ?? 0;
-      return like >= 0.6 || (like >= 0.3 && isOwnVoice(text, herLines));
+      echoLike = like;
+      // Two voices' loudness can follow each other a little by chance (0.4 to 0.6 on a 13 Nov replay); her echo is near 1.
+      const hers = like >= 0.75 || (like >= 0.55 && isOwnVoice(text, herLines));
+      if (!hers)
+        deps.log(`[${id}] heard over her voice's tail, taken as his (likeness ${like.toFixed(2)})`);
+      return hers;
     };
 
     /** A line that was not answered: a glance so he sees she heard something, and a log line without his words. */
@@ -678,7 +685,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         herEcho(pcm, raw, startedAt, lastVoice);
       const mine =
         raw !== "" && !echoed && (given !== undefined || addressed(raw, rawCalled, startedAt));
-      if (raw !== "" && !mine) dropped(turn, echoed ? "her own voice" : "not said to her", raw);
+      if (raw !== "" && !mine)
+        dropped(
+          turn,
+          echoed ? `her own voice (likeness ${echoLike.toFixed(2)})` : "not said to her",
+          raw,
+        );
       if (!mine && held === null) {
         kept?.control.abort();
         return;
