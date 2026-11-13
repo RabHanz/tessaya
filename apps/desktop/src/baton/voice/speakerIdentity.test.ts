@@ -124,4 +124,17 @@ describe("the speaker identity service", () => {
     t.service.reset();
     expect(t.service.session()).toBeNull();
   });
+
+  it("asks once when an act needs him and it can't tell, explains the first time, and not at all once verified", async () => {
+    const t = setup({}, at(0.4));
+    await t.service.hear(t.seconds(2), "turn");
+    expect(t.service.stepUp("Rab")).toEqual({ kind: "confirm", name: "Rab", explain: true });
+    expect(t.service.stepUp("Rab")).toMatchObject({ kind: "confirm", explain: false });
+    // Nobody heard yet and no name: a tap instead.
+    t.service.reset();
+    expect(t.service.stepUp(null)).toEqual({ kind: "phone", explain: true });
+    const sure = setup();
+    await sure.service.hear(sure.seconds(4), "turn");
+    expect(sure.service.stepUp("Rab")).toEqual({ kind: "none" });
+  });
 });

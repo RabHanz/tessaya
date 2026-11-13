@@ -7,7 +7,8 @@
 import { BatonHomeCallResult } from "@t3tools/baton-contracts";
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
 import { type Assurance, type MemberRole, OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
-import { principalRefusal } from "@t3tools/baton-shared/trust";
+import { principalRefusal, reachAssurance, toolReach } from "@t3tools/baton-shared/trust";
+import { recordText } from "@t3tools/baton-shared/audit";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
@@ -40,6 +41,8 @@ import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices } from "./HomeDevices.ts";
+import { StepUps } from "./StepUps.ts";
+import { VoiceForgets } from "../baton/VoiceForgets.ts";
 
 /** What the room may call from Tessaya's /mcp toolkit. */
 const ROOM_TOOLS = [
@@ -253,6 +256,20 @@ export const changesSomething = (name: string): boolean =>
     Context.get(TessayaToolkit.tools[name as SharedName].annotations, Tool.Readonly)
   ) && name !== LAPTOP.name;
 
+/**
+ * The assurance a room act waits for (recognition.ts's step-up), or null to run now: a change that needs more than the
+ * turn's voice gave (ACCOUNTS-IDENTITY-DESIGN §3.2). Their own memory keeps its own rule in the turn.
+ */
+export const stepUpNeeds = (name: string, assurance: Assurance): Assurance | null => {
+  if (!changesSomething(name) || toolReach(name) === "personal") return null;
+  const needs = reachAssurance(name);
+  return needs >= 2 && assurance < needs ? needs : null;
+};
+
+/** What the brain hears for a held act: she is already asking, so it says nothing more of it. */
+const HELD_LINE =
+  "Held until I know who is asking: I'm asking them now, and it runs once they answer or tap yes on their phone. Don't ask again.";
+
 /** A shared tool as every vessel advertises it: its toolkit description and schema. */
 const specOf = (name: SharedName): RoomTool => {
   const tool: Tool.Any = TessayaToolkit.tools[name];
@@ -338,6 +355,8 @@ const makeRunners = Effect.gen(function* () {
   ).pipe(Effect.provideService(SecureRandom.SecureRandom, random.value));
   const environmentId = yield* environment.value.getEnvironmentId;
   const household = yield* Effect.serviceOption(TessayaHousehold);
+  const stepUps = yield* Effect.serviceOption(StepUps);
+  const voices = yield* Effect.serviceOption(VoiceForgets);
   /**
    * The household's role table at execution (HOUSEHOLD-DESIGN §5): a guest's voice, or a member who is not the owner,
    * reaches only what their role does. The owner's own voice, or one Voice ID could not judge, keeps the gates it has.
@@ -356,9 +375,15 @@ const makeRunners = Effect.gen(function* () {
     readonly specs: ReadonlyArray<RoomTool>;
     readonly client: McpInvocationContext.McpClientCaller;
     readonly replay: McpInvocationContext.McpClientCaller;
+    /** A shared vessel whose loop asks who is speaking: its acts wait for a step-up (StepUps). */
+    readonly holds: boolean;
   }) => {
     const allowed = new Set(vessel.specs.map((s) => s.name));
-    return Effect.fn("R1Tools.run")(function* (name: string, raw: unknown, device?: string) {
+    const run = Effect.fn("R1Tools.run")(function* (
+      name: string,
+      raw: unknown,
+      device?: string,
+    ): Effect.fn.Return<ToolOutcome> {
       const spec = vessel.specs.find((s) => s.name === name);
       const input = spec === undefined ? raw : asAdvertised(spec, raw);
       const refused = yield* householdRefusal(name);
@@ -376,6 +401,31 @@ const makeRunners = Effect.gen(function* () {
         return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
       const dry = replayDryRun(name, input, device);
       if (dry !== null) return dry;
+      // Only once Voice ID can tell anyone apart (a member has a voice): until then nothing is narrowed here.
+      const origin = yield* TurnOrigin;
+      const needs = origin === null ? null : stepUpNeeds(name, origin.assurance ?? 0);
+      if (
+        needs !== null &&
+        origin !== null &&
+        vessel.holds &&
+        device !== undefined &&
+        Option.isSome(stepUps) &&
+        Option.isSome(voices) &&
+        (yield* voices.value.current).length > 0
+      ) {
+        yield* stepUps.value.hold({
+          device,
+          what: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
+          member: origin.member ?? null,
+          needs,
+          run: (raised) =>
+            run(name, raw, device).pipe(
+              Effect.provideService(TurnOrigin, { ...origin, ...raised }),
+              Effect.asVoid,
+            ),
+        });
+        return { text: HELD_LINE, isError: false, status: "asked" } as ToolOutcome;
+      }
       const scope: McpInvocationScope = {
         environmentId,
         capabilities: new Set(["orchestration"]),
@@ -413,14 +463,25 @@ const makeRunners = Effect.gen(function* () {
       }
       return { text: JSON.stringify(result), isError: false } as ToolOutcome;
     });
+    return run;
   };
   const room: RoomToolSet = {
     specs: ROOM_TOOL_SPECS,
-    run: runner({ specs: ROOM_TOOL_SPECS, client: ROOM_CLIENT, replay: ROOM_REPLAY_CLIENT }),
+    run: runner({
+      specs: ROOM_TOOL_SPECS,
+      client: ROOM_CLIENT,
+      replay: ROOM_REPLAY_CLIENT,
+      holds: true,
+    }),
   };
   const desk: RoomToolSet = {
     specs: DESK_TOOL_SPECS,
-    run: runner({ specs: DESK_TOOL_SPECS, client: DESK_CLIENT, replay: DESK_REPLAY_CLIENT }),
+    run: runner({
+      specs: DESK_TOOL_SPECS,
+      client: DESK_CLIENT,
+      replay: DESK_REPLAY_CLIENT,
+      holds: false,
+    }),
   };
   return { room, desk };
 });

@@ -149,3 +149,28 @@ export const stepUpFor = (
 
 /** Her words for the first time in a session she has to check. */
 export const NOT_SURE_YET = "I'm not sure it's you yet.";
+
+/** What she asks for a step-up; NOT_SURE_YET goes first when `explain`. Null when nothing is needed. */
+export const stepUpLine = (step: StepUp): string | null => {
+  if (step.kind === "none") return null;
+  const ask =
+    step.kind === "phrase"
+      ? `Say "${step.phrase}" for me.`
+      : step.kind === "confirm"
+        ? `Is that you, ${step.name}?`
+        : "Tap yes on your phone if that's you.";
+  return step.explain ? `${NOT_SURE_YET} ${ask}` : ask;
+};
+
+/** Their reply to her step-up: the phrase she gave (its words in order), or a yes to "is that you?". */
+export const answersStepUp = (step: StepUp, text: string): boolean => {
+  const said = text
+    .toLowerCase()
+    .replace(/[^a-z' ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (step.kind === "phrase") return ` ${said} `.includes(` ${step.phrase} `);
+  if (step.kind === "confirm")
+    return /^(?:yes|yeah|yep|yup|it's me|it is me|that's me|correct)\b/.test(said);
+  return false;
+};

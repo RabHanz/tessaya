@@ -40,6 +40,8 @@ import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as R1Brain from "../home/R1Brain.ts";
 import * as TessayaHousehold from "./TessayaHousehold.ts";
 import * as VoiceForgets from "./VoiceForgets.ts";
+import * as MemberPreferences from "./MemberPreferences.ts";
+import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
 import * as R1Device from "../home/R1Device.ts";
@@ -239,6 +241,9 @@ const servicesInner = IntentService.layer.pipe(
   Layer.provideMerge(BatonVoiceLibrary.layer),
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
   Layer.provideMerge(VoiceForgets.layer),
+  // Members' voice defaults and acts held for a step-up, between the turn and runner and every vessel's owner.
+  Layer.provideMerge(MemberPreferences.layer),
+  Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(BatonRecordService.layer),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.

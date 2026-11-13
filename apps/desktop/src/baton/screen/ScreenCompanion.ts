@@ -406,6 +406,14 @@ export interface AssistantActions {
     /** Who spoke the turn the question belongs to: a yes too short to judge is theirs. */
     turnSpeaker: SpeakerIdentity | null,
   ) => boolean;
+  /**
+   * A spoken yes that could not tell who said it: her one step-up (recognition.ts) instead of a refusal, or null when
+   * there is nothing to ask. `passes` judges the spoken answer to it; null: only the box or the phone can answer.
+   */
+  readonly stepUp?: () => {
+    readonly line: string;
+    readonly passes: ((said: SpokenAnswer) => boolean) | null;
+  } | null;
   readonly savedMessages?: () => boolean;
   /** A yes or no by voice, beside any box. Null when nothing is listening. */
   readonly confirm?: (prompt: string) => {
@@ -1255,12 +1263,33 @@ export const startScreenCompanion = (input: {
         false
     ) {
       // Never a silent wait on the card: she says why his yes did not count.
-      say(
-        noOnExpiry
-          ? "That one needs a tap on the card. A spoken yes isn't enough for it."
-          : "I couldn't tell that was your voice, so tap the card for that one.",
-      );
-      return boxed;
+      if (noOnExpiry) {
+        say("That one needs a tap on the card. A spoken yes isn't enough for it.");
+        return boxed;
+      }
+      // One step-up; the act stays held on the card (and his phone, when mirrored) until a tap or a yes that is his.
+      const step = actions?.stepUp?.() ?? null;
+      if (step === null) {
+        say("I couldn't tell that was your voice, so tap the card for that one.");
+        return boxed;
+      }
+      const again = step.passes === null ? null : (actions?.confirm?.(step.line) ?? null);
+      if (again === null) {
+        say(step.line);
+        return boxed;
+      }
+      const reply = await Promise.race([
+        boxed.then((index) => ({ index })),
+        again.answer.then((said) => ({ said })),
+      ]);
+      if ("index" in reply) {
+        again.cancel();
+        return reply.index;
+      }
+      if (step.passes?.(reply.said) !== true) {
+        say("I still can't tell it's you, so it waits for your tap.");
+        return boxed;
+      }
     }
     if (first.said === "always" && outcome === yes) heard?.("always");
     if (first.said === "other") heard?.("words");

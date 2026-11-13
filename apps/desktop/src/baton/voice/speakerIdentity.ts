@@ -11,8 +11,10 @@ import {
   identityOf,
   INHERIT_MS,
   SESSION_IDLE_MS,
+  stepUpFor,
   UNVERIFIED,
   type RecognitionSession,
+  type StepUp,
   type SpeakerGate,
   type SpeakerIdentity,
   type SpeakerPolicy,
@@ -120,6 +122,18 @@ export const createSpeakerIdentity = (input: {
     /** This conversation's recognition (recognition.ts); null before anyone spoke or once it went quiet. */
     session: (): RecognitionSession | null =>
       session !== null && input.now() - session.at <= SESSION_IDLE_MS ? session : null,
+    /**
+     * An act needs to know who is speaking (recognition.ts): nothing once the session is verified, else one ask, explained
+     * the first time this session. This desktop is someone's own, so it asks "is that you?" (or for a tap, with no name).
+     */
+    stepUp: (name: string | null): StepUp => {
+      const now = input.now();
+      const live = session !== null && now - session.at <= SESSION_IDLE_MS ? session : null;
+      const base = live ?? accumulate(null, UNVERIFIED(now), 0, now);
+      const asked = stepUpFor({ ...base, name: base.name ?? name }, { shared: false }, Math.random);
+      session = asked.session;
+      return asked.step;
+    },
     /** Another microphone: an earlier verdict says nothing about who is on this one. */
     reset: () => {
       last = null;
@@ -130,8 +144,12 @@ export const createSpeakerIdentity = (input: {
 
 export type SpeakerIdentityService = ReturnType<typeof createSpeakerIdentity>;
 
-/** The seeded owner row's name (migration 030) until they give a real one: not worth an initial. */
+/** The seeded owner row's name (migration 030) and the desktop's own "You" are no name yet. */
 const UNNAMED = new Set(["owner", "you"]);
+export const realName = (name: string | null | undefined): string | null => {
+  const trimmed = name?.trim() ?? "";
+  return trimmed === "" || UNNAMED.has(trimmed.toLowerCase()) ? null : trimmed;
+};
 
 /**
  * What the pill shows beside her mark: null unless the session is verified; the first letter of their name; "" (a
@@ -142,8 +160,8 @@ export const pillWho = (
   nameOf: (member: string) => string | null,
 ): string | null => {
   if (session === null || !session.verified || session.member === null) return null;
-  const name = (nameOf(session.member) ?? session.name)?.trim() ?? "";
-  if (name === "" || UNNAMED.has(name.toLowerCase())) return "";
+  const name = realName(nameOf(session.member) ?? session.name);
+  if (name === null) return "";
   const first = new Intl.Segmenter().segment(name)[Symbol.iterator]().next().value?.segment ?? "";
   return first.toLocaleUpperCase();
 };

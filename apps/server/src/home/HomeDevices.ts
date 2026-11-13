@@ -36,6 +36,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { VoiceForgets } from "../baton/VoiceForgets.ts";
+import { MemberPreferences, type VoiceDefaults } from "../baton/MemberPreferences.ts";
+import { StepUps } from "./StepUps.ts";
 import type { BatonVoiceProfile } from "@t3tools/baton-contracts";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
@@ -516,7 +518,7 @@ export const brokerLayer = Layer.succeed(HomeDeviceBroker, {
         clientId: `tessaya-devices-${NodeCrypto.randomBytes(3).toString("hex")}`,
         ...(input.user === null ? {} : { user: input.user }),
         ...(input.pass === null ? {} : { pass: input.pass }),
-        subscribe: ["freya/r1/+/state/#", "freya/r1/+/event/#"],
+        subscribe: ["freya/r1/+/state/#", "freya/r1/+/event/#", "freya/r1/+/voice/stepup/done"],
         onMessage: (topic, payload) => input.onMessage(topic, payload.toString("utf8")),
         log: () => {},
       });
@@ -686,6 +688,36 @@ const make = Effect.gen(function* () {
         }),
     });
 
+  // Each member's own persona and voice (their preferences), retained per member so a loop that starts later has them;
+  // an empty retained message clears a member who has none left.
+  const prefs = yield* Effect.serviceOption(MemberPreferences);
+  const sendPrefs = (ids: ReadonlyArray<string>, member: string, now: VoiceDefaults | null) =>
+    Effect.forEach(ids, (id) => publish(id, `voice/prefs/${member}`, now ?? "", true), {
+      discard: true,
+    });
+  if (prefs._tag === "Some")
+    yield* prefs.value.listen((member, now) => sendPrefs([...heard.keys()], member, now));
+  const prefsOnline = (id: string) =>
+    prefs._tag === "None"
+      ? Effect.void
+      : Effect.flatMap(prefs.value.voiceDefaults, (all) =>
+          Effect.forEach(all, ([member, now]) => sendPrefs([id], member, now), { discard: true }),
+        );
+
+  // An act her server holds until it knows who is speaking: that device's loop asks (StepUps).
+  const stepUps = yield* Effect.serviceOption(StepUps);
+  if (stepUps._tag === "Some")
+    yield* stepUps.value.listen((id, act) => publish(id, "voice/stepup", { act, shared: true }));
+  const stepUpDone = (id: string, body: Record<string, unknown> | null) =>
+    stepUps._tag === "None" || body === null || typeof body["act"] !== "string"
+      ? Effect.void
+      : stepUps.value.settle(id, {
+          act: body["act"],
+          ok: body["ok"] === true,
+          how: typeof body["how"] === "string" ? body["how"] : "",
+          member: typeof body["member"] === "string" ? body["member"] : null,
+        });
+
   const live = (id: string) =>
     Effect.suspend(() => {
       if (link === null || !link.connected())
@@ -845,10 +877,12 @@ const make = Effect.gen(function* () {
     if (result.ack !== null) yield* registry.acked(result.id, result.ack.itemId, result.ack);
     if (result.cameOnline) yield* rearm(result.id).pipe(Effect.forkIn(scope));
     if (result.cameOnline) yield* sendVoices([result.id], sharedVoices, []);
+    if (result.cameOnline) yield* prefsOnline(result.id);
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
     if (tail === "event/key") yield* runKey(result.id, json(payload));
     else if (tail === "state/key/bind") yield* keepBinds(result.id, json(payload));
+    else if (tail === "voice/stepup/done") yield* stepUpDone(result.id, json(payload));
   });
 
   const revert = Effect.fn("HomeDevices.revert")(function* (id: string) {

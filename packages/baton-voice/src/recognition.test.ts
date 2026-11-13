@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { accumulate, cueOf, NEW_SESSION, SESSION_IDLE_MS, stepUpFor } from "./recognition.ts";
+import {
+  accumulate,
+  answersStepUp,
+  cueOf,
+  NEW_SESSION,
+  SESSION_IDLE_MS,
+  stepUpFor,
+  stepUpLine,
+} from "./recognition.ts";
 import type { SpeakerIdentity } from "./speaker.ts";
 
 const said = (over: Partial<SpeakerIdentity>): SpeakerIdentity => ({
@@ -60,5 +68,18 @@ describe("recognition across a session", () => {
     ).toEqual({
       kind: "none",
     });
+    expect(stepUpLine(mine.step)).toBe("I'm not sure it's you yet. Is that you, Maya?");
+    expect(stepUpLine({ kind: "phrase", phrase: "amber river", explain: false })).toBe(
+      'Say "amber river" for me.',
+    );
+    expect(stepUpLine({ kind: "none" })).toBeNull();
+    expect(answersStepUp(mine.step, "Yes, it's me.")).toBe(true);
+    expect(answersStepUp(mine.step, "No.")).toBe(false);
+    expect(
+      answersStepUp({ kind: "phrase", phrase: "amber river", explain: false }, "Amber river!"),
+    ).toBe(true);
+    expect(
+      answersStepUp({ kind: "phrase", phrase: "amber river", explain: false }, "river amber"),
+    ).toBe(false);
   });
 });

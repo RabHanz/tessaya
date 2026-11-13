@@ -26,6 +26,7 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts";
+import { MemberPreferences } from "./MemberPreferences.ts";
 import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
@@ -300,6 +301,7 @@ export const make = Effect.gen(function* () {
   const memory = yield* BatonMemoryService;
   const learning = yield* BatonMemoryLearning;
   const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
+  const preferences = yield* Effect.serviceOption(MemberPreferences);
   const sql = yield* SqlClient.SqlClient;
 
   /** A member's name in the household (the identity lane's members table); null for a guest or no row. */
@@ -349,6 +351,7 @@ export const make = Effect.gen(function* () {
         VALUES (${member}, ${key}, ${clean}, ${DateTime.formatIso(yield* DateTime.now)})
         ON CONFLICT (member_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
       `.pipe(Effect.orDie);
+    if (Option.isSome(preferences)) yield* preferences.value.changed(member);
     return { member, key, value: clean === "" ? null : clean };
   });
   const pools = yield* Effect.serviceOption(TurnPools);
