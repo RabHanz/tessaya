@@ -167,3 +167,26 @@ describe("a paired device's turn, overlapping one of his", () => {
     expect(memoryCalls[0]?.["agent"]).toBe("operations");
   });
 });
+
+describe("a saved person's or guest's turn (identity I-2)", () => {
+  it("is refused what their role may not reach, before anyone is asked", async () => {
+    const asked: string[] = [];
+    const slotFor = (role: "child" | "adult") =>
+      createOutsideSlot({
+        host: {} as unknown as ToolHost,
+        memoryCall: async () => ({ items: [], hits: [] }),
+        notes: { list: () => [] } as never,
+        focusedWindow: async () => ({ label: "notepad.exe: notes", shell: false }),
+        confirm: async (p) => (asked.push(p.title), false),
+        record: () => undefined,
+        principal: async () => ({ role, assurance: 2 }),
+      });
+    const bash = { tool: "Bash", input: { command: "ls" } };
+    const child = await slotFor("child").gate(bash);
+    expect(child.allow).toBe(false);
+    expect(asked).toEqual([]);
+    // An adult without the machine grant is refused this computer too; the base rules decide the rest.
+    expect((await slotFor("adult").gate(bash)).allow).toBe(false);
+    expect(asked).toEqual([]);
+  });
+});

@@ -122,6 +122,8 @@ import {
   type TurnTaint,
 } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
+import { type MemberRole, voiceAssurance } from "@t3tools/baton-shared/household";
+import type { TrustPrincipal } from "@t3tools/baton-shared/trust";
 import { createTurnLock, deviceMayLook, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import type { DesktopStateInput } from "../phone/desktopState.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
@@ -701,6 +703,10 @@ export const startScreenCompanion = (input: {
   /** This machine's own server, whether or not T3's window is up. */
   readonly direct?: (method: string, body: unknown) => Promise<unknown>;
   /** His private memory stores on this machine's server: read and written only for the speaker's own store. */
+  /** A household member's role on this machine's server, for a saved person's turn (identity I-2); null: not a member. */
+  readonly memberGrants?: (
+    member: string,
+  ) => Promise<{ readonly role: MemberRole; readonly machine: boolean } | null>;
   readonly privateMemory?: PrivateMemory;
   /** Baton's one voice, injected so this module never loads the voice models. */
   readonly speak: (text: string) => Promise<void>;
@@ -2981,6 +2987,18 @@ export const startScreenCompanion = (input: {
     });
     return agent;
   };
+  /** A saved person's or guest's role and how sure their voice is; someone who is not a member is a guest. */
+  const principalOf = async (speaker: SpeakerIdentity): Promise<TrustPrincipal> => {
+    const grants =
+      speaker.kind === "saved" && speaker.personId !== null
+        ? await (input.memberGrants?.(speaker.personId) ?? Promise.resolve(null)).catch(() => null)
+        : null;
+    return {
+      role: grants?.role ?? "guest",
+      machine: grants?.machine ?? false,
+      assurance: voiceAssurance(speaker),
+    };
+  };
   /**
    * A device's or agent's ask gets a session of its own, started fresh each time: none of his conversation, presence,
    * missed turns or standing memory, so "repeat what you told him" has nothing to repeat. It costs a cold start.
@@ -2991,7 +3009,12 @@ export const startScreenCompanion = (input: {
       "screen",
       `outside-turn-${NodeCrypto.randomUUID()}.ndjson`,
     );
+    // Who is speaking, fixed with the slot: a saved person or a guest is narrowed by their role; a standing job is not.
+    const speaker = standing === undefined ? heardFrom : null;
     const slot = createOutsideSlot({
+      ...(speaker === null || (speaker.kind !== "saved" && speaker.kind !== "guest")
+        ? {}
+        : { principal: () => principalOf(speaker) }),
       host: toolHost,
       memoryCall: (op, args) =>
         actions?.memory === undefined

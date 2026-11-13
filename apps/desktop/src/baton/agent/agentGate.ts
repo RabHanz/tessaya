@@ -13,7 +13,7 @@ import {
   READS_OUTSIDE,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
-import { decideTrust, type TrustAgent } from "@t3tools/baton-shared/trust";
+import { decideTrust, type TrustAgent, type TrustPrincipal } from "@t3tools/baton-shared/trust";
 import type { ProjectRef } from "@t3tools/baton-shared/osPack";
 import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
 import { namesShell } from "@t3tools/baton-shared/screenCompanion";
@@ -209,6 +209,8 @@ export const createAgentGate = (input: {
   readonly inPlan?: () => ReadonlyArray<string> | null;
   /** The persona this turn answers as: its own tool list narrows the gate, and every card names it. */
   readonly agent?: () => TrustAgent;
+  /** Who this turn is from, when not him: their role and how sure. It only narrows (identity I-2). */
+  readonly principal?: () => Promise<TrustPrincipal | undefined>;
   /** The projects of a job by its id, so a project's own lead may split only its own project's jobs. */
   readonly jobProjects?: (id: string) => Promise<ReadonlyArray<ProjectRef> | null>;
   /** Keys were allowed for this window (a command line only when `shell` and he agreed); checked again when sent. */
@@ -314,12 +316,14 @@ export const createAgentGate = (input: {
       typeof jobId === "string"
         ? ((await input.jobProjects?.(jobId).catch(() => null)) ?? null)
         : null;
+    const principal = await input.principal?.();
     const trusted = decideTrust({
       call,
       context,
       plan: input.inPlan?.() ?? null,
       jobProjects,
       ...(agent === undefined ? {} : { agent }),
+      ...(principal === undefined ? {} : { principal }),
     });
     // A device's turn reads quietly; anything else it would do asks him first, whatever One Trust allows his own words.
     const judged =

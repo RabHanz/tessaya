@@ -31,6 +31,8 @@ export const createOutsideSlot = (input: {
   readonly chrome?: GateInput["chrome"];
   /** A standing job's owning persona: its memory view. A device's turn has none. */
   readonly agent?: string;
+  /** Who is speaking when it is a saved person or a guest: their role narrows what this turn may do. */
+  readonly principal?: GateInput["principal"];
 }) => {
   const taint = createTaint();
   // Once he speaks the turn is over: nothing it started may go on acting.
@@ -62,6 +64,7 @@ export const createOutsideSlot = (input: {
     record: input.record,
     ...(input.jobProjects === undefined ? {} : { jobProjects: input.jobProjects }),
     ...(input.chrome === undefined ? {} : { chrome: input.chrome }),
+    ...(input.principal === undefined ? {} : { principal: input.principal }),
   });
   const gate: typeof judge = async (call) => {
     if (closed) return { allow: false, reason: STOPPED };
