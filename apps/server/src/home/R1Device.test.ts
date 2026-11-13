@@ -276,6 +276,7 @@ effectIt.effect(
         device: Effect.succeed(null),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
       const record = Layer.mock(BatonRecordService)({
@@ -297,9 +298,61 @@ effectIt.effect(
       );
       yield* Deferred.await(findStarted);
       yield* Fiber.interrupt(turn);
-      expect(ran).toEqual(["home_find"]);
+      // The turn's own reads of his work (what needs him, what is in flight) come first; then the model's.
+      expect(ran.filter((name) => name.startsWith("home_"))).toEqual(["home_find"]);
       expect(recorded).toBe(0);
       expect(said).toEqual([]);
+    }),
+);
+
+effectIt.effect(
+  "the house matching his words and what needs him are in the model's message before it starts",
+  () =>
+    Effect.gen(function* () {
+      let sent = "";
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.suspend(() => {
+            sent = turn.user;
+            return Stream.make("Yes, it's on.");
+          }),
+      });
+      const lamp = {
+        entityId: "light.desk_lamp",
+        name: "Lamp (Study)",
+        area: "Study",
+        state: "on",
+      };
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([lamp] as never),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(BatonRecordService)({ append: () => Effect.void as never });
+      yield* r1TurnStream({ heard: "is the study lamp on?", history: [] }, brain, {
+        specs: [],
+        run: (name) =>
+          Effect.succeed({
+            text: name === "tessaya_watch" ? '{"findings":[]}' : '{"threads":[]}',
+            isError: false,
+          }),
+      }).pipe(
+        Stream.runDrain,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+      );
+      expect(sent).toMatch(
+        /In the house matching his words, live as of this turn: .*light\.desk_lamp.*"on"/,
+      );
+      expect(sent).toMatch(
+        /What needs him \(tessaya_watch\), live as of this turn: \{"findings":\[\]\}/,
+      );
+      expect(sent).toMatch(/tessaya_in_flight\), live as of this turn: \{"threads":\[\]\}/);
     }),
 );
 
@@ -323,6 +376,7 @@ effectIt.effect(
         device: Effect.succeed(null),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
       const record = Layer.mock(BatonRecordService)({
@@ -364,6 +418,7 @@ effectIt.effect(
         device: Effect.succeed(null),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
       const record = Layer.mock(BatonRecordService)({
@@ -432,6 +487,7 @@ effectIt.effect(
         device: Effect.succeed(null),
         status: Effect.succeed({ state: "connected", line: "" } as never),
         actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
       const services = Layer.mergeAll(
@@ -450,24 +506,26 @@ effectIt.effect(
       const unconfirmed = yield* turn({ speculative: true, callId: "g1" });
       yield* TestClock.adjust("20 seconds");
       yield* Fiber.join(unconfirmed);
-      expect(ran).toEqual(["home_find"]);
+      // The turn's own reads of his work (what needs him, what is in flight) come first; then the model's.
+      expect(ran.filter((name) => name.startsWith("home_"))).toEqual(["home_find"]);
 
       // Confirmed while it waits: the write goes ahead.
       ran.length = 0;
       const confirmed = yield* turn({ speculative: true, callId: "g2" });
       yield* TestClock.adjust("1 second");
-      expect(ran).toEqual(["home_find"]);
+      // The turn's own reads of his work (what needs him, what is in flight) come first; then the model's.
+      expect(ran.filter((name) => name.startsWith("home_"))).toEqual(["home_find"]);
       yield* r1Confirmed("g2");
       yield* TestClock.adjust("1 second");
       yield* Fiber.join(confirmed);
-      expect(ran).toEqual(["home_find", "home_do"]);
+      expect(ran.filter((name) => name.startsWith("home_"))).toEqual(["home_find", "home_do"]);
 
       // His final turn (no guess) never waits.
       ran.length = 0;
       const final = yield* turn();
       yield* TestClock.adjust("1 second");
       yield* Fiber.join(final);
-      expect(ran).toEqual(["home_find", "home_do"]);
+      expect(ran.filter((name) => name.startsWith("home_"))).toEqual(["home_find", "home_do"]);
     }),
 );
 

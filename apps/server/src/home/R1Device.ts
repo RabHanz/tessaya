@@ -252,6 +252,8 @@ export interface R1Context {
   readonly memory: string;
   readonly voice: unknown;
   readonly now: string;
+  /** His work read just now (what needs him, what is in flight), for the tool turn; "" when not read. */
+  readonly work?: string;
   readonly persona: Persona | null;
   /** He named this persona in this very turn (the loop's `tessaya.switched`). */
   readonly switched: boolean;
@@ -391,7 +393,7 @@ export const r1Data = (input: R1Context) => [
 export const ROOM_SYSTEM = [
   `${SELF}. this turn reaches you through a speaker in a room of his home: you are heard, not read, so answer in one or two short spoken sentences, plain words, no lists or markdown.`,
   NAMES,
-  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state, so "is the lamp on?" is answered from home_state, never from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_memory_remember to keep what he asks you to remember or how he wants something done from now on (never promise "from now on" without it), tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
+  `your tools are the ones his agents use. the house: home_find finds a device by words or room; home_state is its live state. the lines in his message marked "live as of this turn" were read from the house and his work just now: answer from them and use their ids with home_do; call home_find or home_state only for what they do not cover, and never answer the house from memory or the conversation; home_do changes something now, home_automation_save anything later or repeating, home_undo undoes (the last action's undoId). a risky change (locks, the alarm, doors, cameras, the water pump, heaters) goes to his phone for a yes: say it is waiting there, never that it is done. his work: tessaya_in_flight and tessaya_team_board for what he and his agents are on now, tessaya_sessions, tessaya_fleet, tessaya_jobs, tessaya_watch for anything stuck, tessaya_record for what happened, tessaya_rules, tessaya_memory_search and tessaya_memory_about (when he asks what you remember, or what you know about someone or something, and the memory lines you were given do not answer it, search before saying you don't know), tessaya_memory_remember to keep what he asks you to remember or how he wants something done from now on (never promise "from now on" without it), tessaya_memory_forget for what he asks you to forget. tessaya_ask sends him a request to answer on his phone. laptop_ask asks his laptop. room_look takes one picture with this device's camera, only when he asks you to look. call a tool only when the answer needs one: a greeting, a thank-you or who is who needs none.`,
   `${TOOL_FAILED}. ${NEVER_MISSING}`,
   ANSWER_ONLY,
   LIKE_A_PERSON,
@@ -413,6 +415,15 @@ export const roomData = (input: R1Context) =>
     ...(input.lastAction === null
       ? []
       : [`The last thing done in the house: ${quoted(input.lastAction)}`]),
+    ...(Array.isArray(input.devices) && input.devices.length > 0
+      ? [`In the house matching his words, live as of this turn: ${quoted(input.devices)}`]
+      : typeof input.devices === "string"
+        ? [input.devices]
+        : []),
+    ...(input.automations === null
+      ? []
+      : [`His automations, live as of this turn: ${quoted(input.automations)}`]),
+    ...(input.work === undefined || input.work === "" ? [] : [input.work]),
     ...(input.memory === ""
       ? []
       : [
@@ -523,7 +534,12 @@ export const dictionaryEntries = (
 ): ReadonlyArray<VocabularyEntry> =>
   words.map((w) => ({ phrase: w.term, replacement: null, heard: w.aliases }));
 
-export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, withHouse = true) {
+export const r1Gather = Effect.fn("R1Device.gather")(function* (
+  raw: R1Heard,
+  withHouse = true,
+  /** The acts form (the subscription's one-shot, no tools): it never reads his private memories. */
+  acts = withHouse,
+) {
   // His names, as dictation fixes them ("Tessa" → "Tessaya"), from the environment's shared dictionary.
   const settings = yield* Effect.serviceOption(ServerSettingsService);
   const words =
@@ -540,7 +556,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
   yield* eyes(device, "thinking", 15_000, "gathering the turn").pipe(Effect.forkDetach);
   const status = yield* home.status;
   const lastAction = (yield* home.actions(1))[0] ?? null;
-  // With tools, she looks the house up herself; the acts form needs it in view.
+  // What in the house matches his words, in view before the model starts: a simple ask then needs no tool round.
   const found = withHouse
     ? yield* home.find({ text: input.heard, limit: 8 }).pipe(Effect.orElseSucceed(() => []))
     : [];
@@ -590,7 +606,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
         .pipe(Effect.provideService(MemoryViewer, "desktop"));
   const context: R1Context = {
     heard: input.heard,
-    privateBlock: withHouse ? "" : begun.privateBlock,
+    privateBlock: acts ? "" : begun.privateBlock,
     // The conversation he is having with her on any vessel; the loop's own when the pipeline has none yet.
     history: withoutSelfIntros(
       begun.conversation.turns.length > 0 ? begun.conversation.turns : input.history,
@@ -857,7 +873,48 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   calls?: Array<RoomCall>,
 ) {
   const startedAt = yield* Clock.currentTimeMillis;
-  const { device, context, turn, names } = yield* r1Gather(input, false);
+  // His work, read alongside the house: "what needs me" or "what's in flight" then needs no tool round.
+  const workRead = (name: string) =>
+    tools.run(name, {}, input.device).pipe(
+      Effect.map((o) => (o.isError ? null : { name, text: o.text.slice(0, 800) })),
+      // A read that breaks only leaves the line out: the model can still ask for it.
+      Effect.catchCause(() => Effect.succeed(null)),
+    );
+  const [gathered, needs, inFlight] = yield* Effect.all(
+    [r1Gather(input, true, false), workRead("tessaya_watch"), workRead("tessaya_in_flight")],
+    { concurrency: "unbounded" },
+  );
+  const { device, turn, names } = gathered;
+  const context: R1Context = {
+    ...gathered.context,
+    work: [
+      needs === null ? null : `What needs him (tessaya_watch), live as of this turn: ${needs.text}`,
+      inFlight === null
+        ? null
+        : `What he and his agents are on (tessaya_in_flight), live as of this turn: ${inFlight.text}`,
+    ]
+      .filter((l) => l !== null)
+      .join("\n"),
+  };
+  // The suite's trace shows what the turn read before the model started, as it shows the model's own calls.
+  const readBefore = "read before the turn";
+  if (Array.isArray(context.devices) && context.devices.length > 0)
+    calls?.push({
+      name: "home_find",
+      input: { text: input.heard },
+      isError: false,
+      status: readBefore,
+      text: JSON.stringify(context.devices).slice(0, 4000),
+    });
+  for (const read of [needs, inFlight])
+    if (read !== null)
+      calls?.push({
+        name: read.name,
+        input: {},
+        isError: false,
+        status: readBefore,
+        text: read.text,
+      });
   yield* Effect.logInfo("R1 turn timing", {
     route: via === "api" ? "tools" : "session",
     gatherMs: (yield* Clock.currentTimeMillis) - startedAt,
