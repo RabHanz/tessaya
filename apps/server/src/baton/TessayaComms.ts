@@ -721,6 +721,8 @@ export const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const until = input.until === null ? null : Date.parse(input.until);
     if (until !== null && !(until > now)) return refused("That time has already passed.");
+    if ((yield* TurnOrigin)?.rehearsal === true)
+      return { status: "done", line: "Done. (A replay: nothing changed.)" } satisfies Result;
     yield* setSetting(`${DND_PREFIX}${member}`, input.until);
     yield* write({
       actor: name ?? member,

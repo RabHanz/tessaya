@@ -237,6 +237,7 @@ const SELF_DRY: ReadonlySet<string> = new Set([
   "comms_send",
   "comms_play",
   "comms_react",
+  "comms_dnd",
   "home_do",
   "home_undo",
   "home_automation_save",
