@@ -103,6 +103,7 @@ import {
 import {
   resolveBinary,
   SessionClosed,
+  spawnable,
   startVisionSession,
   type VisionContent,
   type VisionSession,
@@ -3308,7 +3309,7 @@ export const startScreenCompanion = (input: {
           project: where.project ?? null,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           // Found on his PATH here, as his own sessions find it; a server spawns it without a shell.
-          claudeBinary: resolveBinary(settings.claudeBinary, input.platform, input.env),
+          claudeBinary: spawnable(resolveBinary(settings.claudeBinary, input.platform, input.env)),
         },
         (words) => {
           reply += words;
