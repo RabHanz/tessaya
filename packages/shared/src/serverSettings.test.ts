@@ -410,7 +410,8 @@ describe("serverSettings helpers", () => {
       },
       sourceControlWriterModelSelection: selection,
       reviewGuideModelSelection: selection,
-      speechPostProcessingModelSelection: selection,
+      // Dictation clean-up reads its model from the one cleanup setting (39b020b8d3).
+      dictationCleanup: { ...DEFAULT_SERVER_SETTINGS.dictationCleanup, model: selection },
     });
     // A text generator has no provider snapshot; an empty list must not read as unusable.
     const on = settings(true);
