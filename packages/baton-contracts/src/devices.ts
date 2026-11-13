@@ -33,6 +33,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "forget",
   "speaker",
   "set",
+  "watch",
 ] as const;
 export const BATON_DEVICES_OWNER_OPS = ["reboot", "camera", "cameraView", "cameraClear"] as const;
 export const BATON_DEVICES_VESSEL_OPS = ["publish"] as const;
@@ -347,6 +348,64 @@ export const DeviceWrite = Schema.Struct({
   value: Schema.Unknown,
 });
 export type DeviceWrite = typeof DeviceWrite.Type;
+
+/** A condition on one item's value. `changes` and `event` fire on every change. */
+export const DeviceRuleWhen = Schema.Struct({
+  op: Schema.Literals(["<", ">", "==", "!=", "changes", "event"]),
+  value: Schema.optionalKey(Schema.Union([Schema.Number, Schema.Boolean, Schema.String])),
+});
+export type DeviceRuleWhen = typeof DeviceRuleWhen.Type;
+
+/** What a rule does when it fires: an existing act, through that act's own gate. */
+export const DeviceRuleAction = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("device_set"),
+    deviceId: Short(60),
+    itemId: Short(80),
+    value: Schema.optionalKey(
+      Schema.Union([Schema.Number, Schema.Boolean, Schema.String, Schema.Null]),
+    ),
+  }),
+  /** A Home Assistant service on one entity, through the house's own risk check. */
+  Schema.Struct({
+    kind: Schema.Literal("home"),
+    domain: Short(40),
+    service: Short(60),
+    entityId: Short(200),
+  }),
+  /** A card on his phone, and a line in the Record. */
+  Schema.Struct({ kind: Schema.Literal("notify"), text: Short(300) }),
+  /** Said aloud on a device that speaks (the R1). */
+  Schema.Struct({ kind: Schema.Literal("say"), deviceId: Short(60), text: Short(300) }),
+]);
+export type DeviceRuleAction = typeof DeviceRuleAction.Type;
+
+/**
+ * A rule on device state. With `when` it is checked in code; without, his words (`intent`) are judged by the brain on
+ * each change of the device and item it watches, and the brain picks the action when `then` is absent.
+ */
+export const DeviceRule = Schema.Struct({
+  name: Short(120),
+  deviceId: Schema.NullOr(Short(60)),
+  itemId: Schema.NullOr(Short(80)),
+  when: Schema.NullOr(DeviceRuleWhen),
+  intent: Schema.NullOr(Short(400)),
+  then: Schema.NullOr(DeviceRuleAction),
+});
+export type DeviceRule = typeof DeviceRule.Type;
+
+/** device_watch: a rule, and how long it lives (as Home Assistant automations do). */
+export const DeviceWatchInput = Schema.Struct({
+  rule: DeviceRule,
+  kind: Schema.optionalKey(Schema.Literals(["permanent", "temporary"])),
+  expiresInMinutes: Schema.optionalKey(
+    Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 525_600 })),
+  ),
+  once: Schema.optionalKey(Schema.Boolean),
+  /** His words, kept for the Record and the Automations list. */
+  request: Short(300),
+});
+export type DeviceWatchInput = typeof DeviceWatchInput.Type;
 
 export const DevicesOverview = Schema.Struct({
   broker: Schema.Struct({

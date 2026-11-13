@@ -14,6 +14,7 @@ import type {
 } from "@t3tools/baton-contracts";
 import { PROMPT_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { isDeviceRule } from "@t3tools/baton-shared/deviceRules";
 import {
   actionCalls,
   higherTier,
@@ -1053,6 +1054,7 @@ const make = Effect.gen(function* () {
         );
 
   const undo = Effect.fn("HomeAssistant.undo")(function* (id: string, by: HomeActor) {
+    if (isDeviceRule(id)) return yield* undoDeviceRule(id, by);
     const forwarded = yield* viaPeer("home_undo", { id });
     if (forwarded !== null) return forwarded as HomeOutcome;
     yield* live;
@@ -1326,10 +1328,84 @@ const make = Effect.gen(function* () {
       });
   });
 
+  /**
+   * Rules on device state (DeviceTriggers) live in this table with Home Assistant's, but run on this server: pause,
+   * resume, delete and undo change only the row, with no Home Assistant behind them.
+   */
+  const deviceRule = Effect.fn("HomeAssistant.deviceRule")(function* (id: string) {
+    const rows =
+      yield* sql<AutomationRowDb>`SELECT * FROM fabric_home_automations WHERE id = ${id}`.pipe(
+        Effect.orDie,
+      );
+    const row = rows[0];
+    if (row === undefined || (row.status === "deleted" && row.last_op !== "delete"))
+      return yield* new HomeRefusedError({ why: `There is no rule ${id}.` });
+    return row;
+  });
+  const setDeviceRule = Effect.fn("HomeAssistant.setDeviceRule")(function* (
+    input: { readonly id: string; readonly op: "pause" | "resume" | "delete" },
+    by: HomeActor,
+  ) {
+    const row = yield* deviceRule(input.id);
+    const now = yield* Clock.currentTimeMillis;
+    const status = input.op === "pause" ? "paused" : input.op === "resume" ? "active" : "deleted";
+    if (status !== "deleted" && row.status !== "active" && row.status !== "paused")
+      return yield* new HomeRefusedError({ why: `The rule ${input.id} has ${row.status}.` });
+    yield* sql`
+      UPDATE fabric_home_automations SET status = ${status}, previous = ${row.status}, last_op = ${input.op}, updated_at = ${now}
+      WHERE id = ${input.id}
+    `.pipe(Effect.orDie);
+    if (record._tag === "Some")
+      yield* record.value.append({
+        kind: "home",
+        actor: by.who,
+        ref: input.id,
+        subject: `${input.op} rule ${input.id}`,
+        outcome: "done",
+        detail: by.surface,
+      });
+    return outcome(
+      "done",
+      input.id,
+      input.op === "delete"
+        ? `Deleted ${input.id}. Undo puts it back for 7 days.`
+        : `${input.op === "pause" ? "Paused" : "Resumed"} ${input.id}.`,
+      input.op === "delete" ? input.id : null,
+    );
+  });
+  /** Undo a rule's last change: a new one is removed, a deleted or paused one comes back as it was. */
+  const undoDeviceRule = Effect.fn("HomeAssistant.undoDeviceRule")(function* (
+    id: string,
+    by: HomeActor,
+  ) {
+    const row = yield* deviceRule(id);
+    const now = yield* Clock.currentTimeMillis;
+    const back = row.last_op === "create" ? "deleted" : (row.previous ?? "active");
+    yield* sql`
+      UPDATE fabric_home_automations SET status = ${back}, previous = NULL, last_op = 'restore', updated_at = ${now}
+      WHERE id = ${id}
+    `.pipe(Effect.orDie);
+    if (record._tag === "Some")
+      yield* record.value.append({
+        kind: "home",
+        actor: by.who,
+        ref: id,
+        subject: `undo of rule ${id}`,
+        outcome: back,
+        detail: by.surface,
+      });
+    return outcome(
+      "undone",
+      id,
+      back === "deleted" ? `Removed ${id} again.` : `Put ${id} back as it was.`,
+    );
+  });
+
   const setAutomation = Effect.fn("HomeAssistant.setAutomation")(function* (
     input: { readonly id: string; readonly op: "pause" | "resume" | "delete" },
     by: HomeActor,
   ) {
+    if (isDeviceRule(input.id)) return yield* setDeviceRule(input, by);
     const forwarded = yield* viaPeer("home_automation_set", { ...input });
     if (forwarded !== null) return forwarded as HomeOutcome;
     yield* live;
@@ -1429,27 +1505,46 @@ const make = Effect.gen(function* () {
   }) {
     const forwarded = yield* viaPeer("home_automations", { ...input });
     if (forwarded !== null) return forwarded as ReadonlyArray<HomeAutomationRow>;
-    yield* live;
+    // Rules on device state need no Home Assistant: without it they are listed alone.
+    const rules = (yield* sql<AutomationRowDb>`
+      SELECT * FROM fabric_home_automations WHERE id LIKE 'tessaya_device_%' AND status IN ('active', 'paused')
+      ORDER BY created_at DESC LIMIT 200
+    `.pipe(Effect.orDie)).map((r): HomeAutomationRow => ({
+      id: r.id,
+      alias: String(asRecord(JSON.parse(r.config))["name"] ?? r.id),
+      kind: r.kind === "temporary" ? "temporary" : "permanent",
+      mine: true,
+      expiresAt: r.expires_at === null ? null : iso(r.expires_at),
+      once: r.once === 1,
+      paused: r.status === "paused",
+      status: "active",
+      request: r.request,
+      entityId: null,
+    }));
+    if (link === null) return rules;
     const rows =
       yield* sql<AutomationRowDb>`SELECT * FROM fabric_home_automations WHERE kind != 'his' ORDER BY created_at DESC LIMIT 200`.pipe(
         Effect.orDie,
       );
     const ours = new Map(rows.map((r) => [r.id, r]));
-    const out: Array<HomeAutomationRow> = rows.map((r) => {
-      const entityId = automationEntity(r.id);
-      return {
-        id: r.id,
-        alias: String(asRecord(JSON.parse(r.config))["alias"] ?? r.id),
-        kind: r.kind as HomeAutomationKind,
-        mine: true,
-        expiresAt: r.expires_at === null ? null : iso(r.expires_at),
-        once: r.once === 1,
-        paused: entityId !== null && states.get(entityId)?.s === "off",
-        status: r.status === "active" && entityId === null ? "missing" : r.status,
-        request: r.request,
-        entityId,
-      };
-    });
+    const out: Array<HomeAutomationRow> = rows
+      .filter((r) => !isDeviceRule(r.id))
+      .map((r) => {
+        const entityId = automationEntity(r.id);
+        return {
+          id: r.id,
+          alias: String(asRecord(JSON.parse(r.config))["alias"] ?? r.id),
+          kind: r.kind as HomeAutomationKind,
+          mine: true,
+          expiresAt: r.expires_at === null ? null : iso(r.expires_at),
+          once: r.once === 1,
+          paused: entityId !== null && states.get(entityId)?.s === "off",
+          status: r.status === "active" && entityId === null ? "missing" : r.status,
+          request: r.request,
+          entityId,
+        };
+      });
+    out.push(...rules);
     if (input.all === true)
       for (const [entityId, cached] of states) {
         if (!entityId.startsWith("automation.")) continue;
@@ -1553,10 +1648,16 @@ const make = Effect.gen(function* () {
           Effect.orDie,
         );
     }
+    // Rules on device state past their end: only their row.
+    yield* sql`
+      UPDATE fabric_home_automations SET status = 'expired', updated_at = ${now}
+      WHERE id LIKE 'tessaya_device_%' AND status IN ('active', 'paused') AND expires_at IS NOT NULL AND expires_at <= ${now}
+    `.pipe(Effect.orDie);
     // Temporary and scratch automations past their end.
     if (link !== null) {
       const due = yield* sql<{ id: string }>`
         SELECT id FROM fabric_home_automations WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ${now}
+          AND id NOT LIKE 'tessaya_device_%'
       `.pipe(Effect.orDie);
       for (const { id } of due) yield* removeAutomation(id, "expired").pipe(Effect.ignore);
       for (const id of finished) {
@@ -1564,7 +1665,7 @@ const make = Effect.gen(function* () {
         yield* removeAutomation(id, "finished").pipe(Effect.ignore);
       }
     }
-    yield* sql`DELETE FROM fabric_home_automations WHERE status != 'active' AND updated_at <= ${now - DELETED_KEEP_MS}`.pipe(
+    yield* sql`DELETE FROM fabric_home_automations WHERE status NOT IN ('active', 'paused') AND updated_at <= ${now - DELETED_KEEP_MS}`.pipe(
       Effect.orDie,
     );
     yield* sql`DELETE FROM fabric_home_actions WHERE at <= ${now - DELETED_KEEP_MS}`.pipe(

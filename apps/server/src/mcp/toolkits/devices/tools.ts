@@ -5,6 +5,7 @@
 import {
   BatonDevicesCallResult,
   DeviceTagAction,
+  DeviceWatchInput,
   R1_LEDS,
   R1_MOODS,
 } from "@t3tools/baton-contracts";
@@ -148,5 +149,27 @@ const SetTool = Tool.make("device_set", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const WatchTool = Tool.make("device_watch", {
+  ...shared,
+  description: DEVICE_TOOL_TEXT.device_watch,
+  parameters: Schema.Struct({
+    ...DeviceWatchInput.fields,
+    on: Schema.optional(On),
+    ...PeerOrigin,
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit, beside the house's tools. */
-export const DeviceTools = [ListTool, ActTool, OwnerTool, TagTool, ReadTool, SetTool] as const;
+export const DeviceTools = [
+  ListTool,
+  ActTool,
+  OwnerTool,
+  TagTool,
+  ReadTool,
+  SetTool,
+  WatchTool,
+] as const;

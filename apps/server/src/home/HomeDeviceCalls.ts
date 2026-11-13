@@ -9,6 +9,7 @@ import {
   DEVICE_SPEAKER_OUTPUTS,
   BATON_DEVICES_OWNER_OPS,
   BATON_DEVICES_READ_OPS,
+  DeviceWatchInput,
   DevicePublish,
   DEVICE_TRANSPORTS,
   DeviceTagAction,
@@ -27,6 +28,7 @@ import * as Schema from "effect/Schema";
 
 import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
+import { DeviceTriggers } from "./DeviceTriggers.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);
@@ -74,6 +76,15 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
           return yield* new DeviceRefusedError({ why: `No device called ${a.id} is known here.` });
         return readView(d, a.items, yield* Clock.currentTimeMillis);
       }),
+  ),
+  watch: op(DeviceWatchInput, (a, _devices, by) =>
+    Effect.flatMap(Effect.serviceOption(DeviceTriggers), (t) =>
+      t._tag === "Some"
+        ? t.value.watch(a, by)
+        : Effect.fail(
+            new DeviceRefusedError({ why: "Rules on devices do not run on this server." }),
+          ),
+    ),
   ),
   set: op(
     Schema.Struct({
