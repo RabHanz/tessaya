@@ -352,6 +352,15 @@ const config: ExpoConfig = {
     ],
     "expo-secure-store",
     "expo-sqlite",
+    // Tessaya: setting up an R1 over Bluetooth (Settings → Hardware → Add an R1); foreground only.
+    [
+      "react-native-ble-plx",
+      {
+        isBackgroundEnabled: false,
+        neverForLocation: true,
+        bluetoothAlwaysPermission: "Tessaya uses Bluetooth to set up your R1 on your Wi-Fi.",
+      },
+    ],
     ...(isIosPersonalTeamBuild
       ? [sharingPlugin]
       : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),

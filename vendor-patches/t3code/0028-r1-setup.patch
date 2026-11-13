@@ -1,0 +1,45 @@
+diff --git a/apps/mobile/app.config.ts b/apps/mobile/app.config.ts
+index 97fe5cf977accddf63c60eca5f4dd4165d744f57..3cd75f13180ecb80567c61e6a35670d2d89285dd 100644
+--- a/apps/mobile/app.config.ts
++++ b/apps/mobile/app.config.ts
+@@ -352,6 +352,15 @@ const config: ExpoConfig = {
+     ],
+     "expo-secure-store",
+     "expo-sqlite",
++    // Tessaya: setting up an R1 over Bluetooth (Settings → Hardware → Add an R1); foreground only.
++    [
++      "react-native-ble-plx",
++      {
++        isBackgroundEnabled: false,
++        neverForLocation: true,
++        bluetoothAlwaysPermission: "Tessaya uses Bluetooth to set up your R1 on your Wi-Fi.",
++      },
++    ],
+     ...(isIosPersonalTeamBuild
+       ? [sharingPlugin]
+       : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
+diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
+index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..c8407114b0d7538ab4e0463f0548fd4d845594c1 100644
+--- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
++++ b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
+@@ -263,8 +263,10 @@ const SCAN_RETICLE_SIZE = 150;
+ const SCAN_RETICLE_TOP = 36;
+ const SCAN_RETICLE_RADIUS = 28;
+ 
+-function PairingScanCard(props: {
++export function PairingScanCard(props: {
+   readonly cameraActive: boolean;
++  /** What to scan; Tessaya's Add an R1 names the R1's pairing code. */
++  readonly hint?: string;
+   readonly onScan: (result: { readonly data: string }) => void;
+   readonly onScanPress: () => void;
+ }) {
+@@ -343,7 +345,7 @@ function PairingScanCard(props: {
+           )}
+         </View>
+         <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>
+-          Scan the code from t3 pair or desktop Connections settings
++          {props.hint ?? "Scan the code from t3 pair or desktop Connections settings"}
+         </Text>
+       </View>
+     </Pressable>

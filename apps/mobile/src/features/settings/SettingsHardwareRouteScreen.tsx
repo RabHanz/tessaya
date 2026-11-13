@@ -59,6 +59,7 @@ import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilt
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
+import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
 
 const QUIET = { reportFailure: false } as const;
@@ -184,7 +185,9 @@ function HardwareSections({
       },
     });
   };
-  const [reach, setReach] = useState<{ away: boolean; line: string } | null>(null);
+  const [reach, setReach] = useState<{ away: boolean; offered: boolean; line: string } | null>(
+    null,
+  );
   // Read once and after each change, not on every refresh: it asks the tunnel for its address.
   const readReach = async () => {
     const result = await devicesCall({
@@ -192,7 +195,7 @@ function HardwareSections({
       input: { kind: "read", op: "reach", args: {} },
     });
     if (result._tag === "Success" && result.value.ok)
-      setReach(result.value.value as { away: boolean; line: string });
+      setReach(result.value.value as { away: boolean; offered: boolean; line: string });
   };
   const refresh = async () => {
     publishPhone();
@@ -321,6 +324,20 @@ function HardwareSections({
           ))}
         </Row>
       </SettingsSection>
+
+      <R1SetupSection
+        prefix={prefix}
+        call={async (kind, op, args) => {
+          const result = await devicesCall({ environmentId, input: { kind, op, args } });
+          return result._tag === "Success" ? result.value : null;
+        }}
+        // Unknown until read: never ask twice by mistake.
+        awayOffered={reach?.offered ?? true}
+        onChanged={() => {
+          void refresh();
+          void readReach();
+        }}
+      />
 
       <SetupSection
         prefix={prefix}
