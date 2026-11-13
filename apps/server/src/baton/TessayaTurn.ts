@@ -10,8 +10,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
-import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
+import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts";
+import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
@@ -66,13 +66,16 @@ export const notLearnable = (turn: TurnEnvelope): string | null => {
 export class TessayaTurn extends Context.Service<
   TessayaTurn,
   {
-    /** The memory a turn is answered with. */
+    /** The memory a turn is answered with, as the caller's viewer (set by its transport) may see it. */
     readonly begin: (turn: TurnEnvelope) => Effect.Effect<TurnContext>;
-    /** After the reply: learn from the exchange when the turn may teach. Callers fork it; it waits on a model call. */
+    /**
+     * After the reply: learn from the exchange when the turn may teach (null when it may not). A spoken vessel forks
+     * it; it waits on a model call.
+     */
     readonly end: (
       turn: TurnEnvelope,
       done: { readonly reply: string; readonly previous?: string | null | undefined },
-    ) => Effect.Effect<{ readonly learned: boolean }>;
+    ) => Effect.Effect<LearnResult | null>;
   }
 >()("t3/baton/TessayaTurn") {}
 
@@ -100,43 +103,39 @@ export const make = Effect.gen(function* () {
     return Option.isSome(recalled) ? recalled.value.block : "";
   });
 
-  const begin = Effect.fn("TessayaTurn.begin")(
-    function* (turn: TurnEnvelope) {
-      const view = {
-        ...(turn.persona === undefined ? {} : { agent: turn.persona }),
-        ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
-        ...(turn.project === undefined ? {} : { scopeRef: turn.project }),
-      };
-      const standing =
-        turn.sessionless === true
-          ? memoryBlock(yield* memory.related(view), STANDING_TOKENS)
-          : { block: "", ids: [] };
-      const ranked = yield* memory.related({ ...view, text: turn.text });
-      // The ids are the sentence's own ranking, the same for every vessel; the text leaves out what standing holds.
-      const sentence = memoryBlock(ranked, SENTENCE_TOKENS);
-      const held = new Set(standing.ids);
-      const extra = memoryBlock(
-        ranked.filter((i) => !held.has(i.id)),
-        SENTENCE_TOKENS,
-      ).block;
-      if (turn.turnRef !== undefined && sentence.ids.length > 0)
-        yield* memory.markUsed(turn.turnRef, sentence.ids);
-      return {
-        block: [standing.block, extra].filter((b) => b !== "").join("\n\n"),
-        ids: sentence.ids,
-        privateBlock: yield* privateFor(turn),
-      };
-      // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
-    },
-    Effect.provideService(MemoryViewer, "desktop"),
-  );
+  const begin = Effect.fn("TessayaTurn.begin")(function* (turn: TurnEnvelope) {
+    const view = {
+      ...(turn.persona === undefined ? {} : { agent: turn.persona }),
+      ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
+      ...(turn.project === undefined ? {} : { scopeRef: turn.project }),
+    };
+    const standing =
+      turn.sessionless === true
+        ? memoryBlock(yield* memory.related(view), STANDING_TOKENS)
+        : { block: "", ids: [] };
+    const ranked = yield* memory.related({ ...view, text: turn.text });
+    // The ids are the sentence's own ranking, the same for every vessel; the text leaves out what standing holds.
+    const sentence = memoryBlock(ranked, SENTENCE_TOKENS);
+    const held = new Set(standing.ids);
+    const extra = memoryBlock(
+      ranked.filter((i) => !held.has(i.id)),
+      SENTENCE_TOKENS,
+    ).block;
+    if (turn.turnRef !== undefined && sentence.ids.length > 0)
+      yield* memory.markUsed(turn.turnRef, sentence.ids);
+    return {
+      block: [standing.block, extra].filter((b) => b !== "").join("\n\n"),
+      ids: sentence.ids,
+      privateBlock: yield* privateFor(turn),
+    };
+  });
 
   const end = Effect.fn("TessayaTurn.end")(function* (
     turn: TurnEnvelope,
     done: { readonly reply: string; readonly previous?: string | null | undefined },
   ) {
-    if (notLearnable(turn) !== null) return { learned: false };
-    yield* learning.learn({
+    if (notLearnable(turn) !== null) return null;
+    return yield* learning.learn({
       origin: "turn",
       said: turn.text,
       reply: done.reply,
@@ -147,7 +146,6 @@ export const make = Effect.gen(function* () {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
       ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
     });
-    return { learned: true };
   });
 
   return TessayaTurn.of({ begin, end });
