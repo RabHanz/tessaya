@@ -11,6 +11,7 @@ import * as NodeOS from "node:os";
 import { brainRoute, credentialOf } from "@t3tools/baton-shared/brainRoutes";
 import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
 import * as Clock from "effect/Clock";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -353,7 +354,8 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
     );
 
   // The room suite's scratch server sets this: a full pool per pretend vessel loaded the box (13 Nov, load 43).
-  const sessions = createVoiceSessions({ lean: process.env["TESSAYA_VOICE_POOL"] === "lean" });
+  const pool = yield* Config.String("TESSAYA_VOICE_POOL").pipe(Config.withDefault(""));
+  const sessions = createVoiceSessions({ lean: pool === "lean" });
   yield* Effect.addFinalizer(() => Effect.promise(() => sessions.close()));
   /** The subscription session a vessel's turns run in, from the voice row. */
   const sessionSpec = Effect.fn("R1Brain.sessionSpec")(function* (
