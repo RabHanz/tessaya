@@ -7,8 +7,12 @@ import * as NodePath from "node:path";
 import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
+import { parsePanePrompt } from "./pane-prompt.mjs";
+
 const here = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const fixture = (name) => NodeFS.readFileSync(NodePath.join(here, "__fixtures__", name), "utf8");
+/** What the question card sends back: its question (with the prompt's ref), then the choice. */
+const cardAnswer = (screen, choice) => `${parsePanePrompt(screen).question}\n${choice}`;
 
 /** A herdr that shows the screens in order, moving to the next each time keys are sent. */
 const fakePane = (screens) => {
@@ -51,7 +55,7 @@ NodeTest.test(
   async () => {
     const { told, keys } = await answerWith(
       [fixture("pane-question.txt"), fixture("pane-review.txt"), WORKING],
-      "Which colour do you prefer?\nRed",
+      cardAnswer(fixture("pane-question.txt"), "Red"),
     );
     NodeAssert.equal(keys.length, 2, `keys sent: ${JSON.stringify(keys)}`);
     NodeAssert.equal(
@@ -70,7 +74,7 @@ NodeTest.test(
   async () => {
     const { told, keys } = await answerWith(
       [fixture("pane-question.txt"), fixture("pane-form-tabs.txt")],
-      "Which colour do you prefer?\nRed",
+      cardAnswer(fixture("pane-question.txt"), "Red"),
     );
     NodeAssert.equal(keys.length, 1);
     NodeAssert.match(told, /asking again|next question/i);
