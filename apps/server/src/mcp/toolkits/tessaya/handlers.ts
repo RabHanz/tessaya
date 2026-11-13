@@ -228,9 +228,11 @@ export const layer = McpToolAccess.toLayer(
             Effect.gen(function* () {
               const owner = yield* ownerOf;
               const id = `mcp-${owner}-${yield* random.uuidV4()}`;
-              const asked = yield* phone("ask", { id, text: input.text }).pipe(
-                Effect.provideService(AskOwner, owner),
-              );
+              const asked = yield* phone("ask", {
+                id,
+                text: input.text,
+                ...(input.origin === undefined ? {} : { origin: input.origin }),
+              }).pipe(Effect.provideService(AskOwner, owner));
               return {
                 id: asked?.ok === false ? null : id,
                 status: asked?.status ?? "not asked",

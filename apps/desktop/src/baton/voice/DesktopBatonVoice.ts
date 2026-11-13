@@ -1159,6 +1159,8 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly askFromPhone?: (
     text: string,
     source: "phone" | "device",
+    /** The device he said it to ("R1"), when it came through one. */
+    origin?: string | null,
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** What it may tell its server about itself (desktopState.ts adds the voice side and versions). */
   readonly stateForServer?: () => Omit<DesktopStateInput, "voice" | "appVersion" | "environments">;
@@ -2742,10 +2744,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   const phoneRelay = createPhoneRelay({
     call: phoneCall,
-    run: (text, source) =>
+    run: (text, source, origin) =>
       input.extras?.askFromPhone === undefined
         ? Promise.reject(new Error("No assistant here."))
-        : input.extras.askFromPhone(text, source),
+        : input.extras.askFromPhone(text, source, origin),
   });
   input.extras?.setPhoneMirror?.(phoneRelay.mirror);
   let phoneQuiet = 0;

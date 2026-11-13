@@ -564,6 +564,8 @@ export interface ScreenCompanion {
   readonly askFromPhone: (
     text: string,
     source: "phone" | "device",
+    /** The device he said it to ("R1"), when it came through one. */
+    origin?: string | null,
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** Mirrors the questions it asks him to his phone; null stops. The first answer, here or there, counts. */
   readonly setPhoneMirror: (mirror: PhoneMirror | null) => void;
@@ -769,6 +771,8 @@ export const startScreenCompanion = (input: {
   const turnLock = createTurnLock();
   let recentErrors: ReadonlyArray<{ readonly code: string; readonly at: string }> = [];
   let phoneTurn = false;
+  /** The device a relayed ask was said to, for its approvals ("Requested from R1"). */
+  let askOrigin: string | null = null;
   /** Whether the running turn's words are a device's, and every such sentence, so none counts as his. */
   const outsideSaid = new Set<string>();
   let phoneMirror: PhoneMirror | null = null;
@@ -1255,6 +1259,7 @@ export const startScreenCompanion = (input: {
     const { box: shown, spoken: question } = labelPrompt(box, spoken, {
       device: turnLock.deviceRunning(),
       phone: phoneTurn,
+      origin: askOrigin,
     });
     const mirrored =
       box.buttons.length < 2
@@ -3440,12 +3445,19 @@ export const startScreenCompanion = (input: {
     linger("Tessaya", result.reply);
   };
 
-  const askFromPhone = async (text: string, source: "phone" | "device") => {
+  const askFromPhone = async (
+    text: string,
+    source: "phone" | "device",
+    origin: string | null = null,
+  ) => {
     const mine: { spoken: string[]; card: string | null } = { spoken: [], card: null };
     if (source === "device") {
       rememberOutside(outsideSaid, text);
       // The whole turn runs before the card is read: it may wait for his turn, and he may interrupt it.
-      const result = await deviceTurn(text, { direct: false, typed: true }, mine);
+      askOrigin = origin;
+      const result = await deviceTurn(text, { direct: false, typed: true }, mine).finally(() => {
+        askOrigin = null;
+      });
       if (result.kind !== "handled") return { spoken: result.reply, card: result.reply };
       const spoken = mine.spoken.join(" ").trim();
       return {

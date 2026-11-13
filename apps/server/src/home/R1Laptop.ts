@@ -55,7 +55,12 @@ export const askLaptop = Effect.fn("R1Laptop.ask")(function* (question: string) 
           success: AskResult,
         })
         .pipe(Effect.timeout("15 seconds"), Effect.result);
-    const asked = yield* call("tessaya_ask", { text });
+    // A laptop before the origin field refuses an argument it does not list; it is asked without it.
+    const named = yield* call("tessaya_ask", { text, origin: "R1" });
+    const asked =
+      named._tag === "Failure" && /unknown argument/i.test(String(named.failure.message))
+        ? yield* call("tessaya_ask", { text })
+        : named;
     if (asked._tag === "Failure") {
       // A link refused for its access says why; anything else is a laptop that is away.
       const error = asked.failure;
