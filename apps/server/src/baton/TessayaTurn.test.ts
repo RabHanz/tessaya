@@ -1,4 +1,4 @@
-import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
+import { privatePersonOf, type SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import type { LearnInput } from "@t3tools/baton-shared/memoryLearning";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
@@ -24,6 +24,7 @@ import {
 const learned: Array<LearnInput> = [];
 const recalledFor: Array<SpeakerLike | null> = [];
 const setup = () => {
+  keptFor.length = 0;
   learned.length = 0;
   recalledFor.length = 0;
 };
@@ -35,11 +36,26 @@ const learning = Layer.mock(BatonMemoryLearning)({
       return { stored: 1, held: 0 };
     }),
 });
+/** What went into a member's own store, by person; "nostore" has none. */
+const keptFor: Array<[string, string]> = [];
 const stores = Layer.mock(BatonPrivateMemoryService)({
   recall: (input) =>
     Effect.sync(() => {
       recalledFor.push(input.turn.speaker);
       return { block: "private memories (yours): he prays at dawn", count: 1, whose: "yours" };
+    }),
+  remember: (input) =>
+    Effect.sync(() => {
+      const who = privatePersonOf(input.turn);
+      if ("refused" in who) return { stored: false, whose: null, reason: who.refused };
+      if (who.personId === "nostore")
+        return {
+          stored: false,
+          whose: null,
+          reason: "There is no private store for this person yet.",
+        };
+      keptFor.push([who.personId, input.text]);
+      return { stored: true, whose: who.personId, reason: null };
     }),
 });
 
@@ -98,6 +114,50 @@ it.effect("a turn's tools know which vessel heard it", () =>
 );
 
 layer("TessayaTurn", (it) => {
+  it.effect("another member's 'remember this' goes to their own store, never his", () =>
+    Effect.gen(function* () {
+      setup();
+      const memory = yield* BatonMemoryService;
+      const turn = yield* TessayaTurn;
+      const before = (yield* memory.list({ limit: 500 })).length;
+      const at = (over: Partial<TurnEnvelope>) =>
+        originOf({ vessel: device, origin: "R1", text: "", ...over });
+      const sara = { kind: "saved" as const, personId: "sara", verified: true, inherited: false };
+      // Her verified voice in the room, and her own phone typing.
+      const spoken = yield* turn
+        .remember("My exam is on Friday")
+        .pipe(Effect.provideService(TurnOrigin, at({ speaker: sara })));
+      const typed = yield* turn
+        .remember("Netball moved to Thursdays")
+        .pipe(
+          Effect.provideService(
+            TurnOrigin,
+            originOf({ vessel: { kind: "phone", id: "sara-phone" }, text: "", member: "sara" }),
+          ),
+        );
+      assert.deepStrictEqual([spoken.kept, typed.kept], ["theirs", "theirs"]);
+      assert.deepStrictEqual(keptFor, [
+        ["sara", "My exam is on Friday"],
+        ["sara", "Netball moved to Thursdays"],
+      ]);
+      // None of it reached his memory.
+      assert.lengthOf(yield* memory.list({ limit: 500 }), before);
+      // A member with no store yet is told so, and nothing is kept anywhere.
+      const none = yield* Effect.flip(
+        turn
+          .remember("Pick me up at six")
+          .pipe(
+            Effect.provideService(
+              TurnOrigin,
+              originOf({ vessel: { kind: "phone", id: "p2" }, text: "", member: "nostore" }),
+            ),
+          ),
+      );
+      assert.include(none.reason, "no private store");
+      assert.lengthOf(keptFor, 2);
+    }),
+  );
+
   it.effect(
     "a member's own device types as that member: kept apart and never teaching his memory",
     () =>

@@ -12,7 +12,11 @@ import {
   voiceAssurance,
 } from "@t3tools/baton-shared/household";
 import { memoryBlock } from "@t3tools/baton-shared/memory";
-import { privatePersonOf, type SpeakerLike } from "@t3tools/baton-shared/privateMemory";
+import {
+  privatePersonOf,
+  type PrivateTurn,
+  type SpeakerLike,
+} from "@t3tools/baton-shared/privateMemory";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -152,9 +156,33 @@ export const originOf = (turn: TurnEnvelope) => ({
 export const NOT_HIS_VOICE_TO_FORGET =
   "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
 
+/** A member asked to keep something and has no store of their own yet. */
+export const NO_STORE_FOR_MEMBER =
+  "I can't keep that for you yet: you don't have your own memory here. Ask the owner to set one up for you.";
+
+/**
+ * The private-store view of a turn: typed on a member's own desktop, phone or browser (that device's member), or
+ * spoken (the voice decides; a saved person's on their own path). A device with no voice is never typed.
+ */
+export const privateTurnOf = (
+  turn: Pick<TurnEnvelope, "vessel" | "speaker" | "tainted" | "member">,
+): PrivateTurn => {
+  const typed =
+    (turn.speaker === null || turn.speaker === undefined) &&
+    turn.member !== undefined &&
+    (turn.vessel.kind === "desktop" || turn.vessel.kind === "phone" || turn.vessel.kind === "web");
+  return {
+    route: !typed && turn.speaker?.kind === "saved" ? "outside" : "assistant",
+    typed,
+    tainted: turn.tainted === true,
+    speaker: turn.speaker ?? null,
+    ...(typed ? { member: turn.member ?? null } : {}),
+  };
+};
+
 /** What `remember` did, in words she can say. */
 export interface Remembered {
-  readonly kept: "his" | "noted" | "held" | "rehearsal";
+  readonly kept: "his" | "noted" | "held" | "rehearsal" | "theirs";
   readonly id: string | null;
   readonly line: string;
 }
@@ -227,8 +255,10 @@ export const make = Effect.gen(function* () {
   const pools = yield* Effect.serviceOption(TurnPools);
 
   const privateFor = Effect.fn("TessayaTurn.private")(function* (turn: TurnEnvelope) {
-    const asked = {
-      route: "assistant" as const,
+    // His own store only, by his verified voice: a typed turn's private memories come through its own client's
+    // path, and another member's are not read into a turn others may hear (HOUSEHOLD-DESIGN §6) until 5b's next step.
+    const asked: PrivateTurn = {
+      route: "assistant",
       typed: false,
       tainted: turn.tainted === true,
       speaker: turn.speaker ?? null,
@@ -342,11 +372,17 @@ export const make = Effect.gen(function* () {
         id: null,
         line: "Kept.",
       };
-    const kind = origin?.speaker?.kind;
-    if (kind === "guest" || kind === "saved")
+    if (origin?.speaker?.kind === "guest")
       return yield* new BatonMemoryRefusedError({
         reason: "I can only keep things in his memory for him. Ask him to tell me.",
       });
+    // Another member's words go to their own store, never his (HOUSEHOLD-DESIGN §4).
+    if (
+      origin !== null &&
+      (origin.speaker?.kind === "saved" ||
+        (origin.member !== undefined && origin.member !== OWNER_MEMBER_ID))
+    )
+      return yield* rememberForMember(origin, text);
     const his = origin?.hisVoice === true;
     const item = yield* memory.add({
       kind: "note",
@@ -375,6 +411,37 @@ export const make = Effect.gen(function* () {
             id: item.id,
             line: "Kept.",
           };
+  });
+
+  /** A member's "remember this": into their own encrypted store, open or locked; refused when they have none. */
+  const rememberForMember = Effect.fn("TessayaTurn.rememberForMember")(function* (
+    origin: NonNullable<typeof TurnOrigin.Service>,
+    text: string,
+  ) {
+    if (Option.isNone(stores))
+      return yield* new BatonMemoryRefusedError({ reason: NO_STORE_FOR_MEMBER });
+    const kept = yield* stores.value
+      .remember({
+        turn: privateTurnOf({
+          vessel: { kind: origin.kind, id: origin.id },
+          speaker: origin.speaker ?? null,
+          tainted: origin.tainted === true,
+          ...(origin.member === undefined ? {} : { member: origin.member }),
+        }),
+        text: text.trim(),
+        kind: "note",
+      })
+      .pipe(
+        Effect.provideService(PrivateCaller, {
+          session: vesselSubject(origin.id),
+          desktop: true,
+          member: origin.member ?? null,
+        }),
+        Effect.mapError((e) => new BatonMemoryRefusedError({ reason: e.reason })),
+      );
+    if (!kept.stored)
+      return yield* new BatonMemoryRefusedError({ reason: kept.reason ?? NO_STORE_FOR_MEMBER });
+    return { kept: "theirs" as const, id: null, line: "Kept, in your own memory." };
   });
 
   const forget = Effect.fn("TessayaTurn.forget")(function* (id: string) {

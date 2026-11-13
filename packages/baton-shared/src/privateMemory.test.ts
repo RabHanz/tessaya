@@ -4,6 +4,7 @@ import {
   afterWrongPin,
   looksPrivate,
   NO_LOCKOUT,
+  OWNER_PERSON_ID,
   pinGate,
   pinProblem,
   privatePersonOf,
@@ -97,5 +98,15 @@ describe("looksPrivate", () => {
     expect(looksPrivate("Her birthday is in March")).toBe(true);
     expect(looksPrivate("Saw the doctor on Monday")).toBe(true);
     expect(looksPrivate("The air fryer starts with the start button")).toBe(false);
+  });
+});
+
+describe("a typed turn on a member's own device", () => {
+  it("speaks for that member's store; his desktop is his; a badly named member is nobody", () => {
+    const typed = { route: "assistant" as const, typed: true, tainted: false, speaker: null };
+    expect(privatePersonOf(typed)).toEqual({ personId: OWNER_PERSON_ID });
+    expect(privatePersonOf({ ...typed, member: "sara" })).toEqual({ personId: "sara" });
+    expect(privatePersonOf({ ...typed, member: null })).toHaveProperty("refused");
+    expect(privatePersonOf({ ...typed, member: "sara", tainted: true })).toHaveProperty("refused");
   });
 });
