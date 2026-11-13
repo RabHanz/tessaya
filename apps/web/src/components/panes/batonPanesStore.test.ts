@@ -108,4 +108,73 @@ describe("another window writing the drafts", () => {
     expect(after.draftThreadsByThreadKey[draftId]).toBeUndefined();
     expect(after.draftsByThreadKey[draftId]).toBeUndefined();
   });
+
+  const typedDraft = (ref: typeof threadRef) => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(ref, "typed earlier");
+    const file = new File(["png"], "old.png", { type: "image/png" });
+    store.addImages(ref, [
+      {
+        type: "image",
+        id: "img-old",
+        name: "old.png",
+        mimeType: "image/png",
+        sizeBytes: file.size,
+        previewUrl: "blob:img-old",
+        file,
+      },
+    ]);
+    return useComposerDraftStore.getState();
+  };
+
+  it("keeps a draft he cleared cleared when the other window still had it", async () => {
+    const ref = scopeThreadRef(environmentId, ThreadId.make("thread-cleared"));
+    useBatonPanesStore.setState({
+      slots: [{ id: "a", target: { kind: "server", threadRef: ref } }],
+    });
+    const stale = typedDraft(ref);
+    useComposerDraftStore.getState().clearComposerContent(ref);
+    using _rehydrate = otherWindowWrote(stale);
+
+    await adoptStoredComposerDrafts();
+
+    expect(useComposerDraftStore.getState().getComposerDraft(ref)).toBeNull();
+  });
+
+  it("a page that only mirrors the drafts (Tessaya's embedded page) takes what the window he types in wrote", async () => {
+    const ref = scopeThreadRef(environmentId, ThreadId.make("thread-mirrored"));
+    // Same pane key as the main window, so it holds his threads without ever showing a composer.
+    const slots = [{ id: "a" as const, target: { kind: "server" as const, threadRef: ref } }];
+    useBatonPanesStore.setState({ slots });
+    const stale = partializeComposerDraftStoreState(typedDraft(ref));
+    useComposerDraftStore.getState().clearComposerContent(ref);
+    const cleared = partializeComposerDraftStoreState(useComposerDraftStore.getState());
+
+    vi.resetModules();
+    const mirror = await import("../../composerDraftStore");
+    const mirrorPanes = await import("./batonPanesStore");
+    mirrorPanes.useBatonPanesStore.setState({ slots });
+    const { merge } = mirror.useComposerDraftStore.persist.getOptions();
+    const storageHas = (stored: typeof stale) =>
+      vi.spyOn(mirror.useComposerDraftStore.persist, "rehydrate").mockImplementation(() => {
+        mirror.useComposerDraftStore.setState(
+          merge!(stored, mirror.useComposerDraftStore.getState()) as ReturnType<
+            typeof mirror.useComposerDraftStore.getState
+          >,
+        );
+      });
+    {
+      using _loaded = storageHas(stale);
+      await mirrorPanes.adoptStoredComposerDrafts();
+    }
+    expect(mirror.useComposerDraftStore.getState().getComposerDraft(ref)?.prompt).toBe(
+      "typed earlier",
+    );
+
+    using _deleted = storageHas(cleared);
+    await mirrorPanes.adoptStoredComposerDrafts();
+
+    // Kept, it would write the old text and image back and the composer would take them again.
+    expect(mirror.useComposerDraftStore.getState().getComposerDraft(ref)).toBeNull();
+  });
 });

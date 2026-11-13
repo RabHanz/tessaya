@@ -160,8 +160,19 @@ onThreadClaimed((key) => {
   useBatonPanesStore.setState({ ceded: [...ceded, key] });
 });
 
+// A page sharing the main window's pane key (Tessaya's embedded T3 page) holds its threads without a
+// composer; were it to keep its copy too, the two would write old text back over each other forever.
+const editedHere = new Set<string>();
+let adopting = false;
+useComposerDraftStore.subscribe(({ draftsByThreadKey: next }, { draftsByThreadKey: previous }) => {
+  if (adopting || next === previous) return;
+  for (const key of new Set([...Object.keys(next), ...Object.keys(previous)])) {
+    if (next[key] !== previous[key]) editedHere.add(key);
+  }
+});
+
 // Every window writes the whole drafts blob, so it would overwrite what another window saved. A
-// window owns the drafts of the threads it holds and takes the rest from storage.
+// window owns the drafts of the threads it holds and changed itself, and takes the rest from storage.
 export function adoptStoredComposerDrafts(): Promise<void> {
   const before = useComposerDraftStore.getState();
   // A held thread's composer can still write under its draft id until its promotion finalizes.
@@ -178,36 +189,51 @@ export function adoptStoredComposerDrafts(): Promise<void> {
   );
   const keep = <A>(entries: Record<string, A>) =>
     Object.fromEntries(Object.entries(entries).filter(([key]) => mine.has(key)));
-  const drafts = keep(before.draftsByThreadKey);
+  const owned = [...mine].filter((key) => editedHere.has(key));
+  const drafts = Object.fromEntries(
+    owned.flatMap((key) => {
+      const draft = before.draftsByThreadKey[key];
+      return draft === undefined ? [] : [[key, draft] as const];
+    }),
+  );
+  // Cleared here: the other window's copy is the old one.
+  const cleared = owned.filter((key) => before.draftsByThreadKey[key] === undefined);
   const sessions = keep(before.draftThreadsByThreadKey);
+  adopting = true;
   return Promise.resolve(
     withDraftChangeSource("storage-event", () => useComposerDraftStore.persist.rehydrate()),
-  ).then(() => {
-    withDraftChangeSource("storage-event", () =>
-      useComposerDraftStore.setState((state) => {
-        // A draft id stays ours only while storage still has it unpromoted; otherwise another
-        // window promoted or sent it, and keeping it would bring the draft back.
-        const ours = (key: string) =>
-          before.draftThreadsByThreadKey[key] === undefined ||
-          (state.draftThreadsByThreadKey[key] !== undefined &&
-            state.draftThreadsByThreadKey[key].promotedTo == null);
-        const only = <A>(entries: Record<string, A>) =>
-          Object.fromEntries(Object.entries(entries).filter(([key]) => ours(key)));
-        return {
-          draftsByThreadKey: { ...state.draftsByThreadKey, ...only(drafts) },
-          draftThreadsByThreadKey: { ...state.draftThreadsByThreadKey, ...only(sessions) },
-        };
-      }),
-    );
-    // An image whose chip left too was sent or removed in the other window.
-    logDraftImageDrops(
-      findDraftImageDrops(
-        before.draftsByThreadKey,
-        useComposerDraftStore.getState().draftsByThreadKey,
-      ),
-      "storage-event",
-    );
-  });
+  )
+    .then(() => {
+      withDraftChangeSource("storage-event", () =>
+        useComposerDraftStore.setState((state) => {
+          // A draft id stays ours only while storage still has it unpromoted; otherwise another
+          // window promoted or sent it, and keeping it would bring the draft back.
+          const ours = (key: string) =>
+            before.draftThreadsByThreadKey[key] === undefined ||
+            (state.draftThreadsByThreadKey[key] !== undefined &&
+              state.draftThreadsByThreadKey[key].promotedTo == null);
+          const only = <A>(entries: Record<string, A>) =>
+            Object.fromEntries(Object.entries(entries).filter(([key]) => ours(key)));
+          const draftsByThreadKey = { ...state.draftsByThreadKey, ...only(drafts) };
+          for (const key of cleared) if (ours(key)) delete draftsByThreadKey[key];
+          return {
+            draftsByThreadKey,
+            draftThreadsByThreadKey: { ...state.draftThreadsByThreadKey, ...only(sessions) },
+          };
+        }),
+      );
+      // An image whose chip left too was sent or removed in the other window.
+      logDraftImageDrops(
+        findDraftImageDrops(
+          before.draftsByThreadKey,
+          useComposerDraftStore.getState().draftsByThreadKey,
+        ),
+        "storage-event",
+      );
+    })
+    .finally(() => {
+      adopting = false;
+    });
 }
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
