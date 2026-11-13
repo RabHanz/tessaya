@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index d93bf076a78e045607568bef44c11995d5f22cb8..7ded2963cf6b13aeefb06c0ac71fb0c8d90b50f8 100644
+index b2ad65cf053741a30cda0333ad86ace107ab7ad6..692cd6f6694e1ea708a133ec0b6d0b43d0581457 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
 @@ -92,6 +92,8 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea

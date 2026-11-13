@@ -2,10 +2,10 @@ Upstream tests quarantined while they fail on upstream's own code at the pin (#4
 Drop a hunk once the next import shows the test passing.
 
 diff --git a/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts b/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
-index 6b1388f0ccfecb5ffe8ab85cdd1825b2d1470473..eec4ec5315893f42863f6cb6b36eb6b395a9cb53 100644
+index 85634480715484a9c7acc69f906c5698af0752d9..d628b59abb2d7a4d1bf1d3496a4227602cd373d7 100644
 --- a/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
-@@ -1225,85 +1225,89 @@ it.effect("reads the run that owns a background roster, not a queued or resumed
+@@ -1239,85 +1239,89 @@ it.effect("reads the run that owns a background roster, not a queued or resumed
    }).pipe(Effect.provide(layerTest)),
  );
  
@@ -165,10 +165,10 @@ index 6b1388f0ccfecb5ffe8ab85cdd1825b2d1470473..eec4ec5315893f42863f6cb6b36eb6b3
      const projections = yield* ProjectionStore.ProjectionStoreV2;
      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index f64a95f2a8ea2f3254db213eaf78da9a053a3da2..fff9ee2a9f24b0bf89da163cac4c7ed7b67215ac 100644
+index efb826d8590526550ab30828f1f258ba929090f9..db2cd13c24cc13ff242152bad290298bc20da4bd 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-@@ -7575,6 +7575,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -8061,6 +8061,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
            text: key,
            attachments: [],
            modelSelection: selection,
@@ -177,7 +177,7 @@ index f64a95f2a8ea2f3254db213eaf78da9a053a3da2..fff9ee2a9f24b0bf89da163cac4c7ed7
            dispatchMode: { type: key === "active" ? "start_immediately" : "queue_after_active" },
            createdBy: "user",
            creationSource: "web",
-@@ -7773,7 +7775,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -8259,7 +8261,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
      }),
    );
  
@@ -187,7 +187,7 @@ index f64a95f2a8ea2f3254db213eaf78da9a053a3da2..fff9ee2a9f24b0bf89da163cac4c7ed7
      "restarts a continuation that failed before its prompt, unless stopped (%s)",
      (stopped) =>
        Effect.gen(function* () {
-@@ -8407,6 +8410,74 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
+@@ -8893,6 +8896,74 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
        assert.isFalse(yield* effectWorker.runOnce());
      }),
    );
@@ -263,10 +263,10 @@ index f64a95f2a8ea2f3254db213eaf78da9a053a3da2..fff9ee2a9f24b0bf89da163cac4c7ed7
  
  it.layer(layerTest)("snooze queued runs", (it) => {
 diff --git a/apps/server/src/provider/AntigravityInstallation.test.ts b/apps/server/src/provider/AntigravityInstallation.test.ts
-index f1c58250fd4b0611865222ac4d164aa20795bf8f..f3beae7124cb730faca09b9e348e873e2073c928 100644
+index dcd3e400300930e8f49d07f113270b0d5f890a30..edfbd762ac0fd9e3d6228a47975c874157ecf533 100644
 --- a/apps/server/src/provider/AntigravityInstallation.test.ts
 +++ b/apps/server/src/provider/AntigravityInstallation.test.ts
-@@ -380,8 +380,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Antigravity inst
+@@ -664,8 +664,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Antigravity inst
        }),
    );
  

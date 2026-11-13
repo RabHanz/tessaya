@@ -4,7 +4,7 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index d515819dd4cf75cbe88baa08ebaf7267a1b425f3..09ab94b44d728074dfd2cbc3667cb70c679b7eb5 100644
+index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..3853ec925bdc27f91dc5b0926a3879723ca1a781 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -40,6 +40,8 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
@@ -47,10 +47,10 @@ index d515819dd4cf75cbe88baa08ebaf7267a1b425f3..09ab94b44d728074dfd2cbc3667cb70c
        yield* desktopWindow.ensureMain;
      }
 diff --git a/apps/desktop/src/app/DesktopLifecycle.ts b/apps/desktop/src/app/DesktopLifecycle.ts
-index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc43438d2fa 100644
+index 56fb25fcfa9072e81a90bd720c6a2bd5af6623b4..001530debd3873f63720f51c09878b03bc3b925e 100644
 --- a/apps/desktop/src/app/DesktopLifecycle.ts
 +++ b/apps/desktop/src/app/DesktopLifecycle.ts
-@@ -20,6 +20,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
+@@ -21,6 +21,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
  import * as DesktopState from "./DesktopState.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
@@ -58,7 +58,7 @@ index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc4
  
  export class DesktopLifecycleRelaunchError extends Schema.TaggedError<DesktopLifecycleRelaunchError>()(
    "DesktopLifecycleRelaunchError",
-@@ -293,7 +294,11 @@ export const make = DesktopLifecycle.of({
+@@ -297,7 +298,11 @@ export const make = DesktopLifecycle.of({
          Effect.gen(function* () {
            const app = yield* ElectronApp.ElectronApp;
            const state = yield* DesktopState.DesktopState;

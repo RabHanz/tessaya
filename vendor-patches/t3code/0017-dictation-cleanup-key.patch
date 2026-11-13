@@ -2,10 +2,10 @@ Dictation cleanup through his own Anthropic key: the secret settings field dicta
 status/save/test endpoints in the voice HTTP group, the client calls, and Settings -> APIs -> Anthropic.
 
 diff --git a/apps/server/src/serverSettings.test.ts b/apps/server/src/serverSettings.test.ts
-index 347b43dd6f44c59336f76f297c884c5fe3432345..80e2e7c2db04d80e0a6a9a911f2b81a9505f90c1 100644
+index 3ca2d29da7c81172ed5d85cc8aa5e9459064ab7d..3a7128d11ca1d23c9913b64b7e84d3b8b028b15e 100644
 --- a/apps/server/src/serverSettings.test.ts
 +++ b/apps/server/src/serverSettings.test.ts
-@@ -1075,6 +1075,28 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1087,6 +1087,28 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
      }).pipe(Effect.provide(layerServerSettings())),
    );
  
@@ -34,7 +34,7 @@ index 347b43dd6f44c59336f76f297c884c5fe3432345..80e2e7c2db04d80e0a6a9a911f2b81a9
    it.effect("folds a legacy in-config enabled flag into the envelope on load", () =>
      Effect.gen(function* () {
        const serverConfig = yield* ServerConfig.ServerConfig;
-@@ -1762,6 +1784,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1774,6 +1796,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
                enabled: true,
              },
            },
@@ -42,7 +42,7 @@ index 347b43dd6f44c59336f76f297c884c5fe3432345..80e2e7c2db04d80e0a6a9a911f2b81a9
            usageLimitSources: {
              [hub]: {
                kind: "cliproxy",
-@@ -1812,6 +1835,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1824,6 +1847,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            xai: SECRET_REDACTED,
            openrouter: "",
          });
@@ -56,7 +56,7 @@ index 347b43dd6f44c59336f76f297c884c5fe3432345..80e2e7c2db04d80e0a6a9a911f2b81a9
          assert.equal(legacy.sourceControlHosts.bitbucket?.accessToken, SECRET_REDACTED);
          assert.equal(legacy.usageLimitSources[hub]?.managementKey, SECRET_REDACTED);
          assert.equal(legacy.textGenerators[router]?.apiKey, SECRET_REDACTED);
-@@ -1823,6 +1853,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1835,6 +1865,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
          assert.equal(configOf(legacy, openCode)?.serverPassword, SECRET_REDACTED);
          const echoed = yield* serverSettings.updateSettings({
            cloudSpeechCredentials: legacy.cloudSpeechCredentials,
@@ -64,7 +64,7 @@ index 347b43dd6f44c59336f76f297c884c5fe3432345..80e2e7c2db04d80e0a6a9a911f2b81a9
            sourceControlHosts: legacy.sourceControlHosts,
            usageLimitSources: legacy.usageLimitSources,
            textGenerators: legacy.textGenerators,
-@@ -1842,6 +1873,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1854,6 +1885,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
            xai: "literal-fixture",
            openrouter: "",
          });
@@ -72,7 +72,7 @@ index 347b43dd6f44c59336f76f297c884c5fe3432345..80e2e7c2db04d80e0a6a9a911f2b81a9
          assert.deepEqual(echoed.easDeviceHosts[0]?.accessToken, easReference);
          assert.deepEqual(echoed.simlockDeviceHosts[0]?.agentToken, simlockReference);
          assert.deepEqual(configOf(echoed, antigravity)?.apiKey, antigravityReference);
-@@ -1939,6 +1971,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
+@@ -1951,6 +1983,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
          "cloudSpeechCredentials.openai",
          "cloudSpeechCredentials.xai",
          "cloudSpeechCredentials.openrouter",
@@ -323,7 +323,7 @@ index e1e3b44796d695d5696ab8ab828f6979d66b6e73..1c6bcd1a9bdff830a9b30d6795b45db7
    ];
  }
 diff --git a/apps/web/src/components/settings/SettingsSidebarNav.tsx b/apps/web/src/components/settings/SettingsSidebarNav.tsx
-index c34c48694ae871a61b5b871eb7ecbf01a327ae23..bd612b6c31198c0fb54ab8febe0c11be1a3cd34b 100644
+index 354519d7357c7cef71f385fc6a98f79c64a391a4..06e57ccc9bd9ac9f7af342eb126547f8fe8807ca 100644
 --- a/apps/web/src/components/settings/SettingsSidebarNav.tsx
 +++ b/apps/web/src/components/settings/SettingsSidebarNav.tsx
 @@ -8,6 +8,7 @@ import {
@@ -769,7 +769,7 @@ index 1b93b3966b4ef79782a61b261c0e217fa7db2300..4197b389d2f1bec7a534c59fe4a5ff3c
  }
  export const routeTree = rootRouteImport
 diff --git a/apps/web/src/routes/_chat.settings.tsx b/apps/web/src/routes/_chat.settings.tsx
-index 7758c9ca559191b0a2ba6f0b14349f34af9803b2..d78d7f25fa874ca8a54443d10fab7c40430da7cb 100644
+index 20f65d45c7a5be4cd0c6013d9d3b5891ecb1ebd6..cd5a6d18b13e68184a4dc4a9e80af9a51597e487 100644
 --- a/apps/web/src/routes/_chat.settings.tsx
 +++ b/apps/web/src/routes/_chat.settings.tsx
 @@ -150,7 +150,11 @@ function SettingsRouteLayout() {
@@ -782,9 +782,9 @@ index 7758c9ca559191b0a2ba6f0b14349f34af9803b2..d78d7f25fa874ca8a54443d10fab7c40
 +        pathname === "/settings/secrets" ||
 +        pathname === "/settings/apis"
 +      }
+       deviceOnly={SETTINGS_DEVICE_ONLY_PATHS.has(pathname)}
        onChange={(next) => {
          // Send every axis so retain middleware recognizes "all" as an explicit target.
-         void navigate({
 diff --git a/packages/client-runtime/src/voice-input/environment.ts b/packages/client-runtime/src/voice-input/environment.ts
 index a8ea541f75133c4220e8c0cf3778be553a3de71a..6c01074e485e3a01163ce6f1bfdd44b98983659c 100644
 --- a/packages/client-runtime/src/voice-input/environment.ts
@@ -842,7 +842,7 @@ index 5283d64eb0dc315ba9b552fab62488463a196990..9c9f4e91bd659e2f943ab391786316df
    getEnvironmentSpeechStatus,
    getEnvironmentSpeechStreamUrl,
 diff --git a/packages/contracts/src/environmentHttp.ts b/packages/contracts/src/environmentHttp.ts
-index 4bbae77fb922db2eb8b449764a5939066783aa11..fac7aded0aeb074fae4766a73671431e5904a82b 100644
+index a9c635486db7dbd273b62a2398218cafccce9be6..dd108c4a935ab05b8df6655e873e9a66cfa57f04 100644
 --- a/packages/contracts/src/environmentHttp.ts
 +++ b/packages/contracts/src/environmentHttp.ts
 @@ -55,6 +55,8 @@ import {
@@ -854,7 +854,7 @@ index 4bbae77fb922db2eb8b449764a5939066783aa11..fac7aded0aeb074fae4766a73671431e
    EnvironmentSpeechAccelerationRequest,
    EnvironmentSpeechModelLinkRequest,
    EnvironmentSpeechModelRequest,
-@@ -811,6 +813,32 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
+@@ -817,6 +819,32 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
        error: EnvironmentScopedOperationErrors,
      }).middleware(EnvironmentAuthenticatedAuth),
    )

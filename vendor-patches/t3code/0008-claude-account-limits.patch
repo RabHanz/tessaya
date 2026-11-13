@@ -1,5 +1,5 @@
 diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-index 3ada12297649de46cd308111490d12ec27bba702..fb1a40fa471ba029f0e8ccec1f4ca3a4390fc20b 100644
+index af20b76754943ff781ab718bb83833b08f03984d..0eb61ecd1329d06be50fe96a764b62498fd98c23 100644
 --- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
 @@ -41,6 +41,7 @@ import {
@@ -104,7 +104,7 @@ index e41aa20998b1cfd632da6145925062c1ad02c96d..75c915eb920dd62a129b21b96a0f78e5
          const pace = paceOf(window, now);
          const resetsIn = formatResetsIn(window, now);
 diff --git a/apps/web/src/components/usage/UsageLimitsPooled.tsx b/apps/web/src/components/usage/UsageLimitsPooled.tsx
-index f2d5790ece53b23e98dab84fcd7e8db6bc4c07fb..503b5a1c49f0549b4d0ec87fce6e859238369201 100644
+index d5f46398fa31c5b6e2c7966250d4949e54979e98..f460eec3d0ac1a85a38119f5114fdc976f6ad5de 100644
 --- a/apps/web/src/components/usage/UsageLimitsPooled.tsx
 +++ b/apps/web/src/components/usage/UsageLimitsPooled.tsx
 @@ -1,3 +1,4 @@
@@ -129,7 +129,7 @@ index f2d5790ece53b23e98dab84fcd7e8db6bc4c07fb..503b5a1c49f0549b4d0ec87fce6e8592
      </div>
    );
  }
-@@ -587,6 +591,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
+@@ -589,6 +593,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
          />
          {label}
        </h2>
@@ -137,9 +137,9 @@ index f2d5790ece53b23e98dab84fcd7e8db6bc4c07fb..503b5a1c49f0549b4d0ec87fce6e8592
 +        <p className="text-xs text-muted-foreground">Session limit: not applicable</p>
 +      ) : null}
        {windows.map((window) => {
-         const details = pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
-         return (
-@@ -600,6 +607,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
+         const details =
+           pool.driver === "cursor" ? cursorUsageWindowDetails(window.id, pool) : undefined;
+@@ -603,6 +610,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
            />
          );
        })}
@@ -148,10 +148,10 @@ index f2d5790ece53b23e98dab84fcd7e8db6bc4c07fb..503b5a1c49f0549b4d0ec87fce6e8592
    );
  }
 diff --git a/packages/provider-core/src/server/usageLimits.test.ts b/packages/provider-core/src/server/usageLimits.test.ts
-index 4b9c1b39c862b608e97493a599070ef014c14c9b..e351f035d4a60837cf69d34185e62e4fbb2619cf 100644
+index 48bf7a76e85fa5f8323485878942a462f72032fe..7a793b93c60cd08d7f8664b8400dd52075c37d30 100644
 --- a/packages/provider-core/src/server/usageLimits.test.ts
 +++ b/packages/provider-core/src/server/usageLimits.test.ts
-@@ -50,6 +50,17 @@ describe("applyUsageLimitsUpdate", () => {
+@@ -73,6 +73,17 @@ describe("applyUsageLimitsUpdate", () => {
      });
    });
  
@@ -170,7 +170,7 @@ index 4b9c1b39c862b608e97493a599070ef014c14c9b..e351f035d4a60837cf69d34185e62e4f
      const unsupported = { checkedAt, windows: [], unavailable: { reason: "unsupported" as const } };
      expect(
 diff --git a/packages/provider-core/src/server/usageLimits.ts b/packages/provider-core/src/server/usageLimits.ts
-index 1e4bcd0090854f7856140516420843c648bdc690..2301b0e95e66445363e0b4c6f166c49d7fb8c312 100644
+index f9b8def9d65e6138c7fd300fc35da7adc64874c8..a7c7190a43b6f62950140eb7fa6d4be828e149c4 100644
 --- a/packages/provider-core/src/server/usageLimits.ts
 +++ b/packages/provider-core/src/server/usageLimits.ts
 @@ -84,6 +84,9 @@ export function applyUsageLimitsUpdate(input: {
@@ -184,10 +184,10 @@ index 1e4bcd0090854f7856140516420843c648bdc690..2301b0e95e66445363e0b4c6f166c49d
    };
  }
 diff --git a/packages/shared/src/usageLimits.ts b/packages/shared/src/usageLimits.ts
-index 1e7cac40b5f9c0ed9acedda91f603ce4c2d63644..f081c697307467c0e56caf7df30e1caf31f8eecc 100644
+index b7902f11d673305402d0b6568f27157f8cd6d91b..2920b0f09a873c7fc44e02c4193aec22f7b75f5d 100644
 --- a/packages/shared/src/usageLimits.ts
 +++ b/packages/shared/src/usageLimits.ts
-@@ -209,7 +209,7 @@ function accountKey(
+@@ -217,7 +217,7 @@ function accountKey(
      : null;
  }
  
@@ -196,7 +196,7 @@ index 1e7cac40b5f9c0ed9acedda91f603ce4c2d63644..f081c697307467c0e56caf7df30e1caf
    readonly driver: ServerProvider["driver"];
    readonly email?: string | undefined;
    readonly workspaceId?: string | undefined;
-@@ -224,7 +224,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
+@@ -232,7 +232,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
  });
  
  // Include every enabled login, even unreadable workspaces.

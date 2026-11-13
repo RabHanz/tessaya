@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/src/features/home/HomeRouteScreen.tsx b/apps/mobile/src/features/home/HomeRouteScreen.tsx
-index a2db3d14d45fd0dea8acb124c99401b4e86a324a..4455171105c3a13ccd46685c096e24dc08210609 100644
+index 78b4eca22a47d6e63aaa80f1ccb2a13edc271746..9d0c445d3b3425d6d29fe4ada1c6055a56cc1961 100644
 --- a/apps/mobile/src/features/home/HomeRouteScreen.tsx
 +++ b/apps/mobile/src/features/home/HomeRouteScreen.tsx
 @@ -36,9 +36,11 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
@@ -159,7 +159,7 @@ index 617c3fa0988ef6c84236de5282f79e423c840695..a8229738b4e3316a8091ccb88c1e4a6f
    return items;
  }
 diff --git a/apps/mobile/src/features/threads/PendingUserInputCard.tsx b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
-index 70e5ac5c9b07a2f897d13efeecbe4e22bcf3edcb..e00fac9c8356a32944d94b92568df31ef186937e 100644
+index 0793537aa0aea2a882a820e35291637c5b915edb..ce407f3d884b3a4192b512e7cc9503e8dfcb0281 100644
 --- a/apps/mobile/src/features/threads/PendingUserInputCard.tsx
 +++ b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
 @@ -8,7 +8,7 @@ import {
@@ -199,7 +199,7 @@ index 70e5ac5c9b07a2f897d13efeecbe4e22bcf3edcb..e00fac9c8356a32944d94b92568df31e
  function QuestionText(props: {
    readonly markdown: string;
    readonly environmentId: EnvironmentId;
-@@ -272,6 +293,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
+@@ -274,6 +295,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
                  workspaceRoot={props.workspaceRoot}
                  setDirection={setDirection}
                />
@@ -208,10 +208,10 @@ index 70e5ac5c9b07a2f897d13efeecbe4e22bcf3edcb..e00fac9c8356a32944d94b92568df31e
                  {question.options.map((option) => {
                    const optionValue = option.value ?? option.label.trim();
 diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
-index b2e947c5ab0e9d71e538f7e828eef442b660d4fb..8c1034ba2752b41e6eb498a0e5e8483bdc337a30 100644
+index 39cc885e4d2e3c4b8341732ed6e0efc18d89da2f..f8ff8bc92bf8cdade297762d49c6c321f027fdad 100644
 --- a/apps/mobile/src/features/threads/ThreadFeed.tsx
 +++ b/apps/mobile/src/features/threads/ThreadFeed.tsx
-@@ -3325,22 +3325,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
+@@ -3395,22 +3395,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
      }
      return new Set(terminalIdsByTurn.values());
    })();
@@ -241,10 +241,10 @@ index b2e947c5ab0e9d71e538f7e828eef442b660d4fb..8c1034ba2752b41e6eb498a0e5e8483b
            ...current,
            expandedTurnIds: new Set(current.expandedTurnIds).add(latest.runId),
 diff --git a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
-index 1f0a84a71154b915442ffda7d0193125f3185793..5208bcb611cb3e42f4b2cfeebd6e733e3710ab8b 100644
+index e1c51b7f524b58fd91900f8609e1e1f32b7bd3a5..a9ee6b4ed1f83ab96e2b3880008549c3f8a40374 100644
 --- a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
 +++ b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
-@@ -46,6 +46,12 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
+@@ -47,6 +47,12 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
  import { requestThreadMessageJump } from "./threadMessageJump";
  import { useThreadListSearchMatches } from "./useThreadListSearchMatches";
  import { useHomeListOptions } from "../home/home-list-options";
@@ -257,7 +257,7 @@ index 1f0a84a71154b915442ffda7d0193125f3185793..5208bcb611cb3e42f4b2cfeebd6e733e
  import { buildHomeListFilterMenuItems } from "../home/home-list-filter-menu";
  import { buildHomeProjectScopes } from "../home/homeThreadList";
  import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
-@@ -114,6 +120,7 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
+@@ -115,6 +121,7 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
  }
  
  function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
@@ -265,7 +265,7 @@ index 1f0a84a71154b915442ffda7d0193125f3185793..5208bcb611cb3e42f4b2cfeebd6e733e
    const floatingTabsEnabled = useAndroidFloatingTabs();
    const { themeVariables: materialTheme } = useAppearancePreferences();
    const drawerColor = materialTheme["--color-drawer"];
-@@ -264,13 +271,14 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+@@ -265,13 +272,14 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
    } = listEnvironments;
    const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
    const pendingOrder = usePendingThreadOrder();
@@ -281,7 +281,7 @@ index 1f0a84a71154b915442ffda7d0193125f3185793..5208bcb611cb3e42f4b2cfeebd6e733e
      pendingTasks,
      environmentId: options.selectedEnvironmentId,
      projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
-@@ -412,6 +420,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+@@ -413,6 +421,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
          const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
          return (
            <ThreadListV2Row
@@ -289,7 +289,7 @@ index 1f0a84a71154b915442ffda7d0193125f3185793..5208bcb611cb3e42f4b2cfeebd6e733e
              onNewThreadOnBranch={props.onNewThreadOnBranch}
              thread={thread}
              variant={item.item.variant}
-@@ -540,7 +549,8 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+@@ -541,7 +550,8 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
          accessibilityLabel: "Search threads",
        }}
        filter={{
@@ -299,7 +299,7 @@ index 1f0a84a71154b915442ffda7d0193125f3185793..5208bcb611cb3e42f4b2cfeebd6e733e
          items: buildHomeListFilterMenuItems({
            environments,
            projects: projectFilterOptions,
-@@ -548,6 +558,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+@@ -549,6 +559,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
            selectedProjectKey,
            onEnvironmentChange: setSelectedEnvironmentId,
            onProjectChange: setSelectedProjectKey,
@@ -616,7 +616,7 @@ index c810890ebf96b1c7112c721575303c5f7ed7a435..e59f34cb462f6a4ce5aeaed355d4a1c1
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
 diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
-index f1468200dc16cfed404739d6d2d330acd2cfecc5..adbc0020ab21f85e2df4341ebca7bde3144b23c0 100644
+index 302330f29156b6be2a36fe78bf477d593dc93b29..41504198de67e01b13ce1e5019815e2b5544ae9c 100644
 --- a/apps/web/src/components/chat/ComposerControlsBar.tsx
 +++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
 @@ -28,6 +28,16 @@ import {
@@ -636,7 +636,7 @@ index f1468200dc16cfed404739d6d2d330acd2cfecc5..adbc0020ab21f85e2df4341ebca7bde3
  import type { useComposerProviderModel } from "./useComposerProviderModel";
  import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
  
-@@ -85,6 +95,7 @@ export function ComposerControlsBar(props: {
+@@ -86,6 +96,7 @@ export function ComposerControlsBar(props: {
    onModelPickerOpenChange: (open: boolean) => void;
    modelPickerIconClassName: string | undefined;
    getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
@@ -644,7 +644,7 @@ index f1468200dc16cfed404739d6d2d330acd2cfecc5..adbc0020ab21f85e2df4341ebca7bde3
  }) {
    const {
      environmentId,
-@@ -146,21 +157,26 @@ export function ComposerControlsBar(props: {
+@@ -147,21 +158,26 @@ export function ComposerControlsBar(props: {
    const controlSize = composerControlsCollapsed ? "xs" : "sm";
    const applyThreadModelPick = useApplyThreadModelPick();
    const applyRouteThreadModelPick = useStableCallback(() => applyThreadModelPick(routeThreadRef));
@@ -685,7 +685,7 @@ index f1468200dc16cfed404739d6d2d330acd2cfecc5..adbc0020ab21f85e2df4341ebca7bde3
    const restingBlockDefs = showModeBlock
      ? [
          {
-@@ -192,7 +208,12 @@ export function ComposerControlsBar(props: {
+@@ -194,7 +210,12 @@ export function ComposerControlsBar(props: {
        multipleModelSelections={multipleModelSelections}
        onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
        selectedModelSelection={selectedModelSelection}
@@ -699,7 +699,7 @@ index f1468200dc16cfed404739d6d2d330acd2cfecc5..adbc0020ab21f85e2df4341ebca7bde3
        activeInstanceId={
          providerCatalogPending
            ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
-@@ -205,16 +226,24 @@ export function ComposerControlsBar(props: {
+@@ -207,16 +228,24 @@ export function ComposerControlsBar(props: {
        }
        lockedProvider={lockedProvider}
        lockedContinuationGroupKey={lockedContinuationGroupKey}
@@ -727,7 +727,7 @@ index f1468200dc16cfed404739d6d2d330acd2cfecc5..adbc0020ab21f85e2df4341ebca7bde3
        triggerDetail={effort.detail}
        triggerShortcuts={
          pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
-@@ -226,8 +255,33 @@ export function ComposerControlsBar(props: {
+@@ -228,8 +257,33 @@ export function ComposerControlsBar(props: {
            runtimeMode={compatibleRuntimeMode}
            runtimeModeOptions={compatibleRuntimeModeOptions}
            onRuntimeModeChange={handleRuntimeModeChange}
@@ -763,7 +763,7 @@ index f1468200dc16cfed404739d6d2d330acd2cfecc5..adbc0020ab21f85e2df4341ebca7bde3
        open={modelPickerOpen}
        instanceIndicatorBackground={
 diff --git a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
-index c752e78c1ba6f7e09c1584570903a852658394ea..802f2fd83678f4aa8a97f0c5b9c8e51faf4f5e6f 100644
+index 7cd188fa96bc49e05cfa7a390aaa399e226ff598..58e9cf2e00c86bae9708684a0dedbe0346d8c899 100644
 --- a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
 +++ b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
 @@ -103,6 +103,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
@@ -1267,7 +1267,7 @@ index c4226566478638bb98a63645a51cdb9317c2761d..6cac6a127013edf87c480e04b3ef3b5c
 +  return next;
 +}
 diff --git a/apps/web/src/components/chat/MessagesTimeline.tsx b/apps/web/src/components/chat/MessagesTimeline.tsx
-index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306d04989e6 100644
+index 3bbea6a44eb2138f74295879947755a79400f261..6cef2793a5b5f8ef475e44b0828d02c918bb4d14 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.tsx
 @@ -84,11 +84,14 @@ import {
@@ -1293,7 +1293,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
    LiveWorkEntryTimelineRow,
    WorkGroupToggleTimelineRow,
  } from "./TimelineWorkGroupRows";
-@@ -420,6 +424,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -428,6 +432,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
    const [expandedRunIds, setExpandedRunIds] = useState<ReadonlySet<RunId>>(
      () => listState.rememberedPosition?.disclosures?.runs ?? new Set(),
    );
@@ -1304,7 +1304,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
    const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
      () => listState.rememberedPosition?.disclosures?.workGroups ?? new Set(),
    );
-@@ -462,6 +470,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -470,6 +478,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      paintedExpandedWorkGroupIds = rememberedPosition?.disclosures?.workGroups ?? new Set();
      paintedExpandedAttemptIds = rememberedPosition?.disclosures?.attempts ?? new Set();
      setExpandedRunIds(paintedExpandedRunIds);
@@ -1312,7 +1312,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
      setExpandedWorkGroupIds(paintedExpandedWorkGroupIds);
      setExpandedAttemptIds(paintedExpandedAttemptIds);
    }
-@@ -547,6 +556,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -555,6 +564,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
    // Turn and attempt folds reveal later rows rather than growing their own row.
    const onToggleTurnFold = (runId: RunId) => {
      preserveDisclosurePosition(`turn-fold:${runId}`);
@@ -1330,7 +1330,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
      setExpandedRunIds((existing) => {
        const next = new Set(existing);
        if (next.has(runId)) {
-@@ -557,6 +577,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -565,6 +585,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
        return next;
      });
    };
@@ -1344,7 +1344,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
    const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
      preserveDisclosurePosition(
        anchorKey,
-@@ -612,12 +639,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -620,12 +647,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
            setExpandedRunIds((existing) => new Set(existing).add(latestRun.runId));
          }
        } else {
@@ -1358,7 +1358,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
        }
      }
    }
-@@ -702,6 +724,40 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -710,6 +732,40 @@ const ConversationTimeline = memo(function ConversationTimeline({
        ? paintedExpandedRunIds
        : new Set(paintedExpandedRunIds).add(activeFindRunId);
  
@@ -1399,7 +1399,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
    const activeFindAttemptId = activeFindMatch
      ? timelineEntries.find((entry) => entry.id === activeFindMatch.entryId)?.attempt?.id
      : undefined;
-@@ -730,8 +786,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -738,8 +794,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
      latestRun,
      runningRunId,
      expandedRunIds: visibleExpandedRunIds,
@@ -1411,7 +1411,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
      isWorking,
      runlessWorkActive,
      activeTurnStartedAt,
-@@ -1109,6 +1168,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -1122,6 +1181,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      onToggleTurnFold,
      onToggleAttemptFold,
      onToggleWorkGroup,
@@ -1419,7 +1419,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
      onToggleWorkEntry: (anchorKey, collapsed, entryId) =>
        preserveDisclosurePosition(anchorKey, collapsed ? undefined : { entryId }),
      onWorkEntryContentReady: (anchorKey, entryId) => {
-@@ -1594,6 +1654,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
+@@ -1654,6 +1714,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
            {row.kind === "thinking" ? <ThinkingTimelineRow row={row} /> : null}
          </WorkLogBlock>
        ) : null}
@@ -1428,7 +1428,7 @@ index 308d6bc03d6d9516694257ae14a98ed9cd29f0b7..f3412cd16e9eca98ad7004d7accd3306
        {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
        {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
 diff --git a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
-index 2a17b5363cc509d522eba3b610ffdd7e35bf3047..8520b681d3777215ea54ca52eb33014b9d5ace70 100644
+index 2791c9b714901e77de7b7a6333140bd0b4826abd..4ecbe1d304d6dba3cf06056a5fb281629584c537 100644
 --- a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 +++ b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 @@ -2,7 +2,11 @@ import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
@@ -1494,8 +1494,8 @@ index 2a17b5363cc509d522eba3b610ffdd7e35bf3047..8520b681d3777215ea54ca52eb33014b
 +
  export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
    const ctx = use(TimelineRowCtx);
-   const { isCompacting, isPreparingWorktree, liveAnswerPreview } = use(TimelineRowActivityCtx);
-@@ -521,7 +560,10 @@ export function LiveWorkEntryTimelineRow({
+   const { isCompacting, isPreparingWorktree, liveAnswerPreview, providerStartingLabel } =
+@@ -522,7 +561,10 @@ export function LiveWorkEntryTimelineRow({
    const failed = workEntryDisplayIndicatesToolFailure(row.entry);
    const thoughtLine =
      row.thought && !row.expanded
@@ -1507,7 +1507,7 @@ index 2a17b5363cc509d522eba3b610ffdd7e35bf3047..8520b681d3777215ea54ca52eb33014b
        : "";
    const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
  
-@@ -553,7 +595,7 @@ export function LiveWorkEntryTimelineRow({
+@@ -554,7 +596,7 @@ export function LiveWorkEntryTimelineRow({
              </span>
            }
            label={
@@ -1516,7 +1516,7 @@ index 2a17b5363cc509d522eba3b610ffdd7e35bf3047..8520b681d3777215ea54ca52eb33014b
                <ChatMarkdown
                  inline
                  text={thoughtLine}
-@@ -607,17 +649,40 @@ export function WorkGroupToggleTimelineRow({
+@@ -608,17 +650,40 @@ export function WorkGroupToggleTimelineRow({
    row: Extract<TimelineRow, { kind: "work-toggle" }>;
  }) {
    const ctx = use(TimelineRowCtx);
@@ -1568,7 +1568,7 @@ index 2a17b5363cc509d522eba3b610ffdd7e35bf3047..8520b681d3777215ea54ca52eb33014b
  }
  
 diff --git a/apps/web/src/components/chat/chatViewSend.ts b/apps/web/src/components/chat/chatViewSend.ts
-index 3f87efa5ae6345e0e403fcc54e222c57918db39f..28caf18514a30b646516263bcb45309ee070488a 100644
+index c5c65e7d6e78379bf0c657a16bc03097a5edb9e3..c98b0ebffdffcf0662d2c7e758761c936bd95559 100644
 --- a/apps/web/src/components/chat/chatViewSend.ts
 +++ b/apps/web/src/components/chat/chatViewSend.ts
 @@ -40,6 +40,7 @@ import {
@@ -1634,10 +1634,10 @@ index 3f87efa5ae6345e0e403fcc54e222c57918db39f..28caf18514a30b646516263bcb45309e
      store.addFiles(draftTarget, restoredFiles, { allowDuplicates: true });
      return { error: null, prompt: nextPrompt };
 diff --git a/apps/web/src/components/chat/timelineRowContext.ts b/apps/web/src/components/chat/timelineRowContext.ts
-index 45224ea70f62cb6021b40767c6dd767aa6eda679..cb1ad9815f4d8f6b6bcc7d14f66a8ac292775a46 100644
+index cf64873e2b150d4f56de5ad2309ca60b0890c2c8..3abb19cff3cf867d294cfecd17e7e06a19cea976 100644
 --- a/apps/web/src/components/chat/timelineRowContext.ts
 +++ b/apps/web/src/components/chat/timelineRowContext.ts
-@@ -90,6 +90,7 @@ export interface TimelineRowSharedState {
+@@ -96,6 +96,7 @@ export interface TimelineRowSharedState {
    onFileDownload: (attachment: ChatFileAttachment) => void;
    openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
    onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
@@ -1721,10 +1721,10 @@ index 1563c8c56b68c79dc6ae26527a6c0467397cd586..cdf6c3d831293fbe82ce44e7e3307dec
      if (
        !supportsProviderSwitchingViaHandoff &&
 diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
-index 44585db4c175895d097c94b86562d1c77c781410..356336536102ed9c36b6045f62dcdd9719eddff9 100644
+index 648b2fd62bf0585e4de075f717ca799e306ff293..3ce0ab274c9495ab062ae9b6581a1aa99194fe77 100644
 --- a/apps/web/src/components/chat/useComposerSend.ts
 +++ b/apps/web/src/components/chat/useComposerSend.ts
-@@ -123,6 +123,7 @@ import {
+@@ -129,6 +129,7 @@ import {
    prepareTurnAttachments,
    restoreComposerDraft,
  } from "./chatViewSend";
@@ -1732,7 +1732,7 @@ index 44585db4c175895d097c94b86562d1c77c781410..356336536102ed9c36b6045f62dcdd97
  import type {
    EnvironmentProject,
    EnvironmentThreadShell,
-@@ -566,6 +567,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -585,6 +586,7 @@ export function useComposerSend(input: ComposerSendInput) {
        selectedProviderModels: ctxSelectedProviderModels,
        selectedPromptEffort: ctxSelectedPromptEffort,
        selectedModelSelection: ctxSelectedModelSelection,
@@ -1740,7 +1740,7 @@ index 44585db4c175895d097c94b86562d1c77c781410..356336536102ed9c36b6045f62dcdd97
      } = sendCtx;
      const { images: composerImages, previewAnnotations: composerPreviewAnnotations } =
        mergeDirectPreviewAnnotation({
-@@ -623,9 +625,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -651,9 +653,11 @@ export function useComposerSend(input: ComposerSendInput) {
        sendableTerminalContexts: sendableComposerTerminalContexts,
        expiredTerminalContextCount,
        hasSendableContent,
@@ -1752,7 +1752,7 @@ index 44585db4c175895d097c94b86562d1c77c781410..356336536102ed9c36b6045f62dcdd97
        terminalContexts: composerTerminalContexts,
        elementContextCount:
          composerPreviewAnnotations.length +
-@@ -633,6 +637,16 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -661,6 +665,16 @@ export function useComposerSend(input: ComposerSendInput) {
          composerThreadContexts.length +
          composerEnvironmentContexts.length,
      });
@@ -1769,7 +1769,7 @@ index 44585db4c175895d097c94b86562d1c77c781410..356336536102ed9c36b6045f62dcdd97
      const feedbackCommand =
        ctxSelectedProvider === "codex" &&
        composerImages.length === 0 &&
-@@ -1199,6 +1213,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1233,6 +1247,7 @@ export function useComposerSend(input: ComposerSendInput) {
              idleCompaction: "onReturn",
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1777,7 +1777,7 @@ index 44585db4c175895d097c94b86562d1c77c781410..356336536102ed9c36b6045f62dcdd97
            runtimeMode,
            interactionMode: DEFAULT_INTERACTION_MODE,
          },
-@@ -1268,6 +1283,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1302,6 +1317,7 @@ export function useComposerSend(input: ComposerSendInput) {
              }),
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1785,7 +1785,7 @@ index 44585db4c175895d097c94b86562d1c77c781410..356336536102ed9c36b6045f62dcdd97
            titleSeed: title,
            runtimeMode,
            interactionMode: DEFAULT_INTERACTION_MODE,
-@@ -1311,6 +1327,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1345,6 +1361,11 @@ export function useComposerSend(input: ComposerSendInput) {
              checkoutPullRequestUrl,
            );
          }
@@ -1851,10 +1851,10 @@ index 1e3eddd0b9389356d6d1c1ba16b8b6a3d9044ea9..46a1895e7e5d6dfb267d4236c749d75b
        ? [
            {
 diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
-index b7f1f7ac366f313c7f36801a17997ae2fd47293a..4020588f721e495813ba295b47312757b9d741c1 100644
+index c698f96e92e394016392b8adb11547bddc0e6e27..cc62244fcabbf8eb3778446b6b87e3e1a3c49512 100644
 --- a/apps/web/src/composerDraftStore.test.ts
 +++ b/apps/web/src/composerDraftStore.test.ts
-@@ -91,6 +91,7 @@ import {
+@@ -92,6 +92,7 @@ import {
    type ComposerImageAttachment,
    composerFileNeedsReattach,
    partializeComposerDraftStoreState,
@@ -1862,7 +1862,7 @@ index b7f1f7ac366f313c7f36801a17997ae2fd47293a..4020588f721e495813ba295b47312757
    useComposerDraftStore,
    DraftId,
  } from "./composerDraftStore";
-@@ -417,6 +418,81 @@ describe("composerDraftStore file attachments", () => {
+@@ -418,6 +419,81 @@ describe("composerDraftStore file attachments", () => {
      ]);
    });
  
@@ -1945,10 +1945,10 @@ index b7f1f7ac366f313c7f36801a17997ae2fd47293a..4020588f721e495813ba295b47312757
      const store = useComposerDraftStore.getState();
      store.addFiles(threadRef, [makeFile("file-pending")]);
 diff --git a/apps/web/src/composerDraftStore.ts b/apps/web/src/composerDraftStore.ts
-index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a369625dd8d 100644
+index f719780357a2f63042dc7142625f47fddcc3c839..9276c79dc9a59e07e7b476d83bc8b5fec367129a 100644
 --- a/apps/web/src/composerDraftStore.ts
 +++ b/apps/web/src/composerDraftStore.ts
-@@ -89,6 +89,7 @@ import {
+@@ -93,6 +93,7 @@ import {
    environmentContextReference,
  } from "./lib/composerContextRecords";
  import { create } from "zustand";
@@ -1956,7 +1956,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
  import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
  import { useShallow } from "zustand/react/shallow";
  import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
-@@ -102,6 +103,8 @@ import { UnifiedSettings } from "@t3tools/contracts/settings";
+@@ -106,6 +107,8 @@ import { UnifiedSettings } from "@t3tools/contracts/settings";
  
  const isElementContextDetails = Schema.is(ElementContextDetails);
  import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
@@ -1965,7 +1965,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
  const isRuntimeMode = Schema.is(RuntimeMode);
  const isProviderDriverKind = Schema.is(ProviderDriverKind);
  const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
-@@ -115,8 +118,7 @@ const COMPOSER_DRAFT_STORAGE_VERSION = 9;
+@@ -120,8 +123,7 @@ const COMPOSER_DRAFT_STORAGE_VERSION = 9;
  const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
  export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
  
@@ -1975,17 +1975,18 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
  
  const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
  
-@@ -125,7 +127,8 @@ type ComposerPersistState =
+@@ -129,8 +131,9 @@ type ComposerPersistState =
+   | { capturedState: ComposerDraftStoreState }
    | PersistedComposerDraftStoreState;
  
- const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPersistState>>(
--  typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
-+  // Tessaya's guest page has no composer; T3's own window owns the drafts, so the guest neither reads nor writes them.
-+  typeof localStorage !== "undefined" && !isTessayaGuest() ? localStorage : createMemoryStorage(),
-   (value) =>
-     JSON.stringify({
-       state:
-@@ -242,6 +245,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
++// Tessaya's guest page has no composer; T3's own window owns the drafts, so the guest neither reads nor writes them.
+ const composerDraftBaseStorage =
+-  typeof localStorage !== "undefined" ? localStorage : createMemoryStorage();
++  typeof localStorage !== "undefined" && !isTessayaGuest() ? localStorage : createMemoryStorage();
+ 
+ interface ComposerDraftWrite {
+   readonly text: string;
+@@ -337,6 +340,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
  const PersistedComposerThreadDraftState = Schema.Struct({
    prompt: Schema.String,
    attachments: Schema.Array(PersistedComposerImageAttachment),
@@ -1994,7 +1995,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
    files: Schema.optionalKey(Schema.Array(PersistedComposerDraftFileAttachment)),
    terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
    previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
-@@ -1913,6 +1918,9 @@ function normalizePersistedDraftsByThreadId(
+@@ -2011,6 +2016,9 @@ function normalizePersistedDraftsByThreadId(
            return normalized ? [normalized] : [];
          })
        : [];
@@ -2004,7 +2005,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
      const files = Array.isArray(draftCandidate.files)
        ? draftCandidate.files.filter(isPersistedComposerDraftFileAttachment)
        : [];
-@@ -2042,6 +2050,7 @@ function normalizePersistedDraftsByThreadId(
+@@ -2141,6 +2149,7 @@ function normalizePersistedDraftsByThreadId(
      if (
        promptCandidate.length === 0 &&
        attachments.length === 0 &&
@@ -2012,7 +2013,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
        files.length === 0 &&
        terminalContexts.length === 0 &&
        previewAnnotations.length === 0 &&
-@@ -2069,6 +2078,7 @@ function normalizePersistedDraftsByThreadId(
+@@ -2169,6 +2178,7 @@ function normalizePersistedDraftsByThreadId(
      nextDraftsByThreadKey[normalizedThreadKey] = {
        prompt,
        attachments,
@@ -2020,7 +2021,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
        ...(files.length > 0 ? { files } : {}),
        ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
        ...(previewAnnotations.length > 0 ? { previewAnnotations } : {}),
-@@ -2173,6 +2183,7 @@ export function partializeComposerDraftStoreState(
+@@ -2275,6 +2285,7 @@ export function partializeComposerDraftStoreState(
      if (
        draft.prompt.length === 0 &&
        draft.persistedAttachments.length === 0 &&
@@ -2028,7 +2029,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
        draft.files.length === 0 &&
        draft.terminalContexts.length === 0 &&
        draft.previewAnnotations.length === 0 &&
-@@ -2188,6 +2199,9 @@ export function partializeComposerDraftStoreState(
+@@ -2291,6 +2302,9 @@ export function partializeComposerDraftStoreState(
      const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
        prompt: draft.prompt,
        attachments: draft.persistedAttachments,
@@ -2038,7 +2039,7 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
        ...(draft.files.length > 0
          ? {
              files: draft.files.map((file) => ({
-@@ -4329,6 +4343,57 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
+@@ -4451,6 +4465,57 @@ composerDraftLoadedState = partializeComposerDraftStoreState(composerDraftStore.
  
  export const useComposerDraftStore = composerDraftStore;
  
@@ -2097,10 +2098,10 @@ index 95473066534c191a635b0b27e0d1626cf3f6b06d..8ea8e1a95bb573e7209d021873da7a36
    readonly registry: AtomRegistry.AtomRegistry;
    readonly threadRefsAtom: Atom.Atom<ReadonlyArray<ScopedThreadRef>>;
 diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
-index f2d5509c9488f2e38f1149ad3b9ad63818e1f7f0..e5e7c7b3f29a2ba3514cfa8d05b573d597c29d62 100644
+index bf22bd066b9a45318c09814cc2fd55d1d3f770a9..fdedc898d4cd1064e3f5115e9274ba2516f5f271 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.ts
 +++ b/apps/web/src/hooks/useThreadActionMenu.ts
-@@ -45,6 +45,11 @@ import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
+@@ -46,6 +46,11 @@ import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
  import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
  import { useCopyToClipboard } from "./useCopyToClipboard";
  import { useNewThreadHandler } from "./useHandleNewThread";
@@ -2112,7 +2113,7 @@ index f2d5509c9488f2e38f1149ad3b9ad63818e1f7f0..e5e7c7b3f29a2ba3514cfa8d05b573d5
  import { useClientSettings } from "./useSettings";
  import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
  
-@@ -139,6 +144,7 @@ export function useThreadActionMenu(input: {
+@@ -140,6 +145,7 @@ export function useThreadActionMenu(input: {
        const items = buildThreadActionMenuItems({
          canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
          canFind: onFind !== undefined,
@@ -2120,7 +2121,7 @@ index f2d5509c9488f2e38f1149ad3b9ad63818e1f7f0..e5e7c7b3f29a2ba3514cfa8d05b573d5
          branch: thread.branch ?? null,
          projectFilter: null,
          isPinned: thread.pinnedAt != null,
-@@ -196,6 +202,13 @@ export function useThreadActionMenu(input: {
+@@ -197,6 +203,13 @@ export function useThreadActionMenu(input: {
          case "find":
            onFind?.(threadRef);
            return;
@@ -2193,10 +2194,10 @@ index e2097ed4a46c482ca5eac5873d3e6d2eae0844be..b0f44a3dc54be617b64c77a93f8cb41e
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index afe8802139a52b780eb362221187aa2a280f4db8..77e2f21a7461d83613a9ec703df422c695154976 100644
+index 38046a17e8b4abcf6c75974c71943b3b356db936..690a90d81ba93d32a20f95e2022d55de36b6eceb 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -1366,6 +1366,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
+@@ -1404,6 +1404,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
    allowCustomAnswer: Schema.optional(Schema.Boolean),
    initialAnswer: Schema.optional(Schema.String),
    required: Schema.optional(Schema.Boolean),
@@ -2205,7 +2206,7 @@ index afe8802139a52b780eb362221187aa2a280f4db8..77e2f21a7461d83613a9ec703df422c6
  });
  export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
  
-@@ -3180,7 +3182,9 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3254,7 +3256,9 @@ export const OrchestrationV2Command = Schema.Union([
      type: Schema.Literal("thread.model-selection.set"),
      commandId: CommandId,
      threadId: ThreadId,
@@ -2216,7 +2217,7 @@ index afe8802139a52b780eb362221187aa2a280f4db8..77e2f21a7461d83613a9ec703df422c6
    }),
    Schema.Struct({
      type: Schema.Literal("provider-session.detach"),
-@@ -3208,6 +3212,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3283,6 +3287,8 @@ export const OrchestrationV2Command = Schema.Union([
      attachments: Schema.Array(ChatAttachment),
      titleSeed: Schema.optional(TrimmedNonEmptyString),
      modelSelection: Schema.optional(ModelSelection),
@@ -2225,7 +2226,7 @@ index afe8802139a52b780eb362221187aa2a280f4db8..77e2f21a7461d83613a9ec703df422c6
      sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
      restartContinuationOfRunId: Schema.optional(RunId),
      usageLimitContinuationOfRunId: Schema.optional(RunId),
-@@ -3415,7 +3421,9 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3492,7 +3498,9 @@ export const OrchestrationV2Command = Schema.Union([
      type: Schema.Literal("provider.switch"),
      commandId: CommandId,
      threadId: ThreadId,

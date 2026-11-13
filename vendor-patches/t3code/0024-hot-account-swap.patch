@@ -112,7 +112,7 @@ index 48d972c5be2fd3f036b917bb10f7d41ba7a806a7..79c3cfef56985affc25cd985b698de84
  export const assertFullAccess = (context: Caller, message: string) =>
    context.limits.runtimeMode === "full-access" && context.limits.interactionMode === "default"
 diff --git a/apps/server/src/orchestration-v2/EffectOutbox.ts b/apps/server/src/orchestration-v2/EffectOutbox.ts
-index 58aa3ea97489c77877bfbb72b805b8431f5840b4..10012abbf23683a139733cb0b8fbbfabb5370691 100644
+index eb1209158cc74f98d0ac0b168b41c2f9a7e01f55..5269da7eff43d5de3e82e6eb9a65d8ab13fa048c 100644
 --- a/apps/server/src/orchestration-v2/EffectOutbox.ts
 +++ b/apps/server/src/orchestration-v2/EffectOutbox.ts
 @@ -4,6 +4,7 @@ import {
@@ -121,9 +121,9 @@ index 58aa3ea97489c77877bfbb72b805b8431f5840b4..10012abbf23683a139733cb0b8fbbfab
    ModelSelection,
 +  ProviderInstanceId,
    NodeId,
+   NonNegativeInt,
    ProviderSessionId,
-   RunAttemptId,
-@@ -41,6 +42,12 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
+@@ -42,6 +43,12 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
      detail: Schema.optional(Schema.String),
      revokeMcpCredential: Schema.optional(Schema.Boolean),
    }),
@@ -136,7 +136,7 @@ index 58aa3ea97489c77877bfbb72b805b8431f5840b4..10012abbf23683a139733cb0b8fbbfab
    Schema.Struct({
      type: Schema.Literal("provider-session.apply-model-selection"),
      providerSessionId: ProviderSessionId,
-@@ -145,6 +152,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
+@@ -147,6 +154,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
  
  export const PROCESS_BOUND_EFFECT_TYPES = [
    "provider-session.apply-model-selection",
@@ -157,10 +157,10 @@ index cc43601543eec9d7b7eedac21fb1049fe5e655ae..9e7e4865617a595888995e9cf115bbe7
          closeInstance: () => Effect.void,
          release: () => record("release"),
 diff --git a/apps/server/src/orchestration-v2/EffectWorker.ts b/apps/server/src/orchestration-v2/EffectWorker.ts
-index 0013735f3b4f3e474ea8b2d3efb4e8b5c761cf11..e297f3a3cb14c0746031bfdf5ba9340f12a6af7f 100644
+index 9dd50798057453db58bb8dcdd882fb12bee69398..5a8573a388ac0188ce254433ec8621e38a9e62a7 100644
 --- a/apps/server/src/orchestration-v2/EffectWorker.ts
 +++ b/apps/server/src/orchestration-v2/EffectWorker.ts
-@@ -156,6 +156,15 @@ export const layerExecutor: Layer.Layer<
+@@ -159,6 +159,15 @@ export const layerExecutor: Layer.Layer<
                      }),
                  ),
                );
@@ -189,10 +189,10 @@ index 0197a10fae2e2320c8000c5de7937a4ab1076e5f..8feedfd7f54588172327204a0a2559ff
          "provider-turn.interrupt",
          "provider-turn.steer",
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
-index 25daa45a847fa5627e5179498eadbd16f415e694..6eeca0b910c256537a22409d968b0698c7ede6dd 100644
+index 34ff5a76311057b34a1accc5123d073d31e6034f..7e1890713ad2d8b20b700ca046439bf1f7a018e9 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
-@@ -289,6 +289,7 @@ it.effect(
+@@ -291,6 +291,7 @@ it.effect(
                providerSessionId === oldSessionId ? Option.some(runtime) : Option.none(),
              ),
            isLive: (providerSessionId) => Effect.succeed(providerSessionId === oldSessionId),
@@ -201,7 +201,7 @@ index 25daa45a847fa5627e5179498eadbd16f415e694..6eeca0b910c256537a22409d968b0698
            closeInstance: () => Effect.void,
            release: () => Effect.void,
 diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
-index 7ae8c0c43f003d64ae2e7c69a9793904d98d7c45..fff4fad70729f34536d3069085a3bda0f8828bfe 100644
+index fc83ac128324ef0b5128c20cf1f060cd50bc45c3..2662fa16588eebe7fd4e1812899f55a342c3cfd9 100644
 --- a/packages/provider-core/src/server/ProviderAdapter.ts
 +++ b/packages/provider-core/src/server/ProviderAdapter.ts
 @@ -37,7 +37,10 @@ import {
@@ -215,7 +215,7 @@ index 7ae8c0c43f003d64ae2e7c69a9793904d98d7c45..fff4fad70729f34536d3069085a3bda0
  import type * as Stream from "effect/Stream";
  
  import type {
-@@ -646,6 +649,13 @@ export type ProviderAdapterV2SubagentOutcome = {
+@@ -656,6 +659,13 @@ export type ProviderAdapterV2SubagentOutcome = {
    readonly result: OrchestrationV2Subagent["result"];
  };
  
@@ -229,16 +229,16 @@ index 7ae8c0c43f003d64ae2e7c69a9793904d98d7c45..fff4fad70729f34536d3069085a3bda0
  export interface ProviderAdapterV2SessionRuntime {
    readonly instanceId: ProviderInstanceId;
    readonly driver: ProviderDriverKind;
-@@ -662,6 +672,8 @@ export interface ProviderAdapterV2SessionRuntime {
+@@ -672,6 +682,8 @@ export interface ProviderAdapterV2SessionRuntime {
      providerThread: OrchestrationV2ProviderThread,
      options?: { readonly includeSubagents?: boolean },
    ) => Effect.Effect<boolean>;
 +  /** Moves the live process to another login without restarting it; false when it cannot. */
 +  readonly switchAccount?: (login: ProviderAdapterV2AccountLogin) => Effect.Effect<boolean>;
-   /** Set only if all session background tasks end with its process; otherwise threads must keep Waiting. */
-   readonly backgroundTasksEndWithProcess?: true;
-   readonly getModelContextWindow?: (
-@@ -760,5 +772,7 @@ export class ProviderAdapterV2 extends Context.Service<
+   /**
+    * Set only if all session background tasks and tool calls end with its process. Releasing the
+    * session then clears its task roster and interrupts its open tool calls; otherwise threads
+@@ -776,5 +788,7 @@ export class ProviderAdapterV2 extends Context.Service<
      readonly openSession: (
        input: ProviderAdapterV2OpenSessionInput,
      ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;
