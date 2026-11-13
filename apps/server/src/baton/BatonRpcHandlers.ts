@@ -702,6 +702,7 @@ export const makeHandlers = Effect.gen(function* () {
               Effect.map(
                 turn.begin({
                   vessel: vesselOf(viewer),
+                  origin: viewer === "desktop" ? "desktop" : "a browser",
                   text: input.text!,
                   persona: input.agent,
                   project: input.scopeRef,
@@ -727,6 +728,7 @@ export const makeHandlers = Effect.gen(function* () {
                 turn.end(
                   {
                     vessel: vesselOf(viewer),
+                    origin: viewer === "desktop" ? "desktop" : "a browser",
                     text: input.said,
                     persona: input.agent,
                     project: input.project ?? null,

@@ -18,6 +18,8 @@ export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
 
 export interface TurnEnvelope {
   readonly vessel: { readonly kind: VesselKind; readonly id: string };
+  /** How approvals, replies and the Record name the vessel that heard it ("R1", "desktop", "phone"). */
+  readonly origin?: string | undefined;
   /** What was said this turn. */
   readonly text: string;
   /** The persona answering (its pack id); its walls apply. */
@@ -38,6 +40,19 @@ export interface TurnEnvelope {
   /** A replay or test of the vessel: it reads as a real turn and learns nothing. */
   readonly rehearsal?: boolean | undefined;
 }
+
+/** The vessel that heard the turn, for every tool it calls: a tool reads it to name where a request came from. */
+export const TurnOrigin = Context.Reference<{
+  readonly kind: VesselKind;
+  readonly id: string;
+  readonly label: string;
+} | null>("t3/baton/TessayaTurn/TurnOrigin", { defaultValue: () => null });
+
+/** The origin a turn's tool calls run under. */
+export const originOf = (turn: TurnEnvelope) => ({
+  ...turn.vessel,
+  label: turn.origin ?? turn.vessel.kind,
+});
 
 export interface TurnContext {
   /** Standing memory (sessionless vessels only), then what matches this sentence. */
