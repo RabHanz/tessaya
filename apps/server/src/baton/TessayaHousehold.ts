@@ -109,9 +109,11 @@ export class TessayaHousehold extends Context.Service<
     /** A member's role, or null for someone who is not (or no longer) a member. */
     readonly roleOf: (member: string) => Effect.Effect<MemberRole | null>;
     /** What Trust needs of a member: their role and whether they hold the machine grant; null when not a member. */
-    readonly grantsOf: (
-      member: string,
-    ) => Effect.Effect<{ readonly role: MemberRole; readonly machine: boolean } | null>;
+    readonly grantsOf: (member: string) => Effect.Effect<{
+      readonly role: MemberRole;
+      readonly machine: boolean;
+      readonly name: string;
+    } | null>;
     /** Destroys the data of members whose export window ended. */
     readonly purgeDue: Effect.Effect<number>;
   }
@@ -218,11 +220,11 @@ export const make = Effect.gen(function* () {
         grantsCache = { at: now, members: listed?.members ?? [] };
       }
       const m = grantsCache.members.find((x) => x.id === member && x.state !== "leaving");
-      return m === undefined ? null : { role: m.role, machine: m.machine };
+      return m === undefined ? null : { role: m.role, machine: m.machine, name: m.name };
     }
     const row = yield* rowOf(member);
     return Option.isSome(row) && row.value.removed_at === null
-      ? { role: row.value.role, machine: row.value.machine === 1 }
+      ? { role: row.value.role, machine: row.value.machine === 1, name: row.value.name }
       : null;
   });
 

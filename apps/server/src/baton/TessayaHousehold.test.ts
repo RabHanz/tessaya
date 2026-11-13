@@ -336,7 +336,7 @@ describe("a home's members on one server, asked by its others", () => {
       }).pipe(Effect.provide(limbOf(home, carried)));
       assert.deepStrictEqual(yield* fromLimb, {
         names: ["Owner", "Sara"],
-        grants: { role: "child", machine: false },
+        grants: { role: "child", machine: false, name: "Sara" },
       });
       assert.deepInclude(carried[0] as object, { member: "owner", assurance: 3 });
       // The home unreachable: nothing is done there, and nobody is known.

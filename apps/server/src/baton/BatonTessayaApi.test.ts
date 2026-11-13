@@ -240,6 +240,18 @@ describe("the phone API", () => {
     expect((await post("deny")).status).toBe(200);
     expect((await post("approve", "Delete everything")).status).toBe(409);
     expect(calls).toEqual(["prompt pr1 0", "prompt pr1 1"]);
+    // A person whose role may not give this yes is told why, not that it was already answered.
+    const refusing = { ...deps, answerPrompt: async () => "A child can't say yes to this." };
+    const childYes = await handlePhone(refusing, {
+      method: "POST",
+      path: "approvals/d:pr1",
+      scopes: approver,
+      json: { decision: "approve", action: "Click Save in Notes" },
+    });
+    expect([childYes.status, JSON.stringify(childYes.json)]).toEqual([
+      403,
+      expect.stringContaining("A child can't say yes"),
+    ]);
   });
 
   it("answers a question with a button for each answer by its index, only within range", async () => {

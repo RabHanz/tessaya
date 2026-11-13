@@ -53,7 +53,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
-import { OWN_PAIRING_SUBJECTS, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
+import {
+  OWN_PAIRING_SUBJECTS,
+  TOKEN_DELEGATED_SUBJECT,
+  type AuthenticatedSession,
+} from "../auth/EnvironmentAuth.ts";
 import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { SessionMember } from "./TessayaTurn.ts";
@@ -484,15 +488,16 @@ export const layer = (
   });
 
 /**
- * Who a household request is from (TessayaHousehold): the member the session acts for; a token's device that names no
- * member is a service acting for the owner. The desktop app's own session and an approving device count as A3.
+ * Who a household request is from (TessayaHousehold): the member the session acts for; an agent's token is a service
+ * acting for the owner. The desktop app's own session and an approving device count as A3.
  */
 // shortcut: A3 is the desktop's own session or an approving device until I-3 adds a PIN or passkey step-up per act.
 export const householdCallerOf = (
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
 ) => ({
   member: memberOfSubject(session.subject),
-  service: !isMemberSubject(session.subject) && askSourceOf(session) === "device",
+  // An agent's token (delegated or MCP sign-in) is a service; his own app, cookie or bearer, is him.
+  service: session.subject === TOKEN_DELEGATED_SUBJECT || session.subject === "mcp-client",
   assurance: (session.scopes.includes(AuthBatonHandsHostScope) ||
   session.scopes.includes(AuthBatonCloudApproveScope)
     ? 3

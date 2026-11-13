@@ -47,6 +47,7 @@ import { SessionMember } from "./TessayaTurn.ts";
 import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
+import { approvalRefusal } from "@t3tools/baton-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
@@ -187,6 +188,38 @@ export const routes = HttpRouter.use((router) =>
                 Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.post({ id, text })).pipe(
                   Effect.provideService(AskSource, source),
                 ),
+              ),
+            // Who says yes, and how sure: a yes counts only from a member whose role may give it (identity I-2).
+            answerPrompt: (id, index) =>
+              run(
+                Effect.gen(function* () {
+                  const inbox = yield* BatonPhoneInbox;
+                  const caller = householdCallerOf(session.value);
+                  const grants =
+                    caller.member === null
+                      ? null
+                      : yield* Effect.flatMap(TessayaHousehold, (h) => h.grantsOf(caller.member!));
+                  const card = (yield* inbox.pending).find((p) => p.id === id);
+                  // Saying no narrows: anyone who may see the card may decline it.
+                  const refusal =
+                    card === undefined || index !== card.yes
+                      ? null
+                      : approvalRefusal({
+                          risky: card?.needs === "cloud-approve",
+                          approver: {
+                            member: caller.member,
+                            role: caller.service ? "service" : (grants?.role ?? null),
+                            assurance: caller.assurance,
+                          },
+                        });
+                  if (refusal !== null) return refusal;
+                  return yield* inbox.answerPrompt(id, index, {
+                    member: caller.member,
+                    name: grants?.name ?? caller.member ?? "someone",
+                    assurance: caller.assurance,
+                    via: caller.via,
+                  });
+                }),
               ),
           },
           {

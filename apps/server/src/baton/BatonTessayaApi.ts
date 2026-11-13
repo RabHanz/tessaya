@@ -33,8 +33,11 @@ export interface PhoneDeps {
   readonly askGet: (
     id: string,
   ) => Promise<{ readonly ask: PhoneAsk | null; readonly connected: boolean }>;
-  /** Answers a question the desktop mirrored: the button index. False if it was already answered. */
-  readonly answerPrompt: (id: string, index: number) => Promise<boolean>;
+  /**
+   * Answers a question the desktop mirrored: the button index. False if it was already answered; a reason when this
+   * device's person may not give that answer.
+   */
+  readonly answerPrompt: (id: string, index: number) => Promise<boolean | string>;
   readonly transcribe: (wav: Uint8Array) => Promise<Transcription>;
 }
 
@@ -151,6 +154,7 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
       if (body["action"] !== approval.action)
         return say(409, "It changed since you looked. Look again.");
       const took = await deps.answerPrompt(approval.ref, choice);
+      if (typeof took === "string") return say(403, took);
       return took
         ? say(200, "Sent. Your computer carries on.")
         : say(409, "It was already answered on your computer.");
@@ -165,6 +169,7 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
         approval.ref,
         decision === "approve" ? approval.yes : approval.cancel,
       );
+      if (typeof took === "string") return say(403, took);
       return took
         ? say(200, decision === "approve" ? "Approved. Your computer carries on." : "Denied.")
         : say(409, "It was already answered on your computer.");
