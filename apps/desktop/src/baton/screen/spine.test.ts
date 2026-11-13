@@ -8,7 +8,12 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import { instantDecision } from "@t3tools/baton-shared/brain";
-import { BATON_TOOLS, REMOTE_ONLY_TOOLS, judgeToolCall } from "@t3tools/baton-shared/operator";
+import {
+  BATON_TOOLS,
+  REMOTE_ONLY_TOOLS,
+  ROOM_ONLY_TOOLS,
+  judgeToolCall,
+} from "@t3tools/baton-shared/operator";
 
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 
@@ -43,7 +48,11 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
     expect(new Set(tools)).toEqual(
       new Set(
         [...BATON_TOOLS].filter(
-          (t) => !REMOTE_ONLY_TOOLS.has(t) && !t.startsWith("home_") && !t.startsWith("device_"),
+          (t) =>
+            !REMOTE_ONLY_TOOLS.has(t) &&
+            !ROOM_ONLY_TOOLS.has(t) &&
+            !t.startsWith("home_") &&
+            !t.startsWith("device_"),
         ),
       ),
     );

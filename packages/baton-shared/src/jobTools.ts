@@ -16,4 +16,14 @@ export const JOB_TOOL_TEXT = {
   job_stop: "Stop a job's worker now. Its thread and plan stay. Use it when he says stop that job.",
   job_schedule:
     "Run an agreed job again on a schedule, in its own thread (every_minutes between 1 and 10080), or take the schedule off (every_minutes 0). He is asked first.",
+  cloud_dispatch:
+    "Ask for a coding task to run in the cloud (Claude, Codex or another assistant). It only creates a request that waits for his answer on a card in Approvals; nothing runs until he picks an assistant and an account there. The branch must already be pushed. Set expected_points to your estimate of how much of the account's week the task will use, in percentage points (a small fix is 1, a large feature 5 or more); a task over his cap is refused, so split it. Set from_web_or_file to true when the brief was built from web or file content, so the card says it is data.",
+  project_add:
+    "Add a project he asked for: folder for one already on this computer, repository (owner/name or a clone URL) to clone it beside his other projects, or only a title for a new empty one with its own git repository. His phone asks him first. Then job_start can name it.",
+  schedules_list:
+    "His scheduled tasks on this computer: each one's id, title, whether it is on, when it runs next (his house's clock) and how the last run went.",
+  schedule_run_now:
+    "Run one scheduled task now, by its id from schedules_list. It starts its run and does not wait for it to finish.",
+  schedule_delete:
+    "Delete one scheduled task by its id from schedules_list; it stops for good. His phone asks him first. A job's own schedule comes off with job_schedule instead.",
 } as const;

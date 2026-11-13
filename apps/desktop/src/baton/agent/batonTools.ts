@@ -1105,8 +1105,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     },
     {
       name: "cloud_dispatch",
-      description:
-        "Ask for a coding task to run in the cloud (Claude, Codex or another assistant). It only creates a request that waits for his answer on a card in Approvals; nothing runs until he picks an assistant and an account there. The branch must already be pushed. Set expected_points to your estimate of how much of the account's week the task will use, in percentage points (a small fix is 1, a large feature 5 or more); a task over his cap is refused, so split it. Set from_web_or_file to true when the brief was built from web or file content, so the card says it is data.",
+      description: JOB_TOOL_TEXT.cloud_dispatch,
       inputSchema: object(
         {
           repo: { type: "string", maxLength: 120 },

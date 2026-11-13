@@ -163,11 +163,20 @@ const BATON_QUIET = new Set([
   "approvals_list",
   "job_revoke",
   "job_stop",
+  // His scheduled tasks, read from the R1.
+  "schedules_list",
   // The house: reads only.
   "home_find",
   "home_state",
   "home_automations",
   "device_list",
+]);
+/** Tools only the R1's runner has (R1Tools), judged by this same table; the desktop's own table never holds them. */
+export const ROOM_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "schedules_list",
+  "schedule_run_now",
+  "schedule_delete",
+  "project_add",
 ]);
 /** Tools only a remote hands session has; the assistant's own table never holds them. */
 export const REMOTE_ONLY_TOOLS: ReadonlySet<string> = new Set([
@@ -212,6 +221,9 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_update",
   "job_delete",
   "skill_draft",
+  "schedule_run_now",
+  "schedule_delete",
+  "project_add",
   "text_transform",
   "text_undo",
   "text_command",
@@ -472,6 +484,16 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "job_delete":
       // Changing or removing one of his own jobs is his to say, every time: read text could otherwise rewrite one.
       return { verdict: "ask", why: "It would change or remove one of your standing jobs." };
+    case "schedule_run_now":
+      // A run he asked for of a task he already set up: his voice is enough, unless it follows something read.
+      return outgoing
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
+    case "schedule_delete":
+      return { verdict: "ask", why: "It would delete a scheduled task." };
+    case "project_add":
+      // A new folder, a clone or a registered checkout on this computer: his yes, every time.
+      return { verdict: "ask", why: "It would add a project to this computer." };
     case "job_schedule":
       // A repeating run is unattended spending, so it asks every time.
       return { verdict: "ask", why: "It would make a job run again on a schedule." };

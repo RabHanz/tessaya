@@ -129,7 +129,72 @@ const ScheduleTool = Tool.make("job_schedule", {
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, false);
 
+const CloudDispatchTool = Tool.make("cloud_dispatch", {
+  ...shared,
+  description: JOB_TOOL_TEXT.cloud_dispatch,
+  parameters: Schema.Struct({
+    repo: Text(120),
+    branch: Text(120),
+    brief: Text(4000),
+    expected_points: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
+    provider: Schema.optionalKey(Text(20)),
+    label: Schema.optionalKey(Text(60)),
+    from_web_or_file: Schema.optionalKey(Schema.Boolean),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+const ProjectAddTool = Tool.make("project_add", {
+  ...shared,
+  description: JOB_TOOL_TEXT.project_add,
+  parameters: Schema.Struct({
+    title: Schema.optionalKey(Text(120)),
+    folder: Schema.optionalKey(Text(400)),
+    repository: Schema.optionalKey(Text(400)),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+const TaskId = Text(200).annotate({ description: "The task's id, from schedules_list." });
+const SchedulesListTool = Tool.make("schedules_list", {
+  ...shared,
+  description: JOB_TOOL_TEXT.schedules_list,
+  success: Schema.Unknown,
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const ScheduleRunNowTool = Tool.make("schedule_run_now", {
+  ...shared,
+  description: JOB_TOOL_TEXT.schedule_run_now,
+  parameters: Schema.Struct({ id: TaskId }),
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+const ScheduleDeleteTool = Tool.make("schedule_delete", {
+  ...shared,
+  description: JOB_TOOL_TEXT.schedule_delete,
+  parameters: Schema.Struct({ id: TaskId }),
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const JobTools = [
+  CloudDispatchTool,
+  ProjectAddTool,
+  SchedulesListTool,
+  ScheduleRunNowTool,
+  ScheduleDeleteTool,
   StartTool,
   RetryTool,
   RefineTool,
