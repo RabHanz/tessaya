@@ -34,6 +34,27 @@ export function exposeBatonDesktopBridge(): void {
       return () => ipcRenderer.removeListener(Channels.BATON_VOICE_REQUEST_CHANNEL, listener);
     },
     setBatonUsage: (usage) => ipcRenderer.send(Channels.BATON_USAGE_CHANNEL, usage),
+    onR1BlePairing: (handler) => {
+      const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {
+        const { id, kind, pin } = (message ?? {}) as {
+          id?: unknown;
+          kind?: unknown;
+          pin?: unknown;
+        };
+        if (
+          typeof id !== "number" ||
+          (kind !== "providePin" && kind !== "confirmPin" && kind !== "confirm")
+        )
+          return;
+        void handler({ kind, ...(typeof pin === "string" ? { pin } : {}) }).then(
+          (answer) => ipcRenderer.send(Channels.R1_BLE_PAIRING_RESPONSE_CHANNEL, { id, ...answer }),
+          () =>
+            ipcRenderer.send(Channels.R1_BLE_PAIRING_RESPONSE_CHANNEL, { id, confirmed: false }),
+        );
+      };
+      ipcRenderer.on(Channels.R1_BLE_PAIRING_REQUEST_CHANNEL, listener);
+      return () => ipcRenderer.removeListener(Channels.R1_BLE_PAIRING_REQUEST_CHANNEL, listener);
+    },
     onBatonSessionRequest: (handler) => {
       const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {
         if (typeof message !== "object" || message === null) return;

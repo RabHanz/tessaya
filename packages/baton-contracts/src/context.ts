@@ -307,6 +307,16 @@ export interface BatonDesktopBridge {
   ) => () => void;
   /** The accounts' limits, pushed when they change, for Baton's own window. */
   readonly setBatonUsage?: (usage: ReadonlyArray<BatonUsageSummary>) => void;
+  /**
+   * Add an R1 over Bluetooth: the desktop's pairing asks the page, which asks him for the 6 digits on the R1's eyes
+   * (`providePin`) or whether the shown ones match (`confirmPin`). Returns a stop.
+   */
+  readonly onR1BlePairing?: (
+    handler: (request: {
+      readonly kind: "providePin" | "confirmPin" | "confirm";
+      readonly pin?: string;
+    }) => Promise<{ readonly confirmed: boolean; readonly pin?: string }>,
+  ) => () => void;
   /** Open a thread or send to a session on behalf of Baton's window; the answer is the result. */
   readonly onBatonSessionRequest?: (
     handler: (
