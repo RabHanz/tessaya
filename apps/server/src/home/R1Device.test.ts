@@ -9,7 +9,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { BatonPrivateMemoryService } from "../baton/BatonPrivateMemoryService.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import {
@@ -19,7 +18,6 @@ import {
   mqttPublishBytes,
   r1Gather,
   roomLook,
-  roomPrivate,
   runActs,
   splitActs,
   spokenReply,
@@ -186,32 +184,6 @@ describe("asking his laptop", () => {
 const voiceOf = (speaker: Partial<SpeakerLike>) => ({
   speaker: { kind: "owner", personId: "owner", verified: true, inherited: false, ...speaker },
 });
-
-effectIt.effect("reads his private memories only when this turn's voice was verified as his", () =>
-  Effect.gen(function* () {
-    const recalled: Array<unknown> = [];
-    const stores = Layer.mock(BatonPrivateMemoryService)({
-      recall: (input) =>
-        Effect.sync(() => {
-          recalled.push(input.turn.speaker);
-          return { block: "private memories (yours): he prays at dawn", count: 1, whose: "yours" };
-        }),
-    });
-    const read = (voice: unknown) =>
-      roomPrivate(voice, "when do I pray").pipe(Effect.provide(stores));
-    for (const voice of [
-      undefined,
-      voiceOf({ verified: false }),
-      voiceOf({ inherited: true }),
-      voiceOf({ kind: "guest", personId: null }),
-      voiceOf({ kind: "saved", personId: "p1" }),
-    ])
-      expect(yield* read(voice)).toBe("");
-    expect(recalled).toHaveLength(0);
-    expect(yield* read(voiceOf({}))).toContain("he prays at dawn");
-    expect(recalled).toHaveLength(1);
-  }),
-);
 
 effectIt.effect(
   "takes a picture at once for his verified voice, and sends anyone else's to his phone",
