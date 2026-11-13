@@ -14,6 +14,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
@@ -249,9 +250,24 @@ export const layer = Layer.effect(
         );
         if (request === null) return { configured: false } as const;
         const started = yield* Clock.currentTimeMillis;
-        const response = yield* execute(request);
-        if (response.status < 200 || response.status >= 300)
-          return yield* rejected(response.status);
+        const response = yield* execute(request).pipe(
+          Effect.tap((r) =>
+            r.status >= 200 && r.status < 300
+              ? Effect.void
+              : // The status says which: 529 is a busy API, not a dead network.
+                Effect.logWarning("dictation clean-up: the API said no", { status: r.status }),
+          ),
+          Effect.filterOrFail(
+            (r) => r.status >= 200 && r.status < 300,
+            (r) => rejected(r.status),
+          ),
+          // One quick second try when the API is busy or failing (429, 5xx, 529), inside the same 2.5 s budget.
+          Effect.retry({
+            times: 1,
+            schedule: Schedule.spaced("200 millis"),
+            while: (error) => error.reason !== "invalid-key",
+          }),
+        );
         const { content } = yield* HttpClientResponse.schemaBodyJson(MessagesResponse)(
           response,
         ).pipe(Effect.mapError(() => new DictationCleanupError({ reason: "unreachable" })));

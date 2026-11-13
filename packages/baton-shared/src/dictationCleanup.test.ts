@@ -258,6 +258,18 @@ describe("checkRewrite", () => {
     expect(refused(input.replace("packages/ui/foo.ts", "the file"))).toBe(false);
   });
 
+  it("passes his spoken 'one' written as 1, and still refuses a 1 he never said", () => {
+    // 13 Nov 16:48 (GMT+5): "new number 1" sent his raw words in place of a good clean-up.
+    expect(
+      checkRewrite("Put that on page one of the doc", "Put that on page 1 of the doc."),
+    ).toEqual({
+      ok: true,
+    });
+    expect(
+      checkRewrite("Put that on the page of the doc", "Put that on page 1 of the doc.").ok,
+    ).toBe(false);
+  });
+
   it("passes his words set out as a list, and still refuses a list that changed a number", () => {
     const said =
       "Now ensure a few things, load up the design skill and make sure the pricing page works on mobile, and check all 3 forms.";

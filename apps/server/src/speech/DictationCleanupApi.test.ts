@@ -2,9 +2,11 @@ import { it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { expect, vi } from "vite-plus/test";
 import * as ServerSettings from "../serverSettings.ts";
@@ -109,6 +111,18 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     });
     upstream.mockResolvedValueOnce(new Response("nope", { status: 401 }));
     expect(yield* fetching(api.test)).toBe("invalid-key");
+
+    // A busy API (529, 5xx) gets one quick second try.
+    upstream.mockResolvedValueOnce(new Response("busy", { status: 529 }));
+    const retried = yield* fetching(api.cleanup(input)).pipe(Effect.forkChild);
+    yield* TestClock.adjust("200 millis");
+    expect(yield* Fiber.join(retried)).toMatchObject({ configured: true, text: "Cleaned." });
+    upstream
+      .mockResolvedValueOnce(new Response("busy", { status: 529 }))
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }));
+    const failed = yield* Effect.flip(fetching(api.cleanup(input))).pipe(Effect.forkChild);
+    yield* TestClock.adjust("200 millis");
+    expect(yield* Fiber.join(failed)).toMatchObject({ reason: "unreachable" });
 
     yield* api.setKey(null);
     expect(yield* api.configured).toBe(false);
