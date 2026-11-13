@@ -46,8 +46,15 @@ in Home Assistant's logbook.
 ## The R1 desk device (Settings → Hardware)
 
 Settings → Hardware shows each Agora R1 this server hears: online, battery, Wi-Fi, firmware and when it was last
-seen, with its controls. To add one, give its id, the MQTT broker it listens on and its device key under **Set up an
-R1**. **Forget** removes all of it from this server again.
+seen, with its controls. To add one, give its id and its device key under **Set up an R1**. Leave the broker empty
+when the R1 connects to this server itself (`ws://<this server>:<port>/api/r1/mqtt`), which needs no broker of its own;
+fill it in only for an R1 on a separate MQTT broker. **Forget** removes all of it from this server again.
+
+**Away from home.** At home the R1 connects over your own network. Turn on **Away from home** (in Hardware, by asking
+Tessaya, or from the card your phone gets when the R1 could not reach home) and it can also connect through T3 Connect
+when it is elsewhere; turn it off to keep it home only. The server sends the R1 its addresses by itself, also when your
+network changes. It needs this server linked to T3 Connect (Settings → Connections), and for the fastest replies at home,
+network access turned on.
 
 - **Mute** stops it listening and speaking until you unmute it.
 - **Voice transport:** in-house is Tessaya's own room voice. Trying Agora's cloud goes back to in-house, muted, after
