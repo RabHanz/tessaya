@@ -18,7 +18,8 @@ import type * as NetAddress from "effect/net/NetAddress";
 import { expect } from "vite-plus/test";
 
 import type { R1Device } from "./HomeAssistantService.ts";
-import { deviceGrant, makeHub, runHubSocket, type HubGrant } from "./R1Hub.ts";
+import { deviceGrant, makeHub, runHubSocket, serveTcp, tcpBind, type HubGrant } from "./R1Hub.ts";
+import type * as NodeNet from "node:net";
 
 const KEY = "k".repeat(32);
 const logins: Record<string, HubGrant> = {
@@ -251,4 +252,34 @@ it.live(
         }
       });
     }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it("listens on plain TCP only on loopback or a private address", () => {
+  expect(tcpBind("127.0.0.1:1884")).toEqual({ host: "127.0.0.1", port: 1884 });
+  expect(tcpBind("192.168.1.20:1884")).toEqual({ host: "192.168.1.20", port: 1884 });
+  expect(tcpBind("0.0.0.0:1884")).toBeNull();
+  expect(tcpBind("203.0.113.9:1884")).toBeNull();
+  expect(tcpBind("127.0.0.1")).toBeNull();
+});
+
+it.live("serves the same logins over plain TCP, for a mosquitto bridge or a local loop", () =>
+  Effect.gen(function* () {
+    const hub = hubForTest();
+    const server = yield* serveTcp(hub, { host: "127.0.0.1", port: 0 });
+    const url = `mqtt://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`;
+    const heard = Promise.withResolvers<string>();
+    hub.attach(["freya/r1/+/state/online"], (t, p) => heard.resolve(`${t}=${p}`));
+    yield* Effect.promise(async () => {
+      const once = (pass: string) =>
+        new Promise<boolean>((resolve) =>
+          publishOnce(
+            { url, user: "r1-a", pass, topic: "freya/r1/r1-a/state/online", payload: "1" },
+            resolve,
+          ),
+        );
+      expect(await once("wrong")).toBe(false);
+      expect(await once(KEY)).toBe(true);
+      expect(await heard.promise).toBe("freya/r1/r1-a/state/online=1");
+    });
+  }).pipe(Effect.scoped),
 );

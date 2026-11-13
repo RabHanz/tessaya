@@ -5,6 +5,7 @@
  * room loop, a watching server) may use every `freya/r1/`. The server's own code attaches in process.
  */
 import * as NodeCrypto from "node:crypto";
+import * as NodeNet from "node:net";
 
 import {
   createDecoder,
@@ -14,6 +15,7 @@ import {
   topicMatches,
   type Incoming,
 } from "@t3tools/baton-shared/mqtt";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -23,6 +25,7 @@ import * as Queue from "effect/Queue";
 import * as Socket from "effect/socket/Socket";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
+import { isPrivateNetworkAddress } from "../startupAccess.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 
 export const R1_HUB_PATH = "/api/r1/mqtt";
@@ -336,6 +339,24 @@ export const layer = Layer.effect(
           )
         : Effect.map(home.device, (device) => deviceGrant(device, user, pass)),
     );
+    const tcp = yield* Config.String("TESSAYA_R1_MQTT_TCP").pipe(
+      Config.withDefault(""),
+      Effect.orDie,
+    );
+    if (tcp !== "") {
+      const bind = tcpBind(tcp);
+      if (bind === null)
+        yield* Effect.logWarning(
+          "TESSAYA_R1_MQTT_TCP must be a loopback or private host:port; TCP is off",
+          {
+            setting: tcp,
+          },
+        );
+      else
+        yield* serveTcp(hub, bind).pipe(
+          Effect.catchDefect((cause) => Effect.logWarning("R1 hub TCP is off", { cause })),
+        );
+    }
     return R1Hub.of({
       ...hub,
       busLogin: Effect.map(busKey, (key) => ({
@@ -345,6 +366,69 @@ export const layer = Layer.effect(
     });
   }),
 );
+
+/** `host:port` for plain TCP: only loopback or a private address, never a wildcard or a public one. */
+export const tcpBind = (
+  setting: string,
+): { readonly host: string; readonly port: number } | null => {
+  const m = /^(.+):(\d{1,5})$/.exec(setting.trim());
+  if (m === null) return null;
+  const host = m[1]!;
+  const port = Number(m[2]);
+  return port > 0 &&
+    port < 65_536 &&
+    host !== "0.0.0.0" &&
+    (host === "localhost" ||
+      host.startsWith("127.") ||
+      host === "::1" ||
+      isPrivateNetworkAddress(host))
+    ? { host, port }
+    : null;
+};
+
+/**
+ * The same hub over plain TCP MQTT, when `TESSAYA_R1_MQTT_TCP` names where (`127.0.0.1:1884`): for a mosquitto bridge
+ * during a migration, or a room loop on this machine. Same logins and topic rules as the WebSocket.
+ */
+export const serveTcp = Effect.fn("R1Hub.serveTcp")(function* (
+  hub: Pick<Hub, "open">,
+  bind: { readonly host: string; readonly port: number },
+) {
+  const run = Effect.runPromiseWith(yield* Effect.context<never>());
+  return yield* Effect.acquireRelease(
+    Effect.callback<NodeNet.Server>((resume) => {
+      const server = NodeNet.createServer((socket) => {
+        socket.setNoDelay(true);
+        const session = hub.open({
+          send: (bytes) => void socket.write(bytes),
+          close: () => socket.destroySoon(),
+        });
+        socket.setTimeout(session.idleMs());
+        // One chunk at a time, in order, as the WebSocket's reader does.
+        let chain = Promise.resolve();
+        socket.on("data", (chunk) => {
+          chain = chain
+            .then(() => run(session.receive(chunk)))
+            .then(() => {
+              socket.setTimeout(session.idleMs());
+            });
+        });
+        socket.on("timeout", () => socket.destroy());
+        socket.on("error", () => socket.destroy());
+        socket.on("close", () => void chain.then(session.gone));
+      });
+      server.once("error", (cause) =>
+        resume(
+          Effect.die(
+            new Error(`R1 hub TCP could not listen on ${bind.host}:${bind.port}`, { cause }),
+          ),
+        ),
+      );
+      server.listen(bind.port, bind.host, () => resume(Effect.succeed(server)));
+    }),
+    (server) => Effect.sync(() => void server.close()),
+  ).pipe(Effect.catchDefect((cause) => Effect.logWarning("R1 hub TCP is off", { cause })));
+});
 
 /** One WebSocket on the hub: reads in order, writes through a bounded queue (a stalled socket loses QoS 0 frames). */
 export const runHubSocket = Effect.fn("R1Hub.runSocket")(function* (
