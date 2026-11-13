@@ -69,6 +69,7 @@ export const AREAS = [
 export const SETTINGS = [
   { id: "accounts", label: "Accounts" },
   { id: "apis", label: "APIs and keys" },
+  { id: "brain", label: "Brain" },
   { id: "general", label: "General" },
   { id: "voice", label: "Voice and wake words" },
   { id: "personas", label: "Personas and voices" },

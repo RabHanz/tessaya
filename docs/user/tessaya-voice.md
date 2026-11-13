@@ -34,6 +34,10 @@ Tessaya serves everyone who lives with you. In Tessaya's window, open **Memory**
 - **Preferences for** shows how Tessaya talks to each person: what to call them, who answers, her voice, units, times, news and music. Everyone changes their own; the owner can change anyone's. Spell an unusual name ("Zaid, Z-A-Y-D") and she keeps the spelling.
 - Adding people, changing roles and giving **this computer** need you to be sure it's you. On Windows, choose yourself under **Windows Hello confirms** once (your phone says yes to that), and from then on Windows Hello covers the next 5 minutes. Without it, type your PIN under **Confirm it's you with your PIN**, or say yes on your phone.
 
+## Brain and usage
+
+**Settings → Brain** in Tessaya's window is one table: for each kind of her work (talking, dictation cleanup, hard tasks, background learning and the rest) choose the login that pays, your Claude subscription or the Anthropic API key, the model and the effort, and optionally a login to use if the first one fails before she says a word. The spend guard on the same page lists what the API key may pay for; anything else is refused, never quietly moved to the key. **Hard tasks** sets when she moves a task to Opus: she asks, goes on her own up to a daily cap, or never, plus your own rules ("coding questions → Opus"). The **Usage** page shows what each kind of work used, on which login, by day: tokens on the subscription, dollars at list price on the key. Set a daily or monthly **API spend alert** there or by voice ("tell me if the API passes a dollar a day"); when one is reached, the desktop shows a notice. Ask "how much did the API cost this week?" to hear it.
+
 ## Good to know
 
 - **Stop** it by saying "stop", "quiet", "enough" or "cancel" while it talks. It hears those with no wake word and nothing else said over its voice.

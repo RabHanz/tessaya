@@ -95,7 +95,7 @@ const GROUP_OF = {}; for (const a of AREAS) for (const gid of a.pages) GROUP_OF[
 const openAreas = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.areas') || '[]')); } catch (e) { return new Set(); } })();
 const saveAreas = () => { try { localStorage.setItem('tessaya.areas', JSON.stringify([...openAreas])); } catch (e) {} };
 const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','homeassistant','phone','learn','help'].map(id => [id, L('tab.' + id)]);
-const CATS = ['accounts','apis','general','voice','personas','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
+const CATS = ['accounts','apis','brain','general','voice','personas','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
 const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
 const INTRO = {};
 for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','homeassistant','phone','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
@@ -1054,7 +1054,7 @@ function modalPage(b) {
   if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = tourStart; b.appendChild(rr); ; return; }
   b.appendChild(pageHead(L('cat.' + modal), L('cat.' + modal + '.text')));
   const items = catSections(b, modal);
-  if (modal === 'accounts' || modal === 'apis') embed(b, modal);
+  if (modal === 'accounts' || modal === 'apis' || modal === 'brain') embed(b, modal);
   if (modal === 'personas') { b.appendChild($('h2', null, L('embed.voices'))); embed(b, 'voices'); }
   if (modal === 'general') {
     const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);
