@@ -668,6 +668,9 @@
   const reduced = opts.reduced ?? (g.matchMedia && g.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const cur = Object.assign({}, N), vel = {}, tgt = Object.assign({}, N);
   let oldLoop = null;
+  // her soft body: one spring on how squashed (−) or stretched (+) she is, driven by her flight (stretch along her speed)
+  // and kicked by an impact (a squash that recovers with one gentle overshoot); sideways answers so her volume holds
+  const soft = {y: 0, v: 0, target: 0, tilt: 0, tiltTo: 0, felt: -1e9};
   // values on their way to a new target: {from, to, t0, dur}
   const tw = {};
   const pace = () => clamp(tu.tau / .12, .85, 1.3);
@@ -957,7 +960,15 @@
     moving = true;
    }
    if (reduced) { for (const k of ["lift", "lean", "tilt", "yaw", "pitch"]) Rv[k] = cur[k]; }
-   Rv.sx = clamp(Rv.sx, .8, 1.25); Rv.sy = clamp(Rv.sy, .8, 1.25);
+   if (!snap && dt > 0 && !reduced) {
+    const w = 15, z = .6;
+    soft.v += (-w * w * (soft.y - soft.target) - 2 * z * w * soft.v) * dt; soft.y += soft.v * dt;
+    soft.tilt += (soft.tiltTo - soft.tilt) * Math.min(1, dt * 10);
+    if (Math.abs(soft.y - soft.target) + Math.abs(soft.v) + Math.abs(soft.tilt - soft.tiltTo) > 1e-3 || soft.target !== 0) moving = true;
+    else { soft.y = soft.target; soft.v = 0; }
+    Rv.sy += soft.y; Rv.sx += 1 / Math.sqrt(Math.max(.5, 1 + soft.y)) - 1; Rv.tilt += soft.tilt;
+   }
+   Rv.sx = clamp(Rv.sx, .75, 1.3); Rv.sy = clamp(Rv.sy, .75, 1.3);
 
    // secondary motion: appendages lag behind the body's movement on a loose spring
    const drive = Rv.tilt + Rv.lean + Rv.yaw * 22, driveY = Rv.lift;
@@ -1243,6 +1254,10 @@
   render(performance.now(), true); scheduleBlink(); scheduleIdle();
 
   return {
+   /** Her speed while she flies or is carried (px/s, screen axes; 0, 0 at rest): she stretches along it and leans into it. */
+   motion(vx, vy) { const sp = Math.hypot(vx, vy); soft.target = clamp(sp / 2400, 0, .16) * (Math.abs(vy) >= Math.abs(vx) ? 1 : -.5); soft.tiltTo = clamp(vx / 160, -8, 8); wake(); },
+   /** She hit something at this speed (px/s): a squash that springs back with one gentle overshoot, the face a beat later. */
+   impact(speed) { const k = clamp(speed / 2600, 0, 1); soft.target = 0; soft.tiltTo = 0; soft.v -= 2.2 * k; const t = performance.now(); if (k > .25 && t - soft.felt > 700) play("blink", {delay: 90}); if (k > .25) soft.felt = t; wake(); },
    setExpression, setPersonality, setCharacter, play, spawn, prop, use, clearProps, speak, syncSpeech, speechTime, stopSpeech, fidget,
    setIntensity(v) { intensity = v; retarget(); wake(); },
    setHandMode(m) { handMode = m === "float" ? "float" : "arms"; hands.L.vis = hands.R.vis = false; wake(); },

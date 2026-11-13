@@ -101,8 +101,8 @@ const HIT_FAR_MS = 400;
 const NEAR_PX = 60;
 const FRAME_MS = 16;
 const DRAG_MS = 16;
-/** A landing at least this fast squashes her. */
-const HARD_LANDING = 900;
+/** A landing or a wall at least this fast is felt as an impact (a squash by its speed). */
+const IMPACT_SPEED = 300;
 const SNOOZE_MS = 60 * 60_000;
 /** A wander is considered once a minute, and taken about one time in six: every few minutes, never on a beat. */
 const WANDER_CHECK_MS = 60_000;
@@ -439,7 +439,6 @@ export const createDesktopMascot = (input: {
     let flight = start;
     let owed = 0;
     let last = Date.now();
-    let squashed = false;
     moving = setInterval(() => {
       const target = win;
       if (target === null || target.isDestroyed()) return stopMoving();
@@ -456,17 +455,19 @@ export const createDesktopMascot = (input: {
           profile: DEFAULT_PROFILE,
         });
         flight = next.flight;
+        // every landing and wall is felt: a squash by its speed that springs back
         for (const event of next.events)
-          if (event.kind === "land" && event.speed > HARD_LANDING && !squashed) {
-            squashed = true;
-            call(`window.mascot.play("squish")`);
-          }
+          if (event.speed > IMPACT_SPEED) call(`window.mascot.impact(${Math.round(event.speed)})`);
       }
       if (!resting(flight) || flight.on === null) {
         target.setBounds(box({ x: flight.x - size() / 2, y: flight.y - size() * FOOT_SHARE }));
+        call(
+          `window.mascot.motion(${Math.round(flight.vx)},${Math.round(flight.on === null ? flight.vy : 0)})`,
+        );
         return;
       }
       stopMoving();
+      call(`window.mascot.motion(0,0)`);
       edge = flight.on;
       x = flight.x;
       save({ x, placed: edge.kind === "floor" });
@@ -509,13 +510,16 @@ export const createDesktopMascot = (input: {
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
     call(`window.mascot.cue({expression:"surprised"})`);
-    call(`window.mascot.play("squish")`);
+    call(`window.mascot.impact(500)`);
     const samples: Array<{ readonly x: number; readonly y: number; readonly t: number }> = [];
     const timer = setInterval(() => {
       if (target.isDestroyed()) return clearInterval(timer);
       const at = Electron.screen.getCursorScreenPoint();
       samples.push({ x: at.x, y: at.y, t: Date.now() });
       if (samples.length > 12) samples.shift();
+      // carried, she stretches along his hand's speed
+      const carried = throwVelocity(samples);
+      call(`window.mascot.motion(${Math.round(carried.vx)},${Math.round(carried.vy)})`);
       target.setBounds(box({ x: at.x - (cursor.x - b.x), y: at.y - (cursor.y - b.y) }));
     }, DRAG_MS);
     dragging = { timer, samples };
@@ -548,7 +552,7 @@ export const createDesktopMascot = (input: {
     call(`window.mascot.play("hop")`);
     x = to;
     save({ x: to });
-    glide(standAt(edge, to, size()), 48, () => call(`window.mascot.play("squish")`));
+    glide(standAt(edge, to, size()), 48, () => call(`window.mascot.impact(400)`));
   }, WANDER_CHECK_MS);
   wander.unref();
 

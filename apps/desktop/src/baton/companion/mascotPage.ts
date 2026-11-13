@@ -57,5 +57,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (on) { peak = 0.02; rig.speak(forever, { mouth }); } else rig.stopSpeech();
   },
   play(name) { if (rig) rig.play(name); },
+  motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); },
+  impact(speed) { if (rig && rig.impact) rig.impact(speed); },
  };
 })();`;
