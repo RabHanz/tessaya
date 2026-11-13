@@ -6,6 +6,7 @@
 import { memberOfSubject, vesselSubject } from "@t3tools/baton-shared/household";
 import { memoryBlock } from "@t3tools/baton-shared/memory";
 import { privatePersonOf, type SpeakerLike } from "@t3tools/baton-shared/privateMemory";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -42,6 +43,25 @@ export interface TurnEnvelope {
   readonly sessionless?: boolean | undefined;
   /** A replay or test of the vessel: it reads as a real turn and learns nothing. */
   readonly rehearsal?: boolean | undefined;
+  /** The conversation it continues, when the vessel or the arbiter names one; else `conversationKey`. */
+  readonly conversation?: string | undefined;
+}
+
+/**
+ * One conversation per person, or the household's when the voice is not known (the arbiter's need): whichever
+ * vessel answers him next continues it, and a persona switch stays in it.
+ */
+export const conversationKey = (turn: TurnEnvelope): string =>
+  turn.conversation ??
+  (turn.speaker?.verified === true && turn.speaker.personId !== null
+    ? `person:${turn.speaker.personId}`
+    : "household");
+
+export interface ConversationTurn {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  /** The vessel it was said through. */
+  readonly vessel: string;
 }
 
 /** His own voice on this very turn: the only voice whose words are kept as his, or that may forget for him. */
@@ -93,7 +113,13 @@ export interface TurnContext {
   readonly ids: ReadonlyArray<string>;
   /** The speaker's own private memories, only when the gate allows it; else "". */
   readonly privateBlock: string;
+  /** The conversation so far on any vessel, oldest first (empty after a quiet spell). */
+  readonly conversation: { readonly key: string; readonly turns: ReadonlyArray<ConversationTurn> };
 }
+
+/** How much of a conversation every vessel shares, and how long it waits for him to go on. */
+const CONVERSATION_TURNS = 12;
+const CONVERSATION_IDLE_MS = 10 * 60_000;
 
 /** Standing memory a sessionless turn carries, as a session's system prompt does (MEMORY.md §5). */
 const STANDING_TOKENS = 600;
@@ -165,6 +191,34 @@ export const make = Effect.gen(function* () {
     return Option.isSome(recalled) ? recalled.value.block : "";
   });
 
+  // shortcut: held in this server's memory, so a restart starts every conversation afresh; persist when one must last.
+  const conversations = new Map<string, { at: number; turns: Array<ConversationTurn> }>();
+  const conversationOf = Effect.fn("TessayaTurn.conversation")(function* (turn: TurnEnvelope) {
+    const key = conversationKey(turn);
+    const held = conversations.get(key);
+    const now = yield* Clock.currentTimeMillis;
+    return {
+      key,
+      turns: held === undefined || now - held.at > CONVERSATION_IDLE_MS ? [] : [...held.turns],
+    };
+  });
+  const addExchange = Effect.fn("TessayaTurn.converse")(function* (
+    turn: TurnEnvelope,
+    reply: string,
+  ) {
+    const key = conversationKey(turn);
+    const now = yield* Clock.currentTimeMillis;
+    const held = conversations.get(key);
+    const turns = held === undefined || now - held.at > CONVERSATION_IDLE_MS ? [] : held.turns;
+    const said: Array<ConversationTurn> = [
+      { role: "user", content: turn.text, vessel: turn.vessel.id },
+      ...(reply.trim() === ""
+        ? []
+        : [{ role: "assistant" as const, content: reply, vessel: turn.vessel.id }]),
+    ];
+    conversations.set(key, { at: now, turns: [...turns, ...said].slice(-CONVERSATION_TURNS) });
+  });
+
   const begin = Effect.fn("TessayaTurn.begin")(function* (turn: TurnEnvelope) {
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
@@ -189,6 +243,7 @@ export const make = Effect.gen(function* () {
       block: [standing.block, extra].filter((b) => b !== "").join("\n\n"),
       ids: sentence.ids,
       privateBlock: yield* privateFor(turn),
+      conversation: yield* conversationOf(turn),
     };
   });
 
@@ -196,6 +251,7 @@ export const make = Effect.gen(function* () {
     turn: TurnEnvelope,
     done: { readonly reply: string; readonly previous?: string | null | undefined },
   ) {
+    if (turn.addressed !== false && turn.rehearsal !== true) yield* addExchange(turn, done.reply);
     if (notLearnable(turn) !== null) return null;
     const learn = learning.learn({
       origin: "turn",

@@ -436,6 +436,16 @@ const addressedOf = (voice: unknown): boolean | undefined =>
     ? voice.addressed
     : undefined;
 
+/** The conversation the loop or the arbiter says this turn continues. */
+const conversationOf = (voice: unknown): string | undefined =>
+  typeof voice === "object" &&
+  voice !== null &&
+  "conversation" in voice &&
+  typeof voice.conversation === "string" &&
+  voice.conversation.length <= 80
+    ? voice.conversation
+    : undefined;
+
 /** The loop's echo taint: the turn began while her own voice could still be heard in the room. */
 const taintedOf = (voice: unknown): boolean =>
   typeof voice === "object" && voice !== null && "tainted" in voice && voice.tainted === true;
@@ -565,10 +575,14 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
     // Each turn is a fresh call, with no session holding standing memory.
     sessionless: true,
     rehearsal: isReplay(input),
+    // The arbiter's or loop's conversation, when it names one; else his person's or the household's.
+    ...(conversationOf(input.voice) === undefined
+      ? {}
+      : { conversation: conversationOf(input.voice) }),
   };
   const pipeline = yield* Effect.serviceOption(TessayaTurn);
   const begun = Option.isNone(pipeline)
-    ? { block: "", ids: [], privateBlock: "" }
+    ? { block: "", ids: [], privateBlock: "", conversation: { key: "household", turns: [] } }
     : yield* pipeline.value
         .begin(turn)
         // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
@@ -576,8 +590,9 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
   const context: R1Context = {
     heard: input.heard,
     privateBlock: withHouse ? "" : begun.privateBlock,
+    // The conversation he is having with her on any vessel; the loop's own when the pipeline has none yet.
     history: withoutSelfIntros(
-      input.history,
+      begun.conversation.turns.length > 0 ? begun.conversation.turns : input.history,
       pack.personas.map((p) => p.name),
     ),
     devices: status.state === "connected" ? devices : `Home is ${status.state}: ${status.line}`,
