@@ -746,6 +746,10 @@ export const make = Effect.gen(function* () {
 
     setup: Effect.fn("BatonPrivateMemoryService.setup")(function* (input) {
       const personId = input.personId ?? OWNER_PERSON_ID;
+      // A member other than the owner makes their own store and no one else's, the owner's least of all.
+      const c = yield* PrivateCaller;
+      if (c.member !== undefined && c.member !== OWNER_PERSON_ID && personId !== c.member)
+        return yield* refuse("You can set up only your own memory.");
       return yield* newStore(
         personId,
         input.name,

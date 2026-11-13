@@ -39,4 +39,9 @@ describe("the phone page files", () => {
     expect(ops).toEqual(expect.arrayContaining(["people", "list", "unlock", "setup", "export"]));
     for (const op of ops) expect(PRIVATE_ASSISTANT_OPS.has(op), op).toBe(false);
   });
+
+  it("lets an invite code join, and a member's phone sets up only its own memory", () => {
+    expect(SCRIPT).toContain('fetch("/api/auth/browser-session"');
+    expect(SCRIPT).toContain('op: "setup", personId: member.id');
+  });
 });

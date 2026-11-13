@@ -116,11 +116,36 @@ export const SCRIPT = `"use strict";
       tabs.appendChild(b);
     });
   }
+  // An invite code pairs this phone as the member it was made for; then it opens their own memory.
+  function joinRow(c) {
+    var code = el("input", "field"); code.placeholder = "Invite code"; code.setAttribute("aria-label", "Invite code"); code.autocomplete = "off"; code.autocapitalize = "characters";
+    var b = el("button", "act primary", "Join"); b.type = "button";
+    b.onclick = function () {
+      b.disabled = true;
+      fetch("/api/auth/browser-session", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ credential: code.value.trim().toUpperCase() }) }).then(function (r) {
+        if (r.ok) return void location.reload();
+        said = "That code didn't work. It lasts a day and works once: ask for a new one."; b.disabled = false; draw();
+      });
+    };
+    var row = el("div", "row"); row.appendChild(code); row.appendChild(b); c.appendChild(row);
+  }
+  // A household member's own phone (not the owner's): only their own memory here.
+  var member = null;
+  function household() {
+    return fetch("/tessaya/household", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "list" }) }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (j) {
+      var you = j && j.value && j.value.members ? j.value.members.filter(function (m) { return m.you; })[0] : null;
+      member = you && you.role !== "owner" ? you : null;
+      // The ask bar reaches the owner's work, which a member's phone can't: it goes rather than fail.
+      if (member) { TABS = [["mem", "Your memory"]]; tab = "mem"; denied = false; document.querySelector(".bar").hidden = true; refresh(); }
+    }).catch(function () {});
+  }
   function act(label, cls, fn) { var b = el("button", "act " + (cls || ""), label); b.type = "button"; b.onclick = function () { b.disabled = true; fn().then(function (j) { if (j && j.message) said = j.message; load(); }); }; return b; }
   function draw() {
     if (tab === "mem") return drawMem();
     drawTabs(); view.textContent = "";
-    if (denied) { var c = el("div", "card"); c.appendChild(el("h2", "", "This phone is not paired")); c.appendChild(el("p", "soft", "Open this server's normal address on this phone and pair it there first. Then come back to /tessaya.")); view.appendChild(c); return; }
+    if (denied) { var c = el("div", "card"); c.appendChild(el("h2", "", "This phone is not paired")); c.appendChild(el("p", "soft", "Have an invite code from Tessaya? Type it here. Otherwise open this server's normal address on this phone and pair it there first, then come back to /tessaya.")); joinRow(c); view.appendChild(c); return; }
     if (state && !state.desktop.connected) view.appendChild(el("p", "soft", "Your computer is not connected. Asks wait for it."));
     if (said) view.appendChild(el("p", "card", said)).id = "say";
     if (!state) { view.appendChild(el("p", "soft", "Loading")); return; }
@@ -187,6 +212,8 @@ export const SCRIPT = `"use strict";
   function refresh() {
     return priv({ op: "people" }).then(function (v) {
       mem.stores = v.stores.slice().sort(function (a, b) { return (a.kind === "owner" ? 0 : 1) - (b.kind === "owner" ? 0 : 1) || a.name.localeCompare(b.name); });
+      // A member has one store, their own: it is the page.
+      if (member && mem.stores.length > 0) mem.sel = mem.stores[0].id;
       var s = mem.sel && storeOf(mem.sel), me = owner();
       if (!s) mem.sel = null;
       if (!s || !s.open) dropItems();
@@ -244,6 +271,7 @@ export const SCRIPT = `"use strict";
     var r = el("div", "row"); r.appendChild(plain("I saved it", function () { mem.code = null; drawMem(); })); r.firstChild.classList.add("primary"); c.appendChild(r);
   }
   function peopleView() {
+    if (member) return memberView();
     var me = owner();
     if (!me) {
       var c = card("Your private memories", "Make your own store first. Its PIN is 8 or more digits, or a passphrase. Each person you add gets their own store under their own PIN.");
@@ -270,6 +298,16 @@ export const SCRIPT = `"use strict";
     a.appendChild(col);
     logPart(null, "Every store's log", { op: "audit" });
   }
+  // A member's own store, made here when they accept: their own 6-digit PIN, sealed on this server.
+  function memberView() {
+    var c = card("Set up your own memory", "Choose a 6-digit PIN. It opens what Tessaya keeps for you; as this home is set up, its owner can open it too. Until you do, Tessaya can't keep anything for you.");
+    var pin = field("Your new 6-digit PIN", "password", true), again = field("The same PIN again", "password", true), col = el("div", "col");
+    var b = mbtn("Make my memory", "primary", function () {
+      if (pin.value !== again.value) throw new Error("The two PINs are not the same.");
+      return priv({ op: "setup", personId: member.id, name: member.name, pin: pin.value }).then(function (v) { mem.code = { whose: "your", code: v.recoveryCode }; });
+    });
+    onEnter(again, b); col.appendChild(pin); col.appendChild(again); col.appendChild(b); c.appendChild(col);
+  }
   function logPart(storeId, label, query) {
     if (!mem.log || mem.log.for !== storeId) {
       var r = el("div", "row"); r.appendChild(mbtn(label, "", function () { return priv(query).then(function (v) { mem.log = { for: storeId, v: v }; }); })); view.appendChild(r);
@@ -284,7 +322,7 @@ export const SCRIPT = `"use strict";
   }
   function storeView(s) {
     var top = el("div", "row");
-    top.appendChild(plain("All people", function () { mem.sel = null; mem.said = ""; mem.log = null; dropItems(); drawMem(); }));
+    if (!member) top.appendChild(plain("All people", function () { mem.sel = null; mem.said = ""; mem.log = null; dropItems(); drawMem(); }));
     view.appendChild(top);
     var head = card(nameOf(s), s.items + (s.items === 1 ? " memory" : " memories")); head.appendChild(status(s));
     if (!s.open) return lockedView(s, head);
@@ -463,6 +501,7 @@ export const SCRIPT = `"use strict";
 
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/tessaya/sw.js").catch(function () {});
   load();
+  household();
   // Polling, not push: every 20 seconds while the page is in view.
   setInterval(function () { if (!document.hidden) load(); }, 20000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); });

@@ -158,7 +158,7 @@ export const NOT_HIS_VOICE_TO_FORGET =
 
 /** A member asked to keep something and has no store of their own yet. */
 export const NO_STORE_FOR_MEMBER =
-  "I can't keep that for you yet: you don't have your own memory here. Ask the owner to set one up for you.";
+  "Set up your own memory first: choose your PIN in Tessaya on your phone. Until then I can't keep that for you.";
 
 /**
  * The private-store view of a turn: typed on a member's own desktop, phone or browser (that device's member), or
