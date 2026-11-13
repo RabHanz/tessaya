@@ -353,10 +353,18 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "preference",
     proves: ["tessaya_memory_remember"],
     said: ["From now on, say times in AM and PM, not the 24-hour clock."],
-    uses: [["tessaya_memory_remember"]],
-    clean: ["tessaya_memory_remember"],
-    argsOf: "tessaya_memory_remember",
-    args: (input) => ({ ampm: /\b(am|pm|a\.m\.|p\.m\.)/i.test(String(input["text"] ?? "")) }),
+    // As a preference of his (timeFormat) or a memory: either keeps it for every later turn.
+    uses: [["tessaya_memory_remember", "tessaya_preference_set"]],
+    clean: ["tessaya_memory_remember", "tessaya_preference_set"],
+  },
+  {
+    id: "preference-set",
+    proves: ["tessaya_preference_set"],
+    said: ["Call me Rab from now on."],
+    uses: [["tessaya_preference_set"]],
+    clean: ["tessaya_preference_set"],
+    argsOf: "tessaya_preference_set",
+    args: (input) => ({ name: input["key"] === "name" }),
   },
   {
     id: "memory-about",

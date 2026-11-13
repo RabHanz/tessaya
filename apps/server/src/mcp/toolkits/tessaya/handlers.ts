@@ -262,6 +262,15 @@ export const layer = McpToolAccess.toLayer(
         call(withTurn((turn) => Effect.map(turn.forget(input.id), (line) => ({ line })))),
       ),
       // Read as a client (MemoryViewer's default here): walls hold.
+      tessaya_preference_set: McpToolAccess.writes((input) =>
+        call(
+          withTurn((turn) =>
+            Effect.map(turn.setPreference(input.key, input.value ?? null), (set) => ({
+              line: set.value === null ? "Cleared." : "Kept.",
+            })),
+          ),
+        ),
+      ),
       tessaya_memory_about: McpToolAccess.reads((input) =>
         call(withTurn((turn) => Effect.map(turn.about(input.subject), (items) => ({ items })))),
       ),

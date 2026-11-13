@@ -322,6 +322,22 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const PreferenceSetTool = Tool.make("tessaya_preference_set", {
+  ...shared,
+  description:
+    'Keep how the person speaking likes something, for every later turn with them on any device: `key` is name (what to call them), persona, voice, units, timeFormat ("12-hour with AM/PM" or "24-hour"), news or music; `value` in their words, or empty to clear it. Only their own preference; a guest has none. Use it when they say how they want something from now on.',
+  parameters: Schema.Struct({
+    key: Schema.Literals(["name", "persona", "voice", "units", "timeFormat", "news", "music"]),
+    value: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+  }),
+  success: Schema.Struct({ line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const MemoryAboutTool = Tool.make("tessaya_memory_about", {
   ...shared,
   description:
@@ -475,6 +491,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryRememberTool,
   MemoryForgetTool,
   MemoryAboutTool,
+  PreferenceSetTool,
   RulesTool,
   SessionsTool,
   InFlightTool,

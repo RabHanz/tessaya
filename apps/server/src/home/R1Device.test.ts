@@ -150,6 +150,7 @@ describe('who answers in the room (13 Nov audit: every reply opened with "Sebast
       lastAction: null,
       automations: null,
       memory: "",
+      preferences: {},
       voice: undefined,
       now: "now",
       persona: calledPersona(DEFAULT_OS_PACK, { persona: "research" }),

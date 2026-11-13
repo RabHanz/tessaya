@@ -182,6 +182,7 @@ const context = (
   lastAction: house.last(),
   automations: null,
   memory: "",
+  preferences: {},
   voice:
     c.verified === true
       ? { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } }

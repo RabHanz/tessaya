@@ -115,6 +115,51 @@ it.effect("a turn's tools know which vessel heard it", () =>
 );
 
 layer("TessayaTurn", (it) => {
+  it.effect("each member keeps their own preferences, read in their turns and nobody else's", () =>
+    Effect.gen(function* () {
+      const turn = yield* TessayaTurn;
+      const sara = { kind: "saved" as const, personId: "sara", verified: true, inherited: false };
+      const as =
+        (speaker: SpeakerLike | null) =>
+        <A, E>(work: Effect.Effect<A, E>) =>
+          Effect.provideService(work, TurnOrigin, originOf({ vessel: device, text: "", speaker }));
+      yield* as(sara)(turn.setPreference("units", "metric"));
+      yield* as(sara)(turn.setPreference("name", "Sar"));
+      yield* as(owner())(turn.setPreference("timeFormat", "12-hour with AM/PM"));
+      const hers = yield* turn.begin({ vessel: device, text: "hi", speaker: sara });
+      const his = yield* turn.begin({ vessel: device, text: "hi", speaker: owner() });
+      assert.deepStrictEqual(hers.preferences, { units: "metric", name: "Sar" });
+      assert.deepStrictEqual(his.preferences, { timeFormat: "12-hour with AM/PM" });
+      // A guest has none, and cannot set any.
+      const guest = owner({ kind: "guest", personId: null });
+      assert.deepStrictEqual(
+        (yield* turn.begin({ vessel: device, text: "hi", speaker: guest })).preferences,
+        {},
+      );
+      const refused = yield* Effect.flip(
+        turn
+          .setPreference("units", "imperial")
+          .pipe(
+            Effect.provideService(
+              TurnOrigin,
+              originOf({ vessel: device, text: "", speaker: guest }),
+            ),
+          ),
+      );
+      assert.include(refused.reason, "household");
+      // Cleared with nothing; an unknown key is refused.
+      yield* as(sara)(turn.setPreference("name", null));
+      assert.deepStrictEqual(
+        (yield* turn.begin({ vessel: device, text: "hi", speaker: sara })).preferences,
+        { units: "metric" },
+      );
+      assert.include(
+        (yield* Effect.flip(turn.setPreference("shoeSize", "9"))).reason,
+        "no preference",
+      );
+    }),
+  );
+
   it.effect("another member's 'remember this' goes to their own store, never his", () =>
     Effect.gen(function* () {
       setup();

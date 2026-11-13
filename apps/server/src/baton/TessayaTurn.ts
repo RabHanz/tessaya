@@ -19,9 +19,11 @@ import {
 } from "@t3tools/baton-shared/privateMemory";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts";
 import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
@@ -207,7 +209,23 @@ export interface TurnContext {
   readonly privateBlock: string;
   /** The conversation so far on any vessel, oldest first (empty after a quiet spell). */
   readonly conversation: { readonly key: string; readonly turns: ReadonlyArray<ConversationTurn> };
+  /** How the person she is talking to likes things (their own, never another member's); empty for a guest. */
+  readonly preferences: Readonly<Partial<Record<PreferenceKey, string>>>;
 }
+
+/** What a member can set for themselves (HOUSEHOLD-DESIGN §4), with what each means to her. */
+export const PREFERENCE_KEYS = {
+  name: "what to call them",
+  persona: "which persona answers them by default",
+  voice: "the voice she speaks to them in",
+  units: "metric or imperial",
+  timeFormat: "how to say times (12-hour with AM/PM, or 24-hour)",
+  news: "where their news comes from",
+  music: "their music service or taste",
+} as const;
+export type PreferenceKey = keyof typeof PREFERENCE_KEYS;
+const isPreferenceKey = (key: string): key is PreferenceKey => key in PREFERENCE_KEYS;
+const PREFERENCE_MAX = 120;
 
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
 const CONVERSATION_TURNS = 12;
@@ -252,6 +270,14 @@ export class TessayaTurn extends Context.Service<
       subject: string,
       limit?: number,
     ) => Effect.Effect<ReadonlyArray<{ readonly id: string; readonly line: string }>>;
+    /** The speaking member's own preference (TurnOrigin's member), set or cleared with null. */
+    readonly setPreference: (
+      key: string,
+      value: string | null,
+    ) => Effect.Effect<
+      { readonly member: string; readonly key: string; readonly value: string | null },
+      BatonMemoryRefusedError
+    >;
     readonly end: (
       turn: TurnEnvelope,
       done: { readonly reply: string; readonly previous?: string | null | undefined },
@@ -263,6 +289,48 @@ export const make = Effect.gen(function* () {
   const memory = yield* BatonMemoryService;
   const learning = yield* BatonMemoryLearning;
   const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
+  const sql = yield* SqlClient.SqlClient;
+
+  /** A member's own preferences; nothing for a guest. */
+  const preferencesOf = Effect.fn("TessayaTurn.preferences")(function* (member: string | null) {
+    if (member === null) return {};
+    const rows = yield* sql<{ key: string; value: string }>`
+      SELECT key, value FROM tessaya_member_preferences WHERE member_id = ${member}
+    `.pipe(Effect.orElseSucceed(() => []));
+    return Object.fromEntries(
+      rows.filter((r) => isPreferenceKey(r.key)).map((r) => [r.key, r.value]),
+    ) as Partial<Record<PreferenceKey, string>>;
+  });
+
+  /** The speaking member's own preference, set or (null) cleared; a guest has none to set. */
+  const setPreference = Effect.fn("TessayaTurn.setPreference")(function* (
+    key: string,
+    value: string | null,
+  ) {
+    const origin = yield* TurnOrigin;
+    if (!isPreferenceKey(key))
+      return yield* new BatonMemoryRefusedError({
+        reason: `There is no preference called ${key}.`,
+      });
+    const member = origin === null ? OWNER_MEMBER_ID : origin.member;
+    if (member === null || member === undefined)
+      return yield* new BatonMemoryRefusedError({
+        reason: "I can keep preferences only for people in this household.",
+      });
+    if (origin?.rehearsal === true) return { member, key, value };
+    const clean = value?.trim().replace(/\s+/g, " ").slice(0, PREFERENCE_MAX) ?? "";
+    if (clean === "")
+      yield* sql`DELETE FROM tessaya_member_preferences WHERE member_id = ${member} AND key = ${key}`.pipe(
+        Effect.orDie,
+      );
+    else
+      yield* sql`
+        INSERT INTO tessaya_member_preferences (member_id, key, value, updated_at)
+        VALUES (${member}, ${key}, ${clean}, ${DateTime.formatIso(yield* DateTime.now)})
+        ON CONFLICT (member_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `.pipe(Effect.orDie);
+    return { member, key, value: clean === "" ? null : clean };
+  });
   const pools = yield* Effect.serviceOption(TurnPools);
 
   const privateFor = Effect.fn("TessayaTurn.private")(function* (turn: TurnEnvelope) {
@@ -350,6 +418,7 @@ export const make = Effect.gen(function* () {
       ids: sentence.ids,
       privateBlock: yield* privateFor(turn),
       conversation: yield* conversationOf(turn),
+      preferences: yield* preferencesOf(turnIdentity(turn).member),
     };
   });
 
@@ -476,7 +545,7 @@ export const make = Effect.gen(function* () {
     }));
   });
 
-  return TessayaTurn.of({ begin, end, remember, forget, about });
+  return TessayaTurn.of({ begin, end, remember, forget, about, setPreference });
 });
 
 export const layer = Layer.effect(TessayaTurn, make);
