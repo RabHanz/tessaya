@@ -25,9 +25,8 @@ import {
   socialLogLine,
 } from "@t3tools/baton-shared/webPolicy";
 
-export type Gate = (
-  call: ToolCall,
-) => Promise<{ readonly allow: true } | { readonly allow: false; readonly reason: string }>;
+import type { Gate } from "@t3tools/baton-shared/sessionMcp";
+export type { Gate };
 
 /**
  * Cut-ins over her voice, against the turn they cut. `begin` at each turn, and again once he has answered her own

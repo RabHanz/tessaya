@@ -19,6 +19,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { onSubscription } from "../baton/BrainRoutes.ts";
+import { createVoiceSessions, type SessionSpec } from "./VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
   DictationCleanupApi,
@@ -66,6 +67,14 @@ export interface ToolTurn {
   readonly run: (name: string, input: unknown) => Effect.Effect<ToolOutcome>;
 }
 
+/** A turn for a warm subscription session (VoiceSessions). */
+export interface SessionToolTurn extends ToolTurn {
+  /** The vessel that heard it: each has its own warm session waiting. */
+  readonly vessel: string;
+  /** A tool call started before she said a word: the vessel says a short line (`web`: a search, which takes seconds). */
+  readonly cue: (web: boolean) => void;
+}
+
 export class R1Brain extends Context.Service<
   R1Brain,
   {
@@ -75,8 +84,12 @@ export class R1Brain extends Context.Service<
     readonly subscription: (user: string) => Stream.Stream<string, R1BrainError>;
     /** The key's turn with tools: its words as they come, tool rounds in between (`toolLoop`). */
     readonly converse: (turn: ToolTurn) => Stream.Stream<string, R1BrainError>;
-    /** Starts a waiting process now, so the first turn is fast too. */
-    readonly warm: Effect.Effect<void>;
+    /** The subscription's turn with tools, in the vessel's warm session: its words as they come. */
+    readonly session: (turn: SessionToolTurn) => Stream.Stream<string, R1BrainError>;
+    /** Warms a session for this vessel now, so the first turn is as quick as the rest. */
+    readonly warm: (
+      turn: Pick<SessionToolTurn, "vessel" | "system" | "tools">,
+    ) => Effect.Effect<void>;
   }
 >()("t3/home/R1Brain") {}
 
@@ -339,13 +352,100 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
       ),
     );
 
-  // Only the subscription route needs a process waiting; the key route never starts one.
-  const warm = Effect.gen(function* () {
-    if ((yield* route) !== "subscription") return;
-    const { model } = yield* voice;
-    ready ??= spawn(model);
-  }).pipe(Effect.ignore);
-  return { route, subscription: viaSubscription, converse, warm } satisfies R1Brain["Service"];
+  const sessions = createVoiceSessions();
+  yield* Effect.addFinalizer(() => Effect.promise(() => sessions.close()));
+  /** The subscription session a vessel's turns run in, from the voice row. */
+  const sessionSpec = Effect.fn("R1Brain.sessionSpec")(function* (
+    turn: Pick<SessionToolTurn, "system" | "tools">,
+  ) {
+    const row = yield* voice.pipe(Effect.mapError(() => new R1BrainError({ detail: "settings" })));
+    const path = onSubscription(row);
+    if ("refused" in path) return yield* new R1BrainError({ detail: path.refused });
+    return {
+      model: path.model,
+      effort: row.effort,
+      system: turn.system,
+      tools: turn.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.input_schema as Readonly<Record<string, unknown>>,
+      })),
+    } satisfies SessionSpec;
+  });
+
+  const session = (turn: SessionToolTurn) =>
+    Stream.callback<string, R1BrainError>((queue) =>
+      Effect.gen(function* () {
+        const spec = yield* sessionSpec(turn);
+        const context = yield* Effect.context<never>();
+        const startedAt = yield* Clock.currentTimeMillis;
+        let firstAt: number | null = null;
+        // The first thing the room hears: her words, or the cue when a tool call starts first.
+        let actAt: number | null = null;
+        const used: Array<string> = [];
+        const ran = yield* Effect.tryPromise({
+          // Interrupted (he cut her off), the signal aborts and the session is replaced.
+          try: (signal) =>
+            sessions.turn(turn.vessel, spec, turn.user, {
+              signal,
+              run: (name, args) =>
+                Effect.runPromiseWith(context)(turn.run(name, args)).then((outcome) => {
+                  // A failed tool is an MCP error result: the model sees it as one.
+                  if (outcome.isError) throw new Error(outcome.text);
+                  return {
+                    text: outcome.text,
+                    ...(outcome.image === undefined
+                      ? {}
+                      : {
+                          images: [{ data: outcome.image.data, mimeType: outcome.image.mediaType }],
+                        }),
+                  };
+                }),
+              onEvent: (event) => {
+                if (event.type === "text") {
+                  firstAt ??= Date.now();
+                  actAt ??= firstAt;
+                  Queue.offerUnsafe(queue, event.text);
+                } else if (event.type === "tool") {
+                  used.push(event.name);
+                  actAt ??= Date.now();
+                  // Before her first word only: once she is talking, she says it herself.
+                  if (firstAt === null && used.length === 1) turn.cue(event.web);
+                }
+              },
+            }),
+          catch: (error) =>
+            new R1BrainError({
+              detail: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+            }),
+        }).pipe(Effect.exit);
+        yield* Effect.logInfo("R1 tool turn", {
+          route: "session",
+          tools: used,
+          ms: (yield* Clock.currentTimeMillis) - startedAt,
+          brainFirstMs: firstAt === null ? null : firstAt - startedAt,
+          firstActMs: actAt === null ? null : actAt - startedAt,
+        });
+        if (ran._tag === "Failure") return yield* Queue.failCause(queue, ran.cause);
+        yield* Queue.end(queue);
+      }),
+    );
+
+  const warm = Effect.fn("R1Brain.warm")(
+    function* (turn: Pick<SessionToolTurn, "vessel" | "system" | "tools">) {
+      if ((yield* route) !== "subscription") return;
+      const spec = yield* sessionSpec(turn);
+      yield* Effect.promise(() => sessions.warm(turn.vessel, spec).catch(() => undefined));
+    },
+    (effect) => effect.pipe(Effect.ignore),
+  );
+  return {
+    route,
+    subscription: viaSubscription,
+    converse,
+    session,
+    warm,
+  } satisfies R1Brain["Service"];
 });
 
 export const layer = (system: string) => Layer.effect(R1Brain, make(system));

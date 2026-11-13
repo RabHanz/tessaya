@@ -66,6 +66,7 @@ import {
   type RoomTool,
   type RoomToolSet,
   type ToolOutcome,
+  type ToolTurn,
 } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService, type HomeActor, type R1Device } from "./HomeAssistantService.ts";
@@ -839,66 +840,82 @@ export interface RoomCall {
   readonly text: string;
 }
 
+/** What she says when a web search starts before her first word (B0: the subscription writes no line itself). */
+const WEB_CUE = "Let me look that up.";
+
 /**
- * The key route's turn: the one assistant with the room's tools. Null when it did not answer before a word was said,
- * so the caller can fall back; once she has spoken, a failure ends the turn with an apology.
+ * A turn with the room's tools, on his key (`api`) or in the vessel's warm subscription session (`session`). Null when
+ * it did not answer before a word was said, so the caller can fall back; once she has spoken, a failure ends the turn
+ * with an apology.
  */
 const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
   input: R1Heard,
   brain: R1Brain["Service"],
   tools: RoomRunner,
   say: (words: string) => void,
+  via: "api" | "session",
   calls?: Array<RoomCall>,
 ) {
   const startedAt = yield* Clock.currentTimeMillis;
   const { device, context, turn, names } = yield* r1Gather(input, false);
   yield* Effect.logInfo("R1 turn timing", {
-    route: "tools",
+    route: via === "api" ? "tools" : "session",
     gatherMs: (yield* Clock.currentTimeMillis) - startedAt,
   });
   const outcomes: Array<ActOutcome> = [];
   let said = "";
+  let readTheWeb = false;
   const sentences = speakableSentences((sentence) => {
     said += sentence;
     say(sentence);
   }, names);
-  const ran = yield* brain
-    .converse({
-      system: ROOM_SYSTEM,
-      user: roomData(context),
-      tools: [...tools.specs, LOOK],
-      run: (name, args) =>
-        (name === LOOK.name
-          ? roomLook(device, input.voice)
-          : tools.run(name, args, input.device)
-        ).pipe(
-          // On a guess, anything that changes something waits for the loop to confirm his final words.
-          heldForGuess(input.voice, name),
-          // Every tool the turn calls knows which vessel heard it.
-          Effect.provideService(TurnOrigin, originOf(turn)),
-          Effect.catchCause(() =>
-            Effect.succeed<ToolOutcome>({ text: "it did not work", isError: true }),
-          ),
-          Effect.tap((o: ToolOutcome) =>
-            Effect.sync(() => {
-              calls?.push({
-                name,
-                input: args,
-                isError: o.isError,
-                ...(o.status === undefined ? {} : { status: o.status }),
-                text: o.text.slice(0, 4000),
-              });
-              if (o.status !== undefined)
-                outcomes.push({ ok: !o.isError, status: o.status, line: o.text });
-            }),
-          ),
+  const toolTurn: ToolTurn = {
+    system: ROOM_SYSTEM,
+    user: roomData(context),
+    tools: [...tools.specs, LOOK],
+    run: (name, args) =>
+      (name === LOOK.name
+        ? roomLook(device, input.voice)
+        : tools.run(name, args, input.device)
+      ).pipe(
+        // On a guess, anything that changes something waits for the loop to confirm his final words.
+        heldForGuess(input.voice, name),
+        // Every tool the turn calls knows which vessel heard it.
+        Effect.provideService(TurnOrigin, originOf(turn)),
+        Effect.catchCause(() =>
+          Effect.succeed<ToolOutcome>({ text: "it did not work", isError: true }),
         ),
-    })
-    .pipe(
-      Stream.runForEach((words) => Effect.sync(() => sentences.push(words))),
-      inBrainSlot(turn),
-      Effect.exit,
-    );
+        Effect.tap((o: ToolOutcome) =>
+          Effect.sync(() => {
+            calls?.push({
+              name,
+              input: args,
+              isError: o.isError,
+              ...(o.status === undefined ? {} : { status: o.status }),
+              text: o.text.slice(0, 4000),
+            });
+            if (o.status !== undefined)
+              outcomes.push({ ok: !o.isError, status: o.status, line: o.text });
+          }),
+        ),
+      ),
+  };
+  const words =
+    via === "api"
+      ? brain.converse(toolTurn)
+      : brain.session({
+          ...toolTurn,
+          vessel: input.device ?? turn.vessel.id,
+          cue: (web) => {
+            if (web) readTheWeb = true;
+            if (said === "") say(`${web ? WEB_CUE : HOLD_ON} `);
+          },
+        });
+  const ran = yield* words.pipe(
+    Stream.runForEach((words) => Effect.sync(() => sentences.push(words))),
+    inBrainSlot(turn),
+    Effect.exit,
+  );
   sentences.flush();
   if (said.trim() === "") return null;
   if (Exit.isFailure(ran)) {
@@ -906,7 +923,14 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
     said += sorry;
     say(sorry);
   }
-  yield* r1Finish(device, input, said.trim(), outcomes, turn);
+  // What she read on the web is outside content: what the turn teaches waits for his yes.
+  yield* r1Finish(
+    device,
+    input,
+    said.trim(),
+    outcomes,
+    readTheWeb ? { ...turn, tainted: true } : turn,
+  );
   return said;
 });
 
@@ -930,11 +954,24 @@ export const r1TurnStream = (
         Effect.forkScoped,
       );
       const way = yield* brain.route;
-      if (way !== "subscription" && tools !== null) {
-        const done = yield* r1ToolTurn(input, brain, tools, say, calls).pipe(
+      if (way === "subscription" && tools !== null) {
+        const done = yield* r1ToolTurn(input, brain, tools, say, "session", calls).pipe(
           Effect.orElseSucceed(() => null),
         );
         if (done !== null) return yield* Queue.end(queue);
+      }
+      if (way !== "subscription" && tools !== null) {
+        const done = yield* r1ToolTurn(input, brain, tools, say, "api", calls).pipe(
+          Effect.orElseSucceed(() => null),
+        );
+        if (done !== null) return yield* Queue.end(queue);
+        if (way === "auto") {
+          // The key failed before a word; the subscription is the fallback his table names.
+          const fallback = yield* r1ToolTurn(input, brain, tools, say, "session", calls).pipe(
+            Effect.orElseSucceed(() => null),
+          );
+          if (fallback !== null) return yield* Queue.end(queue);
+        }
         if (way === "api") {
           // His key alone failed before a word: the one-shot turn answers, whole.
           say(
@@ -1058,7 +1095,13 @@ export const routes = HttpRouter.use((router) =>
     yield* Effect.gen(function* () {
       const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device);
       const brain = yield* Effect.serviceOption(R1Brain);
-      if (device !== null && Option.isSome(brain)) yield* brain.value.warm;
+      const tools = yield* RoomTools;
+      if (device !== null && Option.isSome(brain) && tools !== null)
+        yield* brain.value.warm({
+          vessel: device.deviceId ?? "r1",
+          system: ROOM_SYSTEM,
+          tools: [...tools.specs, LOOK],
+        });
     }).pipe(Effect.provideContext(context), Effect.ignore);
     yield* publishPronunciations().pipe(
       Effect.provideContext(context),

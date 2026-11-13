@@ -1,7 +1,8 @@
 /**
  * The brain's routing table, read (tessaya-ops research/BRAIN-DESIGN.md §13): which login and model each kind of work
- * uses, and which roles an API key may serve. A row he has not set gives exactly what the settings before the table
- * chose, so nothing changes until he changes a row. Pure: the server and the desktop read the same answer.
+ * uses, and which roles an API key may serve. A row he has not set gives what that role used before the table, except
+ * his 13 Nov choices: spoken turns on his subscription, and the API key for cleanup only. Pure: the server and the
+ * desktop read the same answer.
  */
 import type {
   BrainApiKey,
@@ -12,7 +13,6 @@ import type {
   BrainModels,
   BrainRole,
   DictationCleanup,
-  RoomBrain,
 } from "@t3tools/contracts";
 
 export interface BrainRoute {
@@ -29,7 +29,6 @@ export interface BrainSettings {
   readonly brainCredentials: BrainCredentials;
   readonly brainModels: BrainModels;
   readonly brainKeyRoles: BrainKeyRoles;
-  readonly roomBrain: RoomBrain;
   readonly dictationCleanup: Pick<DictationCleanup, "model">;
 }
 
@@ -49,7 +48,7 @@ export const credentialOf = (
 /** Cleanup's model before the table: the cleanup setting's when it is Claude's, else Haiku. */
 const CLEANUP_MODEL = "claude-haiku-5-5";
 
-/** What each role used before the table existed, so an unset row changes nothing. */
+/** What a row he has not set uses: what the role used before the table, except his 13 Nov choices (voice, the key). */
 const before = (
   role: BrainRole,
   settings: BrainSettings,
@@ -72,17 +71,9 @@ const before = (
         effort: "low",
       };
     }
-    case "voice": {
-      // roomBrain: "auto" was the key with the subscription behind it.
-      const model = "claude-haiku-5-5";
-      if (settings.roomBrain === "subscription") return subscription(model, null);
-      return {
-        use: ANTHROPIC_KEY,
-        fallback: settings.roomBrain === "auto" ? SUBSCRIPTION : null,
-        model,
-        effort: null,
-      };
-    }
+    // His choice (13 Nov): spoken turns on his subscription, Sonnet with thinking off at low effort (B0 §14).
+    case "voice":
+      return subscription("sonnet", "low");
     case "deep":
       return subscription("opus", "medium");
     case "background":
@@ -99,12 +90,10 @@ const before = (
   }
 };
 
-/** The roles each key served before the table: cleanup, and the room's turns unless they went by the subscription. */
-const keyRolesBefore = (
-  settings: BrainSettings,
-): Readonly<Record<BrainApiKey, ReadonlyArray<BrainRole>>> => ({
-  anthropic: settings.roomBrain === "subscription" ? ["cleanup"] : ["cleanup", "voice"],
-});
+/** His choice (13 Nov): the API key pays for dictation cleanup only, chosen for speed. */
+const KEY_ROLES: Readonly<Record<BrainApiKey, ReadonlyArray<BrainRole>>> = {
+  anthropic: ["cleanup"],
+};
 
 export const brainRoute = (settings: BrainSettings, role: BrainRole, cheap: string): BrainRoute => {
   const was = before(role, settings, cheap);
@@ -113,15 +102,20 @@ export const brainRoute = (settings: BrainSettings, role: BrainRole, cheap: stri
   return {
     role,
     use: credential?.use ?? was.use,
-    fallback: credential === undefined ? was.fallback : (credential.fallback ?? null),
+    fallback:
+      credential === undefined
+        ? was.fallback
+        : credential.fallback === undefined || credential.fallback === "none"
+          ? null
+          : credential.fallback,
     model: model?.model ?? was.model,
     effort: model === undefined ? was.effort : (model.effort ?? null),
   };
 };
 
-/** The roles this key may serve: his list when he has set one, else what it served before the table. */
+/** The roles this key may serve: his list when he has set one, else cleanup only. */
 export const keyRoles = (settings: BrainSettings, key: BrainApiKey): ReadonlyArray<BrainRole> =>
-  settings.brainKeyRoles[key] ?? keyRolesBefore(settings)[key];
+  settings.brainKeyRoles[key] ?? KEY_ROLES[key];
 
 /** The spend guard: null when the key may serve the role, else why not, in words for the log and the Record. */
 export const keyRefusal = (
