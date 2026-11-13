@@ -57,6 +57,8 @@ const OVERRIDES_KEY = "home.overrides";
 export const DONE_EVENT = "tessaya_automation_done";
 const LABEL = "Tessaya";
 const UNDO_KEEP_MS = 24 * 3_600_000;
+/** An undo snapshot's scene id: this, then the action id, whose first part is its time in base 36. */
+const UNDO_PREFIX = "tessaya_undo_";
 const DELETED_KEEP_MS = 7 * 86_400_000;
 const SCRATCH_MS = 24 * 3_600_000;
 const TICK = "5 seconds";
@@ -993,7 +995,7 @@ const make = Effect.gen(function* () {
         const snapshot = [...ids].filter(
           (e) => RESTORABLE.has(e.split(".")[0] ?? "") && states.has(e),
         );
-        const scene = snapshot.length === 0 ? null : `tessaya_undo_${actionId}`;
+        const scene = snapshot.length === 0 ? null : `${UNDO_PREFIX}${actionId}`;
         if (scene !== null)
           yield* command({
             type: "call_service",
@@ -1032,6 +1034,23 @@ const make = Effect.gen(function* () {
       }),
     });
   });
+
+  /** Tried once a run: an HA that cannot delete it is not asked every tick. */
+  const dropped = new Set<string>();
+  const dropScene = (entityId: string) =>
+    dropped.has(entityId)
+      ? Effect.void
+      : Effect.sync(() => dropped.add(entityId)).pipe(
+          Effect.andThen(
+            command({
+              type: "call_service",
+              domain: "scene",
+              service: "delete",
+              target: { entity_id: entityId },
+            }),
+          ),
+          Effect.ignore,
+        );
 
   const undo = Effect.fn("HomeAssistant.undo")(function* (id: string, by: HomeActor) {
     const forwarded = yield* viaPeer("home_undo", { id });
@@ -1079,6 +1098,7 @@ const make = Effect.gen(function* () {
           service: "turn_on",
           target: { entity_id: sceneEntity },
         });
+        yield* dropScene(sceneEntity);
         yield* sql`UPDATE fabric_home_actions SET status = 'undone' WHERE id = ${row.id}`.pipe(
           Effect.orDie,
         );
@@ -1509,6 +1529,14 @@ const make = Effect.gen(function* () {
 
   const tick = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
+    // Undo snapshots past their day: his scene list is his (13 Nov: six of his six scenes were these).
+    const stale = [...states.keys()].filter((id) => {
+      const born = id.startsWith(`scene.${UNDO_PREFIX}`)
+        ? parseInt(id.slice(`scene.${UNDO_PREFIX}`.length, -2), 36)
+        : Number.NaN;
+      return !Number.isNaN(born) && born + UNDO_KEEP_MS < now;
+    });
+    if (link !== null) for (const id of stale) yield* dropScene(id);
     // His answers on the phone card.
     const asked =
       yield* sql<ActionRow>`SELECT * FROM fabric_home_actions WHERE status = 'asked'`.pipe(

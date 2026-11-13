@@ -110,6 +110,7 @@ const makeHouse = () => {
               a: { entity_id: [...snap.keys()] },
             });
           }
+          if (name === "scene.delete") for (const e of ids(m["target"])) remove(e);
           if (name === "scene.turn_on")
             for (const [e, v] of scenes.get(ids(m["target"])[0]!) ?? []) put(e, structuredClone(v));
           if (name === "fan.turn_on")
@@ -257,6 +258,16 @@ it.effect("finds by words and room, toggles a light, and undoes it from the snap
     const undone = yield* home.undo(done.undoId!, assistant);
     assert.strictEqual(undone.status, "undone");
     assert.strictEqual(house.states.get("light.study")?.s, "on");
+    // Its snapshot goes once used, and any left past its day goes too; a newer one stays (13 Nov: 6 of his 6 scenes).
+    assert.isFalse([...house.states.keys()].some((e) => e.startsWith("scene.tessaya_undo_")));
+    house.put("scene.tessaya_undo_100", { s: "scening", a: { entity_id: [] } });
+    yield* TestClock.adjust("25 hours");
+    house.put(`scene.tessaya_undo_${(25 * 3_600_000).toString(36)}00`, { s: "scening", a: {} });
+    yield* home.tick;
+    assert.deepStrictEqual(
+      [...house.states.keys()].filter((e) => e.startsWith("scene.")),
+      [`scene.tessaya_undo_${(25 * 3_600_000).toString(36)}00`],
+    );
     // 12 Nov: the R1 turned off "light.lamp" (no such entity), HA said ok, and she said it was off.
     const calls = house.calls.length;
     const ghost = yield* home
