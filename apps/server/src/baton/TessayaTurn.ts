@@ -63,6 +63,8 @@ export interface TurnEnvelope {
   readonly nameOnce?: string | undefined;
   /** The conversation it continues, when the vessel or the arbiter names one; else `conversationKey`. */
   readonly conversation?: string | undefined;
+  /** One of several people heard in the same turn: the reply is heard by all, so nothing private is read. */
+  readonly sharedRoom?: boolean | undefined;
   /**
    * The member whose own signed-in device sent a typed turn (its session's `member:<id>` subject), or null for a
    * subject that names a member badly. Filled from `SessionMember` by `begin` and `end` when the vessel does not say.
@@ -211,6 +213,8 @@ export interface TurnContext {
   readonly conversation: { readonly key: string; readonly turns: ReadonlyArray<ConversationTurn> };
   /** How the person she is talking to likes things (their own, never another member's); empty for a guest. */
   readonly preferences: Readonly<Partial<Record<PreferenceKey, string>>>;
+  /** Who she is talking to: the member and what to call them (their `name` preference, else their member name). */
+  readonly who: { readonly member: string | null; readonly name: string | null };
 }
 
 /** What a member can set for themselves (HOUSEHOLD-DESIGN §4), with what each means to her. */
@@ -254,6 +258,13 @@ export class TessayaTurn extends Context.Service<
     /** The memory a turn is answered with, as the caller's viewer (set by its transport) may see it. */
     readonly begin: (turn: TurnEnvelope) => Effect.Effect<TurnContext>;
     /**
+     * Several people heard in one turn (HOUSEHOLD-DESIGN §9b): one context each, in speaking order, built only from
+     * that person's own preferences and conversation, with nothing private read for anyone.
+     */
+    readonly beginMany: (
+      turns: ReadonlyArray<TurnEnvelope>,
+    ) => Effect.Effect<ReadonlyArray<TurnContext>>;
+    /**
      * After the reply: learn from the exchange when the turn may teach (null when it may not). A spoken vessel forks
      * it; it waits on a model call.
      */
@@ -290,6 +301,15 @@ export const make = Effect.gen(function* () {
   const learning = yield* BatonMemoryLearning;
   const stores = yield* Effect.serviceOption(BatonPrivateMemoryService);
   const sql = yield* SqlClient.SqlClient;
+
+  /** A member's name in the household (the identity lane's members table); null for a guest or no row. */
+  const memberName = Effect.fn("TessayaTurn.memberName")(function* (member: string | null) {
+    if (member === null) return null;
+    const rows = yield* sql<{ name: string }>`
+      SELECT name FROM tessaya_household_members WHERE id = ${member} AND removed_at IS NULL
+    `.pipe(Effect.orElseSucceed(() => []));
+    return rows[0]?.name ?? null;
+  });
 
   /** A member's own preferences; nothing for a guest. */
   const preferencesOf = Effect.fn("TessayaTurn.preferences")(function* (member: string | null) {
@@ -411,15 +431,25 @@ export const make = Effect.gen(function* () {
     ).block;
     if (turn.turnRef !== undefined && sentence.ids.length > 0)
       yield* memory.markUsed(turn.turnRef, sentence.ids);
+    const member = turnIdentity(turn).member;
+    const preferences = yield* preferencesOf(member);
     return {
       block: [standing.block, extra, nameOnceLine(turn.nameOnce)]
         .filter((b) => b !== "")
         .join("\n\n"),
       ids: sentence.ids,
-      privateBlock: yield* privateFor(turn),
+      privateBlock: turn.sharedRoom === true ? "" : yield* privateFor(turn),
       conversation: yield* conversationOf(turn),
-      preferences: yield* preferencesOf(turnIdentity(turn).member),
+      preferences,
+      who: { member, name: preferences.name ?? (yield* memberName(member)) },
     };
+  });
+
+  const beginMany = Effect.fn("TessayaTurn.beginMany")(function* (
+    turns: ReadonlyArray<TurnEnvelope>,
+  ) {
+    const shared = turns.length > 1;
+    return yield* Effect.forEach(turns, (t) => begin(shared ? { ...t, sharedRoom: true } : t));
   });
 
   const end = Effect.fn("TessayaTurn.end")(function* (
@@ -545,7 +575,7 @@ export const make = Effect.gen(function* () {
     }));
   });
 
-  return TessayaTurn.of({ begin, end, remember, forget, about, setPreference });
+  return TessayaTurn.of({ begin, beginMany, end, remember, forget, about, setPreference });
 });
 
 export const layer = Layer.effect(TessayaTurn, make);

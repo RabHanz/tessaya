@@ -252,6 +252,12 @@ export interface R1Context {
   readonly memory: string;
   /** How the person speaking likes things (their own preferences; empty for a guest). */
   readonly preferences: Readonly<Record<string, string>>;
+  /** Several people heard in this turn, in speaking order (the loop's `segments`); empty for one voice. */
+  readonly people?: ReadonlyArray<{
+    readonly name: string | null;
+    readonly said: string;
+    readonly preferences: Readonly<Record<string, string>>;
+  }>;
   readonly voice: unknown;
   readonly now: string;
   /** His work read just now (what needs him, what is in flight), for the tool turn; "" when not read. */
@@ -432,6 +438,7 @@ export const roomData = (input: R1Context) =>
           `What you remember (only the closest few; tessaya_memory_search finds anything not here): ${quoted(input.memory)}`,
         ]),
     ...(input.privateBlock === "" ? [] : [input.privateBlock]),
+    ...peopleLines(input.people ?? []),
     ...(Object.keys(input.preferences).length === 0
       ? []
       : [
@@ -464,6 +471,46 @@ const conversationOf = (voice: unknown): string | undefined =>
   voice.conversation.length <= 80
     ? voice.conversation
     : undefined;
+
+/**
+ * Several people in one turn (HOUSEHOLD-DESIGN §9b): the loop's `segments`, each person's words with their voice.
+ * Null for one voice, so a single speaker's turn is exactly as before.
+ */
+const segmentsOf = (
+  voice: unknown,
+): ReadonlyArray<{ readonly speaker: SpeakerLike | null; readonly words: string }> | null => {
+  if (typeof voice !== "object" || voice === null || !("segments" in voice)) return null;
+  const raw = (voice as { segments?: unknown }).segments;
+  if (!Array.isArray(raw)) return null;
+  const segments = raw.flatMap((s: unknown) =>
+    typeof s === "object" &&
+    s !== null &&
+    typeof (s as { words?: unknown }).words === "string" &&
+    (s as { words: string }).words.trim() !== ""
+      ? [{ speaker: speakerOf(s), words: (s as { words: string }).words.slice(0, 400) }]
+      : [],
+  );
+  return segments.length >= 2 ? segments.slice(0, 6) : null;
+};
+
+/** One envelope per person heard, or the turn itself for one voice. */
+const turnsOf = (turn: TurnEnvelope, voice: unknown): ReadonlyArray<TurnEnvelope> =>
+  segmentsOf(voice)?.map((s) => ({ ...turn, text: s.words, speaker: s.speaker })) ?? [turn];
+
+/** The lines a turn with several people adds: each person's words and own preferences, and how to answer them. */
+export const peopleLines = (people: NonNullable<R1Context["people"]>): ReadonlyArray<string> =>
+  people.length < 2
+    ? []
+    : [
+        `Several people spoke this turn, in this order: ${quoted(
+          people.map((p, i) => ({
+            person: p.name ?? `person ${i + 1} (not recognised)`,
+            said: p.said,
+            ...(Object.keys(p.preferences).length === 0 ? {} : { prefers: p.preferences }),
+          })),
+        )}`,
+        "Answer each of them by name, in that order, in one reply, each only from their own words and preferences. The room hears it all, so say nothing private about anyone. If you cannot tell who asked what, ask them to speak one at a time.",
+      ];
 
 /** The loop's echo taint: the turn began while her own voice could still be heard in the room. */
 const taintedOf = (voice: unknown): boolean =>
@@ -621,14 +668,27 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
         privateBlock: "",
         conversation: { key: "household", turns: [] },
         preferences: {},
+        who: { member: null, name: null },
       }
     : yield* pipeline.value
         .begin(turn)
         // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
         .pipe(Effect.provideService(MemoryViewer, "desktop"));
+  const many = turnsOf(turn, input.voice);
+  const people =
+    many.length < 2 || Option.isNone(pipeline)
+      ? []
+      : (yield* pipeline.value
+          .beginMany(many)
+          .pipe(Effect.provideService(MemoryViewer, "desktop"))).map((c, i) => ({
+          name: c.who.name,
+          said: many[i]!.text,
+          preferences: c.preferences,
+        }));
   const context: R1Context = {
     heard: input.heard,
-    privateBlock: acts ? "" : begun.privateBlock,
+    // Several voices: the room hears the reply, so nothing private, and each person's own preferences below.
+    privateBlock: acts || people.length > 0 ? "" : begun.privateBlock,
     // The conversation he is having with her on any vessel; the loop's own when the pipeline has none yet.
     history: withoutSelfIntros(
       begun.conversation.turns.length > 0 ? begun.conversation.turns : input.history,
@@ -638,7 +698,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     lastAction,
     automations,
     memory: begun.block,
-    preferences: begun.preferences,
+    preferences: people.length > 0 ? {} : begun.preferences,
+    ...(people.length > 0 ? { people } : {}),
     voice: input.voice,
     persona,
     switched: switchedPersona(input.voice),
@@ -758,10 +819,16 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 ) {
   // Learning waits on a model call, so the turn never waits for it.
   const pipeline = yield* Effect.serviceOption(TessayaTurn);
+  // Each person heard in the turn learns into their own place, never one person's words as another's.
   if (Option.isSome(pipeline))
-    yield* pipeline.value
-      .end(turn, { reply: said, previous: previousOf(input.history) })
-      .pipe(Effect.ignore, Effect.forkDetach);
+    yield* Effect.forEach(
+      turnsOf(turn, input.voice),
+      (one) =>
+        pipeline.value
+          .end(one, { reply: said, previous: previousOf(input.history) })
+          .pipe(Effect.ignore, Effect.forkDetach),
+      { discard: true },
+    );
   const mood: R1Mood = outcomes.some((o) => o.status === "asked")
     ? "curious"
     : outcomes.some((o) => !o.ok || o.status === "failed")

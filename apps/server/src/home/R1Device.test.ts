@@ -27,6 +27,7 @@ import {
   mqttPublishBytes,
   r1Data,
   r1Gather,
+  peopleLines,
   r1Confirmed,
   r1Played,
   r1TurnStream,
@@ -722,3 +723,17 @@ effectIt.effect("a replay turn never reaches his real R1's eyes; his own turn do
     expect((yield* gather("r1-his")).device).toBe(real);
   }),
 );
+
+describe("several people in one turn", () => {
+  it("names each person in speaking order with their own preferences, and says how to answer them", () => {
+    const lines = peopleLines([
+      { name: "Sara", said: "how hot is it", preferences: { units: "metric" } },
+      { name: null, said: "start a timer", preferences: {} },
+    ]);
+    expect(lines[0]).toContain('"person":"Sara"');
+    expect(lines[0]!.indexOf("Sara")).toBeLessThan(lines[0]!.indexOf("person 2"));
+    expect(lines[0]).toContain('"prefers":{"units":"metric"}');
+    expect(lines[1]).toContain("one at a time");
+    expect(peopleLines([{ name: "Sara", said: "hi", preferences: {} }])).toEqual([]);
+  });
+});
