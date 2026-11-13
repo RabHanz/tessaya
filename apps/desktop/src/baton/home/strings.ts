@@ -62,6 +62,9 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cat.apis": "APIs and keys",
     "cat.apis.text":
       "Keys for services Tessaya calls on her own, such as Anthropic. Kept on this computer.",
+    "cat.brain": "Brain",
+    "cat.brain.text":
+      "Which login and model each kind of her work uses, what the API key may pay for, and when hard tasks go to Opus. One table, read on every call.",
     "cat.general": "General",
     "cat.general.text": "Starting with your computer, when Tessaya may interrupt you, and updates.",
     "cat.voice": "Voice and wake words",

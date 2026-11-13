@@ -66,6 +66,23 @@ export const TESSAYA_PLACES = [
     terms: ["brain", "model", "hands", "chrome", "screen", "routines", "proactive", "deadlines"],
   },
   {
+    id: "brain",
+    label: "Brain",
+    group: "Working for you",
+    terms: [
+      "brain",
+      "model",
+      "sonnet",
+      "opus",
+      "haiku",
+      "subscription",
+      "api key",
+      "spend",
+      "routing",
+      "escalation",
+    ],
+  },
+  {
     id: "apis",
     label: "APIs and keys",
     group: "Working for you",

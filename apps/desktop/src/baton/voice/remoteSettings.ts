@@ -62,6 +62,7 @@ const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
 const TAB_VOICE: Record<(typeof SETTINGS)[number]["id"], DesktopSettingsControl["voice"]> = {
   accounts: "owner",
   apis: "owner",
+  brain: "owner",
   general: "free",
   voice: "free",
   personas: "free",
