@@ -352,7 +352,8 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
       ),
     );
 
-  const sessions = createVoiceSessions();
+  // The room suite's scratch server sets this: a full pool per pretend vessel loaded the box (13 Nov, load 43).
+  const sessions = createVoiceSessions({ lean: process.env["TESSAYA_VOICE_POOL"] === "lean" });
   yield* Effect.addFinalizer(() => Effect.promise(() => sessions.close()));
   /** The subscription session a vessel's turns run in, from the voice row. */
   const sessionSpec = Effect.fn("R1Brain.sessionSpec")(function* (
