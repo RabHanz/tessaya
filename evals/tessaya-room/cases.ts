@@ -151,7 +151,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
   {
     id: "job-schedule-phone",
     source: "Director 13 Nov 19:05 GMT+5: schedules by voice, with his yes on the phone",
-    said: ["run the checkout refactor job again every morning"],
+    said: ["run the dependency update job again every morning"],
     verified: true,
     calls: ["job_schedule"],
     lastSays: [/\bphone\b/i],

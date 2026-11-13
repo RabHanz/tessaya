@@ -168,6 +168,13 @@ const WORK = {
         phase: "awaiting_agreement",
         group: "needs_you",
       },
+      {
+        workSessionId: "job-acme-3",
+        title: "dependency update",
+        project: "acme/app",
+        phase: "approved",
+        group: "done",
+      },
     ],
   },
   // The job tools' own words (apps/server/src/mcp/toolkits/jobs/handlers.ts, R1Tools' card line).
