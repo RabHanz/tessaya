@@ -486,6 +486,7 @@ describe("answering only when he is talking to her", () => {
       }),
       brain: async function* () {
         settled("answered");
+        yield "";
       },
       log: (l) => {
         if (l.includes("not answered")) settled("held back");
