@@ -34,8 +34,9 @@ for s in home-assistant-token dictation-cleanup-anthropic; do
 done
 node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[2],JSON.stringify({deviceKey:d.deviceKey,mqttUrl:null,mqttUser:null,mqttPass:null,deviceId:null}),{mode:0o600})" \
   "$from/secrets/r1-device.bin" "$home/userdata/secrets/r1-device.bin"
-# Only the brain's key settings: provider accounts would reach his real account homes.
-node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[2],JSON.stringify({dictationCleanupCredentials:d.dictationCleanupCredentials,dictationCleanup:d.dictationCleanup}))" \
+# Only the brain's key settings: provider accounts would reach his real account homes. One rule for Opus, so a case
+# can prove a rule sends its task straight there (a replay's own settings_set is a dry run).
+node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[2],JSON.stringify({dictationCleanupCredentials:d.dictationCleanupCredentials,dictationCleanup:d.dictationCleanup,brainEscalation:{rules:[{when:'coding questions',then:'opus'}]}}))" \
   "$from/settings.json" "$home/userdata/settings.json"
 port="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
 TESSAYA_VOICE_POOL=lean "$t3" serve --base-dir "$home" --port "$port" --host 127.0.0.1 > "$home/server.log" 2>&1 &

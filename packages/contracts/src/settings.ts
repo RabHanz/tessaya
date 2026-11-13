@@ -33,7 +33,7 @@ import {
   ProviderOptionSelections,
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
-import { BrainCredentials, BrainKeyRoles, BrainModels } from "./brainRoutes.ts";
+import { BrainCredentials, BrainEscalation, BrainKeyRoles, BrainModels } from "./brainRoutes.ts";
 import { DictationCleanup, DictationCleanupSetting } from "./dictationCleanup.ts";
 import { ProjectScript, type ProjectMutation } from "./project.ts";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
@@ -1395,6 +1395,7 @@ export const ServerSettings = Schema.Struct({
   brainCredentials: BrainCredentials.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   brainModels: BrainModels.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   brainKeyRoles: BrainKeyRoles.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  brainEscalation: BrainEscalation.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   speechModelId: Schema.String.pipe(
@@ -1858,6 +1859,7 @@ export const ServerSettingsPatch = Schema.Struct({
   brainCredentials: Schema.optionalKey(BrainCredentials),
   brainModels: Schema.optionalKey(BrainModels),
   brainKeyRoles: Schema.optionalKey(BrainKeyRoles),
+  brainEscalation: Schema.optionalKey(BrainEscalation),
   voicePronounce: Schema.optionalKey(VoicePronounce),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),

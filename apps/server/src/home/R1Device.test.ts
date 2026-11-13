@@ -17,6 +17,7 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { R1Brain, toolLoop } from "./R1Brain.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
@@ -449,6 +450,123 @@ effectIt.effect(
       yield* TestClock.adjust("5 seconds");
       yield* Fiber.join(turn);
       expect(said.join("")).toBe("One moment. Done.");
+    }),
+);
+
+effectIt.effect(
+  "a hard task is offered to Opus by default, and his yes hands the turn to an Opus session",
+  () =>
+    Effect.gen(function* () {
+      const sent: Array<{ role: string; user: string }> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.unwrap(
+            Effect.suspend(() => {
+              sent.push({ role: turn.role ?? "voice", user: turn.user });
+              if (turn.role === "deep")
+                return Effect.succeed(Stream.make<Array<string>>("Here is the plan."));
+              const yes = turn.user.includes("An Opus offer is open");
+              return Effect.map(
+                turn.run("brain_escalate", { kind: "plan", why: "his week", accept: yes }),
+                (o) =>
+                  Stream.make(
+                    o.text.startsWith("go") ? "Putting Opus on this. " : "Want Opus on it?",
+                  ),
+              );
+            }),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(BatonRecordService)({ append: () => Effect.void as never });
+      const turn = (heard: string) => {
+        const said: Array<string> = [];
+        return r1TurnStream(
+          { heard, history: [], voice: { conversation: "escalation-test" } },
+          brain,
+          { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+        ).pipe(
+          Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+          Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+          Effect.map(() => said.join("")),
+        );
+      };
+      expect(yield* turn("plan my week around the launch")).toBe("Want Opus on it?");
+      expect(yield* turn("yes, go on")).toBe("Putting Opus on this. Here is the plan.");
+      expect(sent.map((s) => s.role)).toEqual(["voice", "voice", "deep"]);
+      expect(sent[2]!.user).toContain('because: "his week"');
+    }),
+);
+
+effectIt.effect(
+  "his rule for Opus is in the turn's note, and the task it covers goes straight there",
+  () =>
+    Effect.gen(function* () {
+      const roles: Array<string> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.unwrap(
+            Effect.suspend(() => {
+              roles.push(turn.role ?? "voice");
+              if (turn.role === "deep")
+                return Effect.succeed(Stream.make<Array<string>>("Use backoff."));
+              const rule = /His rules for Opus[^\n]*1\. coding questions → Opus/.test(turn.user)
+                ? 1
+                : 0;
+              return Effect.map(
+                turn.run("brain_escalate", { kind: "code", why: "retries", rule }),
+                (o) =>
+                  Stream.make<Array<string>>(
+                    o.text.startsWith("go") ? "Putting Opus on this. " : "Want Opus?",
+                  ),
+              );
+            }),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const said: Array<string> = [];
+      yield* r1TurnStream(
+        {
+          heard: "how should I structure retries?",
+          history: [],
+          voice: { conversation: "rule-test" },
+        },
+        brain,
+        { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+      ).pipe(
+        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+        Effect.provide(
+          Layer.mergeAll(
+            home,
+            Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
+            Layer.mock(BatonOneShot)({}),
+            ServerSettingsService.layerTest({
+              brainEscalation: { rules: [{ when: "coding questions", then: "opus" }] },
+            }),
+          ),
+        ),
+      );
+      expect(said.join("")).toBe("Putting Opus on this. Use backoff.");
+      expect(roles).toEqual(["voice", "deep"]);
     }),
 );
 
