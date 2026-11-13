@@ -30,7 +30,7 @@ import packageJson from "../../../../package.json" with { type: "json" };
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaTurn, TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -167,6 +167,16 @@ export const layer = McpToolAccess.toLayer(
         line: asked?.line ?? "Nothing was asked.",
       };
     });
+    const runtime = yield* BatonRuntime;
+    /** The turn pipeline's memory tools, or "unavailable" on a server built without Tessaya's services. */
+    const withTurn = <A, E>(
+      f: (turn: TessayaTurn["Service"]) => Effect.Effect<A, E>,
+    ): Effect.Effect<A, E | { readonly reason: string }> => {
+      const turn = runtime === null ? Option.none() : Context.getOption(runtime, TessayaTurn);
+      return Option.isNone(turn)
+        ? Effect.fail({ reason: "Memory is not available on this server." })
+        : f(turn.value);
+    };
     // The same handlers as the clients' RPC, behind T3's read check for this credential.
     const call = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       readCaller().pipe(
@@ -221,6 +231,17 @@ export const layer = McpToolAccess.toLayer(
       // A client's view, as for search: a walled item has no history to an outside agent.
       tessaya_memory_history: McpToolAccess.reads((input) =>
         call(handlers[BATON_MEMORY_WS_METHODS.history]({ id: input.id })),
+      ),
+      // The one turn pipeline: who spoke on which vessel (TurnOrigin) decides whose words these are.
+      tessaya_memory_remember: McpToolAccess.writes((input) =>
+        call(withTurn((turn) => turn.remember(input.text))),
+      ),
+      tessaya_memory_forget: McpToolAccess.writes((input) =>
+        call(withTurn((turn) => Effect.map(turn.forget(input.id), (line) => ({ line })))),
+      ),
+      // Read as a client (MemoryViewer's default here): walls hold.
+      tessaya_memory_about: McpToolAccess.reads((input) =>
+        call(withTurn((turn) => Effect.map(turn.about(input.subject), (items) => ({ items })))),
       ),
       tessaya_rules: McpToolAccess.reads((input) =>
         call(handlers[BATON_ORCHESTRATION_WS_METHODS.ruleList](input)),

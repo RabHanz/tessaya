@@ -282,6 +282,55 @@ const MemoryHistoryTool = Tool.make("tessaya_memory_history", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const MemoryRememberTool = Tool.make("tessaya_memory_remember", {
+  ...shared,
+  description:
+    "Keep something he asked Tessaya to remember, on every device that reads this server. Use it whenever he says remember, keep in mind or from now on; never promise to remember without it. One short statement in his words. A guest's words are refused. Returns what was kept and a line to say.",
+  parameters: Schema.Struct({
+    text: Schema.String.check(Schema.isMinLength(3), Schema.isMaxLength(500)),
+  }),
+  success: Schema.Struct({
+    kept: Schema.Literals(["his", "noted", "held", "rehearsal"]),
+    id: Schema.NullOr(Schema.String),
+    line: Schema.String,
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
+  ...shared,
+  description:
+    "Forget one of Tessaya's memories by its id, when he asks her to forget something: find it first with tessaya_memory_about, then call this with its id. Whether his voice may forget here is the tool's to decide, never yours: always call it, and say its line.",
+  parameters: Schema.Struct({ id: Schema.String.check(Schema.isMaxLength(80)) }),
+  success: Schema.Struct({ line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const MemoryAboutTool = Tool.make("tessaya_memory_about", {
+  ...shared,
+  description:
+    'What Tessaya knows about a person, project, place or thing ("what do you know about Sara?"): the closest memories by meaning, best first, each with whether it is his own words and when it changed. Walled projects\' memories are never shown here.',
+  parameters: Schema.Struct({
+    subject: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(Schema.Struct({ id: Schema.String, line: Schema.String })),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const StateTool = Tool.make("tessaya_state", {
   ...shared,
   description:
@@ -391,6 +440,9 @@ export const TessayaToolkit = Toolkit.make(
   TeamBoardTool,
   MemorySearchTool,
   MemoryHistoryTool,
+  MemoryRememberTool,
+  MemoryForgetTool,
+  MemoryAboutTool,
   RulesTool,
   SessionsTool,
   InFlightTool,
