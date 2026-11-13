@@ -381,6 +381,19 @@ interface R1Heard {
 
 const isReplay = (input: R1Heard) => input.device?.startsWith("replay-") === true;
 
+/** What the room remembers for a sentence, as the persona that answers (the memory eval measures this path). */
+export const roomMemories = Effect.fn("R1Device.memories")(function* (
+  heard: string,
+  agent: string | undefined,
+) {
+  const memory = yield* BatonMemoryService;
+  const hits = yield* memory
+    .search({ text: heard, limit: 3, ...withAgent(agent) })
+    // Tessaya's own surface, so the persona's walls hold as on the desktop; never his own view.
+    .pipe(Effect.provideService(MemoryViewer, "desktop"));
+  return hits.map((h) => h.item);
+});
+
 /** The house, the last action and memories for this turn, and the eyes set to thinking. */
 /** His shared dictionary as vocabulary entries: each term spelt his way, its aliases as the forms it is heard as. */
 export const dictionaryEntries = (
@@ -430,15 +443,11 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
   const memories =
     memory._tag === "None"
       ? []
-      : (yield* memory.value
-          .search({
-            text: input.heard,
-            limit: 3,
-            ...withAgent(persona?.id ?? pack.personas.find((p) => p.lead)?.id),
-          })
-          // Tessaya's own surface, so the persona's walls hold as on the desktop; never his own view.
-          .pipe(Effect.provideService(MemoryViewer, "desktop"))).map((h) =>
-          recordText(h.item.text, 200),
+      : (yield* roomMemories(
+          input.heard,
+          persona?.id ?? pack.personas.find((p) => p.lead)?.id,
+        ).pipe(Effect.provideService(BatonMemoryService, memory.value))).map((item) =>
+          recordText(item.text, 200),
         );
   const context: R1Context = {
     heard: input.heard,
