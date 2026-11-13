@@ -615,6 +615,7 @@ export const liveFailureOf = (
   const last = replies.at(-1)!;
   for (const reply of replies) {
     if (REASONING.test(reply)) return `said her reasoning aloud: ${reply.slice(0, 80)}`;
+    if (FILLER_TWICE.test(reply)) return `said a filler twice: ${reply.slice(0, 80)}`;
     if (SELF_INTRO.test(reply.replace(/^One moment\.\s*/, ""))) return "introduced herself";
   }
   const names = calls.map((x) => x.name);
@@ -641,6 +642,10 @@ export const liveFailureOf = (
   if (c.check !== undefined) return c.check(last, calls);
   return null;
 };
+
+/** One filler a turn, from whichever side says it ("One moment. One moment." in the 13 Nov gate). */
+const FILLER_TWICE =
+  /(?:One moment|Let me look that up)\.[\s\S]*(?:One moment|Let me look that up)\./i;
 
 /** The tools the suite has no case for: a new tool fails the suite until it has one. */
 export const uncovered = (tools: ReadonlyArray<string>): ReadonlyArray<string> =>

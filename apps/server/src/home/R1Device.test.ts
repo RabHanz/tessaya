@@ -401,6 +401,57 @@ effectIt.effect(
 );
 
 effectIt.effect(
+  "a tool call that starts after the 3 s hold is not cued again: one filler a turn",
+  () =>
+    Effect.gen(function* () {
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.unwrap(
+            Effect.sleep("4 seconds").pipe(
+              Effect.map(() => {
+                turn.cue(false);
+                return Stream.make("Done.");
+              }),
+            ),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const said: Array<string> = [];
+      const turn = yield* r1TurnStream(
+        { heard: "did I answer that request?", history: [] },
+        brain,
+        {
+          specs: [],
+          run: () => Effect.succeed({ text: "", isError: false }),
+        },
+      ).pipe(
+        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+        Effect.provide(
+          Layer.mergeAll(
+            home,
+            Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
+            Layer.mock(BatonOneShot)({}),
+          ),
+        ),
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust("5 seconds");
+      yield* Fiber.join(turn);
+      expect(said.join("")).toBe("One moment. Done.");
+    }),
+);
+
+effectIt.effect(
   "a guess on his partial words reaches the Record only once the loop says it played; an unplayed one never does",
   () =>
     Effect.gen(function* () {
