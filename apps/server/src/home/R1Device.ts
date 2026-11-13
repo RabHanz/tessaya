@@ -1039,6 +1039,8 @@ export const r1TurnStream = (
     Effect.gen(function* () {
       let offered = false;
       const say = (words: string) => {
+        // One filler a turn: the 3 s hold and the tool-start cue both fired on a slow first call ("One moment. One moment.").
+        if (offered && FILLERS.includes(words.trim())) return;
         offered = true;
         Queue.offerUnsafe(queue, words);
       };
@@ -1176,6 +1178,8 @@ export const sseReply = (id: string, model: string, text: string, created: numbe
 
 /** Said while a turn that acts or thinks longer is still running, so the room never sits in silence. */
 const HOLD_ON = "One moment.";
+/** What the server says to fill a wait; at most one of them reaches the room per turn. */
+const FILLERS = [HOLD_ON, WEB_CUE];
 const HOLD_AFTER = "3 seconds";
 
 const error = (status: number, message: string) =>
