@@ -28,6 +28,7 @@ export const remoteSettingsOf = (settings: DesktopVoiceSettings): DesktopVoiceSe
   gpuRecognition: settings.gpuRecognition,
   openTessayaOnStart: settings.openTessayaOnStart,
   openSessionsOnStart: settings.openSessionsOnStart,
+  devicesMayLook: settings.devicesMayLook === true,
 });
 
 /** Each field's Settings control, so a remote change runs exactly what his click would. */
@@ -47,6 +48,7 @@ const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
   gpuRecognition: "v.gpu",
   openTessayaOnStart: "v.startHome",
   openSessionsOnStart: "v.startSessions",
+  devicesMayLook: "v.devicesMayLook",
 };
 
 export const controlsFor = (

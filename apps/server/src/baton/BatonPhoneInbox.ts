@@ -41,6 +41,7 @@ interface AskRow {
   readonly text: string;
   readonly source: string;
   readonly origin: string | null;
+  readonly his_voice: number | null;
   readonly status: string;
   readonly created_at: number;
   readonly expires_at: number;
@@ -66,6 +67,7 @@ const fromAsk = (r: AskRow): PhoneAsk => ({
   text: r.text,
   source: r.source === "phone" ? "phone" : "device",
   origin: r.origin ?? (r.source === "phone" ? "phone" : null),
+  hisVoice: r.his_voice === 1,
   status: r.status as AskStatus,
   createdAt: r.created_at,
   expiresAt: r.expires_at,
@@ -100,6 +102,8 @@ export class BatonPhoneInbox extends Context.Service<
       readonly ttlMs?: number;
       /** The device he said it to, when it came through one (his R1 asking his laptop). */
       readonly origin?: string;
+      /** Said in his own verified voice on that device. */
+      readonly hisVoice?: boolean;
     }) => Effect.Effect<PostResult>;
     readonly get: (id: string) => Effect.Effect<PhoneAsk | null>;
     readonly recent: (limit: number) => Effect.Effect<ReadonlyArray<PhoneAsk>>;
@@ -174,6 +178,7 @@ export const make = Effect.gen(function* () {
     readonly text: string;
     readonly ttlMs?: number;
     readonly origin?: string;
+    readonly hisVoice?: boolean;
   }) {
     const trimmed = input.text.trim();
     if (!CLIENT_ID.test(input.id))
@@ -195,8 +200,8 @@ export const make = Effect.gen(function* () {
       return { ok: false as const, why: "Too many asks are waiting. Let your computer catch up." };
     }
     yield* sql`
-      INSERT INTO fabric_phone_asks (id, text, source, origin, status, created_at, expires_at)
-      VALUES (${input.id}, ${trimmed}, ${source}, ${input.origin?.slice(0, 40) ?? null}, 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
+      INSERT INTO fabric_phone_asks (id, text, source, origin, his_voice, status, created_at, expires_at)
+      VALUES (${input.id}, ${trimmed}, ${source}, ${input.origin?.slice(0, 40) ?? null}, ${input.hisVoice === true ? 1 : 0}, 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
     `.pipe(Effect.orDie);
     const was = arrived;
     arrived = yield* Deferred.make<void>();
@@ -386,6 +391,7 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
         ...(typeof a["origin"] === "string" && a["origin"].trim() !== ""
           ? { origin: a["origin"].trim() }
           : {}),
+        ...(a["hisVoice"] === true ? { hisVoice: true } : {}),
       });
       const made =
         owner === null
@@ -457,7 +463,13 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
         value:
           ask === null
             ? null
-            : { id: ask.id, text: ask.text, source: ask.source, origin: ask.origin },
+            : {
+                id: ask.id,
+                text: ask.text,
+                source: ask.source,
+                origin: ask.origin,
+                hisVoice: ask.hisVoice,
+              },
       };
     }
     case "answer":

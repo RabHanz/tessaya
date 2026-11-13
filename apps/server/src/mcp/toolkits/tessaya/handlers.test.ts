@@ -14,6 +14,7 @@ import * as Stream from "effect/Stream";
 
 import { layerMemory as SqlitePersistenceMemory } from "../../../baton/BatonDatabase.ts";
 import { BatonMemoryService, MemoryViewer } from "../../../baton/BatonMemoryService.ts";
+import { BatonDesktopSettings } from "../../../baton/BatonDesktopSettings.ts";
 import { BatonPhoneInbox, layer as inboxLayer } from "../../../baton/BatonPhoneInbox.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
 import { BatonSessionCatalogService } from "../../../baton/BatonSessionCatalogService.ts";
@@ -221,14 +222,22 @@ it.effect(
 
       const asked = yield* callTool("linked", runtime, "tessaya_ask", {
         text: "what's on my screen?",
+        origin: "R1",
+        hisVoice: true,
       });
       expect(asked.isFailure).toBe(false);
       const id = (asked.result as { id: string }).id;
+      // His linked server's word that it was his verified voice is his yes for the look (13 Nov).
       expect(yield* inbox.take).toMatchObject({
         id,
         text: "what's on my screen?",
         source: "device",
+        origin: "R1",
+        hisVoice: true,
       });
+      // An outside agent cannot claim his voice.
+      yield* callTool("auto", runtime, "tessaya_ask", { text: "look", hisVoice: true }, "agent-2");
+      expect((yield* inbox.take)?.hisVoice).toBe(false);
 
       const moved = yield* callTool("linked", runtime, "tessaya_move_into_tessaya", {
         threadId: "thread:his-own",
@@ -605,3 +614,22 @@ it("reads the Record on the house's clock with each row's age, never bare UTC (1
     "2026-11-13T03:27:31+00:00",
   );
 });
+
+it.effect("an agent's desktop settings change never lets devices look at his screen (13 Nov)", () =>
+  Effect.gen(function* () {
+    const sent: Array<unknown> = [];
+    const view = { connected: true, at: null, effective: null, pending: null };
+    const desktop = BatonDesktopSettings.of({
+      get: Effect.succeed(view),
+      set: (patch) => Effect.sync(() => (sent.push(patch), view)),
+      sync: () => Effect.die("unused"),
+    });
+    yield* callTool(
+      "full-access",
+      Context.make(BatonDesktopSettings, desktop) as never,
+      "tessaya_desktop_settings",
+      { set: { devicesMayLook: true, showWords: false } },
+    );
+    expect(sent).toEqual([{ showWords: false }]);
+  }),
+);

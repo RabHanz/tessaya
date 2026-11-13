@@ -71,6 +71,8 @@ export const createPhoneRelay = (input: {
     source: AskSource,
     /** The device he said it to ("R1"), when it came through one. */
     origin: string | null,
+    /** Said in his own verified voice on that device. */
+    hisVoice: boolean,
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   readonly wait?: (ms: number) => Promise<void>;
   readonly newId?: () => string;
@@ -91,13 +93,14 @@ export const createPhoneRelay = (input: {
     text: string;
     source: AskSource;
     origin: string | null;
+    hisVoice: boolean;
   }) => {
     const stop = every(
       RENEW_MS,
       () => void input.call("renew", { id: item.id }).catch(() => undefined),
     );
     try {
-      const reply = await input.run(item.text, item.source, item.origin);
+      const reply = await input.run(item.text, item.source, item.origin, item.hisVoice);
       await input.call("answer", { id: item.id, spoken: reply.spoken, card: reply.card });
       return "answered" as const;
     } catch {
@@ -120,7 +123,13 @@ export const createPhoneRelay = (input: {
     if (working.size >= MAX_WORKING) return "busy";
     busy = true;
     try {
-      let item: { id?: unknown; text?: unknown; source?: unknown; origin?: unknown } | null;
+      let item: {
+        id?: unknown;
+        text?: unknown;
+        source?: unknown;
+        origin?: unknown;
+        hisVoice?: unknown;
+      } | null;
       try {
         item = (await input.call("take", { waitMs: TAKE_WAIT_MS })) as typeof item;
       } catch {
@@ -135,6 +144,7 @@ export const createPhoneRelay = (input: {
         text: item.text,
         source,
         origin: typeof item.origin === "string" ? item.origin.slice(0, 40) : null,
+        hisVoice: item.hisVoice === true,
       };
       if (source === "phone") return await handle(ask);
       // A device's ask waits its turn behind him (turnLock.ts); his next phone ask is not held behind it.

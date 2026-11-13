@@ -65,8 +65,19 @@ it.effect("a turn's tools know which vessel heard it", () =>
       TurnOrigin,
       originOf({ vessel: { kind: "device", id: "desk-1" }, origin: "R1", text: "hi" }),
     );
-    assert.deepStrictEqual(seen, { kind: "device", id: "desk-1", label: "R1" });
+    assert.deepStrictEqual(seen, { kind: "device", id: "desk-1", label: "R1", hisVoice: false });
     assert.strictEqual(originOf({ vessel: { kind: "phone", id: "p" }, text: "hi" }).label, "phone");
+    // His voice verified on this turn's own audio is his yes (identity A2); carried over or unverified is not.
+    const said = (s: Partial<SpeakerLike>) =>
+      originOf({
+        vessel: device,
+        text: "hi",
+        speaker: { kind: "owner", personId: null, verified: true, inherited: false, ...s },
+      }).hisVoice;
+    assert.isTrue(said({}));
+    assert.isFalse(said({ inherited: true }));
+    assert.isFalse(said({ verified: false }));
+    assert.isFalse(said({ kind: "guest" }));
   }),
 );
 

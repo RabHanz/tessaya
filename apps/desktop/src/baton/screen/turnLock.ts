@@ -108,3 +108,9 @@ export const headless = (drawn: PointerOverlay, elsewhere: () => boolean): Point
   clear: () => (elsewhere() ? Promise.resolve() : drawn.clear()),
   retreat: () => (elsewhere() ? Promise.resolve() : drawn.retreat()),
 });
+
+/** A device's turn takes its one look without a prompt only on his yes: his verified voice there, or his setting. */
+export const deviceMayLook = (input: {
+  readonly deviceRunning: boolean;
+  readonly mayLook: boolean;
+}) => input.deviceRunning && input.mayLook;

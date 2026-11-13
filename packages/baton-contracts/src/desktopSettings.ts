@@ -39,6 +39,8 @@ export const DesktopVoiceSettings = Schema.Struct({
   /** Which windows open when the app starts; the first run opens both whatever these say. */
   openTessayaOnStart: Schema.Boolean,
   openSessionsOnStart: Schema.Boolean,
+  /** His own devices (the R1 and others he linked) may look at this screen without asking. Absent from older apps. */
+  devicesMayLook: Schema.optionalKey(Schema.Boolean),
 });
 export type DesktopVoiceSettings = typeof DesktopVoiceSettings.Type;
 
@@ -60,6 +62,7 @@ export const DesktopVoiceSettingsPatch = Schema.Struct({
   gpuRecognition: Schema.optionalKey(fields.gpuRecognition),
   openTessayaOnStart: Schema.optionalKey(fields.openTessayaOnStart),
   openSessionsOnStart: Schema.optionalKey(fields.openSessionsOnStart),
+  devicesMayLook: fields.devicesMayLook,
 });
 export type DesktopVoiceSettingsPatch = typeof DesktopVoiceSettingsPatch.Type;
 

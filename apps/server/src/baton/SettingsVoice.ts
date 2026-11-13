@@ -149,6 +149,9 @@ export const DESKTOP_SETTINGS_VOICE: {
   gpuRecognition: free("recognising speech on the GPU"),
   openTessayaOnStart: free("opening Tessaya when the computer starts"),
   openSessionsOnStart: free("opening sessions when the computer starts"),
+  devicesMayLook: owner(
+    "letting his own devices, like the R1, look at this computer's screen without asking",
+  ),
 };
 
 export type SettingStore = "server" | "desktop";
