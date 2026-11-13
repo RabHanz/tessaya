@@ -9,7 +9,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { layerMemory as BatonDatabaseMemory } from "./BatonDatabase.ts";
 import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
 import { BatonPhoneInbox, layer as inboxLayer } from "./BatonPhoneInbox.ts";
-import { findSettings, setSetting, SETTINGS } from "./SettingsVoice.ts";
+import { allSettings, findSettings, setSetting, SETTINGS } from "./SettingsVoice.ts";
 
 it("every setting has a voice path and a safety class; a never one says why", () => {
   const keys = SETTINGS.map((s) => `${s.store}.${s.key}`).toSorted();
@@ -37,8 +37,30 @@ it("finds a setting by his words", () => {
 
 const setup = () => {
   const desktop = { holdKeyCues: true as unknown, holdKey: "F9" as unknown, connected: true };
+  const controlled: Array<{ id: string; value: string | boolean }> = [];
+  // What the desktop publishes of its own Settings (its voice speed, its chime).
+  const controls = [
+    {
+      id: "v.rate",
+      label: "How fast she speaks",
+      section: "Voice",
+      value: "normal",
+      options: ["slower", "normal", "faster"],
+      voice: "free" as const,
+    },
+    {
+      id: "v.chime",
+      label: "The listening chime",
+      section: "Voice",
+      value: true,
+      voice: "free" as const,
+    },
+  ];
   const desktopLayer = Layer.succeed(BatonDesktopSettings)({
-    get: Effect.sync(() => ({ connected: desktop.connected, effective: { ...desktop } }) as never),
+    get: Effect.sync(
+      () => ({ connected: desktop.connected, effective: { ...desktop }, controls }) as never,
+    ),
+    setControls: (changes) => Effect.sync(() => (controlled.push(...changes), {} as never)),
     set: (patch) =>
       Effect.sync(() => {
         Object.assign(desktop, patch);
@@ -51,7 +73,7 @@ const setup = () => {
     ServerSettingsService.layerTest(),
     inboxLayer.pipe(Layer.provideMerge(BatonDatabaseMemory)),
   );
-  return { desktop, layer };
+  return { desktop, controlled, layer };
 };
 
 it.effect(
@@ -103,6 +125,50 @@ it.effect(
       const away = yield* setSetting({ key: "showWords", value: true, why: "x", who: "Tessaya" });
       assert.strictEqual(away.status, "failed");
       assert.include(away.line, "not connected to this server");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "reaches the desktop's own Settings by voice: its voice speed and its chime (13 Nov)",
+  () => {
+    const { controlled, layer } = setup();
+    return Effect.gen(function* () {
+      const all = yield* allSettings;
+      // The closest few go to the model, which picks by meaning.
+      assert.include(
+        findSettings("make her voice slower", all).map((s) => s.key),
+        "desktop:v.rate",
+      );
+      assert.strictEqual(
+        findSettings("turn off the listening chime", all)[0]?.key,
+        "desktop:v.chime",
+      );
+      const slower = yield* setSetting({
+        key: "desktop:v.rate",
+        value: "Slower",
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(slower.status, "done");
+      const quiet = yield* setSetting({
+        key: "desktop:v.chime",
+        value: "off",
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(quiet.status, "done");
+      assert.deepStrictEqual(controlled, [
+        { id: "v.rate", value: "slower" },
+        { id: "v.chime", value: false },
+      ]);
+      const wrong = yield* setSetting({
+        key: "desktop:v.rate",
+        value: "loud",
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(wrong.status, "refused");
     }).pipe(Effect.provide(layer));
   },
 );

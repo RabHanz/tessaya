@@ -8,6 +8,7 @@ import { chooseDictationCleanup } from "@t3tools/contracts";
 import type {
   DesktopSettingsView,
   DesktopVoiceSettings,
+  DesktopSettingsControl,
   DesktopVoiceSettingsPatch,
 } from "@t3tools/baton-contracts";
 import * as Clock from "effect/Clock";
@@ -50,6 +51,10 @@ export class BatonDesktopSettings extends Context.Service<
     readonly get: Effect.Effect<DesktopSettingsView>;
     /** Merges into any change still waiting, then waits for the desktop to apply it. */
     readonly set: (patch: DesktopVoiceSettingsPatch) => Effect.Effect<DesktopSettingsView>;
+    /** Sets its own Settings controls by id, as his click would; waits for the desktop as `set` does. */
+    readonly setControls: (
+      controls: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>,
+    ) => Effect.Effect<DesktopSettingsView>;
     /**
      * The desktop's report: its values and the last change it applied; answers with the change it should apply, held
      * open up to SYNC_HOLD while there is none.
@@ -57,10 +62,15 @@ export class BatonDesktopSettings extends Context.Service<
     readonly sync: (input: {
       readonly effective: DesktopVoiceSettings;
       readonly applied: number;
+      readonly controls?: ReadonlyArray<DesktopSettingsControl>;
     }) => Effect.Effect<{
       readonly change: {
         readonly version: number;
         readonly patch: DesktopVoiceSettingsPatch;
+        readonly controls?: ReadonlyArray<{
+          readonly id: string;
+          readonly value: string | boolean;
+        }>;
       } | null;
     }>;
   }
@@ -76,7 +86,10 @@ const make = Effect.gen(function* () {
     readonly version: number;
     readonly at: number;
     readonly patch: DesktopVoiceSettingsPatch;
+    readonly controls?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>;
   } | null = null;
+  /** Its Settings controls as it last published them. */
+  let controls: ReadonlyArray<DesktopSettingsControl> | null = null;
   // From the clock, so a desktop still holding a version from before this server restarted is always behind.
   let version = yield* Clock.currentTimeMillis;
   const waiters: Array<{
@@ -96,6 +109,7 @@ const make = Effect.gen(function* () {
     at: reported === null ? null : DateTime.formatIso(DateTime.makeUnsafe(reported.at)),
     effective: reported?.effective ?? null,
     pending: pending?.patch ?? null,
+    ...(controls === null ? {} : { controls }),
   }));
 
   const choose = Effect.fn("BatonDesktopSettings.choose")(
@@ -128,7 +142,15 @@ const make = Effect.gen(function* () {
     Effect.catchCause((cause) => Effect.logWarning("dictation cleanup not followed", cause)),
   );
 
-  const set = Effect.fn("BatonDesktopSettings.set")(function* (patch: DesktopVoiceSettingsPatch) {
+  const set = (patch: DesktopVoiceSettingsPatch) => change(patch, []);
+  const setControls = (
+    changes: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>,
+  ) => change({}, changes);
+
+  const change = Effect.fn("BatonDesktopSettings.set")(function* (
+    patch: DesktopVoiceSettingsPatch,
+    changes: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>,
+  ) {
     const by = yield* DesktopSettingsCaller;
     const before = reported?.effective ?? null;
     if (patch.dictationCleanup !== undefined) {
@@ -137,7 +159,13 @@ const make = Effect.gen(function* () {
     }
     version += 1;
     const mine = version;
-    pending = { version: mine, at: yield* fresh, patch: { ...pending?.patch, ...patch } };
+    const queued = [...(pending?.controls ?? []), ...changes];
+    pending = {
+      version: mine,
+      at: yield* fresh,
+      patch: { ...pending?.patch, ...patch },
+      ...(queued.length === 0 ? {} : { controls: queued }),
+    };
     const done = yield* Deferred.make<void>();
     const waiter = { version: mine, done };
     waiters.push(waiter);
@@ -162,7 +190,7 @@ const make = Effect.gen(function* () {
         .append({
           kind: "desktop_settings",
           actor: by.actor,
-          subject: `Dictation settings: ${toJson(patch)}`,
+          subject: `Dictation settings: ${toJson(changes.length === 0 ? patch : changes)}`,
           outcome: applied ? "applied" : "not applied",
           detail: toJson({ scope: by.scope, before, after: answer.effective }),
         })
@@ -174,7 +202,9 @@ const make = Effect.gen(function* () {
   const sync = Effect.fn("BatonDesktopSettings.sync")(function* (input: {
     readonly effective: DesktopVoiceSettings;
     readonly applied: number;
+    readonly controls?: ReadonlyArray<DesktopSettingsControl>;
   }) {
+    if (input.controls !== undefined) controls = input.controls;
     const previous = reported?.effective.dictationCleanup ?? null;
     reported = { at: yield* fresh, effective: input.effective };
     if (pending !== null && input.applied >= pending.version) pending = null;
@@ -189,7 +219,7 @@ const make = Effect.gen(function* () {
     return { change: pending };
   });
 
-  return BatonDesktopSettings.of({ get: view, set, sync });
+  return BatonDesktopSettings.of({ get: view, set, setControls, sync });
 });
 
 // Plain settings values only, which always serialise.
