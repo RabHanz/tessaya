@@ -2777,10 +2777,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const phoneLoop = async (): Promise<void> => {
     markPhase("phone-tick:begin");
+    const began = Date.now();
     const outcome = await phoneRelay.tick().finally(() => markPhase("phone-tick:end"));
+    const held = outcome === "idle" ? Date.now() - began : 0;
     if (outcome !== "away") void publishState().catch(() => undefined);
     phoneQuiet = outcome === "idle" || outcome === "away" ? phoneQuiet + 1 : 0;
-    setTimeout(() => void phoneLoop(), nextPollMs(phoneQuiet)).unref();
+    setTimeout(() => void phoneLoop(), nextPollMs(phoneQuiet, held)).unref();
   };
   setTimeout(() => void phoneLoop(), PHONE_POLL_MS).unref();
   const voiceIntent = makeVoiceIntentClient({

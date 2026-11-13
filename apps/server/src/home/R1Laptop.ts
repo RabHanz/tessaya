@@ -22,7 +22,8 @@ const NOT_OPEN = "Tessaya isn't open on your laptop, so I can't see it.";
 const STILL_WAITING = "I've asked your laptop. It's still on it, or waiting for your yes there.";
 /** The R1 turn is spoken: past this the room hears where it stands rather than silence. */
 const WAIT_MS = 30_000;
-const POLL_MS = 2_000;
+// Its answer is said aloud the moment it lands; each look is one small call over the link.
+const POLL_MS = 500;
 
 interface LaptopOutcome {
   readonly ok: boolean;

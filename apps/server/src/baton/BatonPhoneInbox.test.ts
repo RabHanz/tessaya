@@ -7,6 +7,7 @@ import {
 } from "@t3tools/baton-shared/phoneRelay";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -22,6 +23,26 @@ import {
 const layer = it.layer(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
 layer("BatonPhoneInbox", (it) => {
+  it.effect(
+    "a waiting take is answered the moment an ask arrives, and gives up after its time (13 Nov)",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        while ((yield* inbox.take) !== null);
+        const waiting = yield* phoneCall({ op: "take", args: { waitMs: 10_000 } }).pipe(
+          Effect.forkChild,
+        );
+        yield* inbox.post({ id: "client-wait-0001", text: "what is on my screen" });
+        const taken = (yield* Fiber.join(waiting)).value as { id: string } | null;
+        assert.strictEqual(taken?.id, "client-wait-0001");
+        const idle = yield* phoneCall({ op: "take", args: { waitMs: 10_000 } }).pipe(
+          Effect.forkChild,
+        );
+        yield* TestClock.adjust("10 seconds");
+        assert.isNull((yield* Fiber.join(idle)).value);
+      }),
+  );
+
   it.effect("queues in order, marks the source, and a repeat of the same client id asks once", () =>
     Effect.gen(function* () {
       const inbox = yield* BatonPhoneInbox;
