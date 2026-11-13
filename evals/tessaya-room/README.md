@@ -35,3 +35,11 @@ scripts/tessaya/room-suite.sh <t3 binary of the build> [userdata dir] [--laptop]
 - Sentences name devices by slot (`{fan}`, `{fan.flip}` for the opposite of its state), filled from the server's own house through home_find, so it runs on any install. A slot the house has no device for is reported as not applicable.
 - `--laptop` adds the case that asks your real laptop what is on its screen (read-only).
 - Every room tool needs a case in `liveCases.ts` (`proves`): `run.test.ts` fails otherwise.
+- `--vessel desktop` runs the same cases through his desktop's Tessaya as it ships (its prompt and tool table, a real `claude -p` on your own login; `--model` to pin one), with the server's shared tools run there as the desktop's caller and always a rehearsal. A case only the R1's tools could pass is not applicable. It costs model turns, so it runs nightly or on demand, never as the deploy gate:
+
+```sh
+cd evals
+node tessaya-room/live.ts --vessel desktop --server <server> --key-file <the R1 device key> --out runs/desktop
+```
+
+- A phone adapter follows the phone app (#809): the phone has no turn of its own on the server yet.

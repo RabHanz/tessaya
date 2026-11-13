@@ -3,6 +3,7 @@
  * The phone page at /tessaya (docs/baton/MOBILE.md): the page itself, then a small API behind the server's own session
  * (the pairing cookie, or a bearer token), with the rules in BatonTessayaApi. Mounted by BatonServerLayer.routes.
  */
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -21,6 +22,7 @@ import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { DeskTools } from "../home/R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
@@ -285,6 +287,58 @@ export const routes = HttpRouter.use((router) =>
     const handlers = yield* BatonRpcHandlers.makeHandlers;
     const deskTools = yield* DeskTools;
     const decodeToolCall = Schema.decodeUnknownOption(DeskToolCall);
+    const deskToolsAnswer = Effect.fn("BatonTessayaRoutes.deskTools")(function* (
+      calledAs: string,
+      request: HttpServerRequest.HttpServerRequest,
+      rehearsal?: string,
+    ) {
+      if (deskTools === null)
+        return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 404 });
+      if (calledAs === "baton.tools.list")
+        return HttpServerResponse.jsonUnsafe({ value: { tools: deskTools.specs } });
+      const call = decodeToolCall(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+      if (call._tag === "None")
+        return HttpServerResponse.jsonUnsafe(
+          { message: "That request is not valid." },
+          { status: 400 },
+        );
+      const { name, args, device } = call.value;
+      return HttpServerResponse.jsonUnsafe({
+        value: yield* deskTools.run(name, args ?? {}, rehearsal ?? device),
+      });
+    });
+    // The live suite's pretend desktop (evals/tessaya-room, --vessel desktop): the same tools as his desktop's
+    // Tessaya, behind the R1's device key the suite already holds, and always a rehearsal: nothing changes or is sent.
+    const rehearse = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+        Effect.provideContext(context),
+        Effect.orElseSucceed(() => null),
+      );
+      const bearer = Buffer.from(
+        (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, ""),
+      );
+      const key = Buffer.from(device?.deviceKey ?? "");
+      if (
+        device === null ||
+        bearer.length !== key.length ||
+        !NodeCrypto.timingSafeEqual(bearer, key)
+      )
+        return HttpServerResponse.jsonUnsafe({ message: "Wrong device key." }, { status: 401 });
+      const calledAs = new URL(request.url, "http://local").pathname.replace(
+        /^\/tessaya\/rehearse\//,
+        "",
+      );
+      if (calledAs !== "baton.tools.list" && calledAs !== "baton.tools.call")
+        return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 404 });
+      return yield* deskToolsAnswer(calledAs, request, "replay-desktop");
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe({ message: "That did not work." }, { status: 500 }),
+        ),
+      ),
+    );
     const desk = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
@@ -299,20 +353,7 @@ export const routes = HttpRouter.use((router) =>
       if (calledAs === "baton.tools.list" || calledAs === "baton.tools.call") {
         if (!session.value.scopes.includes(AuthBatonHandsHostScope))
           return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
-        if (deskTools === null)
-          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 404 });
-        if (calledAs === "baton.tools.list")
-          return HttpServerResponse.jsonUnsafe({ value: { tools: deskTools.specs } });
-        const call = decodeToolCall(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
-        if (call._tag === "None")
-          return HttpServerResponse.jsonUnsafe(
-            { message: "That request is not valid." },
-            { status: 400 },
-          );
-        const { name, args, device } = call.value;
-        return HttpServerResponse.jsonUnsafe({
-          value: yield* deskTools.run(name, args ?? {}, device),
-        });
+        return yield* deskToolsAnswer(calledAs, request);
       }
       const tag = BATON_METHOD_OF.get(calledAs) ?? calledAs;
       const codec = DESK_CODECS.get(tag);
@@ -424,6 +465,7 @@ export const routes = HttpRouter.use((router) =>
     );
     yield* router.add("POST", "/tessaya/private", privateCall);
     yield* router.add("POST", "/tessaya/desk/*", desk);
+    yield* router.add("POST", "/tessaya/rehearse/*", rehearse);
     yield* router.add("GET", "/tessaya/hands/*", handsApi);
     yield* router.add("POST", "/tessaya/hands/*", handsApi);
     yield* router.add("GET", "/tessaya/api/*", api);

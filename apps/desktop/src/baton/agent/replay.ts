@@ -34,15 +34,16 @@ const seeded = (seed: number): (() => number) => {
   };
 };
 
-/** Every host call fails: the gate refuses first, so this is only a backstop. */
-const host = new Proxy(
-  {},
-  {
-    get: () => async () => {
-      throw new Error(REPLAY_REFUSED);
-    },
-  },
-) as ToolHost;
+/** Every host call fails (the gate refuses first, so this is only a backstop), except the server's shared tools. */
+const hostWith = (shared: ToolHost["shared"]) =>
+  new Proxy(shared === undefined ? {} : { shared }, {
+    get: (own, key) =>
+      key in own
+        ? own[key as keyof typeof own]
+        : async () => {
+            throw new Error(REPLAY_REFUSED);
+          },
+  }) as ToolHost;
 
 export const replayTurn = async (input: {
   readonly claudeBinary: string;
@@ -65,6 +66,8 @@ export const replayTurn = async (input: {
   readonly where: Where;
   /** Tools that answer with this text; every other call is refused. */
   readonly answers?: Readonly<Record<string, string>>;
+  /** His server's shared tools, run there (the live suite's pretend desktop, a rehearsal); never refused here. */
+  readonly shared?: ToolHost["shared"];
   /** Added to the turn the way the per-sentence recall adds it, such as a skill under test. */
   readonly extra?: string;
   /** The session's notes block, such as the pack's frame, as a live session gets it. */
@@ -85,11 +88,11 @@ export const replayTurn = async (input: {
   const inputs: unknown[] = [];
   const answers = input.answers ?? {};
   const answered = (tool: string) => answers[batonToolName(tool)] !== undefined;
-  const refuse = async (call: { readonly tool: string }) =>
-    answered(call.tool)
+  const refuse = async (call: { readonly tool: string; readonly shared?: string }) =>
+    answered(call.tool) || call.shared !== undefined
       ? { allow: true as const }
       : { allow: false as const, reason: REPLAY_REFUSED };
-  const tools = buildBatonTools(host).map((t) => {
+  const tools = buildBatonTools(hostWith(input.shared)).map((t) => {
     const text = answers[t.name];
     return text === undefined ? t : { ...t, run: async () => ({ text }) };
   });
