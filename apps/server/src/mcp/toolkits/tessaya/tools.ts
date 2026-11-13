@@ -87,7 +87,7 @@ const JobsTool = Tool.make("tessaya_jobs", {
 const WatchTool = Tool.make("tessaya_watch", {
   ...shared,
   description:
-    "Tessaya's watch report: running work that looks stuck, failed or waiting for the Director.",
+    'What you are watching for him: Tessaya\'s watch report on his agents\' running work that looks stuck, failed or waiting for the Director. Use it for "what are you watching" or "is anything stuck". Standing rules on device state are listed by home_automations.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
   success: WatchResult,
 })
@@ -162,7 +162,7 @@ const RulesTool = Tool.make("tessaya_rules", {
 const FleetTool = Tool.make("tessaya_fleet", {
   ...shared,
   description:
-    "What is live on this computer right now: each piece of work with its state, every Herdr pane and every running Claude Code process. Use it to see what is running or waiting; `tessaya_sessions` lists past and present sessions to find one.",
+    'His machines and the agent work on them right now: which of his computers are up and busy, each piece of work with its state, every Herdr pane and every running Claude Code process. Use it for "which machines are up", "what\'s running" or "what is waiting"; `tessaya_sessions` lists past and present sessions to find one. Battery, Wi-Fi and other hardware readings are device_list\'s.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
   success: BatonFleetResult,
 })
@@ -207,7 +207,7 @@ const AskResult = Schema.Struct({
 const AskTool = Tool.make("tessaya_ask", {
   ...shared,
   description:
-    "Ask Tessaya, the Director's assistant on his computer, to do something for you: start, stop or steer a job, message one of his sessions, change one of her settings. Write it as one plain request. She asks the Director before she acts, every time, so the outcome can take minutes, and he may say no. Returns an id for `tessaya_ask_status`; you can have one request open at a time. Nothing is asked when no Tessaya desktop is connected. For looking things up, use the other tessaya_ tools instead.",
+    "Ask Tessaya, the Director's assistant on his computer, to do something for you: start, stop or steer a job, message one of his sessions, change one of her settings. Write it as one plain request. She asks the Director before she acts, every time, so the outcome can take minutes, and he may say no. Returns an id for `tessaya_ask_status`; you can have one request open at a time. Nothing is asked when no Tessaya desktop is connected. It is also how to put a question or request in front of him on his phone when he asks for one ('send me a question on my phone: …'): send it as he said it. For looking things up, use the other tessaya_ tools instead.",
   parameters: Schema.Struct({
     text: Schema.String.check(Schema.isMaxLength(2000)),
     origin: Schema.optionalKey(
