@@ -44,7 +44,7 @@ index a04c1df8872779c19f2d2aecad2e767433365671..c253c25eb148723470e7b174ebc50bac
  }
  
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index ade46685413626599747922adb18a3b2fb82d3cf..a255bd573b89e879aca1d52d7bab2a1d906e345a 100644
+index c2f7eb767945dca9f8bba21bc620b585b5740a74..62b00c007abc90d9a886733ce5f6bc36f815f8b7 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 @@ -61,6 +61,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
@@ -55,7 +55,7 @@ index ade46685413626599747922adb18a3b2fb82d3cf..a255bd573b89e879aca1d52d7bab2a1d
  
  const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
  const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
-@@ -141,7 +142,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
+@@ -152,7 +153,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
    },
  ) {
    override get message(): string {
@@ -64,7 +64,7 @@ index ade46685413626599747922adb18a3b2fb82d3cf..a255bd573b89e879aca1d52d7bab2a1d
    }
  }
  
-@@ -225,6 +226,11 @@ export interface ProviderSessionManagerV2Shape {
+@@ -236,6 +237,11 @@ export interface ProviderSessionManagerV2Shape {
      ProviderSessionManagerV2Error
    >;
    readonly isLive: (providerSessionId: ProviderSessionId) => Effect.Effect<boolean>;
@@ -76,7 +76,7 @@ index ade46685413626599747922adb18a3b2fb82d3cf..a255bd573b89e879aca1d52d7bab2a1d
    readonly close: (
      providerSessionId: ProviderSessionId,
    ) => Effect.Effect<void, ProviderSessionManagerV2Error>;
-@@ -3005,6 +3011,13 @@ export const layerWithOptions = (
+@@ -3027,6 +3033,13 @@ export const layerWithOptions = (
            Ref.get(sessions).pipe(
              Effect.map((current) => current.has(sessionKey(providerSessionId))),
            ),
@@ -90,7 +90,7 @@ index ade46685413626599747922adb18a3b2fb82d3cf..a255bd573b89e879aca1d52d7bab2a1d
          get: Effect.fn("ProviderSessionManager.get")(
            function* (providerSessionId) {
              const entry = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
-@@ -3046,7 +3059,7 @@ export const layerWithOptions = (
+@@ -3068,7 +3081,7 @@ export const layerWithOptions = (
                  releaseEntry({
                    providerSessionId: entry.runtime.providerSessionId,
                    reason: "manual_shutdown",

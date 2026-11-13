@@ -49,4 +49,6 @@ node_modules/
 
 # pnpm content-addressable store; never belongs in the repo.
 .pnpm-store/
+
+/packages/ssh/.ssh-launcher-test-*/
 apps/server/resources/memory-model/model_quantized.onnx

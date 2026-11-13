@@ -6,13 +6,13 @@ The scripts package typecheck leaves out scripts/tessaya, whose run-by-node tool
 app sources outside that project.
 
 diff --git a/.gitignore b/.gitignore
-index 85b7c5b4bf02f04de806cfc85cee3e2db93bfd79..6f4507647fa4855d49ccb2bdb72744c918b2369f 100644
+index 1637f475fbbd0718954fe0f6981e71bb616b6bbd..f520aa8f960223d95125a8ca3b83408aa2f3df33 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -49,3 +49,4 @@ node_modules/
- 
- # pnpm content-addressable store; never belongs in the repo.
+@@ -51,3 +51,4 @@ node_modules/
  .pnpm-store/
+ 
+ /packages/ssh/.ssh-launcher-test-*/
 +apps/server/resources/memory-model/model_quantized.onnx
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
 index 97554fd82320524ccf43a751a45e035823782d2d..a90cbcbdbb2538f21913ab8dfe2f5a4ea3db4a1f 100644
@@ -99,7 +99,7 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..99414dd8ac4b6c84b124e12d79ccc346
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index ca0b86a7a06d712ab5375c4b3eb7289e93ed0c8e..c108ecf1b09e0710a6f087933d651d82c7e00087 100644
+index 1892b649061f8cc8413805bceea774e7eaf04298..9770e7de30783d5fe3f3251e225928bfec4207fd 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -72,6 +72,8 @@
@@ -323,7 +323,7 @@ index d1e74151e53e3a0548407d9744ff97d6732068d7..73b02a228b90f88f241ce087eabef0f6
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 5f87b7645be9bf7b1971a8fb2a3ecf3f9032c6cf..2f622300d5867a66f7b54600c0acd6fcff5eb46b 100644
+index c93a9b4ad7f4979e6d156ce366ec8e3623ae3916..d2cb8c2b27fce28c4a03cbd7092a6544c0355400 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -21,6 +21,8 @@ allowBuilds:
@@ -334,7 +334,7 @@ index 5f87b7645be9bf7b1971a8fb2a3ecf3f9032c6cf..2f622300d5867a66f7b54600c0acd6fc
 +  onnxruntime-node: false
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false
-   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.18-497fbe63.tgz": true
+   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.18-0dc7ed81.tgz": true
 @@ -236,6 +238,7 @@ patchedDependencies:
    expo-video@58.0.13: patches/expo-video@58.0.13.patch
    expo-network@58.0.4: patches/expo-network@58.0.4.patch
@@ -399,7 +399,7 @@ index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa
      repoRoot,
      stageDir: contentDir,
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 7f239bf278199192b9fa0809ae274647e972c465..ac453c34e8cbbfda847bd4ffda153fff4163238e 100644
+index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..410326658d22626761099008c44ac3d444fd882e 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
 @@ -3,7 +3,7 @@ import * as NodeCrypto from "node:crypto";
@@ -460,7 +460,7 @@ index 7f239bf278199192b9fa0809ae274647e972c465..ac453c34e8cbbfda847bd4ffda153fff
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1341,6 +1376,105 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1363,6 +1398,105 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -566,7 +566,7 @@ index 7f239bf278199192b9fa0809ae274647e972c465..ac453c34e8cbbfda847bd4ffda153fff
        }),
      ),
    );
-@@ -1900,3 +2034,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1922,3 +2056,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -594,7 +594,7 @@ index 7f239bf278199192b9fa0809ae274647e972c465..ac453c34e8cbbfda847bd4ffda153fff
 +  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 9d6038adcbfbf56abead0aef79026009cf8e54eb..01eda71140331a7eca3b3512470e0193d47a5a12 100644
+index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc3027933fd33 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -946,7 +946,7 @@ index 9d6038adcbfbf56abead0aef79026009cf8e54eb..01eda71140331a7eca3b3512470e0193
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3155,6 +3425,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3162,6 +3432,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -966,7 +966,7 @@ index 9d6038adcbfbf56abead0aef79026009cf8e54eb..01eda71140331a7eca3b3512470e0193
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3418,6 +3701,78 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3425,6 +3708,78 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -1045,7 +1045,7 @@ index 9d6038adcbfbf56abead0aef79026009cf8e54eb..01eda71140331a7eca3b3512470e0193
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3807,6 +4162,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3814,6 +4169,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -1059,7 +1059,7 @@ index 9d6038adcbfbf56abead0aef79026009cf8e54eb..01eda71140331a7eca3b3512470e0193
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3839,6 +4201,22 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3846,6 +4208,22 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);

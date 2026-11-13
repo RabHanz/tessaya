@@ -47,10 +47,10 @@ index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..3853ec925bdc27f91dc5b0926a387972
        yield* desktopWindow.ensureMain;
      }
 diff --git a/apps/desktop/src/app/DesktopLifecycle.ts b/apps/desktop/src/app/DesktopLifecycle.ts
-index 56fb25fcfa9072e81a90bd720c6a2bd5af6623b4..001530debd3873f63720f51c09878b03bc3b925e 100644
+index 9568e72dde310e0cdecdbb3196a1b4878ec998a7..83452a5cf4bf45ccc7ef0581579815603ade52f0 100644
 --- a/apps/desktop/src/app/DesktopLifecycle.ts
 +++ b/apps/desktop/src/app/DesktopLifecycle.ts
-@@ -21,6 +21,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
+@@ -22,6 +22,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
  import * as DesktopState from "./DesktopState.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
@@ -58,7 +58,7 @@ index 56fb25fcfa9072e81a90bd720c6a2bd5af6623b4..001530debd3873f63720f51c09878b03
  
  export class DesktopLifecycleRelaunchError extends Schema.TaggedError<DesktopLifecycleRelaunchError>()(
    "DesktopLifecycleRelaunchError",
-@@ -297,7 +298,11 @@ export const make = DesktopLifecycle.of({
+@@ -298,7 +299,11 @@ export const make = DesktopLifecycle.of({
          Effect.gen(function* () {
            const app = yield* ElectronApp.ElectronApp;
            const state = yield* DesktopState.DesktopState;
@@ -98,11 +98,11 @@ index e7b8405f8124df01ba5888dd68a033a1bf36f5fe..0bd26f46600e6c54c1f7be44bb3606ce
        },
        extendEnv: true,
 diff --git a/apps/desktop/src/backend/DesktopBackendManager.test.ts b/apps/desktop/src/backend/DesktopBackendManager.test.ts
-index 3126d12a2e938d7ded94da9a28d1e0e220770597..44af6c188a1f1a25363a8c638f2304332e54f567 100644
+index 8a8389082ce89028af4fe60610c96c66ed173c14..7a14bf97e9eef6dcce03e4fbb68e82a30368a589 100644
 --- a/apps/desktop/src/backend/DesktopBackendManager.test.ts
 +++ b/apps/desktop/src/backend/DesktopBackendManager.test.ts
-@@ -722,6 +722,57 @@ describe("DesktopBackendManager", () => {
-     ),
+@@ -734,6 +734,57 @@ describe("DesktopBackendManager", () => {
+     }).pipe(Effect.provide(TestClock.layer())),
    );
  
 +  it.effect("ends and restarts a ready backend that stops answering", () =>
@@ -157,13 +157,13 @@ index 3126d12a2e938d7ded94da9a28d1e0e220770597..44af6c188a1f1a25363a8c638f230433
 +  );
 +
    it.effect("the quit stop keeps waiting for a backend that outlasts its deadline", () =>
-     Effect.scoped(
-       Effect.gen(function* () {
+     Effect.gen(function* () {
+       const spawned = yield* Deferred.make<void>();
 diff --git a/apps/desktop/src/backend/DesktopBackendManager.ts b/apps/desktop/src/backend/DesktopBackendManager.ts
-index d24b2f52f295c0e45c444eeee3d6767e53255463..45f0f3c2cfa6637eba0e658d7490790d53c0aed2 100644
+index 89ebc9e862ecf4d6224cc6c26d25bcd2ee3692b7..8c9ab976e0ab0fd3b4781e1288ebb52d1bd5eda7 100644
 --- a/apps/desktop/src/backend/DesktopBackendManager.ts
 +++ b/apps/desktop/src/backend/DesktopBackendManager.ts
-@@ -31,6 +31,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
+@@ -32,6 +32,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
  import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
@@ -171,7 +171,7 @@ index d24b2f52f295c0e45c444eeee3d6767e53255463..45f0f3c2cfa6637eba0e658d7490790d
  
  const INITIAL_RESTART_DELAY = Duration.millis(500);
  const MAX_RESTART_DELAY = Duration.seconds(10);
-@@ -586,7 +587,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
+@@ -587,7 +588,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
      ),
    );
  
@@ -314,7 +314,7 @@ index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca
    };
  }
 diff --git a/apps/desktop/src/ipc/DesktopIpc.test.ts b/apps/desktop/src/ipc/DesktopIpc.test.ts
-index 45f63b951f366dc1bd210d6c6c411068712e0ab0..c69048cc872d4231a50f110ccc6210b5b0b90e36 100644
+index 1973ab49cefeb0b5f333eb137201c8cb3df61095..7c0a64a8ac403e0b9b29bce20b101f127bb68e71 100644
 --- a/apps/desktop/src/ipc/DesktopIpc.test.ts
 +++ b/apps/desktop/src/ipc/DesktopIpc.test.ts
 @@ -8,60 +8,93 @@ vi.mock("electron", () => ({}));
@@ -409,7 +409,7 @@ index 45f63b951f366dc1bd210d6c6c411068712e0ab0..c69048cc872d4231a50f110ccc6210b5
 -      appSubframe: ["rejected", undefined],
 -      previewGuest: ["rejected", undefined],
 -    });
--  }).pipe(Effect.scoped),
+-  }),
 +      // A detached thread window, and the T3 page Tessaya's window shows inline: both run T3's app.
 +      const renderer = (id: number) => {
 +        const frame = {};
@@ -461,7 +461,7 @@ index 45f63b951f366dc1bd210d6c6c411068712e0ab0..c69048cc872d4231a50f110ccc6210b5
 +        appSubframe: ["rejected", undefined],
 +        previewGuest: ["rejected", undefined],
 +      });
-+    }).pipe(Effect.scoped),
++    }),
  );
 diff --git a/apps/desktop/src/ipc/DesktopIpc.ts b/apps/desktop/src/ipc/DesktopIpc.ts
 index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..924e00834a45c587bc88aaf122553bb230682a82 100644
@@ -491,7 +491,7 @@ index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..924e00834a45c587bc88aaf122553bb2
        );
      }),
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index a538b821ff77c2502c22439b40bfa7b67d94743b..c048952b538439a2ec3e10ce0a5a1effb8517411 100644
+index 6414743ac3b2f32c3902593646b017a1bd8822e0..be99205b51745a56f7ec0b76e5d16064868235f7 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
 @@ -13,6 +13,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -502,7 +502,7 @@ index a538b821ff77c2502c22439b40bfa7b67d94743b..c048952b538439a2ec3e10ce0a5a1eff
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
-@@ -519,3 +520,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -520,3 +521,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);

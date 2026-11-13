@@ -1,7 +1,7 @@
 Approving a cloud task is its own permission (baton:cloud-approve): not in the standard client scopes, held by the desktop app session and by a client paired for it.
 
 diff --git a/apps/server/src/auth/McpOAuth.test.ts b/apps/server/src/auth/McpOAuth.test.ts
-index c7cf59db93863c4464e888bbb4b66de895e71e23..1aebf9aabb4633f1f254a13fa7a371a112756ea1 100644
+index 4cd276c51133bbcc1d88b59421dad9e4856037c4..26428138788f74d9787bfb63e2ba84b5583b864f 100644
 --- a/apps/server/src/auth/McpOAuth.test.ts
 +++ b/apps/server/src/auth/McpOAuth.test.ts
 @@ -1,7 +1,10 @@
@@ -141,11 +141,11 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..0356d7a985d24e5f4732167c3e8089b5
 +    ),
    );
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
-index 67b4929a9b580fcf2892bc6e2e10a5b5a2b0bd0f..f0b2344a9318e6c5ad947e739ca1ca06b6e9fb6d 100644
+index 718a9dda93c0ed95020cf66522eaf2a06d05f7a7..b9bffd69b222f73bab87bd192869285eca96e370 100644
 --- a/packages/client-runtime/src/state/commandPermissions.test.ts
 +++ b/packages/client-runtime/src/state/commandPermissions.test.ts
-@@ -132,6 +132,42 @@ describe("command permissions", () => {
-     ),
+@@ -128,6 +128,42 @@ describe("command permissions", () => {
+     }),
    );
  
 +  it.effect("lets a read-only grant list an R1 but not rebind its buttons", () =>
@@ -185,8 +185,8 @@ index 67b4929a9b580fcf2892bc6e2e10a5b5a2b0bd0f..f0b2344a9318e6c5ad947e739ca1ca06
 +  );
 +
    it.effect("requires the destination provider grant to remove an incomplete connection", () =>
-     Effect.scoped(
-       Effect.gen(function* () {
+     Effect.gen(function* () {
+       const registry = yield* setup;
 diff --git a/packages/contracts/src/auth.test.ts b/packages/contracts/src/auth.test.ts
 index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15a3aedb1d 100644
 --- a/packages/contracts/src/auth.test.ts

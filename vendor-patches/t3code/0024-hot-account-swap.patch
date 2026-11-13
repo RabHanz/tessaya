@@ -67,10 +67,10 @@ index 6d63287f4eb2ab10b62534f607353c54e2e71d5c..62e40b7ce683f0b1295824ce93253de9
        ),
      ),
 diff --git a/apps/server/src/mcp/threadAccess.ts b/apps/server/src/mcp/threadAccess.ts
-index 48d972c5be2fd3f036b917bb10f7d41ba7a806a7..79c3cfef56985affc25cd985b698de84b9768142 100644
+index 416592a57fe79823f3da9c4c0fc5b1cb41aa4436..229bf4957cdd271cf22efebb858d93fd68a32227 100644
 --- a/apps/server/src/mcp/threadAccess.ts
 +++ b/apps/server/src/mcp/threadAccess.ts
-@@ -139,17 +139,29 @@ export const isLiveCallerShell = (
+@@ -142,17 +142,29 @@ export const isLiveCallerShell = (
        false));
  
  /** Thread callers need a live run or its background subagent in an unarchived thread. OAuth clients rely on their session and ceiling. */
@@ -189,10 +189,10 @@ index 0197a10fae2e2320c8000c5de7937a4ab1076e5f..8feedfd7f54588172327204a0a2559ff
          "provider-turn.interrupt",
          "provider-turn.steer",
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
-index 34ff5a76311057b34a1accc5123d073d31e6034f..7e1890713ad2d8b20b700ca046439bf1f7a018e9 100644
+index 3ede421ad72ab34e82506e69f1b5a2bf06890bae..d1eec2fcb20844a184fe22ebe4799790468fe44c 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnControlService.test.ts
-@@ -291,6 +291,7 @@ it.effect(
+@@ -292,6 +292,7 @@ it.effect(
                providerSessionId === oldSessionId ? Option.some(runtime) : Option.none(),
              ),
            isLive: (providerSessionId) => Effect.succeed(providerSessionId === oldSessionId),
@@ -201,7 +201,7 @@ index 34ff5a76311057b34a1accc5123d073d31e6034f..7e1890713ad2d8b20b700ca046439bf1
            closeInstance: () => Effect.void,
            release: () => Effect.void,
 diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
-index fc83ac128324ef0b5128c20cf1f060cd50bc45c3..2662fa16588eebe7fd4e1812899f55a342c3cfd9 100644
+index 5b1b6301fa48bf0268d1e7bd83f788b4927d59ea..a609bf2eeb75e924c8aad5ebf30c92d8b183b2c5 100644
 --- a/packages/provider-core/src/server/ProviderAdapter.ts
 +++ b/packages/provider-core/src/server/ProviderAdapter.ts
 @@ -37,7 +37,10 @@ import {
@@ -215,7 +215,7 @@ index fc83ac128324ef0b5128c20cf1f060cd50bc45c3..2662fa16588eebe7fd4e1812899f55a3
  import type * as Stream from "effect/Stream";
  
  import type {
-@@ -656,6 +659,13 @@ export type ProviderAdapterV2SubagentOutcome = {
+@@ -658,6 +661,13 @@ export type ProviderAdapterV2SubagentOutcome = {
    readonly result: OrchestrationV2Subagent["result"];
  };
  
@@ -229,7 +229,7 @@ index fc83ac128324ef0b5128c20cf1f060cd50bc45c3..2662fa16588eebe7fd4e1812899f55a3
  export interface ProviderAdapterV2SessionRuntime {
    readonly instanceId: ProviderInstanceId;
    readonly driver: ProviderDriverKind;
-@@ -672,6 +682,8 @@ export interface ProviderAdapterV2SessionRuntime {
+@@ -674,6 +684,8 @@ export interface ProviderAdapterV2SessionRuntime {
      providerThread: OrchestrationV2ProviderThread,
      options?: { readonly includeSubagents?: boolean },
    ) => Effect.Effect<boolean>;
@@ -238,7 +238,7 @@ index fc83ac128324ef0b5128c20cf1f060cd50bc45c3..2662fa16588eebe7fd4e1812899f55a3
    /**
     * Set only if all session background tasks and tool calls end with its process. Releasing the
     * session then clears its task roster and interrupts its open tool calls; otherwise threads
-@@ -776,5 +788,7 @@ export class ProviderAdapterV2 extends Context.Service<
+@@ -778,5 +790,7 @@ export class ProviderAdapterV2 extends Context.Service<
      readonly openSession: (
        input: ProviderAdapterV2OpenSessionInput,
      ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;

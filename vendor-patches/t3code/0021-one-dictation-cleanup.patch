@@ -68,7 +68,7 @@ index faa71137db0493e09fcf9d3f505dab27b360cda1..6127c0d213cafa800c54be3fcdcbfcf2
    if (isElectron) startElectronBrowserHost();
    startPreviewTitleRecording();
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index 2875a6edbe355f1b193881d34d236fa2d4f9f127..f290a631bba375899c9fa672d785614c3a46b286 100644
+index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f48297c320 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 @@ -69,6 +69,7 @@ import {

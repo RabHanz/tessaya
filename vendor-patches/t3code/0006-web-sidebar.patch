@@ -8320,7 +8320,7 @@ index 89ab26f51b9a05b91681d943c0bc756e8f76816e..6cca8c261df26a526f3ffa601ba75dc5
        <SidebarProviderStack
          thread={thread}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index c2e15c4abab376551d6133dd6e0272265d2cc0d5..7a7c5ba52bb45d861de0ffb8e495301132cd1008 100644
+index a59604a63f42677944af7d30518af23e207d170f..2cc558976dba06c9f05f6e044de8fd41afb1ac80 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
 @@ -27,6 +27,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
@@ -8332,7 +8332,7 @@ index c2e15c4abab376551d6133dd6e0272265d2cc0d5..7a7c5ba52bb45d861de0ffb8e4953011
  import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
  import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
  import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
-@@ -148,6 +150,8 @@ function RootRouteBranch() {
+@@ -149,6 +151,8 @@ function RootRouteBranch() {
    // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
    const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
    if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
@@ -8341,7 +8341,7 @@ index c2e15c4abab376551d6133dd6e0272265d2cc0d5..7a7c5ba52bb45d861de0ffb8e4953011
    const hostedPromptLinkLanding = useHostedPromptLinkLanding(
      authGateState.status === "hosted-static",
    );
-@@ -172,6 +176,8 @@ function RootRouteBranch() {
+@@ -173,6 +177,8 @@ function RootRouteBranch() {
    if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
      return <Outlet />;
    }
@@ -8350,7 +8350,7 @@ index c2e15c4abab376551d6133dd6e0272265d2cc0d5..7a7c5ba52bb45d861de0ffb8e4953011
  
    // Settings can reopen /welcome mid-session, so it mounts everything the app does except the
    // first-run gate and the event router, whose first navigation would leave the page.
-@@ -185,7 +191,7 @@ function RootRouteBranch() {
+@@ -186,7 +192,7 @@ function RootRouteBranch() {
        <RelayClientInstallDialog />
        <ConnectOnboardingDialog />
        <SshPasswordPromptDialog />
