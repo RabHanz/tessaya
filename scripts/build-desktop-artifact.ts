@@ -761,6 +761,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
   "resource-monitor-missing",
   "baton-voice-missing",
   "tessaya-art-missing",
+  "companion-missing",
   "memory-model-missing",
   "wsl-runtime-missing",
   "wsl-runtime-invalid",
@@ -793,6 +794,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
     }
     if (this.reason === "tessaya-art-missing") {
       return `Windows packaged payload is missing Tessaya's palette art: ${(this.missingFiles ?? []).join(", ")}.`;
+    }
+    if (this.reason === "companion-missing") {
+      return `Windows packaged payload is missing her characters (the desktop mascot and the pill's face): ${(this.missingFiles ?? []).join(", ")}.`;
     }
     if (this.reason === "memory-model-missing") {
       return `Windows packaged payload is missing the memory model (run node scripts/tessaya/fetch-memory-model.mjs): ${(this.missingFiles ?? []).join(", ")}.`;
@@ -1101,8 +1105,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
 }
 
 // Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
-// and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
-export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 154;
+// Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more, and her characters
+// (apps/web/public/companion) 27 more.
+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 181;
 export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
 export const WINDOWS_SERVER_EXTRA_RESOURCES = [
   {
@@ -1151,9 +1156,9 @@ export const DESKTOP_EXTRA_RESOURCES = [
     from: "apps/desktop/resources/tessaya",
     to: "tessaya",
   },
-  // Her characters (Character Studio) for the desktop mascot and the pill's face; the web build serves the same folder.
+  // Her characters (Character Studio) for the desktop mascot and the pill's face, staged from apps/web/public/companion.
   {
-    from: "apps/web/public/companion",
+    from: "apps/desktop/prod-resources/companion",
     to: "companion",
   },
   // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs, staged below.
@@ -2421,6 +2426,15 @@ export const TESSAYA_ART_PAYLOAD_FILES = ["woad", "damson", "madder"].flatMap((p
     `taskbar-${palette}-${theme}.ico`,
   ]),
 );
+
+/** The mascot's page and the studio scripts it loads (apps/web/public/companion/stage.html). */
+export const COMPANION_PAYLOAD_FILES = [
+  "stage.html",
+  "rig.js",
+  "bodies.js",
+  "props.js",
+  "speech.js",
+] as const;
 
 /** The bundled server's memory recall model (MEM-13). */
 export const MEMORY_MODEL_PAYLOAD_FILES = ["model_quantized.onnx", "vocab.txt"] as const;
@@ -3707,6 +3721,19 @@ export const validateWindowsPackagedPayload = Effect.fn(
     });
   }
 
+  const missingCompanion: string[] = [];
+  for (const file of COMPANION_PAYLOAD_FILES) {
+    if (!(yield* isFile(path.join(resourcesDir, "companion", file))))
+      missingCompanion.push(`companion/${file}`);
+  }
+  if (missingCompanion.length > 0) {
+    return yield* new WindowsPackagedPayloadValidationError({
+      reason: "companion-missing",
+      packagedAppDir,
+      missingFiles: missingCompanion,
+    });
+  }
+
   const missingModel: string[] = [];
   for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
     if (!(yield* isFile(path.join(resourcesDir, "memory-model", file))))
@@ -4120,10 +4147,14 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
-  // Extra resources resolve inside the stage; the memory model lives with the server, so it is copied in.
+  // Extra resources resolve inside the stage, and electron-builder skips a missing one silently: copy each one in.
   yield* fs.copy(
     path.join(repoRoot, "apps/server/resources/memory-model"),
     path.join(stageProdResourcesDir, "memory-model"),
+  );
+  yield* fs.copy(
+    path.join(repoRoot, "apps/web/public/companion"),
+    path.join(stageProdResourcesDir, "companion"),
   );
   yield* fs.makeDirectory(path.join(stageProdResourcesDir, "baton-live"), { recursive: true });
   for (const file of BATON_LIVE_AGENT_FILES) {

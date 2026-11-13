@@ -387,21 +387,22 @@ index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa
      repoRoot,
      stageDir: contentDir,
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a59bbacf6 100644
+index c1c92449fdc3cce0516ff959f0d68dfa280e5987..70ecf29e927ca0c846ea544034c25549915b4321 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -56,6 +56,10 @@ import {
+@@ -56,6 +56,11 @@ import {
    WindowsDesktopBuildPrerequisitesMissingError,
    WindowsPackagedPayloadValidationError,
    stageCursorSdkPlatformPackages,
 +  BATON_VOICE_PAYLOAD_FILES,
 +  TESSAYA_ART_PAYLOAD_FILES,
++  COMPANION_PAYLOAD_FILES,
 +  MEMORY_MODEL_PAYLOAD_FILES,
 +  batonSidecarBuild,
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
-@@ -158,6 +162,18 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
+@@ -158,6 +163,22 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
    const stageDistDir = path.join(tempDir, "dist");
    const packagedAppDir = path.join(stageDistDir, "win-unpacked");
    const resourcesDir = path.join(packagedAppDir, "resources");
@@ -413,6 +414,10 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a
 +  for (const file of TESSAYA_ART_PAYLOAD_FILES) {
 +    yield* fs.writeFileString(path.join(resourcesDir, "tessaya", file), "art");
 +  }
++  yield* fs.makeDirectory(path.join(resourcesDir, "companion"), { recursive: true });
++  for (const file of COMPANION_PAYLOAD_FILES) {
++    yield* fs.writeFileString(path.join(resourcesDir, "companion", file), "companion");
++  }
 +  yield* fs.makeDirectory(path.join(resourcesDir, "memory-model"), { recursive: true });
 +  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
 +    yield* fs.writeFileString(path.join(resourcesDir, "memory-model", file), "model");
@@ -420,7 +425,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1335,6 +1351,56 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1335,6 +1356,72 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -457,10 +462,26 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a
 +        assert.equal(artError.reason, "tessaya-art-missing");
 +        assert.deepStrictEqual(artError.missingFiles, ["tessaya/sting-madder-dark.webp"]);
 +
-+        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
++        // 0.1.118 shipped without her characters: the mascot window opened onto a missing stage.html.
 +        yield* fs.writeFileString(
 +          path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"),
 +          "art",
++        );
++        yield* fs.remove(path.join(fixture.packagedAppDir, "resources/companion/stage.html"));
++        const companionError = yield* validateWindowsPackagedPayload({
++          stageDistDir: fixture.stageDistDir,
++          appExecutableName: fixture.appExecutableName,
++          targetArch: "x64",
++          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
++        }).pipe(Effect.flip);
++        assert.instanceOf(companionError, WindowsPackagedPayloadValidationError);
++        assert.equal(companionError.reason, "companion-missing");
++        assert.deepStrictEqual(companionError.missingFiles, ["companion/stage.html"]);
++
++        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
++        yield* fs.writeFileString(
++          path.join(fixture.packagedAppDir, "resources/companion/stage.html"),
++          "companion",
 +        );
 +        yield* fs.remove(
 +          path.join(fixture.packagedAppDir, "resources/memory-model/model_quantized.onnx"),
@@ -477,7 +498,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a
        }),
      ),
    );
-@@ -1871,3 +1937,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1871,3 +1958,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -505,7 +526,7 @@ index c1c92449fdc3cce0516ff959f0d68dfa280e5987..6fe63263aa1f102c2f803a8126a4b80a
 +  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b478b31f0b 100644
+index 92c0974b546da1018262308d8a608c0f82163873..be0fd0b8c131e82f2ddf5a4025b16943c6333da2 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -532,17 +553,18 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
  export class ClerkPasskeyNativePackageMissingError extends Schema.TaggedError<ClerkPasskeyNativePackageMissingError>()(
    "ClerkPasskeyNativePackageMissingError",
    {
-@@ -749,6 +759,9 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
+@@ -749,6 +759,10 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
    "sidecar-invalid",
    "unpacked-native-missing",
    "resource-monitor-missing",
 +  "baton-voice-missing",
 +  "tessaya-art-missing",
++  "companion-missing",
 +  "memory-model-missing",
    "wsl-runtime-missing",
    "wsl-runtime-invalid",
    "file-limit-exceeded",
-@@ -775,6 +788,15 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
+@@ -775,6 +789,18 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
      if (this.reason === "resource-monitor-missing") {
        return "Windows packaged payload is missing the resource monitor executable.";
      }
@@ -552,13 +574,16 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
 +    if (this.reason === "tessaya-art-missing") {
 +      return `Windows packaged payload is missing Tessaya's palette art: ${(this.missingFiles ?? []).join(", ")}.`;
 +    }
++    if (this.reason === "companion-missing") {
++      return `Windows packaged payload is missing her characters (the desktop mascot and the pill's face): ${(this.missingFiles ?? []).join(", ")}.`;
++    }
 +    if (this.reason === "memory-model-missing") {
 +      return `Windows packaged payload is missing the memory model (run node scripts/tessaya/fetch-memory-model.mjs): ${(this.missingFiles ?? []).join(", ")}.`;
 +    }
      if (this.reason === "wsl-runtime-missing") {
        return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
      }
-@@ -994,6 +1016,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
+@@ -994,6 +1020,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
    "!**/*.d.cts",
    "!apps/desktop/resources/browser-secret",
    "!apps/desktop/resources/browser-secret/**/*",
@@ -567,7 +592,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
    "!apps/desktop/prod-resources/browser-secret",
    "!apps/desktop/prod-resources/browser-secret/**/*",
    "!apps/desktop/prod-resources/windows-server",
-@@ -1024,6 +1048,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+@@ -1024,6 +1052,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
    const unusedArch = arch === "arm64" ? "x64" : "arm64";
    return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/**/prebuilds/darwin-${unusedArch}/**/*`];
  }
@@ -589,18 +614,19 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1061,7 +1100,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1061,7 +1104,10 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
 -export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
 +// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
-+// and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
-+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 154;
++// Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more, and her characters
++// (apps/web/public/companion) 27 more.
++export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 181;
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1090,6 +1131,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1090,6 +1136,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
@@ -609,7 +635,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
  export const DESKTOP_EXTRA_RESOURCES = [
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
-@@ -1099,6 +1142,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1099,6 +1147,30 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -622,9 +648,9 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
 +    from: "apps/desktop/resources/tessaya",
 +    to: "tessaya",
 +  },
-+  // Her characters (Character Studio) for the desktop mascot and the pill's face; the web build serves the same folder.
++  // Her characters (Character Studio) for the desktop mascot and the pill's face, staged from apps/web/public/companion.
 +  {
-+    from: "apps/web/public/companion",
++    from: "apps/desktop/prod-resources/companion",
 +    to: "companion",
 +  },
 +  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs, staged below.
@@ -640,7 +666,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2414,187 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2419,196 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -651,6 +677,15 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
 +    `taskbar-${palette}-${theme}.ico`,
 +  ]),
 +);
++
++/** The mascot's page and the studio scripts it loads (apps/web/public/companion/stage.html). */
++export const COMPANION_PAYLOAD_FILES = [
++  "stage.html",
++  "rig.js",
++  "bodies.js",
++  "props.js",
++  "speech.js",
++] as const;
 +
 +/** The bundled server's memory recall model (MEM-13). */
 +export const MEMORY_MODEL_PAYLOAD_FILES = ["model_quantized.onnx", "vocab.txt"] as const;
@@ -828,7 +863,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +3040,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +3054,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -836,7 +871,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3155,6 +3404,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3155,6 +3418,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -856,7 +891,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3418,6 +3680,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3418,6 +3694,59 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -887,6 +922,19 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
 +    });
 +  }
 +
++  const missingCompanion: string[] = [];
++  for (const file of COMPANION_PAYLOAD_FILES) {
++    if (!(yield* isFile(path.join(resourcesDir, "companion", file))))
++      missingCompanion.push(`companion/${file}`);
++  }
++  if (missingCompanion.length > 0) {
++    return yield* new WindowsPackagedPayloadValidationError({
++      reason: "companion-missing",
++      packagedAppDir,
++      missingFiles: missingCompanion,
++    });
++  }
++
 +  const missingModel: string[] = [];
 +  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
 +    if (!(yield* isFile(path.join(resourcesDir, "memory-model", file))))
@@ -903,7 +951,7 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3779,6 +4081,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3779,6 +4108,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -917,14 +965,18 @@ index 92c0974b546da1018262308d8a608c0f82163873..a6d9296ddaf577bed32216953a3a55b4
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3811,6 +4120,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3811,6 +4147,22 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
-+  // Extra resources resolve inside the stage; the memory model lives with the server, so it is copied in.
++  // Extra resources resolve inside the stage, and electron-builder skips a missing one silently: copy each one in.
 +  yield* fs.copy(
 +    path.join(repoRoot, "apps/server/resources/memory-model"),
 +    path.join(stageProdResourcesDir, "memory-model"),
++  );
++  yield* fs.copy(
++    path.join(repoRoot, "apps/web/public/companion"),
++    path.join(stageProdResourcesDir, "companion"),
 +  );
 +  yield* fs.makeDirectory(path.join(stageProdResourcesDir, "baton-live"), { recursive: true });
 +  for (const file of BATON_LIVE_AGENT_FILES) {
