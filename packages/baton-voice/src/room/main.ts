@@ -25,6 +25,7 @@ import {
   type SpeakerProfile,
 } from "../speaker.ts";
 import { createSpeakerStore } from "../speakerStore.ts";
+import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "./mqtt.ts";
 import { noteTime, pickRecogniser, turnAcross, type RecogniserState } from "./recognisers.ts";
@@ -607,6 +608,8 @@ const main = async () => {
           sharedProfiles.refine(identity.personId, vector);
         return identity;
       },
+      voices: (pcm) =>
+        voicesOf({ pcm, embed: embedder.embed, profiles: store.list(), policy, at: Date.now() }),
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
