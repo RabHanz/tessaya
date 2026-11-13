@@ -13,6 +13,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
 import { requestUrl } from "../requestUrl.ts";
+import { StepUps } from "./StepUps.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
@@ -95,6 +96,49 @@ export const routes = HttpRouter.use((router) =>
       ),
     );
     yield* router.add("POST", "/api/devices/r1/v1/voice/arbiter", arbiter);
+    // The loop's answer to a step-up over HTTP, as on `voice/stepup/done` (the live suite's way in, too): whether it ran.
+    const stepUp = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (device === null || !sameKey(bearer, device.deviceKey))
+        return HttpServerResponse.jsonUnsafe(
+          { ok: false, error: "Wrong device key." },
+          { status: 401 },
+        );
+      const body = (yield* request.json.pipe(Effect.orElseSucceed(() => ({})))) as Record<
+        string,
+        unknown
+      >;
+      if (typeof body["device"] !== "string" || typeof body["act"] !== "string")
+        return HttpServerResponse.jsonUnsafe(
+          { ok: false, error: "Name the device and the act." },
+          {
+            status: 400,
+          },
+        );
+      const from = body["device"];
+      const done = {
+        act: body["act"],
+        ok: body["ok"] === true,
+        how: typeof body["how"] === "string" ? body["how"] : "",
+        member: typeof body["member"] === "string" ? body["member"] : null,
+      };
+      const ran = yield* Effect.serviceOption(StepUps).pipe(
+        Effect.flatMap((s) =>
+          Option.isSome(s) ? s.value.settle(from, done) : Effect.succeed(false),
+        ),
+        Effect.provideContext(context),
+      );
+      return HttpServerResponse.jsonUnsafe({ ok: true, ran });
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(HttpServerResponse.jsonUnsafe({ ok: false }, { status: 500 })),
+      ),
+    );
+    yield* router.add("POST", "/api/devices/r1/v1/voice/stepup", stepUp);
     // The room loop's enrolment, or a profile it already had (moving to one profile per member): saved on the home
     // as the owner's, never a member the loop names; it re-enrols only the owner today.
     const decodeVoice = Schema.decodeUnknownOption(VoiceUpload);

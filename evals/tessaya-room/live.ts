@@ -12,6 +12,7 @@ import * as NodeUtil from "node:util";
 import {
   fill,
   hasDevices,
+  HELD,
   liveCases,
   liveFailureOf,
   slotsOf,
@@ -51,12 +52,21 @@ interface Turn {
 }
 
 /** One turn as the R1 loop sends it, with the replay's trace of tool calls. */
-const turn = async (history: ReadonlyArray<{ role: string; content: string }>): Promise<Turn> => {
+const turn = async (
+  history: ReadonlyArray<{ role: string; content: string }>,
+  voice?: Readonly<Record<string, unknown>>,
+): Promise<Turn> => {
   const started = Date.now();
   const response = await fetch(`${values.server}/api/devices/r1/v1/chat/completions`, {
     method: "POST",
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-    body: JSON.stringify({ messages: history, stream: true, device: "replay-suite", trace: true }),
+    body: JSON.stringify({
+      messages: history,
+      stream: true,
+      device: "replay-suite",
+      trace: true,
+      ...(voice === undefined ? {} : { tessaya: voice }),
+    }),
     signal: AbortSignal.timeout(120_000),
   });
   if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
@@ -112,19 +122,22 @@ const cases = liveCases.filter(
     (c.laptop !== true || values.laptop === true),
 );
 /** One case's sentences through the vessel under test: replies, the trace of its tool calls, and each turn's time. */
-type Say = (sentences: ReadonlyArray<string>) => Promise<{
+type Say = (
+  sentences: ReadonlyArray<string>,
+  voices?: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
+) => Promise<{
   replies: ReadonlyArray<string>;
   calls: ReadonlyArray<LiveCall>;
   ms: ReadonlyArray<number>;
 }>;
-const r1Say: Say = async (sentences) => {
+const r1Say: Say = async (sentences, voices) => {
   const history: Array<{ role: string; content: string }> = [];
   const replies: Array<string> = [];
   const calls: Array<LiveCall> = [];
   const ms: Array<number> = [];
-  for (const sentence of sentences) {
+  for (const [i, sentence] of sentences.entries()) {
     history.push({ role: "user", content: sentence });
-    const t = await turn(history);
+    const t = await turn(history, voices?.[i]);
     replies.push(t.reply);
     calls.push(...t.calls);
     ms.push(t.ms);
@@ -164,6 +177,27 @@ const devicesHere = !cases.some((c) => c.device === true)
           { role: "user", content: "List my devices with device_list; just their names." },
         ])
       ).calls.some((c) => c.name === "device_list" && !c.isError && hasDevices(c.text));
+/** The loop's answers to the act her server held, over its HTTP door: why the case fails, or null. */
+const stepUpFailure = async (
+  answers: (typeof cases)[number]["stepUps"],
+  calls: ReadonlyArray<LiveCall>,
+): Promise<string | null> => {
+  if (answers === undefined) return null;
+  const act = calls.map((x) => HELD.exec(x.text)?.[1]).find((a) => a !== undefined);
+  if (act === undefined) return "no act was held";
+  for (const a of answers) {
+    const response = await fetch(`${values.server}/api/devices/r1/v1/voice/stepup`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ device: a.device ?? "replay-suite", act, ok: a.ok, how: a.how }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const { ran } = (await response.json()) as { ran?: boolean };
+    if (ran !== a.ran)
+      return `step-up ${a.how} from ${a.device ?? "its R1"}: ${ran === true ? "ran" : "did not run"}`;
+  }
+  return null;
+};
 const rows = [];
 for (const c of cases) {
   const need = slotsOf(c).filter((s) => house[s] === undefined);
@@ -184,13 +218,28 @@ for (const c of cases) {
     console.log(`n/a   ${c.id}: not a tool of the ${values.vessel}`);
     continue;
   }
+  // The loop's voice envelope and its step-up answers are the R1's; the desktop judges its own voice.
+  if (desktop !== null && (c.voices !== undefined || c.stepUps !== undefined)) {
+    rows.push({ id: c.id, proves: c.proves, result: "n/a", why: "the R1 loop's voice" });
+    console.log(`n/a   ${c.id}: the R1 loop's voice`);
+    continue;
+  }
   let replies: ReadonlyArray<string> = [];
   let calls: ReadonlyArray<LiveCall> = [];
   let ms: ReadonlyArray<number> = [];
   let why: string | null;
   try {
-    ({ replies, calls, ms } = await say(c.said.map((sentence) => fill(sentence, house))));
-    why = liveFailureOf(c, house, replies, calls);
+    ({ replies, calls, ms } = await say(
+      c.said.map((sentence) => fill(sentence, house)),
+      c.voices,
+    ));
+    // Nothing is held where no member has a voice yet (Voice ID can't tell anyone apart): not applicable there.
+    if (c.stepUps !== undefined && !calls.some((x) => HELD.test(x.text))) {
+      rows.push({ id: c.id, proves: c.proves, result: "n/a", why: "no member has a voice here" });
+      console.log(`n/a   ${c.id}: no member has a voice on this server`);
+      continue;
+    }
+    why = liveFailureOf(c, house, replies, calls) ?? (await stepUpFailure(c.stepUps, calls));
   } catch (error) {
     why = `the turn failed: ${String(error)}`;
   }

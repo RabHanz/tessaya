@@ -31,6 +31,24 @@ export const SLOT_DOMAIN: Readonly<Record<Slot, string>> = {
   script: "script",
 };
 
+/** His voice as the loop judged it: verified on the turn's own audio (A2), or only a likely match (A1). */
+const SURE = {
+  kind: "owner",
+  personId: "owner",
+  verified: true,
+  inherited: false,
+  confidence: 0.7,
+};
+const UNSURE = {
+  kind: "owner",
+  personId: "owner",
+  verified: false,
+  inherited: false,
+  confidence: 0.4,
+};
+/** A held act's id in the tool's result (R1Tools). */
+export const HELD = /\b(stepup-\d+-\d+)\b/;
+
 export interface LiveCase {
   readonly id: string;
   /** The tools this case proves; every room tool must be named by at least one case. */
@@ -50,8 +68,24 @@ export interface LiveCase {
   /** The last reply must match each. */
   readonly lastSays?: ReadonlyArray<RegExp>;
   readonly lastNotSays?: ReadonlyArray<RegExp>;
-  /** A check of its own on the last reply and the calls: why it fails, or null. */
-  readonly check?: (last: string, calls: ReadonlyArray<LiveCall>) => string | null;
+  /** A check of its own on the last reply and the calls (and every reply): why it fails, or null. */
+  readonly check?: (
+    last: string,
+    calls: ReadonlyArray<LiveCall>,
+    replies: ReadonlyArray<string>,
+  ) => string | null;
+  /** The loop's voice envelope for each sentence (who it heard, its name once), as the R1 loop sends it. */
+  readonly voices?: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>;
+  /**
+   * The loop's answers to the act her server held (`voice/stepup/done`, here over its HTTP door), in order, and
+   * whether each must have run it.
+   */
+  readonly stepUps?: ReadonlyArray<{
+    readonly how: string;
+    readonly ok: boolean;
+    readonly device?: string;
+    readonly ran: boolean;
+  }>;
   /** Needs a device in the server's registry (device_list); not applicable on a server with none. */
   readonly device?: boolean;
   /** Asks his real laptop (read-only); runs only with --laptop. */
@@ -439,6 +473,47 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     // A confirm setting waits for his yes: she says it is with him.
     lastSays: [/\b(yes|phone|approv\w*|confirm\w*)\b/i],
   },
+  // Recognition (recognition.ts): her name for them once a session, from the loop's cue, and never when it can't tell.
+  {
+    id: "cue-once",
+    proves: [],
+    said: ["Hey, what's the time?", "And what day is it today?"],
+    voices: [{ speaker: SURE, nameOnce: "Avery" }, { speaker: SURE }],
+    uses: [],
+    check: (_last, _calls, replies) =>
+      !/\bAvery\b/.test(replies[0] ?? "")
+        ? "did not use the name the loop sent once"
+        : /\bAvery\b/.test(replies[1] ?? "")
+          ? "used the name again on a later turn"
+          : null,
+  },
+  {
+    id: "cue-not-unsure",
+    proves: [],
+    said: ["Hey, what's the time?"],
+    voices: [{ speaker: UNSURE }],
+    uses: [],
+    lastNotSays: [/\bAvery\b/],
+  },
+  // A change that needs to know who asked waits for one step-up: a press elsewhere or the R1's own S2 (presence, A1)
+  // never runs it; their verified voice does (here as a dry run).
+  {
+    id: "held-act-runs-after-step-up",
+    proves: [],
+    said: ["Turn off the prompt suggestions."],
+    voices: [{ speaker: UNSURE }],
+    uses: [["settings_set"]],
+    stepUps: [
+      { how: "voice", ok: true, device: "replay-elsewhere", ran: false },
+      { how: "button", ok: true, ran: false },
+      { how: "voice", ok: true, ran: true },
+      { how: "voice", ok: true, ran: false },
+    ],
+    check: (_last, calls) =>
+      calls.some((x) => x.name === "settings_set" && x.status === "asked" && HELD.test(x.text))
+        ? null
+        : "settings_set was not held for a step-up",
+  },
   {
     id: "setting-get",
     proves: ["settings_get"],
@@ -651,7 +726,7 @@ export const liveFailureOf = (
     return `claimed it was done, but: ${acts.map((x) => x.text.slice(0, 100)).join(" | ")}`;
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;
   for (const re of c.lastNotSays ?? []) if (re.test(last)) return `last reply ${re}`;
-  if (c.check !== undefined) return c.check(last, calls);
+  if (c.check !== undefined) return c.check(last, calls, replies);
   return null;
 };
 
