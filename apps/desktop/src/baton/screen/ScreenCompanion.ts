@@ -3282,7 +3282,8 @@ export const startScreenCompanion = (input: {
   /** Memory's skills made his accepted ones (SPINE-UNIFY §9); a server that does not answer waits for the next try. */
   const skillsToMemory = async () => {
     const call = actions?.memory;
-    if (call === undefined) return;
+    // With the one brain off, this desktop's own sessions read them from the folder, as before.
+    if (call === undefined || !settings.serverBrain) return;
     const dir = skillsDir();
     const states = readStates(dir);
     const synced = await syncSkillsToMemory({
@@ -4285,8 +4286,10 @@ export const startScreenCompanion = (input: {
       else if (id === "s.hands") save({ remoteHands: value === true });
       else if (id === "s.cursor") save({ actCursor: value === true });
       else if (id === "s.handsAway") save({ remoteHandsAway: value === true });
-      else if (id === "s.serverBrain") save({ serverBrain: value === true });
-      else if (id === "s.serverBrainHome") save({ serverBrainHome: value === true });
+      else if (id === "s.serverBrain") {
+        save({ serverBrain: value === true });
+        void skillsToMemory();
+      } else if (id === "s.serverBrainHome") save({ serverBrainHome: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
       else if (id === "s.learn") void learnFromLast();
       else if (learnedAction(id) !== null) {
