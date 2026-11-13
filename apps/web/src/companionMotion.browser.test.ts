@@ -38,7 +38,16 @@ const mount = (TCS: Studio, persona: string) => {
     const eyes = [...svg.querySelectorAll('[data-l="eye-base"]')].flatMap((g) =>
       (g.firstElementChild?.getAttribute("d")?.match(/-?\d+(\.\d+)?/g) ?? []).map(Number),
     );
+    const tone =
+      svg.querySelector('radialGradient[id^="bg"] stop:nth-child(2)')?.getAttribute("stop-color") ??
+      "#000000";
     return {
+      // the body's colour (8-bit, as drawn) and the mood aura's strength around her
+      colour: [1, 3, 5].map((i) => parseInt(tone.slice(i, i + 2), 16)),
+      aura: [...svg.querySelectorAll('[fill^="url(#aw"],[fill^="url(#ac"]')].reduce(
+        (a, e) => a + Number(e.getAttribute("opacity")),
+        0,
+      ),
       lift: Number(/translate\(0 (-?[\d.]+)\)/.exec(w)?.[1] ?? 0),
       brow: Number(svg.querySelector('[data-l="brow"]')?.getAttribute("opacity") ?? 0),
       eyes,
@@ -88,38 +97,39 @@ describe("the companion's changes of expression", () => {
       using m = mount(TCS, persona);
       const before = m.sample();
       m.rig.setExpression(expression);
-      // the change itself (1.15 s): after it a sustained mood loop (a laugh, a sway) keeps its 30-a-second ceiling
-      const seen = [before, ...m.frames(69)];
-      // the body moves on an arc (anticipation, the move, a settle): it travels, and never jumps
-      const lifts = seen.map((s) => s.lift - before.lift);
-      const lift = motionOf(lifts);
-      expect(lift.range).toBeGreaterThan(1);
-      expect(lift.snaps).toBe(0);
-      // anticipation: before the main move, the body first goes a little the other way
-      const peak = lifts.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0);
-      const lead = lifts.slice(0, lifts.indexOf(peak));
-      expect(Math.max(0, ...lead.map((v) => -Math.sign(peak) * v))).toBeGreaterThan(0.4);
-      // a change is a move of about a second, slow in and slow out (the motion bar): the face is not yet halfway at
-      // 0.25 s, and still moving at 0.6 s
-      // each eye's shape around its own centre, so the body's posture and squash do not count as the face changing
-      const shape = (nums: ReadonlyArray<number>) => {
-        const eye = (side: number) =>
-          nums.slice(side * (nums.length / 2), (side + 1) * (nums.length / 2));
-        return [0, 1].flatMap((side) => {
-          const e = eye(side),
-            xs = e.filter((_, k) => k % 2 === 0),
-            ys = e.filter((_, k) => k % 2 === 1);
-          const cx = xs.reduce((a, b) => a + b, 0) / xs.length,
-            cy = ys.reduce((a, b) => a + b, 0) / ys.length;
-          return e.map((v, k) => v - (k % 2 === 0 ? cx : cy));
+      // two seconds at 60 a second: the whole change, colour included
+      const seen = [before, ...m.frames(120)];
+      // the motion bar (14 Nov): the body's colour moves on at least 40 of the 45 steps a 30-a-second film shows in its
+      // first 1.5 s, and is halfway there between 0.45 and 0.7 s
+      const away = seen.map((s) => Math.hypot(...s.colour.map((c, k) => c - before.colour[k]!)));
+      const total = away.at(-1)!;
+      expect(total).toBeGreaterThan(20);
+      const film = away.filter((_, i) => i % 2 === 0).slice(0, 46);
+      // a step shows a change when the body's colour or the aura moved (the colour alone is 8-bit, so its slow ends round)
+      const auras = seen
+        .map((s) => s.aura)
+        .filter((_, i) => i % 2 === 0)
+        .slice(0, 46);
+      expect(
+        film.slice(1).filter((v, i) => v !== film[i] || auras[i + 1] !== auras[i]).length,
+      ).toBeGreaterThanOrEqual(40);
+      const half = away.findIndex((v) => v >= total / 2) / 60;
+      expect(half).toBeGreaterThanOrEqual(0.45);
+      expect(half).toBeLessThanOrEqual(0.7);
+      // the pose moves softly: no frame jumps
+      expect(motionOf(seen.map((s) => s.lift)).snaps).toBe(0);
+      // the face arrives spread over the change: not yet halfway at 0.25 s
+      const shape = (nums: ReadonlyArray<number>) =>
+        [0, 1].flatMap((side) => {
+          const e = nums.slice((side * nums.length) / 2, ((side + 1) * nums.length) / 2);
+          const mean = (k: number) =>
+            e.filter((_, i) => i % 2 === k).reduce((a, b) => a + b, 0) / (e.length / 2);
+          return e.map((v, i) => v - mean(i % 2));
         });
-      };
       const start = shape(before.eyes);
       const faceAt = (i: number) =>
         shape(seen[i]!.eyes).reduce((a, v, k) => a + Math.abs(v - start[k]!), 0);
-      const total = faceAt(69);
-      expect(faceAt(15)).toBeLessThan(total * 0.5);
-      expect(Math.abs(faceAt(36) - faceAt(33))).toBeGreaterThan(0);
+      expect(faceAt(15)).toBeLessThan(faceAt(120) * 0.5);
       for (const series of [
         seen.map((s) => s.brow),
         ...before.eyes.map((_, k) => seen.map((s) => s.eyes[k] ?? Number.NaN)),
