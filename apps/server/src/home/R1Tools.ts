@@ -9,6 +9,7 @@ import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
 import { foldSpelling, spellOut } from "@t3tools/baton-shared/spelling";
 import { type Assurance, type MemberRole, OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import { principalRefusal, reachAssurance, toolReach } from "@t3tools/baton-shared/trust";
+import { BATON_TOOL_PREFIX, judgeToolCall } from "@t3tools/baton-shared/operator";
 import { recordText } from "@t3tools/baton-shared/audit";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
@@ -91,14 +92,27 @@ const ROOM_TOOLS = [
   "member_preferences",
   "member_preference_set",
   "household_home_server",
+  // His jobs (BatonJobFlow): the desktop assistant's job tools, judged by the same table (judgeToolCall).
+  "job_start",
+  "job_agree",
+  "job_refine",
+  "job_split",
+  "job_retry",
+  "job_stop",
+  "job_schedule",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
+
+/** The room's job tools: the desktop has its own, over the same flow. */
+const JOB_TOOLS: ReadonlySet<string> = new Set(ROOM_TOOLS.filter((n) => n.startsWith("job_")));
 
 /**
  * The shared tools his desktop's Tessaya gets: the room's, plus his devices (the desktop has no device of its own).
  * Not tessaya_ask: the desktop is where those asks are answered.
  */
 const DESK_TOOLS = [
-  ...ROOM_TOOLS.filter((name) => name !== "tessaya_ask" && name !== "tessaya_ask_status"),
+  ...ROOM_TOOLS.filter(
+    (name) => name !== "tessaya_ask" && name !== "tessaya_ask_status" && !JOB_TOOLS.has(name),
+  ),
   "device_act",
   "device_owner",
   "device_tag",
@@ -226,6 +240,26 @@ const replayKept = (input: unknown, field: "text" | "value"): string => {
     .join("")}`;
 };
 
+/** What the job tools answer, from their own words (jobs/handlers.ts), with nothing started. */
+const replayJob = (name: string, input: Record<string, unknown>) => {
+  const id = typeof input["id"] === "string" ? input["id"] : null;
+  const line =
+    name === "job_start"
+      ? `Opened ${String(input["title"])} in ${String(input["project"])} (a replay: nothing was started). It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`
+      : name === "job_stop"
+        ? "Stopped. Its thread and plan stay."
+        : name === "job_refine"
+          ? "Passed on; the worker is making its plan again."
+          : name === "job_agree"
+            ? "Agreed; the worker has started."
+            : name === "job_schedule"
+              ? input["every_minutes"] === 0
+                ? "The schedule is off."
+                : `It runs again every ${String(input["every_minutes"])} minutes.`
+              : "Done (a replay: nothing changed).";
+  return { id, line };
+};
+
 /**
  * A replay's other writes (an ask to his phone), checked against the tool's schema and then not sent (13 Nov 01:29: a
  * replay of "turn on the office fan" flipped his real fan). Null when the call is not one.
@@ -237,8 +271,9 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
   return Option.isSome(decoders.get(name)!(input))
     ? {
         // What the real call answers, so her reply is the one he would hear.
-        text:
-          name === "tessaya_pronounce"
+        text: JOB_TOOLS.has(name)
+          ? JSON.stringify(replayJob(name, input as Record<string, unknown>))
+          : name === "tessaya_pronounce"
             ? "Saved (a replay: nothing was kept)."
             : name === "tessaya_memory_remember"
               ? JSON.stringify({ kept: "noted", id: null, line: replayKept(input, "text") })
@@ -282,6 +317,34 @@ export const stepUpNeeds = (name: string, assurance: Assurance): Assurance | nul
   const needs = reachAssurance(name);
   return needs >= 2 && assurance < needs ? needs : null;
 };
+
+/**
+ * A job act as the desktop's gate judges it (operator.ts), so the R1 and the desktop keep one rule: a deny is refused,
+ * an ask waits for his yes on a phone card whatever voice asked, and an allow goes on to the voice's own step-up.
+ */
+export const jobVerdict = (
+  name: string,
+  input: unknown,
+  tainted: boolean,
+): "allow" | "card" | { readonly refused: string } => {
+  if (!JOB_TOOLS.has(name)) return "allow";
+  const verdict = judgeToolCall(
+    {
+      tool: `${BATON_TOOL_PREFIX}${name}`,
+      input: (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>,
+    },
+    { actWithoutAsking: false, tainted },
+  );
+  return verdict.verdict === "deny"
+    ? { refused: verdict.why }
+    : verdict.verdict === "ask"
+      ? "card"
+      : "allow";
+};
+/** The assurance a phone card's yes gives a card act: above any voice, so only the card runs it. */
+const CARD_YES = 3;
+const CARD_LINE =
+  "Sent to his phone for a yes: it runs once he taps yes there. Say it waits for his yes on his phone, and don't ask again.";
 
 /** What the brain hears for a held act: she is already asking, so it says nothing more of it. */
 const HELD_LINE =
@@ -416,9 +479,32 @@ const makeRunners = Effect.gen(function* () {
       if (name === VOLUME.name && allowed.has(name)) return yield* setRoomVolume(input, device);
       if (!allowed.has(name))
         return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
+      const origin = yield* TurnOrigin;
+      const judged = jobVerdict(name, input, origin?.tainted === true);
+      if (typeof judged === "object") return { text: judged.refused, isError: true } as ToolOutcome;
+      if (judged === "card" && (origin?.assurance ?? 0) < CARD_YES) {
+        if (!vessel.holds || device === undefined || origin === null || Option.isNone(stepUps))
+          return {
+            text: "That needs his yes on his phone, and it can't be asked from here.",
+            isError: true,
+          } as ToolOutcome;
+        const act = yield* stepUps.value.hold({
+          device,
+          what: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
+          member: origin.member ?? null,
+          needs: CARD_YES,
+          card: true,
+          phone: !device.startsWith("replay-"),
+          run: (raised) =>
+            run(name, raw, device).pipe(
+              Effect.provideService(TurnOrigin, { ...origin, ...raised }),
+              Effect.asVoid,
+            ),
+        });
+        return { text: `${CARD_LINE} (${act})`, isError: false, status: "asked" } as ToolOutcome;
+      }
       // Held for a step-up only where a vessel judged the voice (it sent one) and Voice ID can tell anyone apart (a
       // member has a voice). A replay holds too, with no card on his phone, and its act then runs as a dry run.
-      const origin = yield* TurnOrigin;
       const needs = origin === null ? null : stepUpNeeds(name, origin.assurance ?? 0);
       if (
         needs !== null &&

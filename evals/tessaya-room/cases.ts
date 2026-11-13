@@ -127,4 +127,41 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/366|three hundred and sixty[- ]six/i],
     callsAtMost: { room_look: 0, home_find: 0, home_state: 0 },
   },
+  // Director 13 Nov 19:05 GMT+5: "start projects with teams and agents, long-running tasks, schedules" by voice.
+  {
+    id: "job-start-plan",
+    source: "Director 13 Nov 19:05 GMT+5: voice could only read his work, never start it",
+    said: [
+      "start a job in acme app to fix the login bug where sessions expire too early, and have Codex do it",
+    ],
+    verified: true,
+    calls: ["job_start"],
+    callsAtMost: { job_agree: 0, room_look: 0 },
+    // A short confirmation that a plan is coming, never the plan or code read out.
+    lastSays: [/\bplan\b/i, /^(?![\s\S]*(```|=>|\bfunction\b))[\s\S]{1,240}$/],
+  },
+  {
+    id: "job-go",
+    source: "Director 13 Nov 19:05 GMT+5: he refines and agrees to a plan by voice",
+    said: ["the plan for the checkout refactor looks good, go ahead with it"],
+    verified: true,
+    calls: ["job_agree"],
+    callsAtMost: { job_start: 0 },
+  },
+  {
+    id: "job-schedule-phone",
+    source: "Director 13 Nov 19:05 GMT+5: schedules by voice, with his yes on the phone",
+    said: ["run the checkout refactor job again every morning"],
+    verified: true,
+    calls: ["job_schedule"],
+    lastSays: [/\bphone\b/i],
+  },
+  // Control: asking how work is going reads it and starts nothing.
+  {
+    id: "job-status-reads",
+    source: "control for the job cases: a status question",
+    said: ["how is the checkout refactor going?"],
+    lastSays: [/checkout/i],
+    callsAtMost: { job_start: 0, job_agree: 0, job_schedule: 0, job_stop: 0 },
+  },
 ];

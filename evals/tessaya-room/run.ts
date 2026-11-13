@@ -159,6 +159,27 @@ const WORK = {
     ],
     limits: [{ scope: "all", period: "day", limit: 1, spent: 0.23, reached: false }],
   },
+  tessaya_jobs: {
+    jobs: [
+      {
+        workSessionId: "job-acme-1",
+        title: "checkout refactor",
+        project: "acme/app",
+        phase: "awaiting_agreement",
+        group: "needs_you",
+      },
+    ],
+  },
+  // The job tools' own words (apps/server/src/mcp/toolkits/jobs/handlers.ts, R1Tools' card line).
+  job_start: {
+    id: "job-acme-2",
+    line: "Opened it in acme/app. It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.",
+  },
+  job_agree: { id: "job-acme-1", line: "Agreed; the worker has started." },
+  job_refine: { id: "job-acme-1", line: "Passed on; the worker is making its plan again." },
+  job_stop: { id: "job-acme-1", line: "Stopped. Its thread and plan stay." },
+  job_schedule:
+    "Sent to his phone for a yes: it runs once he taps yes there. Say it waits for his yes on his phone, and don't ask again.",
 } as Record<string, unknown>;
 
 type House = ReturnType<typeof makeHouse>;

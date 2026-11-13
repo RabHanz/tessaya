@@ -60,11 +60,12 @@ export type Placement<A> =
   | { readonly ok: true; readonly value: A }
   | { readonly ok: false; readonly why: string };
 
-/** The project by the name he said, and the first ready Claude as the worker. */
+/** The project by the name he said, and the worker he named (`worker`), else the first ready Claude. */
 export const placeJob = <P extends PlacementProject>(
   wanted: string,
   projects: ReadonlyArray<P>,
   providers: ReadonlyArray<ServerProvider>,
+  worker?: string,
 ): Placement<{ readonly project: P; readonly label: string; readonly worker: Worker }> => {
   const name = wanted.trim().toLowerCase();
   const project = projects.find(
@@ -75,22 +76,28 @@ export const placeJob = <P extends PlacementProject>(
     const known = projects.map((entry) => batonProjectKey(entry).label).join(", ");
     return { ok: false, why: `No project is called "${wanted}". Projects: ${known}.` };
   }
-  const worker = readyWorkers(providers).find((entry) => entry.driver === "claudeAgent");
-  if (worker === undefined)
+  const label = batonProjectKey(project).label;
+  if (worker !== undefined && worker.trim() !== "") {
+    const named = handoffTarget(worker, providers);
+    return named.ok ? { ok: true, value: { project, label, worker: named.value } } : named;
+  }
+  const claude = readyWorkers(providers).find((entry) => entry.driver === "claudeAgent");
+  if (claude === undefined)
     return { ok: false, why: "No signed-in Claude is ready to be the worker." };
-  return { ok: true, value: { project, label: batonProjectKey(project).label, worker } };
+  return { ok: true, value: { project, label, worker: claude } };
 };
 
-/** The worker he named for a handoff, by instance id or name. */
+/** The worker he named, by instance id, name or kind ("codex", "claude"): the first ready one that fits. */
 export const handoffTarget = (
   wanted: string,
   providers: ReadonlyArray<ServerProvider>,
 ): Placement<Worker> => {
   const name = wanted.trim().toLowerCase();
   const workers = readyWorkers(providers);
-  const target = workers.find(
-    (entry) => entry.instanceId.toLowerCase() === name || entry.label.toLowerCase() === name,
-  );
+  const target =
+    workers.find(
+      (entry) => entry.instanceId.toLowerCase() === name || entry.label.toLowerCase() === name,
+    ) ?? workers.find((entry) => name !== "" && entry.driver.toLowerCase().startsWith(name));
   return target === undefined
     ? {
         ok: false,

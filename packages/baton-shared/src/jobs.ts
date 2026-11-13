@@ -238,6 +238,20 @@ const jobOutcome = (j: Pick<BatonJob, "phase" | "group" | "limitReached">): stri
         ? `stopped at its ${j.limitReached} limit`
         : GROUP_WORDS[j.group];
 
+/** What is said aloud where a job was asked when its standing changes to this, or null for a change not worth a word. */
+export const jobNotice = (title: string, outcome: string): string | null =>
+  outcome === "plan waits for his OK"
+    ? `The plan for ${title} is ready in its thread.`
+    : outcome === GROUP_WORDS.done
+      ? `${title} is done.`
+      : outcome === GROUP_WORDS.failed
+        ? `${title} failed.`
+        : outcome === GROUP_WORDS.needs_you
+          ? `${title} needs you.`
+          : outcome.startsWith("stopped at its ")
+            ? `${title} ${outcome}.`
+            : null;
+
 /**
  * The jobs whose standing changed since `seen`, which is updated in place. A job seen for the first
  * time is only remembered: a restart must not announce every job again.

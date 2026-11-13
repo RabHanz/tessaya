@@ -110,6 +110,8 @@ export interface JobCreateInput {
   };
   /** The persona it works for: a role's file stem, or the lead when absent. */
   readonly persona?: string;
+  /** The R1 it was asked on (its device id), where its notices are said. */
+  readonly origin?: string;
 }
 
 export class BatonJobService extends Context.Service<
@@ -125,6 +127,8 @@ export class BatonJobService extends Context.Service<
     readonly parts: (parentId: WorkSessionId) => Effect.Effect<ReadonlyArray<BatonJobTerms>>;
     /** Each job's persona by its id; a job from before personas is the lead's. */
     readonly personas: () => Effect.Effect<ReadonlyMap<string, string>>;
+    /** The R1 each job asked there was asked on, by its id. */
+    readonly origins: () => Effect.Effect<ReadonlyMap<string, string>>;
     /** A standing permission for this job and this channel: explicit, per job, and logged. */
     readonly grant: (
       id: WorkSessionId,
@@ -212,11 +216,11 @@ export const make = Effect.gen(function* () {
     yield* sql`
       INSERT INTO fabric_job_terms (
         work_session_id, goal, permissions_json, limits_json, grants_json, phase, revisions_json,
-        schedule_task_id, worker_instance_id, parent_id, part_spec_json, persona, created_at, updated_at
+        schedule_task_id, worker_instance_id, parent_id, part_spec_json, persona, origin, created_at, updated_at
       ) VALUES (
         ${input.id}, ${input.goal}, ${encodePermissions(input.permissions)},
         ${encodeLimits(jobLimits(input.limits))}, ${encodeGrants([])}, 'drafting_plan', '[]',
-        NULL, ${input.workerInstanceId ?? null}, ${input.parentId ?? null}, ${input.partSpec === undefined ? null : encodePartSpec(input.partSpec)}, ${input.persona ?? null}, ${at}, ${at}
+        NULL, ${input.workerInstanceId ?? null}, ${input.parentId ?? null}, ${input.partSpec === undefined ? null : encodePartSpec(input.partSpec)}, ${input.persona ?? null}, ${input.origin ?? null}, ${at}, ${at}
       )
     `.pipe(Effect.orDie);
     return (yield* read(input.id))!;
@@ -243,6 +247,12 @@ export const make = Effect.gen(function* () {
       SELECT work_session_id, persona FROM fabric_job_terms
     `.pipe(Effect.orDie);
     return new Map(rows.map((r) => [r.work_session_id, r.persona ?? "executive"]));
+  });
+  const origins = Effect.fn("BatonJobService.origins")(function* () {
+    const rows = yield* sql<{ readonly work_session_id: string; readonly origin: string }>`
+      SELECT work_session_id, origin FROM fabric_job_terms WHERE origin IS NOT NULL
+    `.pipe(Effect.orDie);
+    return new Map(rows.map((r) => [r.work_session_id, r.origin]));
   });
   const view = Effect.fn("BatonJobService.view")(function* (input: {
     readonly entries: ReadonlyArray<BatonFleetEntry>;
@@ -340,6 +350,7 @@ export const make = Effect.gen(function* () {
     allTerms,
     parts,
     personas,
+    origins,
     clearPartSpec,
     grant,
     revoke,

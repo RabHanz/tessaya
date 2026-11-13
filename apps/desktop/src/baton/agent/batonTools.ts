@@ -5,6 +5,7 @@
  * and no I/O of its own, so each tool's arguments are checked here, before anything is touched.
  */
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
+import { JOB_TOOL_TEXT } from "@t3tools/baton-shared/jobTools";
 import type { VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-shared/operator";
 
@@ -1331,8 +1332,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     },
     {
       name: "job_start",
-      description:
-        "Hand long work to a worker thread that PLANS FIRST and does nothing until he agrees. Put his words in goal exactly as he said them. Name the project. Say plainly which folders and tools it may use.",
+      description: JOB_TOOL_TEXT.job_start,
       inputSchema: object(
         {
           title: { type: "string", maxLength: 120 },
@@ -1350,6 +1350,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
             items: { enum: ["read", "edit", "shell", "web", "sessions"] },
             maxItems: 5,
           },
+          worker: { type: "string", maxLength: 60 },
           report_every_minutes: {
             type: "number",
             minimum: 0,
@@ -1370,6 +1371,9 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
             : {}),
           folders: strings(a, "folders"),
           tools: strings(a, "tools"),
+          ...(typeof a["worker"] === "string" && a["worker"].trim() !== ""
+            ? { worker: str(a, "worker", 60) }
+            : {}),
           ...(a["report_every_minutes"] === undefined
             ? {}
             : { reportEveryMinutes: Math.max(0, Math.min(1440, num(a, "report_every_minutes"))) }),
@@ -1378,8 +1382,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     },
     {
       name: "job_retry",
-      description:
-        "Try a failed job's worker again, with the reason it failed so it does not repeat the same step. Only an agreed job that failed or hit a limit, and only within its retry budget (two unless the job says otherwise). Raise a hit limit first with job_refine (widens true).",
+      description: JOB_TOOL_TEXT.job_retry,
       inputSchema: object({ id: { type: "string" }, reason: { type: "string", maxLength: 400 } }, [
         "id",
         "reason",
@@ -1439,8 +1442,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     },
     {
       name: "job_refine",
-      description:
-        "Pass his correction or answer to a job's worker, word for word. The plan is made again; the work does not start. Set widens when it adds a folder, tool or a longer leash.",
+      description: JOB_TOOL_TEXT.job_refine,
       inputSchema: object(
         {
           id: { type: "string" },
@@ -1459,15 +1461,13 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     },
     {
       name: "job_agree",
-      description:
-        "Start a job's work, only after he has said go ahead or yes to its plan in this conversation. Never on your own.",
+      description: JOB_TOOL_TEXT.job_agree,
       inputSchema: object({ id: { type: "string" } }, ["id"]),
       run: async (a) => ({ text: await host.jobs("agree", { id: str(a, "id", 200) }) }),
     },
     {
       name: "job_split",
-      description:
-        "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (a specialist named in your frame) and routine: true for mechanical, repeatable work, which runs on the cheaper model. after lists the earlier parts (numbered from 1) that must be done first; a part whose earlier part fails is never started. Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
+      description: JOB_TOOL_TEXT.job_split,
       inputSchema: object(
         {
           id: { type: "string" },
@@ -1527,15 +1527,13 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     },
     {
       name: "job_stop",
-      description:
-        "Stop a job's worker now. Its thread and plan stay. Use it when he says stop that job.",
+      description: JOB_TOOL_TEXT.job_stop,
       inputSchema: object({ id: { type: "string" } }, ["id"]),
       run: async (a) => ({ text: await host.jobs("stop", { id: str(a, "id", 200) }) }),
     },
     {
       name: "job_schedule",
-      description:
-        "Run an agreed job again on a schedule, in its own thread (every_minutes between 1 and 10080), or take the schedule off (every_minutes 0). He is asked first.",
+      description: JOB_TOOL_TEXT.job_schedule,
       inputSchema: object(
         { id: { type: "string" }, every_minutes: { type: "number", minimum: 0, maximum: 10080 } },
         ["id", "every_minutes"],

@@ -43,6 +43,7 @@ import * as ThreadManagementService from "../../../orchestration-v2/ThreadManage
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
+import { JobTools } from "../jobs/tools.ts";
 import { MembersTools } from "../members/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
 
@@ -543,6 +544,7 @@ export const TessayaToolkit = Toolkit.make(
   ...DeviceTools,
   ...SettingsTools,
   ...MembersTools,
+  ...JobTools,
   JobsTool,
   WatchTool,
   RecordTool,

@@ -11,6 +11,7 @@ import {
   type JobLifecycle,
   jobChanges,
   jobLimits,
+  jobNotice,
   limitReached,
   outboundDecision,
   permissionsSummary,
@@ -226,5 +227,25 @@ describe("a job's changes for the Record", () => {
     ]);
     expect(seen.get("c")).toBe("running");
     expect(jobChanges([job("a", "awaiting_agreement", "needs_you")], seen)).toEqual([]);
+  });
+
+  it("says aloud only a ready plan, an end, or a need for him", () => {
+    expect(
+      [
+        "plan waits for his OK",
+        "done",
+        "failed",
+        "stopped at its turns limit",
+        "running",
+        "writing its plan",
+      ].map((outcome) => jobNotice("Fix login", outcome)),
+    ).toEqual([
+      "The plan for Fix login is ready in its thread.",
+      "Fix login is done.",
+      "Fix login failed.",
+      "Fix login stopped at its turns limit.",
+      null,
+      null,
+    ]);
   });
 });
