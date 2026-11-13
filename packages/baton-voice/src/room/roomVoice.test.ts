@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { EnrolCard } from "@t3tools/baton-contracts";
 
@@ -119,6 +119,10 @@ describe("the room voice loop", () => {
       t.published
         .filter((p) => p.topic === `freya/r1/${DEV}/event/enrol`)
         .map((p) => JSON.parse(String(p.payload)) as EnrolCard);
+    // The R1 is asked to open its mic first; a session opened only here hears nothing (13 Nov).
+    expect(t.published.map((p) => p.topic)).toContain(`freya/r1/${DEV}/cmd/voice/start`);
+    expect(cards()).toEqual([]);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     expect(cards()[0]!.lines[0]!.text).toContain("it's me,");
     expect(cards()[0]!.lines.map((l) => l.state)).toEqual([
       "now",
@@ -153,6 +157,30 @@ describe("the room voice loop", () => {
     });
     expect(windows).toEqual([6]);
     expect(t.brainCalls).toEqual([]);
+    // Its summary said, the enrolment ends the R1's session rather than turning into a conversation.
+    await vi.waitFor(() =>
+      expect(t.published.map((p) => p.topic)).toContain(`freya/r1/${DEV}/cmd/voice/stop`),
+    );
+  });
+
+  it("ends an enrolment session on a cancel, and answers nothing he says before it closes", async () => {
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "it still isn't working well",
+        cancel: () => undefined,
+        onPartial: () => undefined,
+      }),
+    });
+    t.room.message(`freya/r1/${DEV}/voice/enrol`, new TextEncoder().encode("{}"));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    t.room.message(`freya/r1/${DEV}/voice/enrol`, Buffer.from('{"cancel":true}'));
+    await t.feed(true, 30);
+    await t.feed(false, 30);
+    expect(t.brainCalls).toEqual([]);
+    await vi.waitFor(() =>
+      expect(t.published.map((p) => p.topic)).toContain(`freya/r1/${DEV}/cmd/voice/stop`),
+    );
   });
 
   it("does not answer a voice the gate keeps out", async () => {
@@ -1025,6 +1053,19 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     ]);
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"freya"}'));
     expect(spoken.at(-1)).toEqual(["Fray-uh here.", "azelma"]);
+  });
+
+  it("asks a button's prompt with no session only once the R1 has opened its mic", async () => {
+    const t = setup();
+    t.room.message(
+      `freya/r1/${DEV}/voice/ask`,
+      Buffer.from(JSON.stringify({ text: "What's next?" })),
+    );
+    expect(t.published.map((p) => p.topic)).toContain(`freya/r1/${DEV}/cmd/voice/start`);
+    expect(t.room.session(DEV)).toBeUndefined();
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.metrics;
+    expect(t.brainCalls.map((c) => c.messages.at(-1)?.content)).toEqual(["What's next?"]);
   });
 
   it("says a line on the R1 when asked, and hears nothing while muted", async () => {
