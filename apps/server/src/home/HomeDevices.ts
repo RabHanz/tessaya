@@ -161,6 +161,8 @@ export interface Heard {
     state: DeviceSpeaker["state"];
     saved: DeviceSpeaker["saved"];
     output: DeviceSpeakerOutput;
+    /** Where replies play now (0.3.52), when it says. */
+    playing?: DeviceSpeakerOutput;
     found: DeviceSpeaker["found"];
     scannedAt: number | null;
   } | null;
@@ -268,6 +270,28 @@ const withKind = (name: string, cod: number | undefined, said?: unknown) => {
   return { ...(cod === undefined ? {} : { cod }), ...(kind === "other" ? {} : { kind }) };
 };
 
+/** The R1's answer to a connect or pair: its link state, and why it failed (0.3.52 `reason`). */
+interface BtResult {
+  readonly state: string;
+  readonly mac: string | null;
+  readonly reason?: string | null;
+}
+
+/** Why a connect failed, in his words: the firmware's HCI reason when it gives one. */
+const btFailLine = (name: string, reason: string | null | undefined): string => {
+  switch (reason) {
+    case "repair-needed":
+      return `${name} has forgotten me. Put it in pairing mode, usually by holding its Bluetooth button until the light flashes, then ask me to pair it.`;
+    case "unreachable":
+    case "timeout":
+      return `I couldn't reach ${name}. Check it's switched on and nearby, then ask me again.`;
+    case "remote-off":
+      return `${name} turned the connection down or switched off. Switch it on and ask me again.`;
+    default:
+      return `I couldn't connect to ${name}. It's probably connected to another phone or laptop: disconnect it there first, or switch it off and on, then ask me again.`;
+  }
+};
+
 /** The R1 says `onboard` on its older topics where its manifest says `speaker`. */
 const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out);
 
@@ -334,6 +358,9 @@ export const applyMessage = (
     case "state/power": {
       const pct = num(body?.["battery_pct"]);
       if (pct !== null && pct >= 0) item("power.battery_pct", pct);
+      // 0.3.52 says null when it cannot read the battery: unknown, not the last level.
+      else if (body !== null && body["battery_pct"] === null)
+        items.push({ itemId: "power.battery_pct", value: null });
       if (typeof body?.["charging"] === "boolean") item("power.charging", body["charging"]);
       if (typeof body?.["stay_awake"] === "boolean") item("power.stay_awake", body["stay_awake"]);
       const up = num(body?.["uptime_ms"]);
@@ -360,9 +387,25 @@ export const applyMessage = (
         };
       break;
     }
-    case "state/audio/output":
-      item("audio.output", outputItem(str(body?.["out"])));
+    case "state/audio/output": {
+      // 0.3.52: `wanted` is his route (the setting), `out` where replies play now. Before it, `out` was the route.
+      const wanted = str(body?.["wanted"]);
+      item("audio.output", outputItem(wanted ?? str(body?.["out"])));
+      if (wanted !== null) item("audio.playing", outputItem(str(body?.["out"])));
       if (typeof body?.["device"] === "string") item("audio.device", body["device"]);
+      break;
+    }
+    case "state/mic":
+      if (typeof body?.["mute"] === "boolean") item("mic.mute", body["mute"]);
+      break;
+    case "state/imu/present":
+      if (typeof body?.["present"] === "boolean") item("imu.present", body["present"]);
+      if (body?.["present"] === false && str(body?.["why"]) !== null)
+        line = `motion sensor not answering: ${recordText(str(body?.["why"])!, 100)}`;
+      break;
+    case "state/voice":
+      // Why a turn did not open ("no session"), and the end of a push-to-talk hold (0.3.52); kept in the log.
+      if (body?.["ev"] === "refused") item("voice.refused", str(body?.["why"]) ?? "refused");
       break;
     case "event/key": {
       const key = str(body?.["key"]);
@@ -424,9 +467,15 @@ export const applyMessage = (
       const state = str(body?.["state"]);
       if (state !== null && SPEAKER_STATES.includes(state as never))
         d.speaker.state = state as DeviceSpeaker["state"];
-      const out = str(body?.["out"]);
-      if (out !== null && DEVICE_SPEAKER_OUTPUTS.includes(out as never))
-        d.speaker.output = out as DeviceSpeakerOutput;
+      // 0.3.52: `wanted` is the route he chose and `out` where replies play now; before it, `out` was the route.
+      const route = (v: string | null) => (v === "speaker" ? "onboard" : v);
+      const wanted = route(str(body?.["wanted"]));
+      const out = route(str(body?.["out"]));
+      const chosen = wanted ?? out;
+      if (chosen !== null && DEVICE_SPEAKER_OUTPUTS.includes(chosen as never))
+        d.speaker.output = chosen as DeviceSpeakerOutput;
+      if (wanted !== null && out !== null && DEVICE_SPEAKER_OUTPUTS.includes(out as never))
+        d.speaker.playing = out as DeviceSpeakerOutput;
       const mac = str(body?.["mac"]);
       d.speaker.saved =
         body?.["saved"] === true && mac !== null
@@ -947,12 +996,17 @@ const make = Effect.gen(function* () {
     if (tail === "event/key") yield* runKey(result.id, json(payload));
     else if (tail === "state/key/bind") yield* keepBinds(result.id, json(payload));
     else if (tail === "voice/stepup/done") yield* stepUpDone(result.id, json(payload));
-    else if (tail === "state/bt" || tail === "state/audio/output" || tail === "event/bt/devices")
+    else if (
+      tail === "state/bt" ||
+      tail === "state/bt/bonds" ||
+      tail === "state/audio/output" ||
+      tail === "event/bt/devices"
+    )
       yield* btHeard(result.id, tail, json(payload), now);
   });
 
   /** The R1's next Bluetooth link state after a connect or pair, for the true spoken result. */
-  const btWait = new Map<string, Deferred.Deferred<{ state: string; mac: string | null }>>();
+  const btWait = new Map<string, Deferred.Deferred<BtResult>>();
   /** A pair he asked for: the scan's result is matched to his words, then paired. */
   const pairing = new Map<string, { name: string; by: DeviceActor; until: number }>();
 
@@ -975,11 +1029,11 @@ const make = Effect.gen(function* () {
       yield* registry.report("mqtt", id, [{ itemId: "bt.known", value: next }]);
   });
 
-  const btLine = (target: BtKnown, got: { state: string; mac: string | null } | null) =>
+  const btLine = (target: BtKnown, got: BtResult | null) =>
     got === null
       ? `Still connecting to ${btLabel(target)}; it can take a few seconds.`
       : got.state === "failed"
-        ? `I couldn't connect to ${btLabel(target)}. It's probably connected to another phone or laptop: disconnect it there first, or switch it off and on, then ask me again.`
+        ? btFailLine(btLabel(target), got.reason)
         : got.mac !== null && got.mac.toUpperCase() !== target.mac
           ? `It connected to ${got.mac} rather than ${btLabel(target)}.`
           : `Connected to ${btLabel(target)}. I'll play through it.`;
@@ -992,7 +1046,7 @@ const make = Effect.gen(function* () {
     pair: boolean,
   ) {
     if (by.dryRun === true) return `Connecting to ${btLabel(target)}.`;
-    const waiter = yield* Deferred.make<{ state: string; mac: string | null }>();
+    const waiter = yield* Deferred.make<BtResult>();
     btWait.set(id, waiter);
     yield* publish(
       id,
@@ -1058,8 +1112,22 @@ const make = Effect.gen(function* () {
         mac: mac.toUpperCase(),
         name: str(body?.["name"]) ?? "",
         lastAt: linked ? now : null,
-        ...withKind(str(body?.["name"]) ?? "", codOf(body?.["cod"])),
+        ...withKind(str(body?.["name"]) ?? "", codOf(body?.["cod"]), body?.["kind"]),
       });
+    // 0.3.52: up to four saved devices, each with its name, class and kind, and which one is linked.
+    if (tail === "state/bt/bonds" && Array.isArray(body?.["devices"]))
+      for (const raw of (body["devices"] as Array<unknown>).slice(0, 8)) {
+        const b = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+        const bmac = str(b["mac"]);
+        if (bmac === null || !MAC.test(bmac)) continue;
+        const name = str(b["name"]) ?? "";
+        yield* remember(id, {
+          mac: bmac.toUpperCase(),
+          name,
+          lastAt: b["connected"] === true ? now : null,
+          ...withKind(name, codOf(b["cod"]), b["kind"]),
+        });
+      }
     // The firmware often says no name (0.3.51): the one this vessel or his desktop knows it by fills it in.
     const shown = heard.get(id)?.speaker;
     if (shown != null) {
@@ -1076,7 +1144,7 @@ const make = Effect.gen(function* () {
       const waiter = btWait.get(id);
       if (waiter !== undefined) {
         btWait.delete(id);
-        yield* Deferred.succeed(waiter, { state: state!, mac });
+        yield* Deferred.succeed(waiter, { state: state!, mac, reason: str(body?.["reason"]) });
       }
     }
     const wanted = pairing.get(id);

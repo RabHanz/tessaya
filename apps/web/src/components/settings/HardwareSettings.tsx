@@ -1326,7 +1326,15 @@ function RoomBrainSection({ environmentId }: { readonly environmentId: Environme
   );
 }
 
-const HAND_BUILT: ReadonlySet<string> = new Set(["audio.volume", "eye.mood"]);
+/** Items the R1's own rows above already set (volume, eyes, mute, screen turn, buttons). */
+const HAND_BUILT: ReadonlySet<string> = new Set([
+  "audio.volume",
+  "eye.mood",
+  "mic.mute",
+  "display.rotate",
+  "display.calibrate",
+  "key.bind",
+]);
 const SAFETY_LABEL: Readonly<Record<DeviceSafety, string>> = {
   free: "Free",
   confirm: "Asks first",
@@ -1363,6 +1371,8 @@ function ManifestDevice({
     const access = accessOf(item);
     const v = values.get(item.id)?.value;
     if (!access.write || item.safety === "never") return null;
+    // A setting the device has never reported is shown greyed, not guessed: its firmware may not do it yet.
+    if (access.read && !values.has(item.id)) return null;
     if (item.type === "bool")
       return (
         <Switch
@@ -1411,7 +1421,7 @@ function ManifestDevice({
       );
     if (item.type === "action")
       return (
-        <Button size="sm" variant="outline" disabled={off} onClick={() => set(item.id, null)}>
+        <Button size="sm" variant="outline" disabled={off} onClick={() => set(item.id, true)}>
           {item.label}
         </Button>
       );
@@ -1467,6 +1477,11 @@ function ManifestDevice({
           return (
             <SettingsRow
               key={item.id}
+              className={
+                (accessOf(item).read || accessOf(item).event) && !values.has(item.id)
+                  ? "opacity-60"
+                  : undefined
+              }
               title={
                 <span className="flex items-center gap-2">
                   {at === 0 ? (

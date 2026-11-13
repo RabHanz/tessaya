@@ -76,8 +76,31 @@ export const scanLine = (s: DeviceSpeaker): string =>
       : `${s.found.length} found at ${clock(s.scannedAt)}. Pick one to pair.`;
 
 /** One line for the R1's Bluetooth audio row, the same on web and mobile. */
+/**
+ * Where replies play now, against the route he chose, when the firmware says both (0.3.52): "Replies play on: R1
+ * speaker (wanted: headphones, not connected)." Null when they agree or the firmware does not say.
+ */
+export const playingLine = (s: DeviceSpeaker): string | null => {
+  if (s.playing === undefined) return null;
+  const name = s.saved === null ? "the Bluetooth device" : btDeviceLabel(s.saved);
+  const linked = s.state === "connected" || s.state === "streaming";
+  const now = s.playing === "bt" ? name : "R1 speaker";
+  const agrees =
+    s.output === s.playing ||
+    (s.output === "auto" && (linked ? s.playing === "bt" : s.playing === "onboard"));
+  if (agrees) return `Replies play on: ${now}.`;
+  const wanted = s.output === "onboard" ? "R1 speaker" : name;
+  return `Replies play on: ${now} (wanted: ${wanted}${s.output !== "onboard" && !linked ? ", not connected" : ""}).`;
+};
+
 export const speakerLine = (s: DeviceSpeaker): string => {
   const name = s.saved === null ? "the device" : btDeviceLabel(s.saved);
+  const where = playingLine(s);
+  if (where !== null) return `${speakerStateLine(s, name)} ${where}`;
+  return speakerStateLine(s, name);
+};
+
+const speakerStateLine = (s: DeviceSpeaker, name: string): string => {
   switch (s.state) {
     case "scanning":
       return "Looking for Bluetooth audio devices nearby.";
@@ -85,13 +108,17 @@ export const speakerLine = (s: DeviceSpeaker): string => {
       return `Connecting to ${name}.`;
     case "connected":
     case "streaming":
-      return `Connected to ${name}. ${SPEAKER_OUTPUT_LINE[s.output]}`;
+      return s.playing === undefined
+        ? `Connected to ${name}. ${SPEAKER_OUTPUT_LINE[s.output]}`
+        : `Connected to ${name}.`;
     case "failed":
       return `Could not reach ${name}. Check it is on and in range, then connect again.`;
     default:
       return s.saved === null
         ? "Nothing paired. Scan, then pick one to pair."
-        : `${name} is paired but not connected. Replies play on the R1.`;
+        : s.playing === undefined
+          ? `${name} is paired but not connected. Replies play on the R1.`
+          : `${name} is paired but not connected.`;
   }
 };
 

@@ -1029,3 +1029,107 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it("folds firmware 0.3.52's topics: the route he chose apart from where replies play, mute, the motion sensor", () => {
+  const devices = new Map<string, HomeDevices.Heard>();
+  const fold = (topic: string, payload: string) =>
+    HomeDevices.applyMessage(devices, `${root}/${topic}`, payload, 1000)!.items;
+  fold("state/caps", '{"bt_speaker":true}');
+  assert.deepStrictEqual(
+    fold("state/audio/output", '{"out":"onboard","wanted":"bt","device":""}'),
+    [
+      { itemId: "audio.output", value: "bt" },
+      { itemId: "audio.playing", value: "speaker" },
+      { itemId: "audio.device", value: "" },
+    ],
+  );
+  // Before 0.3.52 `out` was the route.
+  assert.deepStrictEqual(fold("state/audio/output", '{"out":"auto"}')[0], {
+    itemId: "audio.output",
+    value: "auto",
+  });
+  fold(
+    "state/bt",
+    '{"state":"idle","mac":"E8:07:BF:35:26:5C","saved":true,"out":"onboard","wanted":"bt"}',
+  );
+  assert.include(devices.get(ID)!.speaker, { output: "bt", playing: "onboard" });
+  assert.deepStrictEqual(fold("state/mic", '{"mute":true}'), [{ itemId: "mic.mute", value: true }]);
+  assert.deepStrictEqual(
+    fold("state/imu/present", '{"present":false,"why":"no answer (SDA high)"}'),
+    [{ itemId: "imu.present", value: false }],
+  );
+  assert.include(devices.get(ID)!.log.at(-1)!.text, "no answer (SDA high)");
+  assert.deepStrictEqual(fold("state/voice", '{"ev":"refused","why":"no session","bytes":3200}'), [
+    { itemId: "voice.refused", value: "no session" },
+  ]);
+  // An unreadable battery is unknown, not the last level.
+  assert.deepStrictEqual(fold("state/power", '{"battery_pct":null,"charging":false}'), [
+    { itemId: "power.battery_pct", value: null },
+    { itemId: "power.charging", value: false },
+  ]);
+});
+
+it.effect("knows his saved devices from the R1's bonds and says when one has forgotten it", () => {
+  const { sent, layer } = setup();
+  return Effect.gen(function* () {
+    const devices = yield* HomeDevices.HomeDevices;
+    const him = { who: "Tessaya via R1", surface: "assistant", approved: true } as const;
+    yield* devices.tick;
+    yield* devices.receive(`${root}/state/online`, "1");
+    yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true}');
+    yield* devices.receive(
+      `${root}/state/manifest`,
+      JSON.stringify({
+        deviceId: ID,
+        kind: "r1",
+        name: "R1",
+        schema: 1,
+        items: [
+          {
+            id: "bt.connect",
+            label: "Connect Bluetooth",
+            type: "action",
+            access: "write",
+            safety: "owner",
+          },
+        ],
+      }),
+    );
+    yield* devices.receive(
+      `${root}/state/bt/bonds`,
+      JSON.stringify({
+        devices: [
+          {
+            mac: "E8:07:BF:35:26:5C",
+            name: "MINISO-V5",
+            cod: 2360340,
+            kind: "speaker",
+            connected: true,
+          },
+          {
+            mac: "14:C6:00:00:00:01",
+            name: "Galaxy X",
+            cod: 2360324,
+            kind: "headset",
+            connected: false,
+          },
+        ],
+      }),
+    );
+    sent.length = 0;
+    const fiber = yield* devices
+      .command(ID, { op: "item", itemId: "bt.connect", value: { name: "my headphones" } }, him)
+      .pipe(Effect.forkChild({ startImmediately: true }));
+    assert.deepStrictEqual(sent, [
+      { topic: "cmd/audio/output", payload: { to: "bt", mac: "14:C6:00:00:00:01" } },
+    ]);
+    yield* devices.receive(
+      `${root}/state/bt`,
+      '{"state":"failed","mac":"14:C6:00:00:00:01","reason":"repair-needed","saved":true}',
+    );
+    assert.include(
+      (yield* Fiber.join(fiber)).line,
+      "Galaxy X has forgotten me. Put it in pairing mode",
+    );
+  }).pipe(Effect.provide(layer));
+});

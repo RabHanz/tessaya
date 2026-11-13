@@ -78,7 +78,9 @@ export const checkWrite = (
         : { ok: false, why: `${item.label} takes a short text.` };
     case "action": {
       // An action may carry a number (a duration), a text or a small object of arguments.
-      if (value === null || value === undefined || value === true) return { ok: true, value: null };
+      // `true` stays true: the R1's sleep runs only on `value:true` (0.3.52).
+      if (value === null || value === undefined) return { ok: true, value: null };
+      if (value === true) return { ok: true, value: true };
       if (typeof value === "number" && item.range !== undefined)
         return checkWrite({ ...item, type: "number" }, value);
       if (typeof value === "string" || typeof value === "number") return { ok: true, value };

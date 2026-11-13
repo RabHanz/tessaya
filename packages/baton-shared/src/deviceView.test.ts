@@ -8,6 +8,7 @@ import {
   keyChoices,
   outputLabels,
   scanLine,
+  playingLine,
 } from "./deviceView.ts";
 
 describe("an R1 button's choices", () => {
@@ -41,5 +42,27 @@ describe("the Bluetooth audio row", () => {
       onboard: "R1 only",
     });
     expect(scanLine(s)).toContain("disconnect it from your phone or laptop");
+  });
+});
+
+describe("where replies play (firmware 0.3.52)", () => {
+  const speaker = {
+    state: "idle" as const,
+    saved: { mac: "14:C6:00:00:00:01", name: "Galaxy X", kind: "headphones" as const },
+    output: "bt" as const,
+    found: [],
+    scannedAt: null,
+  };
+  it("says where they play now beside the route he chose, and why they differ", () => {
+    expect(playingLine({ ...speaker, playing: "onboard" })).toBe(
+      "Replies play on: R1 speaker (wanted: Galaxy X, not connected).",
+    );
+    expect(playingLine({ ...speaker, state: "connected", playing: "bt" })).toBe(
+      "Replies play on: Galaxy X.",
+    );
+    expect(playingLine({ ...speaker, output: "auto", playing: "onboard" })).toBe(
+      "Replies play on: R1 speaker.",
+    );
+    expect(playingLine(speaker)).toBeNull();
   });
 });
