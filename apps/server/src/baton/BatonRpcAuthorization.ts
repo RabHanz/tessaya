@@ -40,6 +40,7 @@ import {
   PRIVATE_READ_OPS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  BATON_BRAIN_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonRpcScopeAuthorization,
@@ -101,6 +102,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
   [BATON_WATCH_WS_METHODS.watchGet]: AuthOrchestrationReadScope,
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [BATON_BRAIN_WS_METHODS.usage]: AuthOrchestrationReadScope,
   // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.
   [BATON_RECORD_WS_METHODS.append]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
   // It spends his saved Anthropic key: the desktop app's own session only.

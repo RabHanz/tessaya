@@ -193,6 +193,7 @@ import {
 import { BATON_CLOUD_WS_METHODS, BatonCloudCallInput, BatonCloudCallResult } from "./cloud.ts";
 import { BATON_HOME_WS_METHODS, BatonHomeCallInput, BatonHomeCallResult } from "./home.ts";
 import { BATON_VOICE_WS_METHODS, BatonVoiceCallInput, BatonVoiceCallResult } from "./voice.ts";
+import { BATON_BRAIN_WS_METHODS, BrainUsageInput, BrainUsageResult } from "./brainUsage.ts";
 import { BATON_LEARN_WS_METHODS, BatonLearnCallInput, BatonLearnCallResult } from "./learnCall.ts";
 import {
   BATON_DEVICES_WS_METHODS,
@@ -782,6 +783,12 @@ const WsBatonRecordListRpc = Rpc.make(BATON_RECORD_WS_METHODS.list, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonBrainUsageRpc = Rpc.make(BATON_BRAIN_WS_METHODS.usage, {
+  payload: BrainUsageInput,
+  success: BrainUsageResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
   payload: BatonRecordAppendInput,
   success: BatonRecordAppendResult,
@@ -1000,6 +1007,7 @@ const BATON_RPCS = [
   WsBatonWatchGetRpc,
   WsBatonRecordListRpc,
   WsBatonRecordAppendRpc,
+  WsBatonBrainUsageRpc,
   WsBatonDictationCleanupApiRpc,
   WsBatonDictationCleanupApiStatusRpc,
   WsBatonDesktopSettingsGetRpc,

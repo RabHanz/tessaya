@@ -64,6 +64,9 @@ export const SERVER_SETTINGS_VOICE: {
   brainEscalation: free(
     'when hard tasks go to Opus: ask him each time, go on her own up to a daily cap, or never; and his standing rules such as coding questions to Opus. Its value is an object: {"mode": "ask" | "auto" | "never", "autoDeepDailyCap": 20, "rules": [{"when": "coding questions", "then": "opus" | "ask" | "sonnet"}]}; send the whole rules list, old ones included',
   ),
+  brainSpendAlert: free(
+    'API spend alerts: tell him when an API key spends past a dollar limit in a day or a month, for all work or one kind. Its value is an object: {"all": {"day": 1, "month": 20}, "cleanup": {"day": 0.5}}; null clears one',
+  ),
   brainModels: confirm(
     "which model and effort each kind of her work uses: talking, hard tasks, background, cleanup",
   ),

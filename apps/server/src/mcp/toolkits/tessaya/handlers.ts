@@ -2,6 +2,7 @@ import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
+  BATON_BRAIN_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
@@ -299,6 +300,15 @@ export const layer = McpToolAccess.toLayer(
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_coming_up: McpToolAccess.reads(() =>
         call(withTurn((turn) => Effect.map(turn.comingUp, (items) => ({ items })))),
+      ),
+      tessaya_usage_report: McpToolAccess.reads((input) =>
+        // No zone: the house's, read where the brain's services are.
+        call(
+          handlers[BATON_BRAIN_WS_METHODS.usage]({
+            days: Math.round(input.days ?? 7),
+            timeZone: "",
+          }),
+        ),
       ),
       tessaya_memory_about: McpToolAccess.reads((input) =>
         call(withTurn((turn) => Effect.map(turn.about(input.subject), (items) => ({ items })))),

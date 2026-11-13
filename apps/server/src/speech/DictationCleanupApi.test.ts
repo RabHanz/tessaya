@@ -10,6 +10,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { expect, vi } from "vite-plus/test";
 import * as BatonDatabase from "../baton/BatonDatabase.ts";
+import * as BatonRecordService from "../baton/BatonRecordService.ts";
 import * as BrainUsage from "../baton/BrainUsage.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { parseRateTable } from "../usage/usagePricing.ts";
@@ -26,7 +27,7 @@ const rates = parseRateTable({
 const usageLayer = Layer.effect(
   BrainUsage.BrainUsage,
   BrainUsage.make(() => rates),
-).pipe(Layer.provide(BatonDatabase.layerMemory));
+).pipe(Layer.provide(BatonRecordService.layer), Layer.provide(BatonDatabase.layerMemory));
 
 it.effect("cleans up with the saved Anthropic key only, and says when none is saved", () =>
   Effect.gen(function* () {

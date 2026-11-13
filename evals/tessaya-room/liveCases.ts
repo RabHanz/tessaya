@@ -420,6 +420,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_coming_up"],
   },
   {
+    id: "usage-report",
+    proves: ["tessaya_usage_report"],
+    said: ["How much did the API cost this week?"],
+    uses: [["tessaya_usage_report"]],
+    clean: ["tessaya_usage_report"],
+  },
+  {
     id: "whos-home",
     proves: ["tessaya_whos_home"],
     said: ["Who's home right now?"],

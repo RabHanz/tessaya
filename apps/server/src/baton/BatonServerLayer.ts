@@ -33,6 +33,7 @@ import * as BatonEngine from "./BatonEngine.ts";
 import * as BatonJobReactor from "./BatonJobReactor.ts";
 import * as BatonJobService from "./BatonJobService.ts";
 import * as BatonRecordService from "./BatonRecordService.ts";
+import * as BrainUsage from "./BrainUsage.ts";
 import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonCloudService from "./BatonCloudService.ts";
 import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
@@ -244,6 +245,8 @@ const servicesInner = IntentService.layer.pipe(
   // Members' voice defaults and acts held for a step-up, between the turn and runner and every vessel's owner.
   Layer.provideMerge(MemberPreferences.layer),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
+  // Every brain call's usage row, for the Usage page and her usage report.
+  Layer.provideMerge(BrainUsage.layer),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(BatonRecordService.layer),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.

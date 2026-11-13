@@ -58,7 +58,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     source: "R1 retest 2026-11-11: she did not know what he is working on",
     said: ["what am I working on?"],
     lastSays: [/checkout/i],
-    callsAtMost: { room_look: 0 },
+    callsAtMost: { room_look: 0, tessaya_usage_report: 0 },
   },
   {
     id: "lamp-round-trip",
@@ -109,6 +109,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     persona: "research",
     noNameOpen: true,
     lastSays: [/\b(7|seven)\b/i],
+  },
+  {
+    id: "api-cost",
+    source: "Director 2026-11-13 (BRAIN-DESIGN §13.3): what the API cost, by voice",
+    said: ["how much did the API cost this week?"],
+    // $0.42 in all, cleanup only: talking is on his plan.
+    lastSays: [/0?\.42|42 cents|forty[- ]two cents/i],
+    calls: ["tessaya_usage_report"],
+    callsAtMost: { room_look: 0, home_find: 0 },
   },
   {
     id: "no-look",

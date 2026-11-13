@@ -136,3 +136,16 @@ export const credentialLabel = (credential: BrainCredential): string => {
       ? "subscription"
       : `subscription (${read.account})`;
 };
+
+/** Each role as he would name it, for the Brain and Usage pages. */
+export const BRAIN_ROLE_LABELS: Readonly<Record<BrainRole, string>> = {
+  cleanup: "Dictation cleanup",
+  voice: "Talking",
+  deep: "Hard tasks",
+  background: "Background learning",
+  consolidation: "Memory upkeep",
+  web: "Looking things up",
+  vision: "Seeing the screen",
+  intent: "Reading a sentence",
+  synopsis: "Session summaries",
+};
