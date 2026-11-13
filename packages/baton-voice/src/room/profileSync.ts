@@ -153,5 +153,10 @@ export const createProfileSync = (input: {
       refining = on;
     },
     refining: () => refining,
+    /** The profiles made on this R1 itself (an enrolment here), not taken from her server. */
+    localOnly: (): ReadonlyArray<SpeakerProfile> => {
+      const bases = read();
+      return input.store.list().filter((p) => bases[p.id] === undefined);
+    },
   };
 };

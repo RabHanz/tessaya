@@ -43,7 +43,7 @@ describe("enrol once, recognised everywhere: shared profiles and this R1's refin
   it("takes a newer shared version as the base, ignores an older one or another model, and clears a member", () => {
     const r = rig();
     // His enrolment made on this R1, before the shared one arrives: replaced, never kept beside it.
-    r.store.save({
+    const local = {
       id: "owner",
       name: "Owner",
       kind: "owner",
@@ -52,9 +52,13 @@ describe("enrol once, recognised everywhere: shared profiles and this R1's refin
       samples: 5,
       sources: ["spoken"],
       enrolledAt: "2026-11-13T09:00:00Z",
-    });
+    } as const;
+    r.store.save(local);
+    expect(r.sync.localOnly().map((p) => p.id)).toEqual(["owner"]);
     expect(r.sync.shared(parseShared(shared(2, vec(1, 0, 0)))!)).toBe(true);
     expect(r.store.list().map((p) => p.id)).toEqual(["member-1"]);
+    // Only an enrolment made here is sent home at start; a shared one is the home's already.
+    expect(r.sync.localOnly()).toEqual([]);
     expect(r.sync.shared(parseShared(shared(1, vec(0, 1, 0)))!)).toBe(false);
     expect(r.sync.shared(parseShared(shared(3, vec(0, 1, 0), "other"))!)).toBe(false);
     expect(Array.from(r.store.list()[0]!.centroid)).toEqual([1, 0, 0]);
