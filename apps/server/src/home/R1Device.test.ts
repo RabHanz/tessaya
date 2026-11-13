@@ -20,6 +20,7 @@ import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { R1Brain, toolLoop } from "./R1Brain.ts";
+import { speakableSentences } from "../baton/TessayaBrain.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
 import {
   calledPersona,
@@ -36,7 +37,6 @@ import {
   roomData,
   roomLook,
   runActs,
-  speakableSentences,
   splitActs,
   spokenReply,
   sseReply,
