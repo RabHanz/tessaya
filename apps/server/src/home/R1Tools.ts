@@ -23,11 +23,16 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { advertisedJsonSchema } from "../mcp/advertisedJsonSchema.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as McpToolAccess from "../mcp/McpToolAccess.ts";
-import { ROOM_CLIENT, ROOM_REPLAY_CLIENT } from "../mcp/toolkits/home/handlers.ts";
+import {
+  DESK_CLIENT,
+  DESK_REPLAY_CLIENT,
+  ROOM_CLIENT,
+  ROOM_REPLAY_CLIENT,
+} from "../mcp/toolkits/home/handlers.ts";
 import * as TessayaHandlers from "../mcp/toolkits/tessaya/handlers.ts";
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
-import { RoomTools, type RoomTool, type ToolOutcome } from "./R1Brain.ts";
+import { RoomTools, type RoomTool, type RoomToolSet, type ToolOutcome } from "./R1Brain.ts";
 import { NOT_HIS_VOICE_TO_FORGET } from "../baton/TessayaTurn.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
@@ -62,6 +67,25 @@ const ROOM_TOOLS = [
   "settings_explain",
   "settings_set",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
+
+/**
+ * The shared tools his desktop's Tessaya gets: the room's, plus his devices (the desktop has no device of its own).
+ * Not tessaya_ask: the desktop is where those asks are answered.
+ */
+const DESK_TOOLS = [
+  ...ROOM_TOOLS.filter((name) => name !== "tessaya_ask" && name !== "tessaya_ask_status"),
+  "device_list",
+  "device_act",
+  "device_owner",
+  "device_tag",
+] satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
+type SharedName = (typeof ROOM_TOOLS)[number] | (typeof DESK_TOOLS)[number];
+
+/**
+ * The tools every vessel keeps loaded when tool search is on (BRAIN-DESIGN §3.1): MCP advertises them with
+ * `anthropic/alwaysLoad`, the API route leaves them without `defer_loading`. Empty until the brain lane's B0 counts.
+ */
+export const CORE_TOOLS: ReadonlySet<string> = new Set<SharedName>([]);
 
 const LAPTOP: RoomTool = {
   name: "laptop_ask",
@@ -127,7 +151,7 @@ const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, hea
 });
 
 const decoders = new Map(
-  ROOM_TOOLS.map((name) => [
+  [...new Set<SharedName>([...ROOM_TOOLS, ...DESK_TOOLS])].map((name) => [
     name as string,
     Schema.decodeUnknownOption(
       TessayaToolkit.tools[name].parametersSchema as Schema.Codec<unknown>,
@@ -149,15 +173,9 @@ const SELF_DRY: ReadonlySet<string> = new Set([
  * replay of "turn on the office fan" flipped his real fan). Null when the call is not one.
  */
 export const replayDryRun = (name: string, input: unknown, device?: string): ToolOutcome | null => {
-  if (device?.startsWith("replay-") !== true || SELF_DRY.has(name) || !allowed.has(name))
+  if (device?.startsWith("replay-") !== true || SELF_DRY.has(name) || !decoders.has(name))
     return null;
-  if (
-    Context.get(
-      TessayaToolkit.tools[name as (typeof ROOM_TOOLS)[number]].annotations,
-      Tool.Readonly,
-    )
-  )
-    return null;
+  if (Context.get(TessayaToolkit.tools[name as SharedName].annotations, Tool.Readonly)) return null;
   return Option.isSome(decoders.get(name)!(input))
     ? {
         // What the real call answers, so her reply is the one he would hear.
@@ -179,21 +197,39 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
     : { text: `The arguments for ${name} are not right.`, isError: true };
 };
 
-const allowed = new Set<string>(ROOM_TOOLS);
+/** A shared tool as every vessel advertises it: its toolkit description and schema. */
+const specOf = (name: SharedName): RoomTool => {
+  const tool: Tool.Any = TessayaToolkit.tools[name];
+  return {
+    name,
+    description: Tool.getDescription(tool) ?? "",
+    input_schema: advertisedJsonSchema(tool),
+  };
+};
+/** Core first, then by name: one order for every list, so a prompt's tool block stays cached. */
+const byPlan = (a: RoomTool, b: RoomTool) =>
+  Number(CORE_TOOLS.has(b.name)) - Number(CORE_TOOLS.has(a.name)) || a.name.localeCompare(b.name);
 
 /** @public The room eval serves these too. */
 export const ROOM_TOOL_SPECS: ReadonlyArray<RoomTool> = [
-  ...ROOM_TOOLS.map((name) => {
-    const tool: Tool.Any = TessayaToolkit.tools[name];
-    return {
-      name,
-      description: Tool.getDescription(tool) ?? "",
-      input_schema: advertisedJsonSchema(tool),
-    };
-  }),
+  ...ROOM_TOOLS.map(specOf),
   LAPTOP,
   VOLUME,
-];
+].toSorted(byPlan);
+
+/** The desktop's shared tools, with whether each only reads (its gate lets a read through). */
+export const DESK_TOOL_SPECS: ReadonlyArray<
+  RoomTool & { readonly readonly: boolean; readonly core: boolean }
+> = DESK_TOOLS.map((name) => ({
+  ...specOf(name),
+  readonly: Context.get(TessayaToolkit.tools[name].annotations, Tool.Readonly),
+  core: CORE_TOOLS.has(name),
+})).toSorted(byPlan);
+
+/** His desktop's Tessaya's shared tools, run as its own caller (BatonTessayaRoutes' desk door). */
+export const DeskTools = Context.Reference<RoomToolSet | null>("t3/home/DeskTools", {
+  defaultValue: () => null,
+});
 
 /**
  * His words as the tool takes them: a number or a yes/no the model sent as a string ("1", "true") becomes one where the
@@ -230,10 +266,10 @@ const reasonOf = (value: unknown): string =>
     : "it did not work";
 
 /**
- * The runner, built once: the toolkit's handlers with the room's caller and this environment. Null without the
+ * The runners, built once over one toolkit: each vessel's caller and tool list with this environment. Null without the
  * server's services; found, not required, so the routes layer's type stays small (BatonServerLayer loses types).
  */
-const makeRoomTools = Effect.gen(function* () {
+const makeRunners = Effect.gen(function* () {
   const random = yield* Effect.serviceOption(SecureRandom.SecureRandom);
   const threadsFound = yield* Effect.serviceOption(ThreadManagement.ThreadManagementService);
   const environment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
@@ -245,61 +281,83 @@ const makeRoomTools = Effect.gen(function* () {
     McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer),
   ).pipe(Effect.provideService(SecureRandom.SecureRandom, random.value));
   const environmentId = yield* environment.value.getEnvironmentId;
-  const run = Effect.fn("R1Tools.run")(function* (name: string, raw: unknown, device?: string) {
-    const spec = ROOM_TOOL_SPECS.find((s) => s.name === name);
-    const input = spec === undefined ? raw : asAdvertised(spec, raw);
-    if (name === LAPTOP.name) {
-      const question =
-        typeof input === "object" && input !== null && "question" in input
-          ? String(input.question)
-          : "";
-      const told = yield* askLaptop(question);
-      return { text: told.line, isError: !told.ok, status: told.status } as ToolOutcome;
-    }
-    if (name === VOLUME.name) return yield* setRoomVolume(input, device);
-    const dry = replayDryRun(name, input, device);
-    if (dry !== null) return dry;
-    if (!allowed.has(name))
-      return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
-    const scope: McpInvocationScope = {
-      environmentId,
-      capabilities: new Set(["orchestration"]),
-      issuedAt: yield* Clock.currentTimeMillis,
-      requestNamespace: ROOM_CLIENT.sessionId,
-      thread: undefined,
-      client: device?.startsWith("replay-") === true ? ROOM_REPLAY_CLIENT : ROOM_CLIENT,
-      linkedEnvironments: false,
-    };
-    const last = yield* toolkit.handle(name as (typeof ROOM_TOOLS)[number], input as never).pipe(
-      Effect.flatMap(Stream.runLast),
-      Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
-      Effect.provideService(ThreadManagement.ThreadManagementService, threads),
-      Effect.catchCause((cause) =>
-        Effect.succeedSome({ isFailure: true, result: Cause.squash(cause) }),
-      ),
-    );
-    if (Option.isNone(last)) return { text: "No answer.", isError: true } as ToolOutcome;
-    const { isFailure, result } = last.value as { isFailure: boolean; result: unknown };
-    if (isFailure) return { text: reasonOf(result), isError: true } as ToolOutcome;
-    const home = decodeHome(result);
-    if (Option.isSome(home)) {
-      if (!home.value.ok)
+  const runner = (vessel: {
+    readonly specs: ReadonlyArray<RoomTool>;
+    readonly client: McpInvocationContext.McpClientCaller;
+    readonly replay: McpInvocationContext.McpClientCaller;
+  }) => {
+    const allowed = new Set(vessel.specs.map((s) => s.name));
+    return Effect.fn("R1Tools.run")(function* (name: string, raw: unknown, device?: string) {
+      const spec = vessel.specs.find((s) => s.name === name);
+      const input = spec === undefined ? raw : asAdvertised(spec, raw);
+      if (name === LAPTOP.name && allowed.has(name)) {
+        const question =
+          typeof input === "object" && input !== null && "question" in input
+            ? String(input.question)
+            : "";
+        const told = yield* askLaptop(question);
+        return { text: told.line, isError: !told.ok, status: told.status } as ToolOutcome;
+      }
+      if (name === VOLUME.name && allowed.has(name)) return yield* setRoomVolume(input, device);
+      if (!allowed.has(name))
+        return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
+      const dry = replayDryRun(name, input, device);
+      if (dry !== null) return dry;
+      const scope: McpInvocationScope = {
+        environmentId,
+        capabilities: new Set(["orchestration"]),
+        issuedAt: yield* Clock.currentTimeMillis,
+        requestNamespace: vessel.client.sessionId,
+        thread: undefined,
+        client: device?.startsWith("replay-") === true ? vessel.replay : vessel.client,
+        linkedEnvironments: false,
+      };
+      const last = yield* toolkit.handle(name as SharedName, input as never).pipe(
+        Effect.flatMap(Stream.runLast),
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(ThreadManagement.ThreadManagementService, threads),
+        Effect.catchCause((cause) =>
+          Effect.succeedSome({ isFailure: true, result: Cause.squash(cause) }),
+        ),
+      );
+      if (Option.isNone(last)) return { text: "No answer.", isError: true } as ToolOutcome;
+      const { isFailure, result } = last.value as { isFailure: boolean; result: unknown };
+      if (isFailure) return { text: reasonOf(result), isError: true } as ToolOutcome;
+      const home = decodeHome(result);
+      if (Option.isSome(home)) {
+        if (!home.value.ok)
+          return {
+            text: home.value.error ?? "it did not work",
+            isError: true,
+            status: "failed",
+          } as ToolOutcome;
+        const value = home.value.value as { status?: unknown } | undefined;
         return {
-          text: home.value.error ?? "it did not work",
-          isError: true,
-          status: "failed",
+          text: JSON.stringify(home.value.value ?? null),
+          isError: false,
+          ...(typeof value?.status === "string" ? { status: value.status } : {}),
         } as ToolOutcome;
-      const value = home.value.value as { status?: unknown } | undefined;
-      return {
-        text: JSON.stringify(home.value.value ?? null),
-        isError: false,
-        ...(typeof value?.status === "string" ? { status: value.status } : {}),
-      } as ToolOutcome;
-    }
-    return { text: JSON.stringify(result), isError: false } as ToolOutcome;
-  });
-  return { specs: ROOM_TOOL_SPECS, run };
+      }
+      return { text: JSON.stringify(result), isError: false } as ToolOutcome;
+    });
+  };
+  const room: RoomToolSet = {
+    specs: ROOM_TOOL_SPECS,
+    run: runner({ specs: ROOM_TOOL_SPECS, client: ROOM_CLIENT, replay: ROOM_REPLAY_CLIENT }),
+  };
+  const desk: RoomToolSet = {
+    specs: DESK_TOOL_SPECS,
+    run: runner({ specs: DESK_TOOL_SPECS, client: DESK_CLIENT, replay: DESK_REPLAY_CLIENT }),
+  };
+  return { room, desk };
 });
 
-/** The room's tools for R1Device's routes; built once with the server. */
-export const layer = Layer.effect(RoomTools, makeRoomTools);
+/** The room's tools for R1Device's routes and the desktop's for its door; built once with the server. */
+export const layer = Layer.unwrap(
+  Effect.map(makeRunners, (r) =>
+    Layer.mergeAll(
+      Layer.succeed(RoomTools, r?.room ?? null),
+      Layer.succeed(DeskTools, r?.desk ?? null),
+    ),
+  ),
+);

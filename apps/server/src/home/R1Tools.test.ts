@@ -3,7 +3,13 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
-import { asAdvertised, replayDryRun, ROOM_TOOL_SPECS } from "./R1Tools.ts";
+import {
+  asAdvertised,
+  CORE_TOOLS,
+  DESK_TOOL_SPECS,
+  replayDryRun,
+  ROOM_TOOL_SPECS,
+} from "./R1Tools.ts";
 
 const decodes = (name: keyof typeof TessayaToolkit.tools, input: unknown) => {
   const spec = ROOM_TOOL_SPECS.find((s) => s.name === name)!;
@@ -28,6 +34,25 @@ describe("the room's tools for a replay", () => {
     expect(replayDryRun("tessaya_pronounce", word, "replay-1")?.text).toContain("nothing was kept");
     expect(replayDryRun("tessaya_pronounce", word, "r1-3d57b3")).toBeNull();
     expect(replayDryRun("settings_set", { key: "holdKeyCues" }, "replay-1")).toBeNull();
+    // The pretend desktop's device acts are answered, never sent.
+    const eye = { id: "r1-3d57b3", op: "eye", mood: "happy" };
+    expect(replayDryRun("device_act", eye, "replay-desktop")?.isError).toBe(false);
+    expect(replayDryRun("device_act", eye, "desktop")).toBeNull();
+  });
+
+  it("lists every vessel's tools core first, then by name, so a prompt's tool block stays cached", () => {
+    for (const specs of [ROOM_TOOL_SPECS, DESK_TOOL_SPECS]) {
+      const planned = specs.map((s) => [!CORE_TOOLS.has(s.name), s.name].join(" "));
+      expect(planned).toEqual(planned.toSorted());
+    }
+    const desk = new Map(DESK_TOOL_SPECS.map((s) => [s.name, s.readonly]));
+    expect([desk.get("home_find"), desk.get("home_do"), desk.get("device_act")]).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    // The desktop's own screen and volume stay its own; the room's laptop and speaker are not its tools.
+    expect(["laptop_ask", "set_device_volume", "tessaya_ask"].some((n) => desk.has(n))).toBe(false);
   });
 
   it("takes a number or a yes/no sent as a string, as every timer was (07:39, 13 Nov)", () => {

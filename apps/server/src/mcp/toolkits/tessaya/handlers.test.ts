@@ -25,7 +25,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
-import { ROOM_CLIENT } from "../home/handlers.ts";
+import { DESK_REPLAY_CLIENT, ROOM_CLIENT } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
 import { TessayaToolkit } from "./tools.ts";
 
@@ -36,7 +36,7 @@ const thread = ThreadId.make("thread:tessaya");
  * another server of his over an approval-required peer link ("linked").
  */
 const callTool = (
-  caller: AuthMcpClientAccess | "thread" | "room" | "linked",
+  caller: AuthMcpClientAccess | "thread" | "room" | "desk-replay" | "linked",
   runtime: Context.Context<never>,
   name: keyof (typeof TessayaToolkit)["tools"],
   input: unknown,
@@ -69,14 +69,16 @@ const callTool = (
                   ? undefined
                   : caller === "room"
                     ? ROOM_CLIENT
-                    : caller === "linked"
-                      ? {
-                          sessionId,
-                          label: "T3 Code · home server",
-                          access: "approval-required",
-                          linked: true,
-                        }
-                      : { sessionId, label: "Claude Code", access: caller },
+                    : caller === "desk-replay"
+                      ? DESK_REPLAY_CLIENT
+                      : caller === "linked"
+                        ? {
+                            sessionId,
+                            label: "T3 Code · home server",
+                            access: "approval-required",
+                            linked: true,
+                          }
+                        : { sessionId, label: "Claude Code", access: caller },
               capabilities: new Set(["orchestration" as const]),
               issuedAt: 0,
             }),
@@ -557,7 +559,7 @@ it.effect("an outside agent's open in terminal on a thread files a request and o
 );
 
 it.effect(
-  "the R1's room acts in the house as Tessaya on the r1 surface, where the gate takes no yes; an outside agent as an agent",
+  "each vessel acts in the house as Tessaya on its own surface (the R1's takes no yes), a replay dry; an outside agent as an agent",
   () =>
     Effect.gen(function* () {
       const by: Array<HomeActor> = [];
@@ -576,10 +578,12 @@ it.effect(
         why: "let me in",
       };
       const fromRoom = yield* callTool("room", runtime, "home_do", unlock);
+      yield* callTool("desk-replay", runtime, "home_do", unlock);
       yield* callTool("auto", runtime, "home_do", unlock);
       expect(fromRoom.result).toMatchObject({ ok: true, value: { status: "asked" } });
       expect(by).toEqual([
         { who: "Tessaya", surface: "r1" },
+        { who: "Tessaya", surface: "assistant", dryRun: true },
         { who: "an outside agent", surface: "agent" },
       ]);
     }),

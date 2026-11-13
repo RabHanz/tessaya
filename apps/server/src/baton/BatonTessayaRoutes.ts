@@ -13,6 +13,7 @@ import {
   BatonRpcGroup,
 } from "@t3tools/baton-contracts";
 import { buildPhoneState } from "@t3tools/baton-shared/phone";
+import { AuthBatonHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -20,6 +21,7 @@ import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+import { DeskTools } from "../home/R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
@@ -57,6 +59,13 @@ const DESK_CODECS = new Map(
     ];
   }),
 );
+
+/** One shared tool call from his desktop's Tessaya; `device` names the suite's pretend desktop (`replay-…`). */
+const DeskToolCall = Schema.Struct({
+  name: Schema.String.check(Schema.isMaxLength(80)),
+  args: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  device: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80))),
+});
 
 const PAGE_HEADERS = {
   "cache-control": "no-store",
@@ -274,6 +283,8 @@ export const routes = HttpRouter.use((router) =>
     // The desktop's own door to Tessaya's job, watch and memory methods while T3's window is closed: the same
     // handlers, schemas and scopes as the WS RPC, for a fixed set of methods.
     const handlers = yield* BatonRpcHandlers.makeHandlers;
+    const deskTools = yield* DeskTools;
+    const decodeToolCall = Schema.decodeUnknownOption(DeskToolCall);
     const desk = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
@@ -284,6 +295,25 @@ export const routes = HttpRouter.use((router) =>
         /^\/tessaya\/desk\//,
         "",
       );
+      // The shared toolkit as his desktop's own Tessaya: only the desktop app's own session may be that caller.
+      if (calledAs === "baton.tools.list" || calledAs === "baton.tools.call") {
+        if (!session.value.scopes.includes(AuthBatonHandsHostScope))
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+        if (deskTools === null)
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 404 });
+        if (calledAs === "baton.tools.list")
+          return HttpServerResponse.jsonUnsafe({ value: { tools: deskTools.specs } });
+        const call = decodeToolCall(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+        if (call._tag === "None")
+          return HttpServerResponse.jsonUnsafe(
+            { message: "That request is not valid." },
+            { status: 400 },
+          );
+        const { name, args, device } = call.value;
+        return HttpServerResponse.jsonUnsafe({
+          value: yield* deskTools.run(name, args ?? {}, device),
+        });
+      }
       const tag = BATON_METHOD_OF.get(calledAs) ?? calledAs;
       const codec = DESK_CODECS.get(tag);
       if (codec === undefined) {

@@ -80,6 +80,31 @@ describe("Baton's tool server", () => {
     await expect(post({ authorization: `Bearer ${mcp.token}` })).rejects.toThrow();
   });
 
+  it("lists core tools first with alwaysLoad, then the rest by name, the same every time", async () => {
+    const tool = (name: string, core?: boolean) => ({
+      name,
+      description: name,
+      inputSchema: { type: "object" },
+      run: async () => ({ text: "ok" }),
+      ...(core === undefined ? {} : { core }),
+    });
+    const mcp = await startBatonMcp({
+      tools: [tool("type_text"), tool("settings_find", true), tool("click")],
+      gate: async () => ({ allow: true }),
+    });
+    const listed = (await fetch(mcp.url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${mcp.token}`, "content-type": "application/json" },
+      body: rpc("tools/list"),
+    }).then((r) => r.json())) as { result: { tools: Array<{ name: string; _meta?: unknown }> } };
+    await mcp.close();
+    expect(listed.result.tools.map((t) => [t.name, t._meta])).toEqual([
+      ["settings_find", { "anthropic/alwaysLoad": true }],
+      ["click", undefined],
+      ["type_text", undefined],
+    ]);
+  });
+
   it("refuses a high-risk call when no yes comes, and never runs the tool", async () => {
     const { mcp, ran, call } = await rig({ yes: false });
     const out = await call("type_text", { text: "git push --force origin main", why: "type it" });

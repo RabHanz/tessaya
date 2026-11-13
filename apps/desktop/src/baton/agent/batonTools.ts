@@ -6,7 +6,6 @@
  */
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
 import type { VolumeTo } from "@t3tools/baton-shared/speakingVolume";
-import { HOME_TOOL_TEXT } from "@t3tools/baton-shared/homeTools";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-shared/operator";
 
 import type { BatonTool, ToolOutput } from "./batonMcp.ts";
@@ -125,7 +124,35 @@ export interface ToolHost {
   /** How loud her voice plays on this computer, changed by his words; the next sentence plays at it. */
   readonly speakingVolume?: (to: VolumeTo) => string;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
+  /** His server's shared tools (the one registry every vessel uses): as last listed, and one call to them. */
+  readonly shared?: {
+    readonly specs: ReadonlyArray<SharedToolSpec>;
+    readonly call: (name: string, args: Args) => Promise<string>;
+  };
 }
+
+/** One shared tool as his server lists it (`baton.tools.list`). */
+export interface SharedToolSpec {
+  readonly name: string;
+  readonly description: string;
+  readonly input_schema: unknown;
+  readonly readonly: boolean;
+  readonly core?: boolean;
+}
+
+/** Shared tools this table already answers with its own, so she is never shown two for one purpose. */
+export const COVERED_BY_OWN: Readonly<Record<string, string>> = {
+  tessaya_memory_search: "memory_search",
+  tessaya_memory_remember: "memory_remember",
+  tessaya_memory_forget: "memory_forget",
+  tessaya_memory_history: "memory_history",
+  tessaya_sessions: "sessions_list",
+  tessaya_fleet: "fleet_status",
+  tessaya_team_board: "team_board",
+  tessaya_jobs: "jobs_list",
+  tessaya_watch: "watch_report",
+  tessaya_record: "what_happened",
+};
 
 type JobOp =
   | "user_job_create"
@@ -158,8 +185,6 @@ type JobOp =
   | "cloud_cancel"
   | "cloud_usage"
   | "cloud_approve"
-  | "home"
-  | "devices"
   | "trust_show"
   | "activity_today"
   | "record"
@@ -1153,90 +1178,6 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       inputSchema: object({}),
       run: async () => ({ text: await host.jobs("cloud_usage", {}) }),
     },
-    // The house (Home Assistant on his server): the same tools and words agents get on /mcp; the server risk-checks
-    // every write and sends a risky one to his phone, so these never carry his yes.
-    ...(
-      [
-        [
-          "home_find",
-          "read",
-          "find",
-          object({
-            text: { type: "string", maxLength: 200 },
-            area: { type: "string", maxLength: 100 },
-            domain: { type: "string", maxLength: 60 },
-            limit: { type: "number", minimum: 1, maximum: 50 },
-          }),
-        ],
-        [
-          "home_state",
-          "read",
-          "state",
-          object(
-            {
-              entityId: { type: "string", maxLength: 200 },
-              since: { type: "string", maxLength: 40 },
-            },
-            ["entityId"],
-          ),
-        ],
-        ["home_automations", "read", "automations", object({ all: { type: "boolean" } })],
-        [
-          "home_do",
-          "act",
-          "do",
-          object(
-            {
-              domain: { type: "string", maxLength: 60 },
-              service: { type: "string", maxLength: 80 },
-              target: { type: "object" },
-              data: { type: "object" },
-              why: { type: "string", maxLength: 500 },
-            },
-            ["domain", "service", "why"],
-          ),
-        ],
-        ["home_undo", "act", "undo", object({ id: { type: "string", maxLength: 120 } }, ["id"])],
-        [
-          "home_automation_save",
-          "act",
-          "automationSave",
-          object(
-            {
-              id: { type: "string", maxLength: 120 },
-              alias: { type: "string", maxLength: 120 },
-              kind: { type: "string", enum: ["permanent", "temporary", "scratch"] },
-              runInMinutes: { type: "number", minimum: 1, maximum: 1440 },
-              expiresInMinutes: { type: "number", minimum: 1 },
-              expiresAt: { type: "string", maxLength: 40 },
-              once: { type: "boolean" },
-              triggers: { type: "array" },
-              conditions: { type: "array" },
-              actions: { type: "array" },
-              request: { type: "string", maxLength: 500 },
-            },
-            ["alias", "kind", "actions", "request"],
-          ),
-        ],
-        [
-          "home_automation_set",
-          "act",
-          "automationSet",
-          object(
-            {
-              id: { type: "string", maxLength: 120 },
-              op: { type: "string", enum: ["pause", "resume", "delete"] },
-            },
-            ["id", "op"],
-          ),
-        ],
-      ] as const
-    ).map(([name, method, op, inputSchema]) => ({
-      name,
-      description: HOME_TOOL_TEXT[name],
-      inputSchema,
-      run: async (a: Args) => ({ text: await host.jobs("home", { method, op, args: a }) }),
-    })),
     ...(host.speakingVolume === undefined
       ? []
       : [
@@ -1269,97 +1210,6 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
             },
           },
         ]),
-    // His devices (the R1): the same tools and words as /mcp. The camera and a restart ask his phone on the server.
-    {
-      name: "device_list",
-      description: DEVICE_TOOL_TEXT.device_list,
-      inputSchema: object({}),
-      run: async () => ({
-        text: await host.jobs("devices", { method: "read", op: "list", args: {} }),
-      }),
-    },
-    {
-      name: "device_act",
-      description: DEVICE_TOOL_TEXT.device_act,
-      inputSchema: object(
-        {
-          id: { type: "string", maxLength: 60 },
-          op: {
-            type: "string",
-            enum: [
-              "eye",
-              "led",
-              "vibrate",
-              "say",
-              "mute",
-              "transport",
-              "transportConfirm",
-              "transportRevert",
-              "enrol",
-              "diag",
-            ],
-          },
-          mood: {
-            type: "string",
-            enum: [
-              "neutral",
-              "happy",
-              "sad",
-              "angry",
-              "curious",
-              "love",
-              "sleepy",
-              "surprise",
-              "thinking",
-            ],
-          },
-          color: { type: "string", enum: ["green", "red", "standby"] },
-          ms: { type: "number", minimum: 10, maximum: 1500 },
-          text: { type: "string", maxLength: 400 },
-          muted: { type: "boolean" },
-          transport: { type: "string", enum: ["inhouse", "agora"] },
-          cancel: { type: "boolean" },
-        },
-        ["id", "op"],
-      ),
-      run: async ({ op, ...args }: Args) => ({
-        text: await host.jobs("devices", { method: "act", op: String(op), args }),
-      }),
-    },
-    {
-      name: "device_owner",
-      description: DEVICE_TOOL_TEXT.device_owner,
-      inputSchema: object(
-        {
-          id: { type: "string", maxLength: 60 },
-          op: { type: "string", enum: ["camera", "reboot"] },
-        },
-        ["id", "op"],
-      ),
-      run: async ({ op, ...args }: Args) => ({
-        text: await host.jobs("devices", { method: "owner", op: String(op), args }),
-      }),
-    },
-    {
-      name: "device_tag",
-      description: DEVICE_TOOL_TEXT.device_tag,
-      inputSchema: object(
-        {
-          op: { type: "string", enum: ["assign", "remove"] },
-          uid: { type: "string", maxLength: 40 },
-          label: { type: "string", maxLength: 60 },
-          action: { type: "object" },
-        },
-        ["op", "uid"],
-      ),
-      run: async ({ op, ...args }: Args) => ({
-        text: await host.jobs("devices", {
-          method: "act",
-          op: op === "assign" ? "nfcAssign" : "nfcRemove",
-          args,
-        }),
-      }),
-    },
     {
       name: "cloud_approve",
       description:
@@ -1811,5 +1661,23 @@ export const buildBatonTools = (
   // A batch runs the plain steps: it ends with the whole tree, so its steps need no readback each.
   const tools =
     read === undefined ? base : base.map((t) => (ACT_TOOLS.has(t.name) ? withEffect(t, read) : t));
-  return host.windowKey === undefined ? tools : [...tools, batchTool(host, base)];
+  const own = host.windowKey === undefined ? tools : [...tools, batchTool(host, base)];
+  return options.remote === true ? own : [...own, ...sharedTools(host, own)];
+};
+
+/** His server's shared tools this table does not answer itself, each run there as his desktop's Tessaya. */
+const sharedTools = (host: ToolHost, own: ReadonlyArray<BatonTool>): ReadonlyArray<BatonTool> => {
+  const shared = host.shared;
+  if (shared === undefined) return [];
+  const mine = new Set(own.map((t) => t.name));
+  return shared.specs
+    .filter((s) => !mine.has(s.name) && COVERED_BY_OWN[s.name] === undefined)
+    .map((s) => ({
+      name: s.name,
+      description: s.description,
+      inputSchema: s.input_schema as Readonly<Record<string, unknown>>,
+      shared: s.readonly ? "read" : "write",
+      ...(s.core === true ? { core: true } : {}),
+      run: async (a: Args) => ({ text: await shared.call(s.name, a) }),
+    }));
 };

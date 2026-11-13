@@ -12,6 +12,8 @@ export interface ToolCall {
   /** The harness's own name: "Bash", "Write", "commandExecution". */
   readonly tool: string;
   readonly input: Readonly<Record<string, unknown>>;
+  /** One of the server's shared tools (its own server's registry), which judges each write by its own rules. */
+  readonly shared?: "read" | "write";
 }
 
 export type ToolVerdict =
@@ -569,6 +571,11 @@ export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdic
     });
   }
   if (BATON_TOOLS.has(baton)) return judgeBatonTool(baton, call, context);
+  // The server asks his phone for every risky change itself; here a change that follows something read asks first.
+  if (call.shared !== undefined && isOwnTool(call.tool))
+    return call.shared === "write" && context.tainted
+      ? { verdict: "ask", why: "It follows something it read." }
+      : { verdict: "allow" };
   if (READING.has(call.tool)) return { verdict: "allow" };
   const text = actionText(call);
   const subject = highRiskSubject(text);

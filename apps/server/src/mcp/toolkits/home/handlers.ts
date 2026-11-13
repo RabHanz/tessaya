@@ -33,6 +33,30 @@ export const ROOM_REPLAY_CLIENT: McpInvocationContext.McpClientCaller = {
   ...ROOM_CLIENT,
   sessionId: "r1-replay",
 };
+/**
+ * His desktop's own Tessaya (R1Tools' desk runner, over the desktop app's own door): built only in-process, so no
+ * token can claim it. Its acts go on surface "assistant", as its own tools always sent them.
+ */
+export const DESK_CLIENT: McpInvocationContext.McpClientCaller = {
+  sessionId: "desktop-assistant",
+  label: "his desktop's Tessaya",
+  access: "approval-required",
+};
+/** The tool suite's pretend desktop: the same caller, and its acts are a dry run. */
+export const DESK_REPLAY_CLIENT: McpInvocationContext.McpClientCaller = {
+  ...DESK_CLIENT,
+  sessionId: "desktop-replay",
+};
+
+/** A vessel's own Tessaya calling in-process: where its acts are shown, and whether they are a rehearsal. */
+export const vesselOf = (
+  client: McpInvocationContext.McpClientCaller | undefined,
+): { readonly surface: "r1" | "assistant"; readonly dryRun: boolean } | null =>
+  client === ROOM_CLIENT || client === ROOM_REPLAY_CLIENT
+    ? { surface: "r1", dryRun: client === ROOM_REPLAY_CLIENT }
+    : client === DESK_CLIENT || client === DESK_REPLAY_CLIENT
+      ? { surface: "assistant", dryRun: client === DESK_REPLAY_CLIENT }
+      : null;
 const linked = { linkedCallers: "allowed" } as const;
 
 /** Handler declarations for `HomeToolkit`, spread into Tessaya's toolkit layer. */
@@ -49,15 +73,14 @@ export const make = Effect.gen(function* () {
     const via = (yield* TurnOrigin)?.label;
     const tessaya = via === undefined ? "Tessaya" : `Tessaya via ${via}`;
     // An outside client's name, or the T3 thread asking; never a yes, which only his own gate gives.
+    const vessel = vesselOf(scope.client);
     const by: HomeActor =
-      scope.client === ROOM_CLIENT
-        ? { who: tessaya, surface: "r1" }
-        : scope.client === ROOM_REPLAY_CLIENT
-          ? { who: tessaya, surface: "r1", dryRun: true }
-          : {
-              who: scope.client === undefined ? "an agent in T3" : "an outside agent",
-              surface: "agent",
-            };
+      vessel !== null
+        ? { who: tessaya, surface: vessel.surface, ...(vessel.dryRun ? { dryRun: true } : {}) }
+        : {
+            who: scope.client === undefined ? "an agent in T3" : "an outside agent",
+            surface: "agent",
+          };
     return yield* serveHomeCall({ kind, op, args }, by).pipe(Effect.provideContext(context));
   });
   return {

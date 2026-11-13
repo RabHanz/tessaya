@@ -32,9 +32,6 @@ const MEMORY_OPS = new Set([
 const COMMITMENT_OPS = new Set(["list", "upsert"]);
 const WEAVE_OPS = new Set(["send", "list"]);
 const CLOUD_OPS = new Set(["read", "act", "approve"]);
-const HOME_OPS = new Set(["read", "act"]);
-// owner (camera, restart) from the assistant asks his phone on the server; this only routes it.
-const DEVICES_OPS = new Set(["read", "act", "owner"]);
 /** This server's own memory sync, and running the learnings pull: only its door answers, whether or not the window is open. */
 const SERVER_ONLY = new Set([
   "pull",
@@ -45,10 +42,7 @@ const SERVER_ONLY = new Set([
   "syncRun",
 ]);
 export const serverOnly = (body: { readonly kind: string; readonly op?: unknown }): boolean =>
-  // The house and its devices are this machine's server's (it asks his linked server when it has no house of its own).
-  body.kind === "home" ||
-  body.kind === "devices" ||
-  (body.kind === "memory" && typeof body.op === "string" && SERVER_ONLY.has(body.op));
+  body.kind === "memory" && typeof body.op === "string" && SERVER_ONLY.has(body.op);
 
 export const deskCall = (
   body: {
@@ -70,16 +64,6 @@ export const deskCall = (
       body.environmentId === here?.environmentId
       ? { method: `baton.cloud.${body.op}`, input: args }
       : { refuse: `Open T3 to use cloud tasks on ${labelOf(String(body.environmentId))}.` };
-  }
-  if (body.kind === "home") {
-    return typeof body.op === "string" && HOME_OPS.has(body.op)
-      ? { method: "baton.home.call", input: { ...args, kind: body.op } }
-      : null;
-  }
-  if (body.kind === "devices") {
-    return typeof body.op === "string" && DEVICES_OPS.has(body.op)
-      ? { method: "baton.devices.call", input: { ...args, kind: body.op } }
-      : null;
   }
   if (body.kind === "memory") {
     return typeof body.op === "string" && MEMORY_OPS.has(body.op)

@@ -140,6 +140,7 @@ import {
   treeText,
   typeByValue,
   type FocusState,
+  type SharedToolSpec,
   type ToolHost,
 } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
@@ -450,8 +451,6 @@ export interface AssistantActions {
       | "cloud_cancel"
       | "cloud_usage"
       | "cloud_approve"
-      | "home"
-      | "devices"
       | "trust_show"
       | "activity_today"
       | "record"
@@ -636,6 +635,37 @@ const DEVICE_INTERRUPTED =
   "Interrupted: the Director started talking to Tessaya, and he comes first. Ask again.";
 const DEVICE_BUSY =
   "Tessaya is in the middle of something with the Director (a lesson, a drive or a look). Ask again later.";
+
+/**
+ * His server's shared tools, run there as his desktop's Tessaya: the list as last read (read again when a session
+ * starts), so the table is built without waiting; a call that fails says why in her words.
+ */
+const sharedVia = (direct: (method: string, body: unknown) => Promise<unknown>) => {
+  let specs: ReadonlyArray<SharedToolSpec> = [];
+  const refresh = () =>
+    direct("baton.tools.list", {}).then(
+      (value) => {
+        const tools = (value as { tools?: unknown } | null)?.tools;
+        if (Array.isArray(tools)) specs = tools as ReadonlyArray<SharedToolSpec>;
+      },
+      () => undefined,
+    );
+  void refresh();
+  return {
+    get specs() {
+      void refresh();
+      return specs;
+    },
+    call: async (name: string, args: Readonly<Record<string, unknown>>) => {
+      const out = (await direct("baton.tools.call", { name, args })) as {
+        text?: string;
+        isError?: boolean;
+      } | null;
+      if (out?.isError === true) throw new Error(out.text ?? `${name} did not work.`);
+      return out?.text ?? "No answer.";
+    },
+  };
+};
 
 /** Reached only after his yes (the gate asks every time), which is the approval a provider change needs. */
 const threadSessionVia =
@@ -2639,6 +2669,7 @@ export const startScreenCompanion = (input: {
       return "Pressed.";
     },
     ...(input.direct === undefined ? {} : { threadSession: threadSessionVia(input.direct) }),
+    ...(input.direct === undefined ? {} : { shared: sharedVia(input.direct) }),
     sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
     ...(input.catalog === undefined ? {} : { catalog: lateCatalog(input.catalog) }),
     session: async (id) =>
