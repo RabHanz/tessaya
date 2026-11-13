@@ -684,3 +684,19 @@ it.effect(
       ]);
     }),
 );
+
+it.effect(
+  "only a linked server's household_voice_forget makes this server's vessels forget a voice",
+  () =>
+    Effect.gen(function* () {
+      const forgot: Array<string> = [];
+      const household = TessayaHousehold.of({
+        forgetVoiceHere: (member: string) => Effect.sync(() => void forgot.push(member)),
+      } as never);
+      const runtime = Context.make(TessayaHousehold, household) as Context.Context<never>;
+      yield* callTool("full-access", runtime, "household_voice_forget", { member: "sara" });
+      expect(forgot).toEqual([]);
+      yield* callTool("linked", runtime, "household_voice_forget", { member: "sara" });
+      expect(forgot).toEqual(["sara"]);
+    }),
+);

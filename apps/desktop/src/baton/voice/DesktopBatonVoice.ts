@@ -7318,6 +7318,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   /** One confirmation that says what goes with it, then the profile is deleted at once. */
+  // A member removed from the home (their data destroyed) is forgotten here too: checked soon after start and hourly.
+  // Only a whole answer from the household counts; an unreachable home changes nothing.
+  if (input.household !== undefined) {
+    const household = input.household;
+    const reconcile = async () => {
+      const listed = await household("list").catch(() => null);
+      const members = listed?.members;
+      if (members === undefined || members.length === 0) return;
+      const gone = voiceId.keepOnly(new Set(members.map((m) => m.id)));
+      if (gone.length > 0) input.onNote?.("voice_id_forgot_removed", { count: gone.length });
+    };
+    setTimeout(() => void reconcile(), 30_000).unref();
+    setInterval(() => void reconcile(), 60 * 60_000).unref();
+  }
   const forgetVoice = async (id: string, what: string) => {
     const answer = await (input.extras?.ask({
       title: `Delete ${what}?`,

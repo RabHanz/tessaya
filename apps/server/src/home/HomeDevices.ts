@@ -35,6 +35,8 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
+import { VoiceForgets } from "../baton/VoiceForgets.ts";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -644,6 +646,19 @@ const make = Effect.gen(function* () {
       const text = typeof payload === "string" ? payload : JSON.stringify(payload);
       link?.publish(`freya/r1/${id}/${path}`, text, retain);
     });
+
+  // A member's data was destroyed (household removal): every device's voice loop forgets their voice print. The loop
+  // keeps its own profiles; this topic is its forget, beside `voice/enrol`.
+  const voices = yield* Effect.serviceOption(VoiceForgets);
+  if (voices._tag === "Some")
+    yield* voices.value.forgotten.pipe(
+      Stream.runForEach((personId) =>
+        Effect.forEach([...heard.keys()], (id) => publish(id, "voice/forget", { personId }), {
+          discard: true,
+        }),
+      ),
+      Effect.forkIn(scope),
+    );
 
   const live = (id: string) =>
     Effect.suspend(() => {

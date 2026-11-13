@@ -197,3 +197,17 @@ it("keeps a saved voice only for a member of this home", async () => {
   await t.read(loud(3));
   expect(t.voiceId.profiles().map((p) => p.id)).toEqual(["maya-3f2a"]);
 });
+
+it("forgets a saved voice whose member left the home, and keeps his own", async () => {
+  using t = setup();
+  t.voiceId.sync();
+  await t.voiceId.settled();
+  t.voiceId.read({ kind: "owner" });
+  await t.read(loud(6));
+  t.voiceId.card("close");
+  t.voiceId.read({ kind: "saved", name: "Maya", id: "maya-3f2a" });
+  await t.read(loud(3));
+  expect(t.voiceId.keepOnly(new Set(["owner"]))).toEqual(["maya-3f2a"]);
+  expect(t.voiceId.profiles().map((p) => p.id)).toEqual(["owner"]);
+  expect(t.deleted).toEqual(["maya-3f2a"]);
+});

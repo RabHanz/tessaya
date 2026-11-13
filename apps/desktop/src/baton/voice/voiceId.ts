@@ -278,6 +278,24 @@ export const createVoiceId = (input: {
       note = id === "owner" ? "Your voice profile is deleted." : "Removed.";
       changed();
     },
+    /**
+     * Keeps saved voices only for these household members: someone removed from the home, whose data was destroyed,
+     * is forgotten here too. Returns the ids it removed.
+     */
+    keepOnly: (members: ReadonlySet<string>): ReadonlyArray<string> => {
+      const gone = profiles
+        .filter((p) => p.kind === "saved" && !members.has(p.id))
+        .map((p) => p.id);
+      for (const id of gone) {
+        store.remove(id);
+        input.onPersonDeleted?.(id);
+      }
+      if (gone.length > 0) {
+        reread();
+        changed();
+      }
+      return gone;
+    },
     /** A profile that changed elsewhere (adaptation). */
     save: (profile: SpeakerProfile) => {
       store.save(profile);
