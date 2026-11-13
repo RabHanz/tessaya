@@ -47,7 +47,7 @@ import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
 import { MemoryViewer } from "../baton/BatonMemoryService.ts";
 import { readPack } from "../baton/OperatingSystemPack.ts";
-import { TessayaTurn, type TurnEnvelope } from "../baton/TessayaTurn.ts";
+import { TessayaTurn, TurnOrigin, originOf, type TurnEnvelope } from "../baton/TessayaTurn.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
@@ -420,6 +420,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (raw: R1Heard, wi
   // One pipeline for every vessel: this device is a thin adapter over TessayaTurn (MEMORY-V2-DESIGN.md §2.0).
   const turn: TurnEnvelope = {
     vessel: { kind: "device", id: input.device ?? "room" },
+    origin: "R1",
     text: input.heard,
     persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
     speaker: speakerOf(input.voice),
@@ -632,6 +633,8 @@ const r1ToolTurn = Effect.fn("R1Device.toolTurn")(function* (
           ? roomLook(device, input.voice)
           : tools.run(name, args, input.device)
         ).pipe(
+          // Every tool the turn calls knows which vessel heard it.
+          Effect.provideService(TurnOrigin, originOf(turn)),
           Effect.catchCause(() =>
             Effect.succeed<ToolOutcome>({ text: "it did not work", isError: true }),
           ),

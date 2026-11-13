@@ -8,7 +8,13 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
-import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "./TessayaTurn.ts";
+import {
+  TessayaTurn,
+  TurnOrigin,
+  layer as turnLayer,
+  originOf,
+  type TurnEnvelope,
+} from "./TessayaTurn.ts";
 
 const learned: Array<LearnInput> = [];
 const recalledFor: Array<SpeakerLike | null> = [];
@@ -50,6 +56,19 @@ const owner = (speaker: Partial<SpeakerLike> = {}): SpeakerLike => ({
 });
 const device: TurnEnvelope["vessel"] = { kind: "device", id: "desk-1" };
 const desktop: TurnEnvelope["vessel"] = { kind: "desktop", id: "laptop" };
+
+it.effect("a turn's tools know which vessel heard it", () =>
+  Effect.gen(function* () {
+    assert.isNull(yield* TurnOrigin);
+    const seen = yield* Effect.provideService(
+      TurnOrigin,
+      TurnOrigin,
+      originOf({ vessel: { kind: "device", id: "desk-1" }, origin: "R1", text: "hi" }),
+    );
+    assert.deepStrictEqual(seen, { kind: "device", id: "desk-1", label: "R1" });
+    assert.strictEqual(originOf({ vessel: { kind: "phone", id: "p" }, text: "hi" }).label, "phone");
+  }),
+);
 
 layer("TessayaTurn", (it) => {
   it.effect("every vessel gets the same memory for the same words and persona", () =>
