@@ -298,7 +298,7 @@ const MemoryRememberTool = Tool.make("tessaya_memory_remember", {
     text: Schema.String.check(Schema.isMinLength(3), Schema.isMaxLength(500)),
   }),
   success: Schema.Struct({
-    kept: Schema.Literals(["his", "noted", "held", "rehearsal"]),
+    kept: Schema.Literals(["his", "noted", "held", "rehearsal", "theirs"]),
     id: Schema.NullOr(Schema.String),
     line: Schema.String,
   }),

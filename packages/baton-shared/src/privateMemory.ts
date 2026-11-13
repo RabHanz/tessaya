@@ -101,6 +101,11 @@ export interface PrivateTurn {
   /** The turn read a page, file or message: whatever it asks is data, so nothing private is read or written. */
   readonly tainted: boolean;
   readonly speaker: SpeakerLike | null;
+  /**
+   * A typed turn's own device: the member its signed-in session acts for (identity I-2). Absent is his desktop; null is
+   * a session that names a member badly, so nobody.
+   */
+  readonly member?: string | null;
 }
 
 /** Whose private store this turn speaks for, or why none. Identity only narrows: a near match is nobody. */
@@ -109,7 +114,12 @@ export const privatePersonOf = (
 ): { readonly personId: string } | { readonly refused: string } => {
   if (turn.tainted) return { refused: "this turn read something from outside" };
   if (turn.route === "assistant") {
-    if (turn.typed) return { personId: OWNER_PERSON_ID };
+    if (turn.typed)
+      return turn.member === undefined
+        ? { personId: OWNER_PERSON_ID }
+        : turn.member === null
+          ? { refused: "this device acts for nobody in the household" }
+          : { personId: turn.member };
     const s = turn.speaker;
     if (s?.kind === "owner" && s.verified && !s.inherited) return { personId: OWNER_PERSON_ID };
     return { refused: "the voice was not verified as his" };
