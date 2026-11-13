@@ -323,7 +323,7 @@ index d1e74151e53e3a0548407d9744ff97d6732068d7..73b02a228b90f88f241ce087eabef0f6
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index e38d84c393ded7dc521cee21b7b57ff1a1e23a19..9957c365c7fa42fc89212482a0d897c510d3a4d1 100644
+index e38d84c393ded7dc521cee21b7b57ff1a1e23a19..5f7f141ec8ef464496d6df0248edc1f0517d39dd 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -21,6 +21,8 @@ allowBuilds:
@@ -339,7 +339,7 @@ index e38d84c393ded7dc521cee21b7b57ff1a1e23a19..9957c365c7fa42fc89212482a0d897c5
    expo-video@58.0.13: patches/expo-video@58.0.13.patch
    expo-network@58.0.4: patches/expo-network@58.0.4.patch
    "@clerk/expo-native-components@0.4.4": patches/@clerk__expo-native-components@0.4.4.patch
-+  "@clerk/electron@0.1.10": patches/@clerk__electron@0.1.10.patch
++  "@clerk/electron@0.1.10": patches/clerk-electron-webview-guest.patch
    "@alchemy.run/test@2.0.0-beta.85": patches/@alchemy.run__test@2.0.0-beta.85.patch
    "@effect/vitest@4.1.2": patches/@effect__vitest@4.1.2.patch
    expo-sharing@58.0.22: patches/expo-sharing@58.0.22.patch
