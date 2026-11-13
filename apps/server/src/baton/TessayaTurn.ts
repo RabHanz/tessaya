@@ -52,6 +52,11 @@ export interface TurnEnvelope {
   readonly rehearsal?: boolean | undefined;
   /** The conversation it continues, when the vessel or the arbiter names one; else `conversationKey`. */
   readonly conversation?: string | undefined;
+  /**
+   * The member whose own signed-in device sent a typed turn (its session's `member:<id>` subject), or null for a
+   * subject that names a member badly. Filled from `SessionMember` by `begin` and `end` when the vessel does not say.
+   */
+  readonly member?: string | null | undefined;
 }
 
 /**
@@ -62,7 +67,20 @@ export const conversationKey = (turn: TurnEnvelope): string =>
   turn.conversation ??
   (turn.speaker?.verified === true && turn.speaker.personId !== null
     ? `person:${turn.speaker.personId}`
-    : "household");
+    : typeof turn.member === "string" && turn.member !== OWNER_MEMBER_ID
+      ? `person:${turn.member}`
+      : "household");
+
+/**
+ * The member a request's session acts for (`memberOfSubject` of its subject), set by the transport as `MemoryViewer`
+ * is. Unset (upkeep, a device's own key) is the owner, as before the household model.
+ */
+export const SessionMember = Context.Reference<string | null>(
+  "t3/baton/TessayaTurn/SessionMember",
+  {
+    defaultValue: () => OWNER_MEMBER_ID,
+  },
+);
 
 export interface ConversationTurn {
   readonly role: "user" | "assistant";
@@ -103,12 +121,13 @@ export const TurnOrigin = Context.Reference<{
  * until a member's own device sends its turns); an agent's or a job's turn is the owner's at A0.
  */
 export const turnIdentity = (
-  turn: Pick<TurnEnvelope, "speaker" | "vessel">,
+  turn: Pick<TurnEnvelope, "speaker" | "vessel" | "member">,
 ): { readonly member: string | null; readonly assurance: Assurance } =>
   turn.speaker !== null && turn.speaker !== undefined
     ? { member: memberOfSpeaker(turn.speaker), assurance: voiceAssurance(turn.speaker) }
     : {
-        member: OWNER_MEMBER_ID,
+        // A typed turn is its device's member: the owner's unless a member's own device sent it.
+        member: turn.member === undefined ? OWNER_MEMBER_ID : turn.member,
         assurance:
           turn.vessel.kind === "desktop" ||
           turn.vessel.kind === "phone" ||
@@ -167,6 +186,8 @@ export const notLearnable = (turn: TurnEnvelope): string | null => {
   // Until the household model (HOUSEHOLD-DESIGN.md), only the owner or an unidentified voice teaches his store.
   const kind = turn.speaker?.kind;
   if (kind === "guest" || kind === "saved") return "not the owner's voice";
+  // A member's own device typed it: their words never teach his store (HOUSEHOLD-DESIGN §6).
+  if (turn.member !== undefined && turn.member !== OWNER_MEMBER_ID) return "not the owner's device";
   return null;
 };
 
@@ -253,7 +274,15 @@ export const make = Effect.gen(function* () {
     conversations.set(key, { at: now, turns: [...turns, ...said].slice(-CONVERSATION_TURNS) });
   });
 
-  const begin = Effect.fn("TessayaTurn.begin")(function* (turn: TurnEnvelope) {
+  /** A typed turn takes its session's member when the vessel did not name one. */
+  const withMember = Effect.fn("TessayaTurn.member")(function* (turn: TurnEnvelope) {
+    if (turn.member !== undefined || (turn.speaker !== null && turn.speaker !== undefined))
+      return turn;
+    return { ...turn, member: yield* SessionMember };
+  });
+
+  const begin = Effect.fn("TessayaTurn.begin")(function* (raw: TurnEnvelope) {
+    const turn = yield* withMember(raw);
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
       ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
@@ -282,9 +311,10 @@ export const make = Effect.gen(function* () {
   });
 
   const end = Effect.fn("TessayaTurn.end")(function* (
-    turn: TurnEnvelope,
+    raw: TurnEnvelope,
     done: { readonly reply: string; readonly previous?: string | null | undefined },
   ) {
+    const turn = yield* withMember(raw);
     if (turn.addressed !== false && turn.rehearsal !== true) yield* addExchange(turn, done.reply);
     if (notLearnable(turn) !== null) return null;
     const learn = learning.learn({

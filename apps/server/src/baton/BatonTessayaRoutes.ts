@@ -43,6 +43,8 @@ import {
   syncCredentialOf,
 } from "./BatonRpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
+import { SessionMember } from "./TessayaTurn.ts";
+import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -391,6 +393,8 @@ export const routes = HttpRouter.use((router) =>
         >
       ).pipe(
         Effect.provideService(MemoryViewer, memoryViewerOf(session.value)),
+        // A member's own device: its typed turns are that member's (identity I-2), not the owner's.
+        Effect.provideService(SessionMember, memberOfSubject(session.value.subject)),
         Effect.provideService(SyncCredential, syncCredentialOf(session.value)),
         Effect.flatMap(codec.encode),
         Effect.result,
