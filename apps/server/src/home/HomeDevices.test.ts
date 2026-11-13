@@ -957,3 +957,38 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect(
+  "forgets a device when he asks his Tessaya, never for an outside agent, and drops a pretend R1",
+  () => {
+    const { layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const registry = yield* DeviceRegistry;
+      yield* devices.tick;
+      yield* devices.receive("freya/r1/replay-p5/state/online", "1");
+      yield* devices.receive("freya/r1/replay-p5/state/power", '{"battery_pct":40}');
+      assert.deepStrictEqual(
+        (yield* devices.overview).devices.map((d) => d.id),
+        [ID],
+      );
+      yield* registry.publish("client", {
+        deviceId: "phone-old",
+        kind: "phone",
+        name: "Old phone",
+        schema: 1,
+        items: [],
+      });
+      const refused = yield* devices
+        .command("phone-old", { op: "forget" }, agent)
+        .pipe(Effect.flip);
+      assert.include(refused.why, "Only he forgets");
+      yield* devices.command(
+        "phone-old",
+        { op: "forget" },
+        { who: "Tessaya via R1", surface: "assistant" },
+      );
+      assert.isNull(yield* registry.get("phone-old"));
+    }).pipe(Effect.provide(layer));
+  },
+);

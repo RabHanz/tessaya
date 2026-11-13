@@ -216,8 +216,8 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
         <ManifestDevice
           key={d.deviceId}
           device={d}
-          // The R1's own rows above already set these two.
-          skip={devices.some((r) => r.id === d.deviceId) ? HAND_BUILT : NONE}
+          // A device the rows above already show (the R1) is one device: its items join it, with no second header.
+          shown={devices.some((r) => r.id === d.deviceId)}
           busy={busy}
           run={run}
         />
@@ -1257,7 +1257,6 @@ function RoomBrainSection({ environmentId }: { readonly environmentId: Environme
 }
 
 const HAND_BUILT: ReadonlySet<string> = new Set(["audio.volume", "eye.mood"]);
-const NONE: ReadonlySet<string> = new Set();
 const SAFETY_LABEL: Readonly<Record<DeviceSafety, string>> = {
   free: "Free",
   confirm: "Asks first",
@@ -1271,12 +1270,12 @@ const SAFETY_LABEL: Readonly<Record<DeviceSafety, string>> = {
  */
 function ManifestDevice({
   device: d,
-  skip,
+  shown,
   busy,
   run,
 }: {
   readonly device: RegisteredDevice;
-  readonly skip: ReadonlySet<string>;
+  readonly shown: boolean;
   readonly busy: boolean;
   readonly run: Run;
 }) {
@@ -1286,7 +1285,8 @@ function ManifestDevice({
   const set = (itemId: string, value: unknown) =>
     void run("act", "set", { id: d.deviceId, itemId, value });
   const groups = groupItems(
-    d.items.filter((i) => !skip.has(i.id)),
+    // The R1's own rows already set these two.
+    d.items.filter((i) => !(shown && HAND_BUILT.has(i.id))),
     (i) => i,
   );
   const control = (item: DeviceItem) => {
@@ -1348,25 +1348,42 @@ function ManifestDevice({
     return null;
   };
   return (
-    <SettingsSection title={`${d.name} (${d.kind})`}>
-      <SettingsRow
-        title={
-          <span className="flex items-center gap-2">
-            {d.name}
-            <Badge variant={d.online ? "success" : "outline"}>
-              {d.online ? "Online" : "Offline"}
-            </Badge>
-            {live.size > 0 ? <Badge variant="error">In use now</Badge> : null}
-          </span>
-        }
-        description={[
-          d.firmware,
-          d.lastSeenAt === null ? null : `last heard ${clock(d.lastSeenAt)}`,
-          d.items.length === 0 ? "it has not described itself yet" : null,
-        ]
-          .filter((part) => part !== null)
-          .join(" · ")}
-      />
+    <SettingsSection
+      title={shown ? `Everything it reports · ${d.deviceId}` : `${d.name} (${d.kind})`}
+    >
+      {shown ? null : (
+        <SettingsRow
+          title={
+            <span className="flex items-center gap-2">
+              {d.name}
+              <Badge variant={d.online ? "success" : "outline"}>
+                {d.online ? "Online" : "Offline"}
+              </Badge>
+              {live.size > 0 ? <Badge variant="error">In use now</Badge> : null}
+            </span>
+          }
+          description={[
+            d.firmware,
+            d.lastSeenAt === null ? null : `last heard ${clock(d.lastSeenAt)}`,
+            d.items.length === 0 ? "it has not described itself yet" : null,
+            d.stale === true ? "not heard from in over two weeks" : null,
+          ]
+            .filter((part) => part !== null)
+            .join(" · ")}
+          control={
+            d.stale === true ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void run("act", "forget", { id: d.deviceId })}
+              >
+                Forget it
+              </Button>
+            ) : null
+          }
+        />
+      )}
       {Object.entries(groups).map(([group, items]) =>
         items.map((item, at) => {
           const reported = values.get(item.id);

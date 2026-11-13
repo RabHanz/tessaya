@@ -36,7 +36,7 @@ import {
   resolveBluetooth,
   type BtKnown,
 } from "@t3tools/baton-shared/btNames";
-import { valueText } from "@t3tools/baton-shared/deviceItems";
+import { isTestVessel, valueText } from "@t3tools/baton-shared/deviceItems";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -266,6 +266,8 @@ export const applyMessage = (
   const parts = topic.split("/");
   if (parts[0] !== "freya" || parts[1] !== "r1" || parts[2] === undefined || parts[2] === "")
     return null;
+  // A pretend R1 on the broker (the suite, a replay, a bench) is never one of his devices.
+  if (isTestVessel(parts[2])) return null;
   const id = parts[2].slice(0, 60);
   const rest = parts.slice(3).join("/");
   const d = devices.get(id) ?? blank();
@@ -1344,7 +1346,13 @@ const make = Effect.gen(function* () {
           line: `Ask him first, in a few words: ${item.label} on ${reg.name}${item.type === "action" ? "" : ` to ${valueText(item, c.value)}`}? Then call again with confirmed: true once he says yes.`,
         } satisfies DeviceOutcome;
       needsYes = item.safety === "owner" || (item.safety === "confirm" && by.surface === "agent");
-    } else if (c.op !== "forget") yield* live(id);
+    } else if (c.op === "forget") {
+      // His own: Settings, or his Tessaya when he asks her; never an outside agent.
+      if (by.surface === "agent")
+        return yield* new DeviceRefusedError({
+          why: "Only he forgets a device, in Settings or by asking Tessaya.",
+        });
+    } else yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
       if (by.dryRun === true)
         return {

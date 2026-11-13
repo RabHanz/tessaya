@@ -31,7 +31,7 @@ const Id = Schema.String.check(Schema.isMaxLength(60)).annotate({
   description: "The device id from device_list, e.g. r1-3d57b3.",
 });
 
-/** The act ops an agent may use; forgetting a device is his, in Settings → Hardware. */
+/** The act ops a tool may use; forget is refused for outside agents (his own Tessaya forgets one when he asks). */
 const AGENT_ACT_OPS = [
   "eye",
   "led",
@@ -43,6 +43,7 @@ const AGENT_ACT_OPS = [
   "transportRevert",
   "enrol",
   "diag",
+  "forget",
 ] as const;
 
 const ListTool = Tool.make("device_list", {

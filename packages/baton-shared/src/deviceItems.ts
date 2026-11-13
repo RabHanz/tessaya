@@ -9,6 +9,10 @@ import {
   type RegisteredDevice,
 } from "@t3tools/baton-contracts";
 
+/** The suite's, a replay's or a bench's pretend vessel: never kept in the registry, never shown. */
+export const isTestVessel = (deviceId: string): boolean =>
+  /^(replay|bench|suite|room-suite|test|pretend|probe)([-_.]|$)/i.test(deviceId);
+
 /** Ids whose items always see or hear him, whatever the device says: consent and a live light first. */
 const PRIVATE_ITEM =
   /(^|\.)(camera|webcam|mic|microphone|biometric|hello|fingerprint|face|location)(\.|$)|^screen\.capture/;
