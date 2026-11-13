@@ -1514,6 +1514,33 @@ describe("one responder per utterance (the server's voice arbiter, R1-P7)", () =
     expect(claims).toHaveLength(2);
   });
 
+  it("sends the conversation the arbiter names on the turns that follow (#886)", async () => {
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "Tessaya, what time is it?",
+        cancel: () => undefined,
+      }),
+      arbiter: {
+        claim: async () => ({ answer: true, conversation: "person:owner" }),
+        report: () => undefined,
+      },
+    });
+    let opened: () => void = () => undefined;
+    const open = new Promise<void>((r) => (opened = r));
+    const publish = t.deps.publish;
+    (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
+      publish(topic, payload);
+      if (topic.endsWith("/cmd/voice/start")) opened();
+    };
+    t.room.woken(DEV, "Tessaya", -20, 1);
+    await open;
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(t.brainCalls[0]!.tessaya.conversation).toBe("person:owner");
+  });
+
   it("answers as before when the arbiter cannot be asked (an older server)", async () => {
     const t = setup({ arbiter: { claim: async () => null, report: () => undefined } });
     t.room.woken(DEV, "Tessaya", -20, 1);

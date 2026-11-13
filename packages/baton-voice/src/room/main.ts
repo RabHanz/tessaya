@@ -356,13 +356,19 @@ const arbiter = (url: string, key: string): NonNullable<RoomDeps["arbiter"]> => 
         .then((r) => {
           const v =
             r?.ok === true
-              ? (r.value as { answer?: unknown; winner?: unknown; until?: unknown })
+              ? (r.value as {
+                  answer?: unknown;
+                  winner?: unknown;
+                  until?: unknown;
+                  conversation?: unknown;
+                })
               : null;
           if (v === null || typeof v?.answer !== "boolean") return null;
           return {
             answer: v.answer,
             ...(typeof v.winner === "string" ? { winner: v.winner } : {}),
             ...(typeof v.until === "number" ? { until: v.until } : {}),
+            ...(typeof v.conversation === "string" ? { conversation: v.conversation } : {}),
           };
         })
         .catch(() => null),

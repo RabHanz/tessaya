@@ -141,6 +141,8 @@ export interface Tessaya {
   readonly words: string;
   /** What this body can do, from its own report (`state/caps`). */
   readonly capabilities: ReadonlyArray<string>;
+  /** The conversation the arbiter named for this R1's last win; absent, her server uses the default key. */
+  readonly conversation?: string;
   readonly speaker: SpeakerIdentity;
   readonly emotion?: { readonly label: string; readonly events: ReadonlyArray<string> };
   /** A guess on his partial words: the server records and learns from it only once `played` says it was heard. */
@@ -199,6 +201,8 @@ export interface RoomDeps {
       readonly answer: boolean;
       readonly winner?: string;
       readonly until?: number;
+      /** The conversation the winner continues (one per person, or the household's). */
+      readonly conversation?: string;
     } | null>;
     readonly report: (op: "speaking" | "ended", deviceId: string, untilMs?: number) => void;
   };
@@ -720,6 +724,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         tz: config.tz,
         words,
         capabilities: capabilities.get(id) ?? [],
+        ...(conversationOf.has(id) ? { conversation: conversationOf.get(id)! } : {}),
         speaker,
         ...(affect === undefined
           ? {}
@@ -980,6 +985,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const verdict = await deps.arbiter
           .claim({ deviceId: id, wakeScore: 1, loudnessDb: Number.isFinite(level) ? level : null })
           .catch(() => null);
+        if (verdict?.conversation !== undefined) conversationOf.set(id, verdict.conversation);
         if (verdict !== null && !verdict.answer) {
           quietUntil.set(id, verdict.until ?? deps.now() + 20_000);
           kept?.control.abort();
@@ -1422,6 +1428,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const capabilities = new Map<string, ReadonlyArray<string>>();
   /** His own pronunciations per R1, from her server (`voice/pronounce`, retained). */
   const pronunciations = new Map<string, Readonly<Record<string, string>>>();
+  /** The conversation the arbiter last named for each R1 (sent on its turns). */
+  const conversationOf = new Map<string, string>();
   /** Until when another device of his answers (the arbiter's `until`, epoch ms): this R1 stays quiet. */
   const quietUntil = new Map<string, number>();
   /** Until when her server's last eye mood holds on each R1 (`voice/intent/eye`): the loop's own moods wait. */
@@ -1668,6 +1676,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         })
         .catch(() => null)
         .then((verdict) => {
+          if (verdict?.conversation !== undefined) conversationOf.set(id, verdict.conversation);
           if (verdict !== null && !verdict.answer) {
             quietUntil.set(id, verdict.until ?? deps.now() + 20_000);
             deps.log(
