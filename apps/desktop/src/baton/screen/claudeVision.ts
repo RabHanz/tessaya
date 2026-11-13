@@ -298,6 +298,8 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
       env: {
         ...subscriptionEnv(options.env),
         ...(mcpFile === undefined ? {} : { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" }),
+        // The standing prefix stays cached across pauses longer than 5 minutes between his sentences (MEM-19).
+        ENABLE_PROMPT_CACHING_1H: "1",
       },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
