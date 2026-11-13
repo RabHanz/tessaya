@@ -253,8 +253,9 @@ export const layer = Layer.effect(
         if (request === null) return { configured: false } as const;
         const started = yield* Clock.currentTimeMillis;
         const response = yield* execute(request).pipe(
-          Effect.flatMap((r) =>
-            r.status >= 200 && r.status < 300 ? Effect.succeed(r) : Effect.fail(rejected(r.status)),
+          Effect.filterOrFail(
+            (r) => r.status >= 200 && r.status < 300,
+            (r) => rejected(r.status),
           ),
           // One quick second try when the API is busy or failing (429, 5xx, 529), inside the same 2.5 s budget.
           Effect.retry({
