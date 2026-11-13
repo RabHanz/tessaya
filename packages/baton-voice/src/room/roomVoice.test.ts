@@ -1368,6 +1368,25 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
     await t.feed(false, 40);
   };
 
+  it("takes his Urdu as his when the household speaks it, set per R1 by voice/languages (13 Nov correction)", async () => {
+    const line = "Ik heb minekin, for nie bata. Foi já gente. Quem quer essa trilha?";
+    const urdu = setup({ recognise: heard([line]) }, { ...ROOM_CONFIG, languages: ["en", "ur"] });
+    urdu.s2();
+    await speakTurn(urdu);
+    expect(urdu.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([line]);
+    const english = setup({ recognise: heard([line, line]) });
+    english.s2();
+    await speakTurn(english);
+    expect(english.brainCalls).toEqual([]);
+    english.room.message(
+      `freya/r1/${DEV}/voice/languages`,
+      Buffer.from('{"languages":["en","ur"]}'),
+    );
+    english.s2();
+    await speakTurn(english);
+    expect(english.brainCalls).toHaveLength(1);
+  });
+
   it("keeps the room's TV out after her name: another language, or a voice far quieter than his", async () => {
     const t = setup({
       recognise: heard([

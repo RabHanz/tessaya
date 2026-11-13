@@ -15,11 +15,19 @@ import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
 import { integratedLufs, loudnessGain, withGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
-import { CAMPLUS_POLICY, decideSpeaker, enrol, identityOf, UNVERIFIED } from "../speaker.ts";
+import {
+  ACT_SINGLE_MS,
+  CAMPLUS_POLICY,
+  decideSpeaker,
+  enrol,
+  identityOf,
+  UNVERIFIED,
+} from "../speaker.ts";
 import { createSpeakerStore } from "../speakerStore.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "./mqtt.ts";
 import { noteTime, pickRecogniser, turnAcross, type RecogniserState } from "./recognisers.ts";
+import { createProfileSync, parseShared } from "./profileSync.ts";
 import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
@@ -404,6 +412,14 @@ const main = async () => {
     : null;
   const embedder = await createSpeakerEmbedder(model("campplus.onnx"), SPEAKER_MODEL_ID, 1);
   const store = createSpeakerStore(state);
+  // Enrol once, recognised everywhere: the shared bases from her server, and this R1's own refinement of them.
+  const sharedProfiles = createProfileSync({
+    store,
+    file: NodePath.join(state, "voice", "shared.json"),
+    model: SPEAKER_MODEL_ID,
+    log,
+  });
+  sharedProfiles.setRefining(process.env["R1_VOICE_REFINE"] !== "0");
   const policy = { ...CAMPLUS_POLICY, model: SPEAKER_MODEL_ID };
   log("starting: models loaded");
   const speak = await startPocket();
@@ -440,6 +456,10 @@ const main = async () => {
       "freya/r1/+/state/eye/#",
       "freya/r1/+/voice/pronounce",
       "freya/r1/+/voice/forget",
+      "freya/r1/+/voice/languages",
+      "freya/r1/+/voice/profile",
+      "freya/r1/+/voice/profile/+",
+      "freya/r1/+/voice/refine",
       "freya/r1/+/voice/intent/eye",
       "freya/r1/+/state/caps",
       "freya/r1/+/cmd/voice/no-reply",
@@ -447,7 +467,34 @@ const main = async () => {
       "freya/r1/+/event/voice/interrupt",
       "freya/r1/+/event/voice/flush",
     ],
-    onMessage: (t, p) => room?.message(t, p),
+    onMessage: (t, p) => {
+      // voice/profile[/<member>]: a shared profile (retained); empty on a member's topic clears that member.
+      const m = /^freya\/r1\/[^/]+\/voice\/profile(?:\/([^/]+))?$/.exec(t);
+      if (m !== null) {
+        const text = String(p).trim();
+        if (text === "") {
+          if (m[1] !== undefined) sharedProfiles.clear(m[1]);
+        } else {
+          const shared = parseShared(text);
+          if (shared === null) log("voice profile: not a profile; ignored");
+          else sharedProfiles.shared(shared);
+        }
+        return;
+      }
+      if (/^freya\/r1\/[^/]+\/voice\/refine$/.test(t)) {
+        const on = (() => {
+          try {
+            return (JSON.parse(String(p)) as { on?: unknown }).on !== false;
+          } catch {
+            return true;
+          }
+        })();
+        sharedProfiles.setRefining(on);
+        log(`voice profile refinement on this R1: ${on ? "on" : "off"}`);
+        return;
+      }
+      room?.message(t, p);
+    },
     log,
   });
   const inhouse = new Set(
@@ -517,12 +564,21 @@ const main = async () => {
         const profiles = store.list();
         const decide = (use: "steer" | "act") =>
           decideSpeaker({ clips, model: SPEAKER_MODEL_ID, profiles, policy, use });
-        return identityOf(decide("steer"), decide("act"), at);
+        const identity = identityOf(decide("steer"), decide("act"), at);
+        // Only a turn it was sure of refines this R1's copy: verified, long enough to stand alone, well above the cut-off.
+        if (
+          identity.verified &&
+          identity.personId !== null &&
+          (pcm.length / 16_000) * 1000 >= ACT_SINGLE_MS &&
+          (identity.confidence ?? 0) >= CAMPLUS_POLICY.single.act + 0.1
+        )
+          sharedProfiles.refine(identity.personId, vector);
+        return identity;
       },
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
-      forget: (personId) => store.remove(personId),
+      forget: (personId) => sharedProfiles.clear(personId),
       preview: (pcm) => {
         const turn = recognise();
         turn.feed(pcm);
@@ -570,6 +626,28 @@ const main = async () => {
           enrolledAt: new Date().toISOString(),
           consentNote: "Enrolled through the R1 at his request; numbers only, no audio kept.",
         });
+        // To her server, which decides the member and shares it with his other devices (never the refinement).
+        void fetch(env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/voice/profile"), {
+          method: "POST",
+          headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            profile: {
+              name: "Owner",
+              kind: "owner",
+              model: SPEAKER_MODEL_ID,
+              centroid: Buffer.from(
+                made.centroid.buffer,
+                made.centroid.byteOffset,
+                made.centroid.byteLength,
+              ).toString("base64"),
+              samples: made.kept,
+              enrolledAt: new Date().toISOString(),
+            },
+          }),
+          signal: AbortSignal.timeout(10_000),
+        })
+          .then((res) => log(`voice profile sent to her server: ${res.status}`))
+          .catch((e: unknown) => log(`voice profile not sent to her server: ${String(e)}`));
         return { saved: true, said: "Thanks. I know your voice now." };
       },
       embed: (pcm) => embedder.embed(pcm),
@@ -577,7 +655,15 @@ const main = async () => {
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       log,
     },
-    { ...ROOM_CONFIG, inhouse },
+    {
+      ...ROOM_CONFIG,
+      inhouse,
+      // The household's languages (R1_LANGUAGES=en,ur); her server can change them per R1 on voice/languages.
+      languages: (process.env["R1_LANGUAGES"] ?? "en")
+        .split(",")
+        .map((l) => l.trim())
+        .filter(Boolean),
+    },
   );
   setInterval(() => room?.sweep(), 1_000);
   const stop = () => {
