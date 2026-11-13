@@ -787,6 +787,9 @@
    } else running = false;
   }
 
+  // A layer is rebuilt only when its markup changed: at rest most layers (arms, sleeves and their masks) stay as they were,
+  // so the browser neither rebuilds nor repaints them.
+  const put = (el, html) => { if (el.__h !== html) { el.__h = html; el.innerHTML = html; } };
   function render(now, snap, dt = 1 / 60) {
    let moving = false;
    if (snap) { for (const k of KEYS) cur[k] = tgt[k]; } else moving = stepSprings(dt);
@@ -885,17 +888,17 @@
    const tint = (Rv.flush > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#fl${uid})" opacity="${f1(clamp(Rv.flush, 0, 1))}"/>` : "")
     + (Rv.gloom > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#gl${uid})" opacity="${f1(clamp(Rv.gloom, 0, 1) * .45)}"/>` : "");
    // where a sleeve passes behind the edge, the plain body fill covers the rim highlight (no light seam beside the sleeve)
-   L.bd.innerHTML = rim + `<g mask="url(#rc${uid})"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint;
+   put(L.bd, rim + `<g mask="url(#rc${uid})"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint);
    if (L.rcEdge) L.rcEdge.setAttribute("d", B.d);
-   L.bk.innerHTML = B.back || "";
+   const back = B.back || "";
    const face = ch.noFace ? {svg: "", eyes: drawFace(Rv, F, pal, now / 1000, spinT).eyes} : drawFace(Rv, F, pal, now / 1000, spinT);
    F.lastEyes = face.eyes;
-   L.fc.innerHTML = (B.faceUnder || "") + face.svg + (ch.over ? ch.over(Rv, ctx, F) : "");
-   L.fr.innerHTML = B.front || "";
+   put(L.fc, (B.faceUnder || "") + face.svg + (ch.over ? ch.over(Rv, ctx, F) : ""));
+   put(L.fr, B.front || "");
    // contact shadow and the glow behind her
    const lift = Rv.lift, ls = clamp(1 + lift / 90, .45, 1.1);
-   L.sh.innerHTML = `<ellipse cx="${f1(Rv.lean * 1.2)}" cy="${GROUND + 2}" rx="${f1(B.hw * 1.02 * ls)}" ry="${f1(10 * ls)}" fill="url(#gs${uid})" opacity="${f1(.9 * ls)}"/>`;
-   L.glow.innerHTML = Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : "";
+   put(L.sh, `<ellipse cx="${f1(Rv.lean * 1.2)}" cy="${GROUND + 2}" rx="${f1(B.hw * 1.02 * ls)}" ry="${f1(10 * ls)}" fill="url(#gs${uid})" opacity="${f1(.9 * ls)}"/>`);
+   put(L.glow, Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : "");
    L.w.setAttribute("transform", `translate(0 ${f1(GROUND + lift)}) rotate(${f1(Rv.lean)}) translate(0 ${f1(B.cy)}) rotate(${f1(Rv.tilt)}) scale(${f1(Rv.zoom * 1000) / 1000}) translate(0 ${f1(-B.cy)})`);
    L.fx.setAttribute("transform", `translate(0 ${f1(GROUND + lift)})`);
 
@@ -1118,14 +1121,14 @@
     const oy = (70 - bothPos[1]) * enter + 90 * exit;
     both = `<g data-l="prop" data-p="${bh.id}" data-u="${bh.use || ""}" data-phase="${enter > .02 ? "enter" : exit > .02 ? "exit" : "held"}" data-gx="${f1(bothPos[0])}" data-gy="${f1(bothPos[1] + oy)}" data-hx="${f1(bothPos[0])}" data-hy="${f1(bothPos[1] + oy)}" data-rot="0" data-rmin="-10" data-rmax="10" transform="translate(${f1(bothPos[0])} ${f1(bothPos[1] + oy)}) scale(${f1((bothPos.s || 1.12) * 100) / 100})">${bh.svg}</g>`;
    }
-   L.wn.innerHTML = pr.worn + pr.float;
-   if (backHands) L.bk.innerHTML += backHands;
-   L.hd.innerHTML = pr.front + both + hs + overs;
-   if (L.rc) L.rc.innerHTML = rimCut;
+   put(L.wn, pr.worn + pr.float);
+   put(L.bk, back + (backHands || ""));
+   put(L.hd, pr.front + both + hs + overs);
+   if (L.rc) put(L.rc, rimCut);
    if (pr.moving) moving = true;
    // effects
    fxs = fxs.filter((x) => now - x.t0 < x.dur);
-   L.fx.innerHTML = fxs.length ? drawFx(fxs, now, B, F, pal) : "";
+   put(L.fx, fxs.length ? drawFx(fxs, now, B, F, pal) : "");
    if (fxs.length) moving = true;
    stats.frames++; frames++;
    if (opts.onFrame) opts.onFrame(Rv);
