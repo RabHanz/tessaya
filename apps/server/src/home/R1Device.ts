@@ -24,6 +24,7 @@ import {
   WAKE_WORD,
 } from "@t3tools/baton-shared/assistantPrompt";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { spokenTime } from "@t3tools/baton-shared/brain";
 import { isNarration } from "@t3tools/baton-shared/narration";
 import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import {
@@ -224,9 +225,12 @@ export const spokenReply = (say: string, outcomes: ReadonlyArray<ActOutcome>): s
 
 const quoted = (value: unknown) => JSON.stringify(value);
 
-/** Now, on the house's clock, as she should say it (never UTC unless the house is on it). */
+/**
+ * Now, on the house's clock, as she should say it (never UTC unless the house is on it). The spoken form comes with it:
+ * from "10:36" alone the room's model said "twenty-six minutes to eleven" (13 Nov), as the desktop's did (0.1.78).
+ */
 export const houseTime = (ms: number, timeZone: string) =>
-  `${new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "full", timeStyle: "short" }).format(ms)} (${timeZone})`;
+  `${new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "full", timeStyle: "short" }).format(ms)} (${timeZone}), said as ${spokenTime(ms, timeZone)}`;
 
 export interface R1Context {
   readonly heard: string;
