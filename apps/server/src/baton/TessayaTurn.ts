@@ -51,6 +51,8 @@ export interface TurnEnvelope {
   readonly addressed?: boolean | undefined;
   /** The turn read outside content: what it learns waits for his yes, and nothing private is read. */
   readonly tainted?: boolean | undefined;
+  /** The app in front, for a vessel with a screen ("excel.exe"): which of his skills fit. */
+  readonly app?: string | null | undefined;
   /** The project the turn is about (the focused session's); other projects' items stay out. */
   readonly project?: string | null | undefined;
   /** His IANA zone, so "yesterday" is his day. */

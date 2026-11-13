@@ -13,6 +13,7 @@ import { replayTurn } from "../agent/replay.ts";
 import { createStandingStore } from "../presence/standingJobs.ts";
 import {
   decideSkill,
+  fingerprint as skillFingerprint,
   learnedAction,
   learnedControls,
   keepRecentTurn,
@@ -171,6 +172,7 @@ import {
 } from "./browserRoute.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
+import { syncSkillsToMemory } from "../pack/skillMemory.ts";
 import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
 import {
   PRIVATE_TURN_STUB,
@@ -3277,6 +3279,21 @@ export const startScreenCompanion = (input: {
       ? { status: "cancelled", text: "He started talking to Tessaya, so it stopped." }
       : out;
   };
+  /** Memory's skills made his accepted ones (SPINE-UNIFY §9); a server that does not answer waits for the next try. */
+  const skillsToMemory = async () => {
+    const call = actions?.memory;
+    if (call === undefined) return;
+    const dir = skillsDir();
+    const states = readStates(dir);
+    const synced = await syncSkillsToMemory({
+      skills: readSkills(dir),
+      states,
+      isTested: (skill) => states[skill.slug]?.hash === skillFingerprint(skill),
+      call,
+    }).catch(() => null);
+    if (synced !== null && synced.added + synced.forgotten > 0)
+      input.onNote?.("skills_to_memory", synced);
+  };
   /** The server brain's turn in progress: his stop or his cutting in ends it. */
   let serverTurn: AbortController | null = null;
   /** His sentence through the one brain on his server (SPINE-UNIFY S4), with what this desktop sees. */
@@ -3310,6 +3327,7 @@ export const startScreenCompanion = (input: {
                 }
               : null,
           project: where.project ?? null,
+          app: appOf(where.window),
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           // Found on his PATH here, as his own sessions find it; a server spawns it without a shell.
           claudeBinary: spawnable(resolveBinary(settings.claudeBinary, input.platform, input.env)),
@@ -3828,6 +3846,8 @@ export const startScreenCompanion = (input: {
     setActions: (next) => {
       actions = next;
       stopMemorySync ??= memorySync.start();
+      // His accepted skills reach the one memory once memory answers, and again after each of his decisions.
+      void skillsToMemory();
     },
     active: () => runningMode() !== null,
     hush,
@@ -4278,6 +4298,7 @@ export const startScreenCompanion = (input: {
           act.secondary ? "reject" : accepted ? "forget" : "accept",
           new Date(),
         );
+        void skillsToMemory();
         input.onChange?.();
       }
     },
