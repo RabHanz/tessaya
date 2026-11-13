@@ -474,7 +474,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** The recogniser's words for the sentence being read, across the turns it spans. */
     let cardWords = { take: 0, prefix: "", turn: "", skip: 0, seen: 0 };
     let cardAt = Number.NEGATIVE_INFINITY;
-    const enrolling = () => guide !== null && ["reading", "saving"].includes(guide.phase());
+    /** A session opened to enrol stays one: nothing he says in it is answered, and it ends with the guide. */
+    let forEnrol = false;
+    const enrolling = () => forEnrol;
+    /** Her last line in the room, finished or not, so the enrolment can end once its summary has played. */
+    let lastSaid: Promise<void> = Promise.resolve();
+    const endEnrol = () =>
+      void lastSaid
+        .then(() => deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())))
+        .then(() => deps.publish(topic(id, "cmd/voice/stop"), "{}"));
     /** Turns until then need no name: S2 or her name opens it, a reply to him reopens it; audio alone never does. */
     let openUntil = 0;
     /** Her last reply asked him something: a bare "yes" or "okay" is his answer, not the room's chatter. */
@@ -869,7 +877,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const control = new AbortController();
       reply = control;
       lastActivity = deps.now();
-      void say(text, control.signal)
+      lastSaid = say(text, control.signal)
         .catch(() => undefined)
         .finally(() => {
           if (reply !== control) return;
@@ -1553,6 +1561,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       });
       card(true);
       speakNow(result.said);
+      endEnrol();
     };
     /** His sentence passed its checks: its voice is compared with the others', and the profile is made once all are in. */
     const accepted = (g: EnrolGuide, index: number, pcm: Int16Array) =>
@@ -1618,13 +1627,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           tip: "Enrol on the computer too, in Tessaya's Voice ID settings, for your desk mic.",
           otherVoiceBelow: CAMPLUS_POLICY.single.listen,
           strongFrom: CAMPLUS_POLICY.single.act + 0.15,
+          // Its speech arrives at block RMS 30-600 over a room at about 3 (13 Nov); the SNR check still applies.
+          floors: { speech: 30, quiet: 60 },
         });
+        forEnrol = true;
         cardWords = { take: 0, prefix: "", turn: "", skip: 0, seen: 0 };
         card(true);
         speakNow(ENROL_INTRO);
       },
       cancelEnrol: () => {
         guide = null;
+        if (forEnrol) endEnrol();
       },
       /** Tessaya says this in the room now (an agent, a reminder or the Devices page), cutting off whatever she was saying. */
       say: (text: string) => {
@@ -1765,8 +1778,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const cue = (id: string, name: PillSound) => {
     if (!noCues.has(id)) sessions.get(id)?.cue(name);
   };
-  /** R1s asked to enrol, until the session that hears his read starts. */
-  const enrolAsked = new Set<string>();
+  /** What waits on the session an R1 was asked to open (`cmd/voice/start`): his read or her question needs its mic. */
+  const onStart = new Map<string, (s: ReturnType<typeof openSession>) => void>();
+  // A session opened here alone hears nothing: the R1 sends mic audio only in its own session, and its wake stream closes ours as stale (13 Nov).
+  const startOnR1 = (id: string, then: (s: ReturnType<typeof openSession>) => void) => {
+    onStart.set(id, then);
+    deps.publish(topic(id, "cmd/voice/start"), "{}");
+  };
   /** Who woke an R1 by name, until its session starts. */
   const calledBy = new Map<
     string,
@@ -1945,8 +1963,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           (sessions.get(id) ?? start(id)).switchTo(typeof name === "string" ? name : undefined);
       } else if (tail === "voice/ask") {
         const text = json()["text"];
-        if (typeof text === "string" && text.trim() !== "" && !muted.has(id))
-          (sessions.get(id) ?? start(id)).ask(text.trim().slice(0, 400));
+        if (typeof text === "string" && text.trim() !== "" && !muted.has(id)) {
+          const open = sessions.get(id);
+          if (open !== undefined) open.ask(text.trim().slice(0, 400));
+          else startOnR1(id, (s) => s.ask(text.trim().slice(0, 400)));
+        }
       } else if (tail === "cmd/voice/start") {
         // S2 (not her name) proves someone is at this R1, for an act already waiting on who is speaking.
         if (!calledBy.has(id)) sessions.get(id)?.present();
@@ -1967,7 +1988,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           void called.heard?.then((who) => who !== undefined && s.heardName(who, called.ms));
         } else s.present();
         cue(id, "wake");
-        if (enrolAsked.delete(id)) s.enrol();
+        const then = onStart.get(id);
+        onStart.delete(id);
+        then?.(s);
       } else if (tail === "voice/wake") {
         // The R1 sends its wake stream only between sessions (SMP 0.3.35): a session still open here is a stale one,
         // left by a reboot or a stop we missed, and must not keep her name from being heard.
@@ -2008,14 +2031,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         else noCues.delete(id);
       } else if (tail === "voice/enrol") {
         if (json()["cancel"] === true) {
-          enrolAsked.delete(id);
+          onStart.delete(id);
           sessions.get(id)?.cancelEnrol();
-        } else {
-          // His read needs the R1's mic, which only its own session opens: a session opened here alone hears nothing,
-          // and the R1's wake stream closes it as stale (13 Nov). The session its start opens runs the guide.
-          enrolAsked.add(id);
-          deps.publish(topic(id, "cmd/voice/start"), "{}");
-        }
+        } else startOnR1(id, (s) => s.enrol());
       } else if (tail === "state/online" && String(payload).trim() === "1") {
         // Back on the link mid-session: he was talking to her, so the window opens again rather than lapsing (00:43, 13 Nov).
         sessions.get(id)?.wake();
