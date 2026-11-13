@@ -88,11 +88,18 @@ export const DISPLAY_CHOICES = [
 ] as const;
 export const displayChoiceOf = (d: DeviceView): "auto" | "normal" | "flipped" =>
   d.display.mode === "0" ? "normal" : d.display.mode === "180" ? "flipped" : "auto";
+/** The R1 reports `state/display` once its firmware can turn the screen (AIDK 3.32; SMP from 0.3.52). */
+export const displaySupported = (display: DeviceView["display"] | undefined): boolean =>
+  display !== undefined &&
+  (display.mode !== null || display.rotate !== null || display.note !== null);
+
 export const displayLine = (d: DeviceView): string =>
   d.display.note ??
-  (d.display.mode === null
-    ? "Auto turns it with the R1. Set upright stores how it stands now as upright (firmware 3.32)."
-    : `${d.display.mode === "auto" ? "Turns with the R1" : "Pinned"}; upright now is ${d.display.rotate === 180 ? "upside down" : "normal"}.`);
+  (!displaySupported(d.display)
+    ? "Needs a firmware update: this firmware cannot turn the screen."
+    : d.display.mode === null
+      ? "Auto turns it with the R1. Set upright stores how it stands now as upright (firmware 3.32)."
+      : `${d.display.mode === "auto" ? "Turns with the R1" : "Pinned"}; upright now is ${d.display.rotate === 180 ? "upside down" : "normal"}.`);
 
 const DEVICE_DO_LINE: Readonly<Record<R1DeviceDo, string>> = {
   none: "Nothing",

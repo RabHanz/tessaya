@@ -36,6 +36,7 @@ import {
   tagActionLine,
   transportLine,
   when,
+  displaySupported,
 } from "@t3tools/baton-shared/deviceView";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -422,7 +423,11 @@ function DeviceControls({
               value={displayChoiceOf(d)}
               onValueChange={(set) => void run("act", "display", { id, set })}
             >
-              <SelectTrigger size="sm" aria-label="Screen rotation" disabled={off}>
+              <SelectTrigger
+                size="sm"
+                aria-label="Screen rotation"
+                disabled={off || !displaySupported(d.display)}
+              >
                 <SelectValue>
                   {DISPLAY_CHOICES.find(([v]) => v === displayChoiceOf(d))?.[1]}
                 </SelectValue>
@@ -438,7 +443,7 @@ function DeviceControls({
             <Button
               size="xs"
               variant="outline"
-              disabled={off}
+              disabled={off || !displaySupported(d.display)}
               onClick={() => void run("act", "display", { id, set: "calibrate" })}
             >
               Set upright

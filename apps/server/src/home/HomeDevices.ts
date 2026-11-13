@@ -38,6 +38,7 @@ import {
   type BtKnown,
 } from "@t3tools/baton-shared/btNames";
 import { isTestVessel, valueText } from "@t3tools/baton-shared/deviceItems";
+import { displaySupported } from "@t3tools/baton-shared/deviceView";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1199,6 +1200,10 @@ const make = Effect.gen(function* () {
         return done("Saved. The R1 confirms it in a moment.");
       }
       case "display":
+        if (!displaySupported(heard.get(id)?.display))
+          return yield* new DeviceRefusedError({
+            why: "This R1's firmware cannot turn its screen yet; it needs a firmware update. Nothing was sent.",
+          });
         yield* publish(
           id,
           "cmd/display/rotate",
@@ -1292,6 +1297,8 @@ const make = Effect.gen(function* () {
             return done("Speaker forgotten. Pair it again to use it.");
           case "route":
             yield* publish(id, "cmd/bt/route", { out: c.output ?? "auto" });
+            // A connect forces `cmd/audio/output` to bt; only this undoes it, or replies go to a speaker that is gone.
+            if (c.output !== "bt") yield* publish(id, "cmd/audio/output", { to: "auto" });
             return done(
               c.output === "bt"
                 ? "Replies play only on the Bluetooth speaker."

@@ -33,6 +33,7 @@ import {
   tagActionLine,
   transportLine,
   when,
+  displaySupported,
 } from "@t3tools/baton-shared/deviceView";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState, type ReactNode } from "react";
@@ -459,14 +460,14 @@ function DeviceControls({
               key={value}
               variant={value === displayChoiceOf(d) ? "primary" : "pill"}
               label={label}
-              disabled={off}
+              disabled={off || !displaySupported(d.display)}
               onPress={() => void run("act", "display", { id, set: value })}
             />
           ))}
           <ControlPill
             variant="pill"
             label="Set upright"
-            disabled={off}
+            disabled={off || !displaySupported(d.display)}
             onPress={() => void run("act", "display", { id, set: "calibrate" })}
           />
         </Row>

@@ -363,6 +363,21 @@ it.effect(
       );
       const after = (yield* devices.overview).devices[0]!.speaker!;
       assert.deepStrictEqual([after.state, after.saved, after.output], ["idle", null, "onboard"]);
+
+      // Off Bluetooth also clears the output a connect forced to bt (13 Nov: replies went to a speaker that was gone).
+      sent.length = 0;
+      const route = (output: "bt" | "auto") =>
+        serveDevicesCall(
+          { kind: "act", op: "speaker", args: { id: ID, action: "route", output } },
+          me,
+        );
+      yield* route("auto");
+      yield* route("bt");
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/bt/route", payload: { out: "auto" } },
+        { topic: "cmd/audio/output", payload: { to: "auto" } },
+        { topic: "cmd/bt/route", payload: { out: "bt" } },
+      ]);
     }).pipe(Effect.provide(layer));
   },
 );
@@ -455,6 +470,11 @@ it.effect("turns the R1's screen as asked and shows what it reports back", () =>
     yield* devices.tick;
     yield* devices.receive(`${root}/state/online`, "1");
     sent.length = 0;
+    // Firmware that never reported its screen cannot turn it: refused, nothing sent.
+    const old = yield* devices.command(ID, { op: "display", set: "flipped" }, me).pipe(Effect.flip);
+    assert.include(old.why, "firmware update");
+    assert.lengthOf(sent, 0);
+    yield* devices.receive(`${root}/state/display`, '{"rotate":0,"mode":"auto"}');
     for (const set of ["auto", "normal", "flipped", "calibrate"] as const)
       yield* devices.command(ID, { op: "display", set }, me);
     assert.deepStrictEqual(

@@ -478,7 +478,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const enrolling = () => forEnrol;
     /** Her last line in the room, finished or not, so the enrolment can end once its summary has played. */
     let lastSaid: Promise<void> = Promise.resolve();
-    const endEnrol = () =>
+    const stopAfterSaid = () =>
       void lastSaid
         .then(() => deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())))
         .then(() => deps.publish(topic(id, "cmd/voice/stop"), "{}"));
@@ -1663,7 +1663,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       });
       card(true);
       speakNow(result.said);
-      endEnrol();
+      stopAfterSaid();
     };
     /** His sentence passed its checks: its voice is compared with the others', and the profile is made once all are in. */
     const accepted = (g: EnrolGuide, index: number, pcm: Int16Array) =>
@@ -1739,9 +1739,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       },
       cancelEnrol: () => {
         guide = null;
-        if (forEnrol) endEnrol();
+        if (forEnrol) stopAfterSaid();
       },
       /** Tessaya says this in the room now (an agent, a reminder or the Devices page), cutting off whatever she was saying. */
+      /** A line in a session the R1 opened only for it: said, then that session ends. */
+      sayOnly: (text: string) => {
+        speakNow(text);
+        stopAfterSaid();
+      },
       say: (text: string) => {
         if (reply !== null) interrupt();
         speakNow(text);
@@ -2066,12 +2071,20 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (k["did"] === "none") deps.log(`[${id}] key ${String(k["key"])} ${String(k["act"])}`);
       } else if (tail === "voice/say") {
         const text = json()["text"];
-        if (typeof text === "string" && text.trim() !== "")
-          (sessions.get(id) ?? start(id)).say(text.trim().slice(0, 500));
+        if (typeof text === "string" && text.trim() !== "") {
+          const open = sessions.get(id);
+          // The R1 plays her voice only inside its own session (r1bt_voice_play drops it otherwise, 13 Nov).
+          if (open !== undefined) open.say(text.trim().slice(0, 500));
+          else startOnR1(id, (s) => s.sayOnly(text.trim().slice(0, 500)));
+        }
       } else if (tail === "voice/persona") {
         const name = json()["name"];
-        if (!muted.has(id))
-          (sessions.get(id) ?? start(id)).switchTo(typeof name === "string" ? name : undefined);
+        if (!muted.has(id)) {
+          const open = sessions.get(id);
+          const as = typeof name === "string" ? name : undefined;
+          if (open !== undefined) open.switchTo(as);
+          else startOnR1(id, (s) => s.switchTo(as));
+        }
       } else if (tail === "voice/ask") {
         const text = json()["text"];
         if (typeof text === "string" && text.trim() !== "" && !muted.has(id)) {
