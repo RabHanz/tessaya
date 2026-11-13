@@ -608,6 +608,8 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.catchTags({
             ServerSettingsError: () =>
               Effect.fail(new DictationCleanupError({ reason: "unreadable-key" })),
+            // shortcut: the wire has no "refused" reason yet; the server log names the role and why.
+            BrainRefused: () => Effect.fail(new DictationCleanupError({ reason: "unreachable" })),
           }),
         ),
       ),

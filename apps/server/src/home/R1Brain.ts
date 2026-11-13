@@ -1,13 +1,15 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalJsonInEffect:off preferSchemaOverJson:off
 /**
- * The room's brain, routed per turn by the `roomBrain` setting (no restart): his Anthropic key from Settings → APIs
- * (Haiku streamed with the room's tools, quickest), or his subscription via a Claude Code process started ahead and
- * waiting on stdin (one turn each, no tools). "auto" uses the key, and the subscription when the key fails before a
- * word was said (R1Device decides that).
+ * The room's brain, routed per turn by the brain's routing table's `voice` row (no restart): his Anthropic key from
+ * Settings → APIs (streamed with the room's tools, quickest), or his subscription via a Claude Code process started
+ * ahead and waiting on stdin (one turn each, no tools). "auto" is the key with the subscription named as its fallback,
+ * used when the key fails before a word was said (R1Device decides that).
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeOS from "node:os";
 
+import { brainRoute, credentialOf } from "@t3tools/baton-shared/brainRoutes";
+import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -16,6 +18,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import { onSubscription } from "../baton/BrainRoutes.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
   DictationCleanupApi,
@@ -198,17 +201,22 @@ export const readLine = (
 
 interface Warm {
   readonly proc: NodeChildProcess.ChildProcess;
+  readonly model: string;
   readonly bornAt: number;
   onLine: (line: string) => void;
   onExit: () => void;
 }
 
 /** @public */
-export const make = Effect.fn("R1Brain.make")(function* (system: string, model = "haiku") {
+export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   const settings = yield* ServerSettingsService;
   const api = yield* DictationCleanupApi;
   let ready: Warm | null = null;
-  const spawn = (): Warm => {
+  /** The routing table's row for spoken turns; voice never reads the cheap model. */
+  const voice = settings.getSettings.pipe(
+    Effect.map((value) => brainRoute(value, "voice", DEFAULT_ROUTING.cheap)),
+  );
+  const spawn = (model: string): Warm => {
     const proc = NodeChildProcess.spawn(
       "claude",
       [
@@ -239,6 +247,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
     );
     const warm: Warm = {
       proc,
+      model,
       bornAt: Date.now(),
       onLine: () => undefined,
       onExit: () => undefined,
@@ -259,29 +268,41 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
     proc.on("error", () => undefined);
     return warm;
   };
-  const take = (): Warm => {
+  const take = (model: string): Warm => {
     const old = ready;
     ready = null;
-    if (old !== null && old.proc.exitCode === null && Date.now() - old.bornAt < MAX_IDLE_MS)
+    if (
+      old !== null &&
+      old.model === model &&
+      old.proc.exitCode === null &&
+      Date.now() - old.bornAt < MAX_IDLE_MS
+    )
       return old;
     old?.proc.kill();
-    return spawn();
+    return spawn(model);
   };
   yield* Effect.addFinalizer(() => Effect.sync(() => ready?.proc.kill()));
 
-  /** Which way the next turn goes: the key, the subscription, or the key with the subscription behind it. */
+  /** Which way the next turn goes: the key, the subscription, or the key with the subscription named behind it. */
   const route: Effect.Effect<R1Route> = Effect.gen(function* () {
-    const mode = (yield* settings.getSettings).roomBrain;
-    if (mode !== "auto") return mode;
+    const row = yield* voice;
+    if (credentialOf(row.use).kind === "subscription") return "subscription" as const;
+    if (row.fallback === null || credentialOf(row.fallback).kind !== "subscription")
+      return "api" as const;
     return (yield* api.configured) ? ("auto" as const) : ("subscription" as const);
   }).pipe(Effect.orElseSucceed(() => "subscription" as const));
 
   const viaSubscription = (user: string) =>
     Stream.callback<string, R1BrainError>((queue) =>
       Effect.gen(function* () {
-        const warm = take();
+        const path = onSubscription(
+          yield* voice.pipe(Effect.mapError(() => new R1BrainError({ detail: "settings" }))),
+        );
+        if ("refused" in path) return yield* new R1BrainError({ detail: path.refused });
+        const { model } = path;
+        const warm = take(model);
         // The next subscription turn's process starts now, unless turns go by the key.
-        if ((yield* route) === "subscription") ready = spawn();
+        if ((yield* route) === "subscription") ready = spawn(model);
         yield* Effect.addFinalizer(() => Effect.sync(() => warm.proc.kill()));
         const failed = yield* Effect.callback<string | null>((resume) => {
           warm.onLine = (line) => {
@@ -302,19 +323,28 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string, model =
     );
 
   const converse = (turn: ToolTurn) =>
-    toolLoop(api.converse, turn).pipe(
+    Stream.unwrap(
+      Effect.map(voice, (row) => toolLoop((request) => api.converse(row, request), turn)),
+    ).pipe(
       Stream.mapError(
         (error) =>
           new R1BrainError({
-            detail: error._tag === "DictationCleanupError" ? `key: ${error.reason}` : "settings",
+            detail:
+              error._tag === "DictationCleanupError"
+                ? `key: ${error.reason}`
+                : error._tag === "BrainRefused"
+                  ? `refused: ${error.why}`
+                  : "settings",
           }),
       ),
     );
 
   // Only the subscription route needs a process waiting; the key route never starts one.
   const warm = Effect.gen(function* () {
-    if ((yield* route) === "subscription") ready ??= spawn();
-  });
+    if ((yield* route) !== "subscription") return;
+    const { model } = yield* voice;
+    ready ??= spawn(model);
+  }).pipe(Effect.ignore);
   return { route, subscription: viaSubscription, converse, warm } satisfies R1Brain["Service"];
 });
 

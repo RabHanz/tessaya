@@ -40,7 +40,6 @@ import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 import { BatonIntentService, layer as intentServiceLayer } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { layer as ruleServiceLayer, OrchestrationRuleService } from "./OrchestrationRuleService.ts";
-import { INTENT_MODEL_SLUG } from "./IntentInterpreter.ts";
 import { layer as workSessionLayer, WorkSessionService } from "./WorkSessionService.ts";
 
 const projectId = ProjectId.make("project-vantageos");
@@ -305,7 +304,8 @@ describe("a sentence the grammar cannot place (D50)", () => {
           assert.strictEqual(result.resolution.outcome, "resolved");
           assert.strictEqual(result.record.commandKind, "message_work_session");
           assert.strictEqual(result.record.source, "model");
-          assert.strictEqual(result.record.model, INTENT_MODEL_SLUG);
+          // The routing table's unset `intent` row: no server settings in this test.
+          assert.strictEqual(result.record.model, "haiku");
 
           // The user's words reached the thread, not a paraphrase of them.
           assert.deepStrictEqual(yield* Ref.get(sent), [

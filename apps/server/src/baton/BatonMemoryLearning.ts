@@ -28,7 +28,7 @@ import * as ServerConfig from "../config.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { dayOf } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
-import { readPack, readRouting } from "./OperatingSystemPack.ts";
+import { readPack } from "./OperatingSystemPack.ts";
 import { isWalled } from "@t3tools/baton-shared/osPack";
 
 const Proposals = Schema.Struct({
@@ -144,7 +144,7 @@ export const make = Effect.gen(function* () {
           input.origin === "conversation" ? "conversation" : "agent",
         ),
         outputSchema: Episode,
-        model: readRouting(NodePath.dirname(config.dbPath)).cheap,
+        role: "background",
       })
       .pipe(Effect.orElseSucceed(() => null));
     if (out === null) return result("retry");
@@ -235,7 +235,7 @@ export const make = Effect.gen(function* () {
       .run({
         prompt: extractionPrompt(input, known),
         outputSchema: Proposals,
-        model: readRouting(NodePath.dirname(config.dbPath)).cheap,
+        role: "background",
       })
       .pipe(Effect.orElseSucceed(() => ({ items: [] })));
     const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis).map(

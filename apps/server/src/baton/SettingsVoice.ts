@@ -54,6 +54,13 @@ export const SERVER_SETTINGS_VOICE: {
     "a key is a secret: never read aloud or set from a room",
   ),
   roomBrain: confirm("which brain the desk device uses: his key, his subscription, or auto"),
+  brainCredentials: owner(
+    "which login pays for each kind of her work: his subscription or an API key, and any fallback",
+  ),
+  brainKeyRoles: owner("which kinds of work each API key is allowed to pay for"),
+  brainModels: confirm(
+    "which model and effort each kind of her work uses: talking, hard tasks, background, cleanup",
+  ),
   speechModelId: confirm("the speech recognition model"),
   speechAcceleration: free("speech recognition on the GPU or the CPU"),
   speechModelUnloadTimeout: free("how long the speech model stays loaded when idle"),

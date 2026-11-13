@@ -9,6 +9,7 @@
  * uses: no tools, no slash commands, no MCP, no hooks, `dontAsk`. It runs as the box's primary
  * Claude home, which is the account cswap has active (D79).
  */
+import type { BrainRole } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -17,6 +18,8 @@ import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { toJsonSchemaObject } from "@t3tools/provider-core/server/textGenerationUtils";
+
+import { onSubscription, routeFor } from "./BrainRoutes.ts";
 
 const TIMEOUT = "90 seconds";
 
@@ -31,8 +34,8 @@ export class BatonOneShot extends Context.Service<
     readonly run: <S extends Schema.Top>(input: {
       readonly prompt: string;
       readonly outputSchema: S;
-      /** A Claude Code model alias or id, e.g. `haiku`, `sonnet`. */
-      readonly model: string;
+      /** Which kind of work this is: the brain's routing table picks the model (BrainRoutes). */
+      readonly role: BrainRole;
     }) => Effect.Effect<S["Type"], BatonOneShotError, S["DecodingServices"]>;
   }
 >()("t3/baton/BatonOneShot") {}
@@ -50,8 +53,19 @@ export function structuredOutputOf(stdout: string): unknown {
 export const make = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
-  const run: BatonOneShot["Service"]["run"] = ({ prompt, outputSchema, model }) =>
+  const run: BatonOneShot["Service"]["run"] = ({ prompt, outputSchema, role }) =>
     Effect.gen(function* () {
+      const route = yield* routeFor(role).pipe(
+        Effect.mapError(
+          () => new BatonOneShotError({ detail: "the brain's settings could not be read" }),
+        ),
+      );
+      const path = onSubscription(route);
+      if ("refused" in path) {
+        yield* Effect.logWarning("brain: a one-shot was refused", { role, why: path.refused });
+        return yield* new BatonOneShotError({ detail: path.refused });
+      }
+      const { model } = path;
       // @effect-diagnostics-next-line globalJsonInEffect:off - a JSON Schema object, always serialisable.
       const jsonSchema = JSON.stringify(toJsonSchemaObject(outputSchema));
       const command = ChildProcess.make(
