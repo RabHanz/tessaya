@@ -433,3 +433,12 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
     line: `Sent to the Director's phone for a yes: ${changed}. Nothing changes until he says yes.`,
   } satisfies SettingSet;
 });
+
+/** Whether this server reads and changes it itself: its own setting, or its desktop's while that desktop is connected. */
+export const settingHere = Effect.fn("SettingsVoice.here")(function* (key: string) {
+  const entry = entryOf(key, yield* allSettings);
+  if (entry === null) return false;
+  if (entry.store === "server") return true;
+  const desktop = yield* Effect.serviceOption(BatonDesktopSettings);
+  return Option.isSome(desktop) && (yield* desktop.value.get).connected;
+});

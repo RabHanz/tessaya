@@ -13,6 +13,7 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";
 
+import { On, PeerOrigin } from "../../../peer/PeerVessels.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
@@ -45,7 +46,8 @@ const AGENT_ACT_OPS = [
 
 const ListTool = Tool.make("device_list", {
   ...shared,
-  description: DEVICE_TOOL_TEXT.device_list,
+  description: `${DEVICE_TOOL_TEXT.device_list} Devices on his other linked servers carry \`on\`: pass it back to drive one.`,
+  parameters: Schema.Struct({ ...PeerOrigin }),
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
@@ -64,6 +66,8 @@ const ActTool = Tool.make("device_act", {
     muted: Schema.optionalKey(Schema.Boolean),
     transport: Schema.optionalKey(Schema.Literals(["inhouse", "agora"])),
     cancel: Schema.optionalKey(Schema.Boolean),
+    on: Schema.optional(On),
+    ...PeerOrigin,
   }),
 })
   .annotate(Tool.Readonly, false)
@@ -73,7 +77,12 @@ const ActTool = Tool.make("device_act", {
 const OwnerTool = Tool.make("device_owner", {
   ...shared,
   description: DEVICE_TOOL_TEXT.device_owner,
-  parameters: Schema.Struct({ id: Id, op: Schema.Literals(["camera", "reboot"]) }),
+  parameters: Schema.Struct({
+    id: Id,
+    op: Schema.Literals(["camera", "reboot"]),
+    on: Schema.optional(On),
+    ...PeerOrigin,
+  }),
 })
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
@@ -87,6 +96,8 @@ const TagTool = Tool.make("device_tag", {
     uid: Schema.String.check(Schema.isMaxLength(40)),
     label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
     action: Schema.optionalKey(DeviceTagAction),
+    on: Schema.optional(On),
+    ...PeerOrigin,
   }),
 })
   .annotate(Tool.Readonly, false)

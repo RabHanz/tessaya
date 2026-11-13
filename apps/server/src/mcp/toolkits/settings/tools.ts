@@ -6,6 +6,7 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";
 
+import { On, PeerOrigin } from "../../../peer/PeerVessels.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
@@ -25,9 +26,10 @@ const Key = Schema.String.check(Schema.isMaxLength(80)).annotate({
 const FindTool = Tool.make("settings_find", {
   ...shared,
   description:
-    "Find Tessaya's settings by his words ('make the pill quieter', 'the speech model', 'background activity'): the closest few, each with its key, what it does, where it lives and its safety class. Use it before settings_get, settings_explain or settings_set.",
+    "Find Tessaya's settings by his words ('make the pill quieter', 'the speech model', 'background activity'): the closest few, each with its key, what it does, where it lives and its safety class, on this server and his other linked ones (those carry `on`, the machine to pass back). Use it before settings_get, settings_explain or settings_set.",
   parameters: Schema.Struct({
     text: Schema.String.check(Schema.isMaxLength(200)).annotate({ description: "His words." }),
+    ...PeerOrigin,
   }),
 })
   .annotate(Tool.Readonly, true)
@@ -38,7 +40,7 @@ const FindTool = Tool.make("settings_find", {
 const GetTool = Tool.make("settings_get", {
   ...shared,
   description: "A setting's value now, by its key. A secret is never read.",
-  parameters: Schema.Struct({ key: Key }),
+  parameters: Schema.Struct({ key: Key, on: Schema.optional(On), ...PeerOrigin }),
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
@@ -49,7 +51,7 @@ const ExplainTool = Tool.make("settings_explain", {
   ...shared,
   description:
     "What a setting does, its value now, the values it takes when it is a choice, and whether changing it needs his yes.",
-  parameters: Schema.Struct({ key: Key }),
+  parameters: Schema.Struct({ key: Key, on: Schema.optional(On), ...PeerOrigin }),
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
@@ -68,6 +70,8 @@ const SetTool = Tool.make("settings_set", {
     why: Schema.String.check(Schema.isMaxLength(300)).annotate({
       description: "His request, in his words.",
     }),
+    on: Schema.optional(On),
+    ...PeerOrigin,
   }),
 })
   .annotate(Tool.Readonly, false)
