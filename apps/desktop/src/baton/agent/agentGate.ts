@@ -324,7 +324,7 @@ export const createAgentGate = (input: {
     });
     // A device's turn reads quietly; anything else it would do asks him first, whatever One Trust allows his own words.
     const judged =
-      outside && trusted.verdict === "allow" && !OUTSIDE_READS.has(name)
+      outside && trusted.verdict === "allow" && !OUTSIDE_READS.has(name) && call.shared !== "read"
         ? { verdict: "ask" as const, why: "A paired device asked for this, not you." }
         : trusted;
     const action = describeToolCall(call);

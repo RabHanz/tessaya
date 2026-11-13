@@ -6,10 +6,12 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { serveDevicesCall, type DevicesCallKind } from "../../../home/HomeDeviceCalls.ts";
 import type { DeviceActor } from "../../../home/HomeDevices.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import { vesselOf } from "../home/handlers.ts";
 
 const unavailable = new OrchestratorMcpFailure({
   code: "orchestration_error",
@@ -28,10 +30,15 @@ export const make = Effect.gen(function* () {
   ) {
     if (context === null) return yield* unavailable;
     const scope = yield* McpInvocationContext.McpInvocationContext;
-    const by: DeviceActor = {
-      who: scope.client === undefined ? "an agent in T3" : "an outside agent",
-      surface: "agent",
-    };
+    const via = (yield* TurnOrigin)?.label;
+    // A vessel's own Tessaya acts as his assistant does: harmless controls at once, the camera and a restart on his yes.
+    const by: DeviceActor =
+      vesselOf(scope.client) !== null
+        ? { who: via === undefined ? "Tessaya" : `Tessaya via ${via}`, surface: "assistant" }
+        : {
+            who: scope.client === undefined ? "an agent in T3" : "an outside agent",
+            surface: "agent",
+          };
     return yield* serveDevicesCall({ kind, op, args }, by).pipe(Effect.provideContext(context));
   });
   const split = ({ op, ...rest }: Args) => [String(op), { ...rest }] as const;

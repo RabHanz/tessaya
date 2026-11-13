@@ -15,7 +15,7 @@ import {
 } from "../../../baton/SettingsVoice.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { ROOM_CLIENT, ROOM_REPLAY_CLIENT } from "../home/handlers.ts";
+import { vesselOf } from "../home/handlers.ts";
 
 const unavailable = new OrchestratorMcpFailure({
   code: "orchestration_error",
@@ -82,7 +82,7 @@ export const make = Effect.gen(function* () {
     settings_set: McpToolAccess.writes((input: Args) =>
       Effect.gen(function* () {
         const scope = yield* McpInvocationContext.McpInvocationContext;
-        const room = scope.client === ROOM_CLIENT || scope.client === ROOM_REPLAY_CLIENT;
+        const vessel = vesselOf(scope.client);
         const via = (yield* TurnOrigin)?.label;
         return yield* inRuntime(
           setSetting({
@@ -90,12 +90,14 @@ export const make = Effect.gen(function* () {
             value: input["value"],
             why: String(input["why"] ?? ""),
             // The suite's pretend R1 is checked as for real and changes nothing.
-            dryRun: scope.client === ROOM_REPLAY_CLIENT,
+            dryRun: vessel?.dryRun === true,
             who:
               via !== undefined
                 ? `Tessaya via ${via}`
-                : room
-                  ? "Tessaya in the room"
+                : vessel !== null
+                  ? vessel.surface === "r1"
+                    ? "Tessaya in the room"
+                    : "Tessaya on his desktop"
                   : scope.client === undefined
                     ? "an agent in T3"
                     : "an outside agent",

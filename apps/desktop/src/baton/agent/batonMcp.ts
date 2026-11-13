@@ -20,6 +20,10 @@ export interface BatonTool {
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
   readonly run: (args: Readonly<Record<string, unknown>>) => Promise<ToolOutput>;
+  /** Kept loaded when tool search is on (`anthropic/alwaysLoad`); the registry's core flag. */
+  readonly core?: boolean;
+  /** One of his server's shared tools, and whether it only reads: the gate judges it by that. */
+  readonly shared?: "read" | "write";
 }
 
 export interface BatonMcp {
@@ -84,7 +88,11 @@ export const startBatonMcp = async (input: {
       ms: Date.now() - started,
     });
     const verdict = await input
-      .gate({ tool: `${BATON_TOOL_PREFIX}${name}`, input: args })
+      .gate({
+        tool: `${BATON_TOOL_PREFIX}${name}`,
+        input: args,
+        ...(tool.shared === undefined ? {} : { shared: tool.shared }),
+      })
       .catch(() => ({ allow: false as const, reason: "Tessaya could not check that." }));
     if (!verdict.allow) {
       input.onResult?.({
@@ -153,11 +161,18 @@ export const startBatonMcp = async (input: {
         return reply({});
       case "tools/list":
         return reply({
-          tools: [...tools.values()].map(({ name, description, inputSchema }) => ({
-            name,
-            description,
-            inputSchema,
-          })),
+          // Core first, then by name: a stable list keeps the prompt's tool block cached.
+          tools: [...tools.values()]
+            .toSorted(
+              (a, b) =>
+                Number(b.core ?? false) - Number(a.core ?? false) || a.name.localeCompare(b.name),
+            )
+            .map(({ name, description, inputSchema, core }) => ({
+              name,
+              description,
+              inputSchema,
+              ...(core === true ? { _meta: { "anthropic/alwaysLoad": true } } : {}),
+            })),
         });
       case "tools/call":
         return reply(await callTool(rpc.params ?? {}));

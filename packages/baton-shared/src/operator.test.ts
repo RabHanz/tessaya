@@ -82,6 +82,15 @@ describe("a tool call", () => {
 
   it("gets a yes for a tool nobody has classified", () => {
     expect(judgeToolCall({ tool: "CronCreate", input: {} }, on).verdict).toBe("ask");
+    // The server's shared tools judge their own writes; one that follows a read asks here first.
+    const set = { tool: "mcp__baton__settings_set", input: {} };
+    const tainted = { ...off, tainted: true };
+    expect(judgeToolCall({ ...set, shared: "write" }, off).verdict).toBe("allow");
+    expect(judgeToolCall({ ...set, shared: "write" }, tainted).verdict).toBe("ask");
+    expect(judgeToolCall({ ...set, shared: "read" }, tainted).verdict).toBe("allow");
+    expect(judgeToolCall({ tool: "settings_set", input: {}, shared: "write" }, on).verdict).toBe(
+      "ask",
+    );
   });
 
   it("is judged by what it does, not by what a file says", () => {

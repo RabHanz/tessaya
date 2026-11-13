@@ -57,18 +57,9 @@ describe("a request answered by this machine's server while T3 is closed", () =>
       deskCall({ kind: "cloud", op: "act", args: { id: "c1" }, environmentId: "env-laptop" }, here),
     ).toEqual({ method: "baton.cloud.act", input: { id: "c1" } });
     expect(deskCall({ kind: "cloud", op: "environments", args: {} })).toBeNull();
-    expect(deskCall({ kind: "home", op: "act", args: { op: "do" } })).toEqual({
-      method: "baton.home.call",
-      input: { op: "do", kind: "act" },
-    });
-    expect(deskCall({ kind: "home", op: "answer", args: {} })).toBeNull();
-    expect(serverOnly({ kind: "home", op: "read" })).toBe(true);
-    expect(deskCall({ kind: "devices", op: "owner", args: { op: "camera" } })).toEqual({
-      method: "baton.devices.call",
-      input: { op: "camera", kind: "owner" },
-    });
-    expect(deskCall({ kind: "devices", op: "answer", args: {} })).toBeNull();
-    expect(serverOnly({ kind: "devices", op: "read" })).toBe(true);
+    // The house is the shared tools' now (baton.tools.call); only this server's own sync stays on its door.
+    expect(serverOnly({ kind: "home", op: "read" })).toBe(false);
+    expect(serverOnly({ kind: "memory", op: "syncRun" })).toBe(true);
     expect(deskCall({ kind: "job", op: "handoff", args: { id: "w1", instance: "Codex" } })).toEqual(
       {
         method: "baton.job.handoff",

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   buildBatonTools,
+  COVERED_BY_OWN,
   clickTargetsField,
   focusIsOn,
   treeText,
@@ -39,11 +40,67 @@ const host = (log: string[], windows: string[] = ["w1"]): ToolHost => ({
 });
 
 describe("the assistant's tool table", () => {
-  it("names exactly the tools the gate knows", () => {
-    const names = buildBatonTools(host([])).map((t) => t.name);
+  it("names exactly the tools the gate knows, the house and devices from his server's registry", () => {
+    const spec = (name: string, readonly = false) => ({
+      name,
+      description: name,
+      input_schema: { type: "object" },
+      readonly,
+    });
+    const house = ["home_find", "home_state", "home_automations", "device_list"].map((n) =>
+      spec(n, true),
+    );
+    const acts = ["home_do", "home_undo", "home_automation_save", "home_automation_set"];
+    const devices = ["device_act", "device_owner", "device_tag"];
+    const registry = {
+      specs: [...house, ...[...acts, ...devices].map((n) => spec(n))],
+      call: async () => "done",
+    };
+    const names = buildBatonTools({ ...host([]), shared: registry }).map((t) => t.name);
     expect(new Set(names)).toEqual(
       new Set([...BATON_TOOLS].filter((t) => !REMOTE_ONLY_TOOLS.has(t))),
     );
+    expect(buildBatonTools(host([])).some((t) => t.name === "home_do")).toBe(false);
+  });
+
+  it("adds each shared tool once, with whether it reads, and never one its own tools cover", async () => {
+    const own = new Set(buildBatonTools(host([])).map((t) => t.name));
+    expect(Object.values(COVERED_BY_OWN).filter((name) => !own.has(name))).toEqual([]);
+    const spec = (name: string, readonly: boolean, core?: boolean) => ({
+      name,
+      description: name,
+      input_schema: { type: "object" },
+      readonly,
+      ...(core === undefined ? {} : { core }),
+    });
+    const called: Array<[string, unknown]> = [];
+    const tools = buildBatonTools({
+      ...host([]),
+      shared: {
+        specs: [
+          spec("settings_find", true, true),
+          spec("settings_set", false),
+          spec("tessaya_memory_search", true),
+          spec("memory_search", true),
+        ],
+        call: async (name, args) => (called.push([name, args]), "changed"),
+      },
+    });
+    const shared = tools.filter((t) => t.shared !== undefined);
+    expect(shared.map((t) => [t.name, t.shared, t.core])).toEqual([
+      ["settings_find", "read", true],
+      ["settings_set", "write", undefined],
+    ]);
+    expect(await shared[1]!.run({ key: "desktop:chime", value: false })).toEqual({
+      text: "changed",
+    });
+    expect(called).toEqual([["settings_set", { key: "desktop:chime", value: false }]]);
+    expect(
+      buildBatonTools(
+        { ...host([]), shared: { specs: [spec("settings_set", false)], call: async () => "" } },
+        { remote: true },
+      ).some((t) => t.name === "settings_set"),
+    ).toBe(false);
   });
   it("checks arguments before touching anything", async () => {
     const log: string[] = [];

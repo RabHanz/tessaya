@@ -11,6 +11,8 @@ import * as ServerConfig from "../config.ts";
 import { AuthBatonHandsHostScope, AuthStandardClientScopes } from "@t3tools/contracts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
+import type { RoomToolSet } from "../home/R1Brain.ts";
+import { DeskTools } from "../home/R1Tools.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
 import { routes } from "./BatonTessayaRoutes.ts";
 
@@ -24,6 +26,7 @@ const serve = (
     readonly session?: EnvironmentAuth.AuthenticatedSession;
     readonly runtime?: Context.Context<never>;
     readonly init?: RequestInit;
+    readonly deskTools?: RoomToolSet;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -32,6 +35,7 @@ const serve = (
         HttpRouter.toWebHandler(
           routes.pipe(
             Layer.provide(Layer.succeed(BatonRuntime, (over.runtime ?? Context.empty()) as never)),
+            Layer.provide(Layer.succeed(DeskTools, over.deskTools ?? null)),
             Layer.provide(
               Layer.succeed(ServerConfig.ServerConfig, {
                 dbPath: "/nowhere/state.sqlite",
@@ -111,6 +115,47 @@ it.effect("tells memory who reads on the desktop's direct door, from the session
     }
     expect(readers).toEqual(["client", "desktop"]);
   }),
+);
+
+it.effect(
+  "runs the shared tools as his desktop's Tessaya only for the desktop app's own session",
+  () =>
+    Effect.gen(function* () {
+      const ran: Array<[string, unknown, string | undefined]> = [];
+      const deskTools = {
+        specs: [{ name: "settings_get", description: "Read a setting.", input_schema: {} }],
+        run: (name: string, input: unknown, device?: string) =>
+          Effect.sync(() => (ran.push([name, input, device]), { text: "on", isError: false })),
+      };
+      const call = (
+        scopes: EnvironmentAuth.AuthenticatedSession["scopes"],
+        path: string,
+        body: unknown,
+      ) =>
+        serve(`/tessaya/desk/${path}`, {
+          session: { sessionId: "s" as never, subject: "x", method: "bearer-access-token", scopes },
+          deskTools,
+          init: {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        } as never);
+      const desktop = [...AuthStandardClientScopes, AuthBatonHandsHostScope];
+      const ask = { name: "settings_get", args: { key: "chime" }, device: "replay-desktop" };
+      expect((yield* call(AuthStandardClientScopes, "baton.tools.call", ask)).status).toBe(403);
+      expect(ran).toEqual([]);
+      const listed = yield* call(desktop, "baton.tools.list", {});
+      expect(yield* Effect.promise(() => listed.json())).toEqual({
+        value: { tools: deskTools.specs },
+      });
+      const called = yield* call(desktop, "baton.tools.call", ask);
+      expect(yield* Effect.promise(() => called.json())).toEqual({
+        value: { text: "on", isError: false },
+      });
+      expect(ran).toEqual([["settings_get", { key: "chime" }, "replay-desktop"]]);
+      expect((yield* call(desktop, "baton.tools.call", { args: {} })).status).toBe(400);
+    }),
 );
 
 it.effect("serves private memory only to his own sessions, as that session, with no-store", () =>
