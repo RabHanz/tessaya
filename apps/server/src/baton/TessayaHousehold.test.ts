@@ -28,6 +28,7 @@ import {
 import { HouseholdCaller, TessayaHousehold, layer as householdLayer } from "./TessayaHousehold.ts";
 import { VoiceForgets } from "./VoiceForgets.ts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
+import { authenticator, ORIGIN } from "./testing/softPasskey.ts";
 
 const authLayer = EnvironmentAuth.layer.pipe(
   Layer.provide(ManagedPolicy.layerTest()),
@@ -576,6 +577,69 @@ describe("one voice profile per member, on the home", () => {
         );
         yield* TestClock.adjust("301 seconds");
         assert.include((yield* as(desk)(hello)).line, "shared");
+      }),
+    ));
+
+  test("a passkey added on their own device confirms it's them there: A3 for 5 minutes, on that site, by that member only", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const phone = {
+          member: "owner",
+          assurance: 2,
+          via: "his phone",
+          session: "phone",
+          origin: ORIGIN,
+        } as const;
+        const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64url");
+        const device = authenticator();
+        const options = (purpose: "register" | "stepUp") =>
+          Effect.map(as(phone)(call({ op: "passkeyOptions", purpose })), (r) => r.passkey!);
+        const reg = yield* options("register");
+        assert.strictEqual(reg.rpId, "home.example");
+        const made = device.create(reg.challenge);
+        const added = yield* as(phone)(
+          call({
+            op: "passkeyRegister",
+            clientDataJSON: b64(made.clientDataJSON),
+            attestationObject: b64(made.attestationObject),
+            label: "His phone",
+          }),
+        );
+        assert.strictEqual(added.status, "done");
+        const step = yield* options("stepUp");
+        assert.lengthOf(step.keys, 1);
+        const answer = (challenge: string) => {
+          const a = device.get(challenge);
+          return {
+            credentialId: step.keys[0]!.id,
+            clientDataJSON: b64(a.clientDataJSON),
+            authenticatorData: b64(a.authenticatorData),
+            signature: b64(a.signature),
+          };
+        };
+        const invite = call({ op: "invite", name: "Adam", role: "child" });
+        assert.strictEqual((yield* as(phone)(invite)).status, "asked");
+        // A challenge is used once; another member's session can't use his passkey.
+        const signed = answer(step.challenge);
+        assert.strictEqual(
+          (yield* as({ ...phone, member: "sara-1" })(call({ op: "stepUp", passkey: signed })))
+            .status,
+          "refused",
+        );
+        const again = yield* options("stepUp");
+        assert.strictEqual(
+          (yield* as(phone)(call({ op: "stepUp", passkey: answer(again.challenge) }))).status,
+          "done",
+        );
+        assert.strictEqual((yield* as(phone)(invite)).status, "done");
+        assert.strictEqual(
+          (yield* as(phone)(call({ op: "stepUp", passkey: answer(again.challenge) }))).status,
+          "refused",
+        );
+        // Removing it takes it away.
+        yield* as(phone)(call({ op: "passkeyRemove", credentialId: step.keys[0]!.id }));
+        assert.lengthOf((yield* options("stepUp")).keys, 0);
       }),
     ));
 });
