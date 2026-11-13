@@ -36,9 +36,9 @@ it("finds a setting by his words", () => {
 });
 
 const setup = () => {
-  const desktop = { holdKeyCues: true as unknown, holdKey: "F9" as unknown };
+  const desktop = { holdKeyCues: true as unknown, holdKey: "F9" as unknown, connected: true };
   const desktopLayer = Layer.succeed(BatonDesktopSettings)({
-    get: Effect.sync(() => ({ connected: true, effective: { ...desktop } }) as never),
+    get: Effect.sync(() => ({ connected: desktop.connected, effective: { ...desktop } }) as never),
     set: (patch) =>
       Effect.sync(() => {
         Object.assign(desktop, patch);
@@ -98,6 +98,11 @@ it.effect(
       });
       assert.strictEqual(dry.status, "done");
       assert.strictEqual(desktop.holdKeyCues, false);
+      // A desktop that answers to another server is not changed from here, and she is told so.
+      desktop.connected = false;
+      const away = yield* setSetting({ key: "showWords", value: true, why: "x", who: "Tessaya" });
+      assert.strictEqual(away.status, "failed");
+      assert.include(away.line, "not connected to this server");
     }).pipe(Effect.provide(layer));
   },
 );

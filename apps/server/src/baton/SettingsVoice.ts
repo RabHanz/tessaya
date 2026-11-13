@@ -251,8 +251,7 @@ const apply = Effect.fn("SettingsVoice.apply")(function* (entry: SettingEntry, p
     );
   }
   const desktop = yield* Effect.serviceOption(BatonDesktopSettings);
-  // Its desktop answers to the server it runs beside: elsewhere the change would wait for nobody.
-  if (Option.isNone(desktop) || !(yield* desktop.value.get).connected) return false;
+  if (Option.isNone(desktop)) return false;
   yield* desktop.value.set(patch as never);
   return true;
 });
@@ -303,6 +302,15 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
   const now = (patch.value as Record<string, unknown>)[entry.key];
   const was = yield* settingValue(entry);
   const changed = `${entry.say}: ${shown(was)} to ${shown(now)}`;
+  const desktop = yield* Effect.serviceOption(BatonDesktopSettings);
+  if (
+    entry.store === "desktop" &&
+    (Option.isNone(desktop) || !(yield* desktop.value.get).connected)
+  )
+    return {
+      status: "failed",
+      line: `${entry.say} is a setting of his desktop app, which is not connected to this server; it changes from the desktop itself.`,
+    } satisfies SettingSet;
   if (input.dryRun === true)
     return {
       status: entry.class === "free" ? "done" : "asked",
@@ -318,10 +326,7 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
     if (!(yield* apply(entry, patch.value)))
       return {
         status: "failed",
-        line:
-          entry.store === "desktop"
-            ? `${entry.say} is a setting of his desktop app, which is not connected to this server; it changes from the desktop itself.`
-            : `${entry.say} could not be changed here.`,
+        line: `${entry.say} could not be changed here.`,
       } satisfies SettingSet;
     return {
       status: "done",

@@ -299,13 +299,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "setting-free",
     proves: ["settings_find", "settings_set"],
-    said: ["Turn off the sounds when I press the dictation key."],
+    said: ["Turn off the prompt suggestions."],
     uses: [["settings_find", "settings_explain"], ["settings_set"]],
     clean: ["settings_set"],
     argsOf: "settings_set",
     args: (input) => ({
-      holdKeyCues: input["key"] === "holdKeyCues",
-      off: input["value"] === false || input["value"] === "false",
+      promptSuggestionsEnabled: input["key"] === "promptSuggestionsEnabled",
+      off: [false, "false", "off"].includes(input["value"] as never),
     }),
   },
   {
