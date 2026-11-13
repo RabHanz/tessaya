@@ -43,6 +43,7 @@ export const BatonMemoryKind = Schema.Literals([
   "correction",
   "episode",
   "learning",
+  "skill",
 ]);
 export const BatonMemorySource = Schema.Literals(["user", "thread", "job", "import", "sync"]);
 export const BatonMemoryScope = Schema.Literals(["global", "project", "person"]);

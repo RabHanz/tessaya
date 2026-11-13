@@ -320,7 +320,10 @@ export const make = Effect.gen(function* () {
   const matches = (item: MemoryItem, query: MemoryQuery): boolean =>
     (query.includeSuperseded === true || item.supersededBy === null) &&
     (query.includeProposed === true || !item.proposed) &&
-    (query.kinds === undefined || query.kinds.length === 0 || query.kinds.includes(item.kind)) &&
+    // A skill is read only by asking for skills: it never takes a place in what a sentence recalls.
+    (query.kinds === undefined || query.kinds.length === 0
+      ? item.kind !== "skill"
+      : query.kinds.includes(item.kind)) &&
     (query.scope === undefined || item.scope === query.scope);
 
   const listAll = Effect.fn("BatonMemoryService.listAll")(function* (query: MemoryQuery = {}) {
@@ -381,7 +384,7 @@ export const make = Effect.gen(function* () {
     const rows = yield* sql<ItemRow>`
       SELECT i.* FROM fabric_memory_fts
       JOIN fabric_memory_items i ON i.rowid = fabric_memory_fts.rowid
-      WHERE fabric_memory_fts MATCH ${expression}
+      WHERE fabric_memory_fts MATCH ${expression} AND i.kind != 'skill'
       ORDER BY bm25(fabric_memory_fts)
       LIMIT ${CANDIDATES}
     `.pipe(Effect.orDie);
@@ -409,9 +412,11 @@ export const make = Effect.gen(function* () {
   });
 
   const add = Effect.fn("BatonMemoryService.add")(function* (draft: MemoryDraft) {
-    const reason = refuseToStore(draft.text, privateTexts());
+    const reason = refuseToStore(draft.text, privateTexts(), draft.kind);
     if (reason !== null) return yield* refuse(reason);
-    const text = draft.text.trim().replace(/\s+/g, " ");
+    // A skill keeps its lines: its front matter is parsed back when a turn matches it.
+    const text =
+      draft.kind === "skill" ? draft.text.trim() : draft.text.trim().replace(/\s+/g, " ");
     const scope = draft.scope ?? "global";
     const scopeRef = scope === "global" ? null : (draft.scopeRef ?? null);
     const at = yield* nowIso;
@@ -594,6 +599,8 @@ export const make = Effect.gen(function* () {
 
   /** Links the item to every entity it names, after learning any new entity or alias its own words state. */
   const noteEntities = Effect.fn("BatonMemoryService.noteEntities")(function* (item: MemoryItem) {
+    // A skill's steps name windows and tools, not people or projects of his.
+    if (item.kind === "skill") return;
     const at = yield* nowIso;
     // Its words may have changed (an edit, a rewrite): its links are made afresh.
     yield* sql`DELETE FROM fabric_memory_links WHERE item_id = ${item.id}`.pipe(Effect.orDie);
@@ -887,7 +894,7 @@ export const make = Effect.gen(function* () {
           item.scope !== "project" ||
           item.scopeRef === context.scopeRef,
       )
-      .filter(({ item }) => seen(item))
+      .filter(({ item }) => seen(item) && item.kind !== "skill")
       .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
       .toSorted((a, b) => b.score - a.score)
       .map((hit) => hit.item);
@@ -1061,7 +1068,10 @@ export const make = Effect.gen(function* () {
       const id = change.item?.id ?? change.tombstone?.id;
       if (id === undefined || peer === origin) continue;
       // Every received item passes the same door as one he types: a peer is not trusted to have checked.
-      if (change.item !== null && refuseToStore(change.item.text, privateTexts()) !== null)
+      if (
+        change.item !== null &&
+        refuseToStore(change.item.text, privateTexts(), change.item.kind) !== null
+      )
         continue;
       const row = yield* sql<ItemRow>`SELECT * FROM fabric_memory_items WHERE id = ${id}`.pipe(
         Effect.orDie,
@@ -1139,7 +1149,7 @@ export const make = Effect.gen(function* () {
     }>`
       SELECT i.id, i.text, v.model AS model, v.text_hash AS text_hash
       FROM fabric_memory_items i LEFT JOIN fabric_memory_vectors v ON v.item_id = i.id
-      WHERE i.superseded_by IS NULL AND i.proposed = 0
+      WHERE i.superseded_by IS NULL AND i.proposed = 0 AND i.kind != 'skill'
     `.pipe(Effect.orDie);
     for (const row of rows) {
       const hash = textHash(row.text);

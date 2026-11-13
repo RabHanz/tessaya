@@ -13,6 +13,8 @@ export const MEMORY_KINDS = [
   "correction",
   "episode",
   "learning",
+  /** A learned skill he accepted after its replay test (SPINE-UNIFY §9): matched per turn, never recalled as a fact. */
+  "skill",
 ] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
@@ -23,6 +25,8 @@ export const MEMORY_SCOPES = ["global", "project", "person"] as const;
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 
 export const MEMORY_TEXT_MAX = 500;
+/** A skill is its whole file (front matter and steps), so it alone may be longer. */
+export const SKILL_TEXT_MAX = 8_000;
 
 export interface MemoryItem {
   readonly id: string;
@@ -281,10 +285,12 @@ const wordRuns = (text: string, n: number): Set<string> => {
 export const refuseToStore = (
   text: string,
   privateTexts: ReadonlyArray<string> = [],
+  kind?: MemoryKind,
 ): string | null => {
   const clean = text.trim();
   if (clean === "") return "there is nothing to remember in that";
-  if (clean.length > MEMORY_TEXT_MAX) return `a memory is at most ${MEMORY_TEXT_MAX} characters`;
+  const max = kind === "skill" ? SKILL_TEXT_MAX : MEMORY_TEXT_MAX;
+  if (clean.length > max) return `a memory is at most ${max} characters`;
   const secret = detectSecret(clean);
   if (secret !== null) return `that looks like ${secret}, so I did not keep it`;
   if (sharesPrivateText(clean, privateTexts)) {
@@ -326,6 +332,7 @@ const HALF_LIFE_DAYS: Record<MemoryKind, number | null> = {
   episode: 14,
   learning: 180,
   fact: 365,
+  skill: null,
 };
 export const DECAY_FLOOR = 0.1;
 export const EPISODE_TTL_DAYS = 90;
@@ -497,7 +504,8 @@ export interface ParsedLearning {
   readonly draft: Pick<MemoryDraft, "kind" | "text" | "scope" | "scopeRef" | "confidence">;
 }
 
-const KIND_SET = new Set<string>(MEMORY_KINDS);
+// The learnings folder holds his notes, never a skill: those come only from his accepted skills.
+const KIND_SET = new Set<string>(MEMORY_KINDS.filter((kind) => kind !== "skill"));
 const SCOPE_SET = new Set<string>(MEMORY_SCOPES);
 
 /**

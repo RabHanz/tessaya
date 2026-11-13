@@ -10,14 +10,15 @@ one assistant), D146 (plain editable notes) and D148 (the neutral pack).
 
 ## 1. The layers
 
-| Layer              | What it holds                                                                            | Where it lives                                                     | Lifetime                       |
-| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------ |
-| Working            | The current turn and the last few: target, focused window, what was just said            | the assistant's own context (D143)                                 | one session                    |
-| Conversation       | Every turn, verbatim, with route and target (D142), one file per persona                 | `conversation/<persona id>.ndjson` in the state folder             | kept; searched by text         |
-| Episodic           | What happened: a job finished, a session crashed, a thing was tried and worked or failed | memory store, kind `episode`                                       | decays, expires                |
-| Semantic           | Facts and preferences: how he writes, what he likes, decisions made, corrections he gave | memory store, kinds `preference`, `fact`, `decision`, `correction` | long, reinforced by repetition |
-| Project and people | What is true of one project or one person: stack, owners, conventions, who is who        | memory store, scope `project` or `person`                          | long, tied to a reference      |
-| Learnings          | What worked or failed in a venture or a job, in a form that changes the next attempt     | memory store, kind `learning`, plus imported folders               | long, ranked by use            |
+| Layer              | What it holds                                                                            | Where it lives                                                      | Lifetime                       |
+| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| Working            | The current turn and the last few: target, focused window, what was just said            | the assistant's own context (D143)                                  | one session                    |
+| Conversation       | Every turn, verbatim, with route and target (D142), one file per persona                 | `conversation/<persona id>.ndjson` in the state folder              | kept; searched by text         |
+| Episodic           | What happened: a job finished, a session crashed, a thing was tried and worked or failed | memory store, kind `episode`                                        | decays, expires                |
+| Semantic           | Facts and preferences: how he writes, what he likes, decisions made, corrections he gave | memory store, kinds `preference`, `fact`, `decision`, `correction`  | long, reinforced by repetition |
+| Project and people | What is true of one project or one person: stack, owners, conventions, who is who        | memory store, scope `project` or `person`                           | long, tied to a reference      |
+| Learnings          | What worked or failed in a venture or a job, in a form that changes the next attempt     | memory store, kind `learning`, plus imported folders                | long, ranked by use            |
+| Skills             | How he likes a repeated task done, as a skill he accepted after its replay test          | memory store, kind `skill` (the skill file, up to 8,000 characters) | until he forgets it            |
 
 Working and conversation memory stay where they are; the store is the new layer under the other four. One table holds
 them all, because retrieval must rank across them in one query ("what do you remember about X?").
@@ -27,7 +28,9 @@ them all, because retrieval must rank across them in one query ("what do you rem
 Shared type: `packages/baton-shared/src/memory.ts` (`MemoryItem`). Fields:
 
 - `id` (a UUID, made where the item is born), `kind`, `text` (one short statement, at most 500 characters, the same cap
-  as a note today).
+  as a note today; a `skill` keeps its whole file, lines included, up to 8,000).
+- A `skill` is never recalled, searched or proposed by the model: a turn reads the accepted skills by kind and matches
+  them to its sentence, on every vessel, so they never take a place in what a sentence recalls.
 - `source`: `user` (he said it or wrote it), `thread`, `job`, `import`; `sourceRef`: the thread, job or file it
   came from, so "why do you think that?" has an answer.
 - `scope`: `global`, `project` or `person`; `scopeRef`: the project or person it belongs to (null for global).

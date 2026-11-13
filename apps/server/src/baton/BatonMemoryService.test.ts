@@ -124,6 +124,50 @@ layer("BatonMemoryService", (it) => {
     }),
   );
 
+  it.effect(
+    "an accepted skill keeps its lines and length, and only asking for skills reads it",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const steps = Array.from(
+          { length: 40 },
+          (_, i) => `${i + 1}. invoices step in the export window`,
+        );
+        const text = ["---", "when: export the invoices", "apps: excel.exe", "---", ...steps].join(
+          "\n",
+        );
+        assert.isAbove(text.length, 500);
+        const skill = yield* memory.add({
+          kind: "skill",
+          text,
+          source: "user",
+          sourceRef: "skill:invoices",
+        });
+        assert.strictEqual(skill.text, text);
+        yield* memory.add({
+          kind: "fact",
+          text: "His invoices go out on the first",
+          source: "user",
+        });
+        // A sentence about invoices recalls the fact, never the skill.
+        const recalled = yield* memory.recall({ text: "when do the invoices go out?" });
+        assert.include(recalled.block, "first");
+        assert.notInclude(recalled.block, "export window");
+        assert.isFalse(
+          (yield* memory.search({ text: "invoices" })).some((h) => h.item.kind === "skill"),
+        );
+        assert.deepStrictEqual(
+          (yield* memory.list({ kinds: ["skill"] })).map((i) => i.sourceRef),
+          ["skill:invoices"],
+        );
+        // Any other kind keeps its cap.
+        const long = yield* memory
+          .add({ kind: "note", text: "x ".repeat(400), source: "user" })
+          .pipe(Effect.flip);
+        assert.include(long.reason, "at most 500");
+      }),
+  );
+
   it.effect("a newer statement of his supersedes, and the history stays", () =>
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;
