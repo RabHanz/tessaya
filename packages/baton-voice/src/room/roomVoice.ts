@@ -175,6 +175,8 @@ export interface RoomDeps {
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   readonly log: (line: string) => void;
+  /** A bench turn kept for a regression case (`test/no-reply` with `keep`): never his, only while the bench asks. */
+  readonly keep?: (turn: BenchTurn) => void;
   /** Her name with no session open (`voice/wake`): voiced segments only, never recognised beyond the wake check. */
   readonly wake?: {
     readonly frame: (deviceId: string, pcm: Uint8Array) => void;
@@ -259,6 +261,21 @@ export const ROOM_CONFIG: RoomConfig = {
 const REARM_AT_MS = [2_000, 8_000, 18_000];
 /** A session that has had no mic audio for this long while wake audio arrives is one the R1 has already left. */
 const STALE_SESSION_MS = 3_000;
+
+/** What a bench turn heard and what she was playing around it, to replay the echo guard's decision in a test. */
+export interface BenchTurn {
+  readonly device: string;
+  readonly turn: number;
+  readonly startedAt: number;
+  readonly lastVoice: number;
+  readonly text: string;
+  readonly herLines: ReadonlyArray<string>;
+  readonly echoed: boolean;
+  readonly likeness: number;
+  readonly mic: Int16Array;
+  /** Her downlink frames with the time each was sent (it sounds `downDelayMs` later). */
+  readonly played: ReadonlyArray<{ readonly at: number; readonly pcm: Int16Array }>;
+}
 
 export interface TurnMetrics {
   readonly device: string;
@@ -345,6 +362,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       readonly entry: { role: "user"; content: string };
       merged: boolean;
     } | null = null;
+    /** Her recent downlink, kept only while a bench asks for its turns (`test/no-reply` with `keep`). */
+    const played: Array<{ at: number; pcm: Int16Array }> = [];
     /** His turn so far, for the echo check on a cut-in. */
     let turnPcm: Int16Array[] = [];
     let lastGlance = Number.NEGATIVE_INFINITY;
@@ -384,20 +403,35 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const names = config.personas.map((p) => p.name);
 
     /**
-     * Her own voice coming back through the mic, not his: heard while she was still audible, ending by then too, and
-     * moving like what she played (or half like it and in her words). Her name is never this (checked by the caller).
+     * Her own voice coming back through the mic, not his. While she is still playing (firmware that keeps the mic open,
+     * its echo only partly cancelled), her words or a fair match in sound are enough, and a name inside her own words
+     * ("Freya here") is not him calling. In the tail after she stopped, only a near match in sound is (13 Nov, 07:40).
      */
-    /** The last check's likeness, for the log. */
     let echoLike = 0;
-    const herEcho = (pcm: Int16Array, text: string, startedAt: number, lastVoice: number) => {
-      const herEnd = playUntil + config.downDelayMs + config.echoTailMs;
-      if (startedAt > herEnd || lastVoice - config.upDelayMs > herEnd) return false;
+    const herEcho = (
+      pcm: Int16Array,
+      text: string,
+      startedAt: number,
+      lastVoice: number,
+      called: string | null,
+    ) => {
+      echoLike = 0;
+      const audibleEnd = playUntil + config.downDelayMs;
+      const herEnd = audibleEnd + config.echoTailMs;
+      if (startedAt > herEnd) return false;
+      // A Bluetooth speaker plays a little behind what the R1 has been sent.
+      const during = startedAt <= audibleEnd + 300;
+      const own = isOwnVoice(text, herLines);
+      if (called !== null && !(during && own)) return false;
+      if (!during && lastVoice - config.upDelayMs > herEnd) return false;
       const like = echo.likeness?.(pcm, startedAt - config.upDelayMs) ?? 0;
       echoLike = like;
       // Two voices' loudness can follow each other a little by chance (0.4 to 0.6 on a 13 Nov replay); her echo is near 1.
-      const hers = like >= 0.75 || (like >= 0.55 && isOwnVoice(text, herLines));
+      const hers = during ? own || like >= 0.5 : like >= 0.75 || (like >= 0.55 && own);
       if (!hers)
-        deps.log(`[${id}] heard over her voice's tail, taken as his (likeness ${like.toFixed(2)})`);
+        deps.log(
+          `[${id}] heard over her voice${during ? "" : "'s tail"}, taken as his (likeness ${like.toFixed(2)})`,
+        );
       return hers;
     };
 
@@ -433,6 +467,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const start = Math.max(deps.now(), playUntil);
         deps.publish(topic(id, "voice/down"), frame);
         echo.reference(fromBytes(frame), start + config.downDelayMs);
+        if (bench.get(id)?.keep === true) {
+          played.push({ at: start, pcm: fromBytes(frame) });
+          while (played.length > 0 && played[0]!.at < start - 20_000) played.shift();
+        }
         playUntil = start + (frame.length / 2 / RATE) * 1000;
         onFirst();
       }
@@ -617,7 +655,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           words,
           config.personas.map((p) => p.name),
         );
-        if (!addressed(words, called, startedAt)) return null;
+        if (!addressed(words, called, startedAt) || bench.has(id)) return null;
         // A guess waits for who is speaking (it may only answer whom the final turn would answer), not for the mood.
         const speaker = await speakerP;
         const affect = affectNow;
@@ -676,16 +714,44 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (last !== null && kept === null) last.control.abort();
       // A read for the enrolment card is not said to her; a button's prompt still is.
       if (enrolling() && given === undefined) return;
+      // Muted or stopped while it was being recognised (13 Nov, 08:39 to 08:50: the R1 muted, the turn was still answered).
+      if (closed) {
+        kept?.control.abort();
+        if (raw !== "")
+          deps.log(
+            `[${id}] turn ${turn}: the R1 was muted or stopped; not answered (${heldBack(raw)})`,
+          );
+        return;
+      }
       // Words he paused in, held for this turn: joined to it, or answered alone when this one is not his to her.
       const held =
         given === undefined && carry !== null && deps.now() - carry.at <= 15_000 ? carry : null;
       const rawCalled = raw === "" ? null : calledName(raw, names);
       // Her own voice through the R1's mic: timing and how it sounds, never her words alone (13 Nov, 07:40 and 07:41).
       const echoed =
-        given === undefined &&
-        raw !== "" &&
-        rawCalled === null &&
-        herEcho(pcm, raw, startedAt, lastVoice);
+        given === undefined && raw !== "" && herEcho(pcm, raw, startedAt, lastVoice, rawCalled);
+      // A bench sweep (`test/no-reply`): heard, judged and logged, never answered or kept in the conversation.
+      const sweep = bench.get(id);
+      if (given === undefined && sweep !== undefined && raw !== "") {
+        kept?.control.abort();
+        deps.log(
+          `[${id}] turn ${turn}: bench, not answered; ${echoed ? "her own voice" : "his"} (likeness ${echoLike.toFixed(2)}, ${heldBack(raw)})`,
+        );
+        if (sweep.keep)
+          deps.keep?.({
+            device: id,
+            turn,
+            startedAt,
+            lastVoice,
+            text: raw,
+            herLines,
+            echoed,
+            likeness: echoLike,
+            mic: pcm,
+            played: played.filter((p) => p.at >= startedAt - 8_000 && p.at <= lastVoice + 1_000),
+          });
+        return;
+      }
       const mine =
         raw !== "" && !echoed && (given !== undefined || addressed(raw, rawCalled, startedAt));
       if (raw !== "" && !mine)
@@ -755,6 +821,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (!admits(identity, config.gate, "turn")) {
         kept?.control.abort();
         dropped(turn, `a ${identity.kind} voice`, text);
+        return;
+      }
+      if (closed) {
+        kept?.control.abort();
         return;
       }
       firstUntil = 0;
@@ -882,19 +952,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * are not her own voice coming back, she stops at once and his new turn is the one answered.
      */
     const cutIn = (words: string) => {
-      if (reply === null || !speaking() || enrolling() || words.trim() === "") return;
+      if (reply === null || !speaking() || enrolling() || bench.has(id) || words.trim() === "")
+        return;
       const called = calledName(words, names);
       if (!addressed(words, called, turnStartedAt)) return;
-      if (called === null) {
-        if (words.trim().split(/\s+/).length < 2) return;
-        const pcm = new Int16Array(turnPcm.reduce((n, p) => n + p.length, 0));
-        let at = 0;
-        for (const p of turnPcm) {
-          pcm.set(p, at);
-          at += p.length;
-        }
-        if (herEcho(pcm, words, turnStartedAt, deps.now())) return;
+      if (called === null && words.trim().split(/\s+/).length < 2) return;
+      const pcm = new Int16Array(turnPcm.reduce((n, p) => n + p.length, 0));
+      let at = 0;
+      for (const p of turnPcm) {
+        pcm.set(p, at);
+        at += p.length;
       }
+      if (herEcho(pcm, words, turnStartedAt, deps.now(), called)) return;
       bargedIn = true;
       deps.log(`[${id}] he cut in; her reply stopped`);
       interrupt();
@@ -1133,6 +1202,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const muted = new Set<string>();
   /** R1s with her listening and closing sounds off (`cmd/voice/earcons {"on":false}`, retained); on by default. */
   const noCues = new Set<string>();
+  /** R1s on a bench (`test/no-reply`, retained): what they hear is judged and logged, never answered. */
+  const bench = new Map<string, { readonly keep: boolean }>();
   const cue = (id: string, name: PillSound) => {
     if (!noCues.has(id)) sessions.get(id)?.cue(name);
   };
@@ -1186,6 +1257,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             `[${id}] eye ack persona ${body}${asked === undefined ? "" : ` after ${Math.round(deps.now() - asked.at)} ms`}`,
           );
         } else deps.log(`[${id}] eye seen ${tail} ${body}`);
+        return;
+      }
+      if (tail === "test/no-reply") {
+        const on = json()["on"];
+        if (on === false || String(payload).trim() === "") bench.delete(id);
+        else bench.set(id, { keep: json()["keep"] === true });
+        deps.log(
+          `[${id}] bench mark ${bench.has(id) ? `on${bench.get(id)!.keep ? ", keeping turns" : ""}` : "off"}`,
+        );
         return;
       }
       if (tail === "state/caps") {

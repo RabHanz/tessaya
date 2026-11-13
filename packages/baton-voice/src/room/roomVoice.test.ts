@@ -443,6 +443,84 @@ describe("answering only when he is talking to her", () => {
     ).toEqual([]);
   });
 
+  it("drops her own words while she plays even when the echo is mostly cancelled, her persona names too (09:00 sweep, 13 Nov)", async () => {
+    const t = setup(
+      {
+        recognise: said(["Can I talk to someone else?", "Freya here, I can take that over."]),
+        brain: async function* (input) {
+          t.brainCalls.push(input);
+          yield "Freya here, I can take that over. Tell me what you need.";
+        },
+        speak: async function* () {
+          for (let i = 0; i < 10; i += 1) yield voice(3_200, 210, 3.1, i * 3_200);
+        },
+      },
+      { ...ROOM_CONFIG, leadMs: 60_000, prerollMs: 0 },
+    );
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    // What the mic hears while she plays: a residual that no longer moves like her voice, but is her words.
+    const residual = voice(960 * 30, 333, 5.3);
+    for (let i = 0; i < 30; i += 1) {
+      t.room.message(`freya/r1/${DEV}/voice/up`, toBytes(residual.slice(i * 960, (i + 1) * 960)));
+      await t.deps.sleep(60);
+      await t.room.session(DEV)!.drained();
+    }
+    await t.feed(false, 60);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Can I talk to someone else?",
+    ]);
+    expect(t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona"))).toEqual([]);
+  });
+
+  it("never answers a turn heard before the R1 muted itself (08:39, 08:45 and 08:50, 13 Nov)", async () => {
+    let finished: (text: string) => void = () => undefined;
+    let settled: (how: string) => void = () => undefined;
+    const outcome = new Promise<string>((r) => (settled = r));
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        finish: () => new Promise<string>((r) => (finished = r)),
+        cancel: () => undefined,
+      }),
+      brain: async function* () {
+        settled("answered");
+      },
+      log: (l) => {
+        if (l.includes("not answered")) settled("held back");
+      },
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    // The mute arrives while the recogniser is still on it.
+    t.room.message(`freya/r1/${DEV}/voice/ctl`, Buffer.from('{"ev":"mute"}'));
+    finished("So here's the thing, the first job failed because the token expired.");
+    expect(await outcome).toBe("held back");
+  });
+
+  it("never answers on a bench sweep (test/no-reply), and answers again once it is cleared", async () => {
+    const logs: string[] = [];
+    const t = setup({
+      recognise: said(["So here's the thing, the first job failed.", "What time is it?"]),
+      log: (l) => logs.push(l),
+    });
+    t.room.message(`freya/r1/${DEV}/test/no-reply`, Buffer.from('{"on":true}'));
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(t.brainCalls).toEqual([]);
+    expect(logs.some((l) => /bench, not answered; his \(likeness 0\.00, 8 words, #/.test(l))).toBe(
+      true,
+    );
+    t.room.message(`freya/r1/${DEV}/test/no-reply`, Buffer.from('{"on":false}'));
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["What time is it?"]);
+  });
+
   it("answers his command just after her reply though it shares her words (13 Nov, 07:40 and 07:41)", async () => {
     const t = setup({
       recognise: said(["Turn the office fan on.", "Turn it off now."]),
