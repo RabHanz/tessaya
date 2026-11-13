@@ -445,7 +445,7 @@ import {
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createVoiceId } from "./voiceId.ts";
-import { createSpeakerIdentity, type SpeakerIdentityService } from "./speakerIdentity.ts";
+import { createSpeakerIdentity, pillWho, type SpeakerIdentityService } from "./speakerIdentity.ts";
 import {
   parseVoiceIdSettings,
   VOICE_ID_DEFAULTS,
@@ -1453,6 +1453,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     policy: { ...CAMPLUS_POLICY, model: SPEAKER_MODEL.id },
     now: Date.now,
     ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+  });
+  /** Members' names for the pill's initial, read when a verified session names someone not read yet. */
+  const memberNames = new Map<string, string>();
+  speakerIdentity.onTurn(() => {
+    const member = speakerIdentity.session()?.member;
+    if (member == null || memberNames.has(member) || input.household === undefined) return;
+    void input
+      .household("list")
+      .then((listed) => listed.members?.forEach((m) => memberNames.set(m.id, m.name)))
+      .catch(() => undefined);
   });
   const binary = input.dictationBinary;
   let sidecar: DictationSidecar | null = null;
@@ -4508,6 +4518,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       islandFaceShows({ phase, faceOn: settings.pillFace, mascotOn: settings.mascot })
         ? settings.mascotPersona
         : null,
+    who: () => pillWho(speakerIdentity.session(), (m) => memberNames.get(m) ?? null),
     companionDir: COMPANION_DIR,
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
     onMoving: () => render(),

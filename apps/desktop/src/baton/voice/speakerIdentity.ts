@@ -4,12 +4,15 @@
  * grants more than his turn gets today.
  */
 import {
+  accumulate,
   adaptProfile,
   admits,
   decideSpeaker,
   identityOf,
   INHERIT_MS,
+  SESSION_IDLE_MS,
   UNVERIFIED,
+  type RecognitionSession,
   type SpeakerGate,
   type SpeakerIdentity,
   type SpeakerPolicy,
@@ -28,6 +31,7 @@ export const createSpeakerIdentity = (input: {
   readonly onNote?: (kind: string, fields: Readonly<Record<string, unknown>>) => void;
 }) => {
   let last: SpeakerIdentity | null = null;
+  let session: RecognitionSession | null = null;
   const listeners = new Set<(identity: SpeakerIdentity) => void>();
 
   /** Voice ID is on with the model and his profile from that model: only then does a verdict decide anything. */
@@ -45,6 +49,7 @@ export const createSpeakerIdentity = (input: {
   const decided = (identity: SpeakerIdentity, use: "turn" | "barge", ms: number) => {
     if (use === "turn") {
       last = identity;
+      session = accumulate(session, identity, ms, input.now());
       listeners.forEach((l) => l(identity));
     }
     input.onNote?.("speaker", {
@@ -112,11 +117,33 @@ export const createSpeakerIdentity = (input: {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
+    /** This conversation's recognition (recognition.ts); null before anyone spoke or once it went quiet. */
+    session: (): RecognitionSession | null =>
+      session !== null && input.now() - session.at <= SESSION_IDLE_MS ? session : null,
     /** Another microphone: an earlier verdict says nothing about who is on this one. */
     reset: () => {
       last = null;
+      session = null;
     },
   };
 };
 
 export type SpeakerIdentityService = ReturnType<typeof createSpeakerIdentity>;
+
+/** The seeded owner row's name (migration 030) until they give a real one: not worth an initial. */
+const UNNAMED = new Set(["owner", "you"]);
+
+/**
+ * What the pill shows beside her mark: null unless the session is verified; the first letter of their name; "" (a
+ * plain person) when they have no name yet.
+ */
+export const pillWho = (
+  session: RecognitionSession | null,
+  nameOf: (member: string) => string | null,
+): string | null => {
+  if (session === null || !session.verified || session.member === null) return null;
+  const name = (nameOf(session.member) ?? session.name)?.trim() ?? "";
+  if (name === "" || UNNAMED.has(name.toLowerCase())) return "";
+  const first = new Intl.Segmenter().segment(name)[Symbol.iterator]().next().value?.segment ?? "";
+  return first.toLocaleUpperCase();
+};

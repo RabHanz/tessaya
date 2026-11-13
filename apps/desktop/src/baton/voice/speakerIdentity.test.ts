@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { CAMPLUS_POLICY, type SpeakerProfile } from "@t3tools/baton-voice";
 
-import { createSpeakerIdentity } from "./speakerIdentity.ts";
+import { createSpeakerIdentity, pillWho } from "./speakerIdentity.ts";
 import { VOICE_ID_DEFAULTS, type VoiceIdSettings } from "./voiceIdRows.ts";
 
 const v = (...xs: number[]) => Float32Array.from(xs);
@@ -104,5 +104,24 @@ describe("the speaker identity service", () => {
     const on = setup();
     await on.service.hear(on.seconds(4), "turn");
     expect(on.profiles()[0]!.sources).toEqual(["spoken", "adapted"]);
+  });
+
+  it("keeps the session's recognition for the pill: their initial once verified, nothing unsure or after it goes quiet", async () => {
+    const t = setup();
+    const names = (m: string) => (m === "owner" ? "rab" : null);
+    expect(pillWho(t.service.session(), names)).toBeNull();
+    await t.service.hear(t.seconds(1), "turn");
+    expect(pillWho(t.service.session(), names)).toBeNull();
+    await t.service.hear(t.seconds(4), "turn");
+    expect(pillWho(t.service.session(), names)).toBe("R");
+    // The seeded owner row and the desktop's "You" are no name: a plain person.
+    expect(pillWho(t.service.session(), () => "Owner")).toBe("");
+    expect(pillWho(t.service.session(), () => null)).toBe("");
+    expect(pillWho(t.service.session(), () => "ثمینہ")).toBe("ث");
+    t.later(10 * 60_000 + 1);
+    expect(pillWho(t.service.session(), names)).toBeNull();
+    t.later(-(10 * 60_000 + 1));
+    t.service.reset();
+    expect(t.service.session()).toBeNull();
   });
 });
