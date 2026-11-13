@@ -311,6 +311,7 @@ export const createDesktopVoiceCore = async (input: {
     score: number,
   ) => Promise<boolean | null>;
   readonly trustWake?: (word: string, score: number) => boolean;
+  readonly claim?: Parameters<typeof createVoiceCore>[0]["claim"];
   /** He is recording with the dictation keys (the sidecar): a lone wake must not end that. */
   readonly recording?: () => boolean;
   /** Baton's one voice; off in tests. */
@@ -387,6 +388,7 @@ export const createDesktopVoiceCore = async (input: {
     ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
     ...(input.verifyWake === undefined ? {} : { verifyWake: input.verifyWake }),
     ...(input.trustWake === undefined ? {} : { trustWake: input.trustWake }),
+    ...(input.claim === undefined ? {} : { claim: input.claim }),
     ...(input.recording === undefined ? {} : { recording: input.recording }),
     ...(input.echo === undefined ? {} : { echo: input.echo }),
     ...(input.speakerMode === undefined ? {} : { speakerMode: input.speakerMode }),

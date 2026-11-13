@@ -5,6 +5,7 @@
  * core (D66), and the screen companion (D84). Neither may stop the app starting: a missing tray
  * host or a refused microphone is reported in its own tray, not as a startup failure.
  */
+import * as NodeOS from "node:os";
 import * as Electron from "electron";
 
 import { isCompanionWindow } from "./lastAppWindow.ts";
@@ -786,6 +787,29 @@ export const startBatonDesktop = Effect.gen(function* () {
               modelsDir: settings.modelsDir,
             }),
             wakeWords: settings.wakeWords,
+            // One responder per utterance (R1-P7): her server's arbiter decides before a wake here opens a turn.
+            claim: async () => {
+              const reply = (await direct(
+                "baton.voice.call",
+                {
+                  kind: "act",
+                  op: "claim",
+                  args: {
+                    deviceId: `desktop-${NodeOS.hostname()}`.slice(0, 60),
+                    wakeScore: 1,
+                    loudnessDb: null,
+                  },
+                },
+                1_500,
+              ).catch(() => null)) as {
+                ok?: boolean;
+                value?: { answer?: unknown; until?: unknown };
+              } | null;
+              const v = reply?.ok === true ? reply.value : undefined;
+              return typeof v?.answer === "boolean"
+                ? { answer: v.answer, ...(typeof v.until === "number" ? { until: v.until } : {}) }
+                : null;
+            },
             stt,
             stopStt,
             platform: environment.platform,

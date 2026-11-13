@@ -1466,3 +1466,71 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
     expect(logs).toContain(`[${DEV}] eye intent thinking for 15000 ms (brain)`);
   });
 });
+
+describe("one responder per utterance (the server's voice arbiter, R1-P7)", () => {
+  it("two R1s hear her name at once: only the arbiter's winner opens, and the other stays quiet while she speaks", async () => {
+    const claims: Array<{ deviceId: string; loudnessDb: number | null }> = [];
+    let decide: () => void = () => undefined;
+    const decided = new Promise<void>((r) => (decide = r));
+    const reports: string[] = [];
+    const t = setup({
+      arbiter: {
+        claim: async (c) => {
+          claims.push(c);
+          if (claims.length === 2) decide();
+          await decided;
+          const loudest = claims.toSorted(
+            (a, b) => (b.loudnessDb ?? -99) - (a.loudnessDb ?? -99),
+          )[0]!;
+          return loudest.deviceId === c.deviceId
+            ? { answer: true }
+            : { answer: false, winner: loudest.deviceId, until: t.deps.now() + 20_000 };
+        },
+        report: (op, deviceId) => reports.push(`${op} ${deviceId}`),
+      },
+    });
+    let opened: () => void = () => undefined;
+    const openedOne = new Promise<void>((r) => (opened = r));
+    let quietLogged: () => void = () => undefined;
+    const quiet = new Promise<void>((r) => (quietLogged = r));
+    const publish = t.deps.publish;
+    (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
+      publish(topic, payload);
+      if (topic.endsWith("/cmd/voice/start")) opened();
+    };
+    (t.deps as { log: RoomDeps["log"] }).log = (l) => {
+      if (l.includes("this R1 stays quiet")) quietLogged();
+    };
+    t.room.woken("r1-near", "Tessaya", -18, 1);
+    t.room.woken("r1-far", "Tessaya", -35, 1);
+    await openedOne;
+    await quiet;
+    const started = t.published
+      .filter((p) => p.topic.endsWith("/cmd/voice/start"))
+      .map((p) => p.topic.split("/")[2]);
+    expect(started).toEqual(["r1-near"]);
+    // The far one hears her name again (her voice from the near one): not taken.
+    t.room.woken("r1-far", "Tessaya", -30, 1);
+    expect(claims).toHaveLength(2);
+  });
+
+  it("answers as before when the arbiter cannot be asked (an older server)", async () => {
+    const t = setup({ arbiter: { claim: async () => null, report: () => undefined } });
+    t.room.woken(DEV, "Tessaya", -20, 1);
+    await t.deps.sleep(0);
+    await t.deps.sleep(0);
+    expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/cmd/voice/start`)).toBe(true);
+  });
+
+  it("tells the arbiter where her reply stands, then that it ended", async () => {
+    const reports: string[] = [];
+    const t = setup({
+      arbiter: { claim: async () => ({ answer: true }), report: (op) => reports.push(op) },
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(reports[0]).toBe("speaking");
+    expect(reports.at(-1)).toBe("ended");
+  });
+});

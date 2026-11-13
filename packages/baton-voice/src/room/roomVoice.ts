@@ -185,6 +185,23 @@ export interface RoomDeps {
   /** A guess's reply was played to him in full: the server may now record it and learn from it. */
   readonly played?: (callId: string) => void;
   readonly log: (line: string) => void;
+  /**
+   * Her server's voice arbiter (one responder per utterance across his devices): a claim before she answers a wake or
+   * her name, and where her reply stands. Null from `claim` when the arbiter cannot be asked: this R1 answers.
+   */
+  readonly arbiter?: {
+    readonly claim: (claim: {
+      readonly deviceId: string;
+      readonly wakeScore: number;
+      readonly loudnessDb: number | null;
+      readonly answerHere?: boolean;
+    }) => Promise<{
+      readonly answer: boolean;
+      readonly winner?: string;
+      readonly until?: number;
+    } | null>;
+    readonly report: (op: "speaking" | "ended", deviceId: string, untilMs?: number) => void;
+  };
   /** A bench turn kept for a regression case (`cmd/voice/no-reply` with `keep`): never his, only while the bench asks. */
   readonly keep?: (turn: BenchTurn) => void;
   /** Her name with no session open (`voice/wake`): voiced segments only, never recognised beyond the wake check. */
@@ -362,6 +379,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let rec: RecogniserTurn | null = null;
     let reply: AbortController | null = null;
     let playUntil = Number.NEGATIVE_INFINITY;
+    /** When the arbiter was last told where her reply stands. */
+    let spokeAt = Number.NEGATIVE_INFINITY;
     /** Where her speech (not a listening sound) ends on the R1's timeline. */
     let speechUntil = Number.NEGATIVE_INFINITY;
     let lastVoiceAt = deps.now();
@@ -534,6 +553,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           while (played.length > 0 && played[0]!.at < start - 20_000) played.shift();
         }
         playUntil = start + (frame.length / 2 / RATE) * 1000;
+        if (deps.now() - spokeAt >= 1_000) {
+          spokeAt = deps.now();
+          deps.arbiter?.report("speaking", id, playUntil + config.downDelayMs);
+        }
         onFirst();
       }
     };
@@ -940,6 +963,30 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         carry = null;
       }
       const called = calledName(text, names);
+      // Another device of his is answering: what this one hears now is her voice from there, or his to that one.
+      if (given === undefined && deps.now() < (quietUntil.get(id) ?? 0)) {
+        kept?.control.abort();
+        dropped(turn, "another device is answering", text);
+        return;
+      }
+      // Her name with no window open: the arbiter picks the one device that answers (R1-P7).
+      if (
+        given === undefined &&
+        called !== null &&
+        deps.arbiter !== undefined &&
+        !addressed(text, null, startedAt)
+      ) {
+        const level = speechLevel(pcm);
+        const verdict = await deps.arbiter
+          .claim({ deviceId: id, wakeScore: 1, loudnessDb: Number.isFinite(level) ? level : null })
+          .catch(() => null);
+        if (verdict !== null && !verdict.answer) {
+          quietUntil.set(id, verdict.until ?? deps.now() + 20_000);
+          kept?.control.abort();
+          dropped(turn, `${verdict.winner ?? "another device"} answers`, text);
+          return;
+        }
+      }
       if (given === undefined && called === null) {
         // Another language from the room (a TV), or a voice far quieter than his name was: not him (10:35, 13 Nov).
         const level = speechLevel(pcm);
@@ -1090,6 +1137,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         if (reply === control) reply = null;
         if (current_ === me) current_ = null;
+        if (reply === null) {
+          spokeAt = Number.NEGATIVE_INFINITY;
+          deps.arbiter?.report("ended", id);
+        }
         if (said !== "" && !me.merged) history.push({ role: "assistant", content: said });
         lastActivity = deps.now();
       }
@@ -1371,6 +1422,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const capabilities = new Map<string, ReadonlyArray<string>>();
   /** His own pronunciations per R1, from her server (`voice/pronounce`, retained). */
   const pronunciations = new Map<string, Readonly<Record<string, string>>>();
+  /** Until when another device of his answers (the arbiter's `until`, epoch ms): this R1 stays quiet. */
+  const quietUntil = new Map<string, number>();
   /** Until when her server's last eye mood holds on each R1 (`voice/intent/eye`): the loop's own moods wait. */
   const eyeHold = new Map<string, number>();
   /** A persona look sent to an R1 and not yet acknowledged on `state/eye/persona`. */
@@ -1519,6 +1572,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         s.wake();
         const called = calledBy.get(id);
         calledBy.delete(id);
+        // S2 on this R1 (not her name): he chose this one, so the others yield to it.
+        if (called === undefined) {
+          quietUntil.delete(id);
+          void deps.arbiter
+            ?.claim({ deviceId: id, wakeScore: 1, loudnessDb: null, answerHere: true })
+            .catch(() => null);
+        }
         if (called !== undefined) s.call(called.word, called.level);
         cue(id, "wake");
       } else if (tail === "voice/wake") {
@@ -1589,10 +1649,34 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     },
     session: (id: string) => sessions.get(id),
     /** The wake check heard `word`: the R1 starts its session (its echo opens ours) with that persona answering. */
-    woken: (id: string, word: string, level = Number.NEGATIVE_INFINITY) => {
+    woken: (id: string, word: string, level = Number.NEGATIVE_INFINITY, score = 1) => {
       if (sessions.has(id)) return;
-      calledBy.set(id, { word, level });
-      deps.publish(topic(id, "cmd/voice/start"), "{}");
+      if (deps.now() < (quietUntil.get(id) ?? 0)) {
+        deps.log(`[${id}] her name while another device answers: taken as her voice from there`);
+        return;
+      }
+      const open = () => {
+        calledBy.set(id, { word, level });
+        deps.publish(topic(id, "cmd/voice/start"), "{}");
+      };
+      if (deps.arbiter === undefined) return open();
+      void deps.arbiter
+        .claim({
+          deviceId: id,
+          wakeScore: Math.min(1, Math.max(0, score)),
+          loudnessDb: Number.isFinite(level) ? level : null,
+        })
+        .catch(() => null)
+        .then((verdict) => {
+          if (verdict !== null && !verdict.answer) {
+            quietUntil.set(id, verdict.until ?? deps.now() + 20_000);
+            deps.log(
+              `[${id}] ${verdict.winner ?? "another device"} answers her name; this R1 stays quiet`,
+            );
+            return;
+          }
+          open();
+        });
     },
     close: () => {
       for (const id of Array.from(sessions.keys())) stop(id);
