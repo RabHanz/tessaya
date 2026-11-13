@@ -122,7 +122,8 @@ export const extractionPrompt = (
   ].join("\n");
 };
 
-const KINDS = new Set<string>(MEMORY_KINDS);
+/** A skill is only ever his accepted, tested one (SPINE-UNIFY §9): never what the model proposes. */
+const KINDS = new Set<string>(MEMORY_KINDS.filter((kind) => kind !== "skill"));
 const SCOPES = new Set<string>(MEMORY_SCOPES);
 const JOB_KINDS = new Set<string>(["learning", "episode", "fact"]);
 
