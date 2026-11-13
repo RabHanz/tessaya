@@ -514,15 +514,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
 
     /** The eyes and gestures (firmware 3.30.x `cmd/eye/set` and `cmd/eye/gesture`); unknown names are ignored there. */
-    const face = (mood: string) => deps.publish(topic(id, "cmd/eye/set"), JSON.stringify({ mood }));
-    const gesture = (name: string) =>
-      deps.publish(topic(id, "cmd/eye/gesture"), JSON.stringify({ name }));
+    /** Every eye command the loop sends is logged, and a persona look waits for the R1's acknowledgement. */
+    const eye = (tail: string, body: Record<string, string>) => {
+      const payload = JSON.stringify(body);
+      deps.log(`[${id}] eye sent ${tail} ${payload}`);
+      if (tail === "cmd/eye/persona")
+        eyeAsked.set(id, { name: body["name"] ?? "", at: deps.now() });
+      deps.publish(topic(id, tail), payload);
+    };
+    const face = (mood: string) => eye("cmd/eye/set", { mood });
+    const gesture = (name: string) => eye("cmd/eye/gesture", { name });
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
-    const look = () =>
-      deps.publish(
-        topic(id, "cmd/eye/persona"),
-        JSON.stringify({ name: (persona?.name ?? "").toLowerCase() }),
-      );
+    const look = () => eye("cmd/eye/persona", { name: (persona?.name ?? "").toLowerCase() });
 
     const speakNow = (text: string) => {
       saying(text);
@@ -1173,7 +1176,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (tail.startsWith("cmd/eye/") || tail.startsWith("state/eye/")) {
         // Every eye command, the loop's or the server's, and every acknowledgement, so a look can be proved on his R1.
         const body = String(payload).slice(0, 120);
-        if (tail === "cmd/eye/persona")
+        // The server's own (the loop's are logged as sent; a broker that echoes them shows them here too).
+        if (tail === "cmd/eye/persona" && !eyeAsked.has(id))
           eyeAsked.set(id, { name: String(json()["name"]), at: deps.now() });
         if (tail === "state/eye/persona") {
           const asked = eyeAsked.get(id);
@@ -1181,7 +1185,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           deps.log(
             `[${id}] eye ack persona ${body}${asked === undefined ? "" : ` after ${Math.round(deps.now() - asked.at)} ms`}`,
           );
-        } else deps.log(`[${id}] eye ${tail} ${body}`);
+        } else deps.log(`[${id}] eye seen ${tail} ${body}`);
         return;
       }
       if (tail === "state/caps") {

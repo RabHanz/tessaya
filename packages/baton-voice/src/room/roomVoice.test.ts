@@ -1089,11 +1089,14 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     t.advance(4_000);
     t.room.sweep();
     expect(logs).toEqual([
-      `[${DEV}] eye cmd/eye/persona {"name":"alfred"}`,
-      `[${DEV}] eye cmd/eye/set {"mood":"thinking"}`,
+      `[${DEV}] eye seen cmd/eye/persona {"name":"alfred"}`,
+      `[${DEV}] eye seen cmd/eye/set {"mood":"thinking"}`,
       `[${DEV}] eye ack persona {"name":"alfred"} after 120 ms`,
-      `[${DEV}] eye cmd/eye/persona {"name":"freya"}`,
+      `[${DEV}] eye seen cmd/eye/persona {"name":"freya"}`,
       `[${DEV}] eye persona freya: no acknowledgement in 3 s`,
     ]);
+    // The loop's own: an R1 button switches to Alfred.
+    t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"alfred"}'));
+    expect(logs).toContain(`[${DEV}] eye sent cmd/eye/persona {"name":"alfred"}`);
   });
 });
