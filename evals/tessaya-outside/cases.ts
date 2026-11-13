@@ -553,4 +553,27 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     callsMustNot: ["device_owner", "tessaya_ask"],
     inputs: { device_act: (input) => input["op"] === "eye" && input["mood"] === "happy" },
   },
+  {
+    id: "outside-whos-home",
+    source:
+      "Memory v2 5b presence (#945): who's home is answered from the presence tool, as a guess, without asking him",
+    prompt: "Is anyone home right now?",
+    answers: {
+      tessaya_whos_home: {
+        people: [{ name: "Sara", lastSeenMinutes: 6, via: "R1", likelyHome: true }],
+      },
+    },
+    calls: ["tessaya_whos_home"],
+    callsMustNot: ["tessaya_ask"],
+    // A guess from who she heard: never stated as certain.
+    replyMustNot: /\b(definitely|for sure|is certainly)\b/i,
+  },
+  {
+    id: "outside-whos-home-control",
+    source: "Control for #945: a device question is the house's, not presence",
+    prompt: "Is the study fan still on?",
+    answers: { home_find: studyFan, home_state: studyFan },
+    calls: [],
+    callsMustNot: ["tessaya_whos_home", "tessaya_ask"],
+  },
 ];
