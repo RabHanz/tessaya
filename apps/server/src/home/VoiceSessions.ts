@@ -130,11 +130,14 @@ export const createVoiceSessions = (
     readonly now?: () => number;
     /** How long to wait before trying a failed spawn again. */
     readonly retryMs?: number;
+    /** One warm session per vessel and no background renewal: a test harness's server (the room suite), not his. */
+    readonly lean?: boolean;
   } = {},
 ) => {
   const spawn = options.spawn ?? NodeChildProcess.spawn;
   const now = options.now ?? Date.now;
   const retryMs = options.retryMs ?? 750;
+  const spares = options.lean === true ? 1 : SPARES;
 
   const start = async (spec: SessionSpec): Promise<Session> => {
     let turn: SessionTurn | null = null;
@@ -257,6 +260,7 @@ export const createVoiceSessions = (
     slot.ready.push(p);
     void settled(p).then((s) => {
       if (s === null) return void remove(slot, p);
+      if (options.lean === true) return;
       setTimeout(() => {
         if (!slot.ready.includes(p)) return;
         // A vessel gone quiet for good (a replay, a retired device) stops holding sessions.
@@ -298,7 +302,7 @@ export const createVoiceSessions = (
     return slot;
   };
   const topUp = (slot: Slot, spec: SessionSpec) => {
-    while (slot.ready.length < SPARES) add(slot, spec);
+    while (slot.ready.length < spares) add(slot, spec);
   };
 
   return {

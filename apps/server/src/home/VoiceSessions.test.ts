@@ -153,6 +153,27 @@ describe("warm subscription sessions for spoken turns", () => {
     await sessions.close();
   });
 
+  it("a test harness's lean pool keeps one warm session and never renews it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const heard: Array<string> = [];
+      const killed: Array<number> = [];
+      const sessions = createVoiceSessions({
+        spawn: fakeClaude(heard, { count: 0 }, () => undefined, killed),
+        retryMs: 1,
+        lean: true,
+      });
+      await sessions.warm("r1", spec);
+      expect(heard.filter((h) => h.includes(WARM))).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(heard.filter((h) => h.includes(WARM))).toHaveLength(1);
+      expect(killed).toEqual([]);
+      await sessions.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renews a waiting session before it goes stale, and stops once the vessel has gone quiet", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {
