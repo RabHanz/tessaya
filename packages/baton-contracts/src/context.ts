@@ -324,7 +324,7 @@ export interface BatonDesktopBridge {
   readonly onComposerDictation?: (
     handler: (message: ComposerDictationMessage) => ComposerDictationReply | null,
   ) => () => void;
-  /** Whether a chat box in this window has the keyboard: the desktop claims a dictation for it before any pill shows. */
+  /** Whether a chat box in this window takes the next dictation (last focused or clicked): the desktop claims it first. */
   readonly setComposerFocus?: (focused: boolean) => void;
   /** ✓ or ✕ pressed on the chat box's dictation control. */
   readonly replyComposerDictation?: (reply: ComposerDictationReply) => void;

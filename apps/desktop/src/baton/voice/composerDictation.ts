@@ -14,7 +14,7 @@ const WAVE = waveEngine();
 export interface ComposerTarget {
   readonly send: (message: ComposerDictationMessage) => void;
   readonly gone: () => boolean;
-  /** The window says its chat box has the keyboard (it reports every focus change), so it is asked at all. */
+  /** The window says a chat box there takes the next dictation (it reports every change), so it is asked at all. */
   readonly focused: () => boolean;
 }
 
