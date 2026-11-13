@@ -347,7 +347,7 @@ import {
   shouldRefocusComposerOnWindowFocus,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
-import { useComposerHandleContext } from "../composerHandleContext";
+import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { assetEnvironment } from "../state/assets";
@@ -398,6 +398,8 @@ type ChatViewProps =
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
+      /** One of several split panes: it shows its own panel controls even while another pane has focus. */
+      splitPane?: boolean;
       forceExpandedMobileComposer?: boolean;
       /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
       embedded?: SideChatParentPanel;
@@ -409,6 +411,7 @@ type ChatViewProps =
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
+      splitPane?: boolean;
       forceExpandedMobileComposer?: boolean;
       embedded?: never;
       routeKind: "draft";
@@ -424,6 +427,7 @@ export default function ChatView(props: ChatViewProps) {
     routeKind,
     onDiffPanelOpen,
     reserveTitleBarControlInset = true,
+    splitPane = false,
     forceExpandedMobileComposer = false,
     embedded: parentPanel,
   } = props;
@@ -501,7 +505,10 @@ export default function ChatView(props: ChatViewProps) {
         });
   const promptRef = useRef("");
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
-  const composerRef = useComposerHandleContext() ?? localComposerRef;
+  const sharedComposerRef = useComposerHandleContext();
+  // The app-wide handle (command palette) belongs to the focused thread; with split panes every
+  // ChatView is mounted, and a background one sharing it would take the focused pane's focus.
+  const composerRef = (!use(BackgroundThreadContext) && sharedComposerRef) || localComposerRef;
   const queuedRunEdit = useQueuedRunEdit({
     environmentId,
     routeThreadRef,
@@ -3259,8 +3266,10 @@ export default function ChatView(props: ChatViewProps) {
     />
   );
   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
-  const panelLayoutControls = (
+  const showPanelLayoutControls = !backgroundThread || splitPane;
+  const panelLayoutControls = (placement: "window" | "pane" | "header") => (
     <WorkspaceTitlebarControls
+      placement={placement}
       showMaximizeControl={!shouldUsePlanSidebarSheet}
       rightPanelOpen={rightPanelOpen}
       animationsActive={panelAnimationsActive}
@@ -3288,7 +3297,9 @@ export default function ChatView(props: ChatViewProps) {
           state={deviceState}
         />
       )}
-      {rightPanelControlsAtRoot && !embedded && !backgroundThread ? panelLayoutControls : null}
+      {rightPanelControlsAtRoot && !embedded && showPanelLayoutControls
+        ? panelLayoutControls(reserveTitleBarControlInset ? "window" : "pane")
+        : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
@@ -3315,15 +3326,12 @@ export default function ChatView(props: ChatViewProps) {
               COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
             )}
           >
-            {isElectron && rightPanelControlsAtRoot ? (
+            {isElectron && rightPanelControlsAtRoot && reserveTitleBarControlInset ? (
               <span
                 aria-hidden
                 className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
               />
             ) : null}
-            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel && !backgroundThread
-              ? panelLayoutControls
-              : null}
             {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
             <ChatHeader
               activeThreadEnvironmentId={activeThread.environmentId}
@@ -3341,6 +3349,9 @@ export default function ChatView(props: ChatViewProps) {
                 : {})}
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
             />
+            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel && showPanelLayoutControls
+              ? panelLayoutControls("header")
+              : null}
           </header>
         )}
 
@@ -4020,7 +4031,7 @@ export default function ChatView(props: ChatViewProps) {
       cwd={activeWorkspaceRoot}
       checkpoints={serverProjection?.checkpoints}
     >
-      {content}
+      <ComposerHandleContext value={composerRef}>{content}</ComposerHandleContext>
     </FileMetadataThreadProvider>
   );
 }

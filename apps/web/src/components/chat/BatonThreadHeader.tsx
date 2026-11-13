@@ -50,46 +50,49 @@ function LimitChip(props: {
     Math.max(account.fiveHour?.usedPercent ?? 0, account.weekly?.usedPercent ?? 0),
   );
   const Icon = props.terminal ? SquareTerminalIcon : GaugeIcon;
+  // Below this the title needs the room; the composer's model picker shows the same account.
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Badge
-            variant={TONE_VARIANT[roomTone(account)]}
-            data-testid="thread-limit-chip"
-            render={
-              <button
-                type="button"
-                aria-label={`${account.label}: open the picker on its accounts`}
-                onClick={(event) => {
-                  setPickerFocus({ anchor: event.currentTarget, accountId: account.id });
-                  composer?.current?.openModelPicker();
-                }}
-              />
-            }
-          />
-        }
-      >
-        {/* On a phone the chip is an icon and the % used, so the thread title keeps its room. */}
-        <span className="max-sm:hidden">
-          {room === null ? account.label : `${account.label} · ${room}`}
-        </span>
-        <span className="inline-flex items-center gap-1 sm:hidden">
-          <Icon aria-hidden />
-          {room === null ? null : `${used}%`}
-        </span>
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">
-        {props.terminal ? <div className="sm:hidden">Terminal session</div> : null}
-        <div>
-          {account.label}
-          {account.email === null ? "" : ` · ${maskedEmail(account.email)}`}
-        </div>
-        {roomDetail(account, now).map((line) => (
-          <div key={line}>{line}</div>
-        ))}
-      </TooltipPopup>
-    </Tooltip>
+    <span className="flex shrink-0 @max-2xs/thread-header:hidden">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Badge
+              variant={TONE_VARIANT[roomTone(account)]}
+              data-testid="thread-limit-chip"
+              render={
+                <button
+                  type="button"
+                  aria-label={`${account.label}: open the picker on its accounts`}
+                  onClick={(event) => {
+                    setPickerFocus({ anchor: event.currentTarget, accountId: account.id });
+                    composer?.current?.openModelPicker();
+                  }}
+                />
+              }
+            />
+          }
+        >
+          {/* In a narrow header the chip is an icon and the % used, so the thread title keeps its room. */}
+          <span className="@max-xl/thread-header:hidden">
+            {room === null ? account.label : `${account.label} · ${room}`}
+          </span>
+          <span className="inline-flex items-center gap-1 @min-xl/thread-header:hidden">
+            <Icon aria-hidden />
+            {room === null ? null : `${used}%`}
+          </span>
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">
+          {props.terminal ? <div>Terminal session</div> : null}
+          <div>
+            {account.label}
+            {account.email === null ? "" : ` · ${maskedEmail(account.email)}`}
+          </div>
+          {roomDetail(account, now).map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </TooltipPopup>
+      </Tooltip>
+    </span>
   );
 }
 
@@ -138,7 +141,7 @@ function PaneMenu(props: { readonly threadRef: ScopedThreadRef; readonly pane: s
       <MenuPopup align="end">
         {pane === null || herdrSession === null ? null : (
           <MenuGroup>
-            <MenuGroupLabel>Herdr pane {pane}</MenuGroupLabel>
+            <MenuGroupLabel>Terminal session · Herdr pane {pane}</MenuGroupLabel>
             <MenuItem onClick={() => copyToClipboard(pane, "Pane id copied")}>
               Copy pane id
             </MenuItem>
@@ -237,7 +240,7 @@ export function BatonThreadHeader(props: {
   return (
     <>
       {terminal ? (
-        <span className="max-sm:hidden">
+        <span className="@max-2xl/thread-header:hidden">
           <Badge variant="secondary" size="sm" data-testid="thread-terminal-tag">
             Terminal
           </Badge>

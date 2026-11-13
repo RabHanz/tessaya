@@ -186,8 +186,13 @@ export function ThreadPanelHeaderControl(props: PanelLayoutControlsProps) {
   );
 }
 
-/** The window's top-right panel controls, with the maximize toggle while the panel is open. */
+/**
+ * The panel controls, with the maximize toggle while the panel is open. "window" pins them to the
+ * window's top-right corner; a split pane keeps them in its own box, so they never sit over another
+ * pane's header and take its clicks.
+ */
 export function WorkspaceTitlebarControls(props: {
+  readonly placement: "window" | "pane" | "header";
   readonly showMaximizeControl: boolean;
   readonly rightPanelOpen: boolean;
   readonly animationsActive: boolean;
@@ -199,7 +204,11 @@ export function WorkspaceTitlebarControls(props: {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
+        "pointer-events-none flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
+        props.placement === "window" &&
+          "fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px",
+        props.placement === "pane" && "absolute top-0 right-3 z-50",
+        props.placement === "header" && "relative shrink-0",
         mobileSidebarSheetMounted && "hidden",
       )}
       data-workspace-titlebar-controls

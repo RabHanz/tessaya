@@ -255,8 +255,8 @@ export const ChatHeader = memo(function ChatHeader({
     <div
       ref={breadcrumbContainerRef}
       className={cn(
-        "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : "pr-24",
+        "@container/thread-header flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
+        rightPanelOpen && "pr-10",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
@@ -279,7 +279,7 @@ export const ChatHeader = memo(function ChatHeader({
                   }
                 >
                   <ProjectFavicon project={activeProject} className="size-3.5" />
-                  <WorkspaceBreadcrumbText className="max-w-40">
+                  <WorkspaceBreadcrumbText className="max-w-40 @max-md/thread-header:hidden">
                     {activeProjectName}
                   </WorkspaceBreadcrumbText>
                 </TooltipTrigger>

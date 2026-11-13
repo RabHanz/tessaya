@@ -4,10 +4,56 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 153428f2b6755d4ef8bc4df379a842f559783638..ba1f996500388c077f3d0028e2f95029d735be6c 100644
+index 153428f2b6755d4ef8bc4df379a842f559783638..959d47a403146ce4a5e0ea68d9971dd2d60fc6bc 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -1303,6 +1303,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -347,7 +347,7 @@ import {
+   shouldRefocusComposerOnWindowFocus,
+ } from "./ChatView.logic";
+ import { useLocalStorage } from "~/hooks/useLocalStorage";
+-import { useComposerHandleContext } from "../composerHandleContext";
++import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
+ import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
+ import { appAtomRegistry } from "../rpc/atomRegistry";
+ import { assetEnvironment } from "../state/assets";
+@@ -398,6 +398,8 @@ type ChatViewProps =
+       threadId: ThreadId;
+       onDiffPanelOpen?: () => void;
+       reserveTitleBarControlInset?: boolean;
++      /** One of several split panes: it shows its own panel controls even while another pane has focus. */
++      splitPane?: boolean;
+       forceExpandedMobileComposer?: boolean;
+       /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
+       embedded?: SideChatParentPanel;
+@@ -409,6 +411,7 @@ type ChatViewProps =
+       threadId: ThreadId;
+       onDiffPanelOpen?: () => void;
+       reserveTitleBarControlInset?: boolean;
++      splitPane?: boolean;
+       forceExpandedMobileComposer?: boolean;
+       embedded?: never;
+       routeKind: "draft";
+@@ -424,6 +427,7 @@ export default function ChatView(props: ChatViewProps) {
+     routeKind,
+     onDiffPanelOpen,
+     reserveTitleBarControlInset = true,
++    splitPane = false,
+     forceExpandedMobileComposer = false,
+     embedded: parentPanel,
+   } = props;
+@@ -501,7 +505,10 @@ export default function ChatView(props: ChatViewProps) {
+         });
+   const promptRef = useRef("");
+   const localComposerRef = useRef<ChatComposerHandle | null>(null);
+-  const composerRef = useComposerHandleContext() ?? localComposerRef;
++  const sharedComposerRef = useComposerHandleContext();
++  // The app-wide handle (command palette) belongs to the focused thread; with split panes every
++  // ChatView is mounted, and a background one sharing it would take the focused pane's focus.
++  const composerRef = (!use(BackgroundThreadContext) && sharedComposerRef) || localComposerRef;
+   const queuedRunEdit = useQueuedRunEdit({
+     environmentId,
+     routeThreadRef,
+@@ -1303,6 +1310,10 @@ export default function ChatView(props: ChatViewProps) {
      ],
      lockedProvider,
      lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
@@ -18,7 +64,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..ba1f996500388c077f3d0028e2f95029
    });
    const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
    const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-@@ -1803,7 +1807,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1803,7 +1814,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -27,7 +73,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..ba1f996500388c077f3d0028e2f95029
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2664,8 +2668,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2664,8 +2675,9 @@ export default function ChatView(props: ChatViewProps) {
    // composer effect above.
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
    useEffect(() => {
@@ -39,7 +85,7 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..ba1f996500388c077f3d0028e2f95029
  
    const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
      terminalFocus: getTerminalFocusOwner() !== null,
-@@ -2755,12 +2760,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2755,12 +2767,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -55,27 +101,55 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..ba1f996500388c077f3d0028e2f95029
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3282,7 +3288,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3253,8 +3266,10 @@ export default function ChatView(props: ChatViewProps) {
+     />
+   );
+   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
+-  const panelLayoutControls = (
++  const showPanelLayoutControls = !backgroundThread || splitPane;
++  const panelLayoutControls = (placement: "window" | "pane" | "header") => (
+     <WorkspaceTitlebarControls
++      placement={placement}
+       showMaximizeControl={!shouldUsePlanSidebarSheet}
+       rightPanelOpen={rightPanelOpen}
+       animationsActive={panelAnimationsActive}
+@@ -3282,7 +3297,9 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
 -      {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
-+      {rightPanelControlsAtRoot && !embedded && !backgroundThread ? panelLayoutControls : null}
++      {rightPanelControlsAtRoot && !embedded && showPanelLayoutControls
++        ? panelLayoutControls(reserveTitleBarControlInset ? "window" : "pane")
++        : null}
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3315,7 +3321,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3309,13 +3326,12 @@ export default function ChatView(props: ChatViewProps) {
+               COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+             )}
+           >
+-            {isElectron && rightPanelControlsAtRoot ? (
++            {isElectron && rightPanelControlsAtRoot && reserveTitleBarControlInset ? (
+               <span
+                 aria-hidden
                  className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
                />
              ) : null}
 -            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
-+            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel && !backgroundThread
-+              ? panelLayoutControls
-+              : null}
              {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
-@@ -3659,6 +3667,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3333,6 +3349,9 @@ export default function ChatView(props: ChatViewProps) {
+                 : {})}
+               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
+             />
++            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel && showPanelLayoutControls
++              ? panelLayoutControls("header")
++              : null}
+           </header>
+         )}
+ 
+@@ -3659,6 +3678,7 @@ export default function ChatView(props: ChatViewProps) {
                                  runtimeMode={runtimeMode}
                                  defaultRuntimeMode={defaultRuntimeMode}
                                  lockedProvider={modelPickerLockedProvider}
@@ -83,6 +157,15 @@ index 153428f2b6755d4ef8bc4df379a842f559783638..ba1f996500388c077f3d0028e2f95029
                                  providerStatuses={providerStatuses as ServerProvider[]}
                                  providerCatalogKnown={serverConfig !== null}
                                  activeProjectDefaultModelSelection={
+@@ -4011,7 +4031,7 @@ export default function ChatView(props: ChatViewProps) {
+       cwd={activeWorkspaceRoot}
+       checkpoints={serverProjection?.checkpoints}
+     >
+-      {content}
++      <ComposerHandleContext value={composerRef}>{content}</ComposerHandleContext>
+     </FileMetadataThreadProvider>
+   );
+ }
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
 index 8fa58d8456f75c8c3fcadcc7b1af45deaa5258ce..43965ebae56602273347df97c7eabebf6ebc2e77 100644
 --- a/apps/web/src/components/Sidebar.tsx
@@ -259,6 +342,38 @@ index a7b7da0a6b53b67eba0cd0363be218501dc80f72..2dbd8f7050d4096ab5d514824d67b6a6
        {background ? null : redirect}
      </SidebarInset>
    );
+diff --git a/apps/web/src/components/chat/PanelLayoutControls.tsx b/apps/web/src/components/chat/PanelLayoutControls.tsx
+index 4db623bcbb07d8d70f8c2f4668ce86e56b15e739..312e296b3833491d0495ee22a1af3397e10176fa 100644
+--- a/apps/web/src/components/chat/PanelLayoutControls.tsx
++++ b/apps/web/src/components/chat/PanelLayoutControls.tsx
+@@ -186,8 +186,13 @@ export function ThreadPanelHeaderControl(props: PanelLayoutControlsProps) {
+   );
+ }
+ 
+-/** The window's top-right panel controls, with the maximize toggle while the panel is open. */
++/**
++ * The panel controls, with the maximize toggle while the panel is open. "window" pins them to the
++ * window's top-right corner; a split pane keeps them in its own box, so they never sit over another
++ * pane's header and take its clicks.
++ */
+ export function WorkspaceTitlebarControls(props: {
++  readonly placement: "window" | "pane" | "header";
+   readonly showMaximizeControl: boolean;
+   readonly rightPanelOpen: boolean;
+   readonly animationsActive: boolean;
+@@ -199,7 +204,11 @@ export function WorkspaceTitlebarControls(props: {
+   return (
+     <div
+       className={cn(
+-        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
++        "pointer-events-none flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
++        props.placement === "window" &&
++          "fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px",
++        props.placement === "pane" && "absolute top-0 right-3 z-50",
++        props.placement === "header" && "relative shrink-0",
+         mobileSidebarSheetMounted && "hidden",
+       )}
+       data-workspace-titlebar-controls
 diff --git a/apps/web/src/routes/_chat.index.tsx b/apps/web/src/routes/_chat.index.tsx
 index b511be0fa9255d329937ee997809af7c3b687b06..99f03845ea1c190ef82d6209053142883ce31c42 100644
 --- a/apps/web/src/routes/_chat.index.tsx

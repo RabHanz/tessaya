@@ -8054,7 +8054,7 @@ index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff2
    ]
  }
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..1249a90955f6f3f64af3e9694f072c4cbc1f72ad 100644
+index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..5c567a50d344cffdba5a4575acd300d57517eb68 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -20,6 +20,8 @@ import {
@@ -8105,6 +8105,26 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..1249a90955f6f3f64af3e9694f072c4c
      });
      if (resolution.action === "reject-empty") {
        toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
+@@ -248,8 +255,8 @@ export const ChatHeader = memo(function ChatHeader({
+     <div
+       ref={breadcrumbContainerRef}
+       className={cn(
+-        "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
+-        rightPanelOpen ? "pr-10" : "pr-24",
++        "@container/thread-header flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
++        rightPanelOpen && "pr-10",
+       )}
+       onContextMenu={handleHeaderContextMenu}
+     >
+@@ -272,7 +279,7 @@ export const ChatHeader = memo(function ChatHeader({
+                   }
+                 >
+                   <ProjectFavicon project={activeProject} className="size-3.5" />
+-                  <WorkspaceBreadcrumbText className="max-w-40">
++                  <WorkspaceBreadcrumbText className="max-w-40 @max-md/thread-header:hidden">
+                     {activeProjectName}
+                   </WorkspaceBreadcrumbText>
+                 </TooltipTrigger>
 @@ -393,6 +400,7 @@ export const ChatHeader = memo(function ChatHeader({
            ) : null}
          </WorkspaceBreadcrumbItem>
