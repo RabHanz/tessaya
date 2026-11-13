@@ -476,6 +476,13 @@ const speakerOf = (voice: unknown): SpeakerLike | null => {
     : null;
 };
 
+/** `voice.nameOnce` from the loop: a short name, only when it sent one. */
+const nameOnceOf = (voice: unknown): { readonly nameOnce?: string } => {
+  const n =
+    typeof voice === "object" && voice !== null && "nameOnce" in voice ? voice.nameOnce : null;
+  return typeof n === "string" && n.trim() !== "" ? { nameOnce: n.trim().slice(0, 40) } : {};
+};
+
 const r1Prompt = (input: R1Context) =>
   [...R1_RULES, ...r1Data(input), "Return JSON: {say, acts}."].join("\n");
 
@@ -586,6 +593,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
     speaker: speakerOf(input.voice),
     addressed: addressedOf(input.voice),
+    // The loop recognised this voice for the first time this session (its recognition cue): her name for them, once.
+    ...nameOnceOf(input.voice),
     // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
     tainted: taintedOf(input.voice),
     timeZone,
