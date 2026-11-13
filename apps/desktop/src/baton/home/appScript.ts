@@ -21,7 +21,7 @@ import {
 import { tableFor } from "./strings.ts";
 import { AREAS } from "./tabs.ts";
 
-export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))}; const AREAS = ${JSON.stringify(AREAS)}; const PLACES = ${JSON.stringify(TESSAYA_PLACES)}; const SGROUPS = ${JSON.stringify(TESSAYA_SETTINGS_GROUPS)}; const T3PLACES = ${JSON.stringify(T3_SETTINGS_PLACES)}; const LEARN_ITEMS = ${JSON.stringify(LEARN_ITEMS)}; const WHATS_NEW = ${JSON.stringify(WHATS_NEW)}; const pickTip = (${pickTip.toString().replace(/\s*\n\s*/g, " ")}); const applyLearnOp = (${applyLearnOp.toString().replace(/\s*\n\s*/g, " ")}); const readLearnProgress = (${readLearnProgress.toString().replace(/\s*\n\s*/g, " ")});
+const SOURCE = `const STR = ${JSON.stringify(tableFor("en"))}; const AREAS = ${JSON.stringify(AREAS)}; const PLACES = ${JSON.stringify(TESSAYA_PLACES)}; const SGROUPS = ${JSON.stringify(TESSAYA_SETTINGS_GROUPS)}; const T3PLACES = ${JSON.stringify(T3_SETTINGS_PLACES)}; const LEARN_ITEMS = ${JSON.stringify(LEARN_ITEMS)}; const WHATS_NEW = ${JSON.stringify(WHATS_NEW)}; const pickTip = (${pickTip.toString().replace(/\s*\n\s*/g, " ")}); const applyLearnOp = (${applyLearnOp.toString().replace(/\s*\n\s*/g, " ")}); const readLearnProgress = (${readLearnProgress.toString().replace(/\s*\n\s*/g, " ")});
 const L = (k, v) => { let t = STR[k] !== undefined ? STR[k] : k; if (v) for (const n in v) t = t.split("{" + n + "}").join(String(v[n])); return t; };
 const real = typeof require === 'function';
 const ipc = real ? require('electron').ipcRenderer : null;
@@ -1410,3 +1410,9 @@ function syncBreath() { document.documentElement.classList.toggle('live', !docum
 document.addEventListener('visibilitychange', syncBreath); syncBreath();
 get().then(s => { render(s); if (!s.splashed) startSting(); });
 `;
+
+/**
+ * What ships: the source less its whole-line comments, which the page never reads. Safe because the script has no
+ * template literals (no backticks), so no string spans lines. Indentation stays: tests find functions by it.
+ */
+export const APP_SCRIPT = SOURCE.replace(/^[ \t]*\/\/.*\n/gm, "");

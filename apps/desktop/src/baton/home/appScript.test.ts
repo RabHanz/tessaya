@@ -10,6 +10,8 @@ describe("APP_SCRIPT", () => {
   // the whole window fails to parse at runtime, where no type check can see it.
   it("parses as a script", () => {
     expect(() => new NodeVM.Script(APP_SCRIPT)).not.toThrow();
+    // Comment lines are cut from what ships; a multi-line template literal would make that unsafe.
+    expect(APP_SCRIPT).not.toContain("`");
   });
   // The Home sentence and the Your voice row are built by these two functions from the enabled, shipped words only.
   it("names only the words it is given on Home", () => {
