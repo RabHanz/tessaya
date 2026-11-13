@@ -23,6 +23,10 @@ describe("the room's tools for a replay", () => {
     expect(replayDryRun("tessaya_record", {}, "replay-1")).toBeNull();
     // The house's writes go through the house's own checks as a dry run (HomeActor.dryRun).
     expect(replayDryRun("home_do", { domain: "fan" }, "replay-1")).toBeNull();
+    // What she keeps (13 Nov audit, R1-P9): a replay's "say it this way" is answered, never saved.
+    const word = { word: "Tessaya", sayAs: "Tess eye ya" };
+    expect(replayDryRun("tessaya_pronounce", word, "replay-1")?.text).toContain("nothing was kept");
+    expect(replayDryRun("tessaya_pronounce", word, "r1-3d57b3")).toBeNull();
   });
 
   it("takes a number or a yes/no sent as a string, as every timer was (07:39, 13 Nov)", () => {

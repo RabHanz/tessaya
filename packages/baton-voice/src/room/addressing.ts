@@ -5,8 +5,10 @@
  */
 import { wakeWordHeard, wakeWordLead } from "@t3tools/baton-shared/wakeVerify";
 
-/** His "Tessaya" on its own, as the R1 hears it: "Say yeah.", "You say ya?" (12 Nov). */
-const TESSAYA_ALONE = /^(?:you |to |tuh )?say (?:yeah|ya|yah)$/;
+/** His "Tessaya" on its own, as the R1 hears it: "Say yeah.", "You say ya?" (12 Nov), "To say uh" (13 Nov). */
+const TESSAYA_ALONE = /^(?:you |to |tuh )?say (?:yeah|ya|yah|uh)$/;
+/** The same, leading a sentence with a comma after it: "To say uh, can you hear me?" (13 Nov). */
+const TESSAYA_LEAD = /^(?:to|tuh) say,? (?:yeah|ya|yah|uh),/i;
 
 /** The name he called her by, from `names` (the first is the lead), or null when he did not call one. */
 export const calledName = (text: string, names: ReadonlyArray<string>): string | null => {
@@ -17,7 +19,8 @@ export const calledName = (text: string, names: ReadonlyArray<string>): string |
     .toLowerCase()
     .replace(/[^a-z ]/g, "")
     .trim();
-  if (TESSAYA_ALONE.test(plain) && names[0] !== undefined) return names[0];
+  if ((TESSAYA_ALONE.test(plain) || TESSAYA_LEAD.test(text.trim())) && names[0] !== undefined)
+    return names[0];
   return names.find((n) => wakeWordHeard(text, n)) ?? null;
 };
 
@@ -72,4 +75,22 @@ export const isOwnVoice = (heard: string, herLines: ReadonlyArray<string>): bool
     }
     return false;
   });
+};
+
+/** Words a sentence does not end on: "Is it possible to", "Like the", "Pages because" (13 Nov) were him pausing. */
+const UNFINISHED =
+  /\b(?:to|the|a|an|and|or|but|because|if|of|for|with|my|your|our|their|whose|can|could|would|should|will|shall|need|needs|want|wants|gonna|wanna)$/i;
+
+/** He stopped mid-sentence: what he says next belongs to it, so it is not answered on its own. */
+export const isUnfinished = (text: string): boolean => {
+  const t = text.trim();
+  return !/[?!]$/.test(t) && UNFINISHED.test(t.replace(/[.,;:…\s]+$/, ""));
+};
+
+/** What a log may keep of a line that was not for her: its length and a short hash, never its words. */
+export const heldBack = (text: string): string => {
+  let h = 0x811c9dc5;
+  for (const c of text) h = Math.imul(h ^ c.codePointAt(0)!, 0x01000193) >>> 0;
+  const n = text.trim().split(/\s+/).filter(Boolean).length;
+  return `${n} word${n === 1 ? "" : "s"}, #${h.toString(16).padStart(8, "0")}`;
 };

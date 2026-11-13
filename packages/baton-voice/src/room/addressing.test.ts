@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { calledName, invitesReply, isBackchannel, isDismissal, isOwnVoice } from "./addressing.ts";
+import {
+  calledName,
+  heldBack,
+  invitesReply,
+  isBackchannel,
+  isDismissal,
+  isOwnVoice,
+  isUnfinished,
+} from "./addressing.ts";
 
 const NAMES = ["Tessaya", "Freya", "Alfred", "Sebastian"];
 
@@ -15,12 +23,21 @@ describe("whether he was talking to her", () => {
     expect(heard("Alfred, what broke?")).toBe("Alfred");
     expect(heard("Can I speak to Alfred?")).toBe("Alfred");
     expect(heard("Freya can you remind me at six")).toBe("Freya");
+    // How the R1 heard his "Tessaya" on 13 Nov, each of which went unanswered.
+    expect(heard("Casey.")).toBe("Tessaya");
+    expect(heard("Casey, turn it off.")).toBe("Tessaya");
+    expect(heard("Teseya, look for the last five minutes.")).toBe("Tessaya");
+    expect(heard("To say uh")).toBe("Tessaya");
+    expect(heard("To say uh, can you hear me?")).toBe("Tessaya");
+    expect(heard("Can you switch back to Teseah?")).toBe("Tessaya");
     for (const t of [
       "Did you hear me?",
       "This is a test of Tessa dictation.",
       "Testing without selecting an input box.",
       "I mean turn it back off.",
       "Tessa said she would call me later.",
+      "Casey said she would call me later.",
+      "I was going to say yeah",
     ])
       expect(heard(t)).toBeNull();
   });
@@ -70,5 +87,35 @@ describe("whether he was talking to her", () => {
       ["I couldn't find anything called scrap.", "Uh can you turn on the lamp?"],
     ] as const)
       expect(isOwnVoice(heard, [her])).toBe(false);
+  });
+});
+
+describe("his sentence left unfinished, and what a log keeps", () => {
+  it("knows a line he paused in (13 Nov) from a finished one", () => {
+    for (const t of [
+      "Is it possible to",
+      "So each one needs to",
+      "Pages because",
+      "My TikTok shop etcetera and much much more. Like the",
+      "Can you turn on the.",
+    ])
+      expect(isUnfinished(t), t).toBe(true);
+    for (const t of [
+      "Turn it off now.",
+      "Turn it on",
+      "What time is it?",
+      "Thank you",
+      "I don't want that",
+      "Is it possible to?",
+    ])
+      expect(isUnfinished(t), t).toBe(false);
+  });
+
+  it("logs a line that was not for her by length and hash, never its words", () => {
+    expect(heldBack("For example, why is it all shared context")).toMatch(
+      /^8 words, #[0-9a-f]{8}$/,
+    );
+    expect(heldBack("one")).toMatch(/^1 word, #/);
+    expect(heldBack("a b")).not.toBe(heldBack("a c"));
   });
 });

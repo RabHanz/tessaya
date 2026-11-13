@@ -11,6 +11,7 @@
 import type { TtsProvider } from "@t3tools/baton-voice";
 
 import { hasDirection, speechPieces, withoutDirections } from "@t3tools/baton-shared/interjections";
+import { isNarration } from "@t3tools/baton-shared/narration";
 import { pronounce } from "@t3tools/baton-shared/pronounce";
 import { withProsody } from "@t3tools/baton-shared/prosody";
 import { spliceSpeech } from "@t3tools/baton-shared/speechSplice";
@@ -196,6 +197,8 @@ export const createSpeaker = (input: {
 
   const run = (raw: string, pick: () => VoiceChoice, force: boolean): Promise<void> => {
     if (!force && input.silent?.() === true) return Promise.resolve();
+    // Her reasoning written out as a sentence is never said, on any surface (13 Nov R1 audit).
+    if (isNarration(raw)) return Promise.resolve();
     // A stage direction ("*sighs*") is a sound or nothing, never words.
     const sound = hasDirection(raw);
     const plain = sound ? withoutDirections(raw) : raw;

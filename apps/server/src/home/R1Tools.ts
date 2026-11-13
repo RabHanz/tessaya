@@ -52,6 +52,7 @@ const ROOM_TOOLS = [
   "tessaya_memory_search",
   "tessaya_ask",
   "tessaya_ask_status",
+  "tessaya_pronounce",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
 const LAPTOP: RoomTool = {
@@ -151,11 +152,14 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
   return Option.isSome(decoders.get(name)!(input))
     ? {
         // What the real call answers, so her reply is the one he would hear.
-        text: JSON.stringify({
-          id: null,
-          status: "queued",
-          line: "Sent; it waits for his answer.",
-        }),
+        text:
+          name === "tessaya_pronounce"
+            ? "Saved (a replay: nothing was kept)."
+            : JSON.stringify({
+                id: null,
+                status: "queued",
+                line: "Sent; it waits for his answer.",
+              }),
         isError: false,
         status: "done",
       }

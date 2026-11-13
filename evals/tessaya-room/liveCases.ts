@@ -244,6 +244,16 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_memory_search"],
   },
   {
+    // 07:28 to 07:31, 13 Nov: "I'll say it that way from now on" with nothing to keep it.
+    id: "pronounce",
+    proves: ["tessaya_pronounce"],
+    said: ["Remember that Tessaya is said tess-AY-ya, and say it that way from now on."],
+    uses: [["tessaya_pronounce"]],
+    clean: ["tessaya_pronounce"],
+    argsOf: "tessaya_pronounce",
+    args: (input) => ({ word: String(input["word"] ?? "").toLowerCase() === "tessaya" }),
+  },
+  {
     id: "ask-phone",
     proves: ["tessaya_ask"],
     said: ["Send me a question on my phone: should I order more coffee?"],

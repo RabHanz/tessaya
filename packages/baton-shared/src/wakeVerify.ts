@@ -8,7 +8,8 @@
 /** Other ways recognition writes a wake word, from how each one is said. */
 const ALIASES: Readonly<Record<string, ReadonlyArray<string>>> = {
   // Not "Tessa", "Tessie" or "Theresa": they are other names, and near misses the model is trained against.
-  tessaya: ["tessaia", "tesaya", "tessa ya", "tesseya", "teh sayuh"],
+  // "Teseya", "Teseah": his "Tessaya" on the R1's mic (13 Nov).
+  tessaya: ["tessaia", "tesaya", "tessa ya", "tesseya", "teh sayuh", "teseya", "teseah", "tesseah"],
   sebastian: ["bastian", "sebastien", "sabastian", "sebastiane"],
   alfred: ["alfrid", "alfread", "al fred"],
   freya: ["fraya", "freia", "fria", "fray uh", "frayer", "freyer"],
@@ -94,7 +95,8 @@ const LEAD_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
  */
 const ADDRESSED_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
   // "Seya" and "Casea": his "Tessaya" from across the room on the R1's one mic (12 Nov).
-  tessaya: ["tessa", "seya", "casea"],
+  // "Casey": the same (13 Nov), and a name of its own, so only when spoken to.
+  tessaya: ["tessa", "seya", "casea", "casey"],
 };
 const ASKING =
   /^(?:what|whats|who|where|when|why|how|please|tell|open|show|send|start|set|remind|play|turn|give|find|check|bring|type|explain|look|read|stop)$/;

@@ -30,6 +30,7 @@ import {
   OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
   ThreadId,
+  VoicePronounce,
 } from "@t3tools/contracts";
 import { DESKTOP_STATE_SECTIONS } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
@@ -307,6 +308,22 @@ const DesktopSettingsTool = Tool.make("tessaya_desktop_settings", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const PronounceTool = Tool.make("tessaya_pronounce", {
+  ...shared,
+  description:
+    'Keep how Tessaya\'s voice says a word, on every device that reads this server (the desk device in his home now): `word` as it is written, `sayAs` in plain letters as the voice should read it ("Tessaya" as "Tess eye ya"). Without `sayAs` the word goes back to how the voice says it by itself. Only for a word he asked to be said differently. Returns the whole list.',
+  parameters: Schema.Struct({
+    word: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(60)),
+    sayAs: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+  }),
+  success: Schema.Struct({ pronounce: VoicePronounce, line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 // Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
 const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   ...shared,
@@ -376,6 +393,7 @@ export const TessayaToolkit = Toolkit.make(
   WeaveListTool,
   StateTool,
   DesktopSettingsTool,
+  PronounceTool,
   MoveIntoTessayaTool,
   OpenInTerminalTool,
   MainSessionTool,

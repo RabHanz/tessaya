@@ -2,8 +2,11 @@ import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/baton-shared/phoneRelay";
 import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -11,17 +14,29 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
+import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { BatonOneShot } from "../baton/BatonOneShot.ts";
+import { R1Brain, toolLoop } from "./R1Brain.ts";
+import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
 import {
   calledPersona,
   dictionaryEntries,
   houseTime,
   mqttPublishBytes,
+  r1Data,
   r1Gather,
+  r1TurnStream,
+  roomData,
   roomLook,
   runActs,
+  speakableSentences,
   splitActs,
   spokenReply,
   sseReply,
+  switchedPersona,
+  withoutNarration,
+  withoutSelfIntros,
+  type R1Context,
 } from "./R1Device.ts";
 
 describe("R1Device", () => {
@@ -52,6 +67,16 @@ describe("R1Device", () => {
     ]);
     expect([...publish]).toEqual([0x30, 7, 0, 3, 0x74, 0x2f, 0x78, 0x7b, 0x7d]);
     expect([...disconnect]).toEqual([0xe0, 0]);
+    // Retained, so a room loop that starts later still gets his pronunciations.
+    const kept = mqttPublishBytes({
+      clientId: "c",
+      user: null,
+      pass: null,
+      topic: "t/x",
+      payload: "{}",
+      retain: true,
+    });
+    expect(kept.publish[0]).toBe(0x31);
   });
 
   it("streams one OpenAI-style chunk, a stop and [DONE]", () => {
@@ -105,6 +130,150 @@ it("answers as the persona he called by name, and as Tessaya for her own name or
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "nobody" })).toBeNull();
   expect(calledPersona(DEFAULT_OS_PACK, undefined)).toBeNull();
 });
+
+describe('who answers in the room (13 Nov audit: every reply opened with "Sebastian here.")', () => {
+  const context = async (switched: boolean): Promise<R1Context> => {
+    const { DEFAULT_OS_PACK } = await import("@t3tools/baton-shared/osPack");
+    return {
+      heard: "how many days in a week?",
+      privateBlock: "",
+      history: [],
+      devices: [],
+      lastAction: null,
+      automations: null,
+      memory: "",
+      voice: undefined,
+      now: "now",
+      persona: calledPersona(DEFAULT_OS_PACK, { persona: "research" }),
+      switched,
+      roster: "",
+    };
+  };
+
+  it("says he called the persona only on the turn he named it, and only who answers after", async () => {
+    for (const lines of [roomData(await context(false)), r1Data(await context(false)).join("\n")]) {
+      expect(lines).not.toMatch(/called/i);
+      expect(lines).toContain("You are Sebastian");
+    }
+    expect(roomData(await context(true))).toMatch(/just called Sebastian/);
+    expect(r1Data(await context(true)).join("\n")).toMatch(/just called Sebastian/);
+  });
+
+  it("reads a switch only from the loop's switched flag, so an older loop never switches", () => {
+    expect(switchedPersona({ persona: "research", switched: true })).toBe(true);
+    expect(switchedPersona({ persona: "research" })).toBe(false);
+    expect(switchedPersona({ persona: "research", switched: "yes" })).toBe(false);
+    expect(switchedPersona(undefined)).toBe(false);
+  });
+
+  it("takes the pack's names off the start of her past replies, and leaves his words alone", () => {
+    const names = ["Tessaya", "Alfred", "Sebastian", "Freya"];
+    expect(
+      withoutSelfIntros(
+        [
+          { role: "user", content: "Sebastian here." },
+          { role: "assistant", content: "Sebastian here. Seven days." },
+          { role: "assistant", content: "Tessaya here, it's twenty to six." },
+          { role: "assistant", content: "Freya is on it." },
+        ],
+        names,
+      ).map((m) => m.content),
+    ).toEqual(["Sebastian here.", "Seven days.", "it's twenty to six.", "Freya is on it."]);
+  });
+});
+
+describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
+  const lines = [
+    // 07:17:56
+    "nothing in the conversation says what he means. I should ask rather than guess or touch the house. Different what?",
+    // 07:38:47
+    "'To say, yeah' is unclear, and nothing in the conversation asks for an action. I'll ask him what he meant. Hm, I'm not sure what you mean.",
+    // 07:44:27
+    "Looks like a stray fragment; the office fan was already turned off earlier and nothing is pending. I'll keep it short. Got it, nothing else is waiting on you.",
+  ];
+
+  it("drops the sentences that think about him and keeps what she says to him", () => {
+    expect(lines.map(withoutNarration)).toEqual([
+      "Different what?",
+      "Hm, I'm not sure what you mean.",
+      "Got it, nothing else is waiting on you.",
+    ]);
+  });
+
+  it("speaks whole sentences as they stream in, whatever the chunks", () => {
+    const said: Array<string> = [];
+    const s = speakableSentences((sentence) => said.push(sentence));
+    for (const chunk of lines[2]!.match(/.{1,7}/gs)!) s.push(chunk);
+    s.flush();
+    expect(said.join("")).toBe("Got it, nothing else is waiting on you.");
+  });
+});
+
+effectIt.effect(
+  "a turn he cut off runs no more tools and records nothing (barge-in: the loop drops the request)",
+  () =>
+    Effect.gen(function* () {
+      const ran: Array<string> = [];
+      let recorded = 0;
+      const findStarted = yield* Deferred.make<void>();
+      const brain = R1Brain.of({
+        route: Effect.succeed("api"),
+        subscription: () => Stream.empty,
+        warm: Effect.void,
+        // Round one asks the house, round two would act on it.
+        converse: (turn) =>
+          toolLoop(
+            (request: ConverseRequest) =>
+              Stream.make<Array<ConversePart>>(
+                request.messages.length === 1
+                  ? { type: "tool", id: "t1", name: "home_find", input: {} }
+                  : { type: "tool", id: "t2", name: "home_do", input: {} },
+              ),
+            turn,
+          ),
+      });
+      const tools = {
+        specs: [],
+        run: (name: string) =>
+          Effect.gen(function* () {
+            ran.push(name);
+            if (name === "home_find") {
+              yield* Deferred.succeed(findStarted, undefined);
+              return yield* Effect.never;
+            }
+            return { text: "done", isError: false, status: "done" };
+          }),
+      };
+      const home = Layer.mock(HomeAssistantService)({
+        device: Effect.succeed(null),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(BatonRecordService)({
+        append: () =>
+          Effect.sync(() => {
+            recorded += 1;
+          }) as never,
+      });
+      const said: Array<string> = [];
+      const turn = yield* r1TurnStream(
+        { heard: "turn on the fan", history: [] },
+        brain,
+        tools,
+      ).pipe(
+        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+        // The one-shot fallback never runs: the brain answered before he cut in.
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(findStarted);
+      yield* Fiber.interrupt(turn);
+      expect(ran).toEqual(["home_find"]);
+      expect(recorded).toBe(0);
+      expect(said).toEqual([]);
+    }),
+);
 
 describe("asking his laptop", () => {
   const at = DateTime.makeUnsafe("2026-11-12T00:00:00.000Z");

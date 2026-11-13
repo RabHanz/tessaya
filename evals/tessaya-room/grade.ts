@@ -1,4 +1,4 @@
-import { SPECIALISTS, type RoomCase } from "./cases.ts";
+import { NAMES, SPECIALISTS, type RoomCase } from "./cases.ts";
 
 export interface RoomSample {
   /** Her reply to each sentence, as the room heard it. */
@@ -19,6 +19,9 @@ export const failureOf = (c: RoomCase, s: RoomSample): string | null => {
   if (s.replies.length !== c.said.length || s.replies.some((r) => r.trim() === ""))
     return "no reply";
   if (s.replies.some((r) => HOUSE_TAIL.test(r))) return "talked about the house unasked";
+  const opensWithName = new RegExp(`^\\W*(?:${NAMES.join("|")})\\b`, "i");
+  if (c.noNameOpen === true && s.replies.some((r) => opensWithName.test(r)))
+    return "opened with a name";
   for (const re of c.says ?? []) if (!s.replies.every((r) => re.test(r))) return `not ${re}`;
   const last = s.replies.at(-1)!;
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;

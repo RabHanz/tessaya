@@ -23,6 +23,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
+import { ServerSettingsService } from "../../../serverSettings.ts";
 import { ROOM_CLIENT } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
 import { TessayaToolkit } from "./tools.ts";
@@ -113,6 +114,20 @@ it.effect(
       expect(result.isFailure).toBe(false);
       expect(asked).toEqual([[{ text: "deploy key", limit: 10 }, "client"]]);
     }),
+);
+
+it.effect("the room keeps how a word is said in the server's one list, and can give it back", () =>
+  Effect.gen(function* () {
+    const settings = yield* ServerSettingsService;
+    const said = yield* callTool("room", Context.empty() as never, "tessaya_pronounce", {
+      word: "Tessaya",
+      sayAs: "Tess eye ya",
+    });
+    expect(said.isFailure).toBe(false);
+    expect((yield* settings.getSettings).voicePronounce).toEqual({ Tessaya: "Tess eye ya" });
+    yield* callTool("room", Context.empty() as never, "tessaya_pronounce", { word: "Tessaya" });
+    expect((yield* settings.getSettings).voicePronounce).toEqual({});
+  }).pipe(Effect.provide(ServerSettingsService.layerTest())),
 );
 
 it("gives an outside agent no tool that reaches a private memory store", () => {

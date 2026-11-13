@@ -49,6 +49,15 @@ describe("tessaya-room grader", () => {
     );
   });
 
+  it("fails a persona's reply that opens with a name, and passes one that just answers", () => {
+    const intro = caseOf("no-intro");
+    const replies = ["Yes?", "366.", "Seven."];
+    expect(failureOf(intro, sample({ replies }))).toBeNull();
+    expect(
+      failureOf(intro, sample({ replies: ["Sebastian here.", "Sebastian here. 366.", "Seven."] })),
+    ).toBe("opened with a name");
+  });
+
   it("fails a case when half or more of its samples fail", () => {
     const c = caseOf("lamp-state");
     const good = sample({ calls: ["home_state"] });
