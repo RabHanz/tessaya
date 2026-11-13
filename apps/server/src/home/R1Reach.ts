@@ -24,6 +24,8 @@ import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 const EP_MAX = 4;
 const EP_LEN = 96;
 const AWAY_SECRET = "r1-away";
+/** Set once he has answered the setup's one question about away-from-home, either way. */
+const OFFERED_SECRET = "r1-away-offered";
 /** The tunnel's hostname, remembered: cloudflared reports it only while connected, and a restart must not drop it. */
 const TUNNEL_SECRET = "r1-tunnel-host";
 /** The same list is not sent again sooner than this when the R1 does not take it (an older firmware). */
@@ -73,6 +75,8 @@ export const reportMatches = (reported: string | undefined, want: R1Endpoints): 
 
 export interface R1ReachStatus {
   readonly away: boolean;
+  /** He was asked at setup, or changed it since: setup asks only while this is false. */
+  readonly offered: boolean;
   /** This server is linked to T3 Connect and has (or had) its tunnel's hostname. */
   readonly tunnel: boolean;
   readonly endpoints: R1Endpoints;
@@ -196,7 +200,8 @@ export const layer = Layer.effect(
         : host === null
           ? "Away from home is on, but this server is not linked to T3 Connect. Link it in Settings → Connections; the R1 gets the new address by itself."
           : "The R1 connects at home first, and through T3 Connect when it is away.";
-      return { away: on, tunnel: host !== null, endpoints, line } satisfies R1ReachStatus;
+      const offered = Option.isSome(yield* read(OFFERED_SECRET));
+      return { away: on, offered, tunnel: host !== null, endpoints, line } satisfies R1ReachStatus;
     });
 
     return R1Reach.of({
@@ -205,6 +210,7 @@ export const layer = Layer.effect(
         yield* secrets
           .set(AWAY_SECRET, new TextEncoder().encode(on ? "on" : "off"))
           .pipe(Effect.ignore);
+        yield* secrets.set(OFFERED_SECRET, new TextEncoder().encode("yes")).pipe(Effect.ignore);
         sent.clear();
         yield* Effect.forEach([...online], sync, { discard: true });
         return yield* status;

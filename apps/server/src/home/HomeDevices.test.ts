@@ -65,6 +65,7 @@ const setup = () => {
   let away = false;
   const reachStatus = () => ({
     away,
+    offered: true,
     tunnel: true,
     endpoints: { broker: [], proxy: "" },
     line: away ? "Away on." : "Home only.",

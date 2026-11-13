@@ -73,6 +73,7 @@ import { Input } from "../ui/input";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { R1SetupSection } from "./R1SetupSection";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
@@ -156,7 +157,9 @@ function HardwareSections({
   const [view, setView] = useState<DevicesOverview | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [reach, setReach] = useState<{ away: boolean; line: string } | null>(null);
+  const [reach, setReach] = useState<{ away: boolean; offered: boolean; line: string } | null>(
+    null,
+  );
   // Read once and after each change, not on every refresh: it asks the tunnel for its address.
   const readReach = async () => {
     const result = await devicesCall({
@@ -164,7 +167,7 @@ function HardwareSections({
       input: { kind: "read", op: "reach", args: {} },
     });
     if (result._tag === "Success" && result.value.ok)
-      setReach(result.value.value as { away: boolean; line: string });
+      setReach(result.value.value as { away: boolean; offered: boolean; line: string });
   };
 
   const refresh = async () => {
@@ -303,6 +306,21 @@ function HardwareSections({
       ))}
 
       {home ? <RoomBrainSection environmentId={environmentId} /> : null}
+
+      {home ? (
+        <R1SetupSection
+          call={async (kind, op, args) => {
+            const result = await devicesCall({ environmentId, input: { kind, op, args } });
+            return result._tag === "Success" ? result.value : null;
+          }}
+          // Unknown until read: never ask twice by mistake.
+          awayOffered={reach?.offered ?? true}
+          onChanged={() => {
+            void refresh();
+            void readReach();
+          }}
+        />
+      ) : null}
 
       {home ? (
         <SetupSection

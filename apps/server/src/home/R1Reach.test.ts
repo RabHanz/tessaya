@@ -99,6 +99,8 @@ it.effect("sends the R1 its list when it comes online, again only when the list 
     });
     yield* Effect.gen(function* () {
       const reach = yield* R1Reach;
+      // Setup asks once: not answered yet; any change of the setting counts as the answer.
+      expect((yield* reach.status).offered).toBe(false);
       // Coming online wakes the sender; the list arrives on its own.
       hub.publish("freya/r1/r1-a/state/online", "1", true);
       expect(JSON.parse(yield* Queue.take(pushed)).broker).toEqual([
@@ -110,6 +112,7 @@ it.effect("sends the R1 its list when it comes online, again only when the list 
       expect(sent).toHaveLength(1);
       // Away on, not linked yet: the line says to link, and the list is unchanged.
       expect((yield* reach.setAway(true)).tunnel).toBe(false);
+      expect((yield* reach.status).offered).toBe(true);
       expect(sent).toHaveLength(1);
       // Linked: turning it on again pushes the tunnel; off takes it back out.
       store.set(CLOUD_ENDPOINT_RUNTIME_CONFIG, new Uint8Array([1]));
