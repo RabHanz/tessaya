@@ -208,3 +208,40 @@ export const bodyRect = (size: number): Rect => ({
   width: Math.round(size * 0.52),
   height: Math.round(size * (FOOT_SHARE - 0.42)),
 });
+
+/** A press let go within this long, having moved less than this far, was a poke, not a carry. */
+const POKE_MS = 350;
+const POKE_PX = 6;
+export const isPoke = (
+  samples: ReadonlyArray<{ readonly x: number; readonly y: number; readonly t: number }>,
+  pressedAt: number,
+  now: number,
+): boolean =>
+  now - pressedAt <= POKE_MS &&
+  samples.every((s) => Math.hypot(s.x - samples[0]!.x, s.y - samples[0]!.y) < POKE_PX);
+
+/**
+ * Petting: the cursor stroking back and forth over her body. Its sideways travel over the last 1.5 s, with at least
+ * two changes of direction, adds up to a pet once it covers her body's width twice and a half.
+ */
+export interface Strokes {
+  readonly points: ReadonlyArray<{ readonly x: number; readonly t: number }>;
+}
+export const stroke = (
+  state: Strokes,
+  x: number,
+  t: number,
+  bodyWidth: number,
+): { readonly state: Strokes; readonly petted: boolean } => {
+  const points = [...state.points.filter((p) => t - p.t <= 1500), { x, t }];
+  let travel = 0;
+  let turns = 0;
+  for (let i = 1; i < points.length; i++) {
+    const d = points[i]!.x - points[i - 1]!.x;
+    travel += Math.abs(d);
+    const before = i > 1 ? points[i - 1]!.x - points[i - 2]!.x : 0;
+    if (d !== 0 && before !== 0 && Math.sign(d) !== Math.sign(before)) turns++;
+  }
+  const petted = travel >= bodyWidth * 2.5 && turns >= 2;
+  return { state: { points: petted ? [] : points }, petted };
+};

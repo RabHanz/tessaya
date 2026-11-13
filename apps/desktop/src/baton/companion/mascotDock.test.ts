@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   FOOT_SHARE,
   dropAt,
+  isPoke,
+  stroke,
+  type Strokes,
   edgesFor,
   followFocus,
   followWindow,
@@ -223,5 +226,36 @@ describe("pathBetween", () => {
     const fastest = Math.max(...moves);
     expect(moves[0]!).toBeLessThan(fastest / 2);
     expect(moves.at(-1)!).toBeLessThan(fastest / 10);
+  });
+});
+
+describe("poke and pet", () => {
+  it("tells a poke (a quick, still press) from a carry", () => {
+    const still = [
+      { x: 100, y: 100, t: 0 },
+      { x: 102, y: 101, t: 100 },
+    ];
+    expect(isPoke(still, 0, 200)).toBe(true);
+    expect(isPoke(still, 0, 600)).toBe(false);
+    expect(isPoke([...still, { x: 140, y: 100, t: 150 }], 0, 200)).toBe(false);
+  });
+
+  it("counts a pet only from strokes back and forth over her, not one pass across", () => {
+    let state: Strokes = { points: [] };
+    let petted = false;
+    for (const [i, x] of [0, 40, 80, 120, 160, 200, 240].entries()) {
+      const r = stroke(state, x, i * 50, 80);
+      state = r.state;
+      petted ||= r.petted;
+    }
+    expect(petted).toBe(false);
+    state = { points: [] };
+    const back = [0, 40, 80, 40, 0, 40, 80, 40, 0];
+    for (const [i, x] of back.entries()) {
+      const r = stroke(state, x, i * 100, 80);
+      state = r.state;
+      petted ||= r.petted;
+    }
+    expect(petted).toBe(true);
   });
 });
