@@ -54,6 +54,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useVisibleThreadShells } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -75,7 +76,6 @@ import { Switch } from "../ui/switch";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-import { useSettingsScope } from "./SettingsScopeContext";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
 
 const REFRESH_MS = 5000;
@@ -83,19 +83,38 @@ const REFRESH_MS = 5000;
 const ENROL_REFRESH_MS = 300;
 type Kind = "read" | "act" | "owner";
 
+/**
+ * The household's devices, with no server to pick (13 Nov): every connected server's devices on one page, each one
+ * driven through the server that holds it. The R1's setup and room brain show once, on the server that has the R1
+ * (else this machine's own).
+ */
 export function HardwareSettingsPanel() {
-  const { environment } = useSettingsScope();
+  const { environments } = useEnvironments();
+  const primary = usePrimaryEnvironmentId();
+  const connected = environments
+    .filter((e) => e.connection.phase === "connected")
+    .map((e) => e.environmentId)
+    .toSorted((a, b) => (a === primary ? -1 : b === primary ? 1 : 0));
+  const [withR1, setWithR1] = useState<ReadonlySet<EnvironmentId>>(new Set());
+  const home = connected.find((id) => withR1.has(id)) ?? connected[0] ?? null;
+  const report = (id: EnvironmentId, has: boolean) =>
+    setWithR1((was) => {
+      if (was.has(id) === has) return was;
+      const next = new Set(was);
+      if (has) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   return (
     <SettingsPageContainer>
-      {environment?.connection.phase === "connected" ? (
-        <HardwareSections
-          key={environment.environmentId}
-          environmentId={environment.environmentId}
-        />
-      ) : (
+      {connected.length === 0 ? (
         <p className="px-4 py-3 text-sm text-muted-foreground">
-          Connect an environment to see its devices.
+          Connect to your Tessaya server to see your devices.
         </p>
+      ) : (
+        connected.map((id) => (
+          <HardwareSections key={id} environmentId={id} home={id === home} onR1={report} />
+        ))
       )}
     </SettingsPageContainer>
   );
@@ -121,7 +140,16 @@ function MoodEyes({ mood }: { readonly mood: R1Mood }) {
   );
 }
 
-function HardwareSections({ environmentId }: { readonly environmentId: EnvironmentId }) {
+function HardwareSections({
+  environmentId,
+  home,
+  onR1,
+}: {
+  readonly environmentId: EnvironmentId;
+  /** The server whose R1 setup and room brain this page shows. */
+  readonly home: boolean;
+  readonly onR1: (environmentId: EnvironmentId, has: boolean) => void;
+}) {
   const quiet = { reportFailure: false } as const;
   const devicesCall = useAtomCommand(batonWorkSessions.devicesCall, quiet);
   const homeCall = useAtomCommand(batonWorkSessions.homeCall, quiet);
@@ -134,8 +162,14 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
       environmentId,
       input: { kind: "read", op: "list", args: {} },
     });
-    if (result._tag === "Success" && result.value.ok)
-      setView(result.value.value as DevicesOverview);
+    if (result._tag === "Success" && result.value.ok) {
+      const next = result.value.value as DevicesOverview;
+      setView(next);
+      onR1(
+        environmentId,
+        next.devices.some((d) => d.configured),
+      );
+    }
   };
   const reading =
     view?.devices.some((d) => d.enrol?.phase === "reading" || d.enrol?.phase === "saving") === true;
@@ -171,6 +205,8 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
   };
 
   const devices = view?.devices ?? [];
+  // A server with nothing on it says nothing; the household's page lists devices, not servers.
+  if (!home && devices.length === 0 && (view?.registry ?? []).length === 0) return null;
   return (
     <>
       <SettingsSection {...searchableSetting("hardware-devices")}>
@@ -236,28 +272,30 @@ function HardwareSections({ environmentId }: { readonly environmentId: Environme
         />
       ))}
 
-      <RoomBrainSection environmentId={environmentId} />
+      {home ? <RoomBrainSection environmentId={environmentId} /> : null}
 
-      <SetupSection
-        busy={busy}
-        configured={devices.some((d) => d.configured)}
-        onSave={async (args) => {
-          setBusy(true);
-          const result = await homeCall({
-            environmentId,
-            input: { kind: "act", op: "r1Setup", args },
-          });
-          setBusy(false);
-          setNote(
-            result._tag === "Success" && result.value.ok
-              ? "Saved. The server connects to its broker within a few seconds."
-              : result._tag === "Success"
-                ? (result.value.error ?? "That was not saved.")
-                : "Couldn’t reach this environment. Try again.",
-          );
-          await refresh();
-        }}
-      />
+      {home ? (
+        <SetupSection
+          busy={busy}
+          configured={devices.some((d) => d.configured)}
+          onSave={async (args) => {
+            setBusy(true);
+            const result = await homeCall({
+              environmentId,
+              input: { kind: "act", op: "r1Setup", args },
+            });
+            setBusy(false);
+            setNote(
+              result._tag === "Success" && result.value.ok
+                ? "Saved. The server connects to its broker within a few seconds."
+                : result._tag === "Success"
+                  ? (result.value.error ?? "That was not saved.")
+                  : "Couldn’t reach this environment. Try again.",
+            );
+            await refresh();
+          }}
+        />
+      ) : null}
     </>
   );
 }
