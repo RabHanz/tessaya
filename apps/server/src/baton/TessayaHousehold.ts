@@ -90,7 +90,8 @@ interface Row {
 export const HOUSEHOLD_PEER_TOOL = "household_peer";
 /** The linked-server tool that tells a server a member's data was destroyed, so its vessels forget their voice. */
 export const VOICE_FORGET_TOOL = "household_voice_forget";
-const HOME_KEY = "household.home";
+/** The setting naming the linked server that holds this home's members; empty or absent: this one. */
+export const HOME_KEY = "household.home";
 /** Each member's Windows account (`HOST\\user`, lower case) on this server's desktops, for Windows Hello. */
 const WINDOWS_KEY = "household.windowsAccounts";
 /** A step-up's A3 lasts this long on the session that made it (ACCOUNTS-IDENTITY-DESIGN §3.1). */
@@ -603,8 +604,7 @@ export const make = Effect.gen(function* () {
             signCount: key.sign_count,
           },
         ),
-      catch: (e) =>
-        isPasskeyError(e) ? e.message : "That passkey's answer is not valid.",
+      catch: (e) => (isPasskeyError(e) ? e.message : "That passkey's answer is not valid."),
     }).pipe(
       Effect.map((r) => ({ ok: true as const, signCount: r.signCount })),
       Effect.catch((why) => Effect.succeed({ ok: false as const, why })),
@@ -715,8 +715,7 @@ export const make = Effect.gen(function* () {
           },
           { challenge, ...site },
         ),
-      catch: (e) =>
-        isPasskeyError(e) ? e.message : "That passkey's answer is not valid.",
+      catch: (e) => (isPasskeyError(e) ? e.message : "That passkey's answer is not valid."),
     }).pipe(
       Effect.map((key) => ({ ok: true as const, key })),
       Effect.catch((why) => Effect.succeed({ ok: false as const, why })),
