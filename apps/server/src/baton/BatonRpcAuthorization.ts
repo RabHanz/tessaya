@@ -47,7 +47,7 @@ import {
   type BatonRpcGroup,
   BATON_METHOD_OF,
 } from "@t3tools/baton-contracts";
-import { isMemberSubject, memberOfSubject, type Assurance } from "@t3tools/baton-shared/household";
+import { memberOfSubject, type Assurance } from "@t3tools/baton-shared/household";
 import { authScopeRequiredResponse, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
