@@ -195,7 +195,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..084d8bffc0e922b83952919becc731cd
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..ecb94b0c5ac5da6afd81d42f75557ea5537d0e4e 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..6bf1eaf6c0fe649aa81bf7bd1570bebdb68b9cd9 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -41,6 +41,9 @@
@@ -304,7 +304,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..ecb94b0c5ac5da6afd81d42f75557ea5
 +    "packages/baton-shared": { "ignoreDependencies": ["@t3tools/contracts"] },
 +    "packages/baton-voice": {
 +      // The R1 room loop and its replay harness run as programs on the voice host (deploy/r1-voice).
-+      "entry": ["src/room/main.ts!", "src/room/replay.ts!"],
++      "entry": ["src/room/main.ts!", "src/room/replay.ts!", "test/segmentsEval.ts"],
 +      "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"],
 +    },
      "packages/effect-acp": {
