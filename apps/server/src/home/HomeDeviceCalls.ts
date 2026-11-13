@@ -204,7 +204,7 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
         : reach.value.status,
     ),
   ),
-  claim: op(Schema.Struct({ deviceId: Id, oneTimeKey: Text(80) }), (a) =>
+  claim: op(Schema.Struct({ deviceId: Id, oneTimeKey: Text(32) }), (a) =>
     Effect.flatMap(Effect.serviceOption(R1Pairing), (pairing) =>
       Option.isNone(pairing)
         ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))

@@ -22,15 +22,44 @@ const DEVICE_ID = /^[A-Za-z0-9_-]{1,60}$/;
 const OUTSIDE_RECENT_MS = 30 * 24 * 60 * 60_000;
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
-const claimKey = (oneTimeKey: string, deviceId: string) =>
-  Buffer.from(NodeCrypto.hkdfSync("sha256", oneTimeKey, deviceId, "tessaya-r1-claim", 32));
+/** The pairing QR's one-time key: 128 bits as 32 hex digits (`T3R1:<ID>:<HEX>`, uppercase on the eye). */
+const ONE_TIME_KEY = /^[0-9A-Fa-f]{32}$/;
+
+/** HKDF-SHA256 over the key's 16 raw bytes, salt the device id in lower case, info "tessaya-r1-claim". */
+export const claimKey = (oneTimeKey: string, deviceId: string) =>
+  Buffer.from(
+    NodeCrypto.hkdfSync(
+      "sha256",
+      Buffer.from(oneTimeKey, "hex"),
+      deviceId.toLowerCase(),
+      "tessaya-r1-claim",
+      32,
+    ),
+  );
+
+/** What the R1 opens (firmware contract v1); `proxy` only when there is one. */
+export const claimPlaintext = (input: {
+  readonly deviceId: string;
+  readonly key: string;
+  readonly endpoints: R1Endpoints;
+}) => ({
+  v: 1,
+  device: input.deviceId.toLowerCase(),
+  key: input.key,
+  broker: input.endpoints.broker,
+  ...(input.endpoints.proxy === "" ? {} : { proxy: input.endpoints.proxy }),
+});
 
 /**
  * The provisioning blob: AES-256-GCM under HKDF-SHA256(one-time key, salt = device id, info "tessaya-r1-claim"), as
  * base64 of iv (12) | ciphertext | tag (16). The firmware's setup link opens it with the key on its eye.
  */
-export const sealClaim = (oneTimeKey: string, deviceId: string, plain: string): string => {
-  const iv = NodeCrypto.randomBytes(12);
+export const sealClaim = (
+  oneTimeKey: string,
+  deviceId: string,
+  plain: string,
+  iv: Buffer = NodeCrypto.randomBytes(12),
+): string => {
   const cipher = NodeCrypto.createCipheriv("aes-256-gcm", claimKey(oneTimeKey, deviceId), iv);
   const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   return Buffer.concat([iv, body, cipher.getAuthTag()]).toString("base64");
@@ -93,9 +122,12 @@ export const layer = Layer.effect(
       home.setDevice(device).pipe(Effect.mapError((e) => refuse(e.why)));
 
     return R1Pairing.of({
-      claim: Effect.fn("R1Pairing.claim")(function* ({ deviceId, oneTimeKey }) {
+      claim: Effect.fn("R1Pairing.claim")(function* (input) {
+        const deviceId = input.deviceId.toLowerCase();
+        const oneTimeKey = input.oneTimeKey;
         if (!DEVICE_ID.test(deviceId)) return yield* refuse("That is not an R1 id.");
-        if (oneTimeKey.length < 6) return yield* refuse("That is not the code on the R1's eye.");
+        if (!ONE_TIME_KEY.test(oneTimeKey))
+          return yield* refuse("That is not the code from the R1's pairing picture.");
         const current = yield* home.device;
         // shortcut: one R1 per server until per-device records land (next PR).
         if (current !== null && current.deviceId !== deviceId)
@@ -109,7 +141,11 @@ export const layer = Layer.effect(
         const { endpoints } = yield* reach.status;
         return {
           deviceId,
-          blob: sealClaim(oneTimeKey, deviceId, encodeJson({ deviceId, key, ...endpoints })),
+          blob: sealClaim(
+            oneTimeKey,
+            deviceId,
+            encodeJson(claimPlaintext({ deviceId, key, endpoints })),
+          ),
           endpoints,
         };
       }),
