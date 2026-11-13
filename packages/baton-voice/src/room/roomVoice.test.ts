@@ -2025,6 +2025,29 @@ describe("her name alone, then nothing (16:36:43, 13 Nov: the red light and sile
     expect(talking.logs.some((l) => l.includes("her name alone"))).toBe(false);
   });
 
+  it("never repeats her last line across S2 presses, and is often only a look when pressed again soon", async () => {
+    const said: string[] = [];
+    const t = setup(
+      {
+        random: () => 0.95,
+        log: (l) => {
+          const m = /her name alone: (?:"(.*)"|her look)/.exec(l);
+          if (m !== null) said.push(m[1] ?? "(look)");
+        },
+      },
+      { ...ROOM_CONFIG, acknowledge: "voice" },
+    );
+    t.room.message(`freya/r1/${DEV}/cmd/voice/earcons`, Buffer.from('{"on":false}'));
+    for (let i = 0; i < 3; i += 1) {
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      await t.feed(false, 30);
+      t.room.message(`freya/r1/${DEV}/cmd/voice/stop`, new Uint8Array());
+      t.advance(10 * 60_000);
+    }
+    expect(said).toHaveLength(3);
+    for (let i = 1; i < said.length; i += 1) expect(said[i]).not.toBe(said[i - 1]);
+  });
+
   it("is a sound with 'tone' and nothing with 'off'", async () => {
     const off = await wakeThenSilence("off", false);
     expect(off.after).toBe(0);

@@ -874,8 +874,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const look = () => eye("cmd/eye/persona", { name: (persona?.name ?? "").toLowerCase() });
 
     /** Her last "I'm here", so it is never the same twice running, and when it was. */
-    let lastAck: string | null = null;
-    let lastAckAt = Number.NEGATIVE_INFINITY;
+    // Kept per R1 across sessions: every S2 or wake opens a new one (17:23 replay: "Yes?" twice running).
+    const acked = ackState.get(id) ?? { line: null, at: Number.NEGATIVE_INFINITY };
+    ackState.set(id, acked);
     let ackScheduledAt = Number.NEGATIVE_INFINITY;
     /** Her "I'm here" lines in this persona's voice, rendered once so they play at once. */
     const prerenderAcks = () => {
@@ -919,18 +920,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             }).format(deps.now()),
           ),
           sinceExchangeMs: deps.now() - lastExchangeAt,
-          sinceAckMs: deps.now() - lastAckAt,
+          sinceAckMs: deps.now() - acked.at,
           name,
-          last: lastAck,
+          last: acked.line,
         },
         deps.random ?? Math.random,
       );
-      lastAckAt = deps.now();
+      acked.at = deps.now();
       if (line === null) {
         deps.log(`[${id}] her name alone: her look, no words`);
         return;
       }
-      lastAck = line;
+      acked.line = line;
       if (name !== null && line.includes(name) && recog !== null) recog = { ...recog, named: true };
       deps.log(`[${id}] her name alone: "${line}"`);
       speakNow(line, ackAudio.get(`${voiceNow() ?? ""}|${line}`));
@@ -1845,6 +1846,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const capabilities = new Map<string, ReadonlyArray<string>>();
   /** His own pronunciations per R1, from her server (`voice/pronounce`, retained). */
   const pronunciations = new Map<string, Readonly<Record<string, string>>>();
+  /** Her last "I'm here" on each R1 and when, across its sessions. */
+  const ackState = new Map<string, { line: string | null; at: number }>();
   /** Her "I'm here" lines, rendered per voice once for the loop's life (voice|line to audio). */
   const ackAudio = new Map<string, ReadonlyArray<Int16Array>>();
   const ackRendered = new Set<string>();
