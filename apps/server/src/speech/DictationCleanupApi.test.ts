@@ -9,32 +9,39 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { expect, vi } from "vite-plus/test";
+import * as BatonDatabase from "../baton/BatonDatabase.ts";
+import * as BrainUsage from "../baton/BrainUsage.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { parseRateTable } from "../usage/usagePricing.ts";
 import * as DictationCleanupApi from "./DictationCleanupApi.ts";
+
+const rates = parseRateTable({
+  "claude-haiku-5-5": {
+    input_cost_per_token: 1e-6,
+    output_cost_per_token: 5e-6,
+    cache_read_input_token_cost: 1e-7,
+    cache_creation_input_token_cost: 1.25e-6,
+  },
+});
+const usageLayer = Layer.effect(
+  BrainUsage.BrainUsage,
+  BrainUsage.make(() => rates),
+).pipe(Layer.provide(BatonDatabase.layerMemory));
 
 it.effect("cleans up with the saved Anthropic key only, and says when none is saved", () =>
   Effect.gen(function* () {
     const upstream = vi.fn<typeof fetch>(async () =>
-      Response.json({ content: [{ type: "text", text: " Cleaned. " }] }),
+      Response.json({
+        model: "claude-haiku-5-5",
+        usage: { input_tokens: 100, cache_read_input_tokens: 1000, output_tokens: 10 },
+        content: [{ type: "text", text: " Cleaned. " }],
+      }),
     );
-    const [api, settings] = yield* Effect.all([
+    const [api, settings, usage] = yield* Effect.all([
       DictationCleanupApi.DictationCleanupApi,
       ServerSettings.ServerSettingsService,
-    ]).pipe(
-      Effect.provide(
-        DictationCleanupApi.layer.pipe(
-          Layer.provide(FetchHttpClient.layer),
-          Layer.provideMerge(ServerSettings.ServerSettingsService.layerTest()),
-          Layer.provide(
-            Layer.mock(SecretResolver.SecretResolver)({
-              read: () => Effect.succeed([]),
-              label: () => Effect.succeed("Work"),
-              invalidate: () => Effect.void,
-            }),
-          ),
-        ),
-      ),
-    );
+      BrainUsage.BrainUsage,
+    ]);
     const fetching = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.provideService(FetchHttpClient.Fetch, upstream));
     const input = { system: "Fix the transcript.", message: "um hello", maxTokens: 64 };
@@ -61,6 +68,19 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
       messages: [{ role: "user", content: "um hello" }],
       output_config: { effort: "low" },
     });
+    // Its usage row, priced at list: 100 × $1/M + 1000 × $0.1/M + 10 × $5/M.
+    expect(yield* usage.totals({ since: 0, timeZone: "Asia/Karachi" })).toMatchObject([
+      {
+        role: "cleanup",
+        credential: "apiKey:anthropic",
+        model: "claude-haiku-5-5",
+        calls: 1,
+        input: 100,
+        cacheRead: 1000,
+        output: 10,
+        dollars: expect.closeTo(0.00025, 8),
+      },
+    ]);
 
     // The one cleanup setting's model, when it is Claude's; another provider's model keeps Haiku.
     const bodyModel = (call: number) =>
@@ -126,5 +146,20 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
 
     yield* api.setKey(null);
     expect(yield* api.configured).toBe(false);
-  }),
+  }).pipe(
+    Effect.provide(
+      Layer.effect(DictationCleanupApi.DictationCleanupApi, DictationCleanupApi.make).pipe(
+        Layer.provideMerge(usageLayer),
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provideMerge(ServerSettings.ServerSettingsService.layerTest()),
+        Layer.provide(
+          Layer.mock(SecretResolver.SecretResolver)({
+            read: () => Effect.succeed([]),
+            label: () => Effect.succeed("Work"),
+            invalidate: () => Effect.void,
+          }),
+        ),
+      ),
+    ),
+  ),
 );

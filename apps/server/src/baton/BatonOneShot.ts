@@ -20,6 +20,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { toJsonSchemaObject } from "@t3tools/provider-core/server/textGenerationUtils";
 
 import { onSubscription, routeFor } from "./BrainRoutes.ts";
+import { BrainUsage, cliTokens, layer as brainUsageLayer } from "./BrainUsage.ts";
 
 const TIMEOUT = "90 seconds";
 
@@ -41,17 +42,17 @@ export class BatonOneShot extends Context.Service<
 >()("t3/baton/BatonOneShot") {}
 
 /** Claude Code's `--output-format json` result: one envelope, or the message list ending in one. */
-export function structuredOutputOf(stdout: string): unknown {
+export function resultOf(stdout: string): { structured_output?: unknown } | undefined {
   const parsed: unknown = JSON.parse(stdout);
-  const envelope = Array.isArray(parsed)
+  return Array.isArray(parsed)
     ? parsed.findLast((message: { type?: unknown }) => message?.type === "result")
-    : parsed;
-  return (envelope as { structured_output?: unknown } | undefined)?.structured_output;
+    : (parsed as { structured_output?: unknown } | undefined);
 }
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const usage = yield* BrainUsage;
 
   const run: BatonOneShot["Service"]["run"] = ({ prompt, outputSchema, role }) =>
     Effect.gen(function* () {
@@ -118,11 +119,13 @@ export const make = Effect.gen(function* () {
             : new BatonOneShotError({ detail: String(cause) }),
         ),
       );
-      const structured = yield* Effect.try({
-        try: () => structuredOutputOf(stdout),
+      const result = yield* Effect.try({
+        try: () => resultOf(stdout),
         catch: () => new BatonOneShotError({ detail: "claude returned output that is not JSON" }),
       });
-      return yield* Schema.decodeUnknownEffect(outputSchema)(structured).pipe(
+      for (const tokens of cliTokens(result, model))
+        yield* usage.record({ ...tokens, role, credential: "subscription" });
+      return yield* Schema.decodeUnknownEffect(outputSchema)(result?.structured_output).pipe(
         Effect.mapError(
           () => new BatonOneShotError({ detail: "claude returned invalid structured output" }),
         ),
@@ -132,4 +135,4 @@ export const make = Effect.gen(function* () {
   return { run } satisfies BatonOneShot["Service"];
 });
 
-export const layer = Layer.effect(BatonOneShot, make);
+export const layer = Layer.effect(BatonOneShot, make).pipe(Layer.provide(brainUsageLayer));
