@@ -10,6 +10,14 @@ import { pronounce, pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import { stopIntent } from "@t3tools/baton-shared/stopPhrases";
 
 import { createEchoGuard } from "../echoGuard.ts";
+import {
+  accumulate,
+  cueOf,
+  NOT_SURE_YET,
+  stepUpFor,
+  type RecognitionSession,
+  type StepUp,
+} from "../recognition.ts";
 import { addressedInRoom, beganOverHer, echoVerdict, type Playback } from "../turnRules.ts";
 import {
   calledName,
@@ -57,6 +65,8 @@ export interface RoomPersona {
   /** What he calls it by. */
   readonly name: string;
   readonly voice: string;
+  /** The look she gives when she first recognises him this session; "happy" when the persona has none. */
+  readonly cueMood?: string;
 }
 
 export interface RecogniserTurn {
@@ -82,6 +92,19 @@ const sameWords = (a: string, b: string) => {
 
 /** How many times one turn may start her brain on a guess before the final text: each costs a brain call. */
 const MAX_GUESSES = 3;
+/** His reply to her step-up: the phrase she gave (its words in order), or a yes to "is that you?". */
+export const answersStepUp = (step: StepUp, text: string): boolean => {
+  const said = text
+    .toLowerCase()
+    .replace(/[^a-z' ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (step.kind === "phrase") return ` ${said} `.includes(` ${step.phrase} `);
+  if (step.kind === "confirm")
+    return /^(?:yes|yeah|yep|yup|it's me|it is me|that's me|correct)\b/.test(said);
+  return false;
+};
+
 /** His words must hold still this long at a pause before her brain starts early on them. */
 const STABLE_MS = 300;
 
@@ -144,6 +167,8 @@ export interface Tessaya {
   readonly words: string;
   /** What this body can do, from its own report (`state/caps`). */
   readonly capabilities: ReadonlyArray<string>;
+  /** Recognised for the first time this session (the recognition cue): their name, said once. */
+  readonly nameOnce?: string;
   /** The conversation the arbiter named for this R1's last win; absent, her server uses the default key. */
   readonly conversation?: string;
   readonly speaker: SpeakerIdentity;
@@ -511,6 +536,48 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       return verdict.hers;
     };
 
+    /** Who she is talking to across this session (recognition.ts): built up turn by turn, reset by a mismatch. */
+    let recog: RecognitionSession | null = null;
+    /** Their name, for the next request only: the turn the session is first recognised (the cue). */
+    let nameOnce: string | null = null;
+    /** An act her server holds until it knows who is speaking (`voice/stepup`), and how she asked. */
+    let heldAct: { readonly act: string; readonly step: StepUp; readonly at: number } | null = null;
+    /** The member's own voice for her (their preference), once they are recognised, while the lead answers. */
+    let memberVoice: string | null = null;
+    let prefsFor: string | null = null;
+    const voiceNow = () =>
+      persona === lead && memberVoice !== null ? memberVoice : persona?.voice;
+    /** A recognised member's own defaults: their persona unless he named another, and their voice for her. */
+    const applyPrefs = () => {
+      const member = recog?.verified === true ? recog.member : null;
+      if (member === null || member === prefsFor) return;
+      prefsFor = member;
+      const prefs = prefsOf.get(member);
+      memberVoice = prefs?.voice ?? null;
+      const wanted = config.personas.find(
+        (p) =>
+          prefs?.persona !== undefined &&
+          (p.id === prefs.persona || p.name.toLowerCase() === prefs.persona.toLowerCase()),
+      );
+      if (wanted !== undefined && persona === lead && wanted !== persona) {
+        persona = wanted;
+        look();
+      }
+    };
+    const hear = (identity: SpeakerIdentity, ms: number) => {
+      recog = accumulate(recog, identity, ms, deps.now());
+    };
+    /** The act her server held runs (or is let go), on `voice/stepup/done`. */
+    const settleStepUp = (ok: boolean, how: string) => {
+      if (heldAct === null) return;
+      deps.publish(
+        topic(id, "voice/stepup/done"),
+        JSON.stringify({ act: heldAct.act, ok, how, member: recog?.member ?? null }),
+      );
+      deps.log(`[${id}] step-up for ${heldAct.act}: ${ok ? "verified" : "not verified"} (${how})`);
+      heldAct = null;
+    };
+
     /** The turn as her server's one pipeline takes it (MEMORY-V2-DESIGN §2.0). */
     const envelopeOf = (
       given: string | undefined,
@@ -533,6 +600,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       words,
       capabilities: capabilities.get(id) ?? [],
       ...(conversationOf.has(id) ? { conversation: conversationOf.get(id)! } : {}),
+      ...(nameOnce === null ? {} : { nameOnce }),
       speaker,
       ...(affect === undefined
         ? {}
@@ -737,17 +805,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       for (const h of held) await out(h);
     };
     const say = (text: string, signal: AbortSignal, onFirstAudio?: () => void) =>
-      play(
-        deps.speak(spoken(text), signal, persona?.voice),
-        signal,
-        onFirstAudio,
-        config.prerollMs,
-      );
+      play(deps.speak(spoken(text), signal, voiceNow()), signal, onFirstAudio, config.prerollMs);
 
     /** Starts her voice on `text` at once (after the sentence before it), buffering what it says for `play`. */
     let synthesis: Promise<void> = Promise.resolve();
     const ahead = (text: string, signal: AbortSignal): AsyncIterable<Int16Array> => {
-      const voice = persona?.voice;
+      const voice = voiceNow();
       const chunks: Int16Array[] = [];
       let done = false;
       let failed: unknown = null;
@@ -1197,6 +1260,35 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         kept?.control.abort();
         return;
       }
+      // Recognition across the session: this turn's voice adds to it (or, heard late, to the next turn's).
+      const speechMs = (pcm.length / RATE) * 1000;
+      if (given === undefined) {
+        if (known !== null) hear(identity, speechMs);
+        else void sides.then(([late]) => late !== undefined && hear(late, speechMs));
+      }
+      // Her answer to a step-up ("say amber river", "is that you?"): scored, and the held act runs once verified.
+      if (given === undefined && heldAct !== null && answersStepUp(heldAct.step, text)) {
+        kept?.control.abort();
+        if (recog?.verified === true) {
+          settleStepUp(true, "voice");
+          speakNow("Thanks, that's you.");
+        } else {
+          settleStepUp(false, "voice");
+          speakNow("I still can't tell it's you, so I've left that.");
+        }
+        return;
+      }
+      if (recog !== null && called === null) applyPrefs();
+      if (recog !== null) {
+        const cue = cueOf(recog);
+        recog = cue.session;
+        // "I know you": a brief warm look (the persona's own, if it has one), then back.
+        if (cue.glance) {
+          eye("cmd/eye/set", { mood: persona?.cueMood ?? "happy" });
+          void deps.sleep(900).then(() => face("attentive"));
+        }
+        nameOnce = cue.name;
+      }
       firstUntil = 0;
       openUntil = Number.POSITIVE_INFINITY;
       const entry = { role: "user" as const, content: text };
@@ -1254,6 +1346,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speakingChain.catch(() => undefined);
         };
         const tessaya = envelope(text, persona, switched, via, identity, affect);
+        nameOnce = null;
         // His final words matched the guess and it is the one answered: the changes it held may now be made.
         if (kept !== null) deps.confirmed?.(kept.callId);
         const source =
@@ -1565,6 +1658,29 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** An R1 button's prompt: answered as if he had said it to her. */
       ask: (text: string) => void answer(new Int16Array(0), "button", deps.now(), deps.now(), text),
       /** He called this persona by name to wake her. */
+      /** Her server holds an act until it knows who is speaking: she asks once, the reply decides (or S2). */
+      stepUp: (act: string, shared: boolean, random: () => number = Math.random) => {
+        const asked = stepUpFor(
+          recog ?? accumulate(null, UNVERIFIED(deps.now()), 0, deps.now()),
+          { shared },
+          random,
+        );
+        recog = asked.session;
+        heldAct = { act, step: asked.step, at: deps.now() };
+        if (asked.step.kind === "none") return settleStepUp(true, "session");
+        const ask =
+          asked.step.kind === "phrase"
+            ? `Say "${asked.step.phrase}" for me.`
+            : asked.step.kind === "confirm"
+              ? `Is that you, ${asked.step.name}?`
+              : "Tap yes on your phone if that's you.";
+        if (reply !== null) interrupt();
+        speakNow(asked.step.explain ? `${NOT_SURE_YET} ${ask}` : ask);
+      },
+      /** S2 on this R1: someone is at it, which proves presence for an act waiting on who is speaking. */
+      present: () => settleStepUp(true, "button"),
+      /** Her name's own clip, heard by Voice ID: the first evidence of who woke her. */
+      heardName: (identity: SpeakerIdentity, ms: number) => hear(identity, ms),
       call: (name: string, level = Number.NEGATIVE_INFINITY) => {
         if (Number.isFinite(level)) hisLevel = level;
         const named = config.personas.find((p) => p.name === name);
@@ -1582,6 +1698,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       },
       /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
       tick: (): "stop" | null => {
+        if (heldAct !== null && deps.now() - heldAct.at > 60_000) settleStepUp(false, "no answer");
         const quiet = !turns.inTurn() && !speaking() && reply === null;
         // The persona he called holds for the whole session (13 Nov: Sebastian fell back within 14 s), or until he names another.
         if (quiet && !asleep && deps.now() > Math.max(openUntil, firstUntil)) {
@@ -1627,6 +1744,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.log(`${who}: ${verdict.winner ?? "another device"} answers; this R1 stays quiet`);
         return false;
       });
+  /** Each member's own defaults from her server (`voice/prefs/<member>`, retained): persona and voice. */
+  const prefsOf = new Map<string, { readonly persona?: string; readonly voice?: string }>();
   /** The household's languages per R1, from her server (`voice/languages`, retained). */
   const languagesOf = new Map<string, ReadonlyArray<string>>();
   /** The conversation the arbiter last named for each R1 (sent on its turns). */
@@ -1647,7 +1766,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     if (!noCues.has(id)) sessions.get(id)?.cue(name);
   };
   /** Who woke an R1 by name, until its session starts. */
-  const calledBy = new Map<string, { readonly word: string; readonly level: number }>();
+  const calledBy = new Map<
+    string,
+    {
+      readonly word: string;
+      readonly level: number;
+      /** Voice ID on her name's own clip, and how long it was. */
+      readonly heard?: Promise<SpeakerIdentity | undefined>;
+      readonly ms: number;
+    }
+  >();
   const start = (id: string, how = "audio") => {
     sessions.get(id)?.close();
     const s = openSession(id);
@@ -1741,6 +1869,27 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.log(`[${id}] languages: ${(languagesOf.get(id) ?? config.languages).join(", ")}`);
         return;
       }
+      if (tail.startsWith("voice/prefs/")) {
+        const member = tail.slice("voice/prefs/".length);
+        const body = String(payload).trim();
+        if (member === "" || member.includes("/")) return;
+        if (body === "") prefsOf.delete(member);
+        else {
+          const { persona: p, voice: v } = json();
+          prefsOf.set(member, {
+            ...(typeof p === "string" && /^[\w-]{1,40}$/.test(p) ? { persona: p } : {}),
+            ...(typeof v === "string" && /^[\w-]{1,40}$/.test(v) ? { voice: v } : {}),
+          });
+        }
+        return;
+      }
+      if (tail === "voice/stepup") {
+        // Her server holds an act until it knows who is speaking (recognition step-up).
+        const { act, shared } = json();
+        if (typeof act === "string" && act !== "" && act.length <= 80)
+          (sessions.get(id) ?? start(id)).stepUp(act, shared !== false);
+        return;
+      }
       if (tail === "voice/forget") {
         // A member's data destroyed in his household (the identity lane): their voice profile here goes with it.
         const personId = json()["personId"];
@@ -1797,6 +1946,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (typeof text === "string" && text.trim() !== "" && !muted.has(id))
           (sessions.get(id) ?? start(id)).ask(text.trim().slice(0, 400));
       } else if (tail === "cmd/voice/start") {
+        // S2 (not her name) proves someone is at this R1, for an act already waiting on who is speaking.
+        if (!calledBy.has(id)) sessions.get(id)?.present();
         const s = start(id, "S2 or wake");
         s.wake();
         const called = calledBy.get(id);
@@ -1809,7 +1960,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             ?.claim({ deviceId: id, wakeScore: 1, loudnessDb: null, answerHere: true })
             .catch(() => null);
         }
-        if (called !== undefined) s.call(called.word, called.level);
+        if (called !== undefined) {
+          s.call(called.word, called.level);
+          void called.heard?.then((who) => who !== undefined && s.heardName(who, called.ms));
+        } else s.present();
         cue(id, "wake");
       } else if (tail === "voice/wake") {
         // The R1 sends its wake stream only between sessions (SMP 0.3.35): a session still open here is a stale one,
@@ -1893,7 +2047,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       const open = () => {
-        calledBy.set(id, { word, level });
+        calledBy.set(id, {
+          word,
+          level,
+          ms: clip === undefined ? 0 : (clip.length / RATE) * 1000,
+          ...(clip === undefined || deps.speaker === undefined
+            ? {}
+            : { heard: deps.speaker(clip).catch(() => undefined) }),
+        });
         deps.publish(topic(id, "cmd/voice/start"), "{}");
       };
       if (deps.arbiter === undefined) return open();

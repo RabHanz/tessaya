@@ -1801,3 +1801,95 @@ describe("her brain starts alongside the speaker check (13 Nov, Sonnet)", () => 
     expect(t.published.filter((p) => p.topic.endsWith("/voice/down"))).toEqual([]);
   });
 });
+
+describe("recognising who she is talking to across a session (recognition.ts)", () => {
+  const owner = (confidence: number, verified: boolean): SpeakerIdentity => ({
+    kind: "owner",
+    personId: "member-1",
+    name: "Rab",
+    confidence,
+    verified,
+    inherited: false,
+    at: 0,
+  });
+  const lines = (texts: ReadonlyArray<string>) => {
+    let n = 0;
+    return () => {
+      const text = texts[n++] ?? "";
+      return { feed: () => undefined, finish: async () => text, cancel: () => undefined };
+    };
+  };
+
+  it("looks warmly once and says his name once, on the turn he is first recognised", async () => {
+    const t = setup({
+      recognise: lines(["What time is it?", "And the date?"]),
+      speaker: async () => owner(0.7, true),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(t.brainCalls.map((c) => c.tessaya.nameOnce)).toEqual(["Rab", undefined]);
+    expect(t.published.filter((p) => String(p.payload) === '{"mood":"happy"}')).toHaveLength(1);
+  });
+
+  it("asks before an act her server holds, and lets it run once his reply proves it is him", async () => {
+    const spoken: string[] = [];
+    let said = "";
+    const t = setup({
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => said,
+        cancel: () => undefined,
+      }),
+      speaker: async () => owner(0.6, false),
+      speak: async function* (text) {
+        spoken.push(text);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.s2();
+    t.room.message(
+      `freya/r1/${DEV}/voice/stepup`,
+      Buffer.from('{"act":"unlock-door","shared":true}'),
+    );
+    const ask = spoken.at(-1)!;
+    expect(ask.startsWith("I'm not sure it's you yet.")).toBe(true);
+    said = /"([a-z]+ [a-z]+)"/.exec(ask)![1]!;
+    // His voice over a few turns adds up to a match: the phrase answers, and the act runs.
+    await t.feed(true, 80);
+    await t.feed(false, 40);
+    const done = t.published.filter((p) => p.topic.endsWith("/voice/stepup/done"));
+    expect(done.map((p) => JSON.parse(String(p.payload)) as { act: string; ok: boolean })).toEqual([
+      expect.objectContaining({ act: "unlock-door", ok: true, how: "voice" }),
+    ]);
+    expect(t.brainCalls).toEqual([]);
+  });
+
+  it("takes S2 as presence for a held act, and a member's own persona and voice once he is recognised", async () => {
+    const voices: Array<string | undefined> = [];
+    const t = setup({
+      recognise: lines(["What's on today?"]),
+      speaker: async () => owner(0.7, true),
+      speak: async function* (_text, _signal, voice) {
+        voices.push(voice);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.room.message(`freya/r1/${DEV}/voice/stepup`, Buffer.from('{"act":"camera"}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    expect(
+      t.published
+        .filter((p) => p.topic.endsWith("/voice/stepup/done"))
+        .map((p) => (JSON.parse(String(p.payload)) as { how: string }).how),
+    ).toEqual(["button"]);
+    t.room.message(
+      `freya/r1/${DEV}/voice/prefs/member-1`,
+      Buffer.from('{"persona":"research","voice":"alba"}'),
+    );
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(t.brainCalls.at(-1)!.tessaya.persona).toBe("research");
+  });
+});
