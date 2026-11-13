@@ -6,6 +6,7 @@
 import {
   R1_DEVICE_DOS,
   R1_KEY_SLOTS,
+  type BtKind,
   type DeviceSpeaker,
   type DeviceTagAction,
   type DeviceView,
@@ -45,12 +46,41 @@ export const transportLine = (d: DeviceView): string =>
       ? "In-house: Tessaya's own room loop hears and speaks."
       : "Agora's cloud. Its account is inactive, so the device may not answer; revert to in-house if it goes quiet.";
 
-/** One line for the R1's Bluetooth speaker row, the same on web and mobile. */
+const KIND_NOUN: Readonly<Record<BtKind, string>> = {
+  headphones: "Headphones",
+  headset: "Headset",
+  speaker: "Speaker",
+  car: "Car audio",
+  receiver: "Receiver",
+  other: "Bluetooth device",
+};
+const MAC_LIKE = /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/;
+
+/** What a Bluetooth device is called on screen: its own name, else what it is; never a bare address. */
+export const btDeviceLabel = (d: { readonly name: string; readonly kind?: BtKind }): string =>
+  d.name !== "" && !MAC_LIKE.test(d.name) ? d.name : KIND_NOUN[d.kind ?? "other"];
+export const btKindNoun = (kind: BtKind | undefined): string => KIND_NOUN[kind ?? "other"];
+
+/** "Replies play on" choices, named after the saved device. */
+export const outputLabels = (s: DeviceSpeaker) => {
+  const name = s.saved === null ? "Bluetooth" : btDeviceLabel(s.saved);
+  return { auto: `${name}, else R1`, bt: `${name} only`, onboard: "R1 only" } as const;
+};
+
+/** The pair row's line; an empty scan says why a device may not show. */
+export const scanLine = (s: DeviceSpeaker): string =>
+  s.scannedAt === null
+    ? "Put the device in pairing mode, then scan."
+    : s.found.length === 0
+      ? `Nothing found at ${clock(s.scannedAt)}. Put the device in pairing mode, or disconnect it from your phone or laptop first, then scan again.`
+      : `${s.found.length} found at ${clock(s.scannedAt)}. Pick one to pair.`;
+
+/** One line for the R1's Bluetooth audio row, the same on web and mobile. */
 export const speakerLine = (s: DeviceSpeaker): string => {
-  const name = s.saved?.name ?? "the speaker";
+  const name = s.saved === null ? "the device" : btDeviceLabel(s.saved);
   switch (s.state) {
     case "scanning":
-      return "Looking for Bluetooth speakers nearby.";
+      return "Looking for Bluetooth audio devices nearby.";
     case "connecting":
       return `Connecting to ${name}.`;
     case "connected":
@@ -60,7 +90,7 @@ export const speakerLine = (s: DeviceSpeaker): string => {
       return `Could not reach ${name}. Check it is on and in range, then connect again.`;
     default:
       return s.saved === null
-        ? "No speaker paired. Scan, then pick one to pair."
+        ? "Nothing paired. Scan, then pick one to pair."
         : `${name} is paired but not connected. Replies play on the R1.`;
   }
 };

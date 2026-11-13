@@ -6,6 +6,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { phoneManifest, phoneValues } from "@t3tools/baton-shared/phoneDevice";
 import * as Device from "expo-device";
 import {
+  DEVICE_SPEAKER_OUTPUTS,
   R1_MOODS,
   type R1KeyBinding,
   type R1KeySlot,
@@ -33,7 +34,11 @@ import {
   tagActionLine,
   transportLine,
   when,
+  btDeviceLabel,
+  btKindNoun,
   displaySupported,
+  outputLabels,
+  scanLine,
 } from "@t3tools/baton-shared/deviceView";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState, type ReactNode } from "react";
@@ -1018,13 +1023,7 @@ function SetupSection({
   );
 }
 
-const OUTPUTS = [
-  ["auto", "Speaker, else R1"],
-  ["bt", "Speaker only"],
-  ["onboard", "R1 only"],
-] as const;
-
-/** Shown only once the R1's firmware reports it can drive a Bluetooth speaker. */
+/** Shown only once the R1's firmware reports it can drive Bluetooth audio. */
 function SpeakerSection({
   device: d,
   busy,
@@ -1041,8 +1040,15 @@ function SpeakerSection({
   const off = busy || d.online !== true;
   const linked = s.state === "connected" || s.state === "streaming";
   return (
-    <SettingsSection title={`${prefix}Bluetooth speaker · ${id}`}>
-      <Row title={s.saved?.name ?? "Speaker"} description={speakerLine(s)}>
+    <SettingsSection title={`${prefix}Bluetooth audio · ${id}`}>
+      <Row
+        title={
+          s.saved === null
+            ? "Bluetooth audio"
+            : `${btDeviceLabel(s.saved)} · ${btKindNoun(s.saved.kind)}`
+        }
+        description={speakerLine(s)}
+      >
         {s.saved === null ? null : (
           <ControlPill
             variant={linked ? "pill" : "primary"}
@@ -1063,25 +1069,17 @@ function SpeakerSection({
         )}
       </Row>
       <Row divider title="Replies play on" description="">
-        {OUTPUTS.map(([output, label]) => (
+        {DEVICE_SPEAKER_OUTPUTS.map((output) => (
           <ControlPill
             key={output}
             variant={s.output === output ? "primary" : "pill"}
-            label={label}
+            label={outputLabels(s)[output]}
             disabled={off}
             onPress={() => void run("act", "speaker", { id, action: "route", output })}
           />
         ))}
       </Row>
-      <Row
-        divider
-        title="Pair a speaker"
-        description={
-          s.scannedAt === null
-            ? "Put the speaker in pairing mode, then scan."
-            : `${s.found.length} found at ${clock(s.scannedAt)}. Pick one to pair.`
-        }
-      >
+      <Row divider title="Pair a device" description={scanLine(s)}>
         <ControlPill
           variant="pill"
           label={s.state === "scanning" ? "Scanning…" : "Scan"}
@@ -1092,7 +1090,7 @@ function SpeakerSection({
           <ControlPill
             key={f.mac}
             variant={s.saved?.mac === f.mac ? "primary" : "pill"}
-            label={`${f.name || f.mac}${f.audio ? "" : " (not audio)"}`}
+            label={`${btDeviceLabel(f)}${f.audio ? ` · ${btKindNoun(f.kind)}` : " (not audio)"}`}
             disabled={off}
             onPress={() => void run("act", "speaker", { id, action: "pair", mac: f.mac })}
           />

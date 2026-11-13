@@ -354,8 +354,25 @@ it.effect(
           speaker.found.length,
           speaker.found[0]!.name,
         ],
-        ["streaming", { mac: "AA:BB:CC:DD:EE:FF", name: "Flip 5" }, "auto", 1, "Flip 5"],
+        [
+          "streaming",
+          { mac: "AA:BB:CC:DD:EE:FF", name: "Flip 5", kind: "speaker" },
+          "auto",
+          1,
+          "Flip 5",
+        ],
       );
+      // No name from the firmware: the one it was heard by stays, and its Class of Device says headphones.
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"idle","mac":"AA:BB:CC:DD:EE:FF","name":"","cod":2360344,"out":"auto","saved":true}',
+      );
+      assert.deepStrictEqual((yield* devices.overview).devices[0]!.speaker!.saved, {
+        mac: "AA:BB:CC:DD:EE:FF",
+        name: "Flip 5",
+        cod: 2360344,
+        kind: "headphones",
+      });
 
       yield* devices.receive(
         `${root}/state/bt`,
