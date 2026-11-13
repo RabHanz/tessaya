@@ -107,9 +107,14 @@ const REACH: Readonly<Record<string, ToolReach>> = {
     ]),
   ),
   ...Object.fromEntries(
-    ["settings_set", "member_invite", "member_set_role", "member_remove", "member_restore"].map(
-      (t) => [t, "household" as const],
-    ),
+    [
+      "settings_set",
+      "member_invite",
+      "member_set_role",
+      "member_remove",
+      "member_restore",
+      "household_home_server",
+    ].map((t) => [t, "household" as const]),
   ),
 };
 export const toolReach = (tool: string): ToolReach => REACH[batonToolName(tool)] ?? "machine";

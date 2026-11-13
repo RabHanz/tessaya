@@ -195,6 +195,10 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
       "Remove now destroys {name}'s data at once, with no export and no undo. Click Remove now again to do it.",
     "hh.enrol": "Enrol voice",
     "hh.newCode": "New device code",
+    "hh.homeOn": "Members live on",
+    "hh.homeOn.hint":
+      "One server keeps who lives here; the others ask it. Pick the server that is always on.",
+    "hh.homeOn.here": "This computer",
     "hh.add": "Add someone",
     "hh.add.name": "Their name",
     "hh.add.button": "Add",

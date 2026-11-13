@@ -62,6 +62,11 @@ export const BatonHouseholdCallInput = Schema.Union([
   op("restore", Ref),
   /** The owner-only "machine" grant, on or off. */
   op("machine", { ...Ref, on: Schema.Boolean }),
+  /**
+   * Which linked server holds this household's members (its label), or null for this one. Every other server asks it,
+   * so a home has one members table however many servers it has.
+   */
+  op("setHome", { on: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))) }),
 ]);
 export type BatonHouseholdCallInput = typeof BatonHouseholdCallInput.Type;
 
@@ -76,5 +81,8 @@ export const BatonHouseholdCallResult = Schema.Struct({
   codeExpiresAt: Schema.optionalKey(IsoDateTime),
   /** The plain warning a machine grant carries. */
   warning: Schema.optionalKey(Schema.String),
+  /** With `list`: the linked server the members live on (null: this one), and the linked servers it could be. */
+  homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  peers: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type BatonHouseholdCallResult = typeof BatonHouseholdCallResult.Type;

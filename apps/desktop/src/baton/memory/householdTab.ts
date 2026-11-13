@@ -43,6 +43,8 @@ export const householdControls = (s: {
   readonly code: { readonly name: string; readonly code: string; readonly until: string } | null;
   readonly status: string | null;
   readonly canEnrol: boolean;
+  readonly homeOn: string | null;
+  readonly peers: ReadonlyArray<string>;
 }): ReadonlyArray<HomeControl> => {
   const section = text("hh.section");
   const rows: Array<HomeControl> = [];
@@ -100,6 +102,23 @@ export const householdControls = (s: {
           },
     );
   }
+  // Only where there is another server to keep them on.
+  if (s.peers.length > 0 || s.homeOn !== null)
+    rows.push({
+      id: "m.hh.homeOn",
+      section,
+      label: text("hh.homeOn"),
+      hint: text("hh.homeOn.hint"),
+      kind: "choice",
+      value: s.homeOn ?? "",
+      options: [
+        { value: "", label: text("hh.homeOn.here") },
+        ...[...new Set([...s.peers, ...(s.homeOn === null ? [] : [s.homeOn])])].map((p) => ({
+          value: p,
+          label: p,
+        })),
+      ],
+    });
   rows.push(
     {
       id: "m.hh.inviteRole",
@@ -148,6 +167,8 @@ export const createHouseholdTab = (input: {
   readonly refresh: () => void;
 }) => {
   let members: ReadonlyArray<BatonHouseholdMember> = [];
+  let homeOn: string | null = null;
+  let peers: ReadonlyArray<string> = [];
   let inviteRole: InviteRole = "adult";
   let code: { name: string; code: string; until: string } | null = null;
   let status: string | null = null;
@@ -155,7 +176,10 @@ export const createHouseholdTab = (input: {
 
   const load = async () => {
     try {
-      members = (await input.call("list")).members ?? [];
+      const listed = await input.call("list");
+      members = listed.members ?? [];
+      homeOn = listed.homeOn ?? null;
+      peers = listed.peers ?? [];
     } catch (e) {
       status = e instanceof Error ? e.message : text("hh.failed");
     }
@@ -183,7 +207,15 @@ export const createHouseholdTab = (input: {
     /** Resolves once every request it was asked for has answered. */
     settled: () => busy,
     controls: (): ReadonlyArray<HomeControl> =>
-      householdControls({ members, inviteRole, code, status, canEnrol: input.enrol !== null }),
+      householdControls({
+        members,
+        inviteRole,
+        code,
+        status,
+        canEnrol: input.enrol !== null,
+        homeOn,
+        peers,
+      }),
     /** Handles a click on one of its controls; false when the id is not its own. */
     act: (id: string, value: unknown): boolean => {
       if (!id.startsWith("m.hh.")) return false;
@@ -192,7 +224,9 @@ export const createHouseholdTab = (input: {
       const kind = at < 0 ? body : body.slice(0, at);
       const rest = at < 0 ? "" : body.slice(at + 1);
       const target = memberOf(rest.replace(/:later$/, ""));
-      if (kind === "inviteRole" && ROLES.includes(value as InviteRole))
+      if (kind === "homeOn" && typeof value === "string")
+        run("setHome", { on: value === "" ? null : value });
+      else if (kind === "inviteRole" && ROLES.includes(value as InviteRole))
         inviteRole = value as InviteRole;
       else if (
         kind === "invite" &&
