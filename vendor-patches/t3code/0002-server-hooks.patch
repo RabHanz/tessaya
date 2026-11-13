@@ -1765,7 +1765,7 @@ index d9ca41b8f26b18091bb5b221916e68f42343d269..523caea648b8987cd3bff00bf44fc683
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 2510c86fd0f8b91e7ecdd20a1e2ec7c91b02d4c3..921eb0319ad266300045bc1003ea0422c60778ab 100644
+index 2510c86fd0f8b91e7ecdd20a1e2ec7c91b02d4c3..a8855ed42aff4f75a4fa44412b618cbacd26de6a 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -1794,24 +1794,26 @@ index 2510c86fd0f8b91e7ecdd20a1e2ec7c91b02d4c3..921eb0319ad266300045bc1003ea0422
  import * as PeerForwarding from "./peer/PeerForwarding.ts";
  import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
  import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
-@@ -692,7 +697,16 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -692,7 +697,18 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    ProviderInstallation.layer,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 +  BatonServerLayer.workers,
  ).pipe(
-+  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
-+  Layer.provideMerge(BatonServerLayer.services),
-+  // The desktop's dictation cleanup reaches it through the desk door (BatonTessayaRoutes).
-+  Layer.provideMerge(DictationCleanupApi.layer),
-+  // Baton's cross-environment session list reaches linked environments the way agents do (GEN-6).
-+  Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
-+  // The same memoized sink the runtime uses, for Baton's live-session threads (D83).
-+  Layer.provideMerge(RuntimeLayer.layerEventSink),
++  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine, as one
++  // argument because pipe takes at most 20. Dictation cleanup reaches the desk door (BatonTessayaRoutes), the
++  // session list reaches linked environments (GEN-6), and live-session threads share the runtime's sink (D83).
++  Layer.provideMerge(
++    BatonServerLayer.services.pipe(
++      Layer.provideMerge(DictationCleanupApi.layer),
++      Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
++      Layer.provideMerge(RuntimeLayer.layerEventSink),
++    ),
++  ),
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -814,11 +828,19 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -814,11 +830,19 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
@@ -1832,7 +1834,7 @@ index 2510c86fd0f8b91e7ecdd20a1e2ec7c91b02d4c3..921eb0319ad266300045bc1003ea0422
      Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
    ),
-@@ -857,6 +879,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -857,6 +881,7 @@ const layerMakeRoutes = Layer.mergeAll(
      ),
    ),
    Layer.provide(CloudSpeech.layer.pipe(Layer.provide(SecretResolver.layer))),

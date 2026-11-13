@@ -699,14 +699,16 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
   BatonServerLayer.workers,
 ).pipe(
-  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
-  Layer.provideMerge(BatonServerLayer.services),
-  // The desktop's dictation cleanup reaches it through the desk door (BatonTessayaRoutes).
-  Layer.provideMerge(DictationCleanupApi.layer),
-  // Baton's cross-environment session list reaches linked environments the way agents do (GEN-6).
-  Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
-  // The same memoized sink the runtime uses, for Baton's live-session threads (D83).
-  Layer.provideMerge(RuntimeLayer.layerEventSink),
+  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine, as one
+  // argument because pipe takes at most 20. Dictation cleanup reaches the desk door (BatonTessayaRoutes), the
+  // session list reaches linked environments (GEN-6), and live-session threads share the runtime's sink (D83).
+  Layer.provideMerge(
+    BatonServerLayer.services.pipe(
+      Layer.provideMerge(DictationCleanupApi.layer),
+      Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
+      Layer.provideMerge(RuntimeLayer.layerEventSink),
+    ),
+  ),
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
