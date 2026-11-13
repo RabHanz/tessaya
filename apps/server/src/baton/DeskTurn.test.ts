@@ -10,7 +10,6 @@ import { R1Brain, type SessionToolTurn } from "../home/R1Brain.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { deskTurnStream } from "./DeskTurn.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
-import { VesselHands } from "./VesselHands.ts";
 
 const run = (ownMachine: boolean) =>
   Effect.gen(function* () {
@@ -28,6 +27,7 @@ const run = (ownMachine: boolean) =>
       },
       { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
       ownMachine,
+      hands,
     ).pipe(
       Stream.runCollect,
       Effect.provide(
@@ -61,7 +61,6 @@ const run = (ownMachine: boolean) =>
             end: () => Effect.succeed(null),
           }),
           Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
-          Layer.succeed(VesselHands, hands),
         ),
       ),
     );

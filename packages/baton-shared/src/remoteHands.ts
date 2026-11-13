@@ -231,6 +231,11 @@ export const createHandsBroker = (input: {
     take,
     reply,
     connected,
+    /** Sets what is offered and counts as listening, without taking a call (a relay that takes them after). */
+    publish: (tools: ReadonlyArray<HandsToolSpec>) => {
+      published = tools;
+      lastTake = input.now();
+    },
     /** What the desktop offers a brain turn now; nothing while it is not listening. */
     published: (): ReadonlyArray<HandsToolSpec> => (connected() ? published : []),
     audit: () => [...audit],

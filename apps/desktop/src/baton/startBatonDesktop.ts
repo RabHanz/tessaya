@@ -27,7 +27,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
-import { readDeskTurn } from "./agent/deskTurnStream.ts";
+import { readDeskTurn } from "@t3tools/baton-shared/deskTurnStream";
 import { conversationsIn } from "./conversation/conversationLog.ts";
 import {
   beginStart,
