@@ -339,6 +339,81 @@ const nowhere = Layer.succeed(ServerConfig.ServerConfig, {
   dbPath: "/nowhere/statev2.sqlite",
 } as unknown as ServerConfig.ServerConfig["Service"]);
 
+/** Superseded pairs the nightly sweep must find: each new wording beside its old one, neither linked. */
+const sweep = (nights: number) =>
+  it.effect(
+    `sweep (fused): ${nights} nights of judging pairs close in meaning retire replaced facts`,
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const learn = yield* BatonMemoryLearning;
+        const { items } = corpusOf.get("06-corpus.json")!;
+        const idOf = new Map<string, string>();
+        for (const { key, supersedes: _replaces, ...draft } of items)
+          idOf.set(key, (yield* memory.add(draft)).id);
+        // The replaced fact and its replacement, as texts the judge sees: the new one is the later, so it wins.
+        const pairs = items.flatMap((i) =>
+          i.supersedes === undefined
+            ? []
+            : [
+                {
+                  old: items.find((o) => o.key === i.supersedes)!.text,
+                  now: i.text,
+                  oldKey: i.supersedes,
+                },
+              ],
+        );
+        sweepTruth = pairs;
+        yield* embedAll;
+        for (let n = 0; n < nights; n++) yield* learn.consolidate;
+        const live = yield* memory.list({ limit: 100_000 });
+        const alive = pairs.filter((p) => live.some((i) => i.id === idOf.get(p.oldKey)));
+        const wrongly = items.filter(
+          (i) =>
+            i.supersedes === undefined &&
+            !pairs.some((p) => p.oldKey === i.key) &&
+            !live.some((l) => l.id === idOf.get(i.key)),
+        );
+        console.log(
+          `memory eval sweep: after ${nights} nights ${alive.length}/${pairs.length} replaced facts still alive, ${wrongly.length} others wrongly retired`,
+        );
+        assert.lengthOf(wrongly, 0);
+        assert.isAtMost(alive.length, SWEEP_LEFT_AT_MOST[nights] ?? pairs.length);
+      }).pipe(
+        Effect.provide(
+          learningLayer.pipe(
+            Layer.provideMerge(memoryLayer),
+            Layer.provideMerge(strictModel),
+            Layer.provideMerge(sweepOracle),
+            Layer.provideMerge(nowhere),
+            Layer.provideMerge(SqlitePersistenceMemory),
+          ),
+        ),
+      ),
+  );
+/** Replaced facts left alive after the sweep, at most; lower it when the sweep improves. */
+const SWEEP_LEFT_AT_MOST: Readonly<Record<number, number>> = { 1: 13, 5: 8 };
+let sweepTruth: ReadonlyArray<{ old: string; now: string; oldKey: string }> = [];
+/** The perfect judge: a true replacement is "replaces" (newer wins), everything else "unrelated". */
+const sweepOracle = Layer.succeed(BatonOneShot, {
+  run: ((input: { readonly prompt: string }) => {
+    const verdicts = [
+      ...input.prompt.matchAll(/^(\d+)\. A \([^)]*\): (.*)\n {3}B \([^)]*\): (.*)$/gm),
+    ].map((m) => {
+      const [a, b] = [m[2]!, m[3]!];
+      const truth = sweepTruth.find(
+        (t) => (t.old === a && t.now === b) || (t.old === b && t.now === a),
+      );
+      return {
+        pair: Number(m[1]),
+        verdict:
+          truth === undefined ? "unrelated" : truth.now === a ? "a-replaces-b" : "b-replaces-a",
+      };
+    });
+    return Effect.succeed({ verdicts } as never);
+  }) as BatonOneShot["Service"]["run"],
+});
+
 retrieval("keyword", noEmbedder, false);
 retrieval("device", noEmbedder, false);
 learning("keyword", noEmbedder);
@@ -347,6 +422,8 @@ describe.runIf(hasModel)("with the local model", () => {
   retrieval("fused", strictModel, true);
   retrieval("device", strictModel, true);
   learning("fused", strictModel);
+  sweep(1);
+  sweep(5);
 });
 
 /**

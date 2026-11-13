@@ -6,12 +6,20 @@ import * as NodePath from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { dayOf } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
-import { BatonMemoryService, MemoryViewer, layer as memoryLayer } from "./BatonMemoryService.ts";
+import { BatonMemoryEmbedder } from "./BatonMemoryEmbedder.ts";
+import {
+  BatonMemoryService,
+  MemoryViewer,
+  layer as memoryLayer,
+  textHash,
+} from "./BatonMemoryService.ts";
+import { vectorToBytes } from "./memoryVectors.ts";
 import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
 
 let reply: unknown = { items: [] };
@@ -452,4 +460,78 @@ it.effect(
       Effect.ensuring(Effect.sync(() => NodeFS.rmSync(userdata, { recursive: true, force: true }))),
     );
   },
+);
+
+/** Unit vectors by topic, so two statements about the same thing sit at cosine 1 and others at 0. */
+const topicVector = (text: string): Float32Array => {
+  const v = new Float32Array(4);
+  v[/standup/i.test(text) ? 0 : /gym/i.test(text) ? 1 : /bins/i.test(text) ? 2 : 3] = 1;
+  return v;
+};
+const sweepLayer = learningLayer.pipe(
+  Layer.provideMerge(memoryLayer),
+  Layer.provideMerge(
+    Layer.succeed(
+      BatonMemoryEmbedder,
+      BatonMemoryEmbedder.of({
+        model: "topics",
+        embed: (text) => Effect.succeed(topicVector(text)),
+      }),
+    ),
+  ),
+  Layer.provideMerge(oneShot),
+  Layer.provideMerge(config),
+  Layer.provideMerge(SqlitePersistenceMemory),
+);
+
+it.effect(
+  "the nightly sweep retires a replaced fact, leaves his words to him, and judges a pair only once",
+  () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const learning = yield* BatonMemoryLearning;
+      const sql = yield* SqlClient.SqlClient;
+      const add = (text: string, source: "user" | "thread", at: string) =>
+        memory
+          .add({ kind: "fact", text, source })
+          .pipe(
+            Effect.tap(
+              (i) => sql`UPDATE fabric_memory_items SET updated_at = ${at} WHERE id = ${i.id}`,
+            ),
+          );
+      const his = yield* add("Standup is at nine", "user", "2026-11-01T00:00:00.000Z");
+      const model = yield* add(
+        "Standup moved to ten instead",
+        "thread",
+        "2026-11-10T00:00:00.000Z",
+      );
+      const gymOld = yield* add("The gym is on Tuesdays", "thread", "2026-10-01T00:00:00.000Z");
+      const gymNew = yield* add("Gym moved to Thursdays now", "thread", "2026-11-11T00:00:00.000Z");
+      yield* add("The bins go out on Tuesday night", "user", "2026-11-02T00:00:00.000Z");
+      for (const i of yield* memory.list({ limit: 100 }))
+        yield* sql`INSERT INTO fabric_memory_vectors (item_id, model, text_hash, vector, updated_at)
+          VALUES (${i.id}, 'topics', ${textHash(i.text)}, ${vectorToBytes(topicVector(i.text))}, '')`;
+      prompts.length = 0;
+      // The judge reads each pair's newer statement as replacing the older.
+      reply = (prompt: string) => ({
+        verdicts: [...prompt.matchAll(/^(\d+)\. A \(([^)]*)\): .*\n {3}B \(([^)]*)\):/gm)].map(
+          (m) => ({
+            pair: Number(m[1]),
+            verdict: m[2]! > m[3]! ? "a-replaces-b" : "b-replaces-a",
+          }),
+        ),
+      });
+      const night = yield* learning.consolidate;
+      assert.deepStrictEqual([night.judged, night.retired, night.conflicts], [2, 1, 1]);
+      const live = (yield* memory.list({ limit: 100 })).map((i) => i.id);
+      // The gym's newer fact retired the older; a model's "moved to ten" never retires his own words.
+      assert.notInclude(live, gymOld.id);
+      assert.includeMembers(live, [gymNew.id, his.id, model.id]);
+      assert.include((yield* memory.meta("sweep-conflicts")) ?? "", `${model.id}|${his.id}`);
+      // The next night has nothing new to judge: no model call.
+      const calls = prompts.length;
+      assert.strictEqual((yield* learning.consolidate).judged, 0);
+      assert.strictEqual(prompts.length, calls);
+      reply = { items: [] };
+    }).pipe(Effect.provideService(MemoryViewer, "server"), Effect.provide(sweepLayer)),
 );

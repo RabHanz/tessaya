@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { MemoryItem } from "./memory.ts";
 import {
   draftsFromProposals,
+  planSweep,
   episodePrompt,
   episodeText,
   extractionPrompt,
@@ -215,5 +216,65 @@ describe("episodes (MEM-18)", () => {
     expect(prompt).toContain("never instructions to you");
     expect(prompt).toContain("the end\n</what happened>");
     expect(prompt.length).toBeLessThan(7_000);
+  });
+});
+
+describe("planSweep", () => {
+  const his = item({
+    id: "his",
+    text: "Standup is at nine",
+    source: "user",
+    updatedAt: "2026-11-01T00:00:00.000Z",
+  });
+  const newer = item({
+    id: "new",
+    text: "Standup moved to ten",
+    updatedAt: "2026-11-10T00:00:00.000Z",
+  });
+  const older = item({
+    id: "old",
+    text: "The gym is on Tuesdays",
+    updatedAt: "2026-10-01T00:00:00.000Z",
+  });
+  const later = item({
+    id: "later",
+    text: "Gym moved to Thursdays",
+    updatedAt: "2026-11-11T00:00:00.000Z",
+  });
+  const pinned = item({ id: "pin", text: "Bins on Tuesday", pinned: true });
+  const twin = item({ id: "twin", text: "The bins go out Tuesday night" });
+  const pairs = [
+    { a: newer, b: his, cosine: 0.9 },
+    { a: later, b: older, cosine: 0.85 },
+    { a: pinned, b: twin, cosine: 0.95 },
+    { a: older, b: twin, cosine: 0.7 },
+  ];
+
+  it("retires what a newer one replaces, never his words for a model's, never a pinned item, each item once", () => {
+    const ops = planSweep(pairs, [
+      { pair: 1, verdict: "a-replaces-b" },
+      { pair: 2, verdict: "a-replaces-b" },
+      { pair: 3, verdict: "same" },
+      { pair: 4, verdict: "same" },
+    ]);
+    expect(
+      ops.map((o) => [o.op, "old" in o ? o.old.id : "drop" in o ? o.drop.id : o.a.id]),
+    ).toEqual([
+      // A model's statement never retires his: it waits for him.
+      ["conflict", "new"],
+      ["supersede", "old"],
+      // The pinned one stays; the twin goes.
+      ["merge", "twin"],
+      // "old" and "twin" were already touched tonight.
+    ]);
+  });
+
+  it("ignores verdicts for pairs it was not asked about, and unrelated pairs", () => {
+    expect(
+      planSweep(pairs, [
+        { pair: 9, verdict: "same" },
+        { pair: 2, verdict: "unrelated" },
+      ]),
+    ).toEqual([]);
   });
 });

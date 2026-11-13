@@ -12,6 +12,12 @@ import {
   extractionPrompt,
   LEARN_MIN_CHARS,
   planMerges,
+  planSweep,
+  type SweepPair,
+  SWEEP_MAX_PAIRS,
+  SWEEP_MAX_SHARE,
+  SWEEP_PAIRS_PER_CALL,
+  sweepPrompt,
   planRewrites,
   worthLearningFrom,
   type EpisodeOrigin,
@@ -21,6 +27,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as NodePath from "node:path";
 
@@ -47,6 +54,20 @@ const Proposals = Schema.Struct({
 });
 
 const Episode = Schema.Struct({ summary: Schema.String });
+const Verdicts = Schema.Struct({
+  verdicts: Schema.Array(Schema.Struct({ pair: Schema.Number, verdict: Schema.String })),
+});
+/** Pairs below this cosine (bge-small) are not judged: tuned on the recall eval's superseded pairs. */
+export const SWEEP_MIN_COSINE = 0.7;
+const Conflicts = Schema.fromJsonString(Schema.Array(Schema.String));
+const decodeConflicts = Schema.decodeUnknownOption(Conflicts);
+const encodeConflicts = Schema.encodeSync(Conflicts);
+/** How far down the closest pairs a night looks for ones not judged yet. */
+const SWEEP_LOOK_PAIRS = 2_000;
+/** The pairs already judged, so a night spends its calls on new ones. */
+const SWEEP_JUDGED = "sweep-judged";
+/** Where pairs of his that disagree wait for him. */
+export const SWEEP_CONFLICTS = "sweep-conflicts";
 
 export interface EpisodeInput {
   readonly origin: EpisodeOrigin;
@@ -100,7 +121,14 @@ export class BatonMemoryLearning extends Context.Service<
     /** MEM-18: the cheap model's two or three sentences on what happened, kept as an episode; null when nothing was kept. */
     readonly episode: (input: EpisodeInput) => Effect.Effect<EpisodeResult>;
     /** The daily pass: merge near-duplicates, then delete what expired or faded. */
-    readonly consolidate: Effect.Effect<{ readonly merged: number; readonly swept: number }>;
+    readonly consolidate: Effect.Effect<{
+      readonly merged: number;
+      readonly swept: number;
+      /** The contradiction sweep: pairs judged, items retired (merged or replaced), disagreements left for him. */
+      readonly judged: number;
+      readonly retired: number;
+      readonly conflicts: number;
+    }>;
     /** The weekly pass: near-duplicates become one item with the fuller wording. */
     readonly rewriteNearDuplicates: Effect.Effect<number>;
   }
@@ -271,6 +299,74 @@ export const make = Effect.gen(function* () {
     return { stored, held };
   });
 
+  /**
+   * The nightly contradiction sweep (Memory v2 §2.7): pairs close in meaning are judged by the cheap model, at most
+   * SWEEP_MAX_PAIRS a night; the same fact merges, a newer one retires the older, a disagreement waits for him.
+   */
+  const sweepByMeaning = Effect.gen(function* () {
+    const none = { judged: 0, retired: 0, conflicts: 0 };
+    // A pair judged once is not judged again while both say the same: each night reaches further down the list.
+    const judgedBefore = new Set(
+      Option.getOrElse(decodeConflicts((yield* memory.meta(SWEEP_JUDGED)) ?? "[]"), () => []),
+    );
+    const keyOf = (p: SweepPair) => `${p.a.id}:${p.a.updatedAt}|${p.b.id}:${p.b.updatedAt}`;
+    const pairs = (yield* memory.meaningPairs(SWEEP_MIN_COSINE, SWEEP_LOOK_PAIRS))
+      .filter((p) => !judgedBefore.has(keyOf(p)))
+      .slice(0, SWEEP_MAX_PAIRS);
+    if (pairs.length === 0) return none;
+    yield* memory.setMeta(
+      SWEEP_JUDGED,
+      encodeConflicts([...pairs.map(keyOf), ...judgedBefore].slice(0, 5_000)),
+    );
+    const verdicts: Array<{ pair: number; verdict: string }> = [];
+    for (let at = 0; at < pairs.length; at += SWEEP_PAIRS_PER_CALL) {
+      const batch = pairs.slice(at, at + SWEEP_PAIRS_PER_CALL);
+      yield* countCheap;
+      const answer = yield* oneShot
+        .run({ prompt: sweepPrompt(batch), outputSchema: Verdicts, role: "background" })
+        .pipe(Effect.orElseSucceed(() => ({ verdicts: [] })));
+      for (const v of answer.verdicts) verdicts.push({ pair: v.pair + at, verdict: v.verdict });
+    }
+    const ops = planSweep(pairs, verdicts);
+    const retiring = ops.filter((o) => o.op !== "conflict").length;
+    const live = (yield* memory.list({ limit: 100_000 })).length;
+    if (retiring > Math.max(1, Math.floor(live * SWEEP_MAX_SHARE))) {
+      yield* Effect.logWarning("memory sweep refused: it would retire too much at once", {
+        retiring,
+        live,
+      });
+      return { ...none, judged: pairs.length };
+    }
+    let retired = 0;
+    const conflicts: Array<string> = [];
+    for (const op of ops) {
+      if (op.op === "merge") {
+        if (op.text !== op.keep.text)
+          yield* memory.rewrite(op.keep.id, op.text, "consolidate").pipe(Effect.ignore);
+        if (yield* memory.forget(op.drop.id)) retired++;
+      } else if (op.op === "supersede") {
+        if (yield* memory.supersede(op.old.id, op.by.id)) retired++;
+      } else conflicts.push(`${op.a.id}|${op.b.id}`);
+    }
+    // Two of his that disagree wait for him: the Memory tab shows them (kept with the memory, newest first).
+    if (conflicts.length > 0) {
+      const held = Option.getOrElse(
+        decodeConflicts((yield* memory.meta(SWEEP_CONFLICTS)) ?? "[]"),
+        () => [],
+      );
+      yield* memory.setMeta(
+        SWEEP_CONFLICTS,
+        encodeConflicts([...new Set([...conflicts, ...held])].slice(0, 50)),
+      );
+    }
+    yield* Effect.logInfo("memory sweep", {
+      judged: pairs.length,
+      retired,
+      conflicts: conflicts.length,
+    });
+    return { judged: pairs.length, retired, conflicts: conflicts.length };
+  });
+
   const consolidate = Effect.gen(function* () {
     const all = yield* memory.list({
       includeSuperseded: true,
@@ -292,7 +388,8 @@ export const make = Effect.gen(function* () {
         .pipe(Effect.ignore);
       yield* memory.forget(drop.id);
     }
-    return { merged: plans.length, swept: yield* memory.sweep };
+    const judged = yield* sweepByMeaning;
+    return { merged: plans.length, swept: yield* memory.sweep, ...judged };
     // Upkeep sees, merges and forgets every item, walled or not.
   }).pipe(Effect.provideService(MemoryViewer, "server"));
 

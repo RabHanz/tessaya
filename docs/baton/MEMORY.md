@@ -103,7 +103,7 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 3. Proposals from a tainted turn wait for his yes (section 3). Nothing is stored silently from content he did not write.
 4. A daily consolidation pass merges near-duplicates, applies decay, deletes expired items and writes one `episode`
    for the previous day (once per day, whatever the restarts): what he talked about, the jobs that moved, and each work
-   session's latest summary. It makes no model call unless more than a handful of items need merging by meaning.
+   session's latest summary. It then judges up to 20 pairs that are close in meaning (bge-small cosine 0.7 or more) with the cheap model, two calls a night: the same fact merges, a newer one retires the older, and a model's statement never retires his words (that pair waits for him). A pair is judged once; a sweep that would retire more than a quarter of the store is refused.
 5. Job learnings: when a job ends, the extractor is asked specifically "what worked, what failed, what should the next
    attempt do differently", and writes `learning` items scoped to that project.
 6. Episodes (MEM-18): the cheap model writes two or three sentences on what was asked, what was done and how it ended,
