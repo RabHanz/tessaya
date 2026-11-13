@@ -185,7 +185,10 @@ export const DeviceSpeaker = Schema.Struct({
       kind: Schema.optionalKey(Schema.Literals(BT_KINDS)),
     }),
   ),
+  /** The route he chose (firmware 0.3.52 `wanted`; before it, where replies played). */
   output: Schema.Literals(DEVICE_SPEAKER_OUTPUTS),
+  /** Where replies play right now (0.3.52 `out`): onboard while the chosen device is not connected. */
+  playing: Schema.optionalKey(Schema.Literals(DEVICE_SPEAKER_OUTPUTS)),
   found: Schema.Array(
     Schema.Struct({
       mac: Schema.String,
