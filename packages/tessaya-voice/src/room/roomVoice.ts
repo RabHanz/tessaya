@@ -1392,21 +1392,29 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       if (over && raw !== "" && !echoed && intent === null && rawCalled === null) {
-        // With a household enrolled, only a household voice stops her (the voice check while she plays). Unenrolled, her
-        // own words back or an "oh" over her is still not a new request ("yes" may answer her, so it is not dropped).
-        if (
-          deps.members?.() === true ||
-          isOwnVoice(raw, herLines) ||
-          /^(?:oh|ah|um|uh|hm+|mm+)[.!?,]*$/i.test(raw.trim())
-        ) {
+        // Her own words back or an "oh" over her is not a new request ("yes" may answer her, so it is not dropped).
+        if (isOwnVoice(raw, herLines) || /^(?:oh|ah|um|uh|hm+|mm+)[.!?,]*$/i.test(raw.trim())) {
           kept?.control.abort();
           dropped(turn, "over her voice and not a stop", raw);
           return;
         }
-        // Nobody enrolled: the person who woke her is answered over her voice, never a glance (14 Nov, 18:57).
+        // With a household enrolled, the whole turn's voice decides: his own words over her are answered, the TV's and
+        // a visitor's are not (14 Nov, 21:39: his, dropped; keyword mode never ran the check while she played).
+        if (deps.members?.() === true) {
+          const best = await (
+            deps.member?.(pcm) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
+          ).catch(() => Number.NEGATIVE_INFINITY);
+          const verdict = memberByVoice(best, pcm.length / RATE);
+          if (verdict !== "member") {
+            kept?.control.abort();
+            dropped(turn, `over her voice and not a household voice (${best.toFixed(2)})`, raw);
+            return;
+          }
+        }
+        // The person who woke her is answered over her voice, never a glance (14 Nov, 18:57).
         if (speaking()) interrupt();
         bargedIn = true;
-        deps.log(`[${id}] turn ${turn}: over her voice, nobody enrolled; she stopped to answer`);
+        deps.log(`[${id}] turn ${turn}: over her voice; she stopped to answer`);
       }
       // He (or the R1's S2 or a tap) stopped her while this turn was on its way: it is not answered.
       if (stopsAt !== stops) {
