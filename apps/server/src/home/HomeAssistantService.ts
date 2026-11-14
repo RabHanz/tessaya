@@ -45,7 +45,7 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
-import { TurnOrigin } from "../baton/TessayaTurn.ts";
+import { TurnOrigin } from "../baton/TurnOrigin.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { arbitrate, ARBITRATION_MS, type RecentAct } from "./homeArbitration.ts";
 import {

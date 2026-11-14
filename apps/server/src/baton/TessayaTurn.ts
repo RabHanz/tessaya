@@ -36,13 +36,14 @@ import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
+import { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { personasList } from "./OperatingSystemPack.ts";
 import type { RegisteredDevice } from "@t3tools/tessaya-contracts";
 
-export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
+export { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 
 export interface TurnEnvelope {
   readonly vessel: { readonly kind: VesselKind; readonly id: string };
@@ -118,28 +119,6 @@ export interface ConversationTurn {
 /** His own voice on this very turn: the only voice whose words are kept as his, or that may forget for him. */
 const hisVoice = (speaker: SpeakerLike | null) =>
   speaker !== null && speaker.kind === "owner" && speaker.verified && !speaker.inherited;
-
-/** The vessel that heard the turn, for every tool it calls: a tool reads it to name where a request came from. */
-export const TurnOrigin = Context.Reference<{
-  readonly kind: VesselKind;
-  readonly id: string;
-  readonly label: string;
-  /**
-   * His own voice, verified on this turn's audio (identity design A2): his yes for what the turn asks, and his words.
-   * False for any other voice, an unverified one, or one carried over from an earlier turn.
-   */
-  readonly hisVoice?: boolean;
-  /** Who spoke, so a tool that writes for him knows whose words they are. */
-  readonly speaker?: SpeakerLike | null;
-  /** The member the turn is from (null: a guest's voice) and how sure (A0-A4): what Trust and the household gate on. */
-  readonly member?: string | null;
-  readonly assurance?: Assurance;
-  /** The turn read outside content. */
-  readonly tainted?: boolean;
-  readonly persona?: string | null;
-  /** A replay or test of the vessel: its writes are dry runs. */
-  readonly rehearsal?: boolean;
-} | null>("t3/baton/TessayaTurn/TurnOrigin", { defaultValue: () => null });
 
 /**
  * Who a turn is from and how sure (ACCOUNTS-IDENTITY-DESIGN §2.4): a spoken turn is its voice's member at its voice's
