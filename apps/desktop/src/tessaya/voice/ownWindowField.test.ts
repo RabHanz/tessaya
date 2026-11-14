@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { takesText } from "./ownWindowField.ts";
+import { caretAround, takesText } from "./ownWindowField.ts";
 
 describe("a text field in Tessaya's own window", () => {
   it("is a box he can type in, and nothing else on the page", () => {
@@ -23,5 +23,26 @@ describe("a text field in Tessaya's own window", () => {
     // ownFieldFocused sends its source to the page: it must need nothing from this module.
     const run = new Function(`return (${takesText.toString()})({ tagName: "TEXTAREA" })`);
     expect(run()).toBe(true);
+  });
+
+  it("reads the text either side of the caret where he put it, never a secret field's", () => {
+    const box = {
+      tagName: "TEXTAREA",
+      value: "Hello there, friend. Bye",
+      selectionStart: 12,
+      selectionEnd: 12,
+    };
+    expect(caretAround(box, 300)).toEqual({ before: "Hello there,", after: " friend. Bye" });
+    expect(caretAround({ ...box, selectionEnd: 20 }, 5)).toEqual({
+      before: "here,",
+      after: " Bye",
+    });
+    expect(caretAround({ ...box, tagName: "INPUT", type: "password" }, 300)).toBeNull();
+    expect(caretAround({ tagName: "IFRAME" }, 300)).toBeNull();
+    expect(caretAround(null, 300)).toBeNull();
+    const run = new Function(
+      `return (${caretAround.toString()})({ tagName: "INPUT", value: "ab", selectionStart: 1, selectionEnd: 1 }, 300)`,
+    );
+    expect(run()).toEqual({ before: "a", after: "b" });
   });
 });

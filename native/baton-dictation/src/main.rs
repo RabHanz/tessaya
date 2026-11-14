@@ -2242,6 +2242,11 @@ fn serve() {
                                 config = next;
                                 meter_on.store(config.meter, Ordering::Relaxed);
                                 let bound = !config.hold.is_empty() || !config.toggle.is_empty() || config.mouse.is_some();
+                                // At launch (and when a change let the held mic go): open it now, so the first press
+                                // never waits the 0.7 to 0.9 s his mic takes to wake, and the waveform moves at once.
+                                if bound && recording.is_none() && warm.borrow().is_none() && config.mic_warm_ms > 0 {
+                                    keep_mic_warm(&warm, config.mic_warm_ms, &config.device);
+                                }
                                 let local = config.model.is_some() && (config.external.is_none() || config.live_words);
                                 let keep = config.keep_loaded && bound && local;
                                 let _ = job_tx.send(Work::Keep(keep));

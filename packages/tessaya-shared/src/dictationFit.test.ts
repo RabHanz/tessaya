@@ -20,7 +20,10 @@ describe("fitInsertion", () => {
     ["Hello, ", "", "Thanks for coming", "thanks for coming"],
     ["Hello,", "", "Sam is here", " Sam is here"],
     ["Hello,", "", "I think so", " I think so"],
-    ["We use the", "", "Colour system", " Colour system"],
+    // Mid-sentence the model's sentence capital goes, whatever the word; a name keeps it (see the names rows).
+    ["We use the", "", "Colour system", " colour system"],
+    ["I think", "", "Let's go", " let's go"],
+    ["Meet me on", "", "Monday then", " Monday then"],
     ["We use the", "", "And more", " and more"],
     ["We use the ", "", "and more", "and more"],
     ["Meet Dr.", "", "Smith there", " Smith there"],
@@ -38,9 +41,29 @@ describe("fitInsertion", () => {
     ["Line one\r\n", "", "this is a test", "This is a test"],
     // Mid-sentence only after a letter or digit: after another mark his capitals stay.
     ["Up 5%", "", "This is more", " This is more"],
+    // The full stop the model gave it stays only where a sentence ends: the end of the field, or a capital after it.
+    ["", "", "hello there.", "Hello there."],
+    ["Done.", "", "next one.", " Next one."],
+    ["I think ", " and then more", "That is fine.", "that is fine"],
+    ["I think ", "and then", "it works.", "it works "],
+    ["Start. ", " Next sentence.", "Middle part.", "Middle part."],
+    ["Hello ", ", world", "there.", "there"],
+    ["", "existing text", "New words.", "New words "],
+    ["We need ", " to go", "milk, eggs etc.", "milk, eggs etc."],
+    ["Wait ", " and see", "for it...", "for it..."],
   ];
   it.each(rows)("%j | %j + %j -> %j", (before, after, inserted, expected) => {
     expect(fitInsertion({ before, after }, inserted)).toBe(expected);
+  });
+  it.each([
+    ["I told", "Tessaya to wait", " Tessaya to wait"],
+    ["We met", "John later", " John later"],
+    ["Ask the", "Tessaya Manager now", " Tessaya Manager now"],
+    ["Ask the", "Manager now", " manager now"],
+  ])("keeps a known name's capital mid-sentence: %j + %j", (before, inserted, expected) => {
+    expect(
+      fitInsertion({ before, after: "" }, inserted, ["Tessaya", "Tessaya Manager", "John"]),
+    ).toBe(expected);
   });
 });
 

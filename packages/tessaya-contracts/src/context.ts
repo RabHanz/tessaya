@@ -378,10 +378,14 @@ export type ComposerDictationMessage =
   | { readonly type: "commit"; readonly id: number; readonly text: string }
   | { readonly type: "cancel"; readonly id: number };
 
-/** The window's answer: to `start` and `commit`, or ✓ / ✕ pressed in the chat box (`action`). */
+/**
+ * The window's answer: to `start` and `commit`, ✓ / ✕ pressed in the chat box (`action`), or `released` when he moved
+ * the keyboard to another field mid-dictation, so the words go there as a paste instead.
+ */
 export type ComposerDictationReply =
   | { readonly type: "claimed" | "took"; readonly id: number; readonly ok: boolean }
-  | { readonly type: "action"; readonly id: number; readonly insert: boolean };
+  | { readonly type: "action"; readonly id: number; readonly insert: boolean }
+  | { readonly type: "released"; readonly id: number };
 
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
 export const batonDesktopBridge = (): TessayaDesktopBridge | undefined =>

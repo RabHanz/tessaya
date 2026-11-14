@@ -12,17 +12,11 @@ export interface CaretContext {
 }
 
 const ABBREVIATIONS = /(?:^|[\s(])(?:mr|mrs|ms|dr|prof|st|vs|etc|e\.g|i\.e|no|approx)\.$/i;
-/** Words that start a sentence or continue one in lower case; names and nouns are never touched. */
-const FUNCTION_WORDS = new Set(
-  (
-    "a an the and but or so nor yet if then than that this these those which who whom whose what " +
-    "when where while because although though since unless until as of in on at to for from by with " +
-    "about into over after before between through during without within we you he she it they my " +
-    "your his her its our their me him us them is are was were be been am do does did have has had " +
-    "will would can could should may might must not no yes please thanks thank also just really " +
-    "very maybe actually basically however therefore anyway okay ok"
-  ).split(" "),
-);
+/** Days and months keep their capital anywhere; "May" is far more often the verb mid-sentence. */
+import { FIRST_NAMES } from "./vocabulary.ts";
+
+const CALENDAR =
+  /^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|june|july|august|september|october|november|december)$/i;
 
 const firstWord = (text: string): string => /^[\p{L}][\p{L}'’]*/u.exec(text)?.[0] ?? "";
 
@@ -33,10 +27,23 @@ const isAcronym = (word: string): boolean => word.length > 1 && word === word.to
 const capitalised = (text: string): string =>
   text.replace(/^(\P{L}*)(\p{L})/u, (_, p, c) => p + c.toUpperCase());
 
-const lowered = (text: string): string => {
-  const word = firstWord(text);
-  if (word === "" || startsWithI(word) || isAcronym(word)) return text;
-  if (!FUNCTION_WORDS.has(word.toLowerCase())) return text;
+const startsWithName = (text: string, names: ReadonlyArray<string>): boolean => {
+  const words = text.replace(/^\P{L}*/u, "");
+  return names.some(
+    (name) =>
+      name !== "" &&
+      words.slice(0, name.length).toLowerCase() === name.toLowerCase() &&
+      !/[\p{L}\p{N}]/u.test(words[name.length] ?? ""),
+  );
+};
+
+/** Mid-sentence, the capital the model gave its first word goes, unless the word is a name, "I" or an acronym. */
+const lowered = (text: string, names: ReadonlyArray<string>): string => {
+  const word = firstWord(text.replace(/^\P{L}*/u, ""));
+  if (word === "" || startsWithI(word) || isAcronym(word) || /\p{Lu}/u.test(word.slice(1)))
+    return text;
+  if (CALENDAR.test(word) || FIRST_NAMES.has(word.toLowerCase()) || startsWithName(text, names))
+    return text;
   return text.replace(/^(\P{L}*)(\p{L})/u, (_, p, c) => p + c.toLowerCase());
 };
 
@@ -66,7 +73,12 @@ const edgeBefore = (raw: string): { readonly edge: Edge; readonly spaced: boolea
   return { edge: /[\p{L}\p{N}]$/u.test(trimmed) ? "word" : "after", spaced };
 };
 
-export const fitInsertion = (context: CaretContext, inserted: string): string => {
+/** `names`: his words and names, which keep their capitals mid-sentence. */
+export const fitInsertion = (
+  context: CaretContext,
+  inserted: string,
+  names: ReadonlyArray<string> = [],
+): string => {
   const words = inserted.trim();
   if (words.length === 0) return inserted;
   const { edge, spaced } = edgeBefore(context.before);
@@ -82,7 +94,7 @@ export const fitInsertion = (context: CaretContext, inserted: string): string =>
       lead = spaced ? "" : " ";
       break;
     case "clause":
-      text = lowered(text);
+      text = lowered(text, names);
       lead = spaced ? "" : " ";
       break;
     case "open":
@@ -95,10 +107,17 @@ export const fitInsertion = (context: CaretContext, inserted: string): string =>
         if (spaced) text = ` ${text}`.trimStart();
         break;
       }
-      text = lowered(text);
+      text = lowered(text, names);
       lead = spaced ? "" : " ";
       break;
   }
+  // Text after the caret that carries on the sentence (lower case, or its own punctuation) takes the model's stop off.
+  if (
+    /^[ \t]*(?:\p{Ll}|[,;:.!?])/u.test(context.after.replace(INVISIBLE, "")) &&
+    /[^.]\.$/.test(text) &&
+    !ABBREVIATIONS.test(text)
+  )
+    text = text.slice(0, -1);
   // Mid-text: keep a space between the insertion and the word that follows it.
   const next = context.after[0] ?? "";
   const trail = next !== "" && /[\p{L}\p{N}"“([{]/u.test(next) ? " " : "";

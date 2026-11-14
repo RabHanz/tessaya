@@ -30,6 +30,8 @@ function Composer(props: {
 }) {
   const label = (what: string) => (props.name === undefined ? what : `${what} ${props.name}`);
   const [draft, setDraft] = useState({ text: DRAFT, selection: { start: CARET, end: CARET } });
+  // The caret is read from the box itself, as the editor reads its own selection.
+  const box = useRef<HTMLTextAreaElement | null>(null);
   const root = useRef<HTMLFormElement>(null);
   const dictation = useTessayaComposerDictation({
     speech: {
@@ -42,14 +44,28 @@ function Composer(props: {
     readDraft: () =>
       props.commitTo !== undefined
         ? { text: props.commitTo, selection: { start: 0, end: 0 } }
-        : draft,
+        : {
+            text: draft.text,
+            selection: {
+              start: box.current?.selectionStart ?? CARET,
+              end: box.current?.selectionEnd ?? CARET,
+            },
+          },
     commitDraft: (text, selection) => setDraft({ text, selection }),
     rootRef: root,
     disabled: false,
   });
   return (
     <form ref={root}>
-      <textarea aria-label={label("Draft")} readOnly value={draft.text} />
+      <textarea
+        aria-label={label("Draft")}
+        readOnly
+        value={draft.text}
+        ref={(element) => {
+          if (element !== null && box.current === null) element.setSelectionRange(CARET, CARET);
+          box.current = element;
+        }}
+      />
       <output aria-label={label("Phase")}>{dictation.state.phase}</output>
       {/* Like the composer's microphone: pressing it leaves the keyboard where it was. */}
       <button type="button" onPointerDown={(event) => event.preventDefault()}>
@@ -130,18 +146,37 @@ it("takes the desktop's dictation, commits its words at the caret in one go, and
   await expect.element(screen.getByLabelText("Phase")).toHaveTextContent("idle");
 });
 
-it("leaves the words to the desktop's paste when the draft changed under the dictation", async () => {
+it("puts the words in the draft as it is when they land, even if it changed under the dictation", async () => {
   using channel = desktop();
   await using screen = await render(<Composer speech={idle} />, { router: false });
   (screen.getByLabelText("Draft").element() as HTMLTextAreaElement).focus();
   channel.send({ type: "start", id: 3, mode: "held" });
-  await screen.rerender(<Composer speech={idle} commitTo="Someone else typed this" />);
+  await screen.rerender(<Composer speech={idle} commitTo="someone else typed this" />);
   expect(channel.send({ type: "commit", id: 3, text: "Hello" })).toEqual({
     type: "took",
     id: 3,
-    ok: false,
+    ok: true,
   });
-  await expect.element(screen.getByLabelText("Draft")).toHaveValue(DRAFT);
+  await expect.element(screen.getByLabelText("Draft")).toHaveValue("Hello someone else typed this");
+});
+
+it("follows the caret he moves while he speaks, and the words land there", async () => {
+  using channel = desktop();
+  await using screen = await render(<Composer speech={idle} />, { router: false });
+  const box = screen.getByLabelText("Draft").element() as HTMLTextAreaElement;
+  box.focus();
+  channel.send({ type: "start", id: 7, mode: "free" });
+  channel.send({ type: "words", id: 7, text: "first of all" });
+  box.setSelectionRange(0, 0);
+  await expect
+    .element(screen.getByLabelText("Dictation"))
+    .toHaveTextContent("first of all Let's ship the retry on Friday. Also add a test.");
+  expect(channel.send({ type: "commit", id: 7, text: "First of all," })).toMatchObject({
+    ok: true,
+  });
+  await expect
+    .element(screen.getByLabelText("Draft"))
+    .toHaveValue("First of all, Let's ship the retry on Friday. Also add a test.");
 });
 
 it("tells the desktop when its chat box takes the next dictation, so it is claimed before any pill shows", async () => {
@@ -209,20 +244,20 @@ it("dictates into the pane he pressed, not the one that still has the keyboard",
   await expect.element(screen.getByLabelText("Phase B")).toHaveTextContent("idle");
 });
 
-it("keeps a dictation in its pane when the keyboard moves away mid-dictation", async () => {
+it("hands the dictation back to the desktop when he clicks into another field mid-dictation, so it pastes there", async () => {
   using channel = desktop();
   await using screen = await render(twoPanes, { router: false });
   await userEvent.click(screen.getByText("Transcript B"));
   expect(channel.send({ type: "start", id: 4, mode: "held" })).toMatchObject({ ok: true });
+  // A button is not somewhere to write: the dictation stays in B.
+  await userEvent.click(screen.getByRole("button", { name: "Mic A" }));
+  expect(channel.bridge.replyComposerDictation).not.toHaveBeenCalled();
 
-  (screen.getByLabelText("Draft A").element() as HTMLTextAreaElement).focus();
   (screen.getByLabelText("Search").element() as HTMLInputElement).focus();
-  channel.send({ type: "words", id: 4, text: "still here" });
-  expect(channel.send({ type: "commit", id: 4, text: "Still here." })).toMatchObject({ ok: true });
-  await expect
-    .element(screen.getByLabelText("Draft B"))
-    .toHaveValue(expect.stringContaining("Still here."));
-  await expect.element(screen.getByLabelText("Draft A")).toHaveValue(DRAFT);
+  expect(channel.bridge.replyComposerDictation).toHaveBeenCalledWith({ type: "released", id: 4 });
+  await expect.element(screen.getByLabelText("Phase B")).toHaveTextContent("idle");
+  expect(channel.send({ type: "commit", id: 4, text: "Still here." })).toMatchObject({ ok: false });
+  await expect.element(screen.getByLabelText("Draft B")).toHaveValue(DRAFT);
 });
 
 it("leaves the dictation to the desktop when no chat box was chosen or another field has the keyboard", async () => {

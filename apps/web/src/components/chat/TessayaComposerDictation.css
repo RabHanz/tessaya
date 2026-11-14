@@ -12,9 +12,10 @@
   --tdc-pop: cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 
-/* While the words are drawn over it, the editor, the model label and the microphone step aside. */
+/* While the words are drawn over it, the editor, the model label and the microphone step aside. The editor is only
+   transparent, so a click still lands in it and moves the caret the words follow. */
 [data-tessaya-dictating] [data-testid="composer-editor"] {
-  visibility: hidden;
+  opacity: 0;
 }
 [data-tessaya-dictating] [data-chat-composer-footer-controls],
 [data-tessaya-dictating] button[aria-label="Start voice input"] {

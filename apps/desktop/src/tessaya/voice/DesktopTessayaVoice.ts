@@ -379,7 +379,7 @@ import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
 import { createComposerDictation, routePill } from "./composerDictation.ts";
 import { cleanupLevelNow } from "./cleanupLevel.ts";
-import { ownFieldFocused } from "./ownWindowField.ts";
+import { ownCaretContext, ownFieldFocused } from "./ownWindowField.ts";
 import { micAwakeMs, micAwakeOf, type MicAwake } from "./micAwake.ts";
 import { desktopDeviceId, startDesktopDevice } from "../devices/desktopDevice.ts";
 import * as Electron from "electron";
@@ -543,6 +543,7 @@ import {
   screenNames,
   unteach,
   upsertEntry,
+  withOwnWords,
   type SeenWords,
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
@@ -1696,6 +1697,18 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   let focusedApp: FocusedApp = { exe: "", title: "" };
   /** Names on screen as this recording started, read while he speaks, for the clean-up to spell names by. */
   let screenNow: ReadonlyArray<string> = [];
+  /** His words, and his personas' names as he wakes them, so a name he calls them by is written as he spells it. */
+  const dictionaryForCleanup = (): ReadonlyArray<VocabularyEntry> => [
+    ...dictionary,
+    ...settings.wakeWords
+      .map((w) => w.word.trim())
+      .filter(
+        (w) =>
+          w !== "" &&
+          !dictionary.some((e) => (e.replacement ?? e.phrase).toLowerCase() === w.toLowerCase()),
+      )
+      .map((phrase) => ({ phrase, replacement: null })),
+  ];
   let dictionary: ReadonlyArray<VocabularyEntry> = [];
   let seenWords: SeenWords = {};
   const seenPath = NodePath.join(input.stateDir, "voice", "vocabulary-seen.json");
@@ -1863,7 +1876,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     workDir: NodePath.join(input.stateDir, "voice", "cleanup"),
     env: input.env,
     platform: input.platform,
-    dictionary: () => dictionary,
+    dictionary: () => dictionaryForCleanup(),
     keepWarm: () => cleanupStaysWarm(),
     ...(input.cleanupApi === undefined ? {} : { api: input.cleanupApi }),
     examples: (text, mode) => styleIndex?.nearest(text, mode, 4) ?? [],
@@ -2014,13 +2027,15 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   /** The text made to fit the words already there: spacing, capitals, punctuation. */
   const fitToCaret = async (
     text: string,
-    app: { readonly exe: string; readonly title: string },
+    app: { readonly exe: string; readonly title: string; readonly window?: number },
   ): Promise<string> => {
     const key = windowKey(app);
     const early = caretEarly?.key === key && caretEarly.pastes === pastes ? caretEarly.read : null;
     caretEarly = null;
+    // Our own window reads its page, where he put the caret by now; Windows' read of a page often says nothing.
     // The sidecar reads it in-process; PowerShell (300 ms or more to start) only without one.
     const around =
+      (app.window === undefined ? null : await ownCaretContext(app.window)) ??
       (await (sidecar === null
         ? readCaretContext(input.platform)
         : Promise.race([
@@ -2036,8 +2051,16 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     // Code and raw mode take the words exactly as said: no stop and no space added; chat keeps his ending too.
     const plain = mode === "code" || mode === "raw";
     const closed = plain || mode === "chat" ? text : closeLastSentence(text, around?.after ?? null);
+    const names = [
+      ...withOwnWords(dictionaryForCleanup()).map((e) => e.replacement ?? e.phrase),
+      ...screenNow,
+    ];
     const fitted =
-      around !== null ? fitInsertion(around, closed) : plain ? closed : fitWithoutContext(closed);
+      around !== null
+        ? fitInsertion(around, closed, names)
+        : plain
+          ? closed
+          : fitWithoutContext(closed);
     lastInsert = { text: fitted, at: Date.now(), key };
     pastes += 1;
     return fitted;
@@ -4680,6 +4703,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       };
     },
     onAction: dictationAction,
+    onRelease: () => pill.replay(),
   });
   const claimComposer = (mode: "held" | "free") =>
     void composer.start(mode).then((claimed) => {

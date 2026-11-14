@@ -323,7 +323,8 @@ export const candidateWords = (text: string): ReadonlyArray<string> => {
 /** Seen-count state for repeated terms; promoted into the vocabulary at LEARN_THRESHOLD. */
 export type SeenWords = Readonly<Record<string, number>>;
 
-const NAMES = new Set(
+/** Common first names: a person, never a near-miss of his word, and a capital kept mid-sentence (dictationFit.ts). */
+export const FIRST_NAMES: ReadonlySet<string> = new Set(
   "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori tessa tess sam tom bob jim tim dan mike steve chris nick ben will liz kate jen".split(
     " ",
   ),
@@ -343,7 +344,7 @@ export const skipWord = (word: string): string | null => {
   if (/^[0-9a-f]{7,}$/i.test(w)) return "code";
   if (w.length > 1 && w === w.toUpperCase() && /\p{L}/u.test(w) && !/\p{N}/u.test(w))
     return "acronym";
-  if (NAMES.has(w.toLowerCase())) return "common name";
+  if (FIRST_NAMES.has(w.toLowerCase())) return "common name";
   return null;
 };
 
@@ -499,11 +500,15 @@ const OWN_HEARD: ReadonlyArray<{
   readonly before?: ReadonlyArray<string>;
   readonly after?: ReadonlyArray<string>;
 }> = [
-  ...["Tisia", "Tessia", "Tesaya", "Tessay", "Tayya", "Te Saya", "Tes Saya"].map((form) => ({
-    to: "Tessaya",
-    form,
-  })),
+  ...["Tisia", "Tessia", "Tesia", "Tesaya", "Tessay", "Tayya", "Te Saya", "Tes Saya"].map(
+    (form) => ({
+      to: "Tessaya",
+      form,
+    }),
+  ),
   { to: "Baton", form: "Buton" },
+  // His company's product, as Parakeet splits it (15 Nov).
+  { to: "VentureOS", form: "Venture OS" },
   // The dictation app he measures against, as Parakeet writes it.
   ...["WhisperFlow", "Whisper Flow", "Wisper Flow", "WisprFlow"].map((form) => ({
     to: "Wispr Flow",
@@ -565,11 +570,70 @@ export const applyOwnNames = (text: string): string => {
   return out;
 };
 
+/** Her own names of more than one word: her manager thread, written the way he names it. */
+const OWN_PHRASES: ReadonlyArray<string> = ["Tessaya Manager"];
+
+/**
+ * His names of two or more words put right as one: each word as written, or (with at least one word exact to hold it in
+ * place) a near-miss of it, so "the Tesla manager" is Tessaya Manager while a Tesla alone stays a car.
+ */
+export const applyKnownNames = (text: string, entries: ReadonlyArray<VocabularyEntry>): string => {
+  const own = withOwnWords(entries);
+  const phrases = [...new Set(own.map((e) => (e.replacement ?? e.phrase).trim()))]
+    .filter((t) => /\s/.test(t))
+    .toSorted((a, b) => b.length - a.length);
+  if (phrases.length === 0) return text;
+  const heardOf = (word: string) =>
+    own.find((e) => sameWord(e.replacement ?? e.phrase, word))?.heard ?? [];
+  const tokens = [...text.matchAll(/[\p{L}\p{N}][\p{L}\p{N}'’]*/gu)].map((m) => ({
+    word: m[0],
+    at: m.index,
+  }));
+  const fixes: Array<{ readonly from: number; readonly to: number; readonly name: string }> = [];
+  for (let i = 0; i < tokens.length; i++) {
+    for (const name of phrases) {
+      const parts = name.split(/\s+/);
+      const run = tokens.slice(i, i + parts.length);
+      if (run.length < parts.length) continue;
+      const start = run[0]!.at;
+      const end = run.at(-1)!.at + run.at(-1)!.word.length;
+      // One phrase, words apart only by spaces, and never inside a path, an identifier or an address.
+      if (
+        run.some(
+          (t, k) =>
+            k > 0 && !/^[ \t]+$/.test(text.slice(run[k - 1]!.at + run[k - 1]!.word.length, t.at)),
+        )
+      )
+        continue;
+      if (/[_/\\.@-]$/.test(text.slice(0, start)) || /^[_/\\@-]|^\.\w/.test(text.slice(end)))
+        continue;
+      // "Wispr Flow's": the possessive stays on the name.
+      const tail = /['’]s$/i.exec(run.at(-1)!.word)?.[0] ?? "";
+      let exact = 0;
+      const fits = run.every(({ word: said }, k) => {
+        const word = k === run.length - 1 ? said.slice(0, said.length - tail.length) : said;
+        const part = parts[k]!;
+        if (word.toLowerCase() === part.toLowerCase()) return ++exact > 0;
+        return (
+          word.length >= 4 &&
+          word[0]!.toLowerCase() === part[0]!.toLowerCase() &&
+          (soundsLike(word, part) || heardOf(part).some((h) => sameWord(h, word)))
+        );
+      });
+      if (!fits || exact === 0) continue;
+      fixes.push({ from: start, to: end, name: name + tail });
+      i += parts.length - 1;
+      break;
+    }
+  }
+  return fixes.reduceRight((out, f) => out.slice(0, f.from) + f.name + out.slice(f.to), text);
+};
+
 /** Her own names as entries, so the clean-up's hints and its check know them whether or not he added them. */
 export const withOwnWords = (
   entries: ReadonlyArray<VocabularyEntry>,
 ): ReadonlyArray<VocabularyEntry> => {
-  const own = [...new Set(OWN_HEARD.map((r) => r.to))].map((to) => ({
+  const own = [...new Set([...OWN_HEARD.map((r) => r.to), ...OWN_PHRASES])].map((to) => ({
     phrase: to,
     heard: OWN_HEARD.filter((r) => r.to === to).map((r) => r.form),
   }));
@@ -729,11 +793,14 @@ export const biasTranscript = (
   entries: ReadonlyArray<VocabularyEntry>,
   context: { readonly screen?: ReadonlyArray<string> } = {},
 ): string => {
-  const text = joinSplitTerms(
-    applyScreenNames(
-      applyTaughtForms(applyOwnNames(heardText), entries),
+  const text = applyKnownNames(
+    joinSplitTerms(
+      applyScreenNames(
+        applyTaughtForms(applyOwnNames(heardText), entries),
+        entries,
+        context.screen ?? [],
+      ),
       entries,
-      context.screen ?? [],
     ),
     entries,
   );
@@ -747,7 +814,7 @@ export const biasTranscript = (
   if (terms.length === 0) return text;
   return text.replace(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu, (word) => {
     // A real first name ("Tessa") is someone, not a near-miss of his word.
-    if (word.length < 5 || NAMES.has(word.toLowerCase())) return word;
+    if (word.length < 5 || FIRST_NAMES.has(word.toLowerCase())) return word;
     for (const term of terms) {
       if (word === term || word[0]!.toLowerCase() !== term[0]!.toLowerCase()) continue;
       // A whole part of a compound term ("Alpha" of AlphaOS, up to its capital) is an ordinary word: "a new alpha"
