@@ -2,22 +2,22 @@
  * The fleet as an outside agent or a linked environment reads it (GEN-6): what is live and its state, never what was
  * said. No synopsis, no pane's blocked prompt, no folders, no account names; a walled project's work shows only its project's name.
  */
-import type { BatonFleet, BatonProjectRef } from "@t3tools/tessaya-contracts";
+import type { TessayaFleet, TessayaProjectRef } from "@t3tools/tessaya-contracts";
 
 import { isWalled, type OsPack } from "./osPack.ts";
 
 export const fleetForOutside = (
-  fleet: BatonFleet,
+  fleet: TessayaFleet,
   pack: OsPack,
   projectTitle: (projectId: string) => string | null,
   /** For a linked server of his: each entry's project and account, which it cannot resolve itself; accounts are kept. */
   linked?: {
-    readonly project: (projectId: string) => BatonProjectRef | null;
-    readonly account: (entry: BatonFleet["entries"][number]) => string | null;
+    readonly project: (projectId: string) => TessayaProjectRef | null;
+    readonly account: (entry: TessayaFleet["entries"][number]) => string | null;
   },
-): BatonFleet => {
+): TessayaFleet => {
   const walled = (project: string | null | undefined) => project != null && isWalled(pack, project);
-  const refLabel = (ref: BatonProjectRef | undefined) => ref?.label ?? null;
+  const refLabel = (ref: TessayaProjectRef | undefined) => ref?.label ?? null;
   return {
     ...fleet,
     entries: fleet.entries.map((entry) => {

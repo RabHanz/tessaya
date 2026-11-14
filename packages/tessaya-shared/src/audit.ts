@@ -16,9 +16,9 @@
  *
  * @module batonAudit
  */
-import type { BatonRecordEntry } from "@t3tools/tessaya-contracts";
+import type { TessayaRecordEntry } from "@t3tools/tessaya-contracts";
 
-export type BatonAuditActor =
+export type TessayaAuditActor =
   /** A person, through the intent surface or a client. */
   | "user"
   /** An orchestration rule. */
@@ -28,9 +28,9 @@ export type BatonAuditActor =
   /** The environment itself: a session started, a thread ended. */
   | "environment";
 
-export interface BatonAuditEntry {
+export interface TessayaAuditEntry {
   readonly at: string;
-  readonly actor: BatonAuditActor;
+  readonly actor: TessayaAuditActor;
   /** One line, in the user's terms. */
   readonly summary: string;
   /** `resolved`, `refused`, `failed`, `skipped` — whatever the source recorded. */
@@ -76,9 +76,9 @@ export const buildAuditTrail = (input: {
   readonly intents?: ReadonlyArray<AuditIntentRecord>;
   readonly firings?: ReadonlyArray<AuditFiringRecord>;
   readonly providerSessions?: ReadonlyArray<AuditProviderSessionRecord>;
-  readonly record?: ReadonlyArray<BatonRecordEntry>;
-}): ReadonlyArray<BatonAuditEntry> => {
-  const entries: BatonAuditEntry[] = [];
+  readonly record?: ReadonlyArray<TessayaRecordEntry>;
+}): ReadonlyArray<TessayaAuditEntry> => {
+  const entries: TessayaAuditEntry[] = [];
 
   for (const intent of input.intents ?? []) {
     entries.push({
@@ -140,7 +140,7 @@ export const buildAuditTrail = (input: {
     // Same instant: a person's sentence before the rule it triggered, so cause
     // reads above effect rather than in whatever order the tables came back.
     if (difference !== 0) return difference;
-    const rank: Readonly<Record<BatonAuditActor, number>> = {
+    const rank: Readonly<Record<TessayaAuditActor, number>> = {
       user: 0,
       rule: 1,
       agent: 2,
@@ -164,7 +164,7 @@ export const recordText = (text: string, max: number): string => {
  * quotation; the first line says so.
  */
 export const describeAuditTrail = (
-  entries: ReadonlyArray<BatonAuditEntry>,
+  entries: ReadonlyArray<TessayaAuditEntry>,
   time: (iso: string) => string = (iso) => iso.slice(0, 16).replace("T", " "),
 ): string =>
   entries.length === 0

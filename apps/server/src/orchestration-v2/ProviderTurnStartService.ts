@@ -51,7 +51,7 @@ import {
   latestNativeContextUsage,
 } from "@t3tools/provider-core/server/handoffBudget";
 import { deliverContextHandoffs, withInlineContext } from "./ContextHandoffDelivery.ts";
-import { takesNoContextHandoff } from "../baton/BatonLiveInstance.ts";
+import { takesNoContextHandoff } from "../tessaya/TessayaLiveInstance.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";

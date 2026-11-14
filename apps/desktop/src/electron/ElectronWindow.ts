@@ -20,7 +20,7 @@ import {
   loadWindowsForegroundApi,
 } from "./WindowsForeground.ts";
 import { startWindowsForegroundFocusThread } from "./WindowsForegroundFocusThread.ts";
-import { pickRevealable } from "../baton/lastAppWindow.ts";
+import { pickRevealable } from "../tessaya/lastAppWindow.ts";
 
 function windowsForegroundFocusTarget(window: Electron.BrowserWindow) {
   return {

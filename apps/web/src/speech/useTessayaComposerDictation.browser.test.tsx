@@ -6,7 +6,7 @@ import { expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../test/render";
-import { BatonDictationWords } from "../components/chat/BatonComposerDictation";
+import { TessayaDictationWords } from "../components/chat/TessayaComposerDictation";
 import { useTessayaComposerDictation } from "./useTessayaComposerDictation";
 
 const DRAFT = "Let's ship the retry on Friday. Also add a test.";
@@ -56,7 +56,7 @@ function Composer(props: {
         {label("Mic")}
       </button>
       <div style={{ position: "relative" }}>
-        <BatonDictationWords state={dictation.state} />
+        <TessayaDictationWords state={dictation.state} />
       </div>
     </form>
   );

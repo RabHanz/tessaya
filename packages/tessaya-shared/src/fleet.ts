@@ -17,15 +17,15 @@
  */
 import {
   compareFleetEntries,
-  deriveBatonSessionState,
+  deriveTessayaSessionState,
   deriveWorkSessionState,
   BATON_STATE_PRIORITY,
-  batonStateNeedsUser,
-  type BatonFleet,
-  type BatonFleetEntry,
-  type BatonFleetAdopted,
-  type BatonFleetThread,
-  type BatonSessionState,
+  tessayaStateNeedsUser,
+  type TessayaFleet,
+  type TessayaFleetEntry,
+  type TessayaFleetAdopted,
+  type TessayaFleetThread,
+  type TessayaSessionState,
   type WorkSession,
 } from "@t3tools/tessaya-contracts";
 
@@ -66,23 +66,23 @@ export interface FleetInput {
    * Adopted sessions (§9) by work session id. Absent means none, which is the
    * answer on every environment without an external runtime.
    */
-  readonly adopted?: ReadonlyMap<string, ReadonlyArray<BatonFleetAdopted>> | undefined;
+  readonly adopted?: ReadonlyMap<string, ReadonlyArray<TessayaFleetAdopted>> | undefined;
   readonly observedAt: string;
 }
 
-export function buildBatonFleet(input: FleetInput): BatonFleet {
-  const entries: BatonFleetEntry[] = [];
+export function buildTessayaFleet(input: FleetInput): TessayaFleet {
+  const entries: TessayaFleetEntry[] = [];
 
   for (const workSession of input.workSessions) {
     const live = workSession.providerSessions.filter((session) => session.detachedAt === null);
-    const threads: BatonFleetThread[] = [];
+    const threads: TessayaFleetThread[] = [];
 
     for (const providerSession of live) {
       const thread = input.threads.get(providerSession.threadId);
       // The attachment outlived the thread. That is the invariant the whole
       // domain exists for, so it contributes no thread row and no state.
       if (thread === undefined) continue;
-      const state = deriveBatonSessionState({
+      const state = deriveTessayaSessionState({
         environmentOnline: input.environmentOnline,
         hasPendingApprovals: thread.hasPendingApprovals,
         hasPendingUserInput: thread.hasPendingUserInput,
@@ -125,7 +125,7 @@ export function buildBatonFleet(input: FleetInput): BatonFleet {
       projectId: workSession.projectId,
       lifecycle: workSession.status,
       state,
-      needsUser: batonStateNeedsUser(state),
+      needsUser: tessayaStateNeedsUser(state),
       activeThreadId: workSession.activeThreadId,
       threads,
       adopted,
@@ -141,13 +141,13 @@ export function buildBatonFleet(input: FleetInput): BatonFleet {
   return { entries, observedAt: input.observedAt };
 }
 
-export const filterFleetNeedsUser = (fleet: BatonFleet): BatonFleet => ({
+export const filterFleetNeedsUser = (fleet: TessayaFleet): TessayaFleet => ({
   ...fleet,
   entries: fleet.entries.filter((entry) => entry.needsUser),
 });
 
 /** The states a fleet row can be in, for a legend or a filter control. */
-export const FLEET_FILTER_STATES: ReadonlyArray<BatonSessionState> = [
+export const FLEET_FILTER_STATES: ReadonlyArray<TessayaSessionState> = [
   "needs_approval",
   "needs_input",
   "working",

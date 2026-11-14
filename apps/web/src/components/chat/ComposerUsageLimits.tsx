@@ -1,7 +1,7 @@
 import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { limitsNotice } from "@t3tools/shared/usageLimits";
-import { BatonLimitsAge } from "./BatonLimitsAge";
+import { TessayaLimitsAge } from "./TessayaLimitsAge";
 import { GaugeIcon } from "lucide-react";
 
 import { ensureLocalApi } from "../../localApi";
@@ -138,7 +138,7 @@ function UsageLimitsBannerBody({
                   now={now}
                 />
               )}
-              {notice ? null : <BatonLimitsAge checkedAt={account.limits.checkedAt} now={now} />}
+              {notice ? null : <TessayaLimitsAge checkedAt={account.limits.checkedAt} now={now} />}
               {externalUsage ? (
                 <Button
                   size="sm"

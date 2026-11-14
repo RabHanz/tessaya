@@ -4,14 +4,14 @@ Two hooks: the spawn candidates gain `herdr --session <name>`, and closing a ter
 Herdr session. Not a PtyAdapter, because the adapter is not told which thread and terminal.
 
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index dd06f5f516959621b6d29da86cf93ef6e955adf1..7974089eda8371cc4a0f12bea62bf09727c72f0b 100644
+index dd06f5f516959621b6d29da86cf93ef6e955adf1..c8618818d1515b4e197f59a57f843711a48a3065 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -73,6 +73,7 @@ import * as ServerSettings from "../serverSettings.ts";
  import { increment, terminalSessionsTotal } from "../observability/Metrics.ts";
  import { expandHomeVariable } from "@t3tools/provider-core/server/pathExpansion";
  import * as ProcessRunner from "../processRunner.ts";
-+import * as HerdrTerminal from "../baton/HerdrTerminal.ts";
++import * as HerdrTerminal from "../tessaya/HerdrTerminal.ts";
  import * as PortScanner from "../preview/PortScanner.ts";
  import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
  import { terminalOutputStream } from "./OutputProtocol.ts";

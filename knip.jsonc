@@ -71,7 +71,7 @@
       "ignoreIssues": {
         "**/*.graphql.ts": ["exports", "types", "namespaceMembers"],
         // Baton's modules export for their tests and for the vendor patches that import them.
-        "src/baton/**": ["exports"],
+        "src/tessaya/**": ["exports"],
         "src/provider/Drivers/ClaudeAccountHome.ts": ["exports"],
         // server.ts mounts the transport with Tessaya's toolkit added; upstream's own `layer` stays as upstream has it.
         "src/mcp/McpHttpServer.ts": ["exports"],
@@ -82,7 +82,7 @@
       // CLI archive and desktop sidecar stage them from this manifest.
       "ignoreDependencies": [
         "@effect/platform-node-shared",
-        // Memory recall's model runtime, resolved from disk for its worker thread (BatonMemoryEmbedder.ts).
+        // Memory recall's model runtime, resolved from disk for its worker thread (TessayaMemoryEmbedder.ts).
         "onnxruntime-node",
         "@t3tools/web",
         "@napi-rs/keyring",
@@ -92,20 +92,20 @@
     },
     "apps/desktop": {
       // Baton's modules export for their tests.
-      "ignoreIssues": { "src/baton/**": ["exports"] },
+      "ignoreIssues": { "src/tessaya/**": ["exports"] },
       // Electron loads these bundles by filename rather than importing them.
       "entry": [
         // Baton's labs run by hand under Electron.
-        "src/baton/screen/smoke/*.ts",
-        "src/baton/voice/speechLab.ts",
+        "src/tessaya/screen/smoke/*.ts",
+        "src/tessaya/voice/speechLab.ts",
         "gnome-extension/extension.js!",
         "src/electron/WindowsForegroundFocusWorker.ts!",
         "src/snapShot/GlobalShiftShortcutWorker.ts!",
         "src/snapShot/RegionSnapShotWorker.ts!",
         "src/snapShot/SnapShotAccessibilityWorker.ts!",
-        "src/baton/voice/onnxWorker.ts!",
-        "src/baton/voice/pillPreload.ts!",
-        "src/baton/companion/mascotPreload.ts!",
+        "src/tessaya/voice/onnxWorker.ts!",
+        "src/tessaya/voice/pillPreload.ts!",
+        "src/tessaya/companion/mascotPreload.ts!",
         "src/boot.ts!",
         "src/compileCache.ts!",
         "src/serverCompileCache.ts!",
@@ -130,7 +130,7 @@
       // reports an entire component module when nothing imports it.
       "ignoreIssues": {
         "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"],
-        "src/components/**/{Baton,baton}*": ["exports"],
+        "src/components/**/{Tessaya,tessaya}*": ["exports"],
       },
       // Baton's model-picker line is mounted by a vendor patch the file audit cannot see.
       // The Character Studio's scripts: loaded by public/companion/stage.html, not imported.

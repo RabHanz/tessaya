@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
   AuthAccessWriteScope,
-  AuthBatonCloudApproveScope,
+  AuthTessayaCloudApproveScope,
   AuthEnvironmentMaintainScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -107,13 +107,13 @@ export function clientRpcRequiredScopes(
     )
       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
   }
-  // Its kind sets the scope, as the server's missingBatonScope does: owner is the camera, reboot and pictures.
+  // Its kind sets the scope, as the server's missingTessayaScope does: owner is the camera, reboot and pictures.
   if (method === DEVICES_CALL) {
     const kind = (input as { kind?: unknown } | undefined)?.kind;
     return kind === "read"
       ? [AuthOrchestrationReadScope]
       : kind === "owner"
-        ? [AuthOrchestrationReadScope, AuthBatonCloudApproveScope]
+        ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
         : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   }
   if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];

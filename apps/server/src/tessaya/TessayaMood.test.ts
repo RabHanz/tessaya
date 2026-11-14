@@ -4,28 +4,28 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
-import { layerMemory as SqlitePersistenceMemory } from "../baton/BatonDatabase.ts";
-import { BatonMemoryLearning } from "../baton/BatonMemoryLearning.ts";
-import { layer as memoryLayer } from "../baton/BatonMemoryService.ts";
-import { BatonPrivateMemoryService } from "../baton/BatonPrivateMemoryService.ts";
-import { layer as MemberPreferencesLayer } from "../baton/MemberPreferences.ts";
-import { layer as expressionLayer, TessayaExpression } from "../baton/TessayaExpression.ts";
-import { BatonOneShot } from "../baton/BatonOneShot.ts";
-import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "../baton/TessayaTurn.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
+import { TessayaMemoryLearning } from "./TessayaMemoryLearning.ts";
+import { layer as memoryLayer } from "./TessayaMemoryService.ts";
+import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
+import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
+import { layer as expressionLayer, TessayaExpression } from "./TessayaExpression.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "./TessayaTurn.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood, layer as moodLayer } from "./TessayaMood.ts";
 
-const learning = Layer.mock(BatonMemoryLearning)({
+const learning = Layer.mock(TessayaMemoryLearning)({
   learn: () => Effect.succeed({ stored: 1, held: 0, corrections: 1 }),
 });
-const stores = Layer.mock(BatonPrivateMemoryService)({
+const stores = Layer.mock(TessayaPrivateMemoryService)({
   recall: () => Effect.succeed({ block: "", count: 0, whose: "yours" }),
 });
 
 const setup = (enabled = true) =>
   turnLayer.pipe(
     Layer.provideMerge(expressionLayer),
-    Layer.provideMerge(Layer.mock(BatonOneShot)({})),
+    Layer.provideMerge(Layer.mock(TessayaOneShot)({})),
     Layer.provideMerge(moodLayer),
     Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(

@@ -37,9 +37,9 @@ import * as Semaphore from "effect/Semaphore";
 import { wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 
 import * as ServerConfig from "../config.ts";
-import { MemberPreferences } from "../baton/MemberPreferences.ts";
-import { homeLink } from "../baton/TessayaHousehold.ts";
-import { PACK_DIR_NAME, readPack } from "../baton/OperatingSystemPack.ts";
+import { MemberPreferences } from "./MemberPreferences.ts";
+import { homeLink } from "./TessayaHousehold.ts";
+import { PACK_DIR_NAME, readPack } from "./OperatingSystemPack.ts";
 
 export type Refused = { readonly refused: string };
 

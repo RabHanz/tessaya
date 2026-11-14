@@ -3,7 +3,7 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { TurnOrigin } from "../baton/TessayaTurn.ts";
+import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { DESK_REPLAY_CLIENT, ROOM_CLIENT } from "../mcp/toolkits/home/handlers.ts";
 import * as PeerLinks from "./PeerLinks.ts";

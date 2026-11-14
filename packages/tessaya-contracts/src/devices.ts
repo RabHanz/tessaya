@@ -504,20 +504,20 @@ export const DevicesOverview = Schema.Struct({
 });
 export type DevicesOverview = typeof DevicesOverview.Type;
 
-export const BatonDevicesCallInput = Schema.Struct({
+export const TessayaDevicesCallInput = Schema.Struct({
   kind: Schema.Literals(BATON_DEVICES_CALL_KINDS),
   op: Schema.String.check(Schema.isMaxLength(40)),
   args: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
-export type BatonDevicesCallInput = typeof BatonDevicesCallInput.Type;
+export type TessayaDevicesCallInput = typeof TessayaDevicesCallInput.Type;
 
 /** ok with a value, or not ok with a sentence for a person. */
-export const BatonDevicesCallResult = Schema.Struct({
+export const TessayaDevicesCallResult = Schema.Struct({
   ok: Schema.Boolean,
   error: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
 });
-export type BatonDevicesCallResult = typeof BatonDevicesCallResult.Type;
+export type TessayaDevicesCallResult = typeof TessayaDevicesCallResult.Type;
 
 /**
  * The bodies a vessel can sit in (VesselBodies): a Dock, a plush, a phone stand. An NFC tag names one with a signed

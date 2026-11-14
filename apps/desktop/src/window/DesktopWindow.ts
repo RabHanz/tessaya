@@ -13,9 +13,9 @@ import * as Electron from "electron";
 import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
-import { installDetachedWindows } from "../baton/detachedWindows.ts";
-import { setOverlaySafely, syncsWithT3Appearance } from "../baton/lastAppWindow.ts";
-import { takeMainHold } from "../baton/launchWindows.ts";
+import { installDetachedWindows } from "../tessaya/detachedWindows.ts";
+import { setOverlaySafely, syncsWithT3Appearance } from "../tessaya/lastAppWindow.ts";
+import { takeMainHold } from "../tessaya/launchWindows.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopPrimaryPaste from "../app/DesktopPrimaryPaste.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";

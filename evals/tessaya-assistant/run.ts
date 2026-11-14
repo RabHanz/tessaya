@@ -11,8 +11,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
-import { replayTurn } from "../../apps/desktop/src/baton/agent/replay.ts";
-import { startVisionSession } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
+import { replayTurn } from "../../apps/desktop/src/tessaya/agent/replay.ts";
+import { startVisionSession } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import {
   assistantFrame,
   DEFAULT_OS_PACK,

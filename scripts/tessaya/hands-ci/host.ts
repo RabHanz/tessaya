@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 // The real hands on a Windows desktop, without Electron: the same tool table the assistant uses
-// (batonTools.ts), the same input driver (inputDriver.ts) and the same UI Automation sidecar
+// (tessayaTools.ts), the same input driver (inputDriver.ts) and the same UI Automation sidecar
 // (native/baton-dictation) behind it. Used by the hands-loop CI run (scripts/tessaya/hands-ci/run.ts).
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -8,12 +8,12 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
 import {
-  buildBatonTools,
+  buildTessayaTools,
   treeText,
   type ToolHost,
-} from "../../../apps/desktop/src/baton/agent/batonTools.ts";
-import { withFailureGuard } from "../../../apps/desktop/src/baton/agent/failureGuard.ts";
-import { createInputDriver } from "../../../apps/desktop/src/baton/screen/inputDriver.ts";
+} from "../../../apps/desktop/src/tessaya/agent/tessayaTools.ts";
+import { withFailureGuard } from "../../../apps/desktop/src/tessaya/agent/failureGuard.ts";
+import { createInputDriver } from "../../../apps/desktop/src/tessaya/screen/inputDriver.ts";
 import { startSidecar } from "./sidecarClient.ts";
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -249,7 +249,7 @@ export const makeHost = (outDir: string): Host => {
     jobs: async () => "none",
     target: async () => "noted",
   };
-  const tools = new Map(withFailureGuard(buildBatonTools(host)).map((t) => [t.name, t]));
+  const tools = new Map(withFailureGuard(buildTessayaTools(host)).map((t) => [t.name, t]));
   return {
     outDir,
     shot,

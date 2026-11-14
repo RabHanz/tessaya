@@ -56,7 +56,7 @@ always allow screen capture, Chrome, social accounts); _Notices_ (unchanged). Fo
 **Settings (2026-11-06).** The sidebar holds the work pages only (Now, Dictation, Knowledge; Help and Settings at its
 foot). Every setting is in the Settings window, in exactly one category: General, Voice and wake words, Personas and
 voices (the only place a voice is chosen), Working for you, Memory and privacy, Appearance, Keyboard and mouse,
-Advanced, About. `SETTINGS` and `tabOf` in `apps/desktop/src/baton/home/tabs.ts` are the one table; an unplaced id
+Advanced, About. `SETTINGS` and `tabOf` in `apps/desktop/src/tessaya/home/tabs.ts` are the one table; an unplaced id
 lands in Advanced, never nowhere.
 
 ## Search

@@ -2,8 +2,8 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
+import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import {
   allSettings,
   choicesOf,
@@ -13,7 +13,7 @@ import {
   setSetting,
   settingHere,
   settingValue,
-} from "../../../baton/SettingsVoice.ts";
+} from "../../../tessaya/SettingsVoice.ts";
 import { asForwarded, fromPeers, onPeer } from "../../../peer/PeerVessels.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -41,7 +41,7 @@ const answered = (value: unknown): boolean => {
 };
 
 export const make = Effect.gen(function* () {
-  const context = yield* BatonRuntime;
+  const context = yield* TessayaRuntime;
   const inRuntime = <A, E>(effect: Effect.Effect<A, E, never>) =>
     context === null ? Effect.fail(unavailable) : effect;
   // The desktop's published controls join the fixed settings where this server has its desktop.

@@ -7,13 +7,13 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
-import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
+import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { VoiceArbiter, layer as arbiterLayer, serveArbiter } from "./VoiceArbiter.ts";
 
-const layer = arbiterLayer.pipe(Layer.provideMerge(BatonDatabaseMemory));
+const layer = arbiterLayer.pipe(Layer.provideMerge(TessayaDatabaseMemory));
 const claim = (
   deviceId: string,
   loudnessDb: number,
@@ -134,7 +134,7 @@ it.effect(
         Effect.provide(
           arbiterLayer.pipe(
             Layer.provideMerge(peers(true)),
-            Layer.provideMerge(BatonDatabaseMemory),
+            Layer.provideMerge(TessayaDatabaseMemory),
           ),
         ),
       );
@@ -150,7 +150,7 @@ it.effect(
         Effect.provide(
           arbiterLayer.pipe(
             Layer.provideMerge(peers(false)),
-            Layer.provideMerge(BatonDatabaseMemory),
+            Layer.provideMerge(TessayaDatabaseMemory),
           ),
         ),
         Effect.forkChild({ startImmediately: true }),
@@ -163,7 +163,7 @@ it.effect(
         Effect.provide(
           arbiterLayer.pipe(
             Layer.provideMerge(peers(true, true)),
-            Layer.provideMerge(BatonDatabaseMemory),
+            Layer.provideMerge(TessayaDatabaseMemory),
           ),
         ),
       );
@@ -173,7 +173,7 @@ it.effect(
         Effect.provide(
           arbiterLayer.pipe(
             Layer.provideMerge(links(true)),
-            Layer.provideMerge(BatonDatabaseMemory),
+            Layer.provideMerge(TessayaDatabaseMemory),
           ),
         ),
       );

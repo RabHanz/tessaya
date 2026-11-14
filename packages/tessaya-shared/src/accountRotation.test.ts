@@ -1,4 +1,4 @@
-import type { BatonAccount, BatonAccountPool } from "@t3tools/tessaya-contracts";
+import type { TessayaAccount, TessayaAccountPool } from "@t3tools/tessaya-contracts";
 import { ProviderDriverKind } from "@t3tools/tessaya-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -15,7 +15,7 @@ import {
 
 const NOW = "2026-09-18T18:00:00.000Z";
 
-const account = (input: Partial<BatonAccount> & { readonly key: string }): BatonAccount => ({
+const account = (input: Partial<TessayaAccount> & { readonly key: string }): TessayaAccount => ({
   label: input.key,
   email: `${input.key}@example.com`,
   organizationName: null,
@@ -28,7 +28,7 @@ const account = (input: Partial<BatonAccount> & { readonly key: string }): Baton
   ...input,
 });
 
-const pool = (accounts: ReadonlyArray<BatonAccount>): BatonAccountPool => ({
+const pool = (accounts: ReadonlyArray<TessayaAccount>): TessayaAccountPool => ({
   driver: ProviderDriverKind.make("claudeAgent"),
   source: "cswap",
   configDir: "/home/dev/.claude",

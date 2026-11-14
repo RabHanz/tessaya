@@ -48,8 +48,8 @@ import {
   isRunningLive,
   liveThreadsOnly,
   runningLiveThreads,
-  useBatonLiveOnly,
-} from "./batonLiveOnly";
+  useTessayaLiveOnly,
+} from "./tessayaLiveOnly";
 import { buildHomeListFilterMenuItems } from "../home/home-list-filter-menu";
 import { buildHomeProjectScopes, resolveHomeProjectFilterScope } from "../home/homeThreadList";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
@@ -118,7 +118,7 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
 }
 
 function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
-  const batonLiveOnly = useBatonLiveOnly();
+  const tessayaLiveOnly = useTessayaLiveOnly();
   const floatingTabsEnabled = useAndroidFloatingTabs();
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const drawerColor = materialTheme["--color-drawer"];
@@ -268,7 +268,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     contentOnlyThreadKeys,
     olderSettledShelf,
   } = useThreadListV2({
-    threads: liveThreadsOnly(launchingThreads, batonLiveOnly),
+    threads: liveThreadsOnly(launchingThreads, tessayaLiveOnly),
     pendingTasks,
     environmentId: options.selectedEnvironmentId,
     projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
@@ -540,7 +540,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
       }}
       filter={{
         customized:
-          options.selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
+          options.selectedEnvironmentId !== null || selectedProjectKey !== null || tessayaLiveOnly,
         items: buildHomeListFilterMenuItems({
           environments,
           projects: projectFilterOptions,
@@ -548,7 +548,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
           selectedProjectKey,
           onEnvironmentChange: setSelectedEnvironmentId,
           onProjectChange: setSelectedProjectKey,
-          liveOnly: batonLiveOnly,
+          liveOnly: tessayaLiveOnly,
         }),
       }}
       sidebar={{

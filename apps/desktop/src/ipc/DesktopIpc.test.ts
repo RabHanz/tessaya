@@ -8,7 +8,7 @@ vi.mock("electron", () => ({}));
 
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopIpc from "./DesktopIpc.ts";
-import { trustRenderer } from "../baton/trustedRenderers.ts";
+import { trustRenderer } from "../tessaya/trustedRenderers.ts";
 
 it.effect(
   "answers only the main window's top frame, and Tessaya's own windows' and inline pages'",

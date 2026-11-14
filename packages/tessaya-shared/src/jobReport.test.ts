@@ -1,4 +1,4 @@
-import type { BatonJob } from "@t3tools/tessaya-contracts";
+import type { TessayaJob } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -27,7 +27,7 @@ const job = (
       revisions,
     },
     ...over,
-  }) as unknown as BatonJob;
+  }) as unknown as TessayaJob;
 
 const base: ReportInput = {
   title: "Site",

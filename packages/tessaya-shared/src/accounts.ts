@@ -5,12 +5,12 @@
  */
 import {
   BATON_DEFAULT_CLAUDE_INSTANCE,
-  type BatonAccount,
-  type BatonAccountHealth,
-  type BatonAccountLimit,
-  type BatonAccountRecord,
-  type BatonSignInMethod,
-  type BatonSignInMethodKind,
+  type TessayaAccount,
+  type TessayaAccountHealth,
+  type TessayaAccountLimit,
+  type TessayaAccountRecord,
+  type TessayaSignInMethod,
+  type TessayaSignInMethodKind,
 } from "@t3tools/tessaya-contracts";
 import {
   PROVIDER_DISPLAY_NAMES,
@@ -31,13 +31,13 @@ const isApiKey = (type: string | undefined) =>
 
 interface Room {
   readonly checkedAt: string | null;
-  readonly fiveHour: BatonAccountLimit | null;
-  readonly weekly: BatonAccountLimit | null;
+  readonly fiveHour: TessayaAccountLimit | null;
+  readonly weekly: TessayaAccountLimit | null;
 }
 
 const providerRoom = (provider: ServerProvider): Room | null => {
   const windows = provider.usageLimits?.windows ?? [];
-  const pick = (kind: string): BatonAccountLimit | null => {
+  const pick = (kind: string): TessayaAccountLimit | null => {
     const window = windows.find((candidate) => candidate.kind === kind);
     return window === undefined
       ? null
@@ -49,8 +49,8 @@ const providerRoom = (provider: ServerProvider): Room | null => {
     : { ...room, checkedAt: provider.usageLimits?.checkedAt ?? null };
 };
 
-const poolRoom = (account: BatonAccount): Room | null => {
-  const pick = (id: string): BatonAccountLimit | null => {
+const poolRoom = (account: TessayaAccount): Room | null => {
+  const pick = (id: string): TessayaAccountLimit | null => {
     const window = account.windows.find((candidate) => candidate.id === id);
     return window === undefined
       ? null
@@ -67,14 +67,14 @@ interface Group {
   readonly driver: ServerProvider["driver"];
   email: string | null;
   readonly providers: ServerProvider[];
-  readonly pool: BatonAccount[];
-  readonly methods: Array<BatonSignInMethod & { readonly slot: string | null }>;
+  readonly pool: TessayaAccount[];
+  readonly methods: Array<TessayaSignInMethod & { readonly slot: string | null }>;
 }
 
 export function unifyAccounts(input: {
   readonly providers: ReadonlyArray<ServerProvider>;
   /** cswap's Claude logins, or null where there is no switcher. */
-  readonly pool: ReadonlyArray<BatonAccount> | null;
+  readonly pool: ReadonlyArray<TessayaAccount> | null;
   /** Token instances' cswap slots, by instance id (TESSAYA_CLAUDE_ACCOUNT_INSTANCES). */
   readonly slots: Readonly<Record<string, string>>;
   /** Each instance's own stored credential, as credentialKind reads it; null when it holds none. */
@@ -83,7 +83,7 @@ export function unifyAccounts(input: {
   readonly slotKinds?: Readonly<Record<string, CredentialKind>>;
   /** The address each non-default instance last signed in as (its own .claude.json), when its probe has none. */
   readonly loginEmails?: Readonly<Record<string, string | null>>;
-}): ReadonlyArray<BatonAccountRecord> {
+}): ReadonlyArray<TessayaAccountRecord> {
   const pool = input.pool ?? [];
   const active = pool.find((account) => account.active);
   // The default instance takes the active slot only when its own address confirms it: unconfirmed, it is "this
@@ -106,7 +106,7 @@ export function unifyAccounts(input: {
   };
   const addMethod = (
     group: Group,
-    kind: BatonSignInMethodKind,
+    kind: TessayaSignInMethodKind,
     instanceId: string | null,
     slot: string | null,
   ) => {
@@ -170,7 +170,7 @@ export function unifyAccounts(input: {
       );
   }
 
-  return [...groups.values()].map((group): BatonAccountRecord => {
+  return [...groups.values()].map((group): TessayaAccountRecord => {
     const instanceIds = group.providers.map((provider) => provider.instanceId);
     // Only a token is copied into a session's own dir (tessaya-claude --switch); a browser login cannot be.
     const live = group.methods.findIndex(
@@ -222,12 +222,12 @@ export function unifyAccounts(input: {
       fiveHour: room.fiveHour,
       weekly: room.weekly,
       checkedAt: room.checkedAt,
-    } as BatonAccountRecord;
+    } as TessayaAccountRecord;
   });
 }
 
 function healthOf(group: Group): {
-  readonly health: BatonAccountHealth;
+  readonly health: TessayaAccountHealth;
   readonly detail: string | null;
 } {
   const enabled = group.providers.filter((provider) => provider.enabled);
@@ -281,7 +281,7 @@ export function oneEntryPerProvider<
 }
 /** Why a running session may not be switched to this cswap slot, or null when it may: only a token moves live. */
 export const liveSwitchRefusal = (
-  accounts: ReadonlyArray<Pick<BatonAccountRecord, "liveSwitchKey">>,
+  accounts: ReadonlyArray<Pick<TessayaAccountRecord, "liveSwitchKey">>,
   key: string,
 ): string | null =>
   accounts.some((account) => account.liveSwitchKey === key)
@@ -307,7 +307,7 @@ export const pickModelFor = (
 
 /** The login a terminal session runs as: the one the catalog names (by address local part), else cswap's active one. */
 export const sessionLoginKey = (
-  pool: ReadonlyArray<Pick<BatonAccount, "key" | "email" | "active">>,
+  pool: ReadonlyArray<Pick<TessayaAccount, "key" | "email" | "active">>,
   login: string | null,
 ): string | null =>
   (login === null
@@ -316,7 +316,9 @@ export const sessionLoginKey = (
   )?.key ?? null;
 
 /** The account a thread runs as: a terminal thread by its session's login, any other by its instance. */
-export const threadAccount = <A extends Pick<BatonAccountRecord, "instanceIds" | "liveSwitchKey">>(
+export const threadAccount = <
+  A extends Pick<TessayaAccountRecord, "instanceIds" | "liveSwitchKey">,
+>(
   accounts: ReadonlyArray<A>,
   instanceId: string,
   loginKey: string | null,
@@ -331,7 +333,7 @@ export const threadAccount = <A extends Pick<BatonAccountRecord, "instanceIds" |
  * account comes back as `setTo`, for a "thread set to X" hint.
  */
 export const accountTicks = <
-  A extends Pick<BatonAccountRecord, "id" | "instanceIds" | "liveSwitchKey">,
+  A extends Pick<TessayaAccountRecord, "id" | "instanceIds" | "liveSwitchKey">,
 >(
   accounts: ReadonlyArray<A>,
   input: {
@@ -407,7 +409,7 @@ export function withProviderModels<K extends string, M>(
  * runs as right now, and says so (runsAsActive). Null when this machine has no instance for it.
  */
 export const accountPickTarget = (
-  account: Pick<BatonAccountRecord, "driver" | "email" | "instanceIds" | "methods" | "active">,
+  account: Pick<TessayaAccountRecord, "driver" | "email" | "instanceIds" | "methods" | "active">,
 ): { readonly instanceId: string; readonly runsAsActive: boolean } | null => {
   const ordered = [
     account.methods.find((method) => method.liveSwitch)?.instanceId ?? null,

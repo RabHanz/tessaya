@@ -52,21 +52,21 @@ export const AuthRelayWriteScope = "relay:write" as const;
  * session and a client the Director paired on purpose with this scope hold it, so no assistant, tool or
  * session client can approve its own request.
  */
-export const AuthBatonCloudApproveScope = "baton:cloud-approve" as const;
+export const AuthTessayaCloudApproveScope = "baton:cloud-approve" as const;
 /**
  * Driving this computer's apps from a remote session (docs/baton/REMOTE_HANDS.md). Never in the standard scopes: the
  * Director issues it to one session's token on his own machine (`auth token --scopes baton:hands`), and revoking that
  * session ends it.
  */
-export const AuthBatonHandsScope = "baton:hands" as const;
+export const AuthTessayaHandsScope = "baton:hands" as const;
 /** The desktop app's own session takes the remote calls and answers them; no client holds it. */
-export const AuthBatonHandsHostScope = "baton:hands-host" as const;
+export const AuthTessayaHandsHostScope = "baton:hands-host" as const;
 /**
  * Tessaya memory sync with another of the Director's servers, walls included, and a search of that server's history
  * index (secrets marked, walled hits left out). A credential holding it holds nothing else (`AuthGrantScopes`), so it
  * can do only these; it is minted on the server it reads.
  */
-export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
+export const AuthTessayaMemorySyncScope = "baton:memory-sync" as const;
 /**
  * A household member's own device (ACCOUNTS-IDENTITY-DESIGN §3.3): Tessaya's member methods, which check the member and
  * role themselves. Never part of the standard client scopes, and it reaches no thread, terminal or file.
@@ -97,10 +97,10 @@ const AuthEnvironmentScopeName = Schema.Literals([
   AuthAccessWriteScope,
   AuthRelayReadScope,
   AuthRelayWriteScope,
-  AuthBatonCloudApproveScope,
-  AuthBatonHandsScope,
-  AuthBatonHandsHostScope,
-  AuthBatonMemorySyncScope,
+  AuthTessayaCloudApproveScope,
+  AuthTessayaHandsScope,
+  AuthTessayaHandsHostScope,
+  AuthTessayaMemorySyncScope,
   AuthTessayaMemberScope,
   AuthTessayaGuestScope,
   AuthTessayaWakeTrainerScope,
@@ -110,10 +110,10 @@ const AuthEnvironmentScopeName = Schema.Literals([
  * writes the old one, so a session, token or grant written by the next build (or read after a rollback) still works.
  */
 const RENAMED_SCOPES = [
-  [AuthBatonCloudApproveScope, "tessaya:cloud-approve"],
-  [AuthBatonHandsScope, "tessaya:hands"],
-  [AuthBatonHandsHostScope, "tessaya:hands-host"],
-  [AuthBatonMemorySyncScope, "tessaya:memory-sync"],
+  [AuthTessayaCloudApproveScope, "tessaya:cloud-approve"],
+  [AuthTessayaHandsScope, "tessaya:hands"],
+  [AuthTessayaHandsHostScope, "tessaya:hands-host"],
+  [AuthTessayaMemorySyncScope, "tessaya:memory-sync"],
 ] as const;
 const SCOPE_OF_RENAMED = new Map<string, string>(
   RENAMED_SCOPES.map(([current, renamed]) => [renamed, current]),
@@ -141,7 +141,7 @@ export type AuthEnvironmentScopes = typeof AuthEnvironmentScopes.Type;
 // Only the desktop's own session holds hands-host, so no grant can hand it to another device.
 const AuthGrantScopeName = Schema.Literals(
   AuthEnvironmentScopeName.literals.filter(
-    (scope) => scope !== AuthReviewWriteScope && scope !== AuthBatonHandsHostScope,
+    (scope) => scope !== AuthReviewWriteScope && scope !== AuthTessayaHandsHostScope,
   ),
 );
 type AuthGrantScopeName = typeof AuthGrantScopeName.Type;
@@ -163,10 +163,10 @@ export const AuthGrantScopeNames = AuthGrantScopeName.literals;
 export type AuthGrantScope = typeof AuthGrantScope.Type;
 /** A memory-sync credential carries that scope alone: it must never double as a client token. */
 export const mixesMemorySync = (scopes: ReadonlyArray<string>): boolean =>
-  scopes.includes(AuthBatonMemorySyncScope) && scopes.length > 1;
+  scopes.includes(AuthTessayaMemorySyncScope) && scopes.length > 1;
 export const AuthGrantScopes = Schema.Array(AuthGrantScope).check(
   Schema.makeFilter(
-    (scopes) => !mixesMemorySync(scopes) || `${AuthBatonMemorySyncScope} goes alone`,
+    (scopes) => !mixesMemorySync(scopes) || `${AuthTessayaMemorySyncScope} goes alone`,
   ),
 );
 export type AuthGrantScopes = typeof AuthGrantScopes.Type;
@@ -208,10 +208,10 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
 // `legacyParents`, it never grants anything: a session holding "operate" does not hold it.
 const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>> = {
   ...legacyParents,
-  [AuthBatonCloudApproveScope]: AuthOrchestrationOperateScope,
-  [AuthBatonHandsScope]: AuthOrchestrationOperateScope,
-  [AuthBatonHandsHostScope]: AuthOrchestrationOperateScope,
-  [AuthBatonMemorySyncScope]: AuthOrchestrationOperateScope,
+  [AuthTessayaCloudApproveScope]: AuthOrchestrationOperateScope,
+  [AuthTessayaHandsScope]: AuthOrchestrationOperateScope,
+  [AuthTessayaHandsHostScope]: AuthOrchestrationOperateScope,
+  [AuthTessayaMemorySyncScope]: AuthOrchestrationOperateScope,
   [AuthTessayaMemberScope]: AuthOrchestrationReadScope,
   [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
   [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,

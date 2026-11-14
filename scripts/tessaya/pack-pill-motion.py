@@ -1,6 +1,6 @@
 """Packs the logo kit's transparent animations into pillMotionArt.ts for the pill page.
 
-  python scripts/tessaya/pack-pill-motion.py <kit>/app/animation/transparent dark apps/desktop/src/baton/voice/pillMotionArt.ts \
+  python scripts/tessaya/pack-pill-motion.py <kit>/app/animation/transparent dark apps/desktop/src/tessaya/voice/pillMotionArt.ts \
       [--from "#BC96CE" --to "#5FB3B3"]
 
 The kit ships these animations in one palette's dye (Damson, #BC96CE on dark). With --from and --to every

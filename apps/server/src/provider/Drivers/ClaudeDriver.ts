@@ -41,7 +41,7 @@ import {
   type ProviderDriver,
   type ProviderInstance,
 } from "@t3tools/provider-core/server/driver";
-import { withProbeLimits } from "../../baton/ClaudeProbeLimits.ts";
+import { withProbeLimits } from "../../tessaya/ClaudeProbeLimits.ts";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
 import { enrichProviderSnapshotWithVersionAdvisory } from "@t3tools/provider-core/server/maintenanceResolver";
 import {

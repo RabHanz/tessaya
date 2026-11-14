@@ -21,13 +21,13 @@ export const BATON_PHONE_OPS = [
   "askGet",
 ] as const;
 
-export const BatonPhoneCallInput = Schema.Struct({
+export const TessayaPhoneCallInput = Schema.Struct({
   op: Schema.Literals(BATON_PHONE_OPS),
   args: Schema.Record(Schema.String, Schema.Unknown),
 });
-export type BatonPhoneCallInput = typeof BatonPhoneCallInput.Type;
+export type TessayaPhoneCallInput = typeof TessayaPhoneCallInput.Type;
 
-export const BatonPhoneCallResult = Schema.Struct({ value: Schema.Unknown });
+export const TessayaPhoneCallResult = Schema.Struct({ value: Schema.Unknown });
 
 export class BatonPhoneError extends Schema.TaggedError<BatonPhoneError>()("BatonPhoneError", {
   reason: Schema.String,

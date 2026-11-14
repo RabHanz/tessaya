@@ -40,20 +40,20 @@ export const VoiceClaimInput = Schema.Struct({
 });
 export type VoiceClaimInput = typeof VoiceClaimInput.Type;
 
-export const BatonVoiceCallInput = Schema.Struct({
+export const TessayaVoiceCallInput = Schema.Struct({
   kind: Schema.Literals(["read", "act"]),
   op: Schema.String.check(Schema.isMaxLength(40)),
   args: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
-export type BatonVoiceCallInput = typeof BatonVoiceCallInput.Type;
+export type TessayaVoiceCallInput = typeof TessayaVoiceCallInput.Type;
 
 /** ok with a value, or not ok with a sentence for a person. */
-export const BatonVoiceCallResult = Schema.Struct({
+export const TessayaVoiceCallResult = Schema.Struct({
   ok: Schema.Boolean,
   error: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
 });
-export type BatonVoiceCallResult = typeof BatonVoiceCallResult.Type;
+export type TessayaVoiceCallResult = typeof TessayaVoiceCallResult.Type;
 
 export const VoiceEngine = Schema.Literals(["pocket", "gemini"]);
 export type VoiceEngine = typeof VoiceEngine.Type;

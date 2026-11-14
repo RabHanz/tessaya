@@ -8,7 +8,7 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../../../config.ts";
-import { PACK_DIR_NAME, readPackFiles } from "../../../baton/OperatingSystemPack.ts";
+import { PACK_DIR_NAME, readPackFiles } from "../../../tessaya/OperatingSystemPack.ts";
 
 /**
  * The 14 Nov roster (PERSONA-TEAM-DESIGN §1): Onyx takes `engineering`, Alfred moves to `butler`, Freya to

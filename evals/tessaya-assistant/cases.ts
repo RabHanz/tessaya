@@ -3,13 +3,13 @@
  * acceptable first tools ("none" means it should answer without a tool); `not` lists tools that are a
  * wrong first move. Sources: the 2026-11-04 review (INT-4) and the Help page's examples.
  */
-import { describeJobs } from "../../apps/desktop/src/baton/agent/jobText.ts";
-import type { BatonJob } from "../../packages/tessaya-contracts/src/jobs.ts";
-import type { BatonRecordEntry } from "../../packages/tessaya-contracts/src/record.ts";
+import { describeJobs } from "../../apps/desktop/src/tessaya/agent/jobText.ts";
+import type { TessayaJob } from "../../packages/tessaya-contracts/src/jobs.ts";
+import type { TessayaRecordEntry } from "../../packages/tessaya-contracts/src/record.ts";
 import { buildAuditTrail, describeAuditTrail } from "../../packages/tessaya-shared/src/audit.ts";
 import type { CutIn } from "../../packages/tessaya-shared/src/endOfTurn.ts";
-import { answeredWithWords } from "../../apps/desktop/src/baton/agent/agentGate.ts";
-import { chooseBrowserRoute } from "../../apps/desktop/src/baton/screen/browserRoute.ts";
+import { answeredWithWords } from "../../apps/desktop/src/tessaya/agent/agentGate.ts";
+import { chooseBrowserRoute } from "../../apps/desktop/src/tessaya/screen/browserRoute.ts";
 
 export interface AssistantCase {
   readonly id: string;
@@ -92,14 +92,14 @@ const agreedShopJob = describeJobs([
     group: "running",
     limitReached: null,
     permissionsSummary: "read, edit and use the web in the shop folder.",
-  } as unknown as BatonJob,
+  } as unknown as TessayaJob,
 ]);
 
 const row = (
   id: number,
   at: string,
-  over: Pick<BatonRecordEntry, "kind" | "subject" | "outcome"> & Partial<BatonRecordEntry>,
-): BatonRecordEntry => ({
+  over: Pick<TessayaRecordEntry, "kind" | "subject" | "outcome"> & Partial<TessayaRecordEntry>,
+): TessayaRecordEntry => ({
   id,
   at,
   actor: "watchdog",

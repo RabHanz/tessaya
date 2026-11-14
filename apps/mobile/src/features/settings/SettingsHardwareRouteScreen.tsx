@@ -11,7 +11,7 @@ import {
   R1_MOODS,
   type R1KeyBinding,
   type R1KeySlot,
-  type BatonDevicesCallResult,
+  type TessayaDevicesCallResult,
   type DeviceTagAction,
   type DeviceView,
   type DevicesOverview,
@@ -55,7 +55,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useVisibleThreadShells } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -199,8 +199,8 @@ function HardwareSections({
     label: "room brain update",
     reportFailure: true,
   });
-  const devicesCall = useAtomCommand(batonWorkSessions.devicesCall, QUIET);
-  const homeCall = useAtomCommand(batonWorkSessions.homeCall, QUIET);
+  const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, QUIET);
+  const homeCall = useAtomCommand(tessayaWorkSessions.homeCall, QUIET);
   const [view, setView] = useState<DevicesOverview | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -282,7 +282,7 @@ function HardwareSections({
     setBusy(true);
     setNote("");
     const result = await devicesCall({ environmentId, input: { kind, op, args } });
-    const reply: BatonDevicesCallResult | null = result._tag === "Success" ? result.value : null;
+    const reply: TessayaDevicesCallResult | null = result._tag === "Success" ? result.value : null;
     setNote(
       reply === null
         ? "Couldn’t reach this environment. Try again."
@@ -1034,7 +1034,7 @@ function KeysSection({
   readonly environmentId: EnvironmentId;
 }) {
   const canEdit = useAtomValue(
-    batonWorkSessions.devicesCall.permissionAtom(environmentId, { kind: "act" }),
+    tessayaWorkSessions.devicesCall.permissionAtom(environmentId, { kind: "act" }),
   );
   const [slot, setSlot] = useState<R1KeySlot>("s2.double");
   const [choice, setChoice] = useState<string | null>(null);
@@ -1042,7 +1042,7 @@ function KeysSection({
   const [threadId, setThreadId] = useState<string | null>(null);
   const current = d.keys[slot];
   const picked = choice ?? (current === undefined ? "device:none" : keyChoiceOf(current));
-  const listPersonas = useAtomCommand(batonWorkSessions.personasList, QUIET);
+  const listPersonas = useAtomCommand(tessayaWorkSessions.personasList, QUIET);
   const [personas, setPersonas] = useState<ReadonlyArray<string> | undefined>(undefined);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads her server's personas once per environment
   useEffect(() => {

@@ -5,7 +5,7 @@ import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import { Fragment, memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import { instanceRoom, RailLimitMark } from "./BatonPickerAccount";
+import { instanceRoom, RailLimitMark } from "./TessayaPickerAccount";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";

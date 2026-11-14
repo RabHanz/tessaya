@@ -59,7 +59,7 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index 455901299edc31b4c958e7c523eb3faf31563f44..99414dd8ac4b6c84b124e12d79ccc3461ee59c71 100644
+index 455901299edc31b4c958e7c523eb3faf31563f44..522137a26d673e4cb2618894005c475f083b4e54 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
 @@ -159,6 +159,35 @@ export default defineConfig({
@@ -75,8 +75,8 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..99414dd8ac4b6c84b124e12d79ccc346
 +      outExtensions: () => ({ js: ".cjs" }),
 +      // Named, so both land flat beside main.cjs where voicePill.ts and desktopMascot.ts load them; a list keeps folders.
 +      entry: {
-+        pillPreload: "src/baton/voice/pillPreload.ts",
-+        mascotPreload: "src/baton/companion/mascotPreload.ts",
++        pillPreload: "src/tessaya/voice/pillPreload.ts",
++        mascotPreload: "src/tessaya/companion/mascotPreload.ts",
 +      },
 +    },
 +    {
@@ -87,7 +87,7 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..99414dd8ac4b6c84b124e12d79ccc346
 +      sourcemap: true,
 +      outExtensions: () => ({ js: ".cjs" }),
 +      define: publicConfigDefine,
-+      entry: { "baton/voice/onnxWorker": "src/baton/voice/onnxWorker.ts" },
++      entry: { "baton/voice/onnxWorker": "src/tessaya/voice/onnxWorker.ts" },
 +      clean: false,
 +      deps: {
 +        alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),
@@ -225,7 +225,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..8ec445429fa03b35a6282dc852be06b9
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..4ccd8c96952d3522d05ce30c3014a2609796480b 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..7048c03317139e859af8d837b77d9b5a94803eff 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -41,6 +41,9 @@
@@ -255,7 +255,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..4ccd8c96952d3522d05ce30c3014a260
 +      "ignoreIssues": {
 +        "**/*.graphql.ts": ["exports", "types", "namespaceMembers"],
 +        // Baton's modules export for their tests and for the vendor patches that import them.
-+        "src/baton/**": ["exports"],
++        "src/tessaya/**": ["exports"],
 +        "src/provider/Drivers/ClaudeAccountHome.ts": ["exports"],
 +        // server.ts mounts the transport with Tessaya's toolkit added; upstream's own `layer` stays as upstream has it.
 +        "src/mcp/McpHttpServer.ts": ["exports"],
@@ -266,7 +266,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..4ccd8c96952d3522d05ce30c3014a260
        // CLI archive and desktop sidecar stage them from this manifest.
        "ignoreDependencies": [
          "@effect/platform-node-shared",
-+        // Memory recall's model runtime, resolved from disk for its worker thread (BatonMemoryEmbedder.ts).
++        // Memory recall's model runtime, resolved from disk for its worker thread (TessayaMemoryEmbedder.ts).
 +        "onnxruntime-node",
          "@t3tools/web",
          "@napi-rs/keyring",
@@ -276,20 +276,20 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..4ccd8c96952d3522d05ce30c3014a260
      },
      "apps/desktop": {
 +      // Baton's modules export for their tests.
-+      "ignoreIssues": { "src/baton/**": ["exports"] },
++      "ignoreIssues": { "src/tessaya/**": ["exports"] },
        // Electron loads these bundles by filename rather than importing them.
        "entry": [
 +        // Baton's labs run by hand under Electron.
-+        "src/baton/screen/smoke/*.ts",
-+        "src/baton/voice/speechLab.ts",
++        "src/tessaya/screen/smoke/*.ts",
++        "src/tessaya/voice/speechLab.ts",
          "gnome-extension/extension.js!",
          "src/electron/WindowsForegroundFocusWorker.ts!",
          "src/snapShot/GlobalShiftShortcutWorker.ts!",
          "src/snapShot/RegionSnapShotWorker.ts!",
          "src/snapShot/SnapShotAccessibilityWorker.ts!",
-+        "src/baton/voice/onnxWorker.ts!",
-+        "src/baton/voice/pillPreload.ts!",
-+        "src/baton/companion/mascotPreload.ts!",
++        "src/tessaya/voice/onnxWorker.ts!",
++        "src/tessaya/voice/pillPreload.ts!",
++        "src/tessaya/companion/mascotPreload.ts!",
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
@@ -310,7 +310,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..4ccd8c96952d3522d05ce30c3014a260
 -      "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
 +      "ignoreIssues": {
 +        "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"],
-+        "src/components/**/{Baton,baton}*": ["exports"],
++        "src/components/**/{Tessaya,tessaya}*": ["exports"],
 +      },
 +      // Baton's model-picker line is mounted by a vendor patch the file audit cannot see.
 +      // The Character Studio's scripts: loaded by public/companion/stage.html, not imported.
@@ -429,7 +429,7 @@ index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa
      repoRoot,
      stageDir: contentDir,
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..410326658d22626761099008c44ac3d444fd882e 100644
+index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c5fe84a1d 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
 @@ -3,7 +3,7 @@ import * as NodeCrypto from "node:crypto";
@@ -450,7 +450,7 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..410326658d22626761099008c44ac3d4
 +  COMPANION_PAYLOAD_FILES,
 +  BATON_PRELOAD_FILES,
 +  MEMORY_MODEL_PAYLOAD_FILES,
-+  batonSidecarBuild,
++  tessayaSidecarBuild,
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
@@ -596,35 +596,38 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..410326658d22626761099008c44ac3d4
        }),
      ),
    );
-@@ -1922,3 +2056,26 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1922,3 +2056,29 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
 +
 +it("batonSidecarBuild builds the sidecar for each platform and arch, joining a universal mac build", () => {
 +  const targets = (platform: "win" | "linux" | "mac", arch: "arm64" | "x64" | "universal") =>
-+    batonSidecarBuild(platform, arch).map((b) => b.rustTarget);
++    tessayaSidecarBuild(platform, arch).map((b) => b.rustTarget);
 +  assert.deepEqual(targets("win", "x64"), [null]);
 +  assert.strictEqual(
-+    batonSidecarBuild("win", "x64")[0]!.rustflags,
++    tessayaSidecarBuild("win", "x64")[0]!.rustflags,
 +    "-C target-feature=+crt-static",
 +  );
 +  assert.deepEqual(targets("linux", "x64"), [null]);
 +  assert.deepEqual(targets("mac", "arm64"), ["aarch64-apple-darwin"]);
 +  assert.deepEqual(targets("mac", "x64"), ["x86_64-apple-darwin"]);
 +  assert.deepEqual(targets("mac", "universal"), ["aarch64-apple-darwin", "x86_64-apple-darwin"]);
-+  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
++  assert.include(tessayaSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +  // With the Vulkan SDK, Windows adds the graphics card and keeps the static CRT; elsewhere the SDK changes nothing.
-+  const gpu = batonSidecarBuild("win", "x64", "C:\\VulkanSDK\\1.4")[0]!;
++  const gpu = tessayaSidecarBuild("win", "x64", "C:\\VulkanSDK\\1.4")[0]!;
 +  assert.strictEqual(gpu.features, "gpu");
 +  assert.include(gpu.cmake, "-DCMAKE_PREFIX_PATH=C:/VulkanSDK/1.4");
 +  assert.include(gpu.cmake, "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
 +  assert.strictEqual(gpu.rustflags, "-C target-feature=+crt-static -L native=C:/VulkanSDK/1.4/Lib");
-+  assert.strictEqual(batonSidecarBuild("win", "x64")[0]!.features, undefined);
-+  assert.deepEqual(batonSidecarBuild("linux", "x64", "/sdk"), batonSidecarBuild("linux", "x64"));
++  assert.strictEqual(tessayaSidecarBuild("win", "x64")[0]!.features, undefined);
++  assert.deepEqual(
++    tessayaSidecarBuild("linux", "x64", "/sdk"),
++    tessayaSidecarBuild("linux", "x64"),
++  );
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc3027933fd33 100644
+index bf7add37828adad593b77de8f062963b479f6fc7..dd03513cfd58070c086b6d04b05af18c04cc91ac 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -639,7 +642,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
    }
  }
  
-+export class BatonVoiceGpuFileMissingError extends Schema.TaggedError<BatonVoiceGpuFileMissingError>()(
++export class TessayaVoiceGpuFileMissingError extends Schema.TaggedError<TessayaVoiceGpuFileMissingError>()(
 +  "BatonVoiceGpuFileMissingError",
 +  { file: Schema.String, searched: Schema.Array(Schema.String) },
 +) {
@@ -772,7 +775,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
    }
  });
  
-+/** A sting and a taskbar icon per palette and theme (apps/desktop/src/baton/home/artFiles.ts). */
++/** A sting and a taskbar icon per palette and theme (apps/desktop/src/tessaya/home/artFiles.ts). */
 +export const TESSAYA_ART_PAYLOAD_FILES = ["woad", "damson", "madder"].flatMap((palette) =>
 +  ["light", "dark"].flatMap((theme) => [
 +    `sting-${palette}-${theme}.webp`,
@@ -807,7 +810,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
 +  "models/tessaya.onnx",
 +] as const;
 +
-+/** The Windows graphics-card build's modules beside tessaya-voice.exe (`batonSidecarBuild` with the Vulkan SDK). */
++/** The Windows graphics-card build's modules beside tessaya-voice.exe (`tessayaSidecarBuild` with the Vulkan SDK). */
 +export const BATON_VOICE_GPU_FILES = [
 +  "transcribe.dll",
 +  "ggml.dll",
@@ -821,7 +824,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
 + * the Vulkan SDK on the build machine (`vulkanSdk`) also recognises on the graphics card (native/baton-dictation
 + * gpu.rs): its Vulkan backend is then a DLL beside the exe, loaded only where a Vulkan driver exists.
 + */
-+export function batonSidecarBuild(
++export function tessayaSidecarBuild(
 +  platform: typeof BuildPlatform.Type,
 +  arch: typeof BuildArch.Type,
 +  vulkanSdk?: string,
@@ -862,7 +865,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
 +
 +// Baton voice: the wake and VAD models everywhere, and the dictation sidecar built for the platform being packaged
 +// (Windows, Linux x64, macOS arm64 and x64; a universal mac build joins both with lipo).
-+export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
++export const stageTessayaVoice = Effect.fn("stageBatonVoice")(function* (input: {
 +  readonly repoRoot: string;
 +  readonly stageResourcesDir: string;
 +  readonly platform: typeof BuildPlatform.Type;
@@ -880,7 +883,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
 +  const built: string[] = [];
 +  const sdk = yield* Config.String("VULKAN_SDK").pipe(Config.withDefault(""));
 +  const vulkanSdk = input.platform === "win" && sdk !== "" ? sdk : undefined;
-+  const builds = batonSidecarBuild(input.platform, input.arch ?? "x64", vulkanSdk);
++  const builds = tessayaSidecarBuild(input.platform, input.arch ?? "x64", vulkanSdk);
 +  for (const build of builds) {
 +    const spawnCommand = yield* resolveSpawnCommand("cargo", [
 +      "build",
@@ -941,7 +944,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
 +        for (const candidate of candidates)
 +          if (from === undefined && (yield* fs.exists(candidate))) from = candidate;
 +        if (from === undefined)
-+          return yield* new BatonVoiceGpuFileMissingError({
++          return yield* new TessayaVoiceGpuFileMissingError({
 +            file,
 +            searched: [
 +              ...candidates,
@@ -1079,7 +1082,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..214c8d39e6a962d95b63bc41f9bdc302
      arch: options.arch,
      verbose: options.verbose,
    });
-+  yield* stageBatonVoice({
++  yield* stageTessayaVoice({
 +    repoRoot,
 +    stageResourcesDir,
 +    platform: options.platform,

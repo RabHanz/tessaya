@@ -50,130 +50,130 @@ export const setClaudeAccountInstances = (map: Readonly<Record<string, string>>)
 };
 
 /** Identifies an account inside a pool. Opaque: the adapter chooses the form. */
-export const BatonAccountKey = TrimmedNonEmptyString;
-export type BatonAccountKey = typeof BatonAccountKey.Type;
+export const TessayaAccountKey = TrimmedNonEmptyString;
+export type TessayaAccountKey = typeof TessayaAccountKey.Type;
 
 /** Why an account cannot be rotated to right now. */
-export const BatonAccountUnusableReason = Schema.Literals([
+export const TessayaAccountUnusableReason = Schema.Literals([
   "signed-out",
   "limits-unknown",
   "disabled",
   "spent",
 ]);
-export type BatonAccountUnusableReason = typeof BatonAccountUnusableReason.Type;
+export type TessayaAccountUnusableReason = typeof TessayaAccountUnusableReason.Type;
 
-export const BatonAccountWindow = Schema.Struct({
+export const TessayaAccountWindow = Schema.Struct({
   id: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
   usedPercent: Schema.Number,
   resetsAt: Schema.NullOr(IsoDateTime),
 });
-export type BatonAccountWindow = typeof BatonAccountWindow.Type;
+export type TessayaAccountWindow = typeof TessayaAccountWindow.Type;
 
-export const BatonAccount = Schema.Struct({
-  key: BatonAccountKey,
+export const TessayaAccount = Schema.Struct({
+  key: TessayaAccountKey,
   /** What a person calls it: the alias they set, else the address's local part. */
   label: TrimmedNonEmptyString,
   email: Schema.NullOr(Schema.String),
   organizationName: Schema.NullOr(Schema.String),
   active: Schema.Boolean,
   usable: Schema.Boolean,
-  unusableReason: Schema.NullOr(BatonAccountUnusableReason),
+  unusableReason: Schema.NullOr(TessayaAccountUnusableReason),
   /**
    * Percent of the **tightest** window still free. An account at 4% of its
    * five-hour window and 99% of its weekly one has 1% of headroom, and moving
    * work onto it buys minutes.
    */
   headroomPercent: Schema.NullOr(Schema.Number),
-  windows: Schema.Array(BatonAccountWindow),
+  windows: Schema.Array(TessayaAccountWindow),
   usageCheckedAt: Schema.NullOr(IsoDateTime),
 });
-export type BatonAccount = typeof BatonAccount.Type;
+export type TessayaAccount = typeof TessayaAccount.Type;
 
 /** Where the pool comes from, so a surface can say what it is driving. */
 // Legacy name (D71): "fabric" is a stored source value, so it is kept.
-export const BatonAccountPoolSource = Schema.Union([
+export const TessayaAccountPoolSource = Schema.Union([
   Schema.Literals(["cswap", "instances"]),
   alsoReads("fabric", "tessaya"),
 ]);
-export type BatonAccountPoolSource = typeof BatonAccountPoolSource.Type;
+export type TessayaAccountPoolSource = typeof TessayaAccountPoolSource.Type;
 
-export const BatonAccountPool = Schema.Struct({
+export const TessayaAccountPool = Schema.Struct({
   driver: ProviderDriverKind,
-  source: BatonAccountPoolSource,
+  source: TessayaAccountPoolSource,
   /** The directory whose credential is swapped. One pool per directory. */
   configDir: TrimmedNonEmptyString,
-  accounts: Schema.Array(BatonAccount),
+  accounts: Schema.Array(TessayaAccount),
   checkedAt: IsoDateTime,
 });
-export type BatonAccountPool = typeof BatonAccountPool.Type;
+export type TessayaAccountPool = typeof TessayaAccountPool.Type;
 
-export const BatonAccountRotationReason = Schema.Literals(["manual", "limit", "policy"]);
-export type BatonAccountRotationReason = typeof BatonAccountRotationReason.Type;
+export const TessayaAccountRotationReason = Schema.Literals(["manual", "limit", "policy"]);
+export type TessayaAccountRotationReason = typeof TessayaAccountRotationReason.Type;
 
-export const BatonAccountRotation = Schema.Struct({
-  fromKey: Schema.NullOr(BatonAccountKey),
+export const TessayaAccountRotation = Schema.Struct({
+  fromKey: Schema.NullOr(TessayaAccountKey),
   fromLabel: Schema.NullOr(TrimmedNonEmptyString),
-  toKey: BatonAccountKey,
+  toKey: TessayaAccountKey,
   toLabel: TrimmedNonEmptyString,
-  reason: BatonAccountRotationReason,
+  reason: TessayaAccountRotationReason,
   /** The work session this was done for, when it was done for one. */
   workSessionId: Schema.NullOr(WorkSessionId),
   /** Free in the tightest window of the account moved to, at the time. */
   toHeadroomPercent: Schema.NullOr(Schema.Number),
   rotatedAt: IsoDateTime,
 });
-export type BatonAccountRotation = typeof BatonAccountRotation.Type;
+export type TessayaAccountRotation = typeof TessayaAccountRotation.Type;
 
-export const BatonAccountPoolInput = Schema.Struct({
+export const TessayaAccountPoolInput = Schema.Struct({
   driver: Schema.optional(ProviderDriverKind),
 });
-export type BatonAccountPoolInput = typeof BatonAccountPoolInput.Type;
+export type TessayaAccountPoolInput = typeof TessayaAccountPoolInput.Type;
 
-export const BatonAccountUseInput = Schema.Struct({
-  key: BatonAccountKey,
+export const TessayaAccountUseInput = Schema.Struct({
+  key: TessayaAccountKey,
   /** When set, the login with this address on the receiving machine, whose slot may differ from `key`. */
   email: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(320))),
-  reason: Schema.optional(BatonAccountRotationReason),
+  reason: Schema.optional(TessayaAccountRotationReason),
   /** Named so the rotation lands on that work's timeline. */
   workSessionId: Schema.optional(WorkSessionId),
   driver: Schema.optional(ProviderDriverKind),
 });
-export type BatonAccountUseInput = typeof BatonAccountUseInput.Type;
+export type TessayaAccountUseInput = typeof TessayaAccountUseInput.Type;
 
 /** "auto" moves a working thread to the instance with the most room; "ask" leaves it where it is. */
-export const BatonOnLimitSetting = Schema.Literals(["auto", "ask"]);
-export type BatonOnLimitSetting = typeof BatonOnLimitSetting.Type;
+export const TessayaOnLimitSetting = Schema.Literals(["auto", "ask"]);
+export type TessayaOnLimitSetting = typeof TessayaOnLimitSetting.Type;
 
-export const BatonOnLimitInput = Schema.Struct({});
-export const BatonOnLimitResult = Schema.Struct({ policy: BatonOnLimitSetting });
-export type BatonOnLimitResult = typeof BatonOnLimitResult.Type;
-export const BatonSetOnLimitInput = Schema.Struct({ policy: BatonOnLimitSetting });
-export type BatonSetOnLimitInput = typeof BatonSetOnLimitInput.Type;
+export const TessayaOnLimitInput = Schema.Struct({});
+export const TessayaOnLimitResult = Schema.Struct({ policy: TessayaOnLimitSetting });
+export type TessayaOnLimitResult = typeof TessayaOnLimitResult.Type;
+export const TessayaSetOnLimitInput = Schema.Struct({ policy: TessayaOnLimitSetting });
+export type TessayaSetOnLimitInput = typeof TessayaSetOnLimitInput.Type;
 
-export const BatonThreadKeptInput = Schema.Struct({ threadId: ThreadId });
-export const BatonThreadKeepInput = Schema.Struct({ threadId: ThreadId, keep: Schema.Boolean });
-export type BatonThreadKeepInput = typeof BatonThreadKeepInput.Type;
-export const BatonThreadKeepResult = Schema.Struct({ keep: Schema.Boolean });
+export const TessayaThreadKeptInput = Schema.Struct({ threadId: ThreadId });
+export const TessayaThreadKeepInput = Schema.Struct({ threadId: ThreadId, keep: Schema.Boolean });
+export type TessayaThreadKeepInput = typeof TessayaThreadKeepInput.Type;
+export const TessayaThreadKeepResult = Schema.Struct({ keep: Schema.Boolean });
 
-export const BatonInstanceWeekly = Schema.Struct({
+export const TessayaInstanceWeekly = Schema.Struct({
   instanceId: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
   email: Schema.NullOr(Schema.String),
   weeklyPercent: Schema.NullOr(Schema.Number),
   resetsAt: Schema.NullOr(Schema.String),
 });
-export type BatonInstanceWeekly = typeof BatonInstanceWeekly.Type;
-export const BatonAccountWeeklyInput = Schema.Struct({ driver: ProviderDriverKind });
-export const BatonAccountWeeklyResult = Schema.Struct({
-  instances: Schema.Array(BatonInstanceWeekly),
+export type TessayaInstanceWeekly = typeof TessayaInstanceWeekly.Type;
+export const TessayaAccountWeeklyInput = Schema.Struct({ driver: ProviderDriverKind });
+export const TessayaAccountWeeklyResult = Schema.Struct({
+  instances: Schema.Array(TessayaInstanceWeekly),
 });
 
 /** The weekly window each enabled instance of a driver reports, as T3's provider snapshot has it. */
 export const instancesWeekly = (
   providers: ReadonlyArray<ServerProvider>,
   driver: string,
-): ReadonlyArray<BatonInstanceWeekly> =>
+): ReadonlyArray<TessayaInstanceWeekly> =>
   providers
     .filter((provider) => provider.driver === driver && provider.enabled)
     .map((provider) => {
@@ -187,20 +187,20 @@ export const instancesWeekly = (
       };
     });
 
-export const BatonAccountUseResult = Schema.Struct({
-  rotation: BatonAccountRotation,
-  pool: BatonAccountPool,
+export const TessayaAccountUseResult = Schema.Struct({
+  rotation: TessayaAccountRotation,
+  pool: TessayaAccountPool,
   /** Claude: the sessions in their own config dirs that moved with the machine login, and those that did not. */
   sessions: Schema.optionalKey(Schema.Struct({ switched: Schema.Number, failed: Schema.Number })),
 });
-export type BatonAccountUseResult = typeof BatonAccountUseResult.Type;
+export type TessayaAccountUseResult = typeof TessayaAccountUseResult.Type;
 
-export const BatonThreadAccountUseResult = Schema.Struct({
+export const TessayaThreadAccountUseResult = Schema.Struct({
   instanceId: TrimmedNonEmptyString,
   /** `next-turn` when a turn is running: it is never cut, and the move waits for it to end. */
   timing: Schema.Literals(["now", "next-turn"]),
 });
-export type BatonThreadAccountUseResult = typeof BatonThreadAccountUseResult.Type;
+export type TessayaThreadAccountUseResult = typeof TessayaThreadAccountUseResult.Type;
 
 /** Free in the tightest window. The tightest one is what runs out first. */
 export function headroomFromWindows(
@@ -215,7 +215,7 @@ export function headroomFromWindows(
 }
 
 /** One Claude instance as an account (L-76): its own reported windows, its key the instance id. */
-export const instanceAccount = (provider: ServerProvider, active: boolean): BatonAccount => {
+export const instanceAccount = (provider: ServerProvider, active: boolean): TessayaAccount => {
   const windows = (provider.usageLimits?.windows ?? []).map((window) => ({
     id: window.id,
     label: window.label,
@@ -235,14 +235,14 @@ export const instanceAccount = (provider: ServerProvider, active: boolean): Bato
     headroomPercent: headroom,
     windows,
     usageCheckedAt: provider.usageLimits?.checkedAt ?? null,
-  } as BatonAccount;
+  } as TessayaAccount;
 };
 
 /**
  * The cswap account an instance runs as: its token's slot, or whatever cswap has active for the default
  * instance. Any other instance is unknown, so a token instance with no slot never borrows the active login's limits.
  */
-export function accountForInstance<A extends Pick<BatonAccount, "key" | "active">>(
+export function accountForInstance<A extends Pick<TessayaAccount, "key" | "active">>(
   instanceId: string,
   accounts: ReadonlyArray<A>,
 ): A | undefined {
@@ -255,7 +255,7 @@ export function accountForInstance<A extends Pick<BatonAccount, "key" | "active"
 
 /** When a spent account has quota again: the last of its full windows to reset. */
 export function accountReturnsAt(
-  account: Pick<BatonAccount, "headroomPercent" | "windows">,
+  account: Pick<TessayaAccount, "headroomPercent" | "windows">,
 ): string | null {
   if (account.headroomPercent !== 0) return null;
   return (
@@ -269,7 +269,7 @@ export function accountReturnsAt(
 
 /** Why no thread may move to this account now, or null when it may. */
 export function accountRefusal(
-  account: Pick<BatonAccount, "label" | "unusableReason" | "headroomPercent" | "windows">,
+  account: Pick<TessayaAccount, "label" | "unusableReason" | "headroomPercent" | "windows">,
 ): string | null {
   if (account.unusableReason === "signed-out") return `${account.label} is signed out`;
   if (account.headroomPercent !== 0) return null;
@@ -279,7 +279,7 @@ export function accountRefusal(
     : `${account.label} has no quota left until ${returnsAt.slice(0, 16).replace("T", " ")} UTC`;
 }
 
-export class BatonAccountPoolUnavailableError extends Schema.TaggedError<BatonAccountPoolUnavailableError>()(
+export class TessayaAccountPoolUnavailableError extends Schema.TaggedError<TessayaAccountPoolUnavailableError>()(
   "FabricAccountPoolUnavailableError",
   { driver: ProviderDriverKind, detail: TrimmedNonEmptyString },
 ) {
@@ -288,10 +288,10 @@ export class BatonAccountPoolUnavailableError extends Schema.TaggedError<BatonAc
   }
 }
 
-export class BatonAccountRotationRefusedError extends Schema.TaggedError<BatonAccountRotationRefusedError>()(
+export class TessayaAccountRotationRefusedError extends Schema.TaggedError<TessayaAccountRotationRefusedError>()(
   "FabricAccountRotationRefusedError",
   {
-    key: BatonAccountKey,
+    key: TessayaAccountKey,
     reason: Schema.Literals(["unknown-account", "unusable", "already-active", "turn-in-flight"]),
     detail: Schema.NullOr(TrimmedNonEmptyString),
   },
@@ -310,9 +310,9 @@ export class BatonAccountRotationRefusedError extends Schema.TaggedError<BatonAc
   }
 }
 
-export class BatonAccountRotationFailedError extends Schema.TaggedError<BatonAccountRotationFailedError>()(
+export class TessayaAccountRotationFailedError extends Schema.TaggedError<TessayaAccountRotationFailedError>()(
   "FabricAccountRotationFailedError",
-  { key: BatonAccountKey, detail: TrimmedNonEmptyString },
+  { key: TessayaAccountKey, detail: TrimmedNonEmptyString },
 ) {
   override get message(): string {
     return `Could not switch to account '${this.key}': ${this.detail}`;

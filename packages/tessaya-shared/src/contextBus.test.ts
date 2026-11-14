@@ -1,4 +1,4 @@
-import { CONTEXT_SNAPSHOT_TTL_MS, type BatonContextSnapshot } from "@t3tools/tessaya-contracts";
+import { CONTEXT_SNAPSHOT_TTL_MS, type TessayaContextSnapshot } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -15,7 +15,7 @@ import {
 const at = (minute: number): string => `2026-09-18T07:${String(minute).padStart(2, "0")}:00.000Z`;
 const now = Date.parse(at(10));
 
-const snapshot = (overrides: Partial<BatonContextSnapshot>): BatonContextSnapshot => ({
+const snapshot = (overrides: Partial<TessayaContextSnapshot>): TessayaContextSnapshot => ({
   producer: "fabric",
   observedAt: at(10),
   foregroundApplication: null,
@@ -29,7 +29,7 @@ const snapshot = (overrides: Partial<BatonContextSnapshot>): BatonContextSnapsho
   ...overrides,
 });
 
-const busOf = (...snapshots: readonly BatonContextSnapshot[]): ContextBusState =>
+const busOf = (...snapshots: readonly TessayaContextSnapshot[]): ContextBusState =>
   snapshots.reduce(applyContextSnapshot, emptyContextBus);
 
 describe("the context bus", () => {

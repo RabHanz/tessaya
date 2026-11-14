@@ -8,8 +8,8 @@ import {
   BATON_HOME_READ_OPS,
   HOME_AUTOMATION_KINDS,
   HOME_TIERS,
-  type BatonHomeCallInput,
-  type BatonHomeCallResult,
+  type TessayaHomeCallInput,
+  type TessayaHomeCallResult,
 } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -148,10 +148,10 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   ),
 };
 
-export type HomeCallKind = BatonHomeCallInput["kind"];
+export type HomeCallKind = TessayaHomeCallInput["kind"];
 
 export const serveHomeCall = Effect.fn("HomeCalls.serve")(function* (
-  input: BatonHomeCallInput,
+  input: TessayaHomeCallInput,
   by: HomeActor,
 ) {
   const kind = input.kind;
@@ -164,27 +164,30 @@ export const serveHomeCall = Effect.fn("HomeCalls.serve")(function* (
   // A read method never changes anything, whatever op it is sent.
   const decode = allowed.includes(input.op) ? OPS[input.op] : undefined;
   if (decode === undefined)
-    return { ok: false, error: "That request is not allowed here." } satisfies BatonHomeCallResult;
+    return {
+      ok: false,
+      error: "That request is not allowed here.",
+    } satisfies TessayaHomeCallResult;
   // Who is asking travels beside the op's own arguments; each op's schema ignores it.
   const run = decode(input.args ?? {});
   if (run === null)
     return {
       ok: false,
       error: `The arguments for ${input.op} are not right.`,
-    } satisfies BatonHomeCallResult;
+    } satisfies TessayaHomeCallResult;
   return yield* run(by).pipe(
-    Effect.map((value): BatonHomeCallResult => ({ ok: true, value })),
+    Effect.map((value): TessayaHomeCallResult => ({ ok: true, value })),
     Effect.catchTags({
-      HomeRefusedError: (e) => Effect.succeed<BatonHomeCallResult>({ ok: false, error: e.why }),
+      HomeRefusedError: (e) => Effect.succeed<TessayaHomeCallResult>({ ok: false, error: e.why }),
     }),
   );
 });
 
 /**
  * Who a client call is from: Settings (him, no yes given) unless his desktop assistant says so. `approved` reaches
- * here only from his desktop's own session (BatonRpcAuthorization requires hands-host for it).
+ * here only from his desktop's own session (TessayaRpcAuthorization requires hands-host for it).
  */
-export const homeActorOf = (input: BatonHomeCallInput): HomeActor => {
+export const homeActorOf = (input: TessayaHomeCallInput): HomeActor => {
   const args = input.args ?? {};
   const assistant = args["surface"] === "assistant";
   return {

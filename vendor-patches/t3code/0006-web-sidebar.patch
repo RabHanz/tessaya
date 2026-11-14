@@ -8054,15 +8054,15 @@ index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff2
    ]
  }
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..5c567a50d344cffdba5a4575acd300d57517eb68 100644
+index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..e4c3f7a7c6ff965235366bcf0d2778e0f6c2708e 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -20,6 +20,8 @@ import {
    type MouseEvent as ReactMouseEvent,
  } from "react";
  import { isTrailingDoubleClick } from "../Sidebar.logic";
-+import { BatonLiveStatus } from "./BatonLiveStatus";
-+import { useDisplayThreadTitle } from "./BatonThreadTitle";
++import { TessayaLiveStatus } from "./TessayaLiveStatus";
++import { useDisplayThreadTitle } from "./TessayaThreadTitle";
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { toastManager } from "../ui/toast";
@@ -8129,12 +8129,12 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..5c567a50d344cffdba5a4575acd300d5
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
-+      {isServerThread ? <BatonLiveStatus threadRef={activeThreadRef} /> : null}
++      {isServerThread ? <TessayaLiveStatus threadRef={activeThreadRef} /> : null}
        {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
      </div>
    );
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..5a12173042aa82b6c624bbe42e5d32bc071e1415 100644
+index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..564a2f00e650774cbe14c58191240d5b445a35b1 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
 +++ b/apps/web/src/components/chat/ModelPickerSidebar.tsx
 @@ -1,8 +1,12 @@
@@ -8146,7 +8146,7 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..5a12173042aa82b6c624bbe42e5d32bc
 +import { Fragment, memo, useLayoutEffect, useRef, useState } from "react";
  import { StarIcon } from "lucide-react";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-+import { instanceRoom, RailLimitMark } from "./BatonPickerAccount";
++import { instanceRoom, RailLimitMark } from "./TessayaPickerAccount";
 +import { useNowMinute } from "../../hooks/useNowMinute";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { cn } from "~/lib/utils";
@@ -8269,15 +8269,15 @@ index e7e3253d2c4fe11234153583d50508a6bccfcd2b..a1b6ff017967310d49236cec21902bee
        ) : null}
      </span>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 89ab26f51b9a05b91681d943c0bc756e8f76816e..6cca8c261df26a526f3ffa601ba75dc54150698c 100644
+index 89ab26f51b9a05b91681d943c0bc756e8f76816e..3164c6177970edc82002e3bddafef623901901c8 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 @@ -113,6 +113,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
  import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
-+import { BatonLiveBadge } from "./BatonLiveBadge";
-+import { BatonThreadTitleText } from "../chat/BatonThreadTitle";
++import { TessayaLiveBadge } from "./TessayaLiveBadge";
++import { TessayaThreadTitleText } from "../chat/TessayaThreadTitle";
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
  import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
  import { InlineButton } from "../ui/button";
@@ -8295,7 +8295,7 @@ index 89ab26f51b9a05b91681d943c0bc756e8f76816e..6cca8c261df26a526f3ffa601ba75dc5
        dir={textDirection(thread.title)}
      >
 -      {thread.title}
-+      <BatonThreadTitleText
++      <TessayaThreadTitleText
 +        environmentId={thread.environmentId}
 +        threadId={thread.id}
 +        title={thread.title}
@@ -8307,7 +8307,7 @@ index 89ab26f51b9a05b91681d943c0bc756e8f76816e..6cca8c261df26a526f3ffa601ba75dc5
          aria-hidden
          className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
        >
-+        <BatonLiveBadge live={props.batonLive === true} />
++        <TessayaLiveBadge live={props.batonLive === true} />
          {remoteMachineIcon}
          <SidebarProviderStack
            thread={thread}
@@ -8315,20 +8315,20 @@ index 89ab26f51b9a05b91681d943c0bc756e8f76816e..6cca8c261df26a526f3ffa601ba75dc5
    );
    const titleLineIcons = metaLineEmpty ? (
      <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
-+      <BatonLiveBadge live={props.batonLive === true} />
++      <TessayaLiveBadge live={props.batonLive === true} />
        {remoteMachineIcon}
        <SidebarProviderStack
          thread={thread}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index a59604a63f42677944af7d30518af23e207d170f..2cc558976dba06c9f05f6e044de8fd41afb1ac80 100644
+index a59604a63f42677944af7d30518af23e207d170f..a786b047840dc34178d8c02bcfeeb1eb3a632504 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
 @@ -27,6 +27,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
  import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
  import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
  import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
-+import { isMainWindow } from "../components/panes/batonWindows";
-+import { useBatonPanesStore } from "../components/panes/batonPanesStore";
++import { isMainWindow } from "../components/panes/tessayaWindows";
++import { useTessayaPanesStore } from "../components/panes/tessayaPanesStore";
  import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
  import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
  import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
@@ -8337,7 +8337,7 @@ index a59604a63f42677944af7d30518af23e207d170f..2cc558976dba06c9f05f6e044de8fd41
    const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
    if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
 +  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the pane store this window has left home, so it will not resume panes later
-+  useEffect(() => useBatonPanesStore.getState().noteLocation(pathname), [pathname]);
++  useEffect(() => useTessayaPanesStore.getState().noteLocation(pathname), [pathname]);
    const hostedPromptLinkLanding = useHostedPromptLinkLanding(
      authGateState.status === "hosted-static",
    );

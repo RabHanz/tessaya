@@ -17,7 +17,7 @@ import {
 } from "@t3tools/tessaya-shared/packSync";
 import * as Effect from "effect/Effect";
 
-import { homeLink } from "../baton/TessayaHousehold.ts";
+import { homeLink } from "./TessayaHousehold.ts";
 
 const BASE_FILE = ".sync-base.json";
 const ASIDE_DIR = ".pack-before-sync";

@@ -19,8 +19,8 @@ import {
   R1_LEDS,
   R1_MOODS,
   type R1KeySlot,
-  type BatonDevicesCallInput,
-  type BatonDevicesCallResult,
+  type TessayaDevicesCallInput,
+  type TessayaDevicesCallResult,
 } from "@t3tools/tessaya-contracts";
 import { itemsView, readView } from "@t3tools/tessaya-shared/deviceItems";
 import type { R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
@@ -31,7 +31,7 @@ import * as Schema from "effect/Schema";
 
 import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
-import { SessionMember } from "../baton/TessayaTurn.ts";
+import { SessionMember } from "../tessaya/TessayaTurn.ts";
 import { DeviceTriggers } from "./DeviceTriggers.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { R1Pairing } from "./R1Pairing.ts";
@@ -322,7 +322,7 @@ const bodies = <A>(f: (b: VesselBodies["Service"]) => Effect.Effect<A, DeviceRef
       : f(b.value),
   );
 
-export type DevicesCallKind = BatonDevicesCallInput["kind"];
+export type DevicesCallKind = TessayaDevicesCallInput["kind"];
 
 const decodePublish = Schema.decodeUnknownOption(DevicePublish);
 
@@ -333,7 +333,7 @@ const servePublish = Effect.fn("DeviceCalls.publish")(function* (args: unknown) 
     return {
       ok: false,
       error: "The device report is not in the expected shape.",
-    } satisfies BatonDevicesCallResult;
+    } satisfies TessayaDevicesCallResult;
   const p = decoded.value;
   const registry = yield* DeviceRegistry;
   if (p.manifest !== undefined) {
@@ -341,20 +341,20 @@ const servePublish = Effect.fn("DeviceCalls.publish")(function* (args: unknown) 
       return {
         ok: false,
         error: "The manifest is for another device.",
-      } satisfies BatonDevicesCallResult;
+      } satisfies TessayaDevicesCallResult;
     const refused = yield* registry.publish("client", p.manifest);
-    if (refused !== null) return { ok: false, error: refused } satisfies BatonDevicesCallResult;
+    if (refused !== null) return { ok: false, error: refused } satisfies TessayaDevicesCallResult;
   }
   yield* registry.report("client", p.deviceId, p.values ?? []);
   // Whose it is: the member of the session that reported it (a member's own phone or desktop), for comms.
   const member = yield* SessionMember;
   if (member !== null) yield* registry.claim(p.deviceId, member);
   const writes = yield* registry.take(p.deviceId, p.acks ?? [], p.waitMs ?? 0);
-  return { ok: true, value: { writes } } satisfies BatonDevicesCallResult;
+  return { ok: true, value: { writes } } satisfies TessayaDevicesCallResult;
 });
 
 export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
-  input: BatonDevicesCallInput,
+  input: TessayaDevicesCallInput,
   by: DeviceActor,
 ) {
   if (input.kind === "vessel")
@@ -363,7 +363,7 @@ export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
       : ({
           ok: false,
           error: "That request is not allowed here.",
-        } satisfies BatonDevicesCallResult);
+        } satisfies TessayaDevicesCallResult);
   const allowed: ReadonlyArray<string> =
     input.kind === "read"
       ? BATON_DEVICES_READ_OPS
@@ -375,18 +375,18 @@ export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
     return {
       ok: false,
       error: "That request is not allowed here.",
-    } satisfies BatonDevicesCallResult;
+    } satisfies TessayaDevicesCallResult;
   const run = decode(input.args ?? {});
   if (run === null)
     return {
       ok: false,
       error: `The arguments for ${input.op} are not right.`,
-    } satisfies BatonDevicesCallResult;
+    } satisfies TessayaDevicesCallResult;
   return yield* run(by).pipe(
-    Effect.map((value): BatonDevicesCallResult => ({ ok: true, value })),
+    Effect.map((value): TessayaDevicesCallResult => ({ ok: true, value })),
     Effect.catchTags({
       DeviceRefusedError: (e) =>
-        Effect.succeed<BatonDevicesCallResult>({ ok: false, error: e.why }),
+        Effect.succeed<TessayaDevicesCallResult>({ ok: false, error: e.why }),
     }),
   );
 });
@@ -395,7 +395,7 @@ export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
  * Who a client call is from: him in Settings → Devices, unless his desktop assistant says so; then camera and reboot
  * ask on his phone even though the desktop's session holds the approval scope.
  */
-export const devicesActorOf = (input: BatonDevicesCallInput): DeviceActor => {
+export const devicesActorOf = (input: TessayaDevicesCallInput): DeviceActor => {
   const args = input.args ?? {};
   return args["surface"] === "assistant"
     ? {

@@ -4,7 +4,7 @@
  * in-process through their own handlers as `ROOM_CLIENT`, so McpToolAccess and the house's gate apply as on /mcp. Plus
  * laptop_ask, which asks his laptop's Tessaya. No file, shell or screen tools: the room only reads and asks.
  */
-import { BatonHomeCallResult } from "@t3tools/tessaya-contracts";
+import { TessayaHomeCallResult } from "@t3tools/tessaya-contracts";
 import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
 import { foldSpelling, spellOut } from "@t3tools/tessaya-shared/spelling";
 import {
@@ -43,14 +43,14 @@ import { JobTools } from "../mcp/toolkits/jobs/tools.ts";
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type RoomToolSet, type ToolOutcome } from "./R1Brain.ts";
-import { NOT_HIS_VOICE_TO_FORGET, TurnOrigin } from "../baton/TessayaTurn.ts";
-import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
+import { NOT_HIS_VOICE_TO_FORGET, TurnOrigin } from "../tessaya/TessayaTurn.ts";
+import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices } from "./HomeDevices.ts";
 import { StepUps } from "./StepUps.ts";
-import { VoiceForgets } from "../baton/VoiceForgets.ts";
-import { askHisYes, VesselHands } from "../baton/VesselHands.ts";
+import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
+import { askHisYes, VesselHands } from "../tessaya/VesselHands.ts";
 
 /** What the room may call from Tessaya's /mcp toolkit. */
 const ROOM_TOOLS = [
@@ -431,7 +431,7 @@ export const DESK_TOOL_SPECS: ReadonlyArray<
   core: CORE_TOOLS.has(name),
 })).toSorted(byPlan);
 
-/** His desktop's Tessaya's shared tools, run as its own caller (BatonTessayaRoutes' desk door). */
+/** His desktop's Tessaya's shared tools, run as its own caller (TessayaRoutes' desk door). */
 export const DeskTools = Context.Reference<RoomToolSet | null>("t3/home/DeskTools", {
   defaultValue: () => null,
 });
@@ -462,7 +462,7 @@ export const asAdvertised = (spec: RoomTool, input: unknown): unknown => {
   );
 };
 
-const decodeHome = Schema.decodeUnknownOption(BatonHomeCallResult);
+const decodeHome = Schema.decodeUnknownOption(TessayaHomeCallResult);
 
 /** A failure's own words when it has them, as the model should say them. */
 const reasonOf = (value: unknown): string =>
@@ -472,7 +472,7 @@ const reasonOf = (value: unknown): string =>
 
 /**
  * The runners, built once over one toolkit: each vessel's caller and tool list with this environment. Null without the
- * server's services; found, not required, so the routes layer's type stays small (BatonServerLayer loses types).
+ * server's services; found, not required, so the routes layer's type stays small (TessayaServerLayer loses types).
  */
 const makeRunners = Effect.gen(function* () {
   const random = yield* Effect.serviceOption(SecureRandom.SecureRandom);

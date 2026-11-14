@@ -22,7 +22,7 @@ if [ -n "${BATON_SMOKE_XBIN:-}" ]; then
   export LD_LIBRARY_PATH="$BATON_SMOKE_XBIN/../lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
 fi
 esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
-"$esbuild" src/baton/screen/smoke/screenSmoke.ts --bundle --platform=node --format=cjs \
+"$esbuild" src/tessaya/screen/smoke/screenSmoke.ts --bundle --platform=node --format=cjs \
   --external:electron --external:onnxruntime-node --log-level=warning \
   --outfile=node_modules/.cache/baton-smoke/smoke.cjs
 electron="$(node -p 'require("electron")')"

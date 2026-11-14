@@ -8,7 +8,7 @@ import {
   renderSound,
   PILL_SOUNDS,
   type PillSound,
-} from "../../../apps/desktop/src/baton/voice/pillSounds.ts";
+} from "../../../apps/desktop/src/tessaya/voice/pillSounds.ts";
 import { createOpenWakeWordScorer } from "../../../packages/tessaya-voice/src/providers/onnx.ts";
 import * as Ort from "onnxruntime-node";
 import * as NodePath from "node:path";

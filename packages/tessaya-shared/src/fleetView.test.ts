@@ -5,7 +5,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   WorkSessionId,
-  type BatonFleetEntry,
+  type TessayaFleetEntry,
   type WorkSessionSynopsis,
 } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -19,11 +19,11 @@ const NOW = Date.parse("2026-09-18T04:10:00.000Z");
 const entry = (input: {
   id: string;
   title: string;
-  state: BatonFleetEntry["state"];
+  state: TessayaFleetEntry["state"];
   needsUser?: boolean;
   instanceId?: string;
   synopsis?: WorkSessionSynopsis | null;
-}): BatonFleetEntry => ({
+}): TessayaFleetEntry => ({
   workSessionId: WorkSessionId.make(input.id),
   title: input.title,
   projectId,
@@ -49,7 +49,7 @@ const entry = (input: {
   updatedAt: "2026-09-18T04:05:00.000Z",
 });
 
-const rowsFor = (entries: readonly BatonFleetEntry[]) =>
+const rowsFor = (entries: readonly TessayaFleetEntry[]) =>
   buildFleetRows({
     entries: entries.map((value) => ({ environmentId, entry: value })),
     resolveProjectLabel: () => "VantageOS",

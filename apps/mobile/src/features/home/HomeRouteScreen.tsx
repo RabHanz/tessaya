@@ -37,11 +37,11 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { WorkspaceListEmptyDetail } from "../layout/workspace/WorkspaceListEmptyDetail";
 import { WorkspaceListHeader } from "../layout/workspace/WorkspaceListHeader";
-import { useBatonLiveOnly } from "../threads/batonLiveOnly";
+import { useTessayaLiveOnly } from "../threads/tessayaLiveOnly";
 import { buildHomeListFilterMenuItems } from "./home-list-filter-menu";
 
 export function HomeRouteScreen() {
-  const batonLiveOnly = useBatonLiveOnly();
+  const tessayaLiveOnly = useTessayaLiveOnly();
   const nativePrimaryColumn = use(NativePrimaryColumnContext);
   const { layout, setPrimarySidebarSearchQuery, startNewTask } = useAdaptiveWorkspaceLayout();
   const { primarySidebarSearchQuery } = useWorkspacePaneState();
@@ -173,7 +173,7 @@ export function HomeRouteScreen() {
           }}
           filter={{
             customized:
-              selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
+              selectedEnvironmentId !== null || selectedProjectKey !== null || tessayaLiveOnly,
             items: buildHomeListFilterMenuItems({
               environments,
               projects: projectFilterOptions,
@@ -181,7 +181,7 @@ export function HomeRouteScreen() {
               selectedProjectKey,
               onEnvironmentChange: setSelectedEnvironmentId,
               onProjectChange: setSelectedProjectKey,
-              liveOnly: batonLiveOnly,
+              liveOnly: tessayaLiveOnly,
             }),
           }}
         />

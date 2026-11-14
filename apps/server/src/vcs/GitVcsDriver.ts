@@ -45,7 +45,7 @@ import {
 import * as CheckoutCloner from "./CheckoutCloner.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
-import { mayBeInGitCheckout } from "../baton/gitCheckoutAbove.ts";
+import { mayBeInGitCheckout } from "../tessaya/gitCheckoutAbove.ts";
 
 export interface ExecuteGitInput {
   readonly operation: string;

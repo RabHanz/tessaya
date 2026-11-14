@@ -19,7 +19,7 @@ export interface ToolOutput {
   readonly images?: ReadonlyArray<{ readonly data: string; readonly mimeType: string }>;
 }
 
-export interface BatonTool {
+export interface TessayaTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
@@ -30,7 +30,7 @@ export interface BatonTool {
   readonly shared?: "read" | "write";
 }
 
-export interface BatonMcp {
+export interface TessayaMcp {
   readonly url: string;
   readonly token: string;
   readonly close: () => Promise<void>;
@@ -52,8 +52,8 @@ interface Rpc {
   readonly params?: Record<string, unknown>;
 }
 
-export const startBatonMcp = async (input: {
-  readonly tools: ReadonlyArray<BatonTool>;
+export const startTessayaMcp = async (input: {
+  readonly tools: ReadonlyArray<TessayaTool>;
   readonly gate: Gate;
   /** Removes vault values from anything headed back to the model (D151). */
   readonly scrub?: (text: string) => string;
@@ -68,7 +68,7 @@ export const startBatonMcp = async (input: {
     /** What a call that worked answered, kept only on this machine so a turn can be replayed. */
     readonly text?: string;
   }) => void;
-}): Promise<BatonMcp> => {
+}): Promise<TessayaMcp> => {
   const token = NodeCrypto.randomBytes(32).toString("hex");
   let port = 0;
   const tools = new Map(input.tools.map((t) => [t.name, t]));
@@ -247,9 +247,9 @@ export const startBatonMcp = async (input: {
  * side by side, and one shared server, closed by the next session's start, left all but the newest without tools.
  */
 export const sessionWithOwnMcp = async <S extends { readonly dispose: () => void }>(
-  startMcp: () => Promise<BatonMcp>,
-  start: (mcp: BatonMcp) => S | Promise<S>,
-  live: Set<BatonMcp>,
+  startMcp: () => Promise<TessayaMcp>,
+  start: (mcp: TessayaMcp) => S | Promise<S>,
+  live: Set<TessayaMcp>,
 ): Promise<S> => {
   const mcp = await startMcp();
   live.add(mcp);

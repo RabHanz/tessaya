@@ -1,21 +1,21 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { BatonAccountPoolSource } from "./accountPool.ts";
-import { BatonContextProducer } from "./context.ts";
-import { BatonIntentEvent } from "./intent.ts";
-import { BatonJobRevision } from "./jobs.ts";
+import { TessayaAccountPoolSource } from "./accountPool.ts";
+import { TessayaContextProducer } from "./context.ts";
+import { TessayaIntentEvent } from "./intent.ts";
+import { TessayaJobRevision } from "./jobs.ts";
 
-const decodeIntentEvent = Schema.decodeSync(BatonIntentEvent);
-const decodeJobRevision = Schema.decodeSync(BatonJobRevision);
+const decodeIntentEvent = Schema.decodeSync(TessayaIntentEvent);
+const decodeJobRevision = Schema.decodeSync(TessayaJobRevision);
 
 describe("rename R1: the Tessaya spelling decodes to the name this build writes", () => {
   it.each([
-    [BatonContextProducer, "tessaya", "fabric"],
-    [BatonContextProducer, "fabric", "fabric"],
-    [BatonContextProducer, "voice", "voice"],
-    [BatonAccountPoolSource, "tessaya", "fabric"],
-    [BatonAccountPoolSource, "cswap", "cswap"],
+    [TessayaContextProducer, "tessaya", "fabric"],
+    [TessayaContextProducer, "fabric", "fabric"],
+    [TessayaContextProducer, "voice", "voice"],
+    [TessayaAccountPoolSource, "tessaya", "fabric"],
+    [TessayaAccountPoolSource, "cswap", "cswap"],
   ] as const)("%#: %s", (schema: Schema.Codec<string, string>, wire, decoded) => {
     expect(Schema.decodeSync(schema)(wire)).toBe(decoded);
     expect(Schema.encodeSync(schema)(decoded)).toBe(decoded);

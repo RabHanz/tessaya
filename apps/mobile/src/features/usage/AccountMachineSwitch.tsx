@@ -8,11 +8,11 @@ import { Pressable, View } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { AppText as Text } from "../../components/ui/AppText";
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 export function AccountMachineSwitch({ account }: { readonly account: LimitAccount }) {
-  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const use = useAtomCommand(tessayaWorkSessions.accountUse, { reportFailure: false });
   const [busy, setBusy] = useState(false);
   const key = account.limits.credentialFingerprint;
   if (account.driver !== "claudeAgent" || key === undefined || account.environments.length === 0)

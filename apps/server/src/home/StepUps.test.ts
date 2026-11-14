@@ -4,16 +4,16 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
+import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
 import { StepUps, layer } from "./StepUps.ts";
 
 /** A phone that has already answered `answer` to every card, and keeps the cards it was shown. */
 const phone = (answer: number | null, shown: Array<PhonePrompt>) =>
-  Layer.succeed(BatonPhoneInbox, {
+  Layer.succeed(TessayaPhoneInbox, {
     mirror: (prompt: PhonePrompt) => Effect.sync(() => void shown.push(prompt)),
     promptAnswer: () => Effect.succeed(answer),
     closePrompt: () => Effect.void,
-  } as unknown as BatonPhoneInbox["Service"]);
+  } as unknown as TessayaPhoneInbox["Service"]);
 
 const holdCard = (answer: number | null, shown: Array<PhonePrompt>, told: Array<string>) =>
   Effect.gen(function* () {

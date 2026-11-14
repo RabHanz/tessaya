@@ -1,7 +1,7 @@
 import { Pressable, ScrollView } from "react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
-import { setBatonLiveOnly, useBatonLiveOnly } from "../threads/batonLiveOnly";
+import { setTessayaLiveOnly, useTessayaLiveOnly } from "../threads/tessayaLiveOnly";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
   HomeListFilterMenuEnvironment,
@@ -18,7 +18,7 @@ export function ThreadListFilters(props: {
   /** List padding the scroller bleeds through so pills start where row content does. */
   readonly gutter: number;
 }) {
-  const liveOnly = useBatonLiveOnly();
+  const liveOnly = useTessayaLiveOnly();
   const selectedEnvironment = props.environments.find(
     (environment) => environment.environmentId === props.selectedEnvironmentId,
   );
@@ -108,7 +108,7 @@ export function ThreadListFilters(props: {
           { id: "all", title: "All threads", state: liveOnly ? "off" : "on" },
           { id: "live", title: "Live only", state: liveOnly ? "on" : "off" },
         ]}
-        onSelect={(id) => setBatonLiveOnly(id === "live")}
+        onSelect={(id) => setTessayaLiveOnly(id === "live")}
       />
     </ScrollView>
   );

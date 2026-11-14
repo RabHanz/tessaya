@@ -10,7 +10,7 @@ export const BATON_COMMITMENT_WS_METHODS = {
   upsert: "baton.commitments.upsert",
 } as const;
 
-export const BatonCommitment = Schema.Struct({
+export const TessayaCommitment = Schema.Struct({
   id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
   owner: Schema.Literals(["tessaya", "you"]),
@@ -22,16 +22,18 @@ export const BatonCommitment = Schema.Struct({
   closedAt: Schema.optionalKey(Schema.Number),
   ref: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
 });
-export type BatonCommitment = typeof BatonCommitment.Type;
+export type TessayaCommitment = typeof TessayaCommitment.Type;
 
-export const BatonCommitmentListResult = Schema.Struct({ items: Schema.Array(BatonCommitment) });
-export const BatonCommitmentUpsertInput = Schema.Struct({
-  items: Schema.Array(BatonCommitment).check(Schema.isMaxLength(500)),
+export const TessayaCommitmentListResult = Schema.Struct({
+  items: Schema.Array(TessayaCommitment),
 });
-export const BatonCommitmentUpsertResult = Schema.Struct({ applied: Schema.Number });
-export const BatonCommitmentListInput = Schema.Struct({});
+export const TessayaCommitmentUpsertInput = Schema.Struct({
+  items: Schema.Array(TessayaCommitment).check(Schema.isMaxLength(500)),
+});
+export const TessayaCommitmentUpsertResult = Schema.Struct({ applied: Schema.Number });
+export const TessayaCommitmentListInput = Schema.Struct({});
 
-export class BatonCommitmentError extends Schema.TaggedError<BatonCommitmentError>()(
+export class TessayaCommitmentError extends Schema.TaggedError<TessayaCommitmentError>()(
   "BatonCommitmentError",
   { reason: Schema.String },
 ) {

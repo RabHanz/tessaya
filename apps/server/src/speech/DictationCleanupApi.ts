@@ -18,7 +18,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
-import * as BrainUsage from "../baton/BrainUsage.ts";
+import * as BrainUsage from "../tessaya/BrainUsage.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
 

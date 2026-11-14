@@ -13,7 +13,7 @@ import {
   paceOf,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { BatonLimitsAge } from "./BatonLimitsAge";
+import { TessayaLimitsAge } from "./TessayaLimitsAge";
 import type { ReactNode } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
@@ -93,7 +93,7 @@ export function ThreadDetailsUsage({
             {limits.windows.map((window) => (
               <LimitRow key={window.id} window={window} now={now} />
             ))}
-            <BatonLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
+            <TessayaLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
           </>
         )}
       </div>

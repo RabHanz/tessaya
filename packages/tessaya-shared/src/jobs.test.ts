@@ -1,4 +1,4 @@
-import type { BatonJob } from "@t3tools/tessaya-contracts";
+import type { TessayaJob } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -208,7 +208,7 @@ describe("a job's changes for the Record", () => {
       phase,
       group,
       limitReached: limit,
-    }) as unknown as BatonJob;
+    }) as unknown as TessayaJob;
   it("names each change once, and says nothing about a job it is seeing for the first time", () => {
     const seen = new Map([
       ["a", "writing its plan"],

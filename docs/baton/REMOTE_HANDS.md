@@ -10,10 +10,10 @@ remote session --HTTPS bearer (baton:hands)--> hub server /tessaya/hands/call
 hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool --> answer back the same way
 ```
 
-- The **server only brokers** (`packages/tessaya-shared/src/remoteHands.ts`, `apps/server/src/baton/BatonHandsApi.ts`): it allows a fixed list
+- The **server only brokers** (`packages/tessaya-shared/src/remoteHands.ts`, `apps/server/src/tessaya/TessayaHandsApi.ts`): it allows a fixed list
   of tools, holds a call until the desktop takes it (a long poll, so a call arrives at once), and writes an audit line
   (`baton-hands-audit.ndjson` beside the database; typed text is logged as its length, never its content).
-- **The same channel serves the one brain** (`apps/server/src/baton/VesselHands.ts`, SPINE-UNIFY): the desktop publishes the tools it offers
+- **The same channel serves the one brain** (`apps/server/src/tessaya/VesselHands.ts`, SPINE-UNIFY): the desktop publishes the tools it offers
   a brain turn with its `take`, and a turn's call reaches only those, carrying the turn's origin (which vessel heard it, whose voice) for the
   gate. A remote session still reaches only the fixed list; it can neither set an origin nor reach a published tool.
 - The **desktop owns the gate and the mouse guard**. Every call goes through the same `judgeToolCall` and `createAgentGate` as the assistant's

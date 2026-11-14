@@ -28,7 +28,7 @@ import * as Schema from "effect/Schema";
 
 import { IsoDateTime } from "@t3tools/contracts";
 
-export const BatonSessionState = Schema.Literals([
+export const TessayaSessionState = Schema.Literals([
   "starting",
   "working",
   "monitoring",
@@ -40,24 +40,24 @@ export const BatonSessionState = Schema.Literals([
   "offline",
   "failed",
 ]);
-export type BatonSessionState = typeof BatonSessionState.Type;
+export type TessayaSessionState = typeof TessayaSessionState.Type;
 
 /**
  * States that mean the work cannot move without the user. "What needs me?"
  * is exactly this set, and the fleet's top-level filter uses it.
  */
-export const BATON_STATES_NEEDING_USER: ReadonlyArray<BatonSessionState> = [
+export const BATON_STATES_NEEDING_USER: ReadonlyArray<TessayaSessionState> = [
   "needs_approval",
   "needs_input",
   "limited",
   "failed",
 ];
 
-export const batonStateNeedsUser = (state: BatonSessionState): boolean =>
+export const tessayaStateNeedsUser = (state: TessayaSessionState): boolean =>
   BATON_STATES_NEEDING_USER.includes(state);
 
 /** States where the provider is doing something right now. */
-export const batonStateIsActive = (state: BatonSessionState): boolean =>
+export const tessayaStateIsActive = (state: TessayaSessionState): boolean =>
   state === "starting" || state === "working" || state === "monitoring";
 
 /**
@@ -65,7 +65,7 @@ export const batonStateIsActive = (state: BatonSessionState): boolean =>
  * running, then what finished unseen, then everything at rest. Lower sorts
  * earlier.
  */
-export const BATON_STATE_PRIORITY: Readonly<Record<BatonSessionState, number>> = {
+export const BATON_STATE_PRIORITY: Readonly<Record<TessayaSessionState, number>> = {
   needs_approval: 0,
   needs_input: 1,
   failed: 2,
@@ -83,7 +83,7 @@ export const BATON_STATE_PRIORITY: Readonly<Record<BatonSessionState, number>> =
  * `OrchestrationThreadShell`: the server derives from projection rows and the
  * clients from the shell, and both must get the same answer.
  */
-export interface BatonSessionStateInput {
+export interface TessayaSessionStateInput {
   /** False when the environment is unreachable; nothing else is trustworthy then. */
   readonly environmentOnline: boolean;
   readonly hasPendingApprovals: boolean;
@@ -127,7 +127,7 @@ export const hasUnseenCompletion = (input: {
  * The §10 ladder, in order. Each rung is a fact the environment reported, not
  * an inference.
  */
-export function deriveBatonSessionState(input: BatonSessionStateInput): BatonSessionState {
+export function deriveTessayaSessionState(input: TessayaSessionStateInput): TessayaSessionState {
   // Reachability first: a cached "working" from an environment that dropped
   // is the one state that actively misleads.
   if (!input.environmentOnline) return "offline";
@@ -162,7 +162,7 @@ export function deriveBatonSessionState(input: BatonSessionStateInput): BatonSes
   return "idle";
 }
 
-const isProviderBusy = (input: BatonSessionStateInput): boolean =>
+const isProviderBusy = (input: TessayaSessionStateInput): boolean =>
   input.sessionStatus === "running" ||
   input.sessionStatus === "starting" ||
   input.backgroundLiveness !== null ||
@@ -181,8 +181,8 @@ const isProviderBusy = (input: BatonSessionStateInput): boolean =>
  * between providers, which is a normal state and the reason the object exists.
  */
 export function deriveWorkSessionState(
-  threadStates: ReadonlyArray<BatonSessionState>,
-): BatonSessionState {
+  threadStates: ReadonlyArray<TessayaSessionState>,
+): TessayaSessionState {
   if (threadStates.length === 0) return "idle";
   return threadStates.reduce((best, candidate) =>
     BATON_STATE_PRIORITY[candidate] < BATON_STATE_PRIORITY[best] ? candidate : best,
@@ -190,14 +190,14 @@ export function deriveWorkSessionState(
 }
 
 /** Wire shape for one entry in the fleet. */
-export const BatonFleetEntryState = Schema.Struct({
-  state: BatonSessionState,
+export const TessayaFleetEntryState = Schema.Struct({
+  state: TessayaSessionState,
   observedAt: IsoDateTime,
 });
-export type BatonFleetEntryState = typeof BatonFleetEntryState.Type;
+export type TessayaFleetEntryState = typeof TessayaFleetEntryState.Type;
 
 /** Human labels, shared so every surface names a state the same way. */
-export const BATON_STATE_LABELS: Readonly<Record<BatonSessionState, string>> = {
+export const BATON_STATE_LABELS: Readonly<Record<TessayaSessionState, string>> = {
   starting: "Starting",
   working: "Working",
   monitoring: "Monitoring",
@@ -215,7 +215,7 @@ export const BATON_STATE_LABELS: Readonly<Record<BatonSessionState, string>> = {
  * `✓` done. One character, because the fleet has to be readable at a glance
  * and colour alone is not a signal everyone receives.
  */
-export const BATON_STATE_GLYPHS: Readonly<Record<BatonSessionState, string>> = {
+export const BATON_STATE_GLYPHS: Readonly<Record<TessayaSessionState, string>> = {
   starting: "◌",
   working: "●",
   monitoring: "◐",

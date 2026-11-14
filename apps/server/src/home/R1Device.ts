@@ -46,12 +46,12 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
-import { BatonOneShot } from "../baton/BatonOneShot.ts";
-import { BatonRecordService } from "../baton/BatonRecordService.ts";
-import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
-import { MemoryViewer } from "../baton/BatonMemoryService.ts";
-import { personasList, readPack } from "../baton/OperatingSystemPack.ts";
-import { TessayaTurn, type TurnEnvelope } from "../baton/TessayaTurn.ts";
+import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
+import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
+import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
+import { MemoryViewer } from "../tessaya/TessayaMemoryService.ts";
+import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
+import { TessayaTurn, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import type { R1Mood as ContractR1Mood } from "@t3tools/tessaya-contracts";
 import {
@@ -65,8 +65,8 @@ import {
   speakableSentences,
   brainFailure,
   sessionTools,
-} from "../baton/TessayaBrain.ts";
-import { TessayaExpression, expressOr } from "../baton/TessayaExpression.ts";
+} from "../tessaya/TessayaBrain.ts";
+import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { isLineEvent, r1MoodOf } from "@t3tools/tessaya-shared/expression";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
@@ -859,7 +859,7 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
         ? "happy"
         : (r1MoodOf(felt.label) ?? "happy");
   yield* eyes(device, mood, 4000, felt === null ? "the turn's outcome" : `her mood: ${felt.label}`);
-  const record = yield* Effect.serviceOption(BatonRecordService);
+  const record = yield* Effect.serviceOption(TessayaRecordService);
   if (record._tag === "Some")
     yield* record.value.append({
       kind: "device",
@@ -873,7 +873,7 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 /** One turn, whatever carried his words: the Agora bridge, or the room voice loop. */
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   const { device, context, turn, names } = yield* r1Gather(input);
-  const oneShot = yield* BatonOneShot;
+  const oneShot = yield* TessayaOneShot;
   const plan = yield* oneShot
     .run({ prompt: r1Prompt(context), outputSchema: R1Plan, role: "voice" })
     .pipe(
@@ -1201,7 +1201,7 @@ const error = (status: number, message: string) =>
 
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
-    const context = yield* BatonRuntime;
+    const context = yield* TessayaRuntime;
     if (context === null) return;
     // With an R1 set up, the room's brain waits ready from the start, so the first turn is as quick as the rest.
     yield* Effect.gen(function* () {

@@ -19,7 +19,7 @@ export interface PlacementProject {
 }
 
 /** D72: a project's key is its repository's canonical key, else its folder name. */
-export function batonProjectKey(project: PlacementProject): { key: string; label: string } {
+export function tessayaProjectKey(project: PlacementProject): { key: string; label: string } {
   const identity = project.repositoryIdentity;
   if (identity != null) {
     return {
@@ -70,13 +70,13 @@ export const placeJob = <P extends PlacementProject>(
   const name = wanted.trim().toLowerCase();
   const project = projects.find(
     (entry) =>
-      batonProjectKey(entry).label.toLowerCase() === name || entry.title.toLowerCase() === name,
+      tessayaProjectKey(entry).label.toLowerCase() === name || entry.title.toLowerCase() === name,
   );
   if (project === undefined) {
-    const known = projects.map((entry) => batonProjectKey(entry).label).join(", ");
+    const known = projects.map((entry) => tessayaProjectKey(entry).label).join(", ");
     return { ok: false, why: `No project is called "${wanted}". Projects: ${known}.` };
   }
-  const label = batonProjectKey(project).label;
+  const label = tessayaProjectKey(project).label;
   if (worker !== undefined && worker.trim() !== "") {
     const named = handoffTarget(worker, providers);
     return named.ok ? { ok: true, value: { project, label, worker: named.value } } : named;

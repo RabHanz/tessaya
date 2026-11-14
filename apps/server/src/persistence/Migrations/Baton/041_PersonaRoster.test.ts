@@ -11,7 +11,7 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../../../config.ts";
-import { runBatonMigrations } from "../../BatonMigrations.ts";
+import { runTessayaMigrations } from "../../TessayaMigrations.ts";
 
 /** Who each id was before the 14 Nov roster; null and unknown ids are nobody's face. */
 const BEFORE: Record<string, string> = {
@@ -59,9 +59,9 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))("041_PersonaRoster", 
     "moves every persona's records to the same face by name, and no record to another face",
     () =>
       Effect.gen(function* () {
-        yield* runBatonMigrations({ toMigrationInclusive: 40 });
+        yield* runTessayaMigrations({ toMigrationInclusive: 40 });
         yield* seed;
-        yield* runBatonMigrations({ toMigrationInclusive: 41 });
+        yield* runTessayaMigrations({ toMigrationInclusive: 41 });
         const after = yield* owners;
         for (const [i, owner] of OWNERS.entries()) {
           const face = owner === null ? null : (BEFORE[owner] ?? owner);
@@ -109,9 +109,9 @@ it.layer(Layer.mergeAll(NodeSqliteClient.layer({ filename: ":memory:" }), config
             NodePath.join(roles, "operations.md"),
             "---\nvoice: anna\n---\nMine.",
           );
-          yield* runBatonMigrations({ toMigrationInclusive: 40 });
+          yield* runTessayaMigrations({ toMigrationInclusive: 40 });
           yield* seed;
-          yield* runBatonMigrations({ toMigrationInclusive: 41 });
+          yield* runTessayaMigrations({ toMigrationInclusive: 41 });
           const after = yield* owners;
           assert.deepEqual(
             after.jobs.map((j) => j.persona),

@@ -106,9 +106,9 @@ import {
 import { useSearchToolbarInset } from "../../components/ui/useBarInset";
 import type { AppBarSearch } from "../../components/ui/AppBar";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
-import { BatonAccountRow, useLiveSheetChange, useSessionEffort } from "./BatonAccountRow";
-import { batonProviderGroups, liveTraits } from "./batonCatalog";
-import { takeAccountsFilter } from "./BatonThreadHeader";
+import { TessayaAccountRow, useLiveSheetChange, useSessionEffort } from "./TessayaAccountRow";
+import { tessayaProviderGroups, liveTraits } from "./tessayaCatalog";
+import { takeAccountsFilter } from "./TessayaThreadHeader";
 import {
   compatibleRuntimeModeForChoices,
   runtimeModeChoicesForSupportedModes,
@@ -768,7 +768,7 @@ function ThreadSettingsProviderListHeader(props: {
         modelCount={props.provider.modelCount}
         onToggle={onToggle}
       />
-      <BatonAccountRow
+      <TessayaAccountRow
         environmentId={session.environmentId}
         threadId={session.threadId}
         provider={props.provider}
@@ -784,7 +784,7 @@ function ThreadSettingsProviderListHeader(props: {
 function buildThreadSettingsCatalogItems(
   session: ThreadSettingsSessionValue,
 ): ReadonlyArray<ThreadSettingsCatalogItem> {
-  const groups = batonProviderGroups(
+  const groups = tessayaProviderGroups(
     session.providerGroups,
     session.displayedModelSelection?.instanceId,
   );
@@ -1245,13 +1245,14 @@ function ThreadSettingsModelsScreen() {
   const providerFilters = [
     { id: "all-providers", title: "All providers", value: null },
     { id: "favorites", title: "Favorites", value: FAVORITES_PROVIDER_FILTER },
-    ...batonProviderGroups(session.providerGroups, session.displayedModelSelection?.instanceId).map(
-      (group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        value: group.providerKey,
-      }),
-    ),
+    ...tessayaProviderGroups(
+      session.providerGroups,
+      session.displayedModelSelection?.instanceId,
+    ).map((group) => ({
+      id: `provider:${group.providerKey}`,
+      title: group.providerLabel,
+      value: group.providerKey,
+    })),
   ];
 
   return (

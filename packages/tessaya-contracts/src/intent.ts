@@ -50,8 +50,8 @@ export const BATON_INTENT_WS_METHODS = {
   intentList: "fabric.intent.list",
 } as const;
 
-export const BatonIntentId = TrimmedNonEmptyString.pipe(Schema.brand("FabricIntentId"));
-export type BatonIntentId = typeof BatonIntentId.Type;
+export const TessayaIntentId = TrimmedNonEmptyString.pipe(Schema.brand("FabricIntentId"));
+export type TessayaIntentId = typeof TessayaIntentId.Type;
 
 /**
  * §24.1's classes, as they apply to a sentence rather than to a task.
@@ -61,17 +61,17 @@ export type BatonIntentId = typeof BatonIntentId.Type;
  * instead of falling through to "I did not understand that", which would teach
  * the user to rephrase until something happened.
  */
-export const BatonIntentRisk = Schema.Literals(["low", "medium", "high"]);
-export type BatonIntentRisk = typeof BatonIntentRisk.Type;
+export const TessayaIntentRisk = Schema.Literals(["low", "medium", "high"]);
+export type TessayaIntentRisk = typeof TessayaIntentRisk.Type;
 
 /** Which of §20's questions a fleet-wide status request is asking. */
-export const BatonStatusQuestion = Schema.Literals([
+export const TessayaStatusQuestion = Schema.Literals([
   "needs_me",
   "running",
   "finished",
   "everything",
 ]);
-export type BatonStatusQuestion = typeof BatonStatusQuestion.Type;
+export type TessayaStatusQuestion = typeof TessayaStatusQuestion.Type;
 
 /**
  * One rule a sentence asked for, before ids exist.
@@ -81,23 +81,23 @@ export type BatonStatusQuestion = typeof BatonStatusQuestion.Type;
  * are created — a rule that appears without having been read back is exactly
  * what §22 is trying to avoid.
  */
-export const BatonIntentRuleDraft = Schema.Struct({
+export const TessayaIntentRuleDraft = Schema.Struct({
   trigger: OrchestrationTrigger,
   action: OrchestrationAction,
   /** True when this rule runs after the one before it in the list. */
   afterPrevious: Schema.Boolean,
   maxFirings: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 20 })),
 });
-export type BatonIntentRuleDraft = typeof BatonIntentRuleDraft.Type;
+export type TessayaIntentRuleDraft = typeof TessayaIntentRuleDraft.Type;
 
 /**
  * What the sentence resolved to. Every member names its target by id: the
  * grammar does the resolving, so execution never re-interprets words.
  */
-export const BatonIntentCommand = Schema.Union([
+export const TessayaIntentCommand = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("status_fleet"),
-    question: BatonStatusQuestion,
+    question: TessayaStatusQuestion,
   }),
   Schema.Struct({
     kind: Schema.Literal("status_work_session"),
@@ -126,7 +126,7 @@ export const BatonIntentCommand = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("create_rules"),
     workSessionId: WorkSessionId,
-    rules: Schema.Array(BatonIntentRuleDraft),
+    rules: Schema.Array(TessayaIntentRuleDraft),
     /**
      * The sentence, verbatim, so every rule it creates can be read back in the
      * words that made it. A rule whose source is empty is unreadable a week
@@ -150,9 +150,9 @@ export const BatonIntentCommand = Schema.Union([
     workSessionId: Schema.optionalKey(Schema.NullOr(WorkSessionId)),
   }),
 ]);
-export type BatonIntentCommand = typeof BatonIntentCommand.Type;
+export type TessayaIntentCommand = typeof TessayaIntentCommand.Type;
 
-export const BatonIntentRefusalReason = Schema.Literals([
+export const TessayaIntentRefusalReason = Schema.Literals([
   /** Nothing in the grammar matched. */
   "unrecognised",
   /** §24.1 HIGH. A sentence never authorises one. */
@@ -168,33 +168,33 @@ export const BatonIntentRefusalReason = Schema.Literals([
   /** The rule grammar refused; its own words come back in `unplaced`. */
   "rule_not_understood",
 ]);
-export type BatonIntentRefusalReason = typeof BatonIntentRefusalReason.Type;
+export type TessayaIntentRefusalReason = typeof TessayaIntentRefusalReason.Type;
 
-export const BatonIntentRefusal = Schema.Struct({
-  reason: BatonIntentRefusalReason,
+export const TessayaIntentRefusal = Schema.Struct({
+  reason: TessayaIntentRefusalReason,
   /** The words the grammar could not place, verbatim. Never a summary. */
   unplaced: TrimmedString,
   /** What to say back. Written to be spoken as well as read. */
   message: TrimmedNonEmptyString,
 });
-export type BatonIntentRefusal = typeof BatonIntentRefusal.Type;
+export type TessayaIntentRefusal = typeof TessayaIntentRefusal.Type;
 
-export const BatonIntentResolution = Schema.Union([
+export const TessayaIntentResolution = Schema.Union([
   Schema.Struct({
     outcome: Schema.Literal("resolved"),
-    command: BatonIntentCommand,
+    command: TessayaIntentCommand,
     /** One line, in the user's terms: "Tell Claude on Scheduler: run the tests." */
     description: TrimmedNonEmptyString,
-    risk: BatonIntentRisk,
+    risk: TessayaIntentRisk,
     /** The work this touches, when it touches one. */
     workSessionId: Schema.NullOr(WorkSessionId),
   }),
   Schema.Struct({
     outcome: Schema.Literal("refused"),
-    refusal: BatonIntentRefusal,
+    refusal: TessayaIntentRefusal,
   }),
 ]);
-export type BatonIntentResolution = typeof BatonIntentResolution.Type;
+export type TessayaIntentResolution = typeof TessayaIntentResolution.Type;
 
 /**
  * Who read the sentence.
@@ -213,38 +213,38 @@ export type BatonIntentResolution = typeof BatonIntentResolution.Type;
  * Defaulted rather than required: every row written before D50 was the grammar,
  * and a default keeps that true without a backfill that invents history.
  */
-export const BatonIntentSource = Schema.Literals(["grammar", "learned", "model"]);
-export type BatonIntentSource = typeof BatonIntentSource.Type;
+export const TessayaIntentSource = Schema.Literals(["grammar", "learned", "model"]);
+export type TessayaIntentSource = typeof TessayaIntentSource.Type;
 
-export const BatonIntentOutcome = Schema.Literals(["resolved", "refused", "failed"]);
-export type BatonIntentOutcome = typeof BatonIntentOutcome.Type;
+export const TessayaIntentOutcome = Schema.Literals(["resolved", "refused", "failed"]);
+export type TessayaIntentOutcome = typeof TessayaIntentOutcome.Type;
 
 /**
  * One recorded intent. Durable, because "why did that thread appear?" and "what
  * did I ask it to do?" must be answerable after the fact — the same argument
  * that makes an orchestration firing durable.
  */
-export const BatonIntentRecord = Schema.Struct({
-  id: BatonIntentId,
+export const TessayaIntentRecord = Schema.Struct({
+  id: TessayaIntentId,
   /** What the user said, verbatim. */
   text: TrimmedNonEmptyString,
-  outcome: BatonIntentOutcome,
+  outcome: TessayaIntentOutcome,
   /** The command's `kind`, or null when nothing resolved. */
   commandKind: Schema.NullOr(TrimmedNonEmptyString),
   workSessionId: Schema.NullOr(WorkSessionId),
   description: TrimmedString,
   /** The spoken reply, ready for any TTS the client has. */
   reply: TrimmedString,
-  risk: BatonIntentRisk,
-  refusalReason: Schema.NullOr(BatonIntentRefusalReason),
+  risk: TessayaIntentRisk,
+  refusalReason: Schema.NullOr(TessayaIntentRefusalReason),
   at: IsoDateTime,
-  source: BatonIntentSource.pipe(Schema.withDecodingDefault(Effect.succeed("grammar" as const))),
+  source: TessayaIntentSource.pipe(Schema.withDecodingDefault(Effect.succeed("grammar" as const))),
   /** The model that read it, when one did. Null for the grammar and for a learned phrasing. */
   model: Schema.NullOr(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
 });
-export type BatonIntentRecord = typeof BatonIntentRecord.Type;
+export type TessayaIntentRecord = typeof TessayaIntentRecord.Type;
 
 /**
  * The §28 event family for this surface.
@@ -254,29 +254,29 @@ export type BatonIntentRecord = typeof BatonIntentRecord.Type;
  * future wake word, and naming the family after one transport would misdescribe
  * every other one. See the maintainers' decision log.
  */
-export const BatonIntentEvent = Schema.Union([
+export const TessayaIntentEvent = Schema.Union([
   Schema.Struct({
     kind: renamedKind("fabric.intent.received"),
-    id: BatonIntentId,
+    id: TessayaIntentId,
     text: TrimmedNonEmptyString,
     at: IsoDateTime,
   }),
   Schema.Struct({
     kind: renamedKind("fabric.intent.resolved"),
-    record: BatonIntentRecord,
+    record: TessayaIntentRecord,
   }),
   Schema.Struct({
     kind: renamedKind("fabric.intent.refused"),
-    record: BatonIntentRecord,
+    record: TessayaIntentRecord,
   }),
 ]);
-export type BatonIntentEvent = typeof BatonIntentEvent.Type;
+export type TessayaIntentEvent = typeof TessayaIntentEvent.Type;
 
 // ---------------------------------------------------------------------------
 // RPC payloads
 // ---------------------------------------------------------------------------
 
-export const BatonIntentInput = Schema.Struct({
+export const TessayaIntentInput = Schema.Struct({
   text: TrimmedNonEmptyString,
   /**
    * What the user is looking at. §14's ladder rung 3, and the only rung a
@@ -296,32 +296,32 @@ export const BatonIntentInput = Schema.Struct({
    */
   allowModel: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonIntentInput = typeof BatonIntentInput.Type;
+export type TessayaIntentInput = typeof TessayaIntentInput.Type;
 
-export const BatonIntentResolveResult = Schema.Struct({
-  resolution: BatonIntentResolution,
+export const TessayaIntentResolveResult = Schema.Struct({
+  resolution: TessayaIntentResolution,
 });
-export type BatonIntentResolveResult = typeof BatonIntentResolveResult.Type;
+export type TessayaIntentResolveResult = typeof TessayaIntentResolveResult.Type;
 
-export const BatonIntentRunResult = Schema.Struct({
-  resolution: BatonIntentResolution,
+export const TessayaIntentRunResult = Schema.Struct({
+  resolution: TessayaIntentResolution,
   /** What to say back. Empty only when there is genuinely nothing to say. */
   reply: TrimmedString,
-  record: BatonIntentRecord,
+  record: TessayaIntentRecord,
 });
-export type BatonIntentRunResult = typeof BatonIntentRunResult.Type;
+export type TessayaIntentRunResult = typeof TessayaIntentRunResult.Type;
 
-export const BatonIntentListInput = Schema.Struct({
+export const TessayaIntentListInput = Schema.Struct({
   workSessionId: Schema.optionalKey(WorkSessionId),
   limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
 });
-export type BatonIntentListInput = typeof BatonIntentListInput.Type;
+export type TessayaIntentListInput = typeof TessayaIntentListInput.Type;
 
-export const BatonIntentListResult = Schema.Struct({
+export const TessayaIntentListResult = Schema.Struct({
   /** Newest first. */
-  intents: Schema.Array(BatonIntentRecord),
+  intents: Schema.Array(TessayaIntentRecord),
 });
-export type BatonIntentListResult = typeof BatonIntentListResult.Type;
+export type TessayaIntentListResult = typeof TessayaIntentListResult.Type;
 
 /** How many intents a list returns when the caller does not say. */
 export const DEFAULT_INTENT_LIST_LIMIT = 20;
@@ -330,7 +330,7 @@ export const DEFAULT_INTENT_LIST_LIMIT = 20;
 // Errors
 // ---------------------------------------------------------------------------
 
-export class BatonIntentStorageError extends Schema.TaggedError<BatonIntentStorageError>()(
+export class TessayaIntentStorageError extends Schema.TaggedError<TessayaIntentStorageError>()(
   "FabricIntentStorageError",
   { operation: TrimmedNonEmptyString, detail: TrimmedString },
 ) {
@@ -344,7 +344,7 @@ export class BatonIntentStorageError extends Schema.TaggedError<BatonIntentStora
  * refusal: "I would not" and "I could not" are different answers, and a user
  * who cannot tell them apart cannot tell whether rephrasing would help.
  */
-export class BatonIntentExecutionError extends Schema.TaggedError<BatonIntentExecutionError>()(
+export class TessayaIntentExecutionError extends Schema.TaggedError<TessayaIntentExecutionError>()(
   "FabricIntentExecutionError",
   { commandKind: TrimmedNonEmptyString, detail: TrimmedString },
 ) {
@@ -353,5 +353,8 @@ export class BatonIntentExecutionError extends Schema.TaggedError<BatonIntentExe
   }
 }
 
-export const BatonIntentError = Schema.Union([BatonIntentStorageError, BatonIntentExecutionError]);
-export type BatonIntentError = typeof BatonIntentError.Type;
+export const TessayaIntentError = Schema.Union([
+  TessayaIntentStorageError,
+  TessayaIntentExecutionError,
+]);
+export type TessayaIntentError = typeof TessayaIntentError.Type;

@@ -14,7 +14,7 @@ import {
   type TurnEnvelope,
   turnIdentity,
   type VesselKind,
-} from "../baton/TessayaTurn.ts";
+} from "./TessayaTurn.ts";
 
 declare const __TESSAYA_INTERNAL__: boolean | undefined;
 

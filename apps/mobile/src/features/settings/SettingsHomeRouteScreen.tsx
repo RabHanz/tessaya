@@ -4,7 +4,7 @@
  * move a device up or down a tier.
  */
 import type {
-  BatonHomeCallResult,
+  TessayaHomeCallResult,
   HomeActionRow,
   HomeAutomationRow,
   HomeStatus,
@@ -24,7 +24,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -86,7 +86,7 @@ function HomeSections({
   readonly environmentId: EnvironmentId;
   readonly label: string | null;
 }) {
-  const homeCall = useAtomCommand(batonWorkSessions.homeCall, QUIET);
+  const homeCall = useAtomCommand(tessayaWorkSessions.homeCall, QUIET);
   // One method; the kind sets its scope on the server (act is operate, answer is the approval scope).
   const via =
     (kind: "read" | "act" | "answer") =>
@@ -142,7 +142,7 @@ function HomeSections({
     setBusy(true);
     setNote("");
     const result = await command({ environmentId, input: { op, args } });
-    const reply: BatonHomeCallResult | null = result._tag === "Success" ? result.value : null;
+    const reply: TessayaHomeCallResult | null = result._tag === "Success" ? result.value : null;
     setNote(
       reply === null
         ? "Couldn’t reach this environment. Try again."

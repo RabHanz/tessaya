@@ -104,8 +104,8 @@ import {
   isRunningLive,
   liveThreadsOnly,
   runningLiveThreads,
-  useBatonLiveOnly,
-} from "../threads/batonLiveOnly";
+  useTessayaLiveOnly,
+} from "../threads/tessayaLiveOnly";
 
 interface HomeScreenProps {
   /** Whether this list is the one on screen; see `useHomeRouteVisible`. */
@@ -409,7 +409,7 @@ export function HomeScreen(props: HomeScreenProps) {
   } = listEnvironments;
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
   const pendingOrder = usePendingThreadOrder();
-  const batonLiveOnly = useBatonLiveOnly();
+  const tessayaLiveOnly = useTessayaLiveOnly();
   const batonRunningLive = useMemo(() => runningLiveThreads(props.threads), [props.threads]);
   const {
     layout: threadListV2Layout,
@@ -417,7 +417,7 @@ export function HomeScreen(props: HomeScreenProps) {
     contentOnlyThreadKeys,
     olderSettledShelf,
   } = useThreadListV2({
-    threads: liveThreadsOnly(props.threads, batonLiveOnly),
+    threads: liveThreadsOnly(props.threads, tessayaLiveOnly),
     pendingTasks: props.pendingTasks,
     environmentId: props.selectedEnvironmentId,
     projectRefs: v2ScopedProjectGroup === null ? null : v2ScopedProjectGroup.projectRefs,

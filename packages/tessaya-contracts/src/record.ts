@@ -8,7 +8,7 @@ export const BATON_RECORD_WS_METHODS = {
 
 const Line = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 
-export const BatonRecordEntry = Schema.Struct({
+export const TessayaRecordEntry = Schema.Struct({
   id: Schema.Number,
   at: Schema.String,
   // A plain string, not literals: an older client must still decode a kind added later.
@@ -22,16 +22,16 @@ export const BatonRecordEntry = Schema.Struct({
   outcome: Schema.String,
   detail: Schema.String,
 });
-export type BatonRecordEntry = typeof BatonRecordEntry.Type;
+export type TessayaRecordEntry = typeof TessayaRecordEntry.Type;
 
-export const BatonRecordListInput = Schema.Struct({
+export const TessayaRecordListInput = Schema.Struct({
   /** ISO time; only what happened after it. */
   since: Schema.optionalKey(Schema.String),
   project: Schema.optionalKey(Line(200)),
   kind: Schema.optionalKey(Line(40)),
   limit: Schema.optionalKey(Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 500 }))),
 });
-export const BatonRecordListResult = Schema.Struct({ entries: Schema.Array(BatonRecordEntry) });
+export const TessayaRecordListResult = Schema.Struct({ entries: Schema.Array(TessayaRecordEntry) });
 
 /** What the desktop app's own session may write: its own assistant's turns, their traces (tools, argument names, times; no text), its standing jobs' runs, and his answers at its gate, stored as `approval_reported_by_client`. The server writes every other kind itself. */
 const appendRow = <const K extends string, const O extends ReadonlyArray<string>>(
@@ -47,11 +47,11 @@ const appendRow = <const K extends string, const O extends ReadonlyArray<string>
     detail: Line(1000),
   });
 /** Each kind carries only its own outcomes, so a turn cannot be written as "approved". */
-export const BatonRecordAppendInput = Schema.Union([
+export const TessayaRecordAppendInput = Schema.Union([
   appendRow("assistant_turn", ["answered", "failed"]),
   appendRow("turn_trace", ["answered", "failed"]),
   appendRow("approval", ["approved", "declined"]),
   // "proposed": a device or another agent proposed one of his own standing jobs (KIRO-1); it is off until he says yes.
   appendRow("standing_job", ["ran", "held", "failed", "proposed"]),
 ]);
-export const BatonRecordAppendResult = Schema.Struct({});
+export const TessayaRecordAppendResult = Schema.Struct({});

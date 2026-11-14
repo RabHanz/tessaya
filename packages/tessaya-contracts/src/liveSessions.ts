@@ -32,49 +32,49 @@ export const BATON_LIVE_WS_METHODS = {
 } as const;
 
 /** Where a live session is: a Herdr pane, or a Claude conversation by id. */
-export const BatonLiveTarget = Schema.Struct({
+export const TessayaLiveTarget = Schema.Struct({
   pane: Schema.optionalKey(TrimmedNonEmptyString),
   sessionId: Schema.optionalKey(TrimmedNonEmptyString),
 });
-export type BatonLiveTarget = typeof BatonLiveTarget.Type;
+export type TessayaLiveTarget = typeof TessayaLiveTarget.Type;
 
 /** 8 MiB of file, base64-encoded on the wire. */
 export const BATON_ATTACH_MAX_BYTES = 8 * 1024 * 1024;
 
-export const BatonLiveAttachInput = Schema.Struct({
-  target: BatonLiveTarget,
+export const TessayaLiveAttachInput = Schema.Struct({
+  target: TessayaLiveTarget,
   fileName: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
   dataBase64: Schema.String.check(
     Schema.isMaxLength(Math.ceil((BATON_ATTACH_MAX_BYTES * 4) / 3) + 4),
   ),
 });
-export type BatonLiveAttachInput = typeof BatonLiveAttachInput.Type;
+export type TessayaLiveAttachInput = typeof TessayaLiveAttachInput.Type;
 
-export const BatonLiveAttachResult = Schema.Struct({
+export const TessayaLiveAttachResult = Schema.Struct({
   saved: Schema.Boolean,
   path: Schema.NullOr(Schema.String),
   detail: Schema.String,
 });
-export type BatonLiveAttachResult = typeof BatonLiveAttachResult.Type;
+export type TessayaLiveAttachResult = typeof TessayaLiveAttachResult.Type;
 
-export const BatonLiveAdoptInput = Schema.Struct({ sessionId: TrimmedNonEmptyString });
-export type BatonLiveAdoptInput = typeof BatonLiveAdoptInput.Type;
+export const TessayaLiveAdoptInput = Schema.Struct({ sessionId: TrimmedNonEmptyString });
+export type TessayaLiveAdoptInput = typeof TessayaLiveAdoptInput.Type;
 
-export const BatonLiveAdoptResult = Schema.Struct({
+export const TessayaLiveAdoptResult = Schema.Struct({
   adopted: Schema.Boolean,
   pane: Schema.NullOr(Schema.String),
   detail: Schema.String,
 });
-export type BatonLiveAdoptResult = typeof BatonLiveAdoptResult.Type;
+export type TessayaLiveAdoptResult = typeof TessayaLiveAdoptResult.Type;
 
-export const BatonLiveSetModelInput = Schema.Struct({
+export const TessayaLiveSetModelInput = Schema.Struct({
   sessionId: TrimmedNonEmptyString,
   model: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
   effort: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(20))),
 });
-export type BatonLiveSetModelInput = typeof BatonLiveSetModelInput.Type;
+export type TessayaLiveSetModelInput = typeof TessayaLiveSetModelInput.Type;
 
-export const BatonLiveSetModelResult = Schema.Struct({
+export const TessayaLiveSetModelResult = Schema.Struct({
   state: Schema.Literals([
     "applied",
     "not_confirmed",
@@ -89,18 +89,18 @@ export const BatonLiveSetModelResult = Schema.Struct({
   /** With state "busy": the change waits and is applied when the session goes idle. */
   queued: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonLiveSetModelResult = typeof BatonLiveSetModelResult.Type;
+export type TessayaLiveSetModelResult = typeof TessayaLiveSetModelResult.Type;
 
-export const BatonLiveSetAccountInput = Schema.Struct({
+export const TessayaLiveSetAccountInput = Schema.Struct({
   sessionId: TrimmedNonEmptyString,
   /** The cswap slot (the pool account's key). */
   accountKey: TrimmedNonEmptyString.check(Schema.isMaxLength(20)),
   /** Ignored: a session on the machine's shared login always restarts once in its pane. Kept for older clients. */
   restart: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonLiveSetAccountInput = typeof BatonLiveSetAccountInput.Type;
+export type TessayaLiveSetAccountInput = typeof TessayaLiveSetAccountInput.Type;
 
-export const BatonLiveSetAccountResult = Schema.Struct({
+export const TessayaLiveSetAccountResult = Schema.Struct({
   state: Schema.Literals([
     "switched",
     "unchanged",
@@ -113,21 +113,21 @@ export const BatonLiveSetAccountResult = Schema.Struct({
   detail: Schema.String,
   queued: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonLiveSetAccountResult = typeof BatonLiveSetAccountResult.Type;
+export type TessayaLiveSetAccountResult = typeof TessayaLiveSetAccountResult.Type;
 
-export const BatonLiveQueued = Schema.Struct({
+export const TessayaLiveQueued = Schema.Struct({
   model: Schema.optionalKey(Schema.String),
   effort: Schema.optionalKey(Schema.String),
   accountKey: Schema.optionalKey(Schema.String),
   restart: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonLiveQueued = typeof BatonLiveQueued.Type;
+export type TessayaLiveQueued = typeof TessayaLiveQueued.Type;
 
-export const BatonLiveSessionInput = Schema.Struct({ sessionId: TrimmedNonEmptyString });
-export const BatonLiveStateResult = Schema.Struct({
+export const TessayaLiveSessionInput = Schema.Struct({ sessionId: TrimmedNonEmptyString });
+export const TessayaLiveStateResult = Schema.Struct({
   /** The session's own effort: its last /effort, its config dir's setting, else its model's default. */
   effort: Schema.NullOr(Schema.String),
-  queued: Schema.NullOr(BatonLiveQueued),
+  queued: Schema.NullOr(TessayaLiveQueued),
   /** The queued change is being applied now: for an account move, the one restart and the switch. */
   applying: Schema.optionalKey(Schema.Boolean),
   /** The usage limit the session last stopped on, in Claude's words, until it says anything else. */
@@ -137,8 +137,8 @@ export const BatonLiveStateResult = Schema.Struct({
   /** Why the last queued change was not applied, until the next one is queued. */
   failure: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-export type BatonLiveStateResult = typeof BatonLiveStateResult.Type;
-export const BatonLiveCancelQueuedResult = Schema.Struct({ cancelled: Schema.Boolean });
+export type TessayaLiveStateResult = typeof TessayaLiveStateResult.Type;
+export const TessayaLiveCancelQueuedResult = Schema.Struct({ cancelled: Schema.Boolean });
 
 /**
  * Which project a live session belongs to, the same on every box (D72): the
@@ -146,11 +146,11 @@ export const BatonLiveCancelQueuedResult = Schema.Struct({ cancelled: Schema.Boo
  * git checkout with a remote, else `dir:<folder name>`. This is what lets one
  * project be one entry across accounts and machines.
  */
-export const BatonProjectRef = Schema.Struct({
+export const TessayaProjectRef = Schema.Struct({
   key: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
 });
-export type BatonProjectRef = typeof BatonProjectRef.Type;
+export type TessayaProjectRef = typeof TessayaProjectRef.Type;
 
 export const ClaudeLiveSession = Schema.Struct({
   pid: Schema.Number,
@@ -168,22 +168,22 @@ export const ClaudeLiveSession = Schema.Struct({
   tmux: Schema.NullOr(Schema.String),
   /** The account behind its config directory, when the pool knows it. */
   account: Schema.NullOr(Schema.String),
-  project: Schema.optionalKey(BatonProjectRef),
+  project: Schema.optionalKey(TessayaProjectRef),
   /** The Claude config directory the session runs under, when it is not `~/.claude` (D83). */
   configDir: Schema.optionalKey(Schema.String),
   updatedAt: Schema.NullOr(Schema.String),
 });
 export type ClaudeLiveSession = typeof ClaudeLiveSession.Type;
 
-export const BatonHerdrSendInput = Schema.Struct({
+export const TessayaHerdrSendInput = Schema.Struct({
   pane: TrimmedNonEmptyString,
   text: Schema.String.check(Schema.isNonEmpty()).check(Schema.isMaxLength(65_536)),
   submit: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonHerdrSendInput = typeof BatonHerdrSendInput.Type;
+export type TessayaHerdrSendInput = typeof TessayaHerdrSendInput.Type;
 
-export const BatonHerdrSendResult = Schema.Struct({
+export const TessayaHerdrSendResult = Schema.Struct({
   delivered: Schema.Boolean,
   detail: Schema.String,
 });
-export type BatonHerdrSendResult = typeof BatonHerdrSendResult.Type;
+export type TessayaHerdrSendResult = typeof TessayaHerdrSendResult.Type;

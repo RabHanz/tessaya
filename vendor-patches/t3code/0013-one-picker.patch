@@ -3,7 +3,7 @@ Usage details (ComposerPickerFooter children, onUsageLimitsCommand), and on mobi
 provider with account rows (BatonAccountRow), the session's real effort, and the header's limit chip.
 
 diff --git a/apps/mobile/src/features/threads/ThreadComposer.tsx b/apps/mobile/src/features/threads/ThreadComposer.tsx
-index 3b1b927ef8a9b258dd6b2754996a5ad4c8b94b47..59abb2079574ebbda035796b670411ff09307d86 100644
+index 3b1b927ef8a9b258dd6b2754996a5ad4c8b94b47..2747235f5ab061e8436a1742284079d657ac5bcb 100644
 --- a/apps/mobile/src/features/threads/ThreadComposer.tsx
 +++ b/apps/mobile/src/features/threads/ThreadComposer.tsx
 @@ -32,7 +32,14 @@ import {
@@ -26,7 +26,7 @@ index 3b1b927ef8a9b258dd6b2754996a5ad4c8b94b47..59abb2079574ebbda035796b670411ff
  import { themeColorWithAlpha } from "../../lib/mobileTheme";
  import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
  import { scopedThreadKey } from "../../lib/scopedEntities";
-+import { useBatonSettingsOpener } from "./BatonThreadHeader";
++import { useTessayaSettingsOpener } from "./TessayaThreadHeader";
  import {
    getComposerDraftSnapshot,
    setComposerDraftText,
@@ -60,7 +60,7 @@ index 3b1b927ef8a9b258dd6b2754996a5ad4c8b94b47..59abb2079574ebbda035796b670411ff
    const openSettings = () => {
      settingsSheetPresentation.open();
    };
-+  useBatonSettingsOpener(composerOwnerKey, openSettings);
++  useTessayaSettingsOpener(composerOwnerKey, openSettings);
  
    useFocusEffect(() => {
      if (!settingsRoutePresentedRef.current) {
@@ -124,14 +124,14 @@ index 0388bfb299299c3fc72ae5915d57b699f3ee0c87..16149cdd2bf6776c556d82566ca54725
        hideBottomBorder
      />
 diff --git a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
-index 8f1463ce1bd85fdb107e6ebf7cef69fc1276711d..344be1da7946f62e0311c72331846e4b13e9e15e 100644
+index 8f1463ce1bd85fdb107e6ebf7cef69fc1276711d..717e866bc56bbedfa4651994ac631117b0ca8afb 100644
 --- a/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
 +++ b/apps/mobile/src/features/threads/ThreadRouteScreen.tsx
 @@ -109,6 +109,7 @@ import {
    threadRouteIsHydrating,
    threadRouteOpensDraft,
  } from "./thread-route-hydration";
-+import { useBatonThreadHeader } from "./BatonThreadHeader";
++import { useTessayaThreadHeader } from "./TessayaThreadHeader";
  import { ThreadHeader } from "./ThreadHeader";
  import { resumeThread } from "./resume-thread";
  import {
@@ -139,9 +139,9 @@ index 8f1463ce1bd85fdb107e6ebf7cef69fc1276711d..344be1da7946f62e0311c72331846e4b
        : scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
    // The title it had at delegation, until this client sees the parent itself.
    const delegatedFromThread = useThreadShell(delegatedFromRef);
-+  const batonHeader = useBatonThreadHeader(selectedThread);
++  const tessayaHeader = useTessayaThreadHeader(selectedThread);
    const headerSubtitle = [
-+    batonHeader.subtitle,
++    tessayaHeader.subtitle,
      selectedThreadProject?.title ?? null,
      selectedEnvironmentConnection?.environmentLabel ?? null,
      // A linked environment's delegated task names its parent; other linked work its origin.
@@ -157,21 +157,21 @@ index 8f1463ce1bd85fdb107e6ebf7cef69fc1276711d..344be1da7946f62e0311c72331846e4b
                  inspectorMode={inspectorMode}
                  onOpenFilesInspector={handleOpenFilesInspector}
                  onReturnToThread={props.onReturnToThread}
-+                batonAction={batonHeader.action}
++                batonAction={tessayaHeader.action}
                />
              )
            }
 diff --git a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
-index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d0790faf708 100644
+index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409cd36b526 100644
 --- a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
 +++ b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
 @@ -106,6 +106,9 @@ import {
  import { useSearchToolbarInset } from "../../components/ui/useBarInset";
  import type { AppBarSearch } from "../../components/ui/AppBar";
  import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
-+import { BatonAccountRow, useLiveSheetChange, useSessionEffort } from "./BatonAccountRow";
-+import { batonProviderGroups, liveTraits } from "./batonCatalog";
-+import { takeAccountsFilter } from "./BatonThreadHeader";
++import { TessayaAccountRow, useLiveSheetChange, useSessionEffort } from "./TessayaAccountRow";
++import { tessayaProviderGroups, liveTraits } from "./tessayaCatalog";
++import { takeAccountsFilter } from "./TessayaThreadHeader";
  import {
    compatibleRuntimeModeForChoices,
    runtimeModeChoicesForSupportedModes,
@@ -234,7 +234,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d07
 +        modelCount={props.provider.modelCount}
 +        onToggle={onToggle}
 +      />
-+      <BatonAccountRow
++      <TessayaAccountRow
 +        environmentId={session.environmentId}
 +        threadId={session.threadId}
 +        provider={props.provider}
@@ -251,7 +251,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d07
    session: ThreadSettingsSessionValue,
  ): ReadonlyArray<ThreadSettingsCatalogItem> {
 -  return session.providerGroups.flatMap((group) => {
-+  const groups = batonProviderGroups(
++  const groups = tessayaProviderGroups(
 +    session.providerGroups,
 +    session.displayedModelSelection?.instanceId,
 +  );
@@ -259,26 +259,19 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d07
      if (
        session.providerFilter !== null &&
        session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
-@@ -1221,11 +1245,13 @@ function ThreadSettingsModelsScreen() {
+@@ -1221,7 +1245,10 @@ function ThreadSettingsModelsScreen() {
    const providerFilters = [
      { id: "all-providers", title: "All providers", value: null },
      { id: "favorites", title: "Favorites", value: FAVORITES_PROVIDER_FILTER },
 -    ...session.providerGroups.map((group) => ({
--      id: `provider:${group.providerKey}`,
--      title: group.providerLabel,
--      value: group.providerKey,
--    })),
-+    ...batonProviderGroups(session.providerGroups, session.displayedModelSelection?.instanceId).map(
-+      (group) => ({
-+        id: `provider:${group.providerKey}`,
-+        title: group.providerLabel,
-+        value: group.providerKey,
-+      }),
-+    ),
-   ];
- 
-   return (
-@@ -1366,6 +1392,12 @@ export function ExistingThreadSettingsRouteScreen({
++    ...tessayaProviderGroups(
++      session.providerGroups,
++      session.displayedModelSelection?.instanceId,
++    ).map((group) => ({
+       id: `provider:${group.providerKey}`,
+       title: group.providerLabel,
+       value: group.providerKey,
+@@ -1366,6 +1393,12 @@ export function ExistingThreadSettingsRouteScreen({
    // A queued edit can end while the sheet is open; the prompt then belongs to the thread's draft.
    const draftKey = activeComposerDraftKey(threadKey, route.params.draftKey, queuedRunEdit);
    const prompt = useComposerDraft(draftKey).text;
@@ -291,7 +284,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d07
  
    if (!selectedThread) {
      return <View className="flex-1 bg-sheet" />;
-@@ -1400,6 +1432,7 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1400,6 +1433,7 @@ export function ExistingThreadSettingsRouteScreen({
    return (
      <ThreadSettingsPickerScreen
        environmentId={selectedThread.environmentId}
@@ -299,7 +292,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d07
        projectId={selectedThread.projectId}
        cwd={selectedThreadCwd}
        providerInstanceId={modelSelection.instanceId}
-@@ -1409,15 +1442,25 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1409,15 +1443,25 @@ export function ExistingThreadSettingsRouteScreen({
        prompt={prompt}
        onPromptChange={(text) => setComposerDraftText(draftKey, text)}
        reportedModelSelection={reportedModelSelection}
@@ -333,7 +326,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d07
        runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
        onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..f94bfbcb44f51bf74d7b1777f60b5cec52d07ddb 100644
+index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..212334545248d871ae726cc3fe37750a92bdab71 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
 @@ -138,6 +138,14 @@ import { useDictationShortcut } from "../../speech/useDictationShortcut";
@@ -343,10 +336,10 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..f94bfbcb44f51bf74d7b1777f60b5cec
 +import { useComposerPillLook } from "../../speech/useComposerPillLook";
 +import { useTessayaComposerDictation } from "../../speech/useTessayaComposerDictation";
 +import {
-+  BatonDictationControl,
-+  BatonDictationWords,
++  TessayaDictationControl,
++  TessayaDictationWords,
 +  dictatingAttribute,
-+} from "./BatonComposerDictation";
++} from "./TessayaComposerDictation";
 +import { placeholderWhile } from "@t3tools/tessaya-shared/composerDictation";
  import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
  import { shortcutLabelForCommand } from "../../keybindings";
@@ -580,7 +573,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..f94bfbcb44f51bf74d7b1777f60b5cec
                      }
                    />
                  </ComposerContextActionsContext>
-+                <BatonDictationWords state={tessayaDictation.state} />
++                <TessayaDictationWords state={tessayaDictation.state} />
                  {showMobilePendingAnswerActions ? (
                    <div
                      data-chat-composer-mobile-pending-actions="true"
@@ -612,7 +605,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..f94bfbcb44f51bf74d7b1777f60b5cec
                  {composerAttachButton && !dictationTakesFooter ? (
                    <div className="me-2">{composerAttachButton}</div>
                  ) : null}
-+                <BatonDictationControl
++                <TessayaDictationControl
 +                  state={tessayaDictation.state}
 +                  design={pillLook.design}
 +                  wave={pillLook.wave}
@@ -731,14 +724,14 @@ index f316f60e61f755ea3c48537a24b87aa482965eaf..e54fc29ecd0833fcf3b90cacf3b2f1f4
                listRef={modelListRef}
                itemKeys={filteredItemKeys}
 diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
-index dc24671c301ba791c7f18c0437073196d0407f73..6193fe21673138f2ba26b0340827a26bbed91e21 100644
+index dc24671c301ba791c7f18c0437073196d0407f73..3264273feb1720684413bcd27f4462311c241239 100644
 --- a/apps/web/src/components/chat/ProviderModelPicker.tsx
 +++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
 @@ -23,6 +23,7 @@ import { cn } from "~/lib/utils";
  import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
  import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
  import { ChatGptSharingControl } from "./ChatGptSharingControl";
-+import { useBatonPickerAnchor } from "./BatonPickerAccount";
++import { useTessayaPickerAnchor } from "./TessayaPickerAccount";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
  import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
@@ -755,7 +748,7 @@ index dc24671c301ba791c7f18c0437073196d0407f73..6193fe21673138f2ba26b0340827a26b
      if (isMenuOpen) refreshModelCatalog();
    }, [isMenuOpen]);
 +  // Opened from the header's account chip, it hangs under that chip instead of the composer.
-+  const batonAnchor = useBatonPickerAnchor(isMenuOpen);
++  const tessayaAnchor = useTessayaPickerAnchor(isMenuOpen);
    const searchInputRef = useRef<HTMLInputElement>(null);
    const triggerRef = useRef<HTMLButtonElement>(null);
    const popupRef = useRef<HTMLDivElement | null>(null);
@@ -771,12 +764,12 @@ index dc24671c301ba791c7f18c0437073196d0407f73..6193fe21673138f2ba26b0340827a26b
          {...(docked
            ? { side: "top" as const, collisionAvoidance: { side: "shift", align: "shift" } as const }
            : {})}
-+        {...batonAnchor}
++        {...tessayaAnchor}
          className="before:hidden"
          padding="none"
          touchBackdrop
 diff --git a/vite.config.ts b/vite.config.ts
-index c7a92ccbc9ad10b7533989a1f32a5488ea40a2e1..e6fa6dad2c0fc2dda094767ba80904c95d976c33 100644
+index c7a92ccbc9ad10b7533989a1f32a5488ea40a2e1..5d98e93e4f6dd00642d791dc07554c20fede21c3 100644
 --- a/vite.config.ts
 +++ b/vite.config.ts
 @@ -178,6 +178,8 @@ export default defineConfig({
@@ -801,7 +794,7 @@ index c7a92ccbc9ad10b7533989a1f32a5488ea40a2e1..e6fa6dad2c0fc2dda094767ba80904c9
            "apps/mobile/src/features/review/ReviewSheet.tsx",
            "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
            "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",
-+          "apps/mobile/src/features/threads/BatonThreadHeader.ts",
++          "apps/mobile/src/features/threads/TessayaThreadHeader.ts",
            "apps/mobile/src/features/threads/ThreadComposer.tsx",
            "apps/mobile/src/features/threads/ThreadFeed.tsx",
            "apps/mobile/src/features/threads/ThreadQueueControl.tsx",

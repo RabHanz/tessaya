@@ -12,17 +12,17 @@
  * available right now. The main process supplies the half the OS knows. Neither
  * half is invented.
  */
-import { BatonInjectionReport } from "@t3tools/tessaya-contracts";
+import { TessayaInjectionReport } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Electron from "electron";
 
 import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
-import { desktopInjectionReport } from "../../baton/DesktopInjectionCapability.ts";
-import * as IpcChannels from "../../baton/channels.ts";
+import { desktopInjectionReport } from "../../tessaya/DesktopInjectionCapability.ts";
+import * as IpcChannels from "../../tessaya/channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 
-export const BatonInjectionReportRequest = Schema.Struct({
+export const TessayaInjectionReportRequest = Schema.Struct({
   /** True when the renderer has somewhere of its own to put text. */
   applicationIntegrationConnected: Schema.Boolean,
   /**
@@ -35,8 +35,8 @@ export const BatonInjectionReportRequest = Schema.Struct({
 
 export const getBatonInjectionReport = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.BATON_INJECTION_REPORT_CHANNEL,
-  payload: BatonInjectionReportRequest,
-  result: BatonInjectionReport,
+  payload: TessayaInjectionReportRequest,
+  result: TessayaInjectionReport,
   handler: Effect.fn("desktop.ipc.baton.getInjectionReport")(function* (request) {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     // The same call the screenshot feature uses to ask macOS whether it is

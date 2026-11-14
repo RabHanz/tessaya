@@ -33,20 +33,20 @@ export const BATON_HOME_ACT_OPS = [
 ] as const;
 export const BATON_HOME_ANSWER_OPS = ["answer"] as const;
 
-export const BatonHomeCallInput = Schema.Struct({
+export const TessayaHomeCallInput = Schema.Struct({
   kind: Schema.Literals(BATON_HOME_CALL_KINDS),
   op: Schema.String.check(Schema.isMaxLength(40)),
   args: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
-export type BatonHomeCallInput = typeof BatonHomeCallInput.Type;
+export type TessayaHomeCallInput = typeof TessayaHomeCallInput.Type;
 
 /** ok with a value, or not ok with a sentence for a person. */
-export const BatonHomeCallResult = Schema.Struct({
+export const TessayaHomeCallResult = Schema.Struct({
   ok: Schema.Boolean,
   error: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
 });
-export type BatonHomeCallResult = typeof BatonHomeCallResult.Type;
+export type TessayaHomeCallResult = typeof TessayaHomeCallResult.Type;
 
 export const HOME_TIERS = ["auto", "ask", "never"] as const;
 export const HOME_AUTOMATION_KINDS = ["permanent", "temporary", "scratch"] as const;

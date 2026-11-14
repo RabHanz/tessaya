@@ -29,15 +29,15 @@ import {
   describeComposerEffort,
 } from "./ComposerModelEffort";
 import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
-import { useLiveTraits } from "./BatonLiveModel";
+import { useLiveTraits } from "./TessayaLiveModel";
 import {
-  BatonLimitMark,
-  BatonPickerAccount,
-  BatonUsageDetails,
-  batonPickModel,
-  batonModelOptions,
-  batonRailEntries,
-} from "./BatonPickerAccount";
+  TessayaLimitMark,
+  TessayaPickerAccount,
+  TessayaUsageDetails,
+  tessayaPickModel,
+  tessayaModelOptions,
+  tessayaRailEntries,
+} from "./TessayaPickerAccount";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
@@ -158,9 +158,9 @@ export function ComposerControlsBar(props: {
   const controlSize = composerControlsCollapsed ? "xs" : "sm";
   const applyThreadModelPick = useApplyThreadModelPick();
   const applyRouteThreadModelPick = useStableCallback(() => applyThreadModelPick(routeThreadRef));
-  const batonThreadRef = routeKind === "server" ? routeThreadRef : null;
+  const tessayaThreadRef = routeKind === "server" ? routeThreadRef : null;
   const traitsInput = useLiveTraits(
-    batonThreadRef,
+    tessayaThreadRef,
     resolveComposerTraitsInput({
       provider: selectedProvider,
       instanceId: selectedInstanceId,
@@ -177,7 +177,7 @@ export function ComposerControlsBar(props: {
     }),
   );
   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
-  const railEntries = batonRailEntries(providerInstanceEntries, selectedInstanceId);
+  const railEntries = tessayaRailEntries(providerInstanceEntries, selectedInstanceId);
   const restingBlockDefs = showModeBlock
     ? [
         {
@@ -230,7 +230,7 @@ export function ComposerControlsBar(props: {
       lockedContinuationGroupKey={lockedContinuationGroupKey}
       instanceEntries={railEntries}
       keybindings={keybindings}
-      modelOptionsByInstance={batonModelOptions(modelOptionsByInstance, providerInstanceEntries)}
+      modelOptionsByInstance={tessayaModelOptions(modelOptionsByInstance, providerInstanceEntries)}
       size={controlSize}
       triggerClassName={cn(
         "group/model-trigger",
@@ -240,9 +240,9 @@ export function ComposerControlsBar(props: {
       triggerSuffix={
         <>
           {effort.suffix}
-          <BatonLimitMark
+          <TessayaLimitMark
             entry={providerInstanceEntries.find((entry) => entry.instanceId === selectedInstanceId)}
-            threadRef={batonThreadRef}
+            threadRef={tessayaThreadRef}
           />
         </>
       }
@@ -258,7 +258,7 @@ export function ComposerControlsBar(props: {
           runtimeModeOptions={compatibleRuntimeModeOptions}
           onRuntimeModeChange={handleRuntimeModeChange}
         >
-          <BatonUsageDetails
+          <TessayaUsageDetails
             onOpen={
               props.onUsageLimitsCommand
                 ? () => {
@@ -271,15 +271,15 @@ export function ComposerControlsBar(props: {
         </ComposerPickerFooter>
       }
       renderInstanceDetail={(entry) => (
-        <BatonPickerAccount
+        <TessayaPickerAccount
           entry={entry}
-          threadRef={batonThreadRef}
+          threadRef={tessayaThreadRef}
           environmentId={environmentId}
           threadInstanceId={selectedInstanceId}
           onPickInstance={(instanceId) =>
             onProviderModelSelect(
               instanceId,
-              batonPickModel(entry, selectedProvider, selectedModel),
+              tessayaPickModel(entry, selectedProvider, selectedModel),
             )
           }
         />
