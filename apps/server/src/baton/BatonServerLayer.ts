@@ -89,6 +89,7 @@ import * as ThreadAccountMoves from "./ThreadAccountMoves.ts";
 import * as WorkSessionService from "./WorkSessionService.ts";
 import * as TessayaWake from "../tessaya/TessayaWake.ts";
 import * as TessayaWakeRoutes from "../tessaya/TessayaWakeRoutes.ts";
+import * as TessayaPackRoutes from "../tessaya/TessayaPackRoutes.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
 import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
@@ -355,6 +356,7 @@ export const workers = Layer.effectDiscard(
 export const routes = Layer.mergeAll(
   BatonTessayaRoutes.routes,
   TessayaWakeRoutes.routes,
+  TessayaPackRoutes.routes,
   R1Device.routes,
   HomeDeviceRoutes.routes,
 );
