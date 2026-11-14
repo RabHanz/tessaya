@@ -304,10 +304,10 @@ const servicesInner = IntentService.layer.pipe(
       expressionLayer,
       CurrentPersona.layer,
       PersonaLayers.layer,
+      // The prompt lab (B-030): its runs are one-shots on his subscription.
+      PromptLab.layer.pipe(Layer.provide(BatonOneShot.layer)),
     ),
   ),
-  // The prompt lab (B-030): Settings, the voice and its tool share it; its runs are one-shots on his subscription.
-  Layer.provideMerge(PromptLab.layer.pipe(Layer.provide(BatonOneShot.layer))),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   // Every brain call's usage row, for the Usage page and her usage report; her wake-word models, signed here (P3b).
   Layer.provideMerge(

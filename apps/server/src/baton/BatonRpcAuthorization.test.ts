@@ -59,7 +59,7 @@ describe("who may use the prompt lab", () => {
     expect(BATON_RPC_REQUIRED_SCOPES[door]).toBe(AuthSettingsWriteScope);
     expect(clientRpcRequiredScopes(door, { op: "list" })).toEqual([AuthSettingsWriteScope]);
     expect(roleCeiling("owner", false)).toContain(AuthSettingsWriteScope);
-    for (const role of ["admin", "member", "child", "guest"] as const)
+    for (const role of ["admin", "adult", "child", "guest"] as const)
       expect(roleCeiling(role, false)).not.toContain(AuthSettingsWriteScope);
   });
 });
