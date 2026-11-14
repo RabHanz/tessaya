@@ -46,6 +46,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaExpression: free(
     "lines written fresh each time, varied and in character, instead of fixed ones",
   ),
+  tessayaMood: free(
+    'mood: on or off, its strength (intensity 0 to 1, default 0.6), and the warmth that builds from talking most days (bondCap 0 to 0.15; 0 starts afresh each day). Its value is an object: {"enabled": true, "intensity": 0.6, "bondCap": 0.15}',
+  ),
   companionMotion: free(
     "how much is said and done unprompted: lively, calm, or important only (less chatter)",
   ),

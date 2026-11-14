@@ -256,6 +256,7 @@ const MOTION_LABELS: Readonly<Record<string, string>> = {
 function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const written = useEnvironmentSettings(environmentId, (s) => s.tessayaExpression);
   const motion = useEnvironmentSettings(environmentId, (s) => s.companionMotion);
+  const mood = useEnvironmentSettings(environmentId, (s) => s.tessayaMood.enabled);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -267,6 +268,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Her own words"
             checked={written}
             onCheckedChange={(on) => update({ tessayaExpression: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Her mood"
+        description="A working state that shapes her tone and her face on every device, moved only by your own turns. It never changes what she does. Off keeps her face neutral and clears her mood."
+        control={
+          <Switch
+            aria-label="Her mood"
+            checked={mood}
+            onCheckedChange={(on) => update({ tessayaMood: { enabled: on } })}
           />
         }
       />

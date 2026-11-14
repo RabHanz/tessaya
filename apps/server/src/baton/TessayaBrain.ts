@@ -23,7 +23,14 @@ import * as Stream from "effect/Stream";
 import type { R1Brain, RoomTool, RoomToolSet, ToolOutcome, ToolTurn } from "../home/R1Brain.ts";
 import type { SessionSpec } from "../home/VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import { TurnOrigin, conversationKey, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
+import {
+  TurnOrigin,
+  conversationKey,
+  movesMood,
+  originOf,
+  type TurnEnvelope,
+} from "./TessayaTurn.ts";
+import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import { TurnPools } from "./TurnPools.ts";
 import { turnSkills } from "./TurnSkills.ts";
 
@@ -495,6 +502,13 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     said += sorry;
     say(sorry);
   }
+  // Her mood hears how his task went (CS6): an act's outcome or a broken turn, never what she read or said.
+  const mood = yield* Effect.serviceOption(TessayaMood);
+  if (Option.isSome(mood) && movesMood(turn) && (outcomes.length > 0 || Exit.isFailure(ran)))
+    yield* mood.value.note(turn.persona, {
+      kind: "turn_outcome",
+      ok: Exit.isSuccess(ran) && outcomes.every((o) => o.ok),
+    });
   // What she read on the web is outside content: what the turn teaches waits for his yes.
   yield* gathered.finish(said.trim(), outcomes, readTheWeb ? { ...turn, tainted: true } : turn);
   return said;

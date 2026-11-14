@@ -2072,7 +2072,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9fe5e7b48 100644
+index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62cf5ff09c 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2119,7 +2119,7 @@ index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1405,27 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1405,35 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2140,6 +2140,14 @@ index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9
 +  voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
 +  tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
++  // Tessaya: her working mood per persona (tessaya-shared affect.ts), moved only by the owner's turns; others see the face.
++  tessayaMood: Schema.Struct({
++    enabled: Schema.Boolean,
++    intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
++    bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
++  }).pipe(
++    Schema.withDecodingDefault(Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15 })),
++  ),
 +  // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
 +  companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
 +    Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -2147,7 +2155,7 @@ index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1435,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1443,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2161,7 +2169,7 @@ index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1873,12 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +1881,23 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2170,11 +2178,22 @@ index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9
    continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
    keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
 +  tessayaExpression: Schema.optionalKey(Schema.Boolean),
++  tessayaMood: Schema.optionalKey(
++    Schema.Struct({
++      enabled: Schema.optionalKey(Schema.Boolean),
++      intensity: Schema.optionalKey(
++        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
++      ),
++      bondCap: Schema.optionalKey(
++        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
++      ),
++    }),
++  ),
 +  companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +1887,23 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +1906,23 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2198,7 +2217,7 @@ index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2153,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2172,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

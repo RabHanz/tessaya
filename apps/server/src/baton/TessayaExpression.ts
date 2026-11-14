@@ -45,6 +45,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { readPack } from "./OperatingSystemPack.ts";
+import { TessayaMood } from "../tessaya/TessayaMood.ts";
 
 export interface ExpressInput {
   /** The persona speaking, by id; unset is the lead. */
@@ -127,6 +128,7 @@ export const make = Effect.gen(function* () {
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
   const scope = yield* Scope.Scope;
   const home = yield* Effect.serviceOption(HomeAssistantService);
+  const mood = yield* Effect.serviceOption(TessayaMood);
 
   const pack = () =>
     Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath));
@@ -259,13 +261,20 @@ export const make = Effect.gen(function* () {
       if (!allowed) return null;
       const persona = personaOf(input.persona)?.id ?? "executive";
       const fixed = plainExpression(event, persona, facts, input.plain);
-      if (current?.tessayaExpression !== true) return fixed;
-      const picked = yield* pickTemplate(event, persona, input.person, at, zone);
-      return (
+      const picked =
+        current?.tessayaExpression === true
+          ? yield* pickTemplate(event, persona, input.person, at, zone)
+          : null;
+      const said =
         (picked === null
           ? null
-          : expressionOf(event, persona, picked.line, facts, picked.source)) ?? fixed
-      );
+          : expressionOf(event, persona, picked.line, facts, picked.source)) ?? fixed;
+      // A moment with no feeling of its own shows her mood (CS6), so every vessel's face agrees.
+      if (said === null || said.mood !== "neutral" || Option.isNone(mood)) return said;
+      const felt = yield* mood.value.view(persona, zone);
+      return felt.label === "neutral"
+        ? said
+        : { ...said, mood: felt.label, intensity: felt.intensity };
     },
   );
 

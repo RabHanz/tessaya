@@ -91,6 +91,7 @@ import * as TessayaWake from "../tessaya/TessayaWake.ts";
 import * as TessayaWakeRoutes from "../tessaya/TessayaWakeRoutes.ts";
 import * as TessayaPackRoutes from "../tessaya/TessayaPackRoutes.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
+import * as TessayaMood from "../tessaya/TessayaMood.ts";
 import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
 import * as PromptLab from "../tessaya/PromptLab.ts";
 import { adoptTessayaEnv } from "@t3tools/tessaya-shared/tessayaEnv";
@@ -303,6 +304,8 @@ const servicesInner = IntentService.layer.pipe(
       MemberPreferences.layer,
       expressionLayer,
       CurrentPersona.layer,
+      // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.
+      TessayaMood.layer,
       PersonaLayers.layer,
       // The prompt lab (B-030): its runs are one-shots on his subscription.
       PromptLab.layer.pipe(Layer.provide(BatonOneShot.layer)),
