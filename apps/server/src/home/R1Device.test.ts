@@ -101,11 +101,18 @@ describe("the streamed R1 turn", () => {
 it("tells her the time on the house's clock, with the zone named", () => {
   // 04:28 UTC is 09:28 in Karachi.
   expect(houseTime(Date.UTC(2026, 10, 11, 4, 28), "Asia/Karachi")).toBe(
-    "Wednesday, 11 November 2026 at 09:28 (Asia/Karachi), said as twenty-eight minutes past nine",
+    "Wednesday, 11 November 2026 at 09:28 am (Asia/Karachi), said as twenty-eight minutes past nine in the morning",
   );
   // His 13 Nov R1 turn: given only "10:36", the model said "twenty-six minutes to eleven".
   expect(houseTime(Date.UTC(2026, 10, 13, 5, 36), "Asia/Karachi")).toMatch(
-    /said as twenty-four minutes to eleven$/,
+    /said as twenty-four minutes to eleven in the morning$/,
+  );
+  // His own clock (14 Nov): 12-hour says the part of the day, 24-hour says it as the clock reads.
+  expect(houseTime(Date.UTC(2026, 10, 14, 15, 20), "Asia/Karachi", "12h")).toMatch(
+    /at 08:20 pm \(Asia\/Karachi\), said as twenty minutes past eight in the evening$/,
+  );
+  expect(houseTime(Date.UTC(2026, 10, 14, 15, 20), "Asia/Karachi", "24h")).toMatch(
+    /at 20:20 \(Asia\/Karachi\), said as twenty twenty$/,
   );
 });
 

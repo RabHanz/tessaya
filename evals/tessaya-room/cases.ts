@@ -32,6 +32,8 @@ export interface RoomCase {
   readonly notice?: string;
   /** The turn's block as TessayaTurn.begin gives it (the where-you-are and presence board lines). */
   readonly memory?: string;
+  /** His clock preference (timeFormat): how the turn's time is said. */
+  readonly clock?: "12h" | "24h";
 }
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
@@ -43,6 +45,20 @@ const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
+  {
+    // 14 Nov: "it isn't using the am pm timing"; the time on his own clock, with the part of the day.
+    id: "clock-12h",
+    source: "Director, 14 Nov ~20:30",
+    said: ["What time is it?"],
+    lastSays: [/quarter past ten|10:15/i, /\b(morning|a\.?m\.?)\b/i],
+  },
+  {
+    id: "clock-24h",
+    source: "Director, 14 Nov ~20:30",
+    said: ["What time is it?"],
+    clock: "24h",
+    lastSays: [/\b(ten fifteen|10:15)\b/i],
+  },
   {
     // COMMS-DESIGN §2.4: a message that waited is told once, on the turn that proves he is here, beside his question.
     id: "comms-waiting",
