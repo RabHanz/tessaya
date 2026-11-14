@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalFetch:off globalTimers:off globalConsole:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalFetch:off globalTimers:off globalConsole:off cryptoRandomUUID:off
 /**
  * The R1 room loop as a program on the voice host (next to the R1 on his LAN). Everything it needs comes from
  * the environment; secrets are read from files, never from variables or arguments. See deploy/r1-voice/README.md.

@@ -97,7 +97,7 @@ export type Get = (url: string, headers: Record<string, string>) => Promise<Got>
  * A GET that follows redirects (Hugging Face and GitHub both redirect to a CDN). node:http, not fetch: undici's
  * parser asserts and takes the whole server down when a slow reader meets a closed socket (seen 14 Nov, Node 24.19).
  */
-const httpGet: Get = (url, headers, hops = 5) =>
+const httpGet = (url: string, headers: Record<string, string>, hops = 5): Promise<Got> =>
   new Promise((resolve, reject) => {
     const get = url.startsWith("https:") ? NodeHttps.get : NodeHttp.get;
     const req = get(url, { headers, timeout: 60_000 }, (res) => {
