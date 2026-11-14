@@ -1,5 +1,6 @@
 import type { BatonAccount, BatonAccountPool } from "@t3tools/tessaya-contracts";
 import { ProviderDriverKind } from "@t3tools/tessaya-contracts";
+import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -7,6 +8,7 @@ import {
   decideRotation,
   deferNearLimit,
   DEFAULT_ROTATION_THRESHOLDS,
+  instancePool,
   rankRotationTargets,
   rotationLine,
 } from "./accountRotation.ts";
@@ -245,5 +247,42 @@ describe("deferNearLimit (one account)", () => {
       account({ key: "2", headroomPercent: 8 }),
     ]);
     expect(deferNearLimit(spentSpare)?.headroomPercent).toBe(3);
+  });
+});
+
+describe("instancePool (any provider)", () => {
+  const provider = (id: string, driver: string, usedPercent: number, groupKey?: string) =>
+    ({
+      instanceId: id,
+      driver,
+      displayName: id,
+      enabled: true,
+      installed: true,
+      auth: { status: "authenticated" },
+      ...(groupKey === undefined ? {} : { continuation: { groupKey } }),
+      usageLimits: {
+        checkedAt: NOW,
+        windows: [{ id: "weekly", kind: "weekly", label: "Weekly", usedPercent, resetsAt: null }],
+      },
+    }) as unknown as ServerProvider;
+
+  it("makes one Codex login a pool of one, so it defers near its limit with no switcher installed", () => {
+    const codex = instancePool([provider("codex", "codex", 92)], "codex", NOW);
+    expect(codex?.accounts.map((a) => [a.key, a.active])).toEqual([["codex", true]]);
+    expect(codex === null ? null : deferNearLimit(codex)?.headroomPercent).toBe(8);
+  });
+
+  it("pools only the same driver's instances that share the transcripts", () => {
+    const providers = [
+      provider("codex", "codex", 92, "g"),
+      provider("codex-2", "codex", 10, "g"),
+      provider("claude", "claudeAgent", 0, "g"),
+      provider("codex-3", "codex", 0, "other"),
+    ];
+    expect(instancePool(providers, "codex", NOW)?.accounts.map((a) => a.key)).toEqual([
+      "codex",
+      "codex-2",
+    ]);
+    expect(instancePool(providers, "missing", NOW)).toBeNull();
   });
 });
