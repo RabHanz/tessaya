@@ -19,13 +19,14 @@ import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonOneShot } from "../baton/BatonOneShot.ts";
-import { R1Brain, toolLoop } from "./R1Brain.ts";
+import { R1Brain, R1BrainError, toolLoop } from "./R1Brain.ts";
 import { speakableSentences } from "../baton/TessayaBrain.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
 import {
   calledPersona,
   dictionaryEntries,
   houseTime,
+  limitResets,
   r1Data,
   r1Gather,
   peopleLines,
@@ -344,6 +345,58 @@ effectIt.effect(
       expect(sent).toMatch(/tessaya_in_flight\), live as of this turn: \{"threads":\[\]\}/);
     }),
 );
+
+effectIt.effect(
+  "on a spent login she says once why and when it comes back, and tries nothing else on it (14 Nov, 18:56)",
+  () =>
+    Effect.gen(function* () {
+      let acts = 0;
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => {
+          acts += 1;
+          return Stream.empty;
+        },
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: () =>
+          Stream.fail(
+            new R1BrainError({
+              detail: "You've hit your weekly limit · resets Nov 16, 6pm (Asia/Karachi)",
+            }),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([] as never),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(BatonRecordService)({ append: () => Effect.void as never });
+      const said = yield* r1TurnStream({ heard: "what time is it?", history: [] }, brain, {
+        specs: [],
+        run: () => Effect.succeed({ text: "{}", isError: false }),
+      }).pipe(
+        Stream.runCollect,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+      );
+      expect(said.join("")).toBe(
+        "My accounts are out of capacity until Nov 16, 6pm, so I can't think that through now.",
+      );
+      expect(acts).toBe(0);
+    }),
+);
+
+describe("limitResets", () => {
+  it.each([
+    ["You've hit your weekly limit · resets Nov 16, 6pm (Asia/Karachi)", "Nov 16, 6pm"],
+    ["Claude AI usage limit reached", "later"],
+    ["You've hit your session limit · resets 9pm", "9pm"],
+    ["claude exited before answering", null],
+    ["refused: voice is routed to the API key", null],
+  ])("%s → %s", (detail, until) => expect(limitResets(detail)).toBe(until));
+});
 
 effectIt.effect(
   "on the subscription, a web search before her first word is cued aloud, kept out of the Record, and taints the turn",

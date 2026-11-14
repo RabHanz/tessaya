@@ -7826,6 +7826,38 @@
         "mood": "concerned",
         "gesture": "nodSmall"
       }
+    ],
+    "err.limit": [
+      {
+        "text": "My accounts are out of capacity until {until}, so I can't think that through now.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm out of thinking capacity until {until}. Ask me again then.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "My accounts are spent until {until}; I can't answer that yet.",
+        "mood": "sad",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No capacity left on my accounts until {until}, sorry.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I've used up my accounts' allowance until {until}.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Out of capacity until {until}. I'll be back to full then.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      }
     ]
   },
   "butler": {
@@ -15909,6 +15941,38 @@
         "text": "I'm sorry, I can't verify you. It stays as it was.",
         "mood": "sad",
         "gesture": "nodSoft"
+      }
+    ],
+    "err.limit": [
+      {
+        "text": "I'm afraid my accounts are out of capacity until {until}.",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "My apologies, my thinking is spent until {until}.",
+        "mood": "sad",
+        "gesture": "shrug"
+      },
+      {
+        "text": "My accounts have run dry until {until}; I can't answer just yet.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I've no capacity left until {until}, I'm sorry to say.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Until {until}, my accounts are out of capacity. Do ask me then.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Regrettably, I'm out of capacity until {until}.",
+        "mood": "sad",
+        "gesture": "lookAway"
       }
     ]
   }
