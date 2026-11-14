@@ -1371,9 +1371,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let settings = readSettings(settingsPath);
   let faceStatus: string | null = null;
   let faceOnlooker = false;
-  let faceMembers: ReadonlyArray<{ readonly id: string; readonly name: string; readonly you: boolean }> = [
-    { id: OWNER_MEMBER_ID, name: "You", you: true },
-  ];
+  let faceMembers: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly you: boolean;
+  }> = [{ id: OWNER_MEMBER_ID, name: "You", you: true }];
   const faceCheck = createFaceCheck({
     stateDir: input.stateDir,
     platform: input.platform,
@@ -1394,7 +1396,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .map((m) => ({ id: m.id, name: m.name, you: m.you }));
     pushHome();
   };
-  if (input.platform === "win32" && settings.faceCheck) setTimeout(() => void refreshFaceMembers(), 5_000).unref();
+  if (input.platform === "win32" && settings.faceCheck)
+    setTimeout(() => void refreshFaceMembers(), 5_000).unref();
   /** Someone besides the person checked is in view: private things hide and a spoken yes waits for a click. */
   const onlooker = async (): Promise<boolean> =>
     (faceOnlooker = faceCheck.available() && shoulderSurf(await faceCheck.scan()));
@@ -3479,13 +3482,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Someone else in view: the yes is clicked, not spoken (face check, Settings → Privacy).
       !faceOnlooker &&
       (!speakerIdentity.running() ||
-      spokenYesStands(speakerIdentity.current(), turnSpeaker, risk, settings.voiceId.voiceYes) ||
-      // His session is verified (recognition.ts): a yes too short to judge is his for an ordinary ask.
-      (risk === "ordinary" &&
-        settings.voiceId.voiceYes &&
-        speakerIdentity.current().kind === "unverified" &&
-        speakerIdentity.session()?.verified === true &&
-        speakerIdentity.session()?.member === "owner")),
+        spokenYesStands(speakerIdentity.current(), turnSpeaker, risk, settings.voiceId.voiceYes) ||
+        // His session is verified (recognition.ts): a yes too short to judge is his for an ordinary ask.
+        (risk === "ordinary" &&
+          settings.voiceId.voiceYes &&
+          speakerIdentity.current().kind === "unverified" &&
+          speakerIdentity.session()?.verified === true &&
+          speakerIdentity.session()?.member === "owner")),
     stepUp: () => {
       const member = speakerIdentity.session()?.member ?? null;
       const step = speakerIdentity.stepUp(

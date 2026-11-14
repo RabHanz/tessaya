@@ -113,6 +113,8 @@ describe("face engine sidecar", () => {
       ({ type: "result", ok: true, reason: "ok", faces, perTemplate: per, wallMs: 0 }) as const;
     expect(faceReading(r([0.72, 0.2]), ["owner", "sara"], true)).toEqual(face("owner"));
     expect(faceReading(r([0.72, 0.61]), ["owner", "sara"], true).member).toBeNull();
-    expect(faceReading(r([0.72, 0.2], 2), ["owner", "sara"], true)).toEqual(face("owner", false, 1));
+    expect(faceReading(r([0.72, 0.2], 2), ["owner", "sara"], true)).toEqual(
+      face("owner", false, 1),
+    );
   });
 });

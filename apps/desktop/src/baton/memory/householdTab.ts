@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off
+// @effect-diagnostics globalDate:off globalTimers:off
 /**
  * The Household area (ACCOUNTS-IDENTITY-DESIGN I-1): who lives here, each one's role and devices, adding someone with a
  * code for their phone, removing them (their data waits 7 days for their export) or bringing them back, and enrolling

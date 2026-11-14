@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 /**
  * Tessaya's face check on this desktop: the same on-device engine as the owner's Windows face unlock, run as a
  * sidecar (`faceid.exe`, installed with face-unlock) only when Tessaya asks. Bundling it would add ~50 MB (SFace and
@@ -6,7 +6,7 @@
  * (DPAPI plus a TPM key) per member, each with a consent record; frames never leave the sidecar's memory.
  */
 import * as NodeChildProcess from "node:child_process";
-import * as NodeFs from "node:fs";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import {
@@ -85,22 +85,22 @@ export const createFaceCheck = (input: {
 
   const consents = (): ReadonlyArray<Consent> => {
     try {
-      const v: unknown = JSON.parse(NodeFs.readFileSync(consentFile, "utf8"));
+      const v: unknown = JSON.parse(NodeFS.readFileSync(consentFile, "utf8"));
       return Array.isArray(v) ? (v as Consent[]) : [];
     } catch {
       return [];
     }
   };
   const writeConsents = (list: ReadonlyArray<Consent>) => {
-    NodeFs.mkdirSync(dir, { recursive: true });
-    NodeFs.writeFileSync(consentFile, JSON.stringify(list, null, 1));
+    NodeFS.mkdirSync(dir, { recursive: true });
+    NodeFS.writeFileSync(consentFile, JSON.stringify(list, null, 1));
   };
   /** Members with both a template and a consent record, in a stable order. */
   const enrolled = (): ReadonlyArray<Consent> =>
-    consents().filter((c) => NodeFs.existsSync(tmpl(c.member)));
+    consents().filter((c) => NodeFS.existsSync(tmpl(c.member)));
 
   const available = (): boolean =>
-    input.platform === "win32" && input.on() && NodeFs.existsSync(input.exe);
+    input.platform === "win32" && input.on() && NodeFS.existsSync(input.exe);
 
   const exclusive = async <T>(work: () => Promise<T>, fallback: T): Promise<T> => {
     if (busy || !available()) return fallback;
@@ -138,7 +138,7 @@ export const createFaceCheck = (input: {
     /** Enrols a member who is at the camera; their looking at it while asked is their consent, recorded with it. */
     enrol: (member: { readonly id: string; readonly name: string }) =>
       exclusive(async () => {
-        NodeFs.mkdirSync(dir, { recursive: true });
+        NodeFS.mkdirSync(dir, { recursive: true });
         const r = await run(["enroll", "--out", tmpl(member.id)], forward);
         if (r?.ok !== true) {
           input.onNote?.("face_enrol_failed", { reason: r?.reason ?? "engine" });
@@ -154,9 +154,9 @@ export const createFaceCheck = (input: {
 
     /** Deletes a member's template and consent. Works with the setting off: deleting must always be possible. */
     remove: async (member: string): Promise<void> => {
-      if (NodeFs.existsSync(tmpl(member)) && NodeFs.existsSync(input.exe))
+      if (NodeFS.existsSync(tmpl(member)) && NodeFS.existsSync(input.exe))
         await run(["delete", "--template", tmpl(member)], () => {});
-      NodeFs.rmSync(tmpl(member), { force: true });
+      NodeFS.rmSync(tmpl(member), { force: true });
       writeConsents(consents().filter((c) => c.member !== member));
       input.onNote?.("face_deleted", {});
     },
@@ -198,7 +198,11 @@ export const createFaceCheck = (input: {
           forward,
         );
         limit = recordBiometricAttempt(limit, r?.ok === true, now());
-        input.onNote?.("face_check", { ok: r?.ok === true, reason: r?.reason ?? "engine", ms: r?.wallMs ?? 0 });
+        input.onNote?.("face_check", {
+          ok: r?.ok === true,
+          reason: r?.reason ?? "engine",
+          ms: r?.wallMs ?? 0,
+        });
         if (r === null) return null;
         const reading = faceReading(
           r,
