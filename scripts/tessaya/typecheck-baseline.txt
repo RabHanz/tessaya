@@ -1,0 +1,1 @@
+apps/server/src/cli/pair.test.ts: error TS377030: This has any in the requirements channel which is not recommended.
