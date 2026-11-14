@@ -20,12 +20,14 @@ import {
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
+  TONE_FAMILIES,
   KEY_NAMES,
   KEY_ROWS,
   MOOD_EYES,
   clock,
   deviceStatusLine,
   tesselHosts,
+  toneFamilyOf,
   type TesselSeen,
   displayChoiceOf,
   displayLine,
@@ -427,6 +429,7 @@ function HardwareSections({
         <DeviceControls
           key={d.id}
           device={d}
+          toneFamily={toneFamilyOf(view?.registry?.find((r) => r.deviceId === d.id))}
           tags={view?.tags ?? []}
           busy={busy}
           run={run}
@@ -510,6 +513,7 @@ function HardwareSections({
 
 function DeviceControls({
   device: d,
+  toneFamily,
   tags,
   busy,
   run,
@@ -517,6 +521,7 @@ function DeviceControls({
   environmentId,
 }: {
   readonly device: DeviceView;
+  readonly toneFamily: { value: unknown } | null;
   readonly tags: DevicesOverview["tags"];
   readonly busy: boolean;
   readonly run: Run;
@@ -668,6 +673,22 @@ function DeviceControls({
           />
         </Row>
       </SettingsSection>
+
+      {toneFamily === null ? null : (
+        <SettingsSection title={`${prefix}Sounds · ${id}`}>
+          <Row title="Button sounds" description="The sound of a button or volume tap.">
+            {TONE_FAMILIES.map(([value, label]) => (
+              <ControlPill
+                key={value}
+                variant={value === toneFamily.value ? "primary" : "pill"}
+                label={label}
+                disabled={off}
+                onPress={() => void run("act", "set", { id, itemId: "tone.family", value })}
+              />
+            ))}
+          </Row>
+        </SettingsSection>
+      )}
 
       <SettingsSection title={`${prefix}Voice · ${id}`}>
         <Row title="Voice transport" description={transportLine(d)}>

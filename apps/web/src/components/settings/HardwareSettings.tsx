@@ -22,12 +22,14 @@ import type { R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
+  TONE_FAMILIES,
   KEY_NAMES,
   KEY_PRESSES,
   KEY_ROWS,
   MOOD_EYES,
   clock,
   deviceStatusLine,
+  toneFamilyOf,
   displayChoiceOf,
   displayLine,
   keyBindingFrom,
@@ -383,6 +385,7 @@ function HardwareSections({
         <DeviceControls
           key={d.id}
           device={d}
+          toneFamily={toneFamilyOf(registry.find((r) => r.deviceId === d.id))}
           tags={view?.tags ?? []}
           busy={busy}
           run={run}
@@ -488,12 +491,14 @@ type Run = (
 
 function DeviceControls({
   device: d,
+  toneFamily,
   tags,
   busy,
   run,
   environmentId,
 }: {
   readonly device: DeviceView;
+  readonly toneFamily: { value: unknown } | null;
   readonly tags: DevicesOverview["tags"];
   readonly busy: boolean;
   readonly run: Run;
@@ -677,6 +682,36 @@ function DeviceControls({
           </div>
         </SettingsRow>
       </SettingsSection>
+
+      {toneFamily === null ? null : (
+        <SettingsSection title={`Sounds · ${id}`}>
+          <SettingsRow
+            title="Button sounds"
+            description="The sound of a button or volume tap."
+            control={
+              <Select
+                value={typeof toneFamily.value === "string" ? toneFamily.value : null}
+                onValueChange={(value) =>
+                  void run("act", "set", { id, itemId: "tone.family", value })
+                }
+              >
+                <SelectTrigger size="sm" aria-label="Button sounds" disabled={off}>
+                  <SelectValue>
+                    {TONE_FAMILIES.find(([v]) => v === toneFamily.value)?.[1] ?? "Not reported yet"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup>
+                  {TONE_FAMILIES.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            }
+          />
+        </SettingsSection>
+      )}
 
       <SettingsSection title={`Voice · ${id}`}>
         <SettingsRow
@@ -1565,6 +1600,7 @@ const HAND_BUILT: ReadonlySet<string> = new Set([
   "display.rotate",
   "display.calibrate",
   "key.bind",
+  "tone.family",
 ]);
 const SAFETY_LABEL: Readonly<Record<DeviceSafety, string>> = {
   free: "Free",
