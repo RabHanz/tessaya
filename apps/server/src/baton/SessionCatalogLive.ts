@@ -32,74 +32,83 @@ export interface TranscriptScan {
 
 const FULL_SCAN_MS = 10 * 60_000;
 const ACTIVE_MS = 24 * 60 * 60_000;
+const FOLDERS_AT_ONCE = 16;
 
 /**
- * Every transcript's mtime without stat'ing them all each time (a box holds 130,000; a full pass blocks the event
- * loop for seconds). A project folder is listed again only when its own mtime moved (a file came or went), and a file
- * is looked at again only when it was written in the last day or its session runs now. Everything every 10 minutes.
- * shortcut: a day-old transcript written to by a session that has since ended is seen at the next full pass, not sooner.
+ * Every transcript's mtime (a box holds 130,000): a folder is listed again only when its mtime moved, a file looked at
+ * only when written in the last day or running now, everything every 10 minutes. Asynchronous: done synchronously the
+ * full pass blocked the event loop 3 to 4 s every 10 minutes (14 Nov). shortcut: a day-old transcript of an ended
+ * session is seen at the next full pass.
  */
-export const scanTranscriptTimes = (
+export const scanTranscriptTimes = async (
   configDirs: ReadonlyArray<string>,
   liveIds: ReadonlySet<string>,
   before: TranscriptScan | null,
   now: number,
-): TranscriptScan => {
+): Promise<TranscriptScan> => {
   const full = before === null || now - before.at >= FULL_SCAN_MS;
-  const folders = new Map<string, ScanFolder>();
-  for (const dir of configDirs) {
-    const root = NodePath.join(dir, "projects");
-    let slugs: string[] = [];
-    try {
-      slugs = NodeFS.readdirSync(root);
-    } catch {
-      continue;
-    }
-    const account = accountOfConfigDir(dir);
-    for (const slug of slugs) {
-      const folder = NodePath.join(root, slug);
-      let mtime: number;
-      try {
-        mtime = NodeFS.statSync(folder).mtimeMs;
-      } catch {
-        continue;
-      }
-      const prior = full ? undefined : before.folders.get(folder);
-      let names: ReadonlyArray<string>;
-      if (prior !== undefined && prior.mtime === mtime) names = [...prior.files.keys()];
-      else {
-        try {
-          names = NodeFS.readdirSync(folder).filter((n) => /^[0-9a-f-]{36}\.jsonl$/i.test(n));
-        } catch {
-          continue;
-        }
-      }
-      const files = new Map<string, number>();
-      for (const name of names) {
+  const fs = NodeFS.promises;
+  const scanFolder = async (
+    folder: string,
+    account: string | null,
+  ): Promise<readonly [string, ScanFolder] | null> => {
+    const mtime = await fs.stat(folder).then(
+      (s) => s.mtimeMs,
+      () => null,
+    );
+    if (mtime === null) return null;
+    const prior = full ? undefined : before.folders.get(folder);
+    const names =
+      prior !== undefined && prior.mtime === mtime
+        ? [...prior.files.keys()]
+        : await fs.readdir(folder).then(
+            (all) => all.filter((n) => /^[0-9a-f-]{36}\.jsonl$/i.test(n)),
+            () => null,
+          );
+    if (names === null) return null;
+    const files = new Map<string, number>();
+    await Promise.all(
+      names.map(async (name) => {
         const seen = prior?.files.get(name);
         if (seen !== undefined && now - seen > ACTIVE_MS && !liveIds.has(name.slice(0, -6))) {
           files.set(name, seen);
-          continue;
+          return;
         }
-        try {
-          files.set(name, NodeFS.statSync(NodePath.join(folder, name)).mtimeMs);
-        } catch {
-          // gone between listing and reading
-        }
-      }
-      folders.set(folder, { mtime, account, files });
+        // Gone between listing and reading: left out.
+        await fs.stat(NodePath.join(folder, name)).then(
+          (s) => void files.set(name, s.mtimeMs),
+          () => undefined,
+        );
+      }),
+    );
+    return [folder, { mtime, account, files }];
+  };
+  const folders = new Map<string, ScanFolder>();
+  for (const dir of configDirs) {
+    const root = NodePath.join(dir, "projects");
+    const slugs = await fs.readdir(root).catch(() => null);
+    if (slugs === null) continue;
+    const account = accountOfConfigDir(dir);
+    for (let i = 0; i < slugs.length; i += FOLDERS_AT_ONCE) {
+      const done = await Promise.all(
+        slugs
+          .slice(i, i + FOLDERS_AT_ONCE)
+          .map((slug) => scanFolder(NodePath.join(root, slug), account)),
+      );
+      for (const entry of done) if (entry !== null) folders.set(entry[0], entry[1]);
     }
   }
   return { at: full ? now : before.at, folders };
 };
 
 let scanned: TranscriptScan | null = null;
+let scanning: Promise<ReadonlyArray<TranscriptInfo>> | null = null;
 
-const scanTranscripts = (
+const scanTranscripts = async (
   limit: number,
   liveIds: ReadonlySet<string>,
-): ReadonlyArray<TranscriptInfo> => {
-  scanned = scanTranscriptTimes(claudeConfigDirs(), liveIds, scanned, Date.now());
+): Promise<ReadonlyArray<TranscriptInfo>> => {
+  scanned = await scanTranscriptTimes(claudeConfigDirs(), liveIds, scanned, Date.now());
   const found: Array<{ file: string; id: string; mtime: number; account: string | null }> = [];
   for (const [folder, { account, files }] of scanned.folders)
     for (const [name, mtime] of files)
@@ -150,10 +159,19 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
     const now = Date.now();
     if (cached !== null && now - cached.at < 15_000 && cached.limit >= limit)
       return cached.rows.slice(0, limit);
-    const live = await Effect.runPromise(readAllProfileLiveSessions());
-    const rows = scanTranscripts(Math.max(limit, 600), new Set(live.map((s) => s.sessionId)));
-    cached = { at: now, limit: Math.max(limit, 600), rows };
-    return rows.slice(0, limit);
+    // Calls that arrive while a scan runs share it.
+    scanning ??= (async () => {
+      const live = await Effect.runPromise(readAllProfileLiveSessions());
+      const rows = await scanTranscripts(
+        Math.max(limit, 600),
+        new Set(live.map((s) => s.sessionId)),
+      );
+      cached = { at: now, limit: Math.max(limit, 600), rows };
+      return rows;
+    })().finally(() => {
+      scanning = null;
+    });
+    return (await scanning).slice(0, limit);
   },
   history: async (query) => {
     const answer = await askHistory(process.env, { query });
@@ -196,7 +214,8 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
       ),
     ),
   hasTranscript: (sessionId) => {
-    scanned ??= scanTranscriptTimes(claudeConfigDirs(), new Set(), null, Date.now());
+    // Always after `transcripts`, which scans; before any scan nothing is taken to be gone.
+    if (scanned === null) return true;
     for (const { files } of scanned.folders.values())
       if (files.has(`${sessionId}.jsonl`)) return true;
     return false;
