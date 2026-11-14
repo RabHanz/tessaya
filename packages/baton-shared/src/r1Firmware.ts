@@ -28,6 +28,9 @@ export interface R1KwsPin {
 /** The largest pack the R1 takes. */
 export const R1_KWS_MAX_BYTES = 476 * 1024;
 
+/** The largest firmware package the R1 takes; the rest of its OTA space is kept for a lines pack. */
+export const R1_FIRMWARE_MAX_BYTES = 2748 * 1024;
+
 /** Everything one release of Tessaya pins for its R1s. Null: that artifact is not updated. */
 export interface R1ReleaseManifest {
   readonly artifacts: { readonly firmware: R1FirmwarePin | null; readonly kws: R1KwsPin | null };
