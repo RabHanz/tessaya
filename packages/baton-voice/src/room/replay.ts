@@ -9,6 +9,7 @@ import * as NodeFS from "node:fs";
 import { DOWN_FRAME_BYTES, fromBytes, toBytes } from "./audio.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
 import { realDeviceActivity } from "./mqtt.ts";
+import { adoptTesselNames } from "./envNames.ts";
 
 const env = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;
@@ -45,6 +46,7 @@ const pct = (xs: number[], p: number) => {
 };
 
 const main = async () => {
+  adoptTesselNames(process.env);
   const id = env("R1_REPLAY_DEVICE", "replay-1");
   let busy: string | null = null;
   let firstDown: number | null = null;
