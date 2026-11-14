@@ -20,6 +20,7 @@ import {
   TessayaWeaveListResult,
   TessayaWeaveSendInput,
   TessayaWeaveSendResult,
+  WorkSessionId,
   BrainUsageResult,
   TessayaPromptLabResult,
   DesktopSettingsView,
@@ -351,8 +352,32 @@ const PersonaHandoffTool = Tool.make("tessaya_persona_handoff", {
   parameters: Schema.Struct({
     to: Schema.optional(Schema.String.check(Schema.isMaxLength(64))),
     back: Schema.optional(Schema.Boolean),
+    job: Schema.optional(
+      WorkSessionId.annotate({
+        description:
+          "When this conversation is about one of his jobs (from tessaya_jobs), its id: the job's lead moves too.",
+      }),
+    ),
   }),
   success: Schema.Struct({ line: Schema.String, persona: Schema.optional(Schema.String) }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const JobLeadTool = Tool.make("tessaya_job_lead", {
+  ...shared,
+  description:
+    'Change which persona leads one of his jobs (id from tessaya_jobs) when he says so ("give the release job to Alfred", "Onyx, take that job back"): `to` names the persona, `back` returns it to whoever led it before. Its worker carries on untouched and its approvals carry over. When you suggested someone else and he says no, you carry on, call it with `declined` set to who you suggested, so it is not raised again. Never on your own: only on his words. To also hand over this conversation, use tessaya_persona_handoff with `job`.',
+  parameters: Schema.Struct({
+    id: WorkSessionId,
+    to: Schema.optional(Schema.String.check(Schema.isMaxLength(64))),
+    back: Schema.optional(Schema.Boolean),
+    declined: Schema.optional(Schema.String.check(Schema.isMaxLength(64))),
+  }),
+  success: Schema.Struct({ line: Schema.String }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, false)
@@ -658,6 +683,7 @@ export const TessayaToolkit = Toolkit.make(
   WhosHomeTool,
   PreferenceSetTool,
   PersonaHandoffTool,
+  JobLeadTool,
   WakeWordsTool,
   WakeWordChangeTool,
   RulesTool,

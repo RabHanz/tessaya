@@ -815,6 +815,8 @@ export const layerStatic = (input: {
   /** Runs per thread, for the job caps. */
   readonly runs?: ReadonlyMap<string, ReadonlyArray<{ readonly status: string }>>;
   readonly contextHandoffs?: ReadonlyMap<string, ReadonlyArray<unknown>>;
+  /** Pending runtime requests (approvals) per thread. */
+  readonly pending?: ReadonlyMap<string, ReadonlyArray<unknown>>;
   /** Collects the threads that were interrupted. */
   readonly interrupted?: Array<ThreadId>;
   /** Collects the provider switches (handoffs). */
@@ -858,7 +860,8 @@ export const layerStatic = (input: {
     contextHandoffs: (threadId) =>
       Effect.succeed((input.contextHandoffs?.get(threadId) ?? []) as never),
     runtimeRequestStatus: () => Effect.succeed(null),
-    pendingRuntimeRequests: () => Effect.succeed([]),
+    pendingRuntimeRequests: (threadId) =>
+      Effect.succeed((input.pending?.get(threadId) ?? []) as never),
     turnItem: () => Effect.succeed(null),
     appThread: () => Effect.succeed(null),
     activeProviderThread: () => Effect.succeed(null),

@@ -6,6 +6,7 @@
  */
 import {
   TessayaJobPlacementError,
+  type TessayaJobLeadInput,
   type TessayaJobPlaceInput,
   type TessayaJobRefineInput,
   type TessayaFleetEntry,
@@ -38,9 +39,12 @@ import {
   jobChanges,
   jobMoment,
   jobNotice,
+  leadHandoffNote,
+  leadTarget,
   outboundDecision,
   permissionsSummary,
   workerFirstMessage,
+  workerLeadNote,
 } from "@t3tools/tessaya-shared/jobs";
 import { watchFleet } from "@t3tools/tessaya-shared/watch";
 import {
@@ -463,6 +467,65 @@ export const refineJob = Effect.fn("BatonJobFlow.refine")(function* (input: Tess
     yield* engine.sendMessage({ tag: "job", threadId, text: input.text });
   }
   return terms;
+});
+
+/**
+ * Moves who leads a job, or logs his "no" to a suggested lead (`declined`). The worker's session is never restarted
+ * or copied: it gets one short note, its pending approvals and agreed plan lease carry over, and the new lead's note
+ * (done, pending, his last words) is kept on the move for its next look at the job. Every move is a Record line.
+ */
+export const moveJobLead = Effect.fn("BatonJobFlow.moveLead")(function* (
+  input: TessayaJobLeadInput & { readonly by?: "him" | "persona" },
+) {
+  const jobs = yield* TessayaJobService;
+  const terms = yield* jobs.terms(input.id);
+  if (terms === null) return yield* new TessayaJobPlacementError({ detail: "No such job." });
+  const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
+  const personas = readPack(userdata).personas;
+  const from = terms.lead ?? "executive";
+  const fromName = personas.find((p) => p.id === from)?.name ?? from;
+  const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
+  const base = { at, from, by: input.by ?? "him", via: input.via ?? "tool" } as const;
+  if (input.declined !== undefined) {
+    const suggested = leadTarget(personas, [], { to: input.declined });
+    return yield* jobs.moveLead(input.id, {
+      ...base,
+      to: from,
+      declined: suggested.ok ? suggested.persona.id : input.declined,
+    });
+  }
+  const target = leadTarget(personas, terms.leadMoves ?? [], input);
+  if (!target.ok) return yield* new TessayaJobPlacementError({ detail: target.why });
+  if (target.persona.id === from) return terms;
+  const engine = yield* TessayaEngine;
+  const threadId = yield* threadOf(input.id);
+  const messages = threadId === null ? [] : yield* engine.recentMessages(threadId, 2);
+  const { title, projectId } = yield* (yield* WorkSessionService).get(input.id);
+  const note = leadHandoffNote({
+    from: fromName,
+    title,
+    phase: terms.phase,
+    pendingApprovals:
+      threadId === null ? 0 : (yield* engine.pendingRuntimeRequests(threadId)).length,
+    lastDone: messages.findLast((m) => m.role === "assistant")?.text ?? null,
+    lastSaid: terms.revisions.findLast((r) => r.by === "him")?.text ?? null,
+  });
+  const moved = yield* jobs.moveLead(input.id, { ...base, to: target.persona.id, note });
+  if (threadId !== null)
+    yield* engine.sendMessage({ tag: "job", threadId, text: workerLeadNote(target.persona) });
+  const record = yield* Effect.serviceOption(TessayaRecordService);
+  if (Option.isSome(record)) {
+    const project = (yield* engine.projects).find((p) => p.id === projectId);
+    yield* record.value.append({
+      kind: "job",
+      actor: target.persona.name,
+      project: project?.title ?? null,
+      ref: input.id,
+      subject: title,
+      outcome: `lead moved from ${fromName} to ${target.persona.name}`,
+    });
+  }
+  return moved;
 });
 
 /** Runs that actually ran: one is a turn the worker took. Queued, cancelled and rolled-back ones are not. */

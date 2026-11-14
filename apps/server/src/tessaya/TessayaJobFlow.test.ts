@@ -28,6 +28,7 @@ import {
   postReports,
   noticePlan,
   recordJobChanges,
+  moveJobLead,
   refineJob,
   releaseWaiting,
   scheduleJob,
@@ -52,6 +53,8 @@ const sent: Array<{ threadId: ThreadId; text: string }> = [];
 const shells: OrchestrationV2ThreadShell[] = [];
 const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
 const interrupted: ThreadId[] = [];
+const switched: Array<{ threadId: ThreadId; tag: string }> = [];
+const pending = new Map<string, ReadonlyArray<unknown>>();
 const runs = new Map<string, ReadonlyArray<{ status: string; requestedAt: DateTime.Utc }>>();
 /** A run of the worker's, this many hours before the test clock's start. */
 const ran = (status: string, hoursAgo = 1) => ({
@@ -159,6 +162,8 @@ const layer = it.layer(
       messages,
       runs,
       interrupted,
+      switched,
+      pending,
     }),
   ).pipe(Layer.provideMerge(workSessionLayer), Layer.provideMerge(SqlitePersistenceMemory)),
 );
@@ -275,6 +280,83 @@ layer("BatonJobFlow", (it) => {
         yield* noticePlan(tb);
         assert.strictEqual((yield* jobs.terms(b))?.phase, "approved");
         assert.strictEqual(sent.slice(before).filter((m) => m.threadId === tb).length, 1);
+      }),
+  );
+
+  it.effect(
+    "moves a job's lead and back, leaving its worker running, its approvals and lease carried, each move logged",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* TessayaJobService;
+        const id = WorkSessionId.make("job-flow-lead");
+        const { threadId } = yield* startJob(
+          {
+            id,
+            projectId: ProjectId.make("project-site"),
+            title: "Ship the release",
+            goal: "ship the release",
+            permissions: { folders: [], projects: [], tools: ["read"] },
+            modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+            runtimeMode: "approval-required",
+          },
+          { role: "engineering" },
+        );
+        yield* jobs.refine(id, {
+          by: "him",
+          at: "1970-01-01T00:00:00.000Z",
+          via: "voice",
+          text: "keep the old icon",
+        });
+        yield* jobs.setLease(id, {
+          persona: "engineering",
+          sites: [],
+          apps: ["Finder"],
+          acts: ["open"],
+          issuedAt: "1970-01-01T00:00:00.000Z",
+          until: "1970-01-01T02:00:00.000Z",
+        });
+        pending.set(threadId, [{ id: "approval-1" }]);
+        messages.push({ role: "assistant", text: "Built the release notes." });
+        const launches = launched.length;
+        const before = sent.length;
+
+        const moved = yield* moveJobLead({ id, to: "Alfred", via: "voice" });
+        messages.length = 0;
+        assert.strictEqual(moved?.lead, "butler");
+        // The lease his yes gave follows the new lead; the approval card stays on the worker's thread.
+        assert.strictEqual(moved?.lease?.persona, "butler");
+        const note = moved?.leadMoves?.at(-1)?.note ?? "";
+        assert.include(note, "Onyx handed you");
+        assert.include(note, "Built the release notes.");
+        assert.include(note, "1 approval waits for him (they carry over)");
+        assert.include(note, '"keep the old icon"');
+        // The worker is untouched: nothing launched or switched, and one short note on its own thread.
+        assert.strictEqual(launched.length, launches);
+        assert.lengthOf(switched, 0);
+        assert.deepEqual(
+          sent.slice(before).map((s) => s.threadId),
+          [threadId],
+        );
+        assert.include(sent.at(-1)?.text ?? "", "Alfred leads this job now");
+
+        // Back to Onyx, then a declined suggestion only logs.
+        assert.strictEqual((yield* moveJobLead({ id, back: true }))?.lead, "engineering");
+        const kept = yield* moveJobLead({ id, declined: "Freya" });
+        assert.strictEqual(kept?.lead, "engineering");
+        assert.deepEqual(
+          kept?.leadMoves?.map((m) => [m.from, m.to, m.declined ?? null]),
+          [
+            ["engineering", "butler", null],
+            ["butler", "engineering", null],
+            ["engineering", "engineering", "companion"],
+          ],
+        );
+        assert.lengthOf(sent, before + 2);
+        // One lead at a time: the job counts as Onyx's again.
+        assert.strictEqual((yield* jobs.personas()).get(id), "engineering");
+        const nobody = yield* Effect.flip(moveJobLead({ id, to: "Bob" }));
+        assert.include(String((nobody as { detail?: string }).detail), "no persona called Bob");
+        pending.clear();
       }),
   );
 
