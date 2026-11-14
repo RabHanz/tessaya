@@ -202,6 +202,68 @@ const WORK = {
       },
     ],
   },
+  // Nova wakes her on v2 (v1 kept); Maya's v1 missed the bar and v2 is training; Freya ships trained.
+  tessaya_wake_words: {
+    words: [
+      {
+        personaId: "companion",
+        word: "freya",
+        model: "trained",
+        shipped: true,
+        current: null,
+        cancelled: false,
+        versions: [],
+      },
+      {
+        personaId: "nova",
+        word: "nova",
+        model: "trained",
+        shipped: false,
+        current: 2,
+        cancelled: false,
+        versions: [
+          {
+            version: 1,
+            status: "trained",
+            reason: null,
+            barMet: true,
+            provisional: false,
+            signed: true,
+            at: 1763000000000,
+          },
+          {
+            version: 2,
+            status: "trained",
+            reason: null,
+            barMet: true,
+            provisional: true,
+            signed: true,
+            at: 1763100000000,
+          },
+        ],
+      },
+      {
+        personaId: "maya",
+        word: "maya",
+        model: "training",
+        shipped: false,
+        current: null,
+        cancelled: false,
+        versions: [
+          {
+            version: 1,
+            status: "rejected",
+            reason: "2.1 false wakes an hour; the bar is 0.5",
+            barMet: false,
+            provisional: false,
+            signed: false,
+            at: 1763100000000,
+          },
+        ],
+      },
+    ],
+  },
+  tessaya_wake_word_change: { ok: true, line: "nova is back on version 1 on every device." },
   // The job tools' own words (apps/server/src/mcp/toolkits/jobs/handlers.ts, R1Tools' card line).
   job_start: {
     id: "job-acme-2",

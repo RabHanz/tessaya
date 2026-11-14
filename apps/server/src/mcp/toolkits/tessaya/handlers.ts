@@ -33,6 +33,7 @@ import { ServerSettingsService } from "../../../serverSettings.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { TessayaTurn, TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -75,6 +76,27 @@ const nextPronounce = (
     ? rest
     : { ...rest, [word.trim()]: sayAs.trim() };
 };
+
+/** What she says after a wake-word change, or why it was refused. */
+const wakeChangeLine = (
+  input: {
+    readonly word: string;
+    readonly change: "rollback" | "cancel" | "retrain";
+    readonly version?: number | undefined;
+  },
+  done: { readonly refused: string } | { readonly ok: true },
+): { readonly ok: boolean; readonly line: string } =>
+  "refused" in done
+    ? { ok: false, line: done.refused }
+    : {
+        ok: true,
+        line:
+          input.change === "rollback"
+            ? `${input.word} is back on version ${input.version} on every device.`
+            : input.change === "cancel"
+              ? `Stopped training ${input.word}. Say retrain to start it again.`
+              : `${input.word} will be trained again; devices switch once the new model passes.`,
+      };
 
 const failed = (cause: unknown) =>
   new OrchestratorMcpFailure({
@@ -182,6 +204,14 @@ export const layer = McpToolAccess.toLayer(
         ? Effect.fail({ reason: "Memory is not available on this server." })
         : f(turn.value);
     };
+    const withWake = <A, E>(
+      f: (wake: TessayaWake["Service"]) => Effect.Effect<A, E>,
+    ): Effect.Effect<A, E | { readonly reason: string }> => {
+      const wake = runtime === null ? Option.none() : Context.getOption(runtime, TessayaWake);
+      return Option.isNone(wake) || runtime === null
+        ? Effect.fail({ reason: "Wake-word training is not available on this server." })
+        : f(wake.value).pipe(Effect.provideContext(runtime));
+    };
     // The same handlers as the clients' RPC, behind T3's read check for this credential.
     const call = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       readCaller().pipe(
@@ -281,6 +311,34 @@ export const layer = McpToolAccess.toLayer(
             Effect.map(turn.setPreference(input.key, input.value ?? null), (set) => ({
               line: set.line,
             })),
+          ),
+        ),
+      ),
+      // Her home server's record when this one has a home (TessayaWake forwards), so every vessel says the same.
+      tessaya_wake_words: McpToolAccess.reads(() =>
+        call(
+          withWake((wake) =>
+            Effect.flatMap(wake.overview, (words) =>
+              "refused" in words
+                ? Effect.fail({ reason: words.refused })
+                : Effect.succeed({ words }),
+            ),
+          ),
+        ),
+      ),
+      tessaya_wake_word_change: McpToolAccess.writes((input) =>
+        call(
+          withWake((wake) =>
+            Effect.map(
+              input.change === "rollback"
+                ? input.version === undefined
+                  ? Effect.succeed({ refused: "Say which version to go back to." })
+                  : wake.rollback(input.word, input.version)
+                : input.change === "cancel"
+                  ? wake.cancel(input.word)
+                  : wake.retrain(input.word),
+              (done) => wakeChangeLine(input, done),
+            ),
           ),
         ),
       ),

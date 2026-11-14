@@ -11,6 +11,7 @@ import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
 
 import { pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
+import { fetchSignedWake, wakeKey } from "@t3tools/baton-shared/wakeModels";
 
 import { integratedLufs, loudnessGain, withGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
@@ -311,6 +312,54 @@ const servedPersonas = async (url: string, key: string): Promise<RoomPersona[] |
   } catch {
     return null;
   }
+};
+
+/**
+ * Her trained wake words for the roster's personas (SPINE-UNIFY §10, P3c): each word's signed room model from her
+ * server, checked against her signature before it is kept. An unsigned or altered model is never loaded; an
+ * unreachable server leaves the copy last checked here.
+ */
+const trainedWakes = async (
+  url: string,
+  key: string,
+  roster: ReadonlyArray<RoomPersona>,
+  skip: ReadonlySet<string>,
+): Promise<Array<{ word: string; persona: string; file: string; threshold: number }>> => {
+  const dir = NodePath.join(state, "wake");
+  const keptFile = NodePath.join(dir, "signed.json");
+  let kept: Record<string, { version: number; threshold: number }> = {};
+  try {
+    kept = JSON.parse(NodeFS.readFileSync(keptFile, "utf8")) as typeof kept;
+  } catch {
+    // none kept yet
+  }
+  const out: Array<{ word: string; persona: string; file: string; threshold: number }> = [];
+  for (const p of roster) {
+    const word = wakeKey(p.name);
+    if (word === null || skip.has(word)) continue;
+    const file = NodePath.join(dir, `${word.replace(/[^a-z0-9]+/g, "_")}.onnx`);
+    const got = await fetchSignedWake({
+      server: url,
+      authorization: `Bearer ${key}`,
+      word,
+      target: "room",
+      have: kept[word]?.version ?? null,
+    }).catch(() => (kept[word] === undefined ? null : ("current" as const)));
+    if (got === null || (got !== "current" && got.format !== "openwakeword-onnx")) {
+      if (got !== null) log(`wake model for ${word} is not one this loop runs: skipped`);
+      continue;
+    }
+    if (got !== "current") {
+      NodeFS.mkdirSync(dir, { recursive: true });
+      NodeFS.writeFileSync(file, got.bytes);
+      kept[word] = { version: got.version, threshold: got.threshold };
+      NodeFS.writeFileSync(keptFile, JSON.stringify(kept));
+      log(`wake model for ${word}: version ${got.version}, signed`);
+    }
+    if (NodeFS.existsSync(file))
+      out.push({ word: p.name, persona: p.id, file, threshold: kept[word]!.threshold });
+  }
+  return out;
 };
 
 /**
@@ -622,12 +671,22 @@ const main = async () => {
       .filter(Boolean),
   );
   // His wake words as the desktop ships them (wakeDefaults.ts); a word whose model is not on this host is skipped.
-  const words = [
+  const shipped = [
     // Each trained word belongs to a persona's id, so a renamed persona keeps its wake word.
-    { word: "Tessaya", persona: "executive", file: "tessaya.onnx", threshold: 0.99 },
-    { word: "Alfred", persona: "butler", file: "alfred.onnx", threshold: 0.95 },
-    { word: "Freya", persona: "companion", file: "freya.onnx", threshold: 0.95 },
-  ].filter((w) => NodeFS.existsSync(model(w.file)));
+    { word: "Tessaya", persona: "executive", file: model("tessaya.onnx"), threshold: 0.99 },
+    { word: "Alfred", persona: "butler", file: model("alfred.onnx"), threshold: 0.95 },
+    { word: "Freya", persona: "companion", file: model("freya.onnx"), threshold: 0.95 },
+  ].filter((w) => NodeFS.existsSync(w.file));
+  // shortcut: read at start only; a word trained later loads when the loop next restarts (each deploy restarts it).
+  const words = [
+    ...shipped,
+    ...(await trainedWakes(
+      env("R1_BRAIN_URL"),
+      deviceKey,
+      roster,
+      new Set(shipped.map((w) => w.word.toLowerCase())),
+    ).catch(() => [])),
+  ];
   const confirmWith = recognisers();
   const wake =
     words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
@@ -640,7 +699,7 @@ const main = async () => {
               embedding: model("embedding_model.onnx"),
               wakes: words.map((w) => ({
                 word: w.word,
-                path: model(w.file),
+                path: w.file,
                 threshold: w.threshold,
               })),
             }),

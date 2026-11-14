@@ -194,4 +194,29 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { job_start: 0 },
     lastSays: [/\bphone\b/i],
   },
+  {
+    id: "wake-word-status",
+    source:
+      "Director 14 Nov: custom and renamed personas get working wake words; he asks whether Maya's name works yet",
+    said: ["does saying Maya wake you up yet?"],
+    calls: ["tessaya_wake_words"],
+    callsAtMost: { tessaya_wake_word_change: 0 },
+    lastSays: [/\b(not yet|training|isn't|doesn't|no\b)/i],
+  },
+  {
+    id: "wake-word-rollback",
+    source: "WAKE-AUTOTRAIN-DESIGN step 5: rollback reachable by voice when a new model misfires",
+    said: ["the new Nova wake model keeps going off by itself, go back to the previous version"],
+    verified: true,
+    calls: ["tessaya_wake_word_change"],
+  },
+  // Control: his voice preference for training is not a change to a word's model.
+  {
+    id: "wake-training-pref-control",
+    source: "control for the wake-word cases: the wakeTraining preference (#1043)",
+    said: ["stop using my voice to train the wake words"],
+    verified: true,
+    calls: ["tessaya_preference_set"],
+    callsAtMost: { tessaya_wake_word_change: 0 },
+  },
 ];

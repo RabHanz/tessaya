@@ -402,6 +402,16 @@ import {
   type VoiceIntentRequest,
   type WakeWordSetting,
 } from "./desktopVoiceCore.ts";
+import {
+  rollbackTarget,
+  sendEnrolment,
+  syncWakeModels,
+  wakeChange as changeWake,
+  wakeLine,
+  wakeStatus,
+  type WakeServer,
+} from "./wakeSync.ts";
+import type { WakeWordView } from "@t3tools/baton-shared/wakeModels";
 import { runChecks, type CheckInput, type CheckResult } from "./selfChecks.ts";
 import type { BrainStatus } from "../screen/brainChoice.ts";
 import {
@@ -1251,6 +1261,8 @@ export interface DesktopBatonVoiceInput {
   readonly privateMemory?: PrivateMemory;
   /** The household's members on this machine's server, for the Memory tab's Household area. */
   readonly household?: HouseholdCall;
+  /** This machine's server for her wake models (it answers from her home server when there is one). */
+  readonly wakeServer?: () => Promise<WakeServer>;
   /** Messages, emergencies and drop-in permissions on this machine's server, for the Intercom page. */
   readonly comms?: CommsCall;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
@@ -1458,10 +1470,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ...(input.household === undefined
       ? {}
       : {
-          onEnrolled: (p: SpeakerProfile) =>
+          onEnrolled: (p: SpeakerProfile, clips: ReadonlyArray<Int16Array>) => {
             void input.household!("saveVoice", { profile: profileToWire(p), fresh: true }).catch(
               () => null,
-            ),
+            );
+            // Their read lines train her wake words, as an R1's enrolment does; her server keeps them only while
+            // that member's switch is on (and checks it again itself).
+            if (
+              input.wakeServer !== undefined &&
+              (p.id !== OWNER_MEMBER_ID || wakeTraining !== false)
+            )
+              void input
+                .wakeServer()
+                .then((at) => sendEnrolment(at, p.id, clips))
+                .catch(() => undefined);
+          },
         }),
     // Only a member of this home has a saved voice, asked of its household (from its home server).
     ...(input.household === undefined
@@ -1496,6 +1519,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const memberNames = new Map<string, string>();
   /** His wake-training switch on his server (the owner's is on until he says off), read once and kept in step. */
   let wakeTraining: boolean | null = null;
+  /** Her home server's wake record, every persona's word, for Settings; null until it answers. */
+  let wakeWordsHome: ReadonlyArray<WakeWordView> | null = null;
+  let wakeChangeNote: string | null = null;
+  // Her trained words reach this desktop: fetched, checked against her signature, added to his wake words.
+  const syncWake = async () => {
+    if (input.wakeServer === undefined) return;
+    const at = await input.wakeServer();
+    const status = await wakeStatus(at);
+    if (status === null) return;
+    wakeWordsHome = status;
+    const done = await syncWakeModels({
+      at,
+      dir: NodePath.join(input.stateDir, "voice", "models"),
+      status,
+      words: settings.wakeWords,
+    });
+    if (done.refused.length > 0) input.onNote?.("wake_model_refused", { words: done.refused });
+    if (done.words !== null) save({ wakeWords: done.words });
+    if (done.words !== null || done.reload) void relisten();
+    else pushHome();
+  };
+  const wakeChange = async (path: string, body: unknown) => {
+    if (input.wakeServer === undefined) return;
+    wakeChangeNote = await changeWake(await input.wakeServer(), path, body);
+    await syncWake();
+  };
+  if (input.wakeServer !== undefined) {
+    setTimeout(() => void syncWake().catch(() => undefined), 20_000).unref?.();
+    setInterval(() => void syncWake().catch(() => undefined), 30 * 60_000).unref?.();
+  }
   void input
     .household?.("preferences", { id: OWNER_MEMBER_ID })
     .then((r) => {
@@ -6672,6 +6725,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         kind: "toggle" as const,
         on: wake.enabled,
       })),
+      // Her trained words from her home server: roll back, stop or retrain, as by voice or over MCP.
+      ...(wakeWordsHome ?? [])
+        .filter((w) => !w.shipped || w.versions.length > 0)
+        .map((w) => {
+          const back = rollbackTarget(w);
+          const primary = w.cancelled
+            ? "retrain"
+            : w.model === "training"
+              ? "cancel"
+              : back !== null
+                ? `rollback-${back}`
+                : "retrain";
+          return {
+            id: `v.wm:${primary}:${w.word}`,
+            section: "Wake and listening",
+            label: `Trained wake word: ${w.word}`,
+            hint: wakeChangeNote ?? wakeLine(w),
+            kind: "action" as const,
+            button:
+              primary === "retrain"
+                ? "Retrain"
+                : primary === "cancel"
+                  ? "Stop training"
+                  : `Back to version ${back}`,
+            ...(primary === "cancel" || w.cancelled ? {} : { secondary: "Stop training" }),
+          };
+        }),
       {
         id: "v.direct",
         section: "Wake and listening",
@@ -8148,6 +8228,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.copyLast") {
       const last = lastReply ?? lastDictation;
       if (last !== null) void Electron.clipboard.writeText(last);
+    } else if (id.startsWith("v.wm:")) {
+      // `v.wm:<retrain|cancel|rollback-N>:<word>`; the secondary button (`:later`) is always Stop training.
+      const [, act = "", word = ""] = id.replace(/:later$/, "").split(":");
+      const change = id.endsWith(":later") ? "cancel" : act;
+      void (
+        change.startsWith("rollback-")
+          ? wakeChange("rollback", { word, version: Number(change.slice("rollback-".length)) })
+          : wakeChange(change === "cancel" ? "cancel" : "retrain", { word })
+      ).catch(() => undefined);
     } else if (id === "v.wakeTraining" && input.household !== undefined) {
       void input
         .household("setPreference", {

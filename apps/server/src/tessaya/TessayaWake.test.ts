@@ -72,6 +72,21 @@ it.effect(
       ).toEqual({
         refused: "He cancelled training for this word.",
       });
+      const nova = (yield* wake.overview) as ReadonlyArray<{ word: string }>;
+      expect(nova.find((w) => w.word === "nova")).toMatchObject({
+        personaId: "nova",
+        model: "trained",
+        current: 1,
+        cancelled: true,
+        versions: [{ version: 1, status: "trained", barMet: true, signed: true }],
+      });
+      // The way back from a cancel: asked for again, and a trainer may take it.
+      expect(yield* wake.retrain("nova")).toEqual({ ok: true });
+      expect((yield* wake.requests).map((r) => [r.word, r.reason])).toEqual([["nova", "retrain"]]);
+      expect(
+        yield* wake.status({ word: "nova", version: 2, status: "training" }, "kaggle-1"),
+      ).toEqual({ ok: true });
+      expect(yield* wake.retrain("zed")).toEqual({ refused: "No persona answers to that word." });
     }).pipe(Effect.provide(TessayaWake.layer.pipe(Layer.provideMerge(config)))),
 );
 
@@ -87,7 +102,13 @@ it("lets only the trainer train, any paired vessel or R1 fetch, and a settings w
   expect(wakeAccess("GET models", null, false)?.status).toBe(401);
   expect(wakeAccess("GET models", null, true)).toBeNull();
   expect(wakeAccess("GET models", vessel, false)).toBeNull();
-  for (const route of ["POST rollback", "POST cancel"]) {
+  expect(wakeAccess("GET status", vessel, false)).toBeNull();
+  expect(wakeAccess("GET status", null, false)?.status).toBe(401);
+  // Enrolment audio: an R1's, or a session that may change settings (his desktop); never a plain vessel's.
+  expect(wakeAccess("POST enrolment", null, true)).toBeNull();
+  expect(wakeAccess("POST enrolment", owner, false)).toBeNull();
+  expect(wakeAccess("POST enrolment", vessel, false)?.status).toBe(401);
+  for (const route of ["POST rollback", "POST cancel", "POST retrain"]) {
     expect(wakeAccess(route, owner, false)).toBeNull();
     expect(wakeAccess(route, vessel, false)?.status).toBe(403);
     expect(wakeAccess(route, trainer, false)?.status).toBe(403);

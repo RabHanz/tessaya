@@ -531,6 +531,13 @@ export const startBatonDesktop = Effect.gen(function* () {
     const privateMemory = createPrivateMemory((op, args = {}) =>
       own("/tessaya/private", { op, ...args }),
     );
+    // Her wake models, through this machine's own server (which asks her home server when it has one).
+    const wakeServer = async () => {
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") throw new Error("The local server is not ready.");
+      return { server: String(config.value.httpBaseUrl), authorization: `Bearer ${token}` };
+    };
     // The household lives on this machine's own server, like the stores it shreds.
     const household: HouseholdCall = (op, args = {}) =>
       own("/tessaya/household", { op, ...args }) as Promise<BatonHouseholdCallResult>;
@@ -778,6 +785,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       direct,
       privateMemory,
       household,
+      wakeServer,
       comms,
       // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
       // subscription session. The wait matches the server's 2.5 s limit, with a little for the hop.

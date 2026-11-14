@@ -53,13 +53,17 @@ const answer = (r: { readonly refused: string } | object, refusedStatus = 409) =
 const MAX_ENROLMENT_BYTES = 4 * 1024 * 1024;
 const decodeEnrolment = Schema.decodeUnknownOption(
   Schema.Struct({
+    personId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
     clips: Schema.Array(Schema.String.check(Schema.isMaxLength(1_000_000))).check(
       Schema.isMaxLength(30),
     ),
   }),
 );
 
-/** Who may use a wake route: the key is anyone's; models a paired vessel's or an R1's; the way back a settings writer's. */
+/**
+ * Who may use a wake route: the key is anyone's; models and status a paired vessel's or an R1's; the way back a
+ * settings writer's; enrolment audio an R1's (its owner's) or a settings writer's (the desktop's, or a server's).
+ */
 export const wakeAccess = (
   route: string,
   scopes: ReadonlySet<string> | null,
@@ -68,14 +72,14 @@ export const wakeAccess = (
   route === "GET key"
     ? null
     : route === "POST enrolment"
-      ? r1
+      ? r1 || scopes?.has(AuthSettingsWriteScope) === true
         ? null
-        : { status: 401, message: "Only an R1's enrolment sends audio here." }
-      : route === "GET models"
+        : { status: 401, message: "Only a vessel's enrolment sends audio here." }
+      : route === "GET models" || route === "GET status"
         ? scopes === null && !r1
           ? { status: 401, message: "Not paired." }
           : null
-        : route === "POST rollback" || route === "POST cancel"
+        : route === "POST rollback" || route === "POST cancel" || route === "POST retrain"
           ? scopes?.has(AuthSettingsWriteScope) === true
             ? null
             : { status: 403, message: "Only a session that may change settings can do that." }
@@ -116,16 +120,25 @@ export const routes = HttpRouter.use((router) =>
       const denied = wakeAccess(
         route,
         scopes,
-        (route === "GET models" && scopes === null) || route === "POST enrolment"
+        ((route === "GET models" || route === "GET status") && scopes === null) ||
+          (route === "POST enrolment" && scopes === null)
           ? yield* isR1(request)
           : false,
       );
       if (denied !== null) return say(denied.status, denied.message);
-      if (route === "GET key") return HttpServerResponse.text(yield* service.publicKey);
+      // Her home server's answer when this one has a home: the household and its link are in the runtime.
+      if (route === "GET key")
+        return HttpServerResponse.text(
+          yield* service.publicKey.pipe(Effect.provideContext(context)),
+        );
+      if (route === "GET status")
+        return answer(yield* service.overview.pipe(Effect.provideContext(context)), 502);
       if (route === "GET models" && parts.length === 3) {
         const target = parts[2] as WakeTarget;
         if (!WAKE_TARGETS.includes(target)) return say(404, "No such target.");
-        const found = yield* service.model(decodeURIComponent(parts[1]!), target);
+        const found = yield* service
+          .model(decodeURIComponent(parts[1]!), target)
+          .pipe(Effect.provideContext(context));
         if (found === null) return say(404, "No signed model for that word yet.");
         return HttpServerResponse.uint8Array(found.bytes, {
           contentType: "application/octet-stream",
@@ -138,18 +151,26 @@ export const routes = HttpRouter.use((router) =>
           },
         });
       }
-      if (route === "POST rollback" || route === "POST cancel") {
+      if (route === "POST rollback" || route === "POST cancel" || route === "POST retrain") {
         const body = yield* request.json.pipe(Effect.orElseSucceed(() => ({})));
-        if (route === "POST cancel") {
+        if (route !== "POST rollback") {
           const input = decodeCancel(body);
           return Option.isNone(input)
             ? say(400, "That request is not valid.")
-            : answer(yield* service.cancel(input.value.word));
+            : answer(
+                yield* (route === "POST cancel" ? service.cancel : service.retrain)(
+                  input.value.word,
+                ).pipe(Effect.provideContext(context)),
+              );
         }
         const input = decodeRollback(body);
         return Option.isNone(input)
           ? say(400, "That request is not valid.")
-          : answer(yield* service.rollback(input.value.word, input.value.version));
+          : answer(
+              yield* service
+                .rollback(input.value.word, input.value.version)
+                .pipe(Effect.provideContext(context)),
+            );
       }
       if (route === "GET requests") return HttpServerResponse.jsonUnsafe(yield* service.requests);
       if (route === "POST status") {
@@ -177,7 +198,8 @@ export const routes = HttpRouter.use((router) =>
         if ("refused" in wav) return say(403, wav.refused);
         return HttpServerResponse.uint8Array(wav, { contentType: "audio/wav" });
       }
-      // The R1's enrolment: his windows of speech, kept for training only while his switch is on.
+      // A vessel's enrolment: their windows of speech, kept for training only while their switch is on. An R1's is
+      // its owner's; a session names whose it is.
       if (route === "POST enrolment") {
         const length = Number(request.headers["content-length"] ?? Number.NaN);
         if (!(length > 0 && length <= MAX_ENROLMENT_BYTES)) return say(413, "Too large or empty.");
@@ -187,7 +209,10 @@ export const routes = HttpRouter.use((router) =>
           const bytes = Buffer.from(b64, "base64");
           return new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
         });
-        return HttpServerResponse.jsonUnsafe(yield* service.keepEnrolment(OWNER_MEMBER_ID, clips));
+        const person = scopes === null ? OWNER_MEMBER_ID : (body.value.personId ?? OWNER_MEMBER_ID);
+        return HttpServerResponse.jsonUnsafe(
+          yield* service.keepEnrolment(person, clips).pipe(Effect.provideContext(context)),
+        );
       }
       return say(404, "No such wake route.");
     }).pipe(Effect.catchCause(() => Effect.succeed(say(500, "That did not work."))));

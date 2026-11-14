@@ -48,7 +48,8 @@ export const createVoiceId = (input: {
   /** A saved person was removed: their own memory goes with them. */
   readonly onPersonDeleted?: (id: string) => void;
   /** A new enrolment here: the home server keeps it as that member's one profile, for every device. */
-  readonly onEnrolled?: (profile: SpeakerProfile) => void;
+  /** The saved profile, and the read lines' audio (16 kHz PCM16) it was made from. */
+  readonly onEnrolled?: (profile: SpeakerProfile, clips: ReadonlyArray<Int16Array>) => void;
   /** The local recogniser, so the card can follow his words; without it the card follows his pauses alone. */
   readonly transcribe?: (pcm: Int16Array) => Promise<string>;
   /** The microphone he is reading into, in his words. */
@@ -130,7 +131,7 @@ export const createVoiceId = (input: {
           spoken: pcm,
           save: (p: SpeakerProfile) => {
             store.save(p);
-            input.onEnrolled?.(p);
+            input.onEnrolled?.(p, clips);
           },
           now: new Date(),
         });
@@ -162,7 +163,7 @@ export const createVoiceId = (input: {
               consentNote: `${name} agreed aloud in Settings and read the lines, ${new Date().toISOString()}.`,
               save: (p: SpeakerProfile) => {
                 store.save(p);
-                input.onEnrolled?.(p);
+                input.onEnrolled?.(p, clips);
               },
               now: new Date(),
             });
