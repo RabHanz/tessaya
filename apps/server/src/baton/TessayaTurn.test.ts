@@ -542,6 +542,33 @@ layer("TessayaTurn", (it) => {
       }),
   );
 
+  it.effect(
+    "'take this over' moves the conversation's live thread to the named persona, and back",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const him = owner();
+        const say = (persona: string, text: string) =>
+          turn.begin({ vessel: desktop, persona, speaker: him, text });
+        yield* say("engineering", "check the build");
+        yield* TestClock.adjust("1 minute");
+        // Two personas may share his conversation; only a hand-off moves it.
+        assert.notInclude((yield* say("operations", "and the lights?")).block, "handed");
+        assert.lengthOf(yield* turn.threads("engineering"), 1);
+        yield* TestClock.adjust("1 minute");
+        const taken = yield* say("operations", "Freya, take this over");
+        assert.include(taken.block, "handed this conversation to you");
+        assert.lengthOf(yield* turn.threads("engineering"), 0);
+        // The thread keeps the time it opened: it is the same conversation.
+        const [freya] = yield* turn.threads("operations");
+        assert.strictEqual((freya?.lastAt ?? 0) - (freya?.openedAt ?? 0), 120_000);
+        // The way back is the same sentence to the other persona.
+        yield* say("engineering", "actually, take it back");
+        assert.lengthOf(yield* turn.threads("operations"), 0);
+        assert.lengthOf(yield* turn.threads("engineering"), 1);
+      }),
+  );
+
   it.effect("every vessel gets the same memory for the same words and persona", () =>
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;
