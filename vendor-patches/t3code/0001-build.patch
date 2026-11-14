@@ -352,6 +352,18 @@ index d1e74151e53e3a0548407d9744ff97d6732068d7..6874892d03cb03d7efd5b2ca3b830293
      "effect": "catalog:",
      "jszip": "3.10.1",
      "three": "0.180.0",
+diff --git a/packages/shared/src/t3ProjectFile.ts b/packages/shared/src/t3ProjectFile.ts
+index 910e78420f46d1656291fd35d726c14381c46582..65144e632ca6ef44c4a15b2e3194b62c8eab6cf3 100644
+--- a/packages/shared/src/t3ProjectFile.ts
++++ b/packages/shared/src/t3ProjectFile.ts
+@@ -14,6 +14,7 @@ export function parseT3ProjectFile(contents: string): T3ProjectFile | null {
+   return Exit.isSuccess(decoded) ? decoded.value : null;
+ }
+ 
++/** @public Read by apps/marketing, which sparse checkouts leave out, so knip there cannot see the import. */
+ export function buildT3ProjectFileJsonSchema(): Record<string, unknown> {
+   const document = Schema.toJsonSchemaDocument(T3ProjectFile, { onExcessProperty: "error" });
+   const jsonSchema: Record<string, unknown> = {
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
 index c93a9b4ad7f4979e6d156ce366ec8e3623ae3916..03ca8ed86ebeedddf6ee1dfd094d5bc40433e12b 100644
 --- a/pnpm-workspace.yaml

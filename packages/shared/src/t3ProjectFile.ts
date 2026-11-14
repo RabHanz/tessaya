@@ -14,6 +14,7 @@ export function parseT3ProjectFile(contents: string): T3ProjectFile | null {
   return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
+/** @public Read by apps/marketing, which sparse checkouts leave out, so knip there cannot see the import. */
 export function buildT3ProjectFileJsonSchema(): Record<string, unknown> {
   const document = Schema.toJsonSchemaDocument(T3ProjectFile, { onExcessProperty: "error" });
   const jsonSchema: Record<string, unknown> = {
