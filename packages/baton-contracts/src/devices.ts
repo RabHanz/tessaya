@@ -103,41 +103,68 @@ export const DeviceTagAction = Schema.Union([
 ]);
 export type DeviceTagAction = typeof DeviceTagAction.Type;
 
-/** The R1's buttons and the presses each reports on `event/key` (firmware 3.32). */
-export const R1_KEYS = ["s1", "s2", "s3"] as const;
-export const R1_PRESSES = ["tap", "double", "hold", "long"] as const;
-export type R1KeySlot = `${(typeof R1_KEYS)[number]}.${(typeof R1_PRESSES)[number]}`;
 /** What the firmware itself can do on a press it lets be rebound (`cmd/key/bind`). */
 export const R1_DEVICE_DOS = ["none", "talk", "mute", "vol_up", "vol_down", "sleep"] as const;
 export type R1DeviceDo = (typeof R1_DEVICE_DOS)[number];
 
 /**
- * Every press: fixed by the firmware (shown read-only), rebindable on the device, or Tessaya's alone (the firmware does
- * nothing with it). A Tessaya action runs only where the device does nothing, so it reports `did:"none"`.
+ * Every press, as `<key>.<press>` on `event/key` (S1-S3 since 3.32; triple, a bindable tap and the headphones' keys since
+ * smp-0.3.108; head is the touch pads' `event/touch`): fixed by the firmware (shown read-only), rebindable on the device,
+ * or Tessaya's alone (the firmware does nothing with it). A Tessaya action runs only where the device does nothing, so
+ * it reports `did:"none"`. play, next and prev are his Bluetooth headphones' or speaker's buttons (AVRCP).
  */
-export const R1_KEY_SLOTS: Readonly<
-  Record<R1KeySlot, { readonly fixed: string } | "device" | "tessaya">
-> = {
-  "s1.tap": { fixed: "Volume up" },
+const KEY_SLOT_SPECS = {
+  "s1.tap": "device",
   "s1.double": "device",
+  "s1.triple": "device",
   "s1.hold": "tessaya",
   "s1.long": "device",
   "s2.tap": { fixed: "Talk: start or stop" },
   "s2.double": "device",
+  "s2.triple": "device",
   "s2.hold": { fixed: "Push to talk" },
   "s2.long": { fixed: "Wake" },
-  "s3.tap": { fixed: "Volume down" },
+  "s3.tap": "device",
   "s3.double": "device",
+  "s3.triple": "device",
   "s3.hold": "tessaya",
   "s3.long": "device",
-};
+  "head.tap": { fixed: "Stop her while she speaks" },
+  "head.long": "tessaya",
+  "play.tap": "device",
+  "next.tap": "device",
+  "prev.tap": "device",
+} as const satisfies Record<string, { readonly fixed: string } | "device" | "tessaya">;
+export type R1KeySlot = keyof typeof KEY_SLOT_SPECS;
+export const R1_KEY_SLOTS: Readonly<
+  Record<R1KeySlot, { readonly fixed: string } | "device" | "tessaya">
+> = KEY_SLOT_SPECS;
+/** Slots only firmware with the smp-0.3.108 press grammar (its `state/key/bind` has `triple`) knows. */
+export const R1_KEY_SLOTS_V2: ReadonlySet<R1KeySlot> = new Set([
+  "s1.tap",
+  "s1.triple",
+  "s2.triple",
+  "s3.tap",
+  "s3.triple",
+  "play.tap",
+  "next.tap",
+  "prev.tap",
+]);
 /** The firmware's own bindings until it acks a change on `state/key/bind`. */
 export const R1_DEVICE_DEFAULTS: Readonly<Partial<Record<R1KeySlot, R1DeviceDo>>> = {
+  "s1.tap": "vol_up",
   "s1.double": "none",
+  "s1.triple": "none",
   "s1.long": "mute",
   "s2.double": "none",
+  "s2.triple": "none",
+  "s3.tap": "vol_down",
   "s3.double": "none",
+  "s3.triple": "none",
   "s3.long": "sleep",
+  "play.tap": "talk",
+  "next.tap": "none",
+  "prev.tap": "none",
 };
 
 /** What a free press does: the device's own action, or one of Tessaya's, which the server runs. */

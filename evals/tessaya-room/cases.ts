@@ -141,6 +141,14 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { set_device_volume: 1, home_do: 0 },
   },
   {
+    id: "remap-button",
+    source: "Director 2026-11-14 (R-045): every press of the Tessel is his to remap by voice",
+    said: ["make double press S1 switch to Freya"],
+    lastSays: [/^(?![\s\S]*waits for)[\s\S]{1,120}freya/i],
+    calls: ["device_button"],
+    callsAtMost: { device_button: 1, home_do: 0, device_set: 0 },
+  },
+  {
     id: "no-intro",
     source:
       'R1 session 2026-11-13 07:32: every reply after he called Sebastian opened "Sebastian here."',

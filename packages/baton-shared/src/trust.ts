@@ -129,6 +129,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "member_rename",
       "member_preference_set",
       "household_home_server",
+      // The device's button map is shared by everyone in the home.
+      "device_button",
     ].map((t) => [t, "household" as const]),
   ),
 };
